@@ -40,9 +40,10 @@ import { MagicTagTemplate } from "@/lib/workspace/services/core/MagicTagManager"
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
-import { assetSelectionKey } from "./state/assetActionTargets";
+import { assetSelectionKey, type AssetActionTarget } from "./state/assetActionTargets";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
-import type { AssetSet } from "@shared/types/assetSet";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -175,6 +176,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      */
     const [assetSetWizardAssets, setAssetSetWizardAssets] = useState<{
         assets: Asset[];
+        /** The section a set made in a folder belongs to. Read off the files when there are any. */
+        category?: AssetCategory;
         groupId?: string;
         parent?: { set: AssetSet; value: string };
     } | null>(null);
@@ -359,6 +362,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // declaration measured against the library, and the measurement wants the library this panel is
     // already holding.
     const {
+        sets: assetSetDeclarations,
+        resolved: resolvedAssetSets,
         byCategory: assetSets,
         topLevelByCategory: rootAssetSets,
         memberAssetIds,
@@ -456,6 +461,131 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         });
     }, [canCreateAssetSet, selectedAssetsForSet]);
 
+    /**
+     * Make a set in a folder, with nothing marked.
+     *
+     * The other way in starts from files and reads the set off them; this one starts from the place,
+     * the way New Folder does, and the files are chosen in the dialog. Same dialog either way - a
+     * second one would be a second answer to what a set is.
+     */
+    const handleCreateAssetSetIn = useCallback((category: AssetCategory, groupId?: string) => {
+        setAssetSetWizardAssets({ assets: [], category, ...(groupId ? { groupId } : {}) });
+    }, []);
+
+    /**
+     * Every file the rows drawn inside a set answer with, the nested sets included.
+     *
+     * What a command aimed at the row acts on. A sub-set is drawn inside its parent and nowhere
+     * else, so its files are part of what the author sees inside the row they are commanding.
+     */
+    const assetSetSubtreeAssets = useCallback((entry: ResolvedAssetSet): Asset[] => {
+        const subtree = new Set(assetSetSubtree(entry.set, assetSetDeclarations).map(set => set.id));
+        const ids = new Set<string>();
+        for (const candidate of resolvedAssetSets) {
+            if (!subtree.has(candidate.set.id)) {
+                continue;
+            }
+            for (const cell of candidate.contents.cells) {
+                for (const id of cell.assetIds) {
+                    ids.add(id);
+                }
+            }
+        }
+        return assets[entry.category].filter(asset => ids.has(asset.id));
+    }, [assetSetDeclarations, assets, resolvedAssetSets]);
+
+    /**
+     * The files this set answers with itself.
+     *
+     * A value answered by a sub-set is that sub-set's, and its files carry this set's coordinate too
+     * - so reading the cells without dropping those would take a nested set's contents along.
+     */
+    const assetSetOwnAssets = useCallback((entry: ResolvedAssetSet): Asset[] => {
+        const ids = new Set(entry.contents.cells
+            .filter(cell => cell.childSetIds.length === 0)
+            .flatMap(cell => cell.assetIds));
+        return assets[entry.category].filter(asset => ids.has(asset.id));
+    }, [assets]);
+
+    /** File the given assets in a folder, or at the section root when it is absent. */
+    const fileAssetsInGroup = useCallback(async (targets: readonly Asset[], groupId?: string) => {
+        const moving = targets.filter(asset => (asset.groupId ?? undefined) !== (groupId ?? undefined));
+        if (moving.length === 0 || !context) {
+            return;
+        }
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+        await assetsService.transaction(async service => {
+            for (const asset of moving) {
+                await service.moveAssetToGroup(asset, groupId);
+            }
+        });
+        void loadAssets();
+    }, [context, loadAssets]);
+
+    /**
+     * Drop a set in another folder.
+     *
+     * The files move with it. They are drawn inside the set and nowhere else, so a member left
+     * behind is filed somewhere the author cannot see it - and would surface in that old folder the
+     * moment the set stopped holding it.
+     */
+    const handleAssetSetDrop = useCallback(async (
+        setId: string,
+        targetCategory: AssetCategory,
+        targetGroupId?: string,
+    ) => {
+        if (!context) return;
+        const entry = findSet(setId);
+        if (!entry || entry.category !== targetCategory) {
+            return;
+        }
+        const service = context.services.get<AssetSetService>(Services.AssetSets);
+        if (!service.moveSetToGroup(setId, targetGroupId)) {
+            return;
+        }
+        await fileAssetsInGroup(assetSetSubtreeAssets(entry), targetGroupId);
+    }, [assetSetSubtreeAssets, context, fileAssetsInGroup, findSet]);
+
+    /**
+     * Drop the set and keep the files.
+     *
+     * They are filed where the set was, which is where the author was looking at them: a member kept
+     * whatever folder it was imported into while the set was drawing it, and leaving it there would
+     * scatter the contents of a set across the library the moment it stopped holding them.
+     *
+     * No confirmation. It writes no bytes and it is one step on the project's undo stack.
+     */
+    const handleDissolveAssetSet = useCallback(async (entry: ResolvedAssetSet) => {
+        if (!context) return;
+        await fileAssetsInGroup(assetSetOwnAssets(entry), entry.set.groupId);
+        context.services.get<AssetSetService>(Services.AssetSets).dissolveSet(entry.set.id);
+    }, [assetSetOwnAssets, context, fileAssetsInGroup]);
+
+    /**
+     * Delete the set and the files it holds, the way deleting a folder takes its contents.
+     *
+     * The files go through the library's own delete - the reference check, the warning about what
+     * still points at them, and the confirmation. The declaration is dropped only once that has run,
+     * so cancelling leaves the set exactly as it was.
+     */
+    const handleDeleteAssetSet = useCallback(async (entry: ResolvedAssetSet) => {
+        if (!context) return;
+        const targets: AssetActionTarget[] = assetSetSubtreeAssets(entry)
+            .map(asset => ({ isGroup: false, category: entry.category, item: asset }));
+        if (targets.length > 0 && !(await handleDelete(targets))) {
+            return;
+        }
+        context.services.get<AssetSetService>(Services.AssetSets).deleteSetSubtree(entry.set.id);
+    }, [assetSetSubtreeAssets, context, handleDelete]);
+
+    /** The sub-set command as the asset menu reaches it: by set id and value, not by record. */
+    const handleCreateAssetSetAt = useCallback((setId: string, value: string) => {
+        const entry = findSet(setId);
+        if (entry) {
+            handleCreateSubAssetSet({ set: entry.set, value });
+        }
+    }, [findSet, handleCreateSubAssetSet]);
+
     const assetSetContextMenu: ContextMenuDef = useMemo(() => {
         if (!setMenuTarget) {
             return [];
@@ -490,17 +620,36 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 },
             },
             {
+                id: "dissolve-set",
+                label: t("assets.sets.menu.dissolve"),
+                onClick: () => {
+                    // No confirmation: no bytes are written, the files stay, and it is one step on
+                    // the project's undo stack like every other edit to a set.
+                    closeAssetSetContextMenu();
+                    void handleDissolveAssetSet(entry);
+                },
+            },
+            {
                 id: "delete-set",
                 label: t("common.delete"),
                 onClick: () => {
-                    // No confirmation: a set holds no files, deleting one strands nothing, and it is
-                    // one undo step on the project stack like every other edit to it.
-                    service?.deleteSet(entry.set.id);
                     closeAssetSetContextMenu();
+                    void handleDeleteAssetSet(entry);
                 },
             },
         ], freeze.frozen, new Set<string>(), freeze.reason);
-    }, [setMenuTarget, canCreateAssetSet, context, t, inputDialog, closeAssetSetContextMenu, freeze, handleCreateSubAssetSet]);
+    }, [
+        setMenuTarget,
+        canCreateAssetSet,
+        context,
+        t,
+        inputDialog,
+        closeAssetSetContextMenu,
+        freeze,
+        handleCreateSubAssetSet,
+        handleDeleteAssetSet,
+        handleDissolveAssetSet,
+    ]);
 
     const handleRetryFailedImports = useCallback(() => {
         const run = importState.run;
@@ -578,8 +727,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     );
 
     const { 
-        draggedItem, dropTargetId, dragOver, 
-        setDragOver, setDropTargetId, handleDragStart, handleDragEnd, 
+        draggedItem, draggedAssetSet, dropTargetId, dragOver, 
+        setDragOver, setDropTargetId, handleDragStart, handleAssetSetDragStart, handleDragEnd, 
         handlePanelDragOver, handlePanelDragLeave, handleDragOverItem, handleDropOnItem 
     } = useDragAndDrop({
         context,
@@ -591,6 +740,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         panelId,
         onWorkspaceDragSessionStart: workspaceDrag?.beginSession,
         onWorkspaceDragSessionEnd: workspaceDrag?.endSession,
+        onAssetSetDrop: handleAssetSetDrop,
     });
 
     // F2 opens the rename dialog, which writes the new name straight to the asset record. Nothing
@@ -635,21 +785,21 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleCopy: () => handleCopyRef.current(),
         handleCut: () => handleCutRef.current(),
         handlePaste: () => handlePasteRef.current(),
-        handleDelete: () => handleDeleteRef.current(),
+        handleDelete: async () => { await handleDeleteRef.current(); },
         handleExport: () => handleExportRef.current(),
         handleRename,
         handleReplaceContent: () => handleReplaceContent(),
         handleConvertMedia: () => handleConvertMedia(),
         canConvertMedia,
         handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick,
-        handleCreateAssetSet, canCreateAssetSet,
+        handleCreateAssetSet, canCreateAssetSet, handleCreateAssetSetIn, handleCreateAssetSetAt,
         notify: notifyFromMenu,
     });
 
     const handleRootDrop = useCallback(
         async (event: React.DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => {
             const targetGroup = contextualGroup ?? null;
-            if (draggedItem) {
+            if (draggedItem || draggedAssetSet) {
                 await handleDropOnItem(event, category, targetGroup);
             } else {
                 await handleImport(category, targetGroup?.id, event.dataTransfer.files, event.dataTransfer);
@@ -657,7 +807,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             setDragOver(false);
             setDropTargetId(null);
         },
-        [draggedItem, handleDropOnItem, handleImport]
+        [draggedAssetSet, draggedItem, handleDropOnItem, handleImport]
     );
 
     useEffect(() => {
@@ -762,11 +912,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const contextValue = {
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
-        draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
+        draggedItem, draggedAssetSet, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
         expandedAssetSets, setExpandedAssetSets, assetSetNaming, rootAssetSets, memberAssetIds,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu, showAssetSetValueContextMenu,
-        handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
+        handleDragStart, handleAssetSetDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
         isNarrowed,
@@ -984,6 +1134,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 {assetSetWizardAssets && (
                     <AssetSetWizard
                         assets={assetSetWizardAssets.assets}
+                        {...(assetSetWizardAssets.category ? { category: assetSetWizardAssets.category } : {})}
                         {...(assetSetWizardAssets.groupId ? { groupId: assetSetWizardAssets.groupId } : {})}
                         {...(assetSetWizardAssets.parent ? { parent: assetSetWizardAssets.parent } : {})}
                         onClose={() => setAssetSetWizardAssets(null)}

@@ -4,6 +4,7 @@ import {
     containerNames,
     isRefusedMediaFileName,
     parseProbeOutput,
+    probeCarriesAlpha,
     probeDurationUs,
     remuxContainerFor,
     TRANSCODE_TARGET,
@@ -347,5 +348,58 @@ describe("probeDurationUs", () => {
     it("reads the duration back out of a parsed report", () => {
         const parsed = parseProbeOutput(JSON.stringify({ format: { format_name: "matroska,webm", duration: "2.5" } }));
         expect(probeDurationUs(parsed!)).toBe(2_500_000);
+    });
+});
+
+describe("probeCarriesAlpha", () => {
+    it("reads the alpha channel off the demuxer's stream tag", () => {
+        // The shape a real VP9-with-alpha WebM produces: the codec and the pixel format are the
+        // ordinary opaque ones, and `alpha_mode` in the tag bag is the only thing that says
+        // otherwise. A check written against `codec_name` or `pix_fmt` would miss every such file.
+        expect(
+            probeCarriesAlpha(
+                report("matroska,webm", [
+                    { codec_type: "video", codec_name: "vp9", tags: { alpha_mode: "1" } },
+                    { codec_type: "audio", codec_name: "vorbis" },
+                ]),
+            ),
+        ).toBe(true);
+    });
+
+    it("answers false for an opaque clip, which is what this project's transcode target produces", () => {
+        expect(
+            probeCarriesAlpha(
+                report("matroska,webm", [
+                    { codec_type: "video", codec_name: "vp9" },
+                    { codec_type: "audio", codec_name: "vorbis" },
+                ]),
+            ),
+        ).toBe(false);
+        expect(probeCarriesAlpha(report("matroska,webm", []))).toBe(false);
+        expect(probeCarriesAlpha({})).toBe(false);
+    });
+
+    it("ignores the tag on a stream that is not video", () => {
+        expect(
+            probeCarriesAlpha(report("matroska,webm", [{ codec_type: "audio", tags: { alpha_mode: "1" } }])),
+        ).toBe(false);
+    });
+
+    it("reads a string, because the tag bag is metadata and never typed", () => {
+        // ffprobe prints `"alpha_mode": "1"`. A test written with a numeric 1 would pass against a
+        // loose comparison and then find nothing on a real report.
+        expect(
+            probeCarriesAlpha(report("matroska,webm", [{ codec_type: "video", tags: { alpha_mode: "0" } }])),
+        ).toBe(false);
+    });
+
+    it("survives the parser, which is what actually hands it a report", () => {
+        const parsed = parseProbeOutput(
+            JSON.stringify({
+                format: { format_name: "matroska,webm" },
+                streams: [{ codec_type: "video", codec_name: "vp9", tags: { alpha_mode: "1" } }],
+            }),
+        );
+        expect(probeCarriesAlpha(parsed!)).toBe(true);
     });
 });

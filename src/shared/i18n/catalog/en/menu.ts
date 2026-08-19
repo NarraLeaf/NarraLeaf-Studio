@@ -47,6 +47,7 @@ export const menu = {
         noRecent: "No Recent Workspaces",
         export: "Export Project",
         close: "Close Workspace",
+        returnToLauncher: "Back to Launcher",
     },
     edit: {
         title: "Edit",
@@ -72,6 +73,7 @@ export const menu = {
     },
     window: {
         title: "Window",
+        close: "Close Window",
         minimize: "Minimize",
         zoom: "Zoom",
         front: "Bring All to Front",

@@ -19,7 +19,7 @@
  * author sees the holes before committing rather than after.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Input, Select } from "@/lib/components/elements";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
@@ -33,7 +33,9 @@ import { LocalizationService } from "@/lib/workspace/services/localization/Local
 import { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { Asset } from "@/lib/workspace/services/assets/types";
-import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_TYPES, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetSelector } from "./AssetSelector";
+import { AssetThumbnail } from "./AssetThumbnail";
 import { ASSET_SET_AXIS_KINDS, type AssetSet, type AssetSetAxisKind } from "@shared/types/assetSet";
 import {
     planAssetSet,
@@ -44,12 +46,19 @@ import {
 
 export interface AssetSetWizardProps {
     /**
-     * The rows the author marked. All of one type; the caller refuses a mixed selection.
+     * The rows the author marked, when they started from files. All of one type; the caller refuses
+     * a mixed selection.
+     *
+     * Empty when they started from a folder instead. Either way the dialog is the same: the marked
+     * files are a head start on which file answers which variant, never a limit on it - the picker
+     * below reaches the whole library.
      *
      * Mounted only while the dialog is up, so every reading below starts from this selection rather
      * than from whatever the last one left behind.
      */
     assets: Asset[];
+    /** The section a set made from a folder belongs to. Ignored when the files say it themselves. */
+    category?: AssetCategory;
     /** The folder the author was in. The set's row is drawn there rather than at the section's top. */
     groupId?: string;
     /** The set and value this one hangs under, when the author is making a sub-set. */
@@ -57,12 +66,25 @@ export interface AssetSetWizardProps {
     onClose: () => void;
 }
 
-export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWizardProps) {
+export function AssetSetWizard({ assets, category, groupId, parent, onClose }: AssetSetWizardProps) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const [name, setName] = useState("");
     const [busy, setBusy] = useState(false);
-    const type = assets[0]?.type;
+
+    /**
+     * What the members are.
+     *
+     * Taken from the marked files when there are any - they are all of one type, which is what the
+     * caller checks - and otherwise chosen here, because a section can stand for more than one
+     * (Media is audio and video) and a set resolves within one type.
+     */
+    const offeredTypes = useMemo(
+        () => (assets.length > 0 || !category ? [] : ASSET_CATEGORY_TYPES[category]),
+        [assets.length, category],
+    );
+    const [chosenType, setChosenType] = useState<AssetType | null>(() => offeredTypes[0] ?? null);
+    const type = assets[0]?.type ?? chosenType ?? undefined;
 
     /**
      * The two lists a set may vary by, read off the project.
@@ -93,10 +115,32 @@ export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWiz
     );
     const values = valuesByKind[kind];
 
+    /**
+     * Every file this dialog knows about: the marked ones, and the ones picked out of the library.
+     *
+     * Held here rather than read from the library on demand because the plan is computed from the
+     * tags each file carries today, and the picker is the only place a file outside the selection
+     * enters the dialog.
+     */
+    const [pickedAssets, setPickedAssets] = useState<Asset[]>([]);
+    const candidates = useMemo<Asset[]>(() => {
+        const byId = new Map<string, Asset>();
+        for (const asset of [...assets, ...pickedAssets]) {
+            if (!type || asset.type === type) {
+                byId.set(asset.id, asset);
+            }
+        }
+        return [...byId.values()];
+    }, [assets, pickedAssets, type]);
+
     const files = useMemo<AssetSetPlanFile[]>(
-        () => assets.map(asset => ({ id: asset.id, name: asset.name, tags: asset.tags })),
-        [assets],
+        () => candidates.map(asset => ({ id: asset.id, name: asset.name, tags: asset.tags })),
+        [candidates],
     );
+
+    /** The value whose file is being picked, and the control the picker opens against. */
+    const [picking, setPicking] = useState<AssetSetPlanValue | null>(null);
+    const pickerAnchor = useRef<HTMLElement | null>(null);
 
     /**
      * Which file answers which value, guessed from the names and then owned by the author.
@@ -125,12 +169,27 @@ export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWiz
     );
 
     const filled = plan.members.size;
-    const assetsById = useMemo(() => new Map(assets.map(asset => [asset.id, asset])), [assets]);
+    const assetsById = useMemo(() => new Map(candidates.map(asset => [asset.id, asset])), [candidates]);
 
     const chooseKind = useCallback((next: AssetSetAxisKind) => {
         setKind(next);
         setOverride(null);
     }, []);
+
+    // A different type is a different set of files, so nothing chosen against the old one survives.
+    const chooseType = useCallback((next: AssetType) => {
+        setChosenType(next);
+        setPickedAssets([]);
+        setOverride({});
+    }, []);
+
+    /** The files answering a value right now, in axis order. What the default name is read off. */
+    const chosenAssets = useMemo<Asset[]>(
+        () => [...plan.members.values()]
+            .map(assetId => assetsById.get(assetId))
+            .filter((asset): asset is Asset => !!asset),
+        [assetsById, plan.members],
+    );
 
     const chooseMember = useCallback((value: string, assetId: string) => {
         setOverride(current => {
@@ -157,16 +216,16 @@ export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWiz
             const setService = context.services.get<AssetSetService>(Services.AssetSets);
             // One transaction for the tags, so a set is never made against a library half-written.
             await assetsService.transaction(async service => {
-                for (const asset of assets) {
-                    const tags = plan.tagsByFile.get(asset.id);
-                    if (tags && !sameTags(tags, asset.tags)) {
+                for (const [assetId, tags] of plan.tagsByFile) {
+                    const asset = assetsById.get(assetId);
+                    if (asset && !sameTags(tags, asset.tags)) {
                         await service.updateAssetTags(asset, tags);
                     }
                 }
             });
             setService.createSet({
                 id: setId,
-                name: name.trim() || defaultName(assets),
+                name: name.trim() || defaultName(chosenAssets),
                 type: type as AssetType,
                 filter: plan.filter,
                 axis: plan.axis,
@@ -176,7 +235,7 @@ export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWiz
         } finally {
             setBusy(false);
         }
-    }, [assets, busy, context, name, onClose, plan, setId, type]);
+    }, [assetsById, busy, chosenAssets, context, groupId, name, onClose, plan, setId, type]);
 
     if (!type) {
         return null;
@@ -227,10 +286,27 @@ export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWiz
                         size="sm"
                         fullWidth
                         value={name}
-                        placeholder={defaultName(assets)}
+                        placeholder={defaultName(chosenAssets)}
                         onChange={event => setName(event.target.value)}
                     />
                 </div>
+
+                {offeredTypes.length > 1 && (
+                    <div className="grid gap-1">
+                        <FieldLabel as="div">{t("assets.sets.create.type")}</FieldLabel>
+                        <Select
+                            size="sm"
+                            value={type ?? ""}
+                            options={offeredTypes.map(entry => ({
+                                value: entry,
+                                label: t(`assets.types.${entry}`),
+                            }))}
+                            onChange={value => chooseType(value as AssetType)}
+                            portalMenu
+                            ariaLabel={t("assets.sets.create.type")}
+                        />
+                    </div>
+                )}
 
                 <div className="grid gap-1">
                     <FieldLabel as="div">{t("assets.sets.create.axis")}</FieldLabel>
@@ -257,6 +333,7 @@ export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWiz
                         <div className="max-h-56 space-y-1 overflow-y-auto">
                             {values.map(entry => {
                                 const chosen = members.get(entry.value);
+                                const asset = chosen ? assetsById.get(chosen) : undefined;
                                 return (
                                     <div
                                         key={entry.value}
@@ -266,17 +343,26 @@ export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWiz
                                         <FieldLabel as="span" className="mb-0 w-28 shrink-0 truncate">
                                             {entry.label}
                                         </FieldLabel>
-                                        <Select
-                                            size="sm"
-                                            fullWidth
-                                            className={cn("min-w-0 flex-1", !chosen && "text-warning")}
-                                            value={chosen ?? ""}
-                                            placeholder={t("assets.sets.inspector.variantMissing")}
-                                            options={assets.map(asset => ({ value: asset.id, label: asset.name }))}
-                                            onChange={value => chooseMember(entry.value, String(value))}
-                                            portalMenu
-                                            ariaLabel={entry.label}
-                                        />
+                                        <button
+                                            type="button"
+                                            aria-label={entry.label}
+                                            className={cn(
+                                                "flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-edge",
+                                                "px-2 py-1 text-2xs hover:bg-fill",
+                                                asset ? "text-fg" : "text-warning",
+                                            )}
+                                            onClick={event => {
+                                                pickerAnchor.current = event.currentTarget;
+                                                setPicking(entry);
+                                            }}
+                                        >
+                                            {asset && (
+                                                <AssetThumbnail asset={asset} className="h-5 w-6 shrink-0 rounded-sm" />
+                                            )}
+                                            <span className="min-w-0 truncate">
+                                                {asset?.name ?? t("assets.sets.inspector.variantMissing")}
+                                            </span>
+                                        </button>
                                     </div>
                                 );
                             })}
@@ -284,6 +370,30 @@ export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWiz
                     )}
                 </div>
             </div>
+
+            {picking && type && (
+                <AssetSelector
+                    visible
+                    assetType={type as AssetType}
+                    selectedIds={members.get(picking.value) ? [members.get(picking.value)!] : []}
+                    anchorRef={pickerAnchor}
+                    title={picking.label}
+                    onClose={() => setPicking(null)}
+                    onConfirm={chosen => {
+                        const asset = chosen[0];
+                        setPicking(null);
+                        if (!asset) {
+                            return;
+                        }
+                        // Kept, because the plan reads the tags this file carries today and the
+                        // library list the picker drew from is gone the moment it closes.
+                        setPickedAssets(current => (
+                            current.some(entry => entry.id === asset.id) ? current : [...current, asset]
+                        ));
+                        chooseMember(picking.value, asset.id);
+                    }}
+                />
+            )}
         </Modal>
     );
 }

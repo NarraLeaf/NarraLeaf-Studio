@@ -1,15 +1,21 @@
 import { GAME_BUILD_FORMATS_BY_PLATFORM, type GameBuildPlatform } from "@shared/types/gameBuild";
-import { describe, expect, it } from "vitest";
+import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument, type StoryScene } from "@shared/types/story";
+import { describe, expect, it, vi } from "vitest";
 import { AssetType } from "../../workspace/services/assets/assetTypes";
-import type { LintAssetEntry, LintContext } from "../context";
+import type { LintAlphaProbe, LintAssetEntry, LintContext, LintStoryEntry } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintFinding, LintRuleId } from "../types";
 import { PORTABILITY_LINT_RULES } from "./portability";
 
 /**
- * The `portability` rules. Two of the three are as much about what they must stay quiet on as what
- * they report: a Chinese file name is not a portability problem, and a project that has never
- * declared a build target has not asked about codecs.
+ * The `portability` rules. Most of them are as much about what they must stay quiet on as what they
+ * report: a Chinese file name is not a portability problem, and a project that has never declared a
+ * build target has not asked about codecs.
+ *
+ * `portability/vfx-alpha` carries that burden further than the rest, because it is the only rule
+ * here that spawns a process to answer. Every narrowing it makes has a test that would fail if the
+ * narrowing were dropped - not because the finding would be wrong, but because the probe would run
+ * on a project that had no question.
  */
 
 function runRule(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
@@ -262,5 +268,201 @@ describe("portability/media-format", () => {
 
         expect(findings).toHaveLength(1);
         expect(findings[0].messageParams).toEqual({ asset: "theme.OGG", platform: "web" });
+    });
+});
+
+
+/* ---------------------------------------------------------------------------------------------- */
+/* portability/vfx-alpha                                                                            */
+/* ---------------------------------------------------------------------------------------------- */
+
+type VfxRow = {
+    id: string;
+    assetId?: string;
+    seed?: { seed: string };
+    blendMode?: string;
+    operation?: string;
+    disabled?: boolean;
+};
+
+/** One scene of `/vfx` rows, wired the way the document stores them. */
+function vfxStory(rows: readonly VfxRow[]): LintStoryEntry {
+    const blocks: Record<string, unknown> = {};
+    for (const row of rows) {
+        blocks[row.id] = {
+            id: row.id,
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            ...(row.disabled ? { disabled: true } : {}),
+            payload: {
+                action: "vfx",
+                operation: row.operation ?? "create",
+                objectName: row.id,
+                ...(row.assetId ? { assetId: row.assetId } : {}),
+                ...(row.seed ? { seed: row.seed } : {}),
+                ...(row.blendMode ? { blendMode: row.blendMode } : {}),
+            },
+        };
+    }
+    const scene = {
+        id: "scene-1",
+        name: "Rooftop",
+        runtimeName: "Rooftop",
+        rootBlockIds: rows.map(row => row.id),
+        blocks,
+    } as unknown as StoryScene;
+    const document = {
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        id: "story-1",
+        name: "Chapter 1",
+        chapters: [],
+        scenes: { [scene.id]: scene },
+    } as StoryDocument;
+    return { id: "story-1", name: "Chapter 1", document };
+}
+
+const petals = (id = "petals"): LintAssetEntry =>
+    asset(id, "petals.webm", { type: AssetType.Video, ext: "webm" });
+
+/** A context whose probe answers `carriesAlpha` for every clip, with the call count exposed. */
+function alphaContext(
+    rows: readonly VfxRow[],
+    options: {
+        carriesAlpha?: boolean;
+        buildPlatforms?: GameBuildPlatform[];
+        assets?: LintAssetEntry[];
+        probe?: (assetId: string) => Promise<LintAlphaProbe>;
+    } = {},
+) {
+    const probeVideoAlpha = vi.fn(
+        options.probe
+            ?? (async (): Promise<LintAlphaProbe> => ({ ok: true, carriesAlpha: options.carriesAlpha ?? true })),
+    );
+    const ctx = createTestLintContext({
+        stories: [vfxStory(rows)],
+        assets: options.assets ?? [petals()],
+        buildPlatforms: options.buildPlatforms ?? ["ios"],
+        io: {
+            exists: async () => true,
+            readBytes: async () => null,
+            probeImage: async () => ({ ok: false, reason: "not asked" }),
+            probeVideoAlpha,
+        },
+    });
+    return { ctx, probeVideoAlpha };
+}
+
+describe("portability/vfx-alpha", () => {
+    it("reports an alpha clip on a row that composites normally, and points at the row", async () => {
+        const { ctx } = alphaContext([{ id: "row-1", assetId: "petals" }]);
+
+        const findings = await runRule("portability/vfx-alpha", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.portabilityVfxAlpha.message");
+        expect(findings[0].messageParams).toEqual({ asset: "petals.webm", platform: "ios" });
+        // The row, not the asset: the same clip on `screen` is correct, so the file alone is not
+        // the finding and the author's repair is on this line.
+        expect(findings[0].location).toMatchObject({ kind: "story", storyId: "story-1", blockId: "row-1" });
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "row-1" });
+    });
+
+    it("treats an absent blend mode as `normal`, which is what the inspector shows", async () => {
+        const { ctx } = alphaContext([{ id: "row-1", assetId: "petals" }]);
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toHaveLength(1);
+    });
+
+    it("names every affected target at once rather than one finding per target", async () => {
+        const { ctx } = alphaContext([{ id: "row-1", assetId: "petals" }], {
+            buildPlatforms: ["windows", "ios", "web"],
+        });
+
+        const findings = await runRule("portability/vfx-alpha", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams?.platform).toBe("ios, web");
+    });
+
+    it("stays silent, and never probes, when no WebKit target is selected", async () => {
+        const { ctx, probeVideoAlpha } = alphaContext([{ id: "row-1", assetId: "petals" }], {
+            buildPlatforms: ["windows", "macos", "linux", "android"],
+        });
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toEqual([]);
+        expect(probeVideoAlpha).not.toHaveBeenCalled();
+    });
+
+    it("stays silent, and never probes, when the project has declared no build target at all", async () => {
+        const { ctx, probeVideoAlpha } = alphaContext([{ id: "row-1", assetId: "petals" }], {
+            buildPlatforms: [],
+        });
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toEqual([]);
+        expect(probeVideoAlpha).not.toHaveBeenCalled();
+    });
+
+    it("stays silent on a row that names its material route", async () => {
+        for (const blendMode of ["screen", "multiply", "lighten"]) {
+            const { ctx, probeVideoAlpha } = alphaContext([{ id: "row-1", assetId: "petals", blendMode }]);
+
+            expect(await runRule("portability/vfx-alpha", ctx)).toEqual([]);
+            expect(probeVideoAlpha).not.toHaveBeenCalled();
+        }
+    });
+
+    it("stays silent, and never probes, on a seeded overlay", async () => {
+        // The weather bake has no alpha channel by construction; probing one would spawn a process
+        // to re-confirm something this repository decided.
+        const { ctx, probeVideoAlpha } = alphaContext([{ id: "row-1", seed: { seed: "snow" } }]);
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toEqual([]);
+        expect(probeVideoAlpha).not.toHaveBeenCalled();
+    });
+
+    it("stays silent on a clip with no alpha channel", async () => {
+        const { ctx } = alphaContext([{ id: "row-1", assetId: "petals" }], { carriesAlpha: false });
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toEqual([]);
+    });
+
+    it("stays silent when the probe never answered", async () => {
+        // No ffprobe on this host is the common way this happens, and it is not evidence about the
+        // file. A rule that reported here would fail builds on a machine that merely lacks a tool.
+        const { ctx } = alphaContext([{ id: "row-1", assetId: "petals" }], {
+            probe: async () => ({ ok: false, reason: "no probe on this host" }),
+        });
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toEqual([]);
+    });
+
+    it("ignores a disabled row and the later verbs that address the overlay", async () => {
+        const { ctx, probeVideoAlpha } = alphaContext([
+            { id: "row-1", assetId: "petals", disabled: true },
+            { id: "row-2", assetId: "petals", operation: "show" },
+            { id: "row-3", assetId: "petals", operation: "hide" },
+        ]);
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toEqual([]);
+        expect(probeVideoAlpha).not.toHaveBeenCalled();
+    });
+
+    it("ignores a row whose clip is not in the library, which `assets/missing` already reports", async () => {
+        const { ctx, probeVideoAlpha } = alphaContext([{ id: "row-1", assetId: "gone" }]);
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toEqual([]);
+        expect(probeVideoAlpha).not.toHaveBeenCalled();
+    });
+
+    it("probes each clip once however many rows use it", async () => {
+        const { ctx, probeVideoAlpha } = alphaContext([
+            { id: "row-1", assetId: "petals" },
+            { id: "row-2", assetId: "petals" },
+            { id: "row-3", assetId: "petals" },
+        ]);
+
+        expect(await runRule("portability/vfx-alpha", ctx)).toHaveLength(3);
+        expect(probeVideoAlpha).toHaveBeenCalledTimes(1);
     });
 });

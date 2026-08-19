@@ -12,6 +12,7 @@ import { GameBuildManager } from "./application/managers/build/GameBuildManager"
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
 import { StudioTaskScheduler } from "./application/managers/tasks/StudioTaskScheduler";
+import { WeatherBakeManager } from "./application/managers/weather/WeatherBakeManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
@@ -47,6 +48,20 @@ const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
 const WINDOW_CASCADE_STEP = 32;
 
 /**
+ * Why a workspace is going away.
+ *
+ * `"close"` is the window's own close box, Cmd+W and Quit: the window ends and nothing takes its
+ * place, so the app quits or goes resident exactly as it would with any other last window.
+ * `"launcher"` is File ▸ Back to Launcher: the author is not leaving Studio, they are leaving this
+ * project, so the home screen is up before this window goes.
+ *
+ * These were one path with a preference choosing between them, which made "quit when I close a
+ * project" and "let me go back to the home screen" mutually exclusive when they are not the same
+ * question. See `handleWorkspaceExitRequest`.
+ */
+export type WorkspaceExitIntent = "close" | "launcher";
+
+/**
  * `candidate` as an absolute path if it names a directory, otherwise null.
  *
  * Relative paths resolve against the working directory, which is what a `--project .` typed in a
@@ -75,6 +90,7 @@ export class App extends BaseApp {
         this.gameTestManager = new GameTestManager(this);
         this.gameBuildManager = new GameBuildManager(this);
         this.taskScheduler = new StudioTaskScheduler();
+        this.weatherBakeManager = new WeatherBakeManager(this, this.taskScheduler);
         this.mediaConvertManager = new MediaConvertManager(this);
         // The commit pipeline has to settle the renderer's auto-save debt before it
         // stages, and only the window layer can ask a window to do that. Handed in as a
@@ -126,6 +142,7 @@ export class App extends BaseApp {
     private readonly gameBuildManager: GameBuildManager;
     private readonly mediaConvertManager: MediaConvertManager;
     private readonly taskScheduler: StudioTaskScheduler;
+    private readonly weatherBakeManager: WeatherBakeManager;
     private readonly vcsManager: VcsManager;
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
@@ -167,6 +184,11 @@ export class App extends BaseApp {
      */
     public getTaskScheduler(): StudioTaskScheduler {
         return this.taskScheduler;
+    }
+
+    /** Produces the clips weather seeds describe, and finds the ones already made. */
+    public getWeatherBakeManager(): WeatherBakeManager {
+        return this.weatherBakeManager;
     }
 
     public getVcsManager(): VcsManager {
@@ -427,37 +449,83 @@ export class App extends BaseApp {
     }
 
     /**
-     * The window this session starts on: the project `--project` named, or the launcher.
+     * The project this launch should open by itself, or null to sit on the home screen.
      *
-     * The launcher is opened either way, and the project is then opened *from* it - the same call
-     * a click on the recent list makes, so a scripted launch inherits the whole of it: the
-     * one-project-one-window lookup, the macOS bookmark re-authorization, the recents entry the
-     * workspace writes once it has actually loaded, and the launcher retiring itself only after
-     * the workspace reports a working project. Every way this can fail therefore lands on the home
-     * screen with a line in the log, rather than on a windowless app or a dead end.
+     * `--project` wins outright - it names a project, and naming one is more specific than the
+     * standing preference to carry on where the last session left off. Everything else is that
+     * preference: the head of the history, which is the project the author was last in.
      *
-     * Dev-only, and deliberately not a general "open this file" entry point (see
-     * {@link MainCommandLineOptions.project}).
+     * Three things deliberately suppress the reopen, all of them cases where the author is not
+     * asking to be put back to work:
+     *   - `--launcher`, the escape hatch. A project that hangs or crashes the workspace on load
+     *     would otherwise be reopened by every launch, and the home screen - the one place to open
+     *     a *different* project from - would be unreachable. Not dev-gated, for that reason: the
+     *     launch that needs it most is a packaged one.
+     *   - first-run setup still owed, which is a question to answer rather than a project to be
+     *     dropped into.
+     *   - an empty history, which is every genuinely first launch.
      */
-    public async openStartupWindow(): Promise<void> {
+    private resolveSessionStartupProject(): { projectPath: string; source: "path" | "recent" | "last-session" } | null {
         const selectorError = this.getStartupProjectError();
         if (selectorError) {
             this.logger.warn(`[Startup] ${selectorError}`);
         }
 
-        await this.ensureLauncher();
-
         const selector = this.getStartupProjectSelector();
-        if (!selector) {
-            return;
+        if (selector) {
+            const resolution = resolveStartupProject(selector, {
+                resolveDirectory: candidate => resolveExistingDirectory(candidate),
+                recentProjects: () => this.globalState.recentlyOpened.list(),
+            });
+            if (!resolution.ok) {
+                this.logger.warn(`[Startup] ${resolution.reason}. Opening the launcher instead.`);
+                return null;
+            }
+            return { projectPath: resolution.projectPath, source: resolution.source };
         }
 
-        const resolution = resolveStartupProject(selector, {
-            resolveDirectory: candidate => resolveExistingDirectory(candidate),
-            recentProjects: () => this.globalState.recentlyOpened.list(),
-        });
-        if (!resolution.ok) {
-            this.logger.warn(`[Startup] ${resolution.reason}. Opening the launcher instead.`);
+        if (this.wantsLauncherOnStartup()) {
+            this.logger.info("[Startup] --launcher was given; staying on the home screen.");
+            return null;
+        }
+        if (!this.globalState.get("workspace.reopenLastProject")) {
+            return null;
+        }
+        if (this.shouldRunOnboarding()) {
+            return null;
+        }
+
+        // The history is most-recent-first, so its head is where the author was. Deliberately not
+        // checked against the disk here: the workspace's own load is what knows whether a project
+        // is openable, and a failed one already lands on an error screen with the launcher still
+        // behind it. A stat() here would catch only the easiest case and would have to guess at
+        // the rest.
+        const last = this.globalState.recentlyOpened.list()[0];
+        if (!last) {
+            return null;
+        }
+        return { projectPath: last.path, source: "last-session" };
+    }
+
+    /**
+     * The window this session starts on: the project asked for or carried over, or the launcher.
+     *
+     * The launcher is opened either way, and the project is then opened *from* it - the same call
+     * a click on the recent list makes, so a startup inherits the whole of it: the
+     * one-project-one-window lookup, the macOS bookmark re-authorization, the recents entry the
+     * workspace writes once it has actually loaded, and the launcher retiring itself only after
+     * the workspace reports a working project. Every way this can fail therefore lands on the home
+     * screen with a line in the log, rather than on a windowless app or a dead end.
+     *
+     * That last part is what makes reopening the last project safe as a default: a project deleted,
+     * moved or corrupted since is not a failed launch, it is a home screen with a message - and the
+     * author is one click from opening something else.
+     */
+    public async openStartupWindow(): Promise<void> {
+        await this.ensureLauncher();
+
+        const startup = this.resolveSessionStartupProject();
+        if (!startup) {
             return;
         }
 
@@ -468,12 +536,12 @@ export class App extends BaseApp {
         }
 
         this.logger.info(
-            `[Startup] Opening project "${resolution.projectPath}" (matched by ${resolution.source})`,
+            `[Startup] Opening project "${startup.projectPath}" (matched by ${startup.source})`,
         );
         try {
-            await this.openProject(launcher, resolution.projectPath);
+            await this.openProject(launcher, startup.projectPath);
         } catch (error) {
-            this.logger.error(`[Startup] Could not open "${resolution.projectPath}":`, error);
+            this.logger.error(`[Startup] Could not open "${startup.projectPath}":`, error);
         }
     }
 
@@ -611,27 +679,21 @@ export class App extends BaseApp {
         await Promise.allSettled(workspaces.map(window => this.flushWorkspacePendingSaves(window)));
     }
 
-    /**
-     * Whether a workspace other than this one is still on screen.
-     *
-     * Read while a window is closing, so the closing window itself is excluded by identity rather
-     * than by `isClosed()`: at this point the close has been taken over and re-issued, and the
-     * window is still very much alive.
-     */
-    private hasOtherOpenWorkspace(window: AppWindow<WindowAppType.Workspace>): boolean {
-        return this.windowManager.getWindows().some(other =>
-            other !== window
-            && !other.isClosed()
-            && other.getWindowType() === WindowAppType.Workspace
-        );
-    }
 
     /**
-     * Decide what closing a workspace means, honouring the user's preferences: confirm first if
-     * asked, then either fall back to the launcher or let the close stand (which quits the app
-     * when this was the last window).
+     * Run a workspace's exit: confirm if asked, flush, checkpoint, and then either stand aside for
+     * the launcher or let the close stand.
+     *
+     * `intent` is the whole difference between the two exits, and it is an argument rather than a
+     * preference on purpose. "Close this window" and "leave this project" are different things the
+     * author asks for, and they used to arrive on one path with a boolean setting picking which
+     * one happened - so a profile could have one or the other but never both. The exit that
+     * follows is identical in every other respect, which is why they share this method.
      */
-    private async handleWorkspaceCloseRequest(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+    private async handleWorkspaceExitRequest(
+        window: AppWindow<WindowAppType.Workspace>,
+        intent: WorkspaceExitIntent,
+    ): Promise<void> {
         if (this.globalState.get("workspace.confirmBeforeClose")) {
             const confirmed = await this.confirmWorkspaceClose(window);
             if (!confirmed) {
@@ -656,14 +718,11 @@ export class App extends BaseApp {
             return;
         }
 
-        // "Return to the launcher" means "leave me somewhere to work", so it only applies when this
-        // was the last project on screen. With a second workspace still open the author already has
-        // somewhere to be, and opening the home screen next to it puts a window they did not ask for
-        // on the desktop - the exact outcome of closing the second window the project switcher just
-        // opened. The preference is not consulted at all in that case, rather than being read and
-        // overridden, because it answers a question ("what happens when I leave Studio's last
-        // project") this close is not asking.
-        if (this.globalState.get("workspace.returnToLauncherOnClose") && !this.hasOtherOpenWorkspace(window)) {
+        // The home screen comes up only for the exit that asked for it. A plain close is now
+        // allowed to be a plain close: it hands the decision back to the last-window handling
+        // (tray residency on Windows, staying alive on macOS), which is what the author expects
+        // from a window's close box and from Cmd+W.
+        if (intent === "launcher") {
             this.reportWorkspaceCloseStage(window, "launcher");
             try {
                 await this.ensureLauncher();
@@ -680,6 +739,42 @@ export class App extends BaseApp {
         }
 
         window.forceClose();
+    }
+
+    /**
+     * Workspaces whose exit is still settling, so a second request does not stack a second
+     * confirmation sheet on top of the first.
+     *
+     * Held here rather than in a closure per window because the two exits are two entry points -
+     * the window's close guard and the return-to-launcher channel - and a guard each would let one
+     * gesture start while the other was mid-flight. A window that is exiting is exiting, whichever
+     * of the two asked for it.
+     */
+    private readonly workspaceExits = new Set<AppWindow<WindowAppType.Workspace>>();
+
+    /**
+     * Start a workspace's exit, or bring the one already running to the front.
+     *
+     * The usual reason for a second attempt is that the confirmation sheet is not where the user
+     * is looking, so focusing beats swallowing the gesture without a trace.
+     */
+    public requestWorkspaceExit(
+        window: AppWindow<WindowAppType.Workspace>,
+        intent: WorkspaceExitIntent,
+    ): void {
+        if (this.workspaceExits.has(window)) {
+            window.focus();
+            return;
+        }
+
+        this.workspaceExits.add(window);
+        void this.handleWorkspaceExitRequest(window, intent)
+            .catch(error => {
+                this.logger.error("Failed to handle workspace exit request:", error);
+            })
+            .finally(() => {
+                this.workspaceExits.delete(window);
+            });
     }
 
     /**
@@ -760,25 +855,12 @@ export class App extends BaseApp {
         // Closing a workspace means "leave this project", not "quit the app". The decision needs
         // to await a confirmation sheet and the launcher's window, so always take the close over
         // and re-issue it via forceClose() once settled.
-        let closeRequestPending = false;
+        //
+        // The close box, Cmd+W and Quit all arrive here, and all of them mean "close this window" -
+        // not "take me home". Leaving for the launcher is its own gesture and its own channel; see
+        // `requestWorkspaceExit`.
         window.setCloseGuard(() => {
-            if (closeRequestPending) {
-                // Closing again while the last request is still settling would stack up
-                // confirmation sheets. The usual reason for the second attempt is that the
-                // sheet is not where the user is looking, so bring it to them instead of
-                // swallowing the click without a trace.
-                window.focus();
-                return true;
-            }
-
-            closeRequestPending = true;
-            void this.handleWorkspaceCloseRequest(window)
-                .catch(error => {
-                    this.logger.error("Failed to handle workspace close request:", error);
-                })
-                .finally(() => {
-                    closeRequestPending = false;
-                });
+            this.requestWorkspaceExit(window, "close");
             return true;
         });
 
@@ -881,9 +963,8 @@ export class App extends BaseApp {
             && opener.getWindowType() === WindowAppType.Workspace;
 
         // forceClose() is deliberate wherever the opener is retired below: opening a project is
-        // not a "close this workspace" gesture, so it must skip the close guard's confirm sheet
-        // and return-to-launcher, which would otherwise interrupt the open or flash the home
-        // window.
+        // not a "close this workspace" gesture, so it must skip the close guard's confirm sheet,
+        // which would otherwise interrupt the open with a question nobody asked.
         //
         // Skipping the close guard also skips the work it does on the way out, so this repeats it:
         //   - the flush, because the auto-save is debounced, and forceClosing a workspace 300ms

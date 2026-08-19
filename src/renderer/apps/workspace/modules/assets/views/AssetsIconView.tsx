@@ -95,6 +95,10 @@ export function AssetsIconView({
         assetSetNaming,
         assets: libraryAssets,
         handleAssetSetSelect,
+        showAssetSetValueContextMenu,
+        handleAssetSetDragStart,
+        handleDragEnd,
+        draggedAssetSet,
         showAssetSetContextMenu,
     } = useAssetsPanelContext();
     const groupStack = useMemo(() => {
@@ -287,7 +291,9 @@ export function AssetsIconView({
                             onDragOver={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                if (draggedItem?.category === category || e.dataTransfer.types.includes("Files")) {
+                                if (draggedItem?.category === category
+                                    || draggedAssetSet?.category === category
+                                    || e.dataTransfer.types.includes("Files")) {
                                     setDropTargetId("root:" + category);
                                 }
                             }}
@@ -363,9 +369,12 @@ export function AssetsIconView({
                                             key={entry.set.id}
                                             entry={entry}
                                             selected={false}
+                                            dragging={draggedAssetSet?.setId === entry.set.id}
                                             onSelect={() => handleAssetSetSelect(entry)}
                                             onNavigate={() => handleEnterSet(entry)}
                                             onContextMenu={(event) => showAssetSetContextMenu(event, entry)}
+                                            onDragStart={(event) => handleAssetSetDragStart?.(event, category, entry.set.id)}
+                                            onDragEnd={() => handleDragEnd?.()}
                                         />
                                     ))}
                                     {setCells.map((cell) => {
@@ -393,13 +402,33 @@ export function AssetsIconView({
                                                 ?? libraryAssets[category].find(entry => entry.id === cell.assetIds[0])
                                             : undefined;
                                         return asset
-                                            ? <AssetIconTile key={cell.label} asset={asset} category={category} caption={coordinate} />
-                                            : <AssetSetHoleTile key={cell.label} caption={coordinate} />;
+                                            ? (
+                                                <AssetIconTile
+                                                    key={cell.label}
+                                                    asset={asset}
+                                                    category={category}
+                                                    caption={coordinate}
+                                                    assetSetValue={{ setId: insideSet!.set.id, value: cell.value }}
+                                                />
+                                            )
+                                            : (
+                                                <AssetSetHoleTile
+                                                    key={cell.label}
+                                                    caption={coordinate}
+                                                    onContextMenu={(event) => showAssetSetValueContextMenu(event, insideSet!, cell.value)}
+                                                />
+                                            );
                                     })}
                                     {categoryGroups.map((group) => {
                                         const childGroups = filteredGroups[category].filter((g) => g.parentGroupId === group.id);
-                                        const childAssets = filteredAssets[category].filter((a) => a.groupId === group.id);
-                                        const childCount = childGroups.length + childAssets.length;
+                                        const childAssets = filteredAssets[category]
+                                            .filter((a) => a.groupId === group.id && !memberAssetIds.has(a.id));
+                                        // Sets made in this folder are tiles in it. Their files are
+                                        // drawn inside the set, and dropped from the list above by
+                                        // the same rule, so nothing is counted twice.
+                                        const childSets = rootAssetSets[category]
+                                            .filter((entry) => entry.set.groupId === group.id);
+                                        const childCount = childGroups.length + childAssets.length + childSets.length;
                                         // Nested groups count as content: `UI` holds four subgroups and
                                         // no loose file, and a card for it that showed nothing would be
                                         // the blank card this replaces.
@@ -461,6 +490,7 @@ function GroupIconTile({
         handleDragStart,
         handleDragEnd,
         draggedItem,
+        draggedAssetSet,
     } = useAssetsPanelContext();
     const [isDragOverLocal, setDragOverLocal] = useState(false);
     const isSelected = selectedItems.has("group:" + group.id);
@@ -489,7 +519,8 @@ function GroupIconTile({
                 e.preventDefault();
                 e.stopPropagation();
                 const files = e.dataTransfer.types.includes("Files");
-                const internal = draggedItem && draggedItem.category === category;
+                const internal = (draggedItem && draggedItem.category === category)
+                    || (draggedAssetSet && draggedAssetSet.category === category);
                 // A frozen library never lights up as a drop target: the move and the import are both
                 // refused, and a folder that glows and then keeps its old contents reads as a bug.
                 if (freeze.frozen || (!internal && !files)) {
@@ -506,7 +537,7 @@ function GroupIconTile({
                 e.preventDefault();
                 e.stopPropagation();
                 setDragOverLocal(false);
-                if (draggedItem && handleDropOnItem) {
+                if ((draggedItem || draggedAssetSet) && handleDropOnItem) {
                     handleDropOnItem(e, category, group);
                 } else {
                     handleImportToGroup(category, group.id, e.dataTransfer.files, e.dataTransfer);
@@ -557,10 +588,16 @@ function GroupIconTile({
  * Drawn rather than skipped: the value is why there is a tile at all, and a set missing one of its
  * variants would otherwise look finished.
  */
-function AssetSetHoleTile({ caption }: { caption: string }) {
+function AssetSetHoleTile({ caption, onContextMenu }: {
+    caption: string;
+    onContextMenu?: (event: React.MouseEvent) => void;
+}) {
     const { t } = useTranslation();
     return (
-        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-warning/40 bg-fill-subtle p-2">
+        <div
+            className="flex flex-col gap-2 rounded-lg border border-dashed border-warning/40 bg-fill-subtle p-2"
+            onContextMenu={onContextMenu}
+        >
             <div className="flex aspect-square w-full items-center justify-center rounded-md bg-fill">
                 <span className="text-2xs text-warning">{t("assets.sets.inspector.variantMissing")}</span>
             </div>
@@ -569,11 +606,13 @@ function AssetSetHoleTile({ caption }: { caption: string }) {
     );
 }
 
-function AssetIconTile({ asset, category, caption }: {
+function AssetIconTile({ asset, category, caption, assetSetValue }: {
     asset: Asset;
     category: AssetCategory;
     /** What this file is the variant for, when it is being drawn inside a set. */
     caption?: string;
+    /** The set value this tile answers, when it is being drawn inside a set. */
+    assetSetValue?: { setId: string; value: string };
 }) {
     const { tn } = useTranslation();
     const {
@@ -594,11 +633,14 @@ function AssetIconTile({ asset, category, caption }: {
     const isSelected = selectedItems.has("asset:" + asset.id);
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
     const support = mediaSupport.get(asset.id);
+    // Inside a set, the tile does not leave: which set a file belongs to is written in its tags, so
+    // a drop somewhere else would move a tile the set goes on drawing exactly where it was.
+    const movable = !assetSetValue;
 
     return (
         <div
-            draggable
-            className={`nl-drag-source border rounded-lg p-2 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
+            draggable={movable}
+            className={`${movable ? "nl-drag-source " : ""}border rounded-lg p-2 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${
                 clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) ? "opacity-40" : ""
@@ -608,9 +650,9 @@ function AssetIconTile({ asset, category, caption }: {
                 handleItemSelect(asset.id, false, e);
                 handleAssetClick(asset, isMultiSelectIntent || isMultiSelectMode);
             }}
-            onContextMenu={(e) => showContextMenu(e, category, asset, false)}
-            onDragStart={(e) => handleDragStart?.(e, category, asset, false)}
-            onDragEnd={() => handleDragEnd?.()}
+            onContextMenu={(e) => showContextMenu(e, category, asset, false, assetSetValue)}
+            onDragStart={movable ? (e) => handleDragStart?.(e, category, asset, false) : undefined}
+            onDragEnd={movable ? () => handleDragEnd?.() : undefined}
         >
             {/* The mark sits over the square rather than in the name row: at 120px that row is a
                 name and nothing else fits beside it without truncating the one thing it is for. */}

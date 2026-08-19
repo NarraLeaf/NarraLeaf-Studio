@@ -60,6 +60,18 @@ export type LintImageProbe =
     | { ok: true; width: number; height: number }
     | { ok: false; reason: string };
 
+/**
+ * Whether a video asset's bytes carry an alpha channel.
+ *
+ * Two arms rather than a bare boolean because **not knowing is never an answer here**. The probe
+ * needs ffprobe, which some hosts do not have, and a rule that read a failed probe as "no alpha"
+ * would go quiet on exactly the projects it exists to protect - silently, and only on the machines
+ * where nobody could tell.
+ */
+export type LintAlphaProbe =
+    | { ok: true; carriesAlpha: boolean }
+    | { ok: false; reason: string };
+
 export type LintIo = {
     /**
      * Whether the asset's content shard is there at all.
@@ -74,6 +86,15 @@ export type LintIo = {
     /** null when the content file cannot be read at all. */
     readBytes(assetId: string): Promise<Uint8Array | null>;
     probeImage(assetId: string): Promise<LintImageProbe>;
+    /**
+     * Ask what is inside a video asset, and answer the one question a rule here has about it.
+     *
+     * Narrower than the probe it is built on, deliberately: the underlying report describes codecs,
+     * containers and durations, and every one of those already has an owner elsewhere (the media
+     * support gate, the import triage). Handing a rule the whole report would invite it to re-decide
+     * playability, which is the one thing this layer must not have two answers for.
+     */
+    probeVideoAlpha(assetId: string): Promise<LintAlphaProbe>;
 };
 
 export type LintLocalizationContext = {

@@ -35,7 +35,7 @@ describe("categoryNeedsMediaTriage", () => {
 });
 
 function probed(verdict: MediaSupportVerdict, durationUs: number | null = 5_000_000): MediaProbeOutcome {
-    return { status: "probed", verdict, durationUs };
+    return { status: "probed", verdict, durationUs, carriesAlpha: false };
 }
 
 function verdict(overrides: Partial<MediaSupportVerdict>): MediaSupportVerdict {

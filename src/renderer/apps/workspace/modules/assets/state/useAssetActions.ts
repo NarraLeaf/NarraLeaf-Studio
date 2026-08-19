@@ -1100,16 +1100,27 @@ export function useAssetActions({
 
     const cancelMediaConvert = useCallback(() => setMediaConvertRequest(null), []);
 
-    const handleDelete = useCallback(async () => {
+    /**
+     * Delete the marked rows, or the rows a caller names.
+     *
+     * `rows` is for a command whose targets are not a selection - deleting an asset set takes the
+     * files that set answers with, and those are read off the set rather than off what the author
+     * has marked. It goes through the same reference check and the same confirmation: the
+     * difference is which files, never how carefully.
+     *
+     * Answers whether the delete ran, so a caller that also has something of its own to remove -
+     * the asset set whose files these are - drops it only once the author has confirmed.
+     */
+    const handleDelete = useCallback(async (rows?: readonly AssetActionTarget[]): Promise<boolean> => {
         notifyLoading(true);
         try {
             const ctx = contextRef.current;
-            if (!ctx) return;
+            if (!ctx) return false;
             const uiService = ctx.services.get<UIService>(Services.UI);
             const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-            
-            const targets = resolveTargets();
-            if (targets.length === 0) return;
+
+            const targets = rows ? [...rows] : resolveTargets();
+            if (targets.length === 0) return false;
 
             // Every asset the delete would actually remove — including the contents of any selected
             // group. Deleting a group cascades to its assets, so checking only the bare asset
@@ -1134,7 +1145,7 @@ export function useAssetActions({
                     t("assets.delete.action"),
                 );
                 if (!proceedUnverified) {
-                    return;
+                    return false;
                 }
             }
 
@@ -1164,7 +1175,7 @@ export function useAssetActions({
                     t("assets.delete.action"),
                 );
                 if (!forceConfirmed) {
-                    return;
+                    return false;
                 }
             }
 
@@ -1174,7 +1185,7 @@ export function useAssetActions({
                 t("assets.delete.action"),
             );
             if (!confirmed) {
-                return;
+                return false;
             }
 
             // Remove duplicate targets by id to avoid double deletion
@@ -1200,6 +1211,7 @@ export function useAssetActions({
                 uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.join("\n"));
             }
             onActionComplete();
+            return deleteFailures.length === 0;
         } catch (error) {
             console.error("Failed to delete asset", error);
             // The whole run fell over, so there is no per-row list to read and one line is the
@@ -1208,6 +1220,7 @@ export function useAssetActions({
                 t("assets.delete.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
                 "error",
             );
+            return false;
         } finally {
             notifyLoading(false);
         }

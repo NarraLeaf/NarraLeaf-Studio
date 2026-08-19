@@ -680,8 +680,9 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
-        // Applied by the main process in `App.handleWorkspaceCloseRequest`: the workspace
-        // window's close guard shows a native confirmation sheet before letting the close through.
+        // Applied by the main process in `App.handleWorkspaceExitRequest`, so it covers both ways
+        // out of a workspace: closing the window and going back to the launcher each show the
+        // confirmation sheet before the exit is allowed through.
         key: "workspace.confirmBeforeClose",
         category: "workspace",
         scope: SettingScope.Global,
@@ -693,17 +694,17 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: false,
     },
     {
-        // Applied by the main process in `App.handleWorkspaceCloseRequest`: when on, closing a
-        // workspace reopens the launcher first. When off the close simply stands, so the app
-        // quits if the workspace was the last window.
-        key: "workspace.returnToLauncherOnClose",
+        // Read once per launch by `App.resolveSessionStartupProject`. Closing a workspace is no
+        // longer what this is about: leaving a project for the home screen is its own File menu
+        // entry, so both behaviours are available whichever way this is set.
+        key: "workspace.reopenLastProject",
         category: "workspace",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Return to the home screen when closing a workspace",
-        labelKey: "settings.items.returnToLauncherOnClose.label",
-        description: "Turn this off to quit NarraLeaf Studio instead when no other window is open.",
-        descriptionKey: "settings.items.returnToLauncherOnClose.description",
+        label: "Reopen the last project on startup",
+        labelKey: "settings.items.reopenLastProject.label",
+        description: "Turn this off to start on the home screen instead.",
+        descriptionKey: "settings.items.reopenLastProject.description",
         defaultValue: true,
     },
     {

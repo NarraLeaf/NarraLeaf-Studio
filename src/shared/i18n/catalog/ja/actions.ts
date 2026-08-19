@@ -36,8 +36,13 @@ export const actions = {
             label: "プロジェクトを書き出す",
             tooltip: "現在のプロジェクトをパッケージとして書き出す",
         },
+        returnToLauncher: {
+            label: "ランチャーに戻る",
+            tooltip: "このプロジェクトを離れてランチャーに戻る",
+        },
         close: {
-            tooltip: "現在のワークスペースを閉じる",
+            label: "ウインドウを閉じる",
+            tooltip: "このウインドウを閉じる",
         },
     },
     help: {

@@ -5,7 +5,7 @@ import { createContext, useContext } from 'react';
 import type { AssetSetAxisNaming } from '@shared/types/assetSetLabels';
 import type { ResolvedAssetSet } from './state/useAssetSets';
 import { ClipboardState } from './state/useClipboard';
-import { DraggedItemState } from './state/useDragAndDrop';
+import { DraggedAssetSetState, DraggedItemState } from './state/useDragAndDrop';
 
 /** Breadcrumb shown in the panel toolbar center when the assets panel uses a compact (bottom) toolbar. */
 export interface AssetsIconViewToolbarCenter {
@@ -45,6 +45,8 @@ interface AssetsPanelContextType {
     selectedItems: Set<string>;
     focusedItemId: string | null;
     draggedItem?: DraggedItemState | null;
+    /** Non-null while a set's row is being dragged to another folder. */
+    draggedAssetSet?: DraggedAssetSetState | null;
     dropTargetId?: string | null;
     clipboard: ClipboardState | null;
     isMultiSelectMode: boolean;
@@ -70,8 +72,22 @@ interface AssetsPanelContextType {
      * several of them.
      */
     showAssetSetValueContextMenu: (event: React.MouseEvent, entry: ResolvedAssetSet, value: string) => void;
-    showContextMenu: (e: React.MouseEvent, category: AssetCategory, item: Asset | AssetGroup | null, isGroup: boolean) => void;
+    /**
+     * The library's own menu for a row.
+     *
+     * `assetSetValue` is passed by a row drawn inside a set: the file's own commands are the same
+     * ones it has anywhere else, and the value only adds the sub-set that hangs there.
+     */
+    showContextMenu: (
+        e: React.MouseEvent,
+        category: AssetCategory,
+        item: Asset | AssetGroup | null,
+        isGroup: boolean,
+        assetSetValue?: { setId: string; value: string },
+    ) => void;
     handleDragStart?: (e: React.DragEvent, category: AssetCategory, item: Asset | AssetGroup, isGroup: boolean) => void;
+    /** Starts dragging a set's row. Folders and section roots are the only things that answer to it. */
+    handleAssetSetDragStart?: (e: React.DragEvent, category: AssetCategory, setId: string) => void;
     handleDragEnd?: () => void;
     handleDragOverItem?: (e: React.DragEvent, targetId: string) => void;
     handleDropOnItem?: (e: React.DragEvent, targetCategory: AssetCategory, targetGroup: AssetGroup | null) => void;

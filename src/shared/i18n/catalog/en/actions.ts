@@ -43,8 +43,13 @@ export const actions = {
             label: "Export Project",
             tooltip: "Export the current project as a package",
         },
+        returnToLauncher: {
+            label: "Back to Launcher",
+            tooltip: "Leave this project and go back to the launcher",
+        },
         close: {
-            tooltip: "Close the current workspace",
+            label: "Close Window",
+            tooltip: "Close this window",
         },
     },
     help: {

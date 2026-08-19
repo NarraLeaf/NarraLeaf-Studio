@@ -5,6 +5,7 @@ import { isVoiceEnabled, type VoiceDocument } from "@shared/types/voice";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { runLintRules, type LintRunOptions } from "@/lib/lint/engine";
 import type {
+    LintAlphaProbe,
     LintAssetEntry,
     LintCharacterEntry,
     LintContext,
@@ -52,6 +53,15 @@ export const LINT_CONSOLE_SOURCE = "Lint";
  * which is how the renderer runs out of memory rather than how it goes fast.
  */
 const IMAGE_PROBE_CONCURRENCY = 4;
+
+/**
+ * How many ffprobe spawns may be in flight at once.
+ *
+ * Lower than the image bound because each one is a process rather than a decode, and because the
+ * rule that asks is asking about a handful of rows rather than about a whole library - see
+ * `portability/vfx-alpha`, which probes only the clips whose row already looks wrong.
+ */
+const VIDEO_PROBE_CONCURRENCY = 2;
 
 type LintServiceEvents = {
     reportChanged: LintReport | null;
@@ -483,9 +493,56 @@ export class LintService extends Service<LintService> implements ILintService {
             return (await fs.stat(shardPath(assetId))).ok;
         };
 
+        const videoProbeQueue = createConcurrencyLimiter(VIDEO_PROBE_CONCURRENCY);
+
         return {
             exists,
             readBytes,
+            /**
+             * The content shard, handed to the main process's ffprobe.
+             *
+             * The shard rather than the author's file name: the bytes are what carry an alpha
+             * channel, the library keeps no copy of the original path, and ffprobe reads the
+             * container out of the bytes without ever consulting the name - which the shard does
+             * not have, since content shards are written without an extension.
+             *
+             * **Deliberately not routed through `MediaSupportService`**, which probes the same
+             * binary over the same shards and caches by content hash. Reusing it looks like the
+             * obvious saving and is the opposite: its answers exist only after a scan of the *whole*
+             * library, so a lint sweep run from the command palette would either read `null` for
+             * every asset and go silent, or trigger a scan and pay one spawn per sound and video
+             * file in the project. The rule that calls this asks about the handful of clips whose
+             * row already looks wrong, so asking directly is both cheaper and always answerable.
+             * There is no risk of the two disagreeing: it is one binary reading one file.
+             *
+             * Every way the probe can decline is `ok: false` with the reason carried through. None
+             * of them may be spent as a verdict - no ffprobe on this host is the common one, and it
+             * says nothing whatever about the file.
+             */
+            probeVideoAlpha: (assetId: string) => videoProbeQueue(async (): Promise<LintAlphaProbe> => {
+                const asset = assetsService.getAssets()[AssetType.Video]?.[assetId];
+                if (!asset) {
+                    return { ok: false, reason: "not a video asset" };
+                }
+                try {
+                    const probed = await getInterface().probeMedia(shardPath(assetId));
+                    if (!probed.success) {
+                        return { ok: false, reason: "probe failed" };
+                    }
+                    const outcome = probed.data.outcome;
+                    if (outcome.status === "probed") {
+                        return { ok: true, carriesAlpha: outcome.carriesAlpha };
+                    }
+                    return {
+                        ok: false,
+                        reason: outcome.status === "unavailable" ? "no probe on this host" : outcome.reason,
+                    };
+                } catch (error) {
+                    // The sweep runs every rule and reports at the end; one asset whose IPC threw
+                    // must not take the other forty-two rules' findings down with it.
+                    return { ok: false, reason: error instanceof Error ? error.message : "probe threw" };
+                }
+            }),
             probeImage: (assetId: string) => probeQueue(async (): Promise<LintImageProbe> => {
                 const asset = assetsService.getAssets()[AssetType.Image]?.[assetId] as
                     | Asset<AssetType.Image>

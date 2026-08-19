@@ -240,9 +240,9 @@ export const settings = {
             label: "关闭工作区时弹出提示",
             description: "关闭工作区窗口时先询问确认",
         },
-        returnToLauncherOnClose: {
-            label: "关闭工作区后返回首页",
-            description: "关闭此项则在没有其他窗口时直接退出 NarraLeaf Studio",
+        reopenLastProject: {
+            label: "启动时打开上次的项目",
+            description: "关闭此项则每次启动都停在启动器",
         },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",

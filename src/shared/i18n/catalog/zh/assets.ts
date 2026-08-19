@@ -283,6 +283,8 @@ export const assets = {
         menu: {
             create: "用所选文件新建资产集",
             createSub: "用所选文件在此新建资产集",
+            createHere: "新建资产集",
+            dissolve: "解散资产集",
         },
         create: {
             title: "新建资产集",
@@ -291,6 +293,7 @@ export const assets = {
                 locale: "本工程只声明了一种语言。",
                 release: "本工程没有变体。",
             },
+            type: "文件类型",
             delimiter: "分隔符",
             delimiterSpace: "空格",
             segments: "文件名分段",
@@ -321,6 +324,8 @@ export const assets = {
             add: "新建资产集 {name}",
             rename: "重命名资产集 {name}",
             delete: "删除资产集 {name}",
+            dissolve: "解散资产集 {name}",
+            move: "移动资产集 {name}",
         },
     },
     menu: {
