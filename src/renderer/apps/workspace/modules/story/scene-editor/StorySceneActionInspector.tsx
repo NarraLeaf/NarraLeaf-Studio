@@ -325,6 +325,7 @@ const transitionOptions = (t: TFunc): SelectOption[] => [
     { value: "throughColor", label: t("storyInspector.transition.throughColor") },
     { value: "darkness", label: t("storyInspector.transition.darkness") },
     { value: "exposure", label: t("storyInspector.transition.exposure") },
+    { value: "ruleReveal", label: t("storyInspector.transition.ruleReveal") },
 ];
 
 const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
@@ -373,6 +374,7 @@ const transitionHints = (t: TFunc): Record<string, string> => ({
     throughColor: t("storyInspector.transitionHint.throughColor"),
     darkness: t("storyInspector.transitionHint.darkness"),
     exposure: t("storyInspector.transitionHint.exposure"),
+    ruleReveal: t("storyInspector.transitionHint.ruleReveal"),
 });
 
 const imageOperationOptions = (t: TFunc): SelectOption[] => [
@@ -2310,6 +2312,24 @@ function TransitionEditor(props: {
                 ) : null}
                 {kind === "blurDissolve" ? (
                     <NumberField label={t("storyInspector.transition.blurPx")} value={paramNumber(value.props, "blur")} onChange={blur => setParam({ blur })} />
+                ) : null}
+                {kind === "ruleReveal" ? (
+                    <>
+                        {/* The picture is not a `props` entry — it is an asset id, and it is set
+                            through the ref itself so the reference index can find it. */}
+                        <AssetField
+                            label={t("storyInspector.field.rule")}
+                            assetType={AssetType.Image}
+                            assetId={value.ruleAssetId}
+                            onChange={ruleAssetId => props.onChange({ ...value, kind: realKind, ruleAssetId })}
+                        />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <CheckboxField
+                            label={t("storyInspector.field.inverted")}
+                            checked={value.props?.inverted === true}
+                            onChange={inverted => setParam({ inverted })}
+                        />
+                    </>
                 ) : null}
                 {kind === "throughColor" ? (
                     <>

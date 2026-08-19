@@ -15,7 +15,7 @@ import { declarationFromArgs } from "./variables";
  */
 
 const CONTEXT: StoryCommandContext = {
-    images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }],
+    images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }, { id: "i3", name: "spiral" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
     // Alice is drawn by Studio; Doll is drawn by a runtime the author supplied, so she has no
@@ -93,6 +93,29 @@ describe("scene commands", () => {
             payload: { action: "setBackground", assetId: "i1", color: undefined, transition: { kind: "dissolve", durationMs: 500 } },
         });
         expect(build("/bg #1a1a1a")).toMatchObject({ payload: { color: "#1a1a1a", assetId: undefined } });
+    });
+
+    it("/bg takes a rule image, and naming one is what says which engine plays it", () => {
+        // No `t=rule` on the line: the picture implies the engine, which is the whole reason
+        // `rule=` is a slot of its own rather than a spelling of `t=`.
+        expect(build("/bg forest_day rule=spiral d=1.2")).toMatchObject({
+            payload: {
+                action: "setBackground",
+                assetId: "i1",
+                transition: { kind: "ruleReveal", ruleAssetId: "i3", durationMs: 1200 },
+            },
+        });
+        // The word still parses on its own, for a row that picks its picture on the right.
+        expect(build("/bg forest_day t=rule")).toMatchObject({
+            payload: { transition: { kind: "ruleReveal" } },
+        });
+    });
+
+    it("/jump takes a rule image too", () => {
+        expect(build("/jump \"Chapter 2\" rule=spiral")).toMatchObject({
+            kind: "jump",
+            payload: { transition: { kind: "ruleReveal", ruleAssetId: "i3" } },
+        });
     });
 
     it("/bg rejects a word its context does not support", () => {

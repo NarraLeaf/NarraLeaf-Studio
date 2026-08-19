@@ -456,6 +456,7 @@ export const story = {
         skin: "スキン",
         puppetParam: "パラメータ",
         puppetParamValue: "数値",
+        ruleImage: "ルール画像",
         imageAsset: "画像",
         imageOrColor: "画像または色",
         videoAsset: "動画",
@@ -553,6 +554,7 @@ export const story = {
         black: "暗転",
         darkness: "暗さ",
         exposure: "露出",
+        rule: "ルール画像",
         none: "なし",
         // 表示と非表示で `t=` が届く、トランジションの語では名指しできない変形のプリセット。
         scale: "拡大縮小",

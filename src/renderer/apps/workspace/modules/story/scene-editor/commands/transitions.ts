@@ -35,6 +35,9 @@ export type StoryTransitionWord =
     | "black"
     | "darkness"
     | "exposure"
+    // 0.30.0: the change plays in the order a greyscale picture dictates. The picture is named by
+    // `rule=` rather than by this word, which only says which engine plays it.
+    | "rule"
     | "zoom"
     // The channels the inspector offers that no word reached. They write the same transform a `t=`
     // does, so a look an author could pick on the right had no spelling on the left — and a row
@@ -73,12 +76,13 @@ const WORD_ALIASES: Partial<Record<StoryTransitionWord, readonly string[]>> = {
     dots: ["polka"],
     black: ["throughcolor"],
     exposure: ["bleach", "overexpose"],
+    rule: ["ruleimage", "ruleimg", "mask"],
 };
 
 const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> = {
     // The Mask-vocabulary additions (barn-door / clock / fan / dots) are whole-screen transitions:
     // offered on `/bg` `/jump` alongside the classics, but not on portrait swaps or stage objects.
-    scene: ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "exposure", "none"],
+    scene: ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "exposure", "rule", "none"],
     character: ["fade", "slide", "circle", "wipe", "blur", "exposure", "none"],
     // Every preset the inspector's own dropdown offers, so the two surfaces reach the same set of
     // looks — `left` / `center` / `right` excepted: those are the SAME field written through `at=`,
@@ -170,6 +174,7 @@ const SCENE_KINDS: Partial<Record<StoryTransitionWord, StoryTransitionRef["kind"
     black: "throughColor",
     darkness: "darkness",
     exposure: "exposure",
+    rule: "ruleReveal",
     none: "none",
 };
 

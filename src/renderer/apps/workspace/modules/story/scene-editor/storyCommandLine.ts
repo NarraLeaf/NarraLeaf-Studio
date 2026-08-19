@@ -2,6 +2,7 @@ import type {
     StoryActionPayload,
     StoryBlock,
     StoryDeclarationPayload,
+    StoryJumpPayload,
     StoryLiteralValue,
     StoryTransformRef,
     StoryTransitionRef,
@@ -511,6 +512,24 @@ function placementOf(transform: StoryTransformRef | undefined): string | undefin
  */
 function revealWord(transform: StoryTransformRef | undefined, direction: "reveal" | "conceal" | "nvl"): string | undefined {
     return transitionWordForTransform(direction, transform) ?? undefined;
+}
+
+/**
+ * A whole-screen `rule=` — the picture a rule transition plays in the order of.
+ *
+ * Printed only when the row actually holds one, so every other transition's line is unchanged. The
+ * value is the asset's own name and it is pickable, which is what keeps the row the line that
+ * produced it rather than a description of it.
+ */
+function ruleArg(
+    payload: Extract<StoryActionPayload, { action: "setBackground" }> | StoryJumpPayload,
+    lookups: StoryCommandLineLookups,
+): Arg | null {
+    const ruleAssetId = payload.transition?.ruleAssetId;
+    return arg("rule", assetWord(lookups, ruleAssetId), {
+        ...(pickAsset({ ...(ruleAssetId ? { assetId: ruleAssetId } : {}) }, lookups, "image",
+            next => patchTransition(payload, { kind: "ruleReveal", ruleAssetId: next })) ?? {}),
+    });
 }
 
 /** A whole-screen or character `t=` — the stored kind, named by the word an author would type. */
@@ -1125,6 +1144,7 @@ function actionSentence(
                         enum: true,
                         apply: next => patchTransition(payload, { kind: transitionKindFor("scene", next) ?? "dissolve" }),
                     }),
+                    ruleArg(payload, lookups),
                     arg("d", seconds(payload.transition?.durationMs), {
                         apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                     }),
@@ -1257,6 +1277,7 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                     enum: true,
                     apply: next => patchTransition(payload, { kind: transitionKindFor("scene", next) ?? "dissolve" }),
                 }),
+                ruleArg(payload, lookups),
                 arg("d", seconds(payload.transition?.durationMs), {
                     apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                 }),
