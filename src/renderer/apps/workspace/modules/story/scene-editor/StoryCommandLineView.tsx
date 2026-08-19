@@ -288,8 +288,25 @@ export function StoryCommandLineText(props: {
      * through.
      */
     hideParamNames?: boolean;
-    /** Wraps one editable value in its affordance. Absent on the live field, which is already text. */
-    renderEdit?: (edit: StoryCommandLineEdit, content: ReactNode) => ReactNode;
+    /**
+     * Wraps one editable value in its affordance. Absent on the live field, which is already text.
+     *
+     * The link rides along when the same run is both — a character's name is a value a click can
+     * change AND a word that says who they are — because the two affordances have to live on ONE
+     * element or the gesture that picks between them would have two halves of the word to choose
+     * from. Which gesture means which is the wrapper's decision, not this file's.
+     */
+    renderEdit?: (edit: StoryCommandLineEdit, content: ReactNode, link?: StoryCommandLineLink) => ReactNode;
+    /** Every word that names something else in the project — see {@link StoryCommandLineLink}. */
+    links?: readonly StoryCommandLineLink[];
+    /**
+     * Wraps one word that ONLY points somewhere: a stage object's name, a label, a variable.
+     *
+     * Absent on the live field for the same reason `renderEdit` is: that copy is a mirror sitting on
+     * a textarea and is `pointer-events-none`, so a link drawn into it could never be clicked anyway.
+     * Passing neither wrapper is what keeps the mirror character-for-character identical.
+     */
+    renderLink?: (link: StoryCommandLineLink, content: ReactNode) => ReactNode;
     ornaments?: readonly StoryCommandLineOrnament[];
     /**
      * Draws one picture the line carries inside itself — a speaker's face before their name.
@@ -305,8 +322,15 @@ export function StoryCommandLineText(props: {
     // parse, and a scene is hundreds of rows. `ct` is a dependency because the command locale decides
     // whether `转场=` names a slot — the same hidden input the ghost hint declares.
     const parts = useMemo(
-        () => storyCommandLineParts(props.source, props.renderEdit ? props.edits : [], props.hideParamNames),
-        [ct, props.edits, props.hideParamNames, props.renderEdit, props.source],
+        () => storyCommandLineParts(
+            props.source,
+            props.renderEdit ? props.edits : [],
+            props.hideParamNames,
+            // Same rule as the edits above: a surface that offers no wrapper is handed no spans, so
+            // its grouping is byte-for-byte the one it had before links existed.
+            props.renderLink ? props.links : [],
+        ),
+        [ct, props.edits, props.hideParamNames, props.links, props.renderEdit, props.renderLink, props.source],
     );
     // The trigger is swapped at the last moment, on the one piece that can hold it.
     const paint = (piece: StoryCommandLinePiece) => (
@@ -319,9 +343,13 @@ export function StoryCommandLineText(props: {
             {parts.map(part => {
                 const painted = part.pieces.map(paint);
                 const key = part.pieces[0]?.start ?? 0;
+                // An edit wins the wrapper even when the run is also a link: one element carries both
+                // intentions, and the link-only wrapper exists for the words no editor stands behind.
                 const token = part.edit && props.renderEdit
-                    ? props.renderEdit(part.edit, painted)
-                    : painted;
+                    ? props.renderEdit(part.edit, painted, part.link)
+                    : part.link && props.renderLink
+                        ? props.renderLink(part.link, painted)
+                        : painted;
                 // Outside the token, never inside it: an editable value wears a dotted underline, and
                 // an underline running under a face is the seam this whole arrangement exists to
                 // avoid. Adjacent is enough to read as one thing.
