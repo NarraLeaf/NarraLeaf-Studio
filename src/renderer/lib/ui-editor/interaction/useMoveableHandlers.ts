@@ -32,6 +32,11 @@ import { createGestureDeadzone, type GestureDeadzone } from "./gestureDeadzone";
 import { applyLockedAspectToResizePreview } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { isUIElementFlowLayoutChild, type UILayout } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import {
+    commitStateAwareLayoutPatches,
+    currentStateOffset,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/stateGeometry";
 import {
     collectSnapGuideLines,
     splitSnapLinesToAxes,
@@ -273,6 +278,10 @@ export function useMoveableHandlers({
 
     const finalizeDrag = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
+        // A move made while a state is entered is about where the element sits *in that state*, and
+        // the state may already be holding it away from where it rests - so the gesture starts from
+        // the position on screen, not from the layout, or the offset the state carries is lost.
+        const enteredState = UIEditorStateService.getInstance().getEnteredState();
         selectedTargets.forEach(target => {
             const elementId = target.dataset.uiElementId;
             if (!elementId) {
@@ -289,8 +298,10 @@ export function useMoveableHandlers({
                 dragDeltaCache.current.delete(elementId);
                 return;
             }
-            const nextX = initialLayout.x + translateX;
-            const nextY = initialLayout.y + translateY;
+            const stateOffset =
+                currentStateOffset(documentService.getDocument(), enteredState, elementId) ?? { x: 0, y: 0 };
+            const nextX = initialLayout.x + stateOffset.x + translateX;
+            const nextY = initialLayout.y + stateOffset.y + translateY;
             patches[elementId] = {
                 x: nextX,
                 y: nextY,
@@ -305,7 +316,12 @@ export function useMoveableHandlers({
         });
         if (Object.keys(patches).length > 0) {
             startTransition(() => {
-                documentService.updateElementLayouts(patches);
+                commitStateAwareLayoutPatches(
+                    documentService,
+                    enteredState,
+                    patches,
+                    smartSnap?.surfaceId ?? null,
+                );
             });
         }
         clearPerformanceHints();

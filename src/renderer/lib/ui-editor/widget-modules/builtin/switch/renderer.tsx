@@ -81,9 +81,14 @@ function rectRatioX(rect: DOMRect, clientX: number): number {
 }
 
 /**
- * Hands a part what the switch says about the state it is in: which variant to look like, and how far
- * to move. Geometry is deliberately left untouched - where the part sits is the part's own business,
- * and the offset is a layer the switch adds while it is on.
+ * Hands a child what the switch says about the state it is in.
+ *
+ * One thing, normally: the variant id. Everything a child looks like and everywhere it sits while the
+ * switch is on lives in that variant, so the switch does not compute geometry for anything.
+ *
+ * The offset is the exception, and only for projects written while the travel was kept on the switch
+ * instead - it is handed for both states, because turning off is a move back and the part only knows
+ * to make it if it is given the same motion with a zero offset.
  */
 function withSwitchState(
     element: UIElement,
@@ -106,9 +111,9 @@ function withSwitchState(
 }
 
 /**
- * The switch owns no geometry at all: on/off is an appearance variant on each part (the track's
- * colour, the thumb's `transformOffsetX`), so this renderer only decides *which variant* the two
- * parts resolve with and dispatches the blueprint events. Compare `slider/renderer.tsx`, which has
+ * The switch owns no geometry at all: on/off is an appearance variant on each child (the track's
+ * colour, the thumb's `transformOffsetX`), so this renderer only decides *which variant* everything
+ * inside resolves with and dispatches the blueprint events. Compare `slider/renderer.tsx`, which has
  * to compute the handle's position on every render.
  *
  * Dragging keeps that property. A press does not toggle; the pointer's normalized position on the
@@ -347,12 +352,18 @@ export function SwitchRenderer(props: WidgetRendererProps) {
     );
 
     const canRenderParts = Boolean(renderChildren);
-    const childrenIds = [trackElement?.id, thumbElement?.id].filter((id): id is string => Boolean(id));
+    // Everything the author put inside, in the order the outline shows it - not just the two parts
+    // the widget was born with. A switch is a box that knows it is on or off; a label, an icon or a
+    // second thumb inside it is drawn in that state like everything else, and is positioned in it
+    // the same way. Naming only track and thumb here is what used to make a third child invisible.
+    const childrenIds = element.childrenIds.filter(id => Boolean(document.elements[id]));
     const stateMotions = getStateMotions(element.props);
-    // Built for both states, not just on: turning off is a move back, and the part only knows to make
-    // it because the switch hands it the same motion with a zero offset.
+    // Built for both states, not just on: turning off is a move back, and a part written before
+    // positions lived in states only knows to make it because the switch hands it the same motion
+    // with a zero offset.
     const elementOverrides = Object.fromEntries(
-        [trackElement, thumbElement]
+        childrenIds
+            .map(id => document.elements[id])
             .filter((part): part is UIElement => Boolean(part))
             .map(part => [part.id, withSwitchState(part, displayChecked, stateMotions)]),
     );

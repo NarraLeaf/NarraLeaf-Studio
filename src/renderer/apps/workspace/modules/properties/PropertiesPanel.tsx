@@ -39,7 +39,12 @@ import { getUIComponentLink, isLinkedUIComponentElement, type UIElement } from "
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
-import type { FieldDefinition, InlineRowItemContext, PropertyEditorSchema } from "./framework/types";
+import type {
+    FieldDefinition,
+    InlineRowItemContext,
+    InputGroupTrailingContext,
+    PropertyEditorSchema,
+} from "./framework/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
@@ -48,6 +53,14 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import {
+    commitStateAwareLayoutPatches,
+    currentStateOffset,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/stateGeometry";
+import { useEditorEnteredState } from "@/lib/ui-editor/hooks/useEnteredElementState";
+import { stateScopedMoveTarget } from "@/lib/ui-editor/widget-modules/shared/appearance/stateHost";
+import { StatePositionMotionButton } from "@/lib/ui-editor/widget-modules/shared/appearance/StatePositionMotionButton";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import {
     createComponentDocumentServiceAdapter,
@@ -109,9 +122,23 @@ function createLayoutInspectorSchema(
     };
 
     const getPrimaryLayout = (data: UIInspectorData) => data.elements[0]?.layout;
+    /**
+     * Where the element sits on the surface right now, the state it is being shown in included.
+     *
+     * A part held away from where it rests reads that held position, because that is the one on
+     * screen and the one a number typed here is meant to replace. Only the element's own state
+     * offset is added: an ancestor being held somewhere moves this element with it, and the field
+     * is about where this element sits inside its parent, not about what the parent is doing.
+     */
     const readElementSurfaceTopLeft = (element: UIElement) => {
         const document = documentService.getDocument();
-        return document.elements[element.id] ? getElementSurfaceTopLeft(document, element.id) : element.layout;
+        if (!document.elements[element.id]) {
+            return element.layout;
+        }
+        const base = getElementSurfaceTopLeft(document, element.id);
+        const entered = UIEditorStateService.getInstance().getEnteredState();
+        const offset = currentStateOffset(document, entered, element.id);
+        return offset ? { x: base.x + offset.x, y: base.y + offset.y } : base;
     };
     const applySurfacePositionPatch = (axis: "x" | "y", surfaceValue: number) => {
         const document = documentService.getDocument();
@@ -127,7 +154,14 @@ function createLayoutInspectorSchema(
                 [axis]: surfaceValue - parentTopLeft[axis] - Math.min(0, size),
             };
         });
-        documentService.updateElementLayouts(patches);
+        // A number typed while a state is entered says where the element sits *in that state*, the
+        // same thing dragging it there says.
+        commitStateAwareLayoutPatches(
+            documentService,
+            UIEditorStateService.getInstance().getEnteredState(),
+            patches,
+            surfaceId ?? null,
+        );
     };
 
     const createDefaultSizeField = (): FieldDefinition<UIInspectorData> => {
@@ -305,6 +339,33 @@ function createLayoutInspectorSchema(
                     selectAllOnFocus: true,
                 },
             ],
+            // Inside a widget that declares states, X and Y say where this sits in the state on
+            // screen - so how it gets there belongs on the same row. Elsewhere a position has no
+            // states to move between and there is nothing to configure.
+            trailing: ({ readOnly }: InputGroupTrailingContext<UIInspectorData>) => {
+                if (elements.length !== 1) {
+                    return null;
+                }
+                const element = elements[0];
+                const document = documentService.getDocument();
+                const scoped = stateScopedMoveTarget(
+                    document,
+                    UIEditorStateService.getInstance().getEnteredState(),
+                    element.id,
+                );
+                if (!scoped) {
+                    return null;
+                }
+                return (
+                    <StatePositionMotionButton
+                        element={document.elements[element.id] ?? element}
+                        documentService={documentService}
+                        shownVariantId={scoped.variantId}
+                        readOnly={readOnly}
+                        draftResetKey={`${primaryId}|${scoped.variantId}`}
+                    />
+                );
+            },
             order: 0,
         }),
         defineField<UIInspectorData, any>({
@@ -665,6 +726,10 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return context.services.get<UIService>(Services.UI);
     }, [context, isInitialized]);
 
+    // The position fields read the state an element is being shown in, so entering one has to rebuild
+    // the schema the same way a document edit does.
+    const enteredState = useEditorEnteredState();
+
     const storyService = useMemo(() => {
         if (!context || !isInitialized) return null;
         return context.services.get<StoryService>(Services.Story);
@@ -948,7 +1013,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 data={{ element: elements[0], elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
             />
         );
-    }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion, t]);
+    }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion, enteredState, t]);
 
     const selectUiCanvasElement = useCallback(
         (surfaceId: string, elementId: string) => {
