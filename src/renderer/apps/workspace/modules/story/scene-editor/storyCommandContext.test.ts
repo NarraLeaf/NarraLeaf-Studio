@@ -84,6 +84,33 @@ describe("buildStoryCommandContext - stage objects", () => {
         });
         expect(context.stageObjects.image).toEqual(["poster", "hero"]);
     });
+
+    it("indexes characters by id, and carries the stage key their entrance derives", () => {
+        const document = documentWith({
+            b1: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice" },
+            // No stage name: the portrait is registered under the character id, and nothing but this
+            // table can say so - the cast name a line is matched on cannot be turned back into it.
+            b2: { action: "character", operation: "enter", characterId: "c2" },
+            // Not an entrance, so not a declaration: it addresses a portrait it did not create.
+            b3: { action: "character", operation: "expression", characterId: "c3", pose: "p1" },
+            b4: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice again" },
+        });
+
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+        });
+
+        // A separate table from `stageObjectSources`, keyed by an id the project owns rather than by
+        // a stage name - and first entrance wins, the same rule the stage-object scan follows.
+        expect(context.characterSources).toEqual({
+            c1: { blockId: "b1", name: "Alice" },
+            c2: { blockId: "b2", name: "c2" },
+        });
+    });
 });
 
 describe("buildStoryCommandContext - variables", () => {

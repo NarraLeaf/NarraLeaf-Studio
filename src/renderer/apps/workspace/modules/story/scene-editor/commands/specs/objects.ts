@@ -13,7 +13,7 @@ import {
     targetParam,
     type StoryCommandValidateContext,
 } from "../spec";
-import { deriveObjectName, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
+import { actionableTargetRef, deriveObjectName, displayableTargetRef, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
 import { transitionOptions } from "../transitions";
 
 /** Media objects: `/image`, `/text`, `/video`, `/layer`, `/swap`, `/play`, `/font`. */
@@ -172,7 +172,9 @@ export const swap = defineStoryCommand({
             if (block.kind !== "action" || block.payload.action !== "text") {
                 return block;
             }
-            const payload = { ...block.payload, objectName: target.name };
+            // Both, always: `objectName` stays the authoritative key the compiler and the script view
+            // read, and `target` is the anchor that survives a rename of the row that created it.
+            const payload = { ...block.payload, objectName: target.name, target: displayableTargetRef(target) };
             if (args.content?.kind === "text") {
                 payload.text = args.content.value;
             }
@@ -185,6 +187,7 @@ export const swap = defineStoryCommand({
         const payload = { ...block.payload };
         if (target) {
             payload.objectName = target.name;
+            payload.target = displayableTargetRef(target);
         }
         if (args.content?.kind === "asset") {
             payload.assetId = args.content.assetId;
@@ -208,7 +211,10 @@ export const play = defineStoryCommand({
             return block;
         }
         const target = asTarget(args.target);
-        return target ? { ...block, payload: { ...block.payload, objectName: target.name } } : block;
+        if (target?.type !== "stageObject") {
+            return block;
+        }
+        return { ...block, payload: { ...block.payload, objectName: target.name, target: actionableTargetRef(target) } };
     },
 });
 
@@ -233,6 +239,7 @@ export const font = defineStoryCommand({
         const target = asTarget(args.target);
         if (target) {
             payload.objectName = target.name;
+            payload.target = displayableTargetRef(target);
         }
         // One block runs one op: a size sets the size, otherwise a colour sets the colour. Both at
         // once is a `conflictingParams` fault (below) until the combined op lands with schema v6.

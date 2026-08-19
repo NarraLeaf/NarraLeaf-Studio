@@ -19,7 +19,7 @@ import {
     type StoryCommandParamsShape,
     type StoryCommandValidateContext,
 } from "../spec";
-import { vfxOperationBlock, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
+import { actionableTargetRef, displayableTargetRef, vfxOperationBlock, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
 import { supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
 
 /**
@@ -218,25 +218,38 @@ function buildShowHide<P extends StoryCommandParamsShape>(
     // waits out (NLR `Vfx.show({duration})`), not a transform preset it has no pipeline for.
     if (target.objectKind === "vfx") {
         const durationMs = asDurationMs(args.d);
-        return vfxOperationBlock(direction, target.name, ctx.generateId, durationMs === undefined ? undefined : { durationMs });
+        return vfxOperationBlock(direction, target.name, ctx.generateId, {
+            target: actionableTargetRef(target),
+            ...(durationMs === undefined ? {} : { durationMs }),
+        });
     }
 
     const block = createBlockForCommand(stageObjectBlockId(target.objectKind, direction), ctx.generateId);
     if (block.kind !== "action") {
         return block;
     }
+    // Every arm writes the reference beside the name it already wrote. The name stays authoritative -
+    // the compiler and the script view still read it - and the reference is what follows a rename of
+    // the row that created the object.
     if (block.payload.action === "image" || block.payload.action === "text") {
-        const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
-        return { ...block, payload: { ...block.payload, objectName: target.name, ...(transform ? { transform } : {}) } };
-    }
-    if (block.payload.action === "video") {
-        return { ...block, payload: { ...block.payload, objectName: target.name } };
-    }
-    if (block.payload.action === "displayable") {
         const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
         return {
             ...block,
-            payload: { ...block.payload, target: { kind: "layer", name: target.name }, ...(transform ? { transform } : {}) },
+            payload: { ...block.payload, objectName: target.name, target: displayableTargetRef(target), ...(transform ? { transform } : {}) },
+        };
+    }
+    if (block.payload.action === "video") {
+        return { ...block, payload: { ...block.payload, objectName: target.name, target: actionableTargetRef(target) } };
+    }
+    if (block.payload.action === "displayable") {
+        const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
+        // The one arm whose reference was already the whole identity of the row, and the one that
+        // showed the gap most plainly: it resolved a target that knows its declaring row and then
+        // wrote a bare `{ kind, name }`, leaving the id field blank on the payload built to hold it.
+        const ref = displayableTargetRef(target);
+        return {
+            ...block,
+            payload: { ...block.payload, ...(ref ? { target: ref } : {}), ...(transform ? { transform } : {}) },
         };
     }
     return block;
