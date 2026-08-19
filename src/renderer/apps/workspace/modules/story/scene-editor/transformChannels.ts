@@ -441,3 +441,104 @@ export function addableTransformChannels(
         return Boolean(channel.shares) && occupied.get(channel.slot) === true;
     });
 }
+
+// ---------------------------------------------------------------------------------------------
+// The two channels that used to be a CSS text box
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A clip path, as the shape an author picked rather than the string it serialises to.
+ *
+ * `clip-path` accepts a whole grammar, and the row stores that grammar - but three shapes cover
+ * what a scene actually asks for, and each of them is a handful of numbers. Parsing back into the
+ * shape is what lets the control be a shape: a row written by hand, or by a version of Studio that
+ * had only the text box, still opens on whichever branch its string turns out to be.
+ *
+ * Percentages throughout, so a clip does not change meaning when the stage is resized - which is the
+ * same reason `/screen vignette` takes its radii as percentages of the frame.
+ */
+export type StoryClipShape =
+    | { kind: "inset"; top: number; right: number; bottom: number; left: number }
+    | { kind: "circle"; radius: number; x: number; y: number }
+    | { kind: "ellipse"; radiusX: number; radiusY: number; x: number; y: number }
+    /** Anything the three branches above cannot hold, kept verbatim. */
+    | { kind: "raw"; value: string };
+
+const NUMBERS = /-?\d+(?:\.\d+)?/g;
+
+function readNumbers(source: string, count: number): number[] | null {
+    const found = source.match(NUMBERS)?.map(Number) ?? [];
+    return found.length === count && found.every(Number.isFinite) ? found : null;
+}
+
+export function parseStoryClipShape(css: string | null | undefined): StoryClipShape {
+    const text = (css ?? "").trim();
+    if (!text) {
+        return { kind: "inset", top: 0, right: 0, bottom: 0, left: 0 };
+    }
+    const inset = /^inset\(([^)]*)\)$/i.exec(text);
+    if (inset) {
+        const values = readNumbers(inset[1], 4);
+        if (values) {
+            return { kind: "inset", top: values[0], right: values[1], bottom: values[2], left: values[3] };
+        }
+    }
+    const circle = /^circle\(([^)]*)\)$/i.exec(text);
+    if (circle) {
+        const values = readNumbers(circle[1], 3);
+        if (values) {
+            return { kind: "circle", radius: values[0], x: values[1], y: values[2] };
+        }
+    }
+    const ellipse = /^ellipse\(([^)]*)\)$/i.exec(text);
+    if (ellipse) {
+        const values = readNumbers(ellipse[1], 4);
+        if (values) {
+            return { kind: "ellipse", radiusX: values[0], radiusY: values[1], x: values[2], y: values[3] };
+        }
+    }
+    return { kind: "raw", value: text };
+}
+
+export function formatStoryClipShape(shape: StoryClipShape): string {
+    switch (shape.kind) {
+        case "inset":
+            return `inset(${shape.top}% ${shape.right}% ${shape.bottom}% ${shape.left}%)`;
+        case "circle":
+            return `circle(${shape.radius}% at ${shape.x}% ${shape.y}%)`;
+        case "ellipse":
+            return `ellipse(${shape.radiusX}% ${shape.radiusY}% at ${shape.x}% ${shape.y}%)`;
+        default:
+            return shape.value;
+    }
+}
+
+/** The shape a freshly picked kind opens on - visible, centred, and not yet cropping anything away. */
+export function seedStoryClipShape(kind: StoryClipShape["kind"], previous: StoryClipShape): StoryClipShape {
+    switch (kind) {
+        case "inset":
+            return { kind: "inset", top: 0, right: 0, bottom: 0, left: 0 };
+        case "circle":
+            return { kind: "circle", radius: 50, x: 50, y: 50 };
+        case "ellipse":
+            return { kind: "ellipse", radiusX: 50, radiusY: 35, x: 50, y: 50 };
+        default:
+            return { kind: "raw", value: previous.kind === "raw" ? previous.value : formatStoryClipShape(previous) };
+    }
+}
+
+/**
+ * A backdrop filter, as a blur radius when that is all it is.
+ *
+ * `backdrop-filter: blur(8px)` is frosted glass and is very nearly the only thing this channel is
+ * ever asked for; every other chain stays text. Same rule as the clip shape: the string decides which
+ * control opens, so nothing an author wrote by hand becomes unreachable.
+ */
+export function parseBackdropBlur(css: string | null | undefined): number | null {
+    const match = /^blur\((-?\d+(?:\.\d+)?)px\)$/i.exec((css ?? "").trim());
+    return match ? Number(match[1]) : null;
+}
+
+export function formatBackdropBlur(radius: number): string {
+    return `blur(${radius}px)`;
+}
