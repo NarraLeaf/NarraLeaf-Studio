@@ -239,43 +239,42 @@ export const help = {
         assetSets: {
             title: "Asset sets",
             body:
-                "An asset set is one entry in the library that stands for a family of files differing by "
-                + "language, edition or any other property. A reference carries the set, and the game "
-                + "receives the file that matches.\n"
+                "An asset set is one library entry standing for several files that differ by language or by "
+                + "build variant. A story row names the set instead of a file, and the game receives the one "
+                + "that matches.\n"
                 + "\n"
-                + "Select two or more files of the same kind and choose New Set from Selection. The dialog "
-                + "splits the file names at a separator and asks what each part is:\n"
+                + "A set stays in the folder it was created in, and its files are listed inside it rather "
+                + "than beside the other files.\n"
                 + "\n"
-                + "- A part every file shares becomes a tag every member carries, such as char:alice.\n"
-                + "- A part the files differ on becomes an axis, such as mood or locale.\n"
-                + "- A part left unnamed is not used.\n"
-                + "\n"
-                + "The variant list shows every combination the set promises and the file that answers it. "
-                + "A combination with no file is marked, and the set can still be created.\n"
-                + "\n"
-                + "Creating the set writes those tags onto the files. A file imported later joins the set "
-                + "once it carries the same tags.\n"
-                + "\n"
-                + "In the properties panel, choosing a file for a combination writes that combination's "
-                + "tags onto it.",
+                + "- Select two or more files of one type and choose New Set from Selection. In a folder's "
+                + "menu, New Asset Set starts one from files chosen in the dialog.\n"
+                + "- The dialog asks what the set varies by, then which file each value uses.\n"
+                + "- Choosing a file for a value in the Variants list adds that file to the set.\n"
+                + "- Dissolve Set removes the set and leaves its files where it stood. Delete removes the "
+                + "set and the files in it. Both first list the places that name the set.\n"
+                + "- Where a field accepts a set, the picker lists them under Asset sets. Character "
+                + "appearances and interface widgets accept a file.",
         },
         assetSetAxes: {
-            title: "Axes and when they resolve",
+            title: "What a set varies by",
             body:
-                "An axis is one tag category the members differ on. Each axis states when it is resolved:\n"
+                "A set varies by one of two things, chosen when it is created:\n"
                 + "\n"
-                + "- When built: the build picks one value, and the other variants are left out of the "
-                + "package.\n"
-                + "- While running: every value is in the package and the game picks between them. A "
-                + "language axis is resolved this way.\n"
+                + "- Language: every file is in the package, and the game reads the one for the language it "
+                + "is running in.\n"
+                + "- Variant: the build reads the file for the variant being built, and the other files are "
+                + "left out of the package.\n"
                 + "\n"
-                + "An axis whose values are all languages this project declares opens as While running.\n"
+                + "One value is the fallback, and it is the only value that requires a file. A value with no "
+                + "file of its own uses the fallback's file. A language that has a fallback language uses "
+                + "that language's file first.\n"
                 + "\n"
-                + "Axes are ordered, outermost first. An axis resolved when built cannot sit inside one "
-                + "resolved while running, and that arrangement is refused.\n"
+                + "To vary by both, make a second set under one value: select its files, right-click the "
+                + "value, and choose New Set from Selection, Here.\n"
                 + "\n"
-                + "A combination with no file is reported by the project check. A build stops when a "
-                + "combination it needs has no file.",
+                + "The project check reports a value with no file, and a value that more than one file "
+                + "matches. Under Build variants, each variant states which value it takes, and a build "
+                + "stops while the variant being built has stated none.",
         },
         mediaConversion: {
             title: "Converting unplayable files",
