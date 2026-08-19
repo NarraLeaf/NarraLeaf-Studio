@@ -4290,7 +4290,14 @@ async function emitCutProps(
         next = next.blend(cut.mixBlendMode ?? "normal", instant);
     }
     // What is left has no dedicated entry - the three mask settings when no mask image came with them,
-    // and a text colour - so it goes through a Transform that simply does not animate.
+    // a text colour, and the camera lens's dressing - so it goes through a Transform that simply does
+    // not animate.
+    //
+    // The four lens keys have to be listed here for the same reason the mask settings are: this bag is
+    // a LITERAL, so a discrete channel missing from it is not emitted and nothing says so. That is
+    // exactly what happened to them - `/transform camera vignetteInner=30 vignetteOuter=70` compiled
+    // to no statement at all, and a row carrying a strength beside them (`vignette=0.6 vignetteInner=30`)
+    // kept the strength, which tweens, and lost the geometry, which cuts.
     const rest = storyTransformPropsToNlr({
         ...(cut.maskAssetId === undefined ? {
             maskSize: cut.maskSize,
@@ -4299,6 +4306,10 @@ async function emitCutProps(
             maskMode: cut.maskMode,
         } : {}),
         fontColor: cut.fontColor,
+        shutterColor: cut.shutterColor,
+        vignetteColor: cut.vignetteColor,
+        vignetteInner: cut.vignetteInner,
+        vignetteOuter: cut.vignetteOuter,
     });
     if (Object.keys(rest).length > 0) {
         next = next.transform(buildTransform(rest, undefined));
