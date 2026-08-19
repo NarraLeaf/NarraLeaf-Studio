@@ -34,6 +34,7 @@ describe("parseMainCommandLine", () => {
             },
             devReload: DEFAULT_DEV_RELOAD,
             experimental: NO_EXPERIMENTAL,
+            openPaths: [],
         });
     });
 
@@ -52,6 +53,7 @@ describe("parseMainCommandLine", () => {
             },
             devReload: DEFAULT_DEV_RELOAD,
             experimental: NO_EXPERIMENTAL,
+            openPaths: [],
         });
     });
 
@@ -279,5 +281,32 @@ describe("parseMainCommandLine", () => {
 
         expect(isMainDevMode(options, false)).toBe(true);
         expect(isMainDevMode(options, true)).toBe(false);
+    });
+
+    it("collects the paths a packaged launch was given", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "D:\\games\\demo3\\Demo.nlproj"]);
+
+        expect(options.openPaths).toEqual(["D:\\games\\demo3\\Demo.nlproj"]);
+    });
+
+    it("does not mistake the development entry point for a path to open", () => {
+        const options = parseMainCommandLine(["electron", "dist/main/index.js", "--dev"]);
+
+        expect(options.openPaths).toEqual([]);
+    });
+
+    it("keeps a path given alongside the development entry point", () => {
+        const options = parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "D:\\games\\demo3"]);
+
+        expect(options.openPaths).toEqual(["D:\\games\\demo3"]);
+    });
+
+    it("does not take a flag's value for a path to open", () => {
+        // Both forms, because only the separated one can look positional.
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--project", "demo3", "--cdp-port", "9333", "--project=demo4",
+        ]);
+
+        expect(options.openPaths).toEqual([]);
     });
 });

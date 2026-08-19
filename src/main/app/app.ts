@@ -17,6 +17,12 @@ import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { findProjectConfigFileName } from "@shared/utils/nlproj";
+import {
+    LaunchOpenLookup,
+    LaunchOpenRequest,
+    resolveFirstLaunchOpenRequest,
+} from "./application/launchOpenRequest";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
 import { TRAY_RESIDENCY_NOTICE_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { getMainTranslator } from "./application/i18n";
@@ -75,6 +81,38 @@ function resolveExistingDirectory(candidate: string): string | null {
         return fs.statSync(absolute).isDirectory() ? absolute : null;
     } catch {
         return null;
+    }
+}
+
+/**
+ * `candidate` as an absolute path if it names a file. The file half of
+ * {@link resolveExistingDirectory}, and unreadable is "not a file" for the same reason.
+ */
+function resolveExistingFile(candidate: string, base?: string): string | null {
+    try {
+        const absolute = base ? path.resolve(base, candidate) : path.resolve(candidate);
+        return fs.statSync(absolute).isFile() ? absolute : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Whether `directory` holds a project config, without reading it.
+ *
+ * Synchronous because it answers a launch, which has to decide what window to open before it opens
+ * one - and because it reads one directory listing. A directory that cannot be listed is not a
+ * project here, which is the same answer as an empty one and the right one either way.
+ */
+function directoryHoldsProject(directory: string): boolean {
+    try {
+        return findProjectConfigFileName(fs.readdirSync(directory, { withFileTypes: true }).map(entry => ({
+            name: path.parse(entry.name).name,
+            ext: path.extname(entry.name) || null,
+            type: entry.isDirectory() ? "directory" : "file",
+        }))) !== null;
+    } catch {
+        return false;
     }
 }
 
@@ -343,13 +381,21 @@ export class App extends BaseApp {
     /**
      * Open Settings on a particular entry - or move the open Settings window to it.
      *
-     * One implementation for both callers (the IPC handler renderers use, and the tray's Check
-     * for Updates row), because "open settings at X" has to be idempotent from either: launching
-     * unconditionally would leave two Settings windows disagreeing about what is selected.
+     * The one way a Settings window comes into being: the IPC handler renderers use, the tray's
+     * Check for Updates row and macOS's Cmd+, all arrive here, because "open settings at X" has to
+     * be idempotent from every one of them - launching unconditionally would leave two Settings
+     * windows disagreeing about what is selected.
      *
-     * `opener` is who asked, and becomes the new window's parent. The tray has no window to offer,
-     * so the launcher is brought back first - which is also the right thing to look at behind a
-     * Settings window that was opened from an empty desktop.
+     * **Settings belongs to the app, not to whoever opened it, and is therefore a top-level
+     * window.** It used to be constructed with the opening window as its Electron `parent`, which
+     * made Chromium destroy it whenever that window went away: closing one of two open projects,
+     * or the launcher retiring itself the moment a project opened, silently took Settings with it
+     * while the rest of Studio carried on. Its contents are global - there is nothing about it that
+     * belongs to one project - so nothing was gained by the link either.
+     *
+     * `opener` is kept only as the answer to "which display should this come up on"; a Settings
+     * window opened from the tray with no window in sight is a perfectly good outcome and no longer
+     * has to raise a launcher first to have something to hang from.
      */
     public async revealSettings(
         props: WindowProps[WindowAppType.Settings],
@@ -368,18 +414,7 @@ export class App extends BaseApp {
             return;
         }
 
-        let parent = opener;
-        if (!parent || parent.isClosed()) {
-            await this.revealLauncher();
-            parent = this.findLauncher();
-        }
-        if (!parent) {
-            this.logger.warn("[Settings] No window to open Settings from.");
-            return;
-        }
-
-        await this.launchSettings(parent as AppWindow<WindowAppType.Launcher>, props, {
-            parent: parent.win,
+        await this.launchSettings(props, {
             minWidth: 800,
             minHeight: 500,
             width: 1200,
@@ -387,7 +422,31 @@ export class App extends BaseApp {
             center: true,
             x: undefined,
             y: undefined,
+            ...this.displayPlacement(opener, 1200, 800),
         });
+    }
+
+    /**
+     * Centre a window of `width` x `height` on the display `opener` is on.
+     *
+     * `center: true` centres on the *primary* display, so a Studio being used on a second monitor
+     * would put every window it raises back on the first one. Nothing to do when there is no opener
+     * to follow: the primary display is the only answer left, and it is the right one.
+     */
+    private displayPlacement(
+        opener: AppWindow | undefined,
+        width: number,
+        height: number,
+    ): Partial<Electron.BrowserWindowConstructorOptions> {
+        if (!opener || opener.isClosed()) {
+            return {};
+        }
+        const { workArea } = screen.getDisplayMatching(opener.win.getBounds());
+        return {
+            x: Math.round(workArea.x + (workArea.width - width) / 2),
+            y: Math.round(workArea.y + (workArea.height - height) / 2),
+            center: false,
+        };
     }
 
     /**
@@ -522,27 +581,222 @@ export class App extends BaseApp {
      * author is one click from opening something else.
      */
     public async openStartupWindow(): Promise<void> {
-        await this.ensureLauncher();
-
-        const startup = this.resolveSessionStartupProject();
-        if (!startup) {
-            return;
-        }
-
-        const launcher = this.findLauncher();
-        if (!launcher) {
-            this.logger.warn("[Startup] The launcher is gone; not opening the requested project.");
-            return;
-        }
-
-        this.logger.info(
-            `[Startup] Opening project "${startup.projectPath}" (matched by ${startup.source})`,
-        );
+        // In a finally, so that a launch that failed on its way here still lets later requests
+        // through: `openLaunchRequest` queues everything until this flag is set, and a queue that
+        // is never drained is a Studio that silently ignores every document dropped on it.
         try {
-            await this.openProject(launcher, startup.projectPath);
-        } catch (error) {
-            this.logger.error(`[Startup] Could not open "${startup.projectPath}":`, error);
+            await this.ensureLauncher();
+
+            // A path handed to this launch outranks everything below it: the author double-clicked
+            // something, which is more specific than any standing preference about where to resume.
+            if (await this.drainQueuedLaunchOpens()) {
+                return;
+            }
+
+            const startup = this.resolveSessionStartupProject();
+            if (!startup) {
+                return;
+            }
+
+            const launcher = this.findLauncher();
+            if (!launcher) {
+                this.logger.warn("[Startup] The launcher is gone; not opening the requested project.");
+                return;
+            }
+
+            this.logger.info(
+                `[Startup] Opening project "${startup.projectPath}" (matched by ${startup.source})`,
+            );
+            try {
+                await this.openProject(launcher, startup.projectPath);
+            } catch (error) {
+                this.logger.error(`[Startup] Could not open "${startup.projectPath}":`, error);
+            }
+        } finally {
+            this.startupSettled = true;
         }
+    }
+
+    /**
+     * Paths handed to Studio before it had anywhere to put them.
+     *
+     * macOS delivers `open-file` before `ready` on a cold launch - that is the *only* way a
+     * double-clicked document reaches an app there, since the path never appears in argv - so the
+     * request exists before the first window does. Held here and drained by
+     * {@link openStartupWindow}, which is also what keeps a double-clicked project from racing the
+     * "reopen the last project" it must override.
+     */
+    private readonly queuedLaunchOpens: LaunchOpenRequest[] = [];
+
+    /** True once {@link openStartupWindow} has decided what this session opens on. */
+    private startupSettled = false;
+
+    /** Reads paths against the disk. Injected into the resolver so that stays pure and testable. */
+    private launchOpenLookup(base?: string): LaunchOpenLookup {
+        return {
+            resolveFile: candidate => resolveExistingFile(candidate, base),
+            resolveDirectory: candidate => resolveExistingDirectory(base ? path.resolve(base, candidate) : candidate),
+            isProjectDirectory: directoryHoldsProject,
+            dirname: filePath => path.dirname(filePath),
+            extname: filePath => path.extname(filePath),
+        };
+    }
+
+    /**
+     * Take a launch's paths and act on the first one Studio recognises. Answers whether it did.
+     *
+     * `base` is the working directory the paths are relative to, which for a second launch is that
+     * process's rather than this one's - the whole reason Electron reports it with the event.
+     */
+    public async openLaunchPaths(candidates: readonly string[], base?: string): Promise<boolean> {
+        const request = resolveFirstLaunchOpenRequest(candidates, this.launchOpenLookup(base));
+        if (!request) {
+            return false;
+        }
+        return this.openLaunchRequest(request);
+    }
+
+    /**
+     * Act on one resolved request now, or queue it if this launch has not yet decided what it
+     * opens on. Answers whether it was acted on.
+     */
+    private async openLaunchRequest(request: LaunchOpenRequest): Promise<boolean> {
+        if (!this.startupSettled) {
+            this.queuedLaunchOpens.push(request);
+            return false;
+        }
+        return this.applyLaunchOpenRequest(request);
+    }
+
+    /** Act on everything that arrived before there was a window. Answers whether anything did. */
+    private async drainQueuedLaunchOpens(): Promise<boolean> {
+        const fromArgv = resolveFirstLaunchOpenRequest(this.getLaunchOpenPaths(), this.launchOpenLookup());
+        if (fromArgv) {
+            this.queuedLaunchOpens.push(fromArgv);
+        }
+        if (this.queuedLaunchOpens.length === 0) {
+            return false;
+        }
+
+        let opened = false;
+        // In order, and all of them: a cold launch can carry several `open-file` events, and each
+        // one is a document somebody asked for. Only argv is narrowed to one (see
+        // `resolveFirstLaunchOpenRequest`).
+        for (const request of this.queuedLaunchOpens.splice(0)) {
+            opened = await this.applyLaunchOpenRequest(request) || opened;
+        }
+        return opened;
+    }
+
+    private async applyLaunchOpenRequest(request: LaunchOpenRequest): Promise<boolean> {
+        try {
+            if (request.kind === "project") {
+                await this.openProjectFromOutside(request.projectPath);
+                return true;
+            }
+            await this.openPackageFromOutside(request.packagePath);
+            return true;
+        } catch (error) {
+            this.logger.error("[Launch] Could not act on the path Studio was given:", error);
+            return false;
+        }
+    }
+
+    /**
+     * The window an externally-requested open should be attributed to.
+     *
+     * A workspace before the launcher, deliberately. `openProject` retires a *launcher* opener the
+     * moment the project is up - correct when the author clicked a row in it, wrong when they
+     * double-clicked a file in the file manager and Studio happened to have its home screen open
+     * behind everything. Preferring a workspace leaves that home screen where they left it.
+     *
+     * Undefined when there is nothing at all, which is a cold launch: the caller raises the
+     * launcher first, so the open inherits the whole of `openStartupWindow`'s failure behaviour.
+     */
+    private launchOpener(): AppWindow | undefined {
+        const alive = this.windowManager.getWindows().filter(window => !window.isClosed());
+        return alive.find(window => window.getWindowType() === WindowAppType.Workspace)
+            ?? alive.find(window => window.getWindowType() === WindowAppType.Launcher)
+            ?? alive[0];
+    }
+
+    /**
+     * Open a project Studio was pointed at from outside - a file association, a shell argument, a
+     * second launch handing it over.
+     *
+     * Goes through {@link openProject} like every other way in, so one project stays one window:
+     * a project that is already open is focused rather than opened twice, and nothing is retired
+     * that the author did not ask to leave.
+     */
+    public async openProjectFromOutside(projectPath: string): Promise<void> {
+        const existing = this.findWorkspaceForProject(projectPath);
+        if (existing) {
+            if (existing.win.isMinimized()) {
+                existing.win.restore();
+            }
+            existing.focus();
+            this.logger.info(`[Launch] "${projectPath}" is already open; focusing its window.`);
+            return;
+        }
+
+        let opener = this.launchOpener();
+        if (!opener) {
+            await this.ensureLauncher();
+            opener = this.findLauncher();
+        }
+        if (!opener) {
+            this.logger.warn(`[Launch] No window to open "${projectPath}" from.`);
+            return;
+        }
+
+        this.logger.info(`[Launch] Opening project "${projectPath}".`);
+        await this.openProject(opener, projectPath);
+    }
+
+    /**
+     * Open the import wizard on a package Studio was pointed at from outside.
+     *
+     * A package is not a project: nothing can be opened until it has been unpacked somewhere, and
+     * where is a question only the author can answer. So this raises the wizard already on its
+     * import flow with the package chosen, and opens whatever comes out of it - the same hand-off
+     * the launcher's own New Project makes, except that main is the one waiting for the answer,
+     * because no renderer asked for this window.
+     */
+    public async openPackageFromOutside(packagePath: string): Promise<void> {
+        let opener = this.launchOpener();
+        if (!opener) {
+            await this.ensureLauncher();
+            opener = this.findLauncher();
+        }
+        if (!opener) {
+            this.logger.warn(`[Launch] No window to open "${packagePath}" from.`);
+            return;
+        }
+
+        this.logger.info(`[Launch] Opening the import wizard on "${packagePath}".`);
+        const wizard = await this.launchProjectWizard(opener, { packagePath }, {
+            parent: opener.win,
+            resizable: false,
+            width: 760,
+            height: 620,
+            center: true,
+            x: undefined,
+            y: undefined,
+        });
+        // Read, not readwrite, and not recursive - one file that gets copied out of. The same grant
+        // the wizard's own package picker makes, because the renderer cannot tell the two apart.
+        this.storageManager.grantFileSystemAccess(wizard, packagePath, "read", false, undefined, "session");
+        // Independent for the reason the wizard always is: the window it hangs from may retire
+        // while the author is still choosing where to unpack.
+        opener.addChild(wizard, "independent");
+
+        wizard.setCloseResultResolver(result => {
+            if (result && result.created) {
+                void this.openProjectFromOutside(result.projectPath).catch(error => {
+                    this.logger.error("[Launch] Could not open the unpacked project:", error);
+                });
+            }
+        });
     }
 
     /**
@@ -798,8 +1052,13 @@ export class App extends BaseApp {
         }
     }
 
-    async launchSettings(
-        parent: AppWindow<WindowAppType.Launcher>,
+    /**
+     * Build the Settings window. Private on purpose: {@link revealSettings} is the only caller, and
+     * it is the one that knows there may already be one open.
+     *
+     * Deliberately parentless - see revealSettings for what the parent link used to cost.
+     */
+    private async launchSettings(
         props: WindowProps[WindowAppType.Settings],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.Settings>> {
@@ -809,7 +1068,6 @@ export class App extends BaseApp {
             autoFocus: true,
             preload: this.getPreloadScript(),
             options: {
-                parent: parent.win,
                 frame: false,
                 titleBarStyle: 'hidden',
                 show: false,

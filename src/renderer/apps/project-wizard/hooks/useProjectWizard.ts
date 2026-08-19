@@ -80,6 +80,40 @@ export function useProjectWizard() {
     /** The server and repository name the address names, or null while it is not an address yet. */
     const remote = useMemo(() => parseVcsRemoteUrl(projectData.remoteUrl), [projectData.remoteUrl]);
 
+    /**
+     * Open on the package this window was handed, when it was handed one.
+     *
+     * Studio can be pointed at a `.nlspkg` from outside - a double-click in the file manager, a
+     * second launch handing one to the running instance - and there is exactly one thing to do
+     * with a package, so the wizard starts on the import page with it already chosen rather than
+     * asking a first-page question the author has answered by opening the file.
+     *
+     * The path arrives on the window's props, granted to this window by the main process before the
+     * window loaded; nothing here resolves it. Runs once - a window is handed a package when it is
+     * built or never, and re-running would drag an author who pressed Back straight forward again.
+     */
+    useEffect(() => {
+        let alive = true;
+        void (async () => {
+            try {
+                const props = await getInterface().getWindowProps<WindowAppType.ProjectWizard>();
+                const packagePath = props.success ? props.data?.packagePath : undefined;
+                if (!alive || !packagePath) {
+                    return;
+                }
+                setFlow("import");
+                setCurrentStep("import");
+                setProjectData(prev => ({ ...prev, packagePath }));
+            } catch {
+                // A wizard that cannot say how it was opened is still a wizard: it opens on its
+                // first page, which is where every other way in starts.
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, []);
+
     // Fetch the appropriate default directory for the user's platform
     useEffect(() => {
         const fetchDefaultDirectory = async () => {
