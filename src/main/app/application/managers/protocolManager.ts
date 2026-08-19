@@ -1,7 +1,7 @@
 import { protocol } from "electron";
 import { FileSystemHandler, FileSystemHashHandler } from "./protocol/fileSystemHandler";
 import { PluginApiHandler, PluginEntryHandler } from "./protocol/pluginHandler";
-import { ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol/types";
+import { APP_SCHEME_PRIVILEGES, ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol/types";
 import { App } from "@/app/app";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import path from "path";
@@ -89,7 +89,7 @@ export class ProtocolManager implements IProtocolManager {
         // Public assets handler
         const publicHandler = new FileSystemHandler(
             AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            APP_SCHEME_PRIVILEGES,
             () => this.app.getPublicDir(),
             AppHost.Public
         );
@@ -108,7 +108,7 @@ export class ProtocolManager implements IProtocolManager {
         // Window assets handler
         const windowsHandler = new FileSystemHandler(
             AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            APP_SCHEME_PRIVILEGES,
             () => path.resolve(this.app.getDistDir(), "windows"),
             AppHost.Windows,
             this.app.isDevMode()
@@ -128,14 +128,14 @@ export class ProtocolManager implements IProtocolManager {
         // File system hash handler for app://fs/{hash} requests
         const fsHashHandler = new FileSystemHashHandler(
             AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            APP_SCHEME_PRIVILEGES,
             this.app.storageManager
         );
         this.registerHandler(fsHashHandler);
 
         const pluginEntryHandler = new PluginEntryHandler(
             AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            APP_SCHEME_PRIVILEGES,
             this.app.pluginManager
         );
         this.registerHandler(pluginEntryHandler);

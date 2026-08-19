@@ -11,8 +11,8 @@ import type { AssetsService } from "@/lib/workspace/services/core/AssetsService"
 import { Services } from "@/lib/workspace/services/services";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, toDisplayedCommandLine } from "./commandTrigger";
 import { getCommandSegments, type StoryCommandRole } from "./storyCommandHighlight";
-import type { StoryCommandContext } from "./storyCommandValues";
-import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
+import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues";
+import { projectStoryCommandLine, type StoryCommandLineEdit, type StoryCommandLineLink, type StoryCommandLineOrnament, type StoryCommandLineProjection } from "./storyCommandLine";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
@@ -184,6 +184,14 @@ export type StoryCommandLinePart = {
     pieces: readonly StoryCommandLinePiece[];
     /** Set when this run IS an editable value — the caller wraps it in the affordance. */
     edit?: StoryCommandLineEdit;
+    /**
+     * Set when this run NAMES something else in the project.
+     *
+     * Independent of {@link edit}, and often set alongside it: a character name is both a value a
+     * click can change and a word that points at who they are. Which of the two intentions a given
+     * gesture serves is the caller's to decide; the grouping only guarantees the run is whole.
+     */
+    link?: StoryCommandLineLink;
 };
 
 function pieces(source: string): StoryCommandLinePiece[] {
@@ -201,44 +209,60 @@ function pieces(source: string): StoryCommandLinePiece[] {
     });
 }
 
+/** Whether a coloured piece sits wholly inside a span. Containment, never equality — see below. */
+function within(span: StoryCommandSpan, piece: StoryCommandLinePiece): boolean {
+    return span.start <= piece.start && piece.end <= span.end;
+}
+
 /**
- * The line's coloured pieces, with every quick-edit span collected into one part.
+ * The line's coloured pieces, with every quick-edit and every link span collected into one part.
  *
  * Split out of the component and exported for its test, because the way this fails is invisible: a
  * quick value that stops matching renders as ordinary text — correct-looking, and no longer
  * clickable. That is exactly what happened when units arrived and split `1秒` into two pieces while
  * the match still demanded one. Containment, not equality, is the rule.
  *
+ * Links group by the same rule and in the same pass, because a token that is both — a character name
+ * is a value a click can change AND a word that says who they are — has to come out as ONE run, or
+ * the two affordances would land on two halves of the same word. The projection makes that cheap: an
+ * edit span and a link span are written from the same two offsets of the same arg, so any pair is
+ * either identical or disjoint and there is no partial overlap to arbitrate. The `end` is taken as
+ * the larger of the two anyway, so a future writer that broke that invariant would produce a run that
+ * is too wide rather than a run that silently drops a piece.
+ *
  * `hideParamKeys` drops the `t=` pieces and keeps everything else, including the space that stood in
  * front of them. Dropped HERE, after the offsets are taken, rather than by writing a shorter line:
- * every offset the projection recorded — each quick-edit span, each face — is an offset into the full
- * source, and the value pieces they point at do not move just because a key stopped being painted.
- * The line the author would type is also, deliberately, not the line being shown any more, which is
- * exactly why this cannot happen upstream where the round-trip is guaranteed.
+ * every offset the projection recorded — each quick-edit span, each face, each link — is an offset
+ * into the full source, and the value pieces they point at do not move just because a key stopped
+ * being painted. The line the author would type is also, deliberately, not the line being shown any
+ * more, which is exactly why this cannot happen upstream where the round-trip is guaranteed.
  */
 export function storyCommandLineParts(
     source: string,
     edits: readonly StoryCommandLineEdit[] = [],
     hideParamKeys = false,
+    links: readonly StoryCommandLineLink[] = [],
 ): StoryCommandLinePart[] {
     const parts: StoryCommandLinePart[] = [];
     // Safe to drop before grouping: a key span ends where its value span begins, so a key piece is
-    // never one of the pieces an edit is built from.
+    // never one of the pieces an edit or a link is built from.
     const segments = hideParamKeys ? pieces(source).filter(piece => !piece.paramKey) : pieces(source);
     for (let index = 0; index < segments.length; index += 1) {
         const piece = segments[index];
-        const editable = edits.find(entry => entry.span.start <= piece.start && piece.end <= entry.span.end);
-        if (!editable) {
+        const editable = edits.find(entry => within(entry.span, piece));
+        const linked = links.find(entry => within(entry.span, piece));
+        if (!editable && !linked) {
             parts.push({ pieces: [piece] });
             continue;
         }
+        const end = Math.max(editable?.span.end ?? 0, linked?.span.end ?? 0);
         const inside: StoryCommandLinePiece[] = [];
-        while (index < segments.length && segments[index].end <= editable.span.end) {
+        while (index < segments.length && segments[index].end <= end) {
             inside.push(segments[index]);
             index += 1;
         }
         index -= 1;
-        parts.push({ pieces: inside, edit: editable });
+        parts.push({ pieces: inside, ...(editable ? { edit: editable } : {}), ...(linked ? { link: linked } : {}) });
     }
     return parts;
 }
@@ -264,8 +288,25 @@ export function StoryCommandLineText(props: {
      * through.
      */
     hideParamNames?: boolean;
-    /** Wraps one editable value in its affordance. Absent on the live field, which is already text. */
-    renderEdit?: (edit: StoryCommandLineEdit, content: ReactNode) => ReactNode;
+    /**
+     * Wraps one editable value in its affordance. Absent on the live field, which is already text.
+     *
+     * The link rides along when the same run is both — a character's name is a value a click can
+     * change AND a word that says who they are — because the two affordances have to live on ONE
+     * element or the gesture that picks between them would have two halves of the word to choose
+     * from. Which gesture means which is the wrapper's decision, not this file's.
+     */
+    renderEdit?: (edit: StoryCommandLineEdit, content: ReactNode, link?: StoryCommandLineLink) => ReactNode;
+    /** Every word that names something else in the project — see {@link StoryCommandLineLink}. */
+    links?: readonly StoryCommandLineLink[];
+    /**
+     * Wraps one word that ONLY points somewhere: a stage object's name, a label, a variable.
+     *
+     * Absent on the live field for the same reason `renderEdit` is: that copy is a mirror sitting on
+     * a textarea and is `pointer-events-none`, so a link drawn into it could never be clicked anyway.
+     * Passing neither wrapper is what keeps the mirror character-for-character identical.
+     */
+    renderLink?: (link: StoryCommandLineLink, content: ReactNode) => ReactNode;
     ornaments?: readonly StoryCommandLineOrnament[];
     /**
      * Draws one picture the line carries inside itself — a speaker's face before their name.
@@ -281,8 +322,15 @@ export function StoryCommandLineText(props: {
     // parse, and a scene is hundreds of rows. `ct` is a dependency because the command locale decides
     // whether `转场=` names a slot — the same hidden input the ghost hint declares.
     const parts = useMemo(
-        () => storyCommandLineParts(props.source, props.renderEdit ? props.edits : [], props.hideParamNames),
-        [ct, props.edits, props.hideParamNames, props.renderEdit, props.source],
+        () => storyCommandLineParts(
+            props.source,
+            props.renderEdit ? props.edits : [],
+            props.hideParamNames,
+            // Same rule as the edits above: a surface that offers no wrapper is handed no spans, so
+            // its grouping is byte-for-byte the one it had before links existed.
+            props.renderLink ? props.links : [],
+        ),
+        [ct, props.edits, props.hideParamNames, props.links, props.renderEdit, props.renderLink, props.source],
     );
     // The trigger is swapped at the last moment, on the one piece that can hold it.
     const paint = (piece: StoryCommandLinePiece) => (
@@ -295,9 +343,13 @@ export function StoryCommandLineText(props: {
             {parts.map(part => {
                 const painted = part.pieces.map(paint);
                 const key = part.pieces[0]?.start ?? 0;
+                // An edit wins the wrapper even when the run is also a link: one element carries both
+                // intentions, and the link-only wrapper exists for the words no editor stands behind.
                 const token = part.edit && props.renderEdit
-                    ? props.renderEdit(part.edit, painted)
-                    : painted;
+                    ? props.renderEdit(part.edit, painted, part.link)
+                    : part.link && props.renderLink
+                        ? props.renderLink(part.link, painted)
+                        : painted;
                 // Outside the token, never inside it: an editable value wears a dotted underline, and
                 // an underline running under a face is the seam this whole arrangement exists to
                 // avoid. Adjacent is enough to read as one thing.
