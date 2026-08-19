@@ -1,4 +1,5 @@
 import type { StoryExpression } from "./expression";
+import type { WeatherSeedRef } from "../../weather/model";
 
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive - v3 documents
@@ -827,6 +828,18 @@ export type StoryActionPayload =
           objectName: string;
           /** The looping clip — a video asset, the same pipeline `/video` uses. */
           assetId?: string;
+          /**
+           * The overlay's clip, generated from a weather seed instead of imported.
+           *
+           * Mutually exclusive with {@link assetId}: an overlay has one source, and a row carrying
+           * both would leave whichever the compiler read last deciding what the player sees. The
+           * seed and its parameters are all that is stored — the clip they describe is a build
+           * product, produced when something needs to play one and never entering the asset library,
+           * because the library holds what the author brought.
+           *
+           * Additive: no document written before this carries one, so no schema bump.
+           */
+          seed?: WeatherSeedRef;
           /**
            * How the overlay composites. The choice IS the material route: `screen` for glow
            * rendered on black, `multiply` for shadow rendered on white, `normal` for a clip that is

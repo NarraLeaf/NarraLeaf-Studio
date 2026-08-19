@@ -30,16 +30,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { Layers } from "lucide-react";
 import {
-    ASSET_AXIS_RESIDENCIES,
+    ASSET_SET_AXIS_KINDS,
     assetSetCoordinateTags,
+    makeAssetSetAxis,
+    assetSetParent,
     collectAssetTagVocabulary,
-    isLegalAxisOrder,
+    isLegalNesting,
     parseAssetTag,
     resolveAssetSetContents,
     type AssetSet,
-    type AssetSetAxis,
+    type AssetSetAxisKind,
     type AssetSetCandidate,
     type AssetSetCell,
 } from "@shared/types/assetSet";
@@ -53,6 +55,10 @@ import type { AssetsService } from "@/lib/workspace/services/core/AssetsService"
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useWorkspace } from "@/apps/workspace/context";
+import { Services } from "@/lib/workspace/services/services";
+import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { AssetThumbnail } from "@/apps/workspace/modules/assets/components/AssetThumbnail";
 
 /**
@@ -137,8 +143,34 @@ export function AssetSetInspector({
     assetsService: AssetsService | null;
 }) {
     const { t } = useTranslation();
+    const { context } = useWorkspace();
     const freeze = useFreezeGuard();
     const [blocked, setBlocked] = useState(false);
+    // The document changes under this panel whenever a sub-set is made or renamed, and what a value
+    // resolves to depends on it.
+    const [revision, setRevision] = useState(0);
+    /**
+     * What each kind ranges over in this project.
+     *
+     * Read here rather than stored on the set, because switching kinds has to re-state the promise:
+     * a set that was language-shaped and is now edition-shaped promises editions.
+     */
+    const localeValues = useMemo(() => {
+        try {
+            return context!.services.get<LocalizationService>(Services.Localization)
+                .getConfiguration().locales.map(locale => locale.code);
+        } catch {
+            return [];
+        }
+    }, [context]);
+    const editionValues = useMemo(() => {
+        try {
+            return context!.services.get<AppTagService>(Services.AppTags).listTags().map(tag => tag.id);
+        } catch {
+            return [];
+        }
+    }, [context]);
+    useEffect(() => service.onSetsChanged(() => setRevision(current => current + 1)), [service]);
     const [picking, setPicking] = useState<AssetSetCell | null>(null);
     const pickerAnchor = useRef<HTMLElement | null>(null);
 
@@ -149,7 +181,10 @@ export function AssetSetInspector({
         [candidates, set.type],
     );
 
-    const contents = useMemo(() => resolveAssetSetContents(set, candidates), [set, candidates]);
+    // Every set in the project, because what a value resolves to may be one level down and because
+    // the nesting rule is a statement about this set and the one it hangs under.
+    const sets = useMemo(() => service.listSets(), [service, revision]);
+    const contents = useMemo(() => resolveAssetSetContents(set, candidates, sets), [set, candidates, sets]);
 
     /**
      * Write a new axis list, refusing an arrangement that has no build.
@@ -157,18 +192,23 @@ export function AssetSetInspector({
      * The flag is cleared by every accepted write, so the sentence goes away as soon as the author
      * does something the model allows - rather than staying until they select something else.
      */
-    const writeAxes = useCallback((next: AssetSetAxis[]) => {
-        if (!isLegalAxisOrder(next)) {
+    /**
+     * Change what this set varies by.
+     *
+     * The values come with the kind, read off the project - so switching a set from languages to
+     * editions re-states what it promises rather than leaving it promising language codes under an
+     * edition axis.
+     */
+    const patchAxis = useCallback((kind: AssetSetAxisKind) => {
+        const next = makeAssetSetAxis(kind, kind === "locale" ? localeValues : editionValues);
+        const parent = assetSetParent(set, sets);
+        if (parent && !isLegalNesting(parent.set.axis, next)) {
             setBlocked(true);
             return;
         }
         setBlocked(false);
-        service.setAxes(set.id, next);
-    }, [service, set.id]);
-
-    const patchAxis = useCallback((index: number, patch: Partial<AssetSetAxis>) => {
-        writeAxes(set.axes.map((axis, position) => (position === index ? { ...axis, ...patch } : axis)));
-    }, [set.axes, writeAxes]);
+        service.setAxis(set.id, next);
+    }, [service, set, sets]);
 
     /**
      * Make one file the answer to one coordinate, by writing that coordinate onto it.
@@ -192,91 +232,24 @@ export function AssetSetInspector({
         await assetsService.updateAssetTags(asset, [...kept, ...written]);
     }, [assetsService, set]);
 
-    const moveAxis = useCallback((index: number, delta: number) => {
-        const target = index + delta;
-        if (target < 0 || target >= set.axes.length) {
-            return;
-        }
-        const next = [...set.axes];
-        [next[index], next[target]] = [next[target], next[index]];
-        writeAxes(next);
-    }, [set.axes, writeAxes]);
-
     return (
         <div className="p-3 space-y-3" data-help-topic="assetSetAxes">
-            <SectionCard
-                title={t("assets.sets.inspector.axes")}
-                actions={
-                    <IconButton
-                        size="sm"
-                        aria-label={t("assets.sets.inspector.addAxis")}
-                        {...freeze.writes(false, t("assets.sets.inspector.addAxis"))}
-                        onClick={() => writeAxes([...set.axes, { key: "", residency: "build", values: [] }])}
-                    >
-                        <Plus className="h-4 w-4" />
-                    </IconButton>
-                }
-                bodyClassName="space-y-3"
-            >
-                {set.axes.map((axis, index) => (
-                    <div key={`${axis.key}-${index}`} className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                            <DraftInput
-                                value={axis.key}
-                                placeholder={t("assets.sets.inspector.axisKey")}
-                                {...freeze.writes()}
-                                onCommit={next => patchAxis(index, { key: next })}
-                                className="flex-1"
-                            />
-                            <Select
-                                size="sm"
-                                value={axis.residency}
-                                options={ASSET_AXIS_RESIDENCIES.map(residency => ({
-                                    value: residency,
-                                    label: t(`assets.sets.inspector.residency.${residency}`),
-                                }))}
-                                onChange={value => patchAxis(index, { residency: value as AssetSetAxis["residency"] })}
-                                {...freeze.writes()}
-                            />
-                            <IconButton
-                                size="sm"
-                                className="shrink-0"
-                                aria-label={t("assets.sets.inspector.moveOut")}
-                                {...freeze.writes(index === 0, t("assets.sets.inspector.moveOut"))}
-                                onClick={() => moveAxis(index, -1)}
-                            >
-                                <ChevronUp className="h-4 w-4" />
-                            </IconButton>
-                            <IconButton
-                                size="sm"
-                                className="shrink-0"
-                                aria-label={t("assets.sets.inspector.moveIn")}
-                                {...freeze.writes(index === set.axes.length - 1, t("assets.sets.inspector.moveIn"))}
-                                onClick={() => moveAxis(index, 1)}
-                            >
-                                <ChevronDown className="h-4 w-4" />
-                            </IconButton>
-                            <IconButton
-                                size="sm"
-                                className="shrink-0"
-                                aria-label={t("assets.sets.inspector.removeAxis")}
-                                {...freeze.writes(false, t("assets.sets.inspector.removeAxis"))}
-                                onClick={() => writeAxes(set.axes.filter((_, position) => position !== index))}
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </IconButton>
-                        </div>
-                        <DraftInput
-                            value={axis.values.join(", ")}
-                            // Seeded with what the library carries under this category, so an author
-                            // who has tagged their files can read the values off the placeholder
-                            // instead of remembering them.
-                            placeholder={vocabulary.get(axis.key)?.join(", ") || t("assets.sets.inspector.axisValues")}
-                            {...freeze.writes()}
-                            onCommit={next => patchAxis(index, { values: parseValues(next) })}
-                        />
-                    </div>
-                ))}
+            <SectionCard title={t("assets.sets.inspector.axes")} bodyClassName="space-y-3">
+                {/* The kind, and nothing else. What tag it reads, when it resolves and what it
+                    ranges over all follow from it, and each of them offered as a field was a way for
+                    an author to say something the project would then refuse. */}
+                <Select
+                    size="sm"
+                    fullWidth
+                    value={set.axis.kind}
+                    options={ASSET_SET_AXIS_KINDS.map(entry => ({
+                        value: entry,
+                        label: t(`assets.sets.axisKind.${entry}`),
+                    }))}
+                    onChange={value => patchAxis(value as AssetSetAxisKind)}
+                    ariaLabel={t("assets.sets.inspector.axes")}
+                    {...freeze.writes()}
+                />
                 {blocked && (
                     <p className="text-2xs text-warning">{t("assets.sets.inspector.residencyBlocked")}</p>
                 )}

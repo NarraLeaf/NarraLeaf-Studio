@@ -228,6 +228,8 @@ export const storyInspector = {
 
     vfx: {
         name: "エフェクト名",
+        source: "ソース",
+        sourceClip: "クリップ",
         clip: "ループするクリップ",
         blendMode: "ブレンド",
         opacity: "不透明度（0-1）",
@@ -236,6 +238,16 @@ export const storyInspector = {
         loop: "ループ",
         rate: "速さ（1 が等倍）",
         fade: "フェード（秒）",
+    },
+
+    weather: {
+        density: "量",
+        sizeNear: "手前の大きさ",
+        sizeFar: "奥の大きさ",
+        sway: "揺れ",
+        streak: "尾の長さ",
+        wind: "風向き（度）",
+        depthSpread: "奥行き差",
     },
 
     cameraOperation: {

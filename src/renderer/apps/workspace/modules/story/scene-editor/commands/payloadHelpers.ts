@@ -97,9 +97,16 @@ export function deriveObjectName(stageKind: StoryCommandStageObjectKind, assetPa
         if (args.name) {
             return {};
         }
-        const asset = assetParam ? args[assetParam] : undefined;
-        const seed = asset?.kind === "asset" ? assetBaseName(context, stageKind, asset.assetId) ?? base : base;
-        return { name: { kind: "text", value: dedupeObjectName(seed, context.stageObjects[stageKind] ?? []) } };
+        const source = assetParam ? args[assetParam] : undefined;
+        // A slot may name something other than an asset - `/vfx snow` names a generated source by a
+        // word - and the row should still be called after what the author typed rather than after the
+        // command. The word IS the name in that case; there is no file to strip an extension from.
+        const stem = source?.kind === "asset"
+            ? assetBaseName(context, stageKind, source.assetId) ?? base
+            : source?.kind === "enum"
+                ? source.value
+                : base;
+        return { name: { kind: "text", value: dedupeObjectName(stem, context.stageObjects[stageKind] ?? []) } };
     };
 }
 
