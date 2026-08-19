@@ -69,6 +69,11 @@ export const lint = {
             description: "選んだビルド対象の一部が再生できないコーデック",
             message: "{asset} は {platform} で再生できない",
         },
+        portabilityVfxAlpha: {
+            title: "透過を含むオーバーレイ素材",
+            description: "選んだビルド対象の一部が透過を保持しないオーバーレイ素材",
+            message: "{asset} は {platform} でステージを覆う",
+        },
         networkFetchNotAllowlisted: {
             title: "許可一覧にないアドレス",
             description: "このプロジェクトが許可していないアドレスを指す Fetch ノード",

@@ -80,6 +80,7 @@ export type LintRuleId =
     | "portability/asset-name"
     | "portability/case-collision"
     | "portability/media-format"
+    | "portability/vfx-alpha"
     | "network/fetch-disallowed"
     | "network/fetch-not-allowlisted"
     | "story/invalid-command"
