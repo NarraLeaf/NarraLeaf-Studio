@@ -1,8 +1,10 @@
 import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
+import { actionableSourceIdentity, displayableCreatorIdentity } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import { sceneLabelNames } from "@shared/types/story/labels";
+import { listSceneBlocksInDocumentOrder } from "@shared/types/story/order";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
@@ -12,7 +14,8 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { segmentPlainText } from "./storyFindReplace";
-import type { StoryCommandAppearanceRef, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
+import type { StoryCommandAppearanceRef, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry } from "./storyCommandResolution";
+import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 /**
@@ -147,6 +150,40 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
         }
     }
     return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio], vfx: [...vfx] };
+}
+
+/**
+ * Which row declares each of those objects - the id half {@link collectStageObjects} throws away
+ * when it flattens the scan to names.
+ *
+ * A separate walk rather than a widening of that one, because the two answer different questions and
+ * must keep doing so: the name list is everything a row may address (the engine materialises an
+ * object on first mention, so a `/show poster` with no create row ahead of it still belongs there),
+ * while an entry here means a row genuinely *defines* the object, which is the only thing a stable
+ * reference may bind to. Hence the strict identity functions, not the permissive ones.
+ */
+function collectStageObjectSources(scene: StoryScene | null): StoryCommandStageObjectSources {
+    if (!scene) {
+        return EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES;
+    }
+    const sources: Record<StoryCommandStageObjectKind, Record<string, string>> = {
+        image: {}, text: {}, layer: {}, video: {}, audio: {}, vfx: {},
+    };
+    for (const block of listSceneBlocksInDocumentOrder(scene)) {
+        const identity = displayableCreatorIdentity(block) ?? actionableSourceIdentity(block);
+        // `character` is the one declaring kind with no stage-object arm: a character target already
+        // carries its `characterId`, an identity no rename can reach.
+        if (!identity || identity.kind === "character") {
+            continue;
+        }
+        const key = identity.name.trim().toLowerCase();
+        // First declaration wins, matching what the scene actually holds: a later row declaring a
+        // name already on stage addresses that object rather than replacing it.
+        if (key && !(key in sources[identity.kind])) {
+            sources[identity.kind][key] = block.id;
+        }
+    }
+    return sources;
 }
 
 /**
@@ -298,5 +335,6 @@ export function buildStoryCommandContext(input: {
                 .filter((entry): entry is readonly [string, StoryPuppetVocabulary] => entry[1] !== undefined),
         ),
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
+        stageObjectSources: collectStageObjectSources(input.scene),
     };
 }

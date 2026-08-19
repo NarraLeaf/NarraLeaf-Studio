@@ -84,6 +84,41 @@ export function displayableSourceIdentity(
 }
 
 /**
+ * The identity of the displayable a block **declares**, or null when the block only addresses one
+ * that already exists. The strict half of {@link displayableSourceIdentity}: same naming rules, but
+ * only a row that brings the object into existence answers - `character` enter, `image` create,
+ * `text` create, `layer` create.
+ *
+ * The two cannot be merged, and neither is wrong:
+ *  - {@link displayableSourceIdentity} answers "does this row put this name on stage", which is what
+ *    the compiler does - `getImage` is get-or-create, so `/show poster` with no create row ahead of
+ *    it really does materialise `poster`. The candidate lists, the stage snapshot and the preview
+ *    resolver all mirror that, and gating them on `create` would hide objects that genuinely exist.
+ *  - This one answers "which row *defines* this object", which is what a stable reference must bind
+ *    to. Anchoring a reference to whichever row happened to mention the name first is stable only
+ *    while every row spells the name identically; the moment a rename edits the defining row alone,
+ *    a reference anchored to a `show` row keeps reporting the old name with nothing to show for it.
+ *
+ * `layer` reads the same either way - {@link displayableSourceIdentity} already gates it on `create`,
+ * because a layer is the one kind the engine will not conjure from a mention.
+ */
+export function displayableCreatorIdentity(
+    block: StoryBlock,
+): { kind: StoryDisplayableTargetKind; name: string; label: string } | null {
+    if (block.kind !== "action") {
+        return null;
+    }
+    const payload = block.payload;
+    const declares =
+        (payload.action === "character" && payload.operation === "enter")
+        || ((payload.action === "image" || payload.action === "text" || payload.action === "layer")
+            && payload.operation === "create");
+    // Delegated rather than re-derived: the stage key / label rules live in one function, so the
+    // strict reading can never disagree with the permissive one about what an object is called.
+    return declares ? displayableSourceIdentity(block) : null;
+}
+
+/**
  * Resolve a displayable target to the stage key + kind that should be used *right now*. When the
  * target carries a stable `sourceBlockId` that still resolves to a creator block, that block's
  * current identity wins, so the reference follows renames. Otherwise the stored `name`/`kind` is
@@ -107,6 +142,8 @@ export function resolveDisplayableTargetRef(
             return { name: identity.name, kind: identity.kind, label: identity.label };
         }
     }
-    // Legacy / dangling ref: the stored name is all we have, and it is what the author last saw.
-    return { name: target.name ?? "", kind: target.kind, label: target.name ?? "" };
+    // Legacy / dangling ref: the stored fields are all we have. `label` first, because `name` is the
+    // stage key and a key is not always readable - an unnamed character keys on its `characterId`.
+    // A reference written before `label` existed has none, and falls back to `name` as it always did.
+    return { name: target.name ?? "", kind: target.kind, label: target.label ?? target.name ?? "" };
 }
