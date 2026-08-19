@@ -3,6 +3,7 @@ import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
+import { iconViewRowOrder } from "../state/assetRowOrder";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -100,6 +101,7 @@ export function AssetsIconView({
         handleDragEnd,
         draggedAssetSet,
         showAssetSetContextMenu,
+        publishRowOrder,
     } = useAssetsPanelContext();
     const groupStack = useMemo(() => {
         const groupById = new Map<string, AssetGroup>();
@@ -205,9 +207,64 @@ export function AssetsIconView({
         return () => setAssetsIconToolbarCenter(null);
     }, [setAssetsIconToolbarCenter]);
 
-    const displayCategories = insideSet
+    const displayCategories = useMemo(() => (insideSet
         ? [insideSet.category]
-        : activeGroup && !isNarrowed ? [activeGroup.category] : ASSET_CATEGORY_ORDER;
+        : activeGroup && !isNarrowed ? [activeGroup.category] : ASSET_CATEGORY_ORDER), [activeGroup, insideSet, isNarrowed]);
+
+    /**
+     * What each section draws, worked out once.
+     *
+     * Held apart from the markup because the selection needs the same answer: a shift range covers
+     * the tiles between the two clicked ones, and the only honest source for which tiles those are
+     * is the list the grid is about to render. Deriving it a second time from the library records
+     * would put the folder walk, the set stepped into and the flattening a search does into two
+     * places at once.
+     */
+    const sections = useMemo(() => displayCategories.map((category) => {
+        // Narrowed, the grid is a result set: only groups that matched by name are hits.
+        // The rest of `filteredGroups` is the ancestor scaffolding a tree needs.
+        // Inside a set there are no folders and no loose files: what it holds is one
+        // answer per value, which the cells below stand for.
+        const categoryGroups = insideSet
+            ? []
+            : isNarrowed
+                ? filteredGroups[category].filter((group) => matchedGroupIds.has(group.id))
+                : filteredGroups[category].filter((group) => parentPredicate(group.parentGroupId));
+        // A file a set answers with is drawn inside that set and not again beside it,
+        // the same rule the tree follows: two tiles for one file read as two files.
+        const categoryAssets = insideSet
+            ? []
+            : filteredAssets[category]
+                .filter((asset) => parentPredicate(asset.groupId) && !memberAssetIds.has(asset.id));
+        // What this section stands for, not what happens to be loose in it.
+        const scopedAssets = isNarrowed
+            ? categoryAssets
+            : assetsInSubtree(filteredAssets[category], filteredGroups[category], activeGroup?.group.id ?? null);
+        // Filed where it was made, so walking into a folder shows the sets made in it. Walking into
+        // a set draws none of them: what it holds is its own values.
+        const categorySets = insideSet
+            ? []
+            : isNarrowed
+                ? rootAssetSets[category]
+                : rootAssetSets[category].filter(entry => (entry.set.groupId ?? "") === (activeGroup?.group.id ?? ""));
+        // One tile per value the set promises: the file that answers it, the set that
+        // answers it, or the hole - which keeps its tile, because the value is why the
+        // tile is there and dropping it would make an unfinished set look finished.
+        const setCells = insideSet ? insideSet.contents.cells : [];
+        return { category, groups: categoryGroups, assets: categoryAssets, scopedAssets, sets: categorySets, setCells };
+    }), [
+        activeGroup, displayCategories, filteredAssets, filteredGroups, insideSet, isNarrowed,
+        matchedGroupIds, memberAssetIds, parentPredicate, rootAssetSets,
+    ]);
+
+    const rowOrder = useMemo(() => iconViewRowOrder(sections), [sections]);
+    useLayoutEffect(() => {
+        publishRowOrder(rowOrder);
+        // Cleared on the way out: the tree and the overview draw something else entirely, and a
+        // range must never be sliced out of a list of tiles that are no longer on screen.
+        return () => publishRowOrder([]);
+    }, [publishRowOrder, rowOrder]);
+
     const minIconSize = 120;
     const maxIconSize = 240;
     const step = 10;
@@ -244,40 +301,15 @@ export function AssetsIconView({
                 </div>
             )}
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-                {displayCategories.map((category) => {
+                {sections.map(({
+                    category,
+                    groups: categoryGroups,
+                    assets: categoryAssets,
+                    scopedAssets,
+                    sets: categorySets,
+                    setCells,
+                }) => {
                     const CategoryIcon = ASSET_CATEGORY_ICONS[category];
-                    // Narrowed, the grid is a result set: only groups that matched by name are hits.
-                    // The rest of `filteredGroups` is the ancestor scaffolding a tree needs.
-                    // Inside a set there are no folders and no loose files: what it holds is one
-                    // answer per value, which the block below draws.
-                    const categoryGroups = insideSet
-                        ? []
-                        : isNarrowed
-                            ? filteredGroups[category].filter((group) => matchedGroupIds.has(group.id))
-                            : filteredGroups[category].filter((group) => parentPredicate(group.parentGroupId));
-                    // A file a set answers with is drawn inside that set and not again beside it,
-                    // the same rule the tree follows: two tiles for one file read as two files.
-                    const categoryAssets = insideSet
-                        ? []
-                        : filteredAssets[category]
-                            .filter((asset) => parentPredicate(asset.groupId) && !memberAssetIds.has(asset.id));
-                    // What this section stands for, not what happens to be loose in it.
-                    const scopedAssets = isNarrowed
-                        ? categoryAssets
-                        : assetsInSubtree(filteredAssets[category], filteredGroups[category], activeGroup?.group.id ?? null);
-                    // Only at the top of a section, never inside a folder: a set is filed under the
-                    // section its type belongs to and is not in any folder, so walking into one must
-                    // not keep drawing it as if it were part of that folder's contents.
-                    // Filed where it was made, so walking into a folder shows the sets made in it.
-                    const categorySets = insideSet
-                        ? []
-                        : isNarrowed
-                            ? rootAssetSets[category]
-                            : rootAssetSets[category].filter(entry => (entry.set.groupId ?? "") === (activeGroup?.group.id ?? ""));
-                    // One tile per value the set promises: the file that answers it, the set that
-                    // answers it, or the hole - which keeps its tile, because the value is why the
-                    // tile is there and dropping it would make an unfinished set look finished.
-                    const setCells = insideSet ? insideSet.contents.cells : [];
                     const hasItems = categoryGroups.length > 0
                         || categoryAssets.length > 0
                         || categorySets.length > 0
