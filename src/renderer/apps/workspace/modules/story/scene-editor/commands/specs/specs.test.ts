@@ -902,6 +902,24 @@ describe("logic and effects", () => {
         expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
     });
 
+    it("/vfx takes a weather word as its source, and the word names the row", () => {
+        // The seed branch is tried before the asset branch, so the three weather words are reserved
+        // in this slot. The overlay is named after the word for the same reason a clip names it after
+        // the file: the author typed it, so it is what they will address later.
+        expect(build("/vfx snow")).toMatchObject({
+            payload: { action: "vfx", operation: "create", objectName: "snow", seed: { seed: "snow" }, loop: true },
+        });
+        // One source or the other - a seeded row must carry no assetId to be read instead.
+        const seeded = build("/vfx rain");
+        expect(seeded.kind === "action" && seeded.payload.action === "vfx" ? seeded.payload.assetId : "unset").toBeUndefined();
+        // And a clip still resolves exactly as before.
+        expect(build("/vfx intro")).toMatchObject({
+            payload: { action: "vfx", assetId: "v1", objectName: "intro" },
+        });
+        const clip = build("/vfx intro");
+        expect(clip.kind === "action" && clip.payload.action === "vfx" ? clip.payload.seed : "unset").toBeUndefined();
+    });
+
     it("the generic verbs reach a vfx with its own payload", () => {
         // Four capabilities, one new token: everything after placing the overlay is an existing verb.
         expect(build("/show petals d=0.8")).toMatchObject({

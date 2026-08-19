@@ -2838,7 +2838,14 @@ async function compileCameraAction(
         return [recordStatement(ctx, camera.resetCamera(duration, payload.easing as any), block)];
     }
     const transform = payload.transform;
-    if (transform?.mode === "animation") {
+    if (!transform) {
+        // Every authoring path writes a ref, even an empty one, so a row without one states nothing
+        // this Studio can read - and a camera row that compiles to no statement is invisible on
+        // stage: the scene plays straight past it and the shot the author asked for never happens.
+        diagnostic(ctx, "warning", block.id, "Camera row is missing its transform.");
+        return [];
+    }
+    if (transform.mode === "animation") {
         // A whole keyframed shot rather than one settled pose, built by the same function `/transform`
         // uses - which also owns the missing-id / unknown-asset diagnostics. The ref's `durationMs` is
         // deliberately not read: the timing is in the keyframes, and honouring a `d=` beside them would

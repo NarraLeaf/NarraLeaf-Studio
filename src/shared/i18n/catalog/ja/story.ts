@@ -460,6 +460,7 @@ export const story = {
         imageAsset: "画像",
         imageOrColor: "画像または色",
         videoAsset: "動画",
+        vfxSource: "クリップまたは天候",
         audioAsset: "音声",
         objectName: "名前",
         content: "内容",
@@ -538,6 +539,10 @@ export const story = {
      * 綴りを落とすので、訳していない項目は必ずパーサが受け付ける語に落ちる。
      */
     enumValue: {
+        // 天候シード。`/vfx` のソース欄では予約語。
+        snow: "雪",
+        rain: "雨",
+        sakura: "桜",
         // トランジションの語（`t=`）
         fade: "フェード",
         // 「フェード」は文脈で意味が変わる語。こちらは常にクロスフェードそのものを指す。
