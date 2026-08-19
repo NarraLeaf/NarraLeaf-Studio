@@ -228,7 +228,7 @@ export const storyInspector = {
         reset: "复位镜头",
     },
 
-    cameraResetHint: "把镜头整个复位：机位、色调、镜头效果一起。",
+    cameraResetHint: "复位机位、色调与镜头效果。",
 
     cameraLook: {
         memory: "回忆",
@@ -246,7 +246,7 @@ export const storyInspector = {
     },
 
     cameraLookHint: {
-        channel: "色调会顶掉舞台压暗，而不是叠加——引擎里两者是同一个滤镜通道，后执行的那一行说了算。每个色调都自带亮度。复位镜头会清除它。",
+        channel: "后添加的色调会覆盖舞台压暗。复位镜头会清除色调。",
         monologue: "只降低整个舞台的饱和度与亮度。要压暗四周，请另加一行暗角。",
         hangover: "画面会先摇晃两次，再落到最终色调。这一行会等摇晃结束，时长决定摇晃的快慢。",
     },
