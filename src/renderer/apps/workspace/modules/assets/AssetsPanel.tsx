@@ -166,8 +166,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     
     // Magic Tags state
     const [magicTagDialogVisible, setMagicTagDialogVisible] = useState(false);
-    /** The selection the set wizard is open on, or null when it is closed. */
-    const [assetSetWizardAssets, setAssetSetWizardAssets] = useState<Asset[] | null>(null);
+    /**
+     * The selection the set wizard is open on, or null when it is closed.
+     *
+     * The folder rides along: a set is drawn where it was made, and by the time the dialog closes the
+     * author may have clicked somewhere else entirely.
+     */
+    const [assetSetWizardAssets, setAssetSetWizardAssets] = useState<{ assets: Asset[]; groupId?: string } | null>(null);
     const [magicTagTemplate, setMagicTagTemplate] = useState<MagicTagTemplate | null>(null);
     const [magicTagAssets, setMagicTagAssets] = useState<Asset[]>([]);
     const [isSearchActive, setIsSearchActive] = useState(false);
@@ -348,7 +353,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // Sets are read here rather than in `useAssetData` because they are not library rows: they are a
     // declaration measured against the library, and the measurement wants the library this panel is
     // already holding.
-    const { byCategory: assetSets, findSet } = useAssetSets({ context, isInitialized, assets });
+    const { byCategory: assetSets, topLevelByCategory: rootAssetSets, findSet } = useAssetSets({ context, isInitialized, assets });
     const assetSetNaming = useAssetSetNaming({ context, isInitialized });
     const {
         menuState: setMenuState,
@@ -407,7 +412,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      */
     const handleCreateAssetSet = useCallback(async () => {
         if (!canCreateAssetSet) return;
-        setAssetSetWizardAssets([...selectedAssetsForSet]);
+        // The folder the marked files are in, when they agree on one. They are what the author was
+        // looking at, so it is the folder they made the set in.
+        const groups = new Set(selectedAssetsForSet.map(asset => asset.groupId ?? ""));
+        const groupId = groups.size === 1 ? [...groups][0] : "";
+        setAssetSetWizardAssets({ assets: [...selectedAssetsForSet], ...(groupId ? { groupId } : {}) });
     }, [canCreateAssetSet, selectedAssetsForSet]);
 
     const assetSetContextMenu: ContextMenuDef = useMemo(() => {
@@ -701,7 +710,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const contextValue = {
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
-        expandedAssetSets, setExpandedAssetSets, assetSetNaming,
+        expandedAssetSets, setExpandedAssetSets, assetSetNaming, rootAssetSets,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu,
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
@@ -921,7 +930,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 />
                 {assetSetWizardAssets && (
                     <AssetSetWizard
-                        assets={assetSetWizardAssets}
+                        assets={assetSetWizardAssets.assets}
+                        {...(assetSetWizardAssets.groupId ? { groupId: assetSetWizardAssets.groupId } : {})}
                         onClose={() => setAssetSetWizardAssets(null)}
                     />
                 )}
