@@ -42,6 +42,7 @@ import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
 import { assetSelectionKey } from "./state/assetActionTargets";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import type { AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -172,7 +173,11 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      * The folder rides along: a set is drawn where it was made, and by the time the dialog closes the
      * author may have clicked somewhere else entirely.
      */
-    const [assetSetWizardAssets, setAssetSetWizardAssets] = useState<{ assets: Asset[]; groupId?: string } | null>(null);
+    const [assetSetWizardAssets, setAssetSetWizardAssets] = useState<{
+        assets: Asset[];
+        groupId?: string;
+        parent?: { set: AssetSet; value: string };
+    } | null>(null);
     const [magicTagTemplate, setMagicTagTemplate] = useState<MagicTagTemplate | null>(null);
     const [magicTagAssets, setMagicTagAssets] = useState<Asset[]>([]);
     const [isSearchActive, setIsSearchActive] = useState(false);
@@ -353,14 +358,20 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // Sets are read here rather than in `useAssetData` because they are not library rows: they are a
     // declaration measured against the library, and the measurement wants the library this panel is
     // already holding.
-    const { byCategory: assetSets, topLevelByCategory: rootAssetSets, findSet } = useAssetSets({ context, isInitialized, assets });
+    const {
+        byCategory: assetSets,
+        topLevelByCategory: rootAssetSets,
+        memberAssetIds,
+        findSet,
+    } = useAssetSets({ context, isInitialized, assets });
     const assetSetNaming = useAssetSetNaming({ context, isInitialized });
     const {
         menuState: setMenuState,
         showMenu: showSetMenu,
         hideMenu: hideSetMenu,
     } = useContextMenu();
-    const [setMenuTarget, setSetMenuTarget] = useState<ResolvedAssetSet | null>(null);
+    /** The set a menu is open on, and the value it was opened at when it was opened on one. */
+    const [setMenuTarget, setSetMenuTarget] = useState<{ entry: ResolvedAssetSet; value?: string } | null>(null);
 
     const handleAssetSetSelect = useCallback((entry: ResolvedAssetSet) => {
         if (!context) return;
@@ -374,7 +385,18 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const showAssetSetContextMenu = useCallback((event: React.MouseEvent, entry: ResolvedAssetSet) => {
         event.preventDefault();
         event.stopPropagation();
-        setSetMenuTarget(entry);
+        setSetMenuTarget({ entry });
+        showSetMenu(event);
+    }, [showSetMenu]);
+
+    const showAssetSetValueContextMenu = useCallback((
+        event: React.MouseEvent,
+        entry: ResolvedAssetSet,
+        value: string,
+    ) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setSetMenuTarget({ entry, value });
         showSetMenu(event);
     }, [showSetMenu]);
 
@@ -419,20 +441,51 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setAssetSetWizardAssets({ assets: [...selectedAssetsForSet], ...(groupId ? { groupId } : {}) });
     }, [canCreateAssetSet, selectedAssetsForSet]);
 
+    /**
+     * Make a set out of the marked files and hang it at one value of another set.
+     *
+     * The files are the marked ones, as they are for any other set - the value is what the menu was
+     * opened at, and it is the only thing this adds.
+     */
+    const handleCreateSubAssetSet = useCallback((parent: { set: AssetSet; value: string }) => {
+        if (!canCreateAssetSet) return;
+        setAssetSetWizardAssets({
+            assets: [...selectedAssetsForSet],
+            ...(parent.set.groupId ? { groupId: parent.set.groupId } : {}),
+            parent,
+        });
+    }, [canCreateAssetSet, selectedAssetsForSet]);
+
     const assetSetContextMenu: ContextMenuDef = useMemo(() => {
         if (!setMenuTarget) {
             return [];
         }
         const service = context?.services.get<AssetSetService>(Services.AssetSets) ?? null;
+        const { entry, value } = setMenuTarget;
+        // On one value of a set, the only thing to offer is the set that hangs there. Rename and
+        // delete belong to the set itself, which is the row above.
+        if (value !== undefined) {
+            return freezeContextMenuRows([
+                {
+                    id: "new-sub-set",
+                    label: t("assets.sets.menu.createSub"),
+                    disabled: !canCreateAssetSet,
+                    onClick: () => {
+                        closeAssetSetContextMenu();
+                        handleCreateSubAssetSet({ set: entry.set, value });
+                    },
+                },
+            ], freeze.frozen, new Set<string>(), freeze.reason);
+        }
         return freezeContextMenuRows([
             {
                 id: "rename-set",
                 label: t("common.rename"),
                 onClick: async () => {
                     closeAssetSetContextMenu();
-                    const name = await inputDialog?.showRenameDialog(setMenuTarget.set.name, t("assets.sets.itemType"));
+                    const name = await inputDialog?.showRenameDialog(entry.set.name, t("assets.sets.itemType"));
                     if (name) {
-                        service?.renameSet(setMenuTarget.set.id, name);
+                        service?.renameSet(entry.set.id, name);
                     }
                 },
             },
@@ -442,12 +495,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 onClick: () => {
                     // No confirmation: a set holds no files, deleting one strands nothing, and it is
                     // one undo step on the project stack like every other edit to it.
-                    service?.deleteSet(setMenuTarget.set.id);
+                    service?.deleteSet(entry.set.id);
                     closeAssetSetContextMenu();
                 },
             },
         ], freeze.frozen, new Set<string>(), freeze.reason);
-    }, [setMenuTarget, context, t, inputDialog, closeAssetSetContextMenu, freeze]);
+    }, [setMenuTarget, canCreateAssetSet, context, t, inputDialog, closeAssetSetContextMenu, freeze, handleCreateSubAssetSet]);
 
     const handleRetryFailedImports = useCallback(() => {
         const run = importState.run;
@@ -710,9 +763,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const contextValue = {
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
-        expandedAssetSets, setExpandedAssetSets, assetSetNaming, rootAssetSets,
+        expandedAssetSets, setExpandedAssetSets, assetSetNaming, rootAssetSets, memberAssetIds,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
-        handleAssetSetSelect, showAssetSetContextMenu,
+        handleAssetSetSelect, showAssetSetContextMenu, showAssetSetValueContextMenu,
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
@@ -932,6 +985,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     <AssetSetWizard
                         assets={assetSetWizardAssets.assets}
                         {...(assetSetWizardAssets.groupId ? { groupId: assetSetWizardAssets.groupId } : {})}
+                        {...(assetSetWizardAssets.parent ? { parent: assetSetWizardAssets.parent } : {})}
                         onClose={() => setAssetSetWizardAssets(null)}
                     />
                 )}

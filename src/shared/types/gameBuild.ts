@@ -116,6 +116,21 @@ export type GamePatchExportRequest = {
      */
     appTagId?: string;
     /**
+     * Which variant's content the patch carries. Absent means the same one it is
+     * for, which is the ordinary patch: a fix for a build.
+     *
+     * The other case is the reason this is a second field. An edition shipped
+     * without some of its content - an all-ages release, a demo - is patched with
+     * the content of the edition that has it, and that patch still has to open on
+     * the build the player owns. So the scenes, the folded variant conditions and
+     * the art come from here, while the identity the patch is sealed under keeps
+     * coming from {@link appTagId}.
+     *
+     * Every gate the build ran runs on this content: a patch cannot carry what a
+     * build of the same edition would have refused.
+     */
+    contentAppTagId?: string;
+    /**
      * The app directory of the build this patch is for, so the export can carry
      * only what changed. Absent means carry the whole payload: always correct,
      * and the answer when the author no longer has that build to point at.

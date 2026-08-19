@@ -282,6 +282,7 @@ export const assets = {
         unfinished: "尚未声明变体",
         menu: {
             create: "用所选文件新建资产集",
+            createSub: "用所选文件在此新建资产集",
         },
         create: {
             title: "新建资产集",

@@ -379,6 +379,7 @@ export const assets = {
         unfinished: "バリアント未宣言",
         menu: {
             create: "選択したファイルからセットを作成",
+            createSub: "選択したファイルからここにセットを作成",
         },
         create: {
             title: "アセットセットの新規作成",

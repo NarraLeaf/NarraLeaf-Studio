@@ -136,6 +136,9 @@ export const build = {
             title: "Export patch",
             variantLabel: "Variant",
             variantHint: "A patch opens only in builds of the variant it was exported for.",
+            /** The second question: whose content goes in. Only asked where a project has variants. */
+            contentLabel: "Content from",
+            contentHint: "The scenes, variant conditions and art of this variant go into the patch.",
             baselineLabel: "Build this patch updates",
             baselinePlaceholder: "Leave empty to include the whole game",
             baselineHint: "The desktop build folder an earlier build produced. Only the files that differ from it are included.",
