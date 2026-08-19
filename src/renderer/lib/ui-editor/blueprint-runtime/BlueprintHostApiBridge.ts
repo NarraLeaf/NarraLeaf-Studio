@@ -258,6 +258,17 @@ export type BlueprintGamePreferenceKey =
      * defaults through exactly the same plumbing as the twelve the engine defines.
      */
     | "skipReadText"
+    /**
+     * Studio's own, and transient: the skip run is going. Writing it is the equivalent of holding
+     * the skip key, and the host clears it whenever the run ends - a guard stopping it, the game
+     * leaving the stage, the window losing focus. Never persisted (see `@shared/types/preference`).
+     */
+    | "skipping"
+    /**
+     * Studio's own: the engine keeps this in `game.config`, not in its preference store, so the
+     * host copies it across on every change (see `preferenceRuntime`).
+     */
+    | "autoForwardDelay"
     | "showDialog"
     | "gameSpeed"
     | "cps"
@@ -1911,8 +1922,10 @@ function normalizeSentenceCps(cps: unknown): number {
 
 const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
     "autoForward",
+    "autoForwardDelay",
     "skip",
     "skipReadText",
+    "skipping",
     "showDialog",
     "gameSpeed",
     "cps",
@@ -1953,6 +1966,7 @@ function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePref
         case "soundVolume":
         case "globalVolume":
         case "skipDelay":
+        case "autoForwardDelay":
             if (safeValue < 0) {
                 throw new Error(`${operation}: ${key} must be zero or greater`);
             }
@@ -1972,6 +1986,7 @@ function normalizeGamePreferenceValue(
         case "autoForward":
         case "skip":
         case "skipReadText":
+        case "skipping":
         case "showDialog":
             if (typeof value !== "boolean") {
                 throw new Error(`${operation}: ${key} must be a boolean`);
@@ -1993,6 +2008,7 @@ function normalizeGamePreferenceValue(
         case "globalVolume":
         case "skipDelay":
         case "skipInterval":
+        case "autoForwardDelay":
             return normalizeGamePreferenceNumber(operation, key, value);
         default:
             throw new Error(`${operation}: ${key} is not supported`);

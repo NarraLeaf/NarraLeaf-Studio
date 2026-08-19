@@ -2697,6 +2697,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             defaults: bundle.preferences,
             read: key => core.scopeBridge.persistenceGetAsync(key),
             write: (key, value) => core.scopeBridge.persistenceSet(key, value),
+            // `autoForwardDelay` is the engine's config rather than one of its preferences, and it
+            // is read again for every line, so writing it here is enough for a change made in a
+            // settings screen to take effect on the next one.
+            configureEngine: config => game.configure(config),
             log: (level, message) => host.log(level, message),
         });
         // The player's own volumes, restored on top of the author's declaration and written back on
@@ -3735,8 +3739,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [activeSurface, activeSurfaceKeyboardReady, bundle, core, host, hostAdapterBundle]);
 
     /**
-     * Holding the skip key. Studio's loop, not the engine's - see `skipRunController` for why the
-     * binding had to move, and `createNlrGameWithGameUi` for where it moved to.
+     * Skipping. Studio's loop, not the engine's - see `skipRunController` for why the binding had to
+     * move, and `createNlrGameWithGameUi` for where it moved to.
+     *
+     * Two ways in, one run: the skip key, and the `skipping` preference a graph writes. The
+     * preference is what a quick menu button and a touch screen bind to, so the controller is
+     * driven from the same change stream everything else reads, and it writes the value back
+     * whenever a run ends on its own - the guard stopping it, the window losing focus, the session
+     * going away. The value and the run therefore cannot disagree, which is the whole point of
+     * having a value at all.
      *
      * Everything the loop needs is read through refs at the moment it needs it, so the controller
      * survives a preference change, a story launch and a dialog beat without being rebuilt; it is
@@ -3751,7 +3762,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Loosened on purpose: `skipReadText` is Studio's own preference riding in the engine's
         // store (see `preferenceRuntime`), so it is not in `GamePreference` and the typed accessor
         // would refuse it.
-        const preference = (game as { preference?: { getPreference?: (key: string) => unknown } }).preference;
+        const preference = (game as {
+            preference?: {
+                getPreference?: (key: string) => unknown;
+                setPreference?: (key: string, value: unknown) => void;
+            };
+        }).preference;
         const readPreference = (key: string): unknown => preference?.getPreference?.(key);
         const readNumber = (key: string, fallback: number): number => {
             const value = readPreference(key);
@@ -3774,22 +3790,40 @@ export function GameApp(props: GameAppProps): ReactNode {
             getSkipInterval: () => readNumber("skipInterval", 100),
             skipOnce: () => nlrLiveGameRef.current?.skipDialog(),
             isTextEntryTarget,
+            // Letting go, for a run nobody is holding a key for. Writing the preference is what a
+            // Skip button reads back, so the button un-lights itself the moment the run stops.
+            onSkippingEnded: () => {
+                try {
+                    preference?.setPreference?.("skipping", false);
+                } catch {
+                    // The session this controller belongs to is already gone; there is nothing left
+                    // for the value to describe.
+                }
+            },
         });
         const onKeyDown = (event: KeyboardEvent) => controller.handleKeyDown(event);
         const onKeyUp = (event: KeyboardEvent) => controller.handleKeyUp(event);
         // A window that loses focus mid-hold never delivers the keyup, and the run would go on
-        // skipping behind whatever the player switched to.
+        // skipping behind whatever the player switched to. The mode ends here too: a game skipping
+        // itself behind another window is the same problem whichever started it.
         const onBlur = () => controller.stop();
+        // The value side. Read rather than taken from the event, so the audio mixer's own fan-out
+        // through this same listener set costs nothing but a re-read.
+        const unsubscribePreferences = subscribeGamePreferences(() => {
+            controller.setSkipping(readPreference("skipping") === true);
+        });
+        controller.setSkipping(readPreference("skipping") === true);
         window.addEventListener("keydown", onKeyDown);
         window.addEventListener("keyup", onKeyUp);
         window.addEventListener("blur", onBlur);
         return () => {
             controller.stop();
+            unsubscribePreferences();
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
             window.removeEventListener("blur", onBlur);
         };
-    }, [isInGame, nlrSession]);
+    }, [isInGame, nlrSession, subscribeGamePreferences]);
 
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
