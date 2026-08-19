@@ -264,7 +264,7 @@ export const settings = {
         },
         reopenLastProject: {
             label: "Reopen the last project on startup",
-            description: "Turn this off to start on the launcher instead.",
+            description: "Open the project the last session was in, instead of starting on the launcher.",
         },
         dashboardOnOpen: {
             label: "Show the project dashboard by default",
