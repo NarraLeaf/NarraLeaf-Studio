@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isStageCovered } from "./layers/stageOcclusion";
 import { createSkipRunController, type SkipRunControllerOptions } from "./skipRunController";
 
 const SKIP_KEY = "Control";
@@ -238,6 +239,92 @@ describe("createSkipRunController", () => {
             controller.setSkipping(false);
             controller.setSkipping(false);
             expect(onSkippingEnded).not.toHaveBeenCalled();
+        });
+    });
+
+    /**
+     * The gate wired the way `GameApp` wires it, because the loop was never what was wrong.
+     *
+     * MEASURED before this: Skip on from the quick menu, Config opened mid-skip, and the story ran
+     * to its end behind the settings screen - `canSkip` asked whether a session was mounted with its
+     * stage on screen, and a page drawn over the stage does not change that answer.
+     */
+    describe("a page opened over the running game", () => {
+        /** The page lane while a game runs: the entries it took the screen from are hidden. */
+        function pageLane() {
+            const hidden = new Set(["title:1"]);
+            const stack = [{ key: "title:1" }];
+            return {
+                open: (key: string) => stack.push({ key }),
+                close: () => stack.pop(),
+                covered: () => isStageCovered({
+                    pageEntries: stack,
+                    pagesHiddenForGame: true,
+                    gameHiddenKeys: hidden,
+                    layers: [],
+                }),
+            };
+        }
+
+        it("stops the run and puts the mode back, so the Skip button cannot stay lit", () => {
+            const lane = pageLane();
+            const { controller, skipOnce, onSkippingEnded } = makeController({
+                canSkip: () => !lane.covered(),
+            });
+
+            controller.setSkipping(true);
+            vi.advanceTimersByTime(200);
+            expect(skipOnce).toHaveBeenCalledTimes(3);
+
+            lane.open("config:2");
+            vi.advanceTimersByTime(1000);
+
+            expect(skipOnce).toHaveBeenCalledTimes(3);
+            expect(onSkippingEnded).toHaveBeenCalledTimes(1);
+            expect(controller.isSkipping()).toBe(false);
+            expect(controller.isRunning()).toBe(false);
+        });
+
+        it("refuses to start while it is open, rather than skipping one line behind it", () => {
+            const lane = pageLane();
+            lane.open("config:2");
+            const { controller, skipOnce, onSkippingEnded } = makeController({
+                canSkip: () => !lane.covered(),
+            });
+
+            controller.setSkipping(true);
+            vi.advanceTimersByTime(1000);
+
+            expect(skipOnce).not.toHaveBeenCalled();
+            expect(onSkippingEnded).toHaveBeenCalledTimes(1);
+            expect(controller.isSkipping()).toBe(false);
+        });
+
+        it("skips again once the player closes it", () => {
+            const lane = pageLane();
+            lane.open("config:2");
+            const { controller, skipOnce } = makeController({ canSkip: () => !lane.covered() });
+
+            controller.setSkipping(true);
+            expect(skipOnce).not.toHaveBeenCalled();
+
+            lane.close();
+            controller.setSkipping(true);
+            vi.advanceTimersByTime(200);
+            expect(skipOnce).toHaveBeenCalledTimes(3);
+        });
+
+        it("stops a held key too, which has no keyup to wait for while a menu has the screen", () => {
+            const lane = pageLane();
+            const { controller, skipOnce } = makeController({ canSkip: () => !lane.covered() });
+
+            controller.handleKeyDown(keyEvent(SKIP_KEY));
+            vi.advanceTimersByTime(200);
+            expect(skipOnce).toHaveBeenCalledTimes(3);
+
+            lane.open("config:2");
+            vi.advanceTimersByTime(1000);
+            expect(skipOnce).toHaveBeenCalledTimes(3);
         });
     });
 
