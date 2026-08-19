@@ -216,6 +216,8 @@ export class AssetSetService extends Service<AssetSetService> {
         type: AssetType;
         filter?: string[];
         axis?: AssetSetAxis;
+        /** The folder the author made it in. Absent files it at the top of its section. */
+        groupId?: string;
     }): AssetSet {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const set: AssetSet = {
@@ -225,6 +227,7 @@ export class AssetSetService extends Service<AssetSetService> {
             name: uniqueAssetSetName(input.name ?? "", this.takenNames(null)),
             type: input.type,
             filter: input.filter ? [...input.filter] : [],
+            ...(input.groupId ? { groupId: input.groupId } : {}),
             axis: input.axis ? structuredClone(input.axis) : makeAssetSetAxis("release", []),
         };
         this.applySetMutation(sets => [...sets, set], assetSetLabel("add", set.name));
