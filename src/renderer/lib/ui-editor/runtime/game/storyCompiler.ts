@@ -3032,18 +3032,30 @@ async function compileCharacterStageAction(
         return statements;
     }
 
-    if (payload.operation === "exit") {
-        const image = getImage(ctx, name, { autoFit: true });
-        await bindCharacterPortrait(ctx, payload.characterId, image);
-        const chain = await compileDisplayableOperation(image, "hide", payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, ctx, block.id);
+    // `enter` is the one character row that DECLARES the portrait; exit / move / expression address
+    // the one an earlier row put on stage. Which is which is `declaresStageObject` - the single
+    // table, read by project lint too, so a preview and a build cannot disagree about which rows may
+    // build. Addressing a portrait nothing entered used to conjure a blank Image and then hide, move
+    // or re-dress it, with nothing anywhere saying so; the character was the last kind still doing it.
+    //
+    // The lookup runs here, ahead of any appearance resolution, so a row with nothing to act on
+    // reports that one fact rather than first complaining about a source it was never going to apply.
+    const declares = declaresStageObject(payload);
+    const staged = declares ? null : findStageCharacterImage(ctx, block.id, payload, name);
+    if (!declares && !staged) {
+        return statements;
+    }
+
+    if (payload.operation === "exit" && staged) {
+        await bindCharacterPortrait(ctx, payload.characterId, staged);
+        const chain = await compileDisplayableOperation(staged, "hide", payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
 
-    if (payload.operation === "move") {
-        const image = getImage(ctx, name, { autoFit: true });
-        await bindCharacterPortrait(ctx, payload.characterId, image);
-        const chain = await compileDisplayableOperation(image, "transform", payload.transform, ctx, block.id);
+    if (payload.operation === "move" && staged) {
+        await bindCharacterPortrait(ctx, payload.characterId, staged);
+        const chain = await compileDisplayableOperation(staged, "transform", payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3055,7 +3067,7 @@ async function compileCharacterStageAction(
     const layeredSrc = payload.assetId ? null : await resolveCharacterLayeredSrc(ctx, payload.characterId, block.id);
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
-        const image = getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        const image = staged ?? getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
         await bindCharacterPortrait(ctx, payload.characterId, image);
         const selection = payload.operation === "enter"
             ? resolveTagSelection(appearance, payload.tags)
@@ -3083,7 +3095,7 @@ async function compileCharacterStageAction(
         return statements;
     }
 
-    const image = getImage(ctx, name, { autoFit: true, src });
+    const image = staged ?? getImage(ctx, name, { autoFit: true, src });
     await bindCharacterPortrait(ctx, payload.characterId, image);
     if (payload.operation === "enter") {
         // An entering character has no prior image to transition from, so `enter` never uses a
@@ -3126,7 +3138,22 @@ async function compileCharacterPuppetAction(
     name: string,
     appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
 ): Promise<NlrStatement[]> {
-    const puppet = await getPuppetElement(ctx, name, appearance, block.id);
+    // The same split every other stage kind now makes, and here it is `enter` against everything
+    // else: the box's own verbs (exit, move) and the four that reach INSIDE it alike address a box
+    // an earlier row put on stage. Reaching inside one nothing entered built a puppet on the spot,
+    // loaded its model and set a motion on an element that is never shown - a row that costs the
+    // whole backend and produces no scene, reported by nothing.
+    //
+    // A row-precise launch is the one place a puppet arrives without an `enter` row of its own, and
+    // it arrives wearing the wrong class: the stage snapshot has no notion of a puppet and files
+    // every character as an image record, so the replay pre-poses this character as an `Image` and
+    // the box is never restored. An `Image` under a puppet character's key can have come from
+    // nowhere else - a compile of the rows sends a puppet character here on every operation and
+    // never builds one - so it reads as "on stage, box not restorable" and the box is built.
+    const preposed = stagedCharacterElement(ctx, name) instanceof Image;
+    const puppet = declaresStageObject(payload) || preposed
+        ? await getPuppetElement(ctx, name, appearance, block.id)
+        : findStageCharacterPuppet(ctx, block.id, payload, name);
     if (!puppet) {
         return [];
     }
@@ -3163,7 +3190,11 @@ async function compileCharacterPuppetAction(
 }
 
 /**
- * The scene's `Puppet` for a stage name, created on first use.
+ * The scene's `Puppet` for a stage name, built by the row that declares it.
+ *
+ * Get-or-create on the same terms as {@link getImage}, and reached only from the path entitled to
+ * create: a character `enter`. A row that merely addresses the puppet goes through
+ * {@link findStageCharacterPuppet} and reports a miss instead.
  *
  * Created once and never re-sourced, because a puppet **cannot** change its `src`: the backend's
  * instance lives as long as the element is on stage, and swapping the model underneath it would
@@ -4015,9 +4046,9 @@ function characterNametagConfig(summary: DevModeCharacterSummary | undefined): {
  * a later row changes is the tags, never the src.
  *
  * Get-or-create, and reached only by the paths that are entitled to create: an `/image create` row,
- * a character row (the engine really does materialise a portrait on first mention), and the snapshot
- * replay that seeds a mid-scene launch with the stage as it already stood. A row that merely
- * ADDRESSES an image goes through {@link findStageImage} and reports a miss instead.
+ * a character `enter` row, and the snapshot replay that seeds a mid-scene launch with the stage as
+ * it already stood. A row that merely ADDRESSES an image goes through {@link findStageImage} - or
+ * {@link findStageCharacterImage} for a portrait - and reports a miss instead.
  */
 function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string | { layers: unknown[]; defaults: string[] }; initialProps?: Record<string, unknown> }): Image {
     const name = normalizeObjectName(objectName);
@@ -4207,8 +4238,9 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
     if (kind === "image" || !kind) return ctx.images.get(normalized) ?? (!kind ? ctx.texts.get(normalized) ?? ctx.layers.get(normalized) ?? null : null);
     if (kind === "text") return ctx.texts.get(normalized) ?? null;
     if (kind === "layer") return ctx.layers.get(normalized) ?? null;
-    // A character is one element or the other, never both, so the lookup can simply try each.
-    if (kind === "character") return ctx.images.get(normalized) ?? ctx.puppets.get(normalized) ?? null;
+    // A character is one element or the other, never both, so the lookup simply tries each - the same
+    // one a character row makes, so `/show alice` and `/face alice` cannot find different answers.
+    if (kind === "character") return stagedCharacterElement(ctx, normalized);
     return null;
 }
 
@@ -4276,9 +4308,23 @@ function actionableActionTargetName(
  * A diagnostic does not stop a build - it reaches the Story console during a preview. The same miss
  * is reported again by the project lint's `story/stage-object-missing`, which does, and both read
  * the one judgement in `@shared/types/story/stageObjects`.
+ *
+ * Half the value of the sentence is the remedy, so the closing clause follows what the row acts on.
+ * Nothing in Studio CREATES a character: an author brings one on stage, and a message telling them
+ * to create it names a step they will not find. One shape with one varying clause, so the two
+ * remedies cannot grow into two messages.
  */
-function reportMissingStageObject(ctx: SceneCompileContext, blockId: string, noun: string, label: string): void {
-    diagnostic(ctx, "error", blockId, `${noun} "${label}" is not on stage; an earlier row has to create it.`);
+function reportMissingStageObject(
+    ctx: SceneCompileContext,
+    blockId: string,
+    noun: string,
+    label: string,
+    remedy: "create" | "enter" = "create",
+): void {
+    const clause = remedy === "enter"
+        ? "an earlier row has to bring it on stage"
+        : "an earlier row has to create it";
+    diagnostic(ctx, "error", blockId, `${noun} "${label}" is not on stage; ${clause}.`);
 }
 
 /**
@@ -4302,6 +4348,55 @@ function findStageImage(
         return existing;
     }
     reportMissingStageObject(ctx, blockId, "Image", label);
+    return null;
+}
+
+/**
+ * Whatever already answers to a character's stage name, in either table.
+ *
+ * **Both**, because a character is an `Image` or a `Puppet` and never both, and which one it is
+ * follows from the character's profile rather than from the row - exactly the reason
+ * {@link getDisplayable} searches both on its `character` arm. A lookup that read only the image
+ * table would report every row on an entered puppet character as addressing nothing.
+ */
+function stagedCharacterElement(ctx: SceneCompileContext, objectName: string): Image | Puppet | null {
+    const name = normalizeObjectName(objectName);
+    return ctx.images.get(name) ?? ctx.puppets.get(name) ?? null;
+}
+
+/**
+ * The portrait a non-`enter` character row acts on, or null with the miss already reported.
+ *
+ * The LABEL is printed and never the stage key: a character with no stage name of its own keys on
+ * its `characterId`, which is a UUID. {@link characterDiagnosticName} is the same ladder every other
+ * character diagnostic climbs - the author's name for the character, then a stage name they typed.
+ */
+function findStageCharacterImage(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+    objectName: string,
+): Image | null {
+    const existing = stagedCharacterElement(ctx, objectName);
+    if (existing instanceof Image) {
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Character", characterDiagnosticName(ctx, payload), "enter");
+    return null;
+}
+
+/** The puppet a non-`enter` row on a puppet character acts on. Same rule as {@link findStageCharacterImage}. */
+function findStageCharacterPuppet(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+    objectName: string,
+): Puppet | null {
+    const existing = stagedCharacterElement(ctx, objectName);
+    if (existing instanceof Puppet) {
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Character", characterDiagnosticName(ctx, payload), "enter");
     return null;
 }
 

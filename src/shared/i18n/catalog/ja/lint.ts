@@ -146,6 +146,8 @@ export const lint = {
             title: "存在しないステージオブジェクト",
             description: "シーン内のどの行も作成していないオブジェクトを操作する行",
             message: "{object} を作成する行が無いので、この行には操作する対象が無い",
+            // キャラクターは作成するものではなく登場させるものなので、変わるのは動詞だけ。
+            messageCharacter: "{object} を登場させる行が無いので、この行には操作する対象が無い",
         },
         storyStageObjectDuplicate: {
             title: "ステージオブジェクトの重複",

@@ -4046,4 +4046,166 @@ describe("stage object references", () => {
             { level: "warning", blockId: "quieter", message: "No background music is set before this row; /bgm has to run first." },
         ]);
     });
+
+    /**
+     * The character, which was the last kind still built by get-or-create - and the most common
+     * subject in a script.
+     *
+     * `/hide Alice` with no `/show Alice` above it conjured a portrait out of nothing and hid it: an
+     * asset load, a statement on the timeline, and no scene. Both element classes a character can be
+     * are covered here, because they live in different tables and only one lookup reads both.
+     */
+    describe("belonging to a character", () => {
+        const ALICE: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-default", name: "default", assetId: "asset-alice" }],
+                defaultPoseId: "pose-default",
+            },
+        };
+
+        const DOLL: DevModeCharacterSummary = {
+            id: "char-doll",
+            name: "Doll",
+            appearance: {
+                kind: "puppet",
+                assetId: "asset-model",
+                backend: "some-runtime",
+                entry: null,
+                size: { width: 900, height: 1200 },
+                options: {},
+            },
+        };
+
+        type CharacterOperation = Extract<StoryActionPayload, { action: "character" }>["operation"];
+
+        const characterRow = (id: string, operation: CharacterOperation, characterId: string): StoryBlock =>
+            actionBlock(id, { action: "character", operation, characterId });
+
+        async function compile(blocks: Record<string, StoryBlock>, character: DevModeCharacterSummary) {
+            return compileStudioStoryToNlr({
+                document: baseDocument(blocks, Object.keys(blocks)),
+                sceneId: "scene-1",
+                characters: [character],
+                resolveAssetUrl,
+            });
+        }
+
+        it("acts on the portrait the entrance put on stage", async () => {
+            const compiled = await compile({
+                enter: characterRow("enter", "enter", "char-alice"),
+                // A `move` with no transform asks for no change and compiles to nothing, so this one
+                // carries the pose that makes it a statement worth looking for below.
+                move: actionBlock("move", {
+                    action: "character",
+                    operation: "move",
+                    characterId: "char-alice",
+                    transform: { to: { opacity: 1 }, durationMs: 100 },
+                }),
+                face: characterRow("face", "expression", "char-alice"),
+                exit: characterRow("exit", "exit", "char-alice"),
+            }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([]);
+            expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["move", "face", "exit"]));
+            // One portrait, the entrance's - not a fresh one per row.
+            expect([...(compiled.sceneElements?.["scene-1"].images.keys() ?? [])]).toEqual(["char-alice"]);
+        });
+
+        it("reports a row on a character nothing brought on, and leaves no portrait behind", async () => {
+            const compiled = await compile({ exit: characterRow("exit", "exit", "char-alice") }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([
+                { level: "error", blockId: "exit", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+            ]);
+            // The row that used to build a blank portrait and hide it now builds nothing at all.
+            expect(compiledRows(compiled)).toEqual([]);
+            expect(compiled.sceneElements?.["scene-1"].images.size).toBe(0);
+            expect(compiled.elementIdBindings).not.toContain("nl:image:scene-1:char-alice");
+        });
+
+        it("reports an expression on a character nothing brought on", async () => {
+            const compiled = await compile({ face: characterRow("face", "expression", "char-alice") }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([
+                { level: "error", blockId: "face", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+            ]);
+            expect(compiled.sceneElements?.["scene-1"].images.size).toBe(0);
+        });
+
+        /**
+         * The trap the split had to avoid: a puppet character is filed in `puppets`, not in `images`,
+         * so a lookup that read only the image table would report every row on an entered puppet.
+         */
+        it("finds an entered puppet character in the table it was filed under", async () => {
+            const compiled = await compile({
+                enter: characterRow("enter", "enter", "char-doll"),
+                face: characterRow("face", "expression", "char-doll"),
+                motion: characterRow("motion", "setMotion", "char-doll"),
+                exit: characterRow("exit", "exit", "char-doll"),
+            }, DOLL);
+
+            expect(compiled.diagnostics).toEqual([]);
+            expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["face", "motion", "exit"]));
+            expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(1);
+        });
+
+        /**
+         * Reaching INSIDE a puppet nothing entered is the same fault, one layer further in: it used to
+         * build the box, load the model and set a motion on an element that is never shown.
+         */
+        it("reports a state channel on a puppet character nothing brought on", async () => {
+            const compiled = await compile({ motion: characterRow("motion", "setMotion", "char-doll") }, DOLL);
+
+            expect(compiled.diagnostics).toEqual([
+                { level: "error", blockId: "motion", message: "Character \"Doll\" is not on stage; an earlier row has to bring it on stage." },
+            ]);
+            expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(0);
+        });
+
+        /**
+         * The one place a puppet is on stage with no `enter` row left to compile.
+         *
+         * A row-precise launch replays a stage snapshot, and the snapshot has no notion of a puppet -
+         * it files every character as an image record, so the replay pre-poses this character as a
+         * blank `Image` and the box itself is never restored. Reporting the rows that follow would
+         * make "play from this row" the one place a puppet character cannot be driven at all.
+         */
+        it("keeps driving a puppet character a row-precise launch pre-posed", async () => {
+            const blocks = {
+                enter: characterRow("enter", "enter", "char-doll"),
+                motion: characterRow("motion", "setMotion", "char-doll"),
+            };
+            const document = baseDocument(blocks, Object.keys(blocks));
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                characters: [DOLL],
+                resolveAssetUrl,
+                launch: {
+                    targetBlockId: "motion",
+                    snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "motion" }),
+                },
+            });
+
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+            expect(compiledRows(compiled)).toContain("motion");
+            expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(1);
+        });
+
+        /**
+         * `setName` addresses the `Character` record, not the portrait - it is how "？？？" becomes a
+         * name mid-scene, and it is meant to work before anyone walks on.
+         */
+        it("says nothing about a speaker rename before the character is on stage", async () => {
+            const compiled = await compile({
+                rename: actionBlock("rename", { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" }),
+            }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([]);
+            expect(compiledRows(compiled)).toEqual(["rename"]);
+        });
+    });
 });

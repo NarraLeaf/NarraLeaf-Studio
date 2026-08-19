@@ -164,6 +164,83 @@ describe("story/stage-object-missing", () => {
         ])).toEqual(["vol"]);
     });
 
+    /**
+     * The character half, which used to be exempt by construction: `exit`, `move` and `expression`
+     * all counted as putting the portrait on stage, because the compiler built it through
+     * get-or-create on those rows too. Only `enter` declares now, on both sides.
+     */
+    describe("a character", () => {
+        const enter = (id: string, characterId: string): StoryBlock =>
+            actionBlock(id, { action: "character", operation: "enter", characterId });
+
+        it("counts only the entrance as putting the portrait on stage", async () => {
+            expect(await reportedRows("story/stage-object-missing", [
+                enter("enter", "char-alice"),
+                actionBlock("face", { action: "character", operation: "expression", characterId: "char-alice" }),
+                actionBlock("exit", { action: "character", operation: "exit", characterId: "char-alice" }),
+            ])).toEqual([]);
+        });
+
+        it("reports a row on a character no row in the scene brings on", async () => {
+            expect(await reportedRows("story/stage-object-missing", [
+                actionBlock("exit", { action: "character", operation: "exit", characterId: "char-alice" }),
+            ])).toEqual(["exit"]);
+        });
+
+        it("names the character the way the author does, never its id", async () => {
+            // The stage key IS the character id when no stage name was typed, so the label has to come
+            // off the project's character list - a UUID in a report that stops a build is unusable.
+            const findings = await run(
+                "story/stage-object-missing",
+                createTestLintContext({
+                    characters: [{ id: "char-alice", name: "Alice", assetIds: [] }],
+                    stories: [storyEntry([actionBlock("exit", { action: "character", operation: "exit", characterId: "char-alice" })])],
+                }),
+            );
+            expect(findings[0].messageParams).toEqual({ object: "Alice" });
+            // Nothing creates a character; the remedy an author can act on is bringing it on stage.
+            expect(findings[0].messageKey).toBe("lint.rule.storyStageObjectMissing.messageCharacter");
+        });
+
+        it("leaves every other kind on the create wording", async () => {
+            const findings = await run(
+                "story/stage-object-missing",
+                createTestLintContext({
+                    stories: [storyEntry([actionBlock("show", { action: "image", operation: "show", objectName: "poster" })])],
+                }),
+            );
+            expect(findings[0].messageKey).toBe("lint.rule.storyStageObjectMissing.message");
+        });
+
+        it("stays silent on the three runtime-state verbs, which it cannot tell apart", async () => {
+            // On a puppet character these address the element and the compiler reports a miss; on a
+            // character Studio draws itself they never reach a lookup at all. Which one a row is
+            // depends on the character's profile, which is not in the document.
+            expect(await reportedRows("story/stage-object-missing", [
+                actionBlock("motion", { action: "character", operation: "setMotion", characterId: "char-doll", puppetName: "run" }),
+                actionBlock("skin", { action: "character", operation: "setSkin", characterId: "char-doll", puppetName: "winter" }),
+                actionBlock("params", { action: "character", operation: "setParams", characterId: "char-doll", params: { ParamAngleX: 1 } }),
+            ])).toEqual([]);
+        });
+
+        it("says nothing about a speaker rename, which addresses the record and not the stage", async () => {
+            expect(await reportedRows("story/stage-object-missing", [
+                actionBlock("rename", { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" }),
+            ])).toEqual([]);
+        });
+
+        it("lets a /show find the portrait an entrance registered, because it is an Image too", async () => {
+            expect(await reportedRows("story/stage-object-missing", [
+                enter("enter", "char-alice"),
+                actionBlock("show", {
+                    action: "displayable",
+                    operation: "show",
+                    target: { kind: "character", name: "char-alice", label: "Alice", sourceBlockId: "enter" },
+                }),
+            ])).toEqual([]);
+        });
+    });
+
     it("says nothing about a disabled row, which is authored but not in the runtime", async () => {
         expect(await reportedRows("story/stage-object-missing", [
             actionBlock("show", { action: "image", operation: "show", objectName: "poster" }, true),
@@ -257,7 +334,12 @@ describe("lint and the story compiler answer as one", () => {
             objectName: "wallpaper",
             target: { kind: "image", name: "wallpaper", sourceBlockId: "image-renamed" },
         }),
-        // Six kinds with nothing behind them.
+        // A character, the most common subject there is: the entrance declares the portrait and the
+        // exit addresses it. The asset is on the row so the compile needs no character profile.
+        actionBlock("character-enter", { action: "character", operation: "enter", characterId: "char-alice", assetId: "asset-alice" }),
+        actionBlock("character-exit", { action: "character", operation: "exit", characterId: "char-alice" }),
+        // Seven kinds with nothing behind them.
+        actionBlock("character-missing", { action: "character", operation: "exit", characterId: "char-bob" }),
         actionBlock("image-missing", { action: "image", operation: "hide", objectName: "ghost" }),
         actionBlock("text-missing", { action: "text", operation: "setText", objectName: "sign", text: "Open" }),
         actionBlock("layer-missing", { action: "layer", operation: "setZIndex", objectName: "foreground", zIndex: 3 }),
@@ -272,6 +354,7 @@ describe("lint and the story compiler answer as one", () => {
     ];
 
     const expectedRows = [
+        "character-missing",
         "image-missing",
         "text-missing",
         "layer-missing",
@@ -292,5 +375,29 @@ describe("lint and the story compiler answer as one", () => {
 
         expect([...fromCompiler].sort()).toEqual([...expectedRows].sort());
         expect([...fromLint].sort()).toEqual([...fromCompiler].sort());
+    });
+
+    /**
+     * The one shape where they are meant to differ, asserted in the direction that is safe.
+     *
+     * A row written above the row it depends on misses the compiler's in-order walk and passes lint's
+     * whole-scene reading. Lint has to be the quieter half: a build refused for something a preview
+     * plays correctly is a fault nobody can act on, while the reverse is a diagnostic in the console
+     * with the row still there to fix.
+     */
+    it("leaves a forward reference to the compiler alone", async () => {
+        const forward: StoryBlock[] = [
+            actionBlock("face-early", { action: "character", operation: "expression", characterId: "char-alice" }),
+            actionBlock("enter", { action: "character", operation: "enter", characterId: "char-alice", assetId: "asset-alice" }),
+        ];
+
+        const compiled = await compileStudioStoryToNlr({
+            document: document(forward),
+            sceneId: SCENE_ID,
+            resolveAssetUrl: async (assetId: string) => `nlr://${assetId}`,
+        } as Parameters<typeof compileStudioStoryToNlr>[0]);
+
+        expect(compilerReportedRows(compiled.diagnostics)).toEqual(["face-early"]);
+        expect(await reportedRows("story/stage-object-missing", forward)).toEqual([]);
     });
 });

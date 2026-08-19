@@ -15,11 +15,13 @@ import {
     listSceneLabels,
     listScenesInDocumentOrder,
     sceneLabelNames,
+    type StageObjectReference,
     type StoryBlock,
     type StoryBlockId,
     type StoryExpr,
     type StoryScene,
 } from "@shared/types/story";
+import type { TranslationKey } from "@shared/i18n/catalog";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintContext, LintStoryEntry } from "../context";
@@ -116,6 +118,42 @@ function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: StoryBlo
         storyName: entry.name,
         sceneName: scene.name,
     };
+}
+
+/**
+ * The word to print for a stage object the scene never creates.
+ *
+ * The reference's LABEL, never its key: an unnamed sound keys on its asset id, and a UUID in a
+ * report is a word nobody can search a project for.
+ *
+ * A character is the one kind whose label is not in the document either. It has no stage name until
+ * an author types one, so it keys on its `characterId` and its label falls back to a placeholder -
+ * while the name an author would recognise sits in the project's character list. Resolving it is the
+ * only reason this rule reads anything outside the story, and it matters here more than anywhere:
+ * a character is the most common subject in a script, and this rule stops a build.
+ */
+function stageObjectLabel(ctx: LintContext, reference: StageObjectReference): string {
+    if (reference.subject === "character") {
+        const name = ctx.characters.find(character => character.id === reference.name)?.name.trim();
+        if (name) {
+            return name;
+        }
+    }
+    return reference.label;
+}
+
+/**
+ * The sentence for a missing stage object, picked by what the row acts on.
+ *
+ * One shape, one varying clause, the way `blueprint/reference-missing` already names each kind it
+ * can resolve. Half of what a report is for is the remedy, and a character has a different one:
+ * nothing creates a character, an author brings it on stage. The story compiler states the same two
+ * remedies on `reportMissingStageObject`, so a preview and a build give one answer.
+ */
+function stageObjectMessageKey(reference: StageObjectReference): TranslationKey {
+    return reference.subject === "character"
+        ? "lint.rule.storyStageObjectMissing.messageCharacter"
+        : "lint.rule.storyStageObjectMissing.message";
 }
 
 /**
@@ -686,10 +724,8 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                 for (const reference of danglingStageObjectRefs(scene)) {
                     findings.push({
                         ruleId: "story/stage-object-missing",
-                        messageKey: "lint.rule.storyStageObjectMissing.message",
-                        // The LABEL, never the key: a character keys on its id and an unnamed sound
-                        // on its asset id, and a UUID in the report is a word nobody can search for.
-                        messageParams: { object: reference.label },
+                        messageKey: stageObjectMessageKey(reference),
+                        messageParams: { object: stageObjectLabel(ctx, reference) },
                         location: storyLocation(entry, scene, reference.blockId),
                         target: blockTarget(entry, scene, reference.blockId),
                     });
