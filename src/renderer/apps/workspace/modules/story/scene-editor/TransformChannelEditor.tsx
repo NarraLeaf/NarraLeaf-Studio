@@ -629,6 +629,7 @@ function AddChannelPicker(props: {
     channels: readonly TransformChannelSpec[];
     onAdd: (channel: TransformChannelSpec) => void;
     previewUrl: string | null;
+    isCamera: boolean;
     t: TFunc;
 }) {
     const [open, setOpen] = useState(false);
@@ -747,7 +748,7 @@ function AddChannelPicker(props: {
                                             close();
                                         }}
                                     >
-                                        <TransformChannelPreview channelId={channel.id} imageUrl={props.previewUrl} />
+                                        <TransformChannelPreview channelId={channel.id} imageUrl={props.previewUrl} isCamera={props.isCamera} />
                                         <span className="min-w-0 flex-1 truncate">{channel.label(props.t)}</span>
                                     </button>
                                 ))}
@@ -784,7 +785,8 @@ export function TransformChannelEditor(props: {
     const preview = useAssetObjectUrl(props.previewAssetId, AssetType.Image);
     const ref: StoryTransformRef = props.value ?? { mode: "props" };
     const stated = statedTransformChannels(ref);
-    const addable = addableTransformChannels(ref, { isText: props.targetKind === "text", isCamera: props.targetKind === "camera" });
+    const isCamera = props.targetKind === "camera";
+    const addable = addableTransformChannels(ref, { isText: props.targetKind === "text", isCamera });
     const removeLabel = t("storyInspector.transformChannel.remove");
 
     return (
@@ -806,6 +808,7 @@ export function TransformChannelEditor(props: {
             <AddChannelPicker
                 channels={addable}
                 previewUrl={preview.url}
+                isCamera={isCamera}
                 t={t}
                 onAdd={channel => props.onChange(channel.add(ref))}
             />

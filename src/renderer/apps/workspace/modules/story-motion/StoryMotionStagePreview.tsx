@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { StoryMotionPreviewState } from "./storyMotionTimeline";
 import type { StoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
+import { SampleStage, SampleSubject } from "@/lib/story/previewSubject";
 
 export type StoryMotionPreviewDragMode = "position" | "zoom" | "rotation" | "scaleX" | "scaleY";
 
@@ -207,17 +208,13 @@ function PreviewContent(props: {
         // Deliberately unlabelled, unlike the layer/image placeholders: those are featureless boxes
         // that need a name, while this one is already a picture of a stage. A caption here also ended
         // up inside every gallery card's accessible name ("CameraShake0.42s / Position").
-        return (
-            <div className="relative h-full w-full overflow-hidden rounded-md border border-primary/40 bg-[linear-gradient(180deg,#2b3550_0%,#3d4a63_58%,#4b4136_58%,#3a3229_100%)]">
-                <div className="absolute bottom-[8%] left-1/2 h-[38%] w-[12%] -translate-x-1/2 rounded-t-full bg-white/25" />
-            </div>
-        );
+        return <SampleStage className="rounded-md border border-primary/40" />;
     }
-    return (
-        <div className="grid h-full w-full place-items-center rounded-md border border-primary/40 bg-primary/15 px-3 text-xs font-medium text-primary">
-            {props.target.label}
-        </div>
-    );
+    // An image or a character with nothing bound. It used to be a coloured box with a name in it,
+    // which auditions every preset identically: a box does not read as moving, scaling or turning.
+    // The stand-in portrait does, and the label stays as the frame's own caption rather than being
+    // the only thing in the frame.
+    return <SampleSubject />;
 }
 
 /**

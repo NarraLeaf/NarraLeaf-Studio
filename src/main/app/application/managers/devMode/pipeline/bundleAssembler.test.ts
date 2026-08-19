@@ -9,6 +9,7 @@ import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION } from "@shared/types/saveCompatibility";
 import { APP_TAG_ID_RELEASE, appTagMechanismKey } from "@shared/types/appTag";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { Blueprint, BlueprintGraphIr, SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
@@ -28,6 +29,7 @@ import {
     foldSharedBlueprints,
     planSceneDrop,
     resolveStoryDocumentPathForIndexEntry,
+    loadStoryLibrary,
 } from "./bundleAssembler";
 import type { DevModeBundleLoadContext } from "./types";
 
@@ -887,5 +889,99 @@ describe("bundleAssembler save compatibility", () => {
         // builds of the same version, and inventing one would make them look like two.
         expect(await loadGameVersion(await createProject({}))).toBe("");
         expect(await loadGameVersion(path.join(os.tmpdir(), "nls-missing-project"))).toBe("");
+    });
+});
+
+/**
+ * The bundle is where a document stops being a file and becomes the story that PLAYS: the story
+ * compiler runs inside Dev Mode and inside the shipped game, on whatever this loader hands them. It
+ * reads the CURRENT schema and only that, so a document arriving at an older one loses every row
+ * whose payload has been reshaped since - and loses it silently, because a payload the compiler
+ * cannot recognise is not a payload it can report.
+ *
+ * `/transform camera look=` is the row that proved it. Before v19 a camera row spelled its grade as
+ * `operation: "look"` with the preset in a field of its own; the v19 compiler reads
+ * `payload.transform`, an older row has none, and the row compiled to no statement at all - the
+ * scene stepped straight past it and the stage was never graded, with nothing said anywhere.
+ *
+ * The editor migrates when it opens a document, but it only writes one back when the author edits
+ * it, so "the project has been opened" is not the same as "the bytes on disk are current" and cannot
+ * be made the same. The migration therefore belongs here, on the read that feeds the compiler.
+ */
+describe("bundleAssembler story schema", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    /** A story as an older Studio wrote it: one narration, one camera grade, stamped at that version. */
+    async function createLegacyStoryProject(): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-story-schema-"));
+        tempDirs.push(projectPath);
+        const storyDir = path.join(projectPath, "editor", "story", "stories", STORY_ID);
+        await mkdir(storyDir, { recursive: true });
+        await writeFile(
+            path.join(projectPath, "editor", "story", "index.json"),
+            JSON.stringify({ schemaVersion: 1, stories: [{ id: STORY_ID, name: "Story", documentPath: "" }] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(storyDir, "storydoc.json"),
+            JSON.stringify({
+                schemaVersion: 17,
+                id: STORY_ID,
+                name: "Story",
+                chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
+                scenes: {
+                    "scene-1": {
+                        id: "scene-1",
+                        name: "Scene 1",
+                        runtimeName: "Scene 1",
+                        rootBlockIds: ["grade"],
+                        blocks: {
+                            grade: {
+                                id: "grade",
+                                kind: "action",
+                                parentId: null,
+                                childrenIds: [],
+                                payload: {
+                                    action: "camera",
+                                    operation: "look",
+                                    lookPreset: "moonlight",
+                                    lookIntensity: 1,
+                                    durationMs: 1200,
+                                    easing: "easeInOut",
+                                },
+                            },
+                        },
+                    },
+                },
+            }),
+            "utf-8",
+        );
+        return projectPath;
+    }
+
+    it("carries a migrated document, not the bytes on disk", async () => {
+        const library = await loadStoryLibrary(
+            await createLegacyStoryProject(),
+            { id: APP_TAG_ID_RELEASE, name: "Release" },
+            null,
+        );
+        const document = library?.documents[STORY_ID];
+        expect(document?.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        // The whole point: the compiler reads this shape. `operation: "look"` reaching it is the bug -
+        // it takes the `transform` branch, finds no ref, and the grade never happens.
+        expect(document?.scenes["scene-1"].blocks.grade.payload).toEqual({
+            action: "camera",
+            operation: "transform",
+            transform: {
+                mode: "props",
+                to: { look: { preset: "moonlight", intensity: 1 } },
+                durationMs: 1200,
+                easing: "easeInOut",
+            },
+        });
     });
 });
