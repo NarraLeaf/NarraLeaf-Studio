@@ -499,6 +499,7 @@ export const story = {
         imageAsset: "Image",
         imageOrColor: "Image or Color",
         videoAsset: "Video",
+        vfxSource: "Clip or weather",
         audioAsset: "Audio",
         objectName: "Name",
         content: "Content",
@@ -588,6 +589,10 @@ export const story = {
      * that merely echoes a canonical value, so these entries change nothing on their own.
      */
     enumValue: {
+        // Weather seeds - reserved words in the `/vfx` source slot.
+        snow: "snow",
+        rain: "rain",
+        sakura: "sakura",
         // Transitions (`t=`), the unified word list from `commands/transitions.ts`.
         fade: "fade",
         // The crossfade named outright, for the contexts where `fade` means something else.
