@@ -9,6 +9,8 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { AssetSetIconTile } from "../components/AssetSetRow";
+import type { ResolvedAssetSet } from "../state/useAssetSets";
+import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
 
 interface AssetsIconViewProps {
     dropTargetId: string | null;
@@ -90,6 +92,8 @@ export function AssetsIconView({
         assetSets,
         rootAssetSets,
         memberAssetIds,
+        assetSetNaming,
+        assets: libraryAssets,
         handleAssetSetSelect,
         showAssetSetContextMenu,
     } = useAssetsPanelContext();
@@ -106,6 +110,38 @@ export function AssetsIconView({
         return stack;
     }, [groups, groupPathIds]);
     const activeGroup = groupStack.length > 0 ? groupStack[groupStack.length - 1] : null;
+
+    /**
+     * The sets walked into, outermost first.
+     *
+     * Held here rather than in the panel's saved state, unlike the folder path: a folder is where an
+     * author leaves the panel, and a set is somewhere they step into and back out of. Cleared
+     * whenever the set at the end of it stops existing, so deleting one cannot leave the grid inside
+     * something the project no longer has.
+     */
+    const [setPathIds, setSetPathIds] = useState<string[]>([]);
+    const setStack = useMemo(() => {
+        const byId = new Map(Object.values(assetSets).flat().map(entry => [entry.set.id, entry]));
+        const stack: ResolvedAssetSet[] = [];
+        for (const id of setPathIds) {
+            const entry = byId.get(id);
+            if (!entry) {
+                break;
+            }
+            stack.push(entry);
+        }
+        return stack;
+    }, [assetSets, setPathIds]);
+    const activeSet = setStack.length > 0 ? setStack[setStack.length - 1] : null;
+    useEffect(() => {
+        if (setStack.length !== setPathIds.length) {
+            setSetPathIds(setStack.map(entry => entry.set.id));
+        }
+    }, [setPathIds.length, setStack]);
+
+    // A search narrows the whole library, so it takes the reader out of whatever they had opened -
+    // the same thing it already does to folders.
+    const insideSet = activeSet && !isNarrowed ? activeSet : null;
     // While a search or filter is narrowing the library the grid goes flat: a hit filed three groups
     // down is not a hit if the reader has to guess which folder to open to see it.
     const parentPredicate = useCallback(
@@ -117,9 +153,19 @@ export function AssetsIconView({
         onGroupPathChange([...groupPathIds, group.id]);
     }, [groupPathIds, onGroupPathChange]);
 
+    const handleEnterSet = useCallback((entry: ResolvedAssetSet) => {
+        setSetPathIds(current => [...current, entry.set.id]);
+    }, []);
+
+    // Out of the set first, then out of the folder: they are one path to the reader, and the set is
+    // the part of it they are standing in.
     const handleBack = useCallback(() => {
+        if (setPathIds.length > 0) {
+            setSetPathIds(current => current.slice(0, -1));
+            return;
+        }
         onGroupPathChange(groupPathIds.slice(0, -1));
-    }, [groupPathIds, onGroupPathChange]);
+    }, [groupPathIds, onGroupPathChange, setPathIds.length]);
 
     // The compact toolbar draws the breadcrumb, so this handler leaves the component and is held in
     // the panel's state. It goes out through a constant identity on purpose: published directly,
@@ -136,8 +182,9 @@ export function AssetsIconView({
             setAssetsIconToolbarCenter(null);
             return;
         }
-        if (activeGroup && !isNarrowed) {
-            const title = activeGroup.group.name;
+        const crumb = insideSet ? insideSet.set.name : activeGroup && !isNarrowed ? activeGroup.group.name : null;
+        if (crumb) {
+            const title = crumb;
             // Same folder, same breadcrumb: keep the object React already has rather than writing an
             // equal-but-new one, which would count as a change and schedule another render.
             setAssetsIconToolbarCenter(prev => (
@@ -148,13 +195,15 @@ export function AssetsIconView({
         } else {
             setAssetsIconToolbarCenter(null);
         }
-    }, [compactToolbar, activeGroup, isNarrowed, publishedBack, setAssetsIconToolbarCenter]);
+    }, [compactToolbar, activeGroup, insideSet, isNarrowed, publishedBack, setAssetsIconToolbarCenter]);
 
     useEffect(() => {
         return () => setAssetsIconToolbarCenter(null);
     }, [setAssetsIconToolbarCenter]);
 
-    const displayCategories = activeGroup && !isNarrowed ? [activeGroup.category] : ASSET_CATEGORY_ORDER;
+    const displayCategories = insideSet
+        ? [insideSet.category]
+        : activeGroup && !isNarrowed ? [activeGroup.category] : ASSET_CATEGORY_ORDER;
     const minIconSize = 120;
     const maxIconSize = 240;
     const step = 10;
@@ -172,7 +221,7 @@ export function AssetsIconView({
                 }
             }}
         >
-            {activeGroup && !isNarrowed && !compactToolbar && (
+            {(insideSet || (activeGroup && !isNarrowed)) && !compactToolbar && (
                 <div
                     // `bg-surface-sunken`, like the other sticky group headers (localization, voice):
                     // a base `bg-surface` is cleared under a workspace wallpaper, and the grid would
@@ -186,7 +235,7 @@ export function AssetsIconView({
                     >
                         <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <div className="text-sm font-semibold truncate px-2">{activeGroup.group.name}</div>
+                    <div className="text-sm font-semibold truncate px-2">{insideSet ? insideSet.set.name : activeGroup?.group.name}</div>
                     <div className="w-6 h-6" />
                 </div>
             )}
@@ -195,13 +244,19 @@ export function AssetsIconView({
                     const CategoryIcon = ASSET_CATEGORY_ICONS[category];
                     // Narrowed, the grid is a result set: only groups that matched by name are hits.
                     // The rest of `filteredGroups` is the ancestor scaffolding a tree needs.
-                    const categoryGroups = isNarrowed
-                        ? filteredGroups[category].filter((group) => matchedGroupIds.has(group.id))
-                        : filteredGroups[category].filter((group) => parentPredicate(group.parentGroupId));
+                    // Inside a set there are no folders and no loose files: what it holds is one
+                    // answer per value, which the block below draws.
+                    const categoryGroups = insideSet
+                        ? []
+                        : isNarrowed
+                            ? filteredGroups[category].filter((group) => matchedGroupIds.has(group.id))
+                            : filteredGroups[category].filter((group) => parentPredicate(group.parentGroupId));
                     // A file a set answers with is drawn inside that set and not again beside it,
                     // the same rule the tree follows: two tiles for one file read as two files.
-                    const categoryAssets = filteredAssets[category]
-                        .filter((asset) => parentPredicate(asset.groupId) && !memberAssetIds.has(asset.id));
+                    const categoryAssets = insideSet
+                        ? []
+                        : filteredAssets[category]
+                            .filter((asset) => parentPredicate(asset.groupId) && !memberAssetIds.has(asset.id));
                     // What this section stands for, not what happens to be loose in it.
                     const scopedAssets = isNarrowed
                         ? categoryAssets
@@ -210,10 +265,19 @@ export function AssetsIconView({
                     // section its type belongs to and is not in any folder, so walking into one must
                     // not keep drawing it as if it were part of that folder's contents.
                     // Filed where it was made, so walking into a folder shows the sets made in it.
-                    const categorySets = isNarrowed
-                        ? rootAssetSets[category]
-                        : rootAssetSets[category].filter(entry => (entry.set.groupId ?? "") === (activeGroup?.group.id ?? ""));
-                    const hasItems = categoryGroups.length > 0 || categoryAssets.length > 0 || categorySets.length > 0;
+                    const categorySets = insideSet
+                        ? []
+                        : isNarrowed
+                            ? rootAssetSets[category]
+                            : rootAssetSets[category].filter(entry => (entry.set.groupId ?? "") === (activeGroup?.group.id ?? ""));
+                    // One tile per value the set promises: the file that answers it, the set that
+                    // answers it, or the hole - which keeps its tile, because the value is why the
+                    // tile is there and dropping it would make an unfinished set look finished.
+                    const setCells = insideSet ? insideSet.contents.cells : [];
+                    const hasItems = categoryGroups.length > 0
+                        || categoryAssets.length > 0
+                        || categorySets.length > 0
+                        || setCells.length > 0;
 
                     return (
                         <section
@@ -300,9 +364,38 @@ export function AssetsIconView({
                                             entry={entry}
                                             selected={false}
                                             onSelect={() => handleAssetSetSelect(entry)}
+                                            onNavigate={() => handleEnterSet(entry)}
                                             onContextMenu={(event) => showAssetSetContextMenu(event, entry)}
                                         />
                                     ))}
+                                    {setCells.map((cell) => {
+                                        const child = cell.childSetIds.length === 1
+                                            ? assetSets[category].find(entry => entry.set.id === cell.childSetIds[0])
+                                            : undefined;
+                                        const coordinate = formatAssetSetCoordinateReading(
+                                            readAssetSetCoordinate(insideSet!.set, cell.coordinate, assetSetNaming),
+                                        );
+                                        if (child) {
+                                            return (
+                                                <AssetSetIconTile
+                                                    key={cell.label}
+                                                    entry={child}
+                                                    caption={coordinate}
+                                                    selected={false}
+                                                    onSelect={() => handleAssetSetSelect(child)}
+                                                    onNavigate={() => handleEnterSet(child)}
+                                                    onContextMenu={(event) => showAssetSetContextMenu(event, child)}
+                                                />
+                                            );
+                                        }
+                                        const asset = cell.assetIds.length === 1
+                                            ? filteredAssets[category].find(entry => entry.id === cell.assetIds[0])
+                                                ?? libraryAssets[category].find(entry => entry.id === cell.assetIds[0])
+                                            : undefined;
+                                        return asset
+                                            ? <AssetIconTile key={cell.label} asset={asset} category={category} caption={coordinate} />
+                                            : <AssetSetHoleTile key={cell.label} caption={coordinate} />;
+                                    })}
                                     {categoryGroups.map((group) => {
                                         const childGroups = filteredGroups[category].filter((g) => g.parentGroupId === group.id);
                                         const childAssets = filteredAssets[category].filter((a) => a.groupId === group.id);
@@ -458,7 +551,30 @@ function GroupIconTile({
     );
 }
 
-function AssetIconTile({ asset, category }: { asset: Asset; category: AssetCategory }) {
+/**
+ * A value of a set with no file for it.
+ *
+ * Drawn rather than skipped: the value is why there is a tile at all, and a set missing one of its
+ * variants would otherwise look finished.
+ */
+function AssetSetHoleTile({ caption }: { caption: string }) {
+    const { t } = useTranslation();
+    return (
+        <div className="flex flex-col gap-2 rounded-lg border border-dashed border-warning/40 bg-fill-subtle p-2">
+            <div className="flex aspect-square w-full items-center justify-center rounded-md bg-fill">
+                <span className="text-2xs text-warning">{t("assets.sets.inspector.variantMissing")}</span>
+            </div>
+            <span className="truncate text-2xs text-fg-subtle" data-tip={caption}>{caption}</span>
+        </div>
+    );
+}
+
+function AssetIconTile({ asset, category, caption }: {
+    asset: Asset;
+    category: AssetCategory;
+    /** What this file is the variant for, when it is being drawn inside a set. */
+    caption?: string;
+}) {
     const { tn } = useTranslation();
     const {
         selectedItems,
@@ -520,10 +636,13 @@ function AssetIconTile({ asset, category }: { asset: Asset; category: AssetCateg
             </div>
             <div className="flex min-w-0 items-center gap-1.5">
                 <span className="truncate text-xs font-medium" data-tip={asset.name}>{asset.name}</span>
-                {asset.tags.length > 0 && (
+                {!caption && asset.tags.length > 0 && (
                     <span className="ml-auto shrink-0 text-2xs text-fg-subtle">{tn("assets.iconView.tagCount", asset.tags.length)}</span>
                 )}
             </div>
+            {caption && (
+                <span className="-mt-1 truncate text-2xs text-fg-subtle" data-tip={caption}>{caption}</span>
+            )}
         </div>
     );
 }

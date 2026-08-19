@@ -3,6 +3,7 @@ import type { StatusBarEntryModule } from "../types";
 import {
     NotificationsEntry,
     RunStatusEntry,
+    StudioTaskEntry,
     ShortcutsEntry,
     ThemeEntry,
     SaveStatusEntry,
@@ -44,6 +45,14 @@ export const builtInStatusBarEntries: StatusBarEntryModule[] = [
         labelKey: "workspace.shell.statusBar.entries.runStatus",
         alignment: StatusBarAlignment.Left,
         component: RunStatusEntry,
+    },
+    {
+        // Directly inboard of the run status, because the two answer the same question - what is
+        // happening right now - and an author looking for one is looking at the other.
+        id: "narraleaf-studio:status-bar/studio-tasks",
+        labelKey: "workspace.shell.statusBar.entries.studioTasks",
+        alignment: StatusBarAlignment.Left,
+        component: StudioTaskEntry,
     },
     {
         // Id kept from when this cell only watched the story service: it is persisted in the user's

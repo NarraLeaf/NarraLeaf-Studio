@@ -36,12 +36,18 @@ export function useSetSummary(entry: ResolvedAssetSet): string {
 export function AssetSetIconTile({
     entry,
     selected,
+    caption,
     onSelect,
+    onNavigate,
     onContextMenu,
 }: {
     entry: ResolvedAssetSet;
     selected: boolean;
+    /** What this set is the variant for, when it is being drawn inside another one. */
+    caption?: string;
     onSelect: (event: React.MouseEvent) => void;
+    /** Walk into it. The same gesture a folder tile answers to, for the same reason. */
+    onNavigate?: () => void;
     onContextMenu: (event: React.MouseEvent) => void;
 }) {
     const summary = useSetSummary(entry);
@@ -49,10 +55,15 @@ export function AssetSetIconTile({
         <div
             data-asset-set-id={entry.set.id}
             className={cn(
-                "group relative flex flex-col rounded-md border p-2 cursor-default hover:bg-fill",
+                "group relative flex flex-col rounded-md border p-2 cursor-pointer hover:bg-fill",
                 selected ? "border-primary bg-primary/10" : entry.incomplete ? "border-warning/40" : "border-edge",
             )}
-            onClick={onSelect}
+            onClick={event => {
+                onSelect(event);
+                if (!event.ctrlKey && !event.metaKey && !event.shiftKey) {
+                    onNavigate?.();
+                }
+            }}
             onContextMenu={onContextMenu}
         >
             <div className="flex-1 flex items-center justify-center">
@@ -62,6 +73,7 @@ export function AssetSetIconTile({
             <p className={cn("text-2xs truncate", entry.incomplete ? "text-warning" : "text-fg-subtle")}>
                 {summary}
             </p>
+            {caption && <p className="truncate text-2xs text-fg-subtle" data-tip={caption}>{caption}</p>}
         </div>
     );
 }
