@@ -8,58 +8,67 @@ import { STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLo
  * **Live CSS, not a rendered clip.** Every one of these channels IS a CSS declaration on a
  * displayable, so the honest preview is that declaration applied to a sample - which costs no
  * assets, follows the theme, works at any zoom, and cannot drift from what the channel does the way
- * a recorded GIF would the first time a value changes. The moving ones animate on hover rather than
- * looping: a grid of twenty tiles all cycling is a slot machine, and the one the pointer is on is
- * the only one being read.
+ * a recorded GIF would the first time a value changes.
  *
- * The sample is deliberately a stage and a subject rather than a photograph. A grade has to be
- * legible on something with a hue (`bg-primary` carries the brand cyan, which is what makes
- * grayscale, sepia and hue-rotate readable at 40px), and a clip or a mask only reads as a cut when
- * the thing being cut has an edge inside the frame.
+ * **The sample is artwork, not a colour swatch.** A flat block only ever says "the colour changed":
+ * sepia, saturate and hue-rotate all read as *some* shift and none of them reads as what it does to
+ * a face. A portrait has skin, hair, line work and a highlight, so a grade lands on material an
+ * author recognises - and the difference between grayscale and desaturate is visible at 24px, which
+ * on a swatch it is not.
+ *
+ * Where the row transforms something that HAS a picture, that picture is the sample
+ * ({@link TransformChannelPreviewProps.imageUrl}); otherwise it falls back to the bundled portrait,
+ * because the picker has to work in a project with no art in it at all.
  */
+
+const FALLBACK_SUBJECT_URL = "/img/narraleaf-studio/narra-avatar.png";
 
 const TILE_CLASS = "relative h-8 w-12 shrink-0 overflow-hidden rounded-sm border border-edge bg-surface-sunken";
 
-/** The subject: a lit shape on a dim stage, with enough hue for a grade to show. */
-function Subject(props: { className?: string; style?: CSSProperties }) {
+const SUBJECT_CLASS = "absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 bg-contain bg-center bg-no-repeat";
+
+type SubjectProps = { url: string; className?: string; style?: CSSProperties };
+
+/** The thing being transformed. Sized to the tile's height, so a crop or a mask has an edge to cut. */
+function Subject(props: SubjectProps) {
     return (
         <span
-            className={cn("absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-primary", props.className)}
-            style={props.style}
+            className={cn(SUBJECT_CLASS, props.className)}
+            style={{ backgroundImage: `url("${props.url}")`, ...props.style }}
         />
     );
 }
 
 /** A horizon line, so a move or a zoom has something to be measured against. */
 function Stage() {
-    return <span className="absolute inset-x-0 bottom-1.5 h-px bg-edge-strong" aria-hidden="true" />;
+    return <span className="absolute inset-x-0 bottom-1 h-px bg-edge-strong" aria-hidden="true" />;
 }
 
 const FILTER_SAMPLE: Record<string, string> = {
-    blur: "blur(1.5px)",
-    brightness: "brightness(1.7)",
+    blur: "blur(1.2px)",
+    brightness: "brightness(1.6)",
     contrast: "contrast(2.2)",
     grayscale: "grayscale(1)",
-    saturate: "saturate(2.5)",
+    saturate: "saturate(3)",
     sepia: "sepia(1)",
-    hueRotate: "hue-rotate(140deg)",
+    hueRotate: "hue-rotate(150deg)",
     invert: "invert(1)",
 };
 
 const GEOMETRY_SAMPLE: Record<string, CSSProperties> = {
-    position: { transform: "translate(-125%, -50%)" },
-    zoom: { transform: "translate(-50%, -50%) scale(1.45)" },
-    scaleX: { transform: "translate(-50%, -50%) scaleX(0.5)" },
-    scaleY: { transform: "translate(-50%, -50%) scaleY(0.5)" },
-    rotation: { transform: "translate(-50%, -50%) rotate(28deg)" },
+    position: { transform: "translate(-110%, -50%)" },
+    zoom: { transform: "translate(-50%, -50%) scale(1.4)" },
+    scaleX: { transform: "translate(-50%, -50%) scaleX(0.45)" },
+    scaleY: { transform: "translate(-50%, -50%) scaleY(0.45)" },
+    rotation: { transform: "translate(-50%, -50%) rotate(26deg)" },
     opacity: { opacity: 0.3 },
 };
 
 const CLIP_SAMPLE: Record<string, string> = {
-    clip: "inset(0 30% 0 0)",
-    mask: "circle(46% at 50% 50%)",
-    circleReveal: "circle(38% at 50% 50%)",
-    circleClose: "circle(70% at 50% 50%)",
+    clip: "inset(0 32% 0 0)",
+    mask: "circle(42% at 50% 45%)",
+    circleReveal: "circle(34% at 50% 45%)",
+    circleClose: "circle(72% at 50% 45%)",
     wipe: "inset(0 45% 0 0)",
 };
 
@@ -77,7 +86,7 @@ function lookCss(presetId: string): string | undefined {
  * survive that setting, and a preview grid that keeps moving after the reader asked it not to is
  * exactly what the setting is for.
  */
-function RevealPreview(props: { className?: string }) {
+function RevealPreview(props: { url: string; className?: string }) {
     const [open, setOpen] = useState(false);
     return (
         <span
@@ -88,6 +97,7 @@ function RevealPreview(props: { className?: string }) {
         >
             <Stage />
             <Subject
+                url={props.url}
                 style={{
                     clipPath: open ? CLIP_SAMPLE.circleClose : CLIP_SAMPLE.circleReveal,
                     transition: "clip-path 300ms ease-out",
@@ -97,33 +107,43 @@ function RevealPreview(props: { className?: string }) {
     );
 }
 
+export type TransformChannelPreviewProps = {
+    channelId: string;
+    /** Draw one named grade instead of the channel's own sample. */
+    lookPreset?: string;
+    /** The picture this row actually transforms, when it has one. Falls back to the bundled portrait. */
+    imageUrl?: string | null;
+    className?: string;
+};
+
 /**
  * The tile for one channel id, or for one grade when `lookPreset` names it.
  *
  * Unknown ids get the neutral sample rather than nothing: a channel added to the vocabulary without
- * a sample here still shows a subject, so the picker reads as complete while the tile is the thing
+ * a sample here still shows the subject, so the picker reads as complete while the tile is the thing
  * that is missing.
  */
-export function TransformChannelPreview(props: { channelId: string; lookPreset?: string; className?: string }) {
+export function TransformChannelPreview(props: TransformChannelPreviewProps) {
     const { channelId } = props;
+    const url = props.imageUrl || FALLBACK_SUBJECT_URL;
 
     if (props.lookPreset) {
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject style={{ filter: lookCss(props.lookPreset) }} />
+                <Subject url={url} style={{ filter: lookCss(props.lookPreset) }} />
             </span>
         );
     }
 
-    // A restore puts the channel back, so its tile is the neutral subject - the absence of a look,
-    // which is exactly what the channel writes.
+    // A restore puts the channel back, so its tile is the plain subject beside a faded copy of
+    // itself - the look coming off, which is what the channel writes.
     if (channelId.startsWith("clear.")) {
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject className="opacity-40" />
-                <Subject />
+                <Subject url={url} className="opacity-30" style={{ transform: "translate(-90%, -50%)" }} />
+                <Subject url={url} style={{ transform: "translate(-10%, -50%)" }} />
             </span>
         );
     }
@@ -133,20 +153,20 @@ export function TransformChannelPreview(props: { channelId: string; lookPreset?:
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject style={{ filter: FILTER_SAMPLE[fn] }} />
+                <Subject url={url} style={{ filter: FILTER_SAMPLE[fn] }} />
             </span>
         );
     }
 
     if (channelId in GEOMETRY_SAMPLE) {
-        // Static, and the horizon is what makes it readable: a subject sitting left of centre says
-        // "position" without having to move, and a tile that moved would only be legible while the
-        // pointer happened to be on it.
+        // Static, and the ghost is what makes it readable: a portrait sitting left of a faint copy
+        // of itself says "position" without having to move, and a tile that moved would only be
+        // legible while the pointer happened to be on it.
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject className="opacity-25" />
-                <Subject style={GEOMETRY_SAMPLE[channelId]} />
+                <Subject url={url} className="opacity-20" />
+                <Subject url={url} style={GEOMETRY_SAMPLE[channelId]} />
             </span>
         );
     }
@@ -155,19 +175,19 @@ export function TransformChannelPreview(props: { channelId: string; lookPreset?:
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject style={{ filter: lookCss(STORY_CAMERA_LOOK_PRESETS[0]?.id ?? "") }} />
+                <Subject url={url} style={{ filter: lookCss(STORY_CAMERA_LOOK_PRESETS[0]?.id ?? "") }} />
             </span>
         );
     }
 
     if (channelId === "blend") {
-        // Two overlapping subjects, because a blend mode is a relationship and one shape cannot show
-        // one: what the tile has to say is that this channel is about what is BEHIND the object.
+        // A blend mode is a relationship, and one picture cannot show one: the tile has to say that
+        // this channel is about what sits BEHIND the object, so there is something behind it.
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
+                <span className="absolute inset-y-0 right-0 w-1/2 bg-warning" />
                 <Stage />
-                <span className="absolute left-2 top-1/2 h-5 w-5 -translate-y-1/2 rounded-sm bg-warning" />
-                <span className="absolute right-2 top-1/2 h-5 w-5 -translate-y-1/2 rounded-sm bg-primary" style={{ mixBlendMode: "screen" }} />
+                <Subject url={url} style={{ mixBlendMode: "luminosity" }} />
             </span>
         );
     }
@@ -176,21 +196,21 @@ export function TransformChannelPreview(props: { channelId: string; lookPreset?:
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject />
-                <span className="absolute inset-x-0 bottom-0 h-3 bg-fill" style={{ backdropFilter: "blur(2px)" }} />
+                <Subject url={url} />
+                <span className="absolute inset-x-0 bottom-0 h-1/2 bg-fill" style={{ backdropFilter: "blur(2px)" }} />
             </span>
         );
     }
 
     if (channelId === "reveal") {
-        return <RevealPreview className={props.className} />;
+        return <RevealPreview url={url} className={props.className} />;
     }
 
     if (channelId in CLIP_SAMPLE) {
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject style={{ clipPath: CLIP_SAMPLE[channelId] }} />
+                <Subject url={url} style={{ clipPath: CLIP_SAMPLE[channelId] }} />
             </span>
         );
     }
@@ -199,7 +219,7 @@ export function TransformChannelPreview(props: { channelId: string; lookPreset?:
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject style={{ filter: "drop-shadow(0 0 3px currentColor) saturate(1.6)" }} />
+                <Subject url={url} style={{ filter: "drop-shadow(0 0 2px currentColor) saturate(1.6)" }} />
             </span>
         );
     }
@@ -213,14 +233,14 @@ export function TransformChannelPreview(props: { channelId: string; lookPreset?:
     }
 
     if (channelId === "delayMs" || channelId === "repeat" || channelId === "repeatDelayMs") {
-        // Timing is not a look, so the tile shows the only thing it can honestly show: the subject
-        // arriving late, or arriving twice.
+        // Timing is not a look, so the tile shows the only thing it honestly can: the same subject
+        // more than once, arriving across the frame.
         return (
             <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
                 <Stage />
-                <Subject className="h-4 w-4 opacity-20" style={{ transform: "translate(-115%, -50%)" }} />
-                <Subject className="h-4 w-4 opacity-45" style={{ transform: "translate(-50%, -50%)" }} />
-                <Subject className="h-4 w-4" style={{ transform: "translate(15%, -50%)" }} />
+                <Subject url={url} className="h-5 w-5 opacity-20" style={{ transform: "translate(-135%, -50%)" }} />
+                <Subject url={url} className="h-5 w-5 opacity-45" style={{ transform: "translate(-50%, -50%)" }} />
+                <Subject url={url} className="h-5 w-5" style={{ transform: "translate(35%, -50%)" }} />
             </span>
         );
     }
@@ -228,7 +248,7 @@ export function TransformChannelPreview(props: { channelId: string; lookPreset?:
     return (
         <span className={cn(TILE_CLASS, props.className)} aria-hidden="true">
             <Stage />
-            <Subject />
+            <Subject url={url} />
         </span>
     );
 }

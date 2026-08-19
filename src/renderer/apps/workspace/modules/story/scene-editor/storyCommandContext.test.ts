@@ -40,14 +40,45 @@ describe("buildStoryCommandContext - stage objects", () => {
         });
 
         // This is what makes `/show`, `/swap`, `/stop` a pick rather than a guess - image/text/layer
-        // via the shared displayable collector; video, audio and vfx are scanned off the scene, since
-        // none of the three is a Displayable and the shared collector does not know them.
+        // via the shared displayable collector; video, audio and vfx are scanned off the blocks,
+        // since none of the three is a Displayable and the shared collector does not know them.
         expect(context.stageObjects.image).toEqual(["hero"]);
         expect(context.stageObjects.text).toEqual(["title"]);
         expect(context.stageObjects.layer).toEqual(["fx"]);
         expect(context.stageObjects.video).toEqual(["clip"]);
         expect(context.stageObjects.audio).toEqual(["music"]);
         expect(context.stageObjects.vfx).toEqual(["rain"]);
+    });
+
+    it("offers an ambience overlay started in another scene", () => {
+        // A `Vfx` is held by the game, not by a scene: it keeps playing after the scene that
+        // started it ends, so the scene the author is standing in is the one that has to be able to
+        // stop it. Every other kind here stays scene-scoped, because every other kind does end.
+        const document = documentWith({ b1: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" } });
+        document.scenes["scene-2"] = {
+            id: "scene-2",
+            name: "Second",
+            runtimeName: "second",
+            rootBlockIds: ["c1"],
+            blocks: {
+                c1: {
+                    id: "c1", kind: "action", parentId: null, childrenIds: [],
+                    payload: { action: "vfx", operation: "create", objectName: "rain", assetId: "vid-9" },
+                },
+            },
+        };
+
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+        });
+
+        expect(context.stageObjects.vfx).toEqual(["rain"]);
+        // The scene-scoped kinds do not follow it across.
+        expect(context.stageObjects.image).toEqual(["hero"]);
     });
 
     it("is empty, not undefined, when there is no scene", () => {

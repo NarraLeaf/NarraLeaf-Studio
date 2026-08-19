@@ -73,7 +73,8 @@ import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils"
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryVoiceState } from "./useStoryVoiceState";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
-import { DisplayableTargetField } from "./DisplayableTargetField";
+import { DisplayableTargetField, matchesTarget } from "./DisplayableTargetField";
+import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
 import { PuppetPreview } from "@/apps/workspace/modules/characters/editors/components/PuppetPreview";
@@ -945,6 +946,7 @@ function ActionPayloadFields(props: {
                 <TransformPresetEditor
                     value={payload.transform}
                     motionTargetKind="image"
+                    previewAssetId={transformPreviewAssetId({ document: props.document, sceneId: props.sceneId, blockId: props.block.id }, props.characters, payload)}
                     motionLabel={`${payload.objectName || t("storyInspector.motionTarget.image")} ${payload.operation}`}
                     storyId={props.document.id}
                     sceneId={props.sceneId}
@@ -984,6 +986,7 @@ function ActionPayloadFields(props: {
                     <TransformPresetEditor
                         value={payload.transform}
                         motionTargetKind={resolvedTarget.kind ?? "image"}
+                        previewAssetId={transformPreviewAssetId({ document: props.document, sceneId: props.sceneId, blockId: props.block.id }, props.characters, payload)}
                         motionLabel={`${resolvedTarget.label || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
                         storyId={props.document.id}
                         sceneId={props.sceneId}
@@ -1991,6 +1994,7 @@ function CharacterActionEditor(props: {
             <TransformPresetEditor
                 value={payload.transform}
                 motionTargetKind="character"
+                previewAssetId={transformPreviewAssetId(null, props.characters, payload)}
                 motionLabel={`${selectedCharacter?.profile.getName() ?? payload.objectName ?? t("storyInspector.motionTarget.character")} ${payload.operation}`}
                 storyId={props.storyId}
                 sceneId={props.sceneId}
@@ -2102,10 +2106,66 @@ function withTransformPreset(ref: StoryTransformRef | undefined, preset: string)
     return next;
 }
 
+/**
+ * The image a transform row is acting on, when there is one.
+ *
+ * Used only to draw the channel previews, so being absent is fine - but being right is what makes
+ * the picker say "this is what blur does to YOUR sprite" instead of "this is what blur does".
+ *
+ * The stage is read through {@link listSceneDisplayableTargets}, the same collector the target
+ * picker and the command context use, scoped to the blocks BEFORE this row. So a `/transform hero`
+ * written above the `/show` that puts `hero` on stage resolves to nothing, exactly as the target
+ * field's "not on stage" badge already says - the preview and the badge cannot disagree.
+ *
+ * A character is the one stage object whose picture is not on its block: the block carries a
+ * `characterId` and the appearance lives on the character, so that arm asks the entity. A puppet or
+ * a layered character still answers null on purpose - their look is assembled at runtime from
+ * several files and no single one of them is "the character", so picking one would be showing the
+ * author a part of their art and calling it the whole.
+ */
+function transformPreviewAssetId(
+    /** Where in the scene this row sits. `null` from the character editor, which needs no stage. */
+    scope: { document: StoryDocument; sceneId: StorySceneId; blockId: StoryBlockId } | null,
+    characters: Character[],
+    payload: StoryActionPayload,
+): string | undefined {
+    const fromCharacter = (characterId: string | undefined): string | undefined => {
+        const appearance = getCharacterById(characters, characterId)?.profile.appearance;
+        if (!appearance || appearance.getKind() !== "preset") {
+            return undefined;
+        }
+        return appearance.resolvePoseAssetId(undefined) ?? undefined;
+    };
+
+    if (payload.action === "image") {
+        return payload.assetId;
+    }
+    if (payload.action === "character") {
+        return fromCharacter(payload.characterId);
+    }
+    if (payload.action !== "displayable" || payload.target.builtin || !scope) {
+        return undefined;
+    }
+    const onStage = listSceneDisplayableTargets(scope.document, scope.sceneId, scope.blockId)
+        .find(option => matchesTarget(option, payload.target));
+    if (!onStage) {
+        return undefined;
+    }
+    if (onStage.assetId) {
+        return onStage.assetId;
+    }
+    const source = scope.document.scenes[scope.sceneId]?.blocks[onStage.sourceBlockId];
+    return source?.kind === "action" && source.payload.action === "character"
+        ? fromCharacter(source.payload.characterId)
+        : undefined;
+}
+
 function TransformPresetEditor(props: {
     value: StoryTransformRef | undefined;
     motionTargetKind: StoryDisplayableTargetKind;
     motionLabel: string;
+    /** The picture the channel previews are drawn on - see `transformPreviewAssetId`. */
+    previewAssetId?: string;
     storyId: string;
     sceneId: StorySceneId;
     blockId: string;
@@ -2175,6 +2235,7 @@ function TransformPresetEditor(props: {
                     <TransformChannelEditor
                         value={props.value}
                         targetKind={props.motionTargetKind}
+                        previewAssetId={props.previewAssetId}
                         onChange={props.onChange}
                     />
                 </div>

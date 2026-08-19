@@ -70,9 +70,13 @@ export const storyExpr = {
         duplicateVariable: "\"{value}\" already exists. Choose another name, or use /set to change its value.",
         reservedVariableName: "\"{value}\" is the build variant in an expression. Choose another name.",
         unknownTarget: "Nothing on stage is named \"{value}\".",
-        // The name was right and the verb is wrong: a video and an ambience overlay are engine
-        // Actionables with no transform pipeline, so no spelling makes a transform reach one.
-        unsupportedTarget: "\"{value}\" is a {kind}, which has no transform. Use show, hide, play or rate.",
+        // The name was right and the verb is wrong. Both messages name the verb the author wrote,
+        // because every slot that resolves a kind in order to refuse it reports through these two -
+        // `/transform` and `/reset` on a video or an ambience overlay, `/front` on any of the three.
+        // The refused kind picks between them: what the author can do instead is a property of what
+        // the name turned out to be, not of the verb they reached for.
+        unsupportedTarget: "/{token} does not apply to \"{value}\", which is a {kind}. Use show, hide, play or rate.",
+        unsupportedTargetLayer: "/{token} does not apply to \"{value}\", which is a layer. Set a layer's front-to-back with /layer z=.",
         unsupportedOption: "\"{value}\" does not apply here. Allowed values: {allowed}.",
         unsupportedParam: "{key}= does not apply to this {kind}.",
         missingCore: "/{token} still needs its {slot}.",
