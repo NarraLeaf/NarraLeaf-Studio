@@ -256,7 +256,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
 
     if (menuSelection?.elementIds.length === 1) {
         const stateElement = input.document.elements[menuSelection!.elementIds[0]];
-        if (canAddElementState(stateElement)) {
+        if (canAddElementState(input.document, stateElement)) {
             items.push({ separator: true, id: "sep-state" });
             items.push({
                 id: "add-state",

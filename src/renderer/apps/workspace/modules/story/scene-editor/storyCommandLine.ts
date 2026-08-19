@@ -2,6 +2,7 @@ import type {
     StoryActionPayload,
     StoryBlock,
     StoryDeclarationPayload,
+    StoryJumpPayload,
     StoryLiteralValue,
     StoryTransformRef,
     StoryTransitionRef,
@@ -513,8 +514,26 @@ function revealWord(transform: StoryTransformRef | undefined, direction: "reveal
     return transitionWordForTransform(direction, transform) ?? undefined;
 }
 
+/**
+ * A whole-screen `rule=` — the picture a rule transition plays in the order of.
+ *
+ * Printed only when the row actually holds one, so every other transition's line is unchanged. The
+ * value is the asset's own name and it is pickable, which is what keeps the row the line that
+ * produced it rather than a description of it.
+ */
+function ruleArg(
+    payload: Extract<StoryActionPayload, { action: "setBackground" }> | StoryJumpPayload,
+    lookups: StoryCommandLineLookups,
+): Arg | null {
+    const ruleAssetId = payload.transition?.ruleAssetId;
+    return arg("rule", assetWord(lookups, ruleAssetId), {
+        ...(pickAsset({ ...(ruleAssetId ? { assetId: ruleAssetId } : {}) }, lookups, "image",
+            next => patchTransition(payload, { kind: "ruleReveal", ruleAssetId: next })) ?? {}),
+    });
+}
+
 /** A whole-screen or character `t=` — the stored kind, named by the word an author would type. */
-function transitionWord(kind: StoryTransitionRef["kind"] | undefined, context: "scene" | "character"): string | undefined {
+function transitionWord(kind: StoryTransitionRef["kind"] | undefined, context: "scene" | "character" | "expression"): string | undefined {
     if (kind === undefined) {
         return undefined;
     }
@@ -635,6 +654,18 @@ function characterSentence(
         enum: true,
         apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
     });
+    // `/face` is the one character row the engine plays a `StoryTransitionRef` on - it swaps the
+    // image source, and `char(src, transition)` is what the compiler emits. So BOTH of these read and
+    // write `payload.transition`, never the transform: `duration` above is the transform's, the field
+    // an entrance and an exit animate through, and binding a swap's `d=` there would give the author
+    // a number that edits cleanly and changes nothing on stage.
+    const swapTransition = arg("t", transitionWord(payload.transition?.kind, "expression"), {
+        enum: true,
+        apply: next => patchTransition(payload, { kind: transitionKindFor("expression", next) ?? "fadeIn" }),
+    });
+    const swapDuration = arg("d", seconds(payload.transition?.durationMs), {
+        apply: next => patchTransition(payload, { durationMs: msOf(next) }),
+    });
     switch (payload.operation) {
         case "enter":
             return {
@@ -648,7 +679,7 @@ function characterSentence(
             // reads back as the row that writes one. `/transform` names its subject `target`.
             return { commandId, args: [positional("target", name, who), placement, duration] };
         case "expression":
-            return { commandId, args: [positional("character", name, who), form] };
+            return { commandId, args: [positional("character", name, who), form, swapTransition, swapDuration] };
         case "setMotion":
         case "setSkin":
             // The two puppet-only channels: their value is the model's own string, never a project ref.
@@ -1034,6 +1065,11 @@ function displayableSentence(
     // several of them onto this arm (`/move` became `/transform <who> pos=`) - a face that vanished
     // on the way would have made the change look like a different kind of row.
     const who = displayableFace(lookups, payload.target, label);
+    // `/front hero`, whole. The subject is the only thing this row states: there is no bag to print
+    // and no `d=` to offer, so anything else here would be a token the line cannot carry back.
+    if (payload.operation === "bringToFront") {
+        return { commandId, args: [positional("target", label, who)] };
+    }
     if (payload.operation === "transform") {
         // A Story Motion states its shot in a binding rather than in props, so the line says which
         // mode the row is in and the motion's name rides the inspector - the same shape the retired
@@ -1125,6 +1161,7 @@ function actionSentence(
                         enum: true,
                         apply: next => patchTransition(payload, { kind: transitionKindFor("scene", next) ?? "dissolve" }),
                     }),
+                    ruleArg(payload, lookups),
                     arg("d", seconds(payload.transition?.durationMs), {
                         apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                     }),
@@ -1257,6 +1294,7 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                     enum: true,
                     apply: next => patchTransition(payload, { kind: transitionKindFor("scene", next) ?? "dissolve" }),
                 }),
+                ruleArg(payload, lookups),
                 arg("d", seconds(payload.transition?.durationMs), {
                     apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                 }),

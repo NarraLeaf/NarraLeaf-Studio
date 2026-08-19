@@ -19,7 +19,7 @@ import {
     type StoryCommandParamsShape,
     type StoryCommandValidateContext,
 } from "../spec";
-import { vfxOperationBlock, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
+import { vfxOperationBlock, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
 
 /**
@@ -291,13 +291,43 @@ export const hide = defineStoryCommand({
     validate: (args, ctx) => validateTransitionForTarget("hide", args, ctx),
 });
 
+/**
+ * `t=` / `d=` on a `/face` whose subject is a puppet - the one target that cannot honour them.
+ *
+ * A puppet's expression compiles to `puppet.setExpression(name)`: the backend owns the inside of the
+ * box and there is no second frame for the engine to blend, so the transition ref a `/face` writes
+ * would be read by nothing. The mirror image of {@link validatePuppetCharacter} - that one refuses a
+ * character Studio draws, this one refuses the character it draws itself - and it names the KEY
+ * rather than the character, because the character is not the mistake here.
+ */
+function validateFaceTransition(
+    args: { readonly character?: StoryCommandValue; readonly t?: StoryCommandValue; readonly d?: StoryCommandValue },
+    ctx: StoryCommandValidateContext,
+): StoryCommandResolutionIssue[] {
+    const character = args.character;
+    if (character?.kind !== "character" || !ctx.context.puppetCharacterIds.includes(character.characterId)) {
+        return [];
+    }
+    const issues: StoryCommandResolutionIssue[] = [];
+    for (const key of ["t", "d"] as const) {
+        const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+        if (span) {
+            issues.push({ code: "unsupportedParam", span, key, kind: "puppet character" });
+        }
+    }
+    return issues;
+}
+
 export const face = defineStoryCommand({
     id: "face",
     token: "face",
     aliases: ["expr", "expression"],
     category: "character",
     icon: Smile,
-    examples: ["/face Alice smile"],
+    examples: ["/face Alice smile", "/face Alice angry t=dissolve d=0.3"],
+    // Inline quick-edit: how long the swap takes. The transition's own duration, not the transform's -
+    // `char(src, transition)` is the call, and the transform is the entrance this row is not.
+    quickParams: ["d"],
     params: {
         character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
         // One slot, three appearance kinds. The branches are tried in order and the FIRST that
@@ -313,6 +343,12 @@ export const face = defineStoryCommand({
             positional: true,
             core: true,
         },
+        // The one character row whose `StoryTransitionRef` is actually played: `expression` compiles
+        // to `char(src, createTransition(payload.transition))`, while `enter` and `exit` animate
+        // through the transform. Which is why `/show` `/hide` spell theirs `in=` / `out=` and this one
+        // keeps the vocabulary's own `t=` - it is the same kind of thing a `/bg t=` is.
+        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("expression") } },
+        d: secondsParam(),
     },
     build(args, ctx) {
         const block = createBlockForCommand("characterExpression", ctx.generateId);
@@ -330,8 +366,13 @@ export const face = defineStoryCommand({
         if (puppetName !== undefined) {
             payload.puppetName = puppetName;
         }
+        const transition = withTransitionRef(payload.transition, "expression", args.t, args.d);
+        if (transition) {
+            payload.transition = transition;
+        }
         return { ...block, payload };
     },
+    validate: validateFaceTransition,
 });
 
 /**

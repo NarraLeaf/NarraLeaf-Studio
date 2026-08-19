@@ -9,7 +9,7 @@ import type {
     AppearanceVariant,
 } from "@shared/types/ui-editor/appearance";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
-import { replaceVariant, setGroupTransitionOnAllVariants } from "./appearancePatch";
+import { ensureVariantExists, replaceVariant, setGroupTransitionOnAllVariants } from "./appearancePatch";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { CompactContainerAppearance } from "./compact/CompactContainerAppearance";
@@ -17,6 +17,8 @@ import { CompactButtonAppearance } from "./compact/CompactButtonAppearance";
 import { CompactTextAppearance } from "./compact/CompactTextAppearance";
 import { moduleHasAnyAppearanceTransitionInModel } from "./appearanceMotion";
 import { AppearanceReadOnlyProvider } from "./appearanceReadOnly";
+import { AppearancePositionInLayoutProvider } from "./appearancePositionOwner";
+import { findStateHost } from "./stateHost";
 import {
     BUTTON_MODULE_KEYS as BUTTON_KEYS,
     CONTAINER_MODULE_KEYS as CONTAINER_KEYS,
@@ -128,11 +130,25 @@ export function AppearanceAuthoringPanel({
     // Which state this panel edits is not its own decision: the state bar above it enters one, the
     // canvas draws that one, and these modules edit that one. Keeping a second selection here is how
     // an author ends up editing a state they cannot see.
-    const selectedVariantId = isUsableAppearanceModel(appearance)
-        ? entered?.elementId === elementId
+    //
+    // Entered on an ancestor counts. A switch's parts are drawn in the switch's state, so with the
+    // switch turned on the canvas shows the track's on variant - and a panel still editing the
+    // resting one takes the author's new colour and puts it where they are not looking.
+    const stateHost = useMemo(
+        () => findStateHost(inspectorData.documentService.getDocument(), elementId),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [elementId, inspectorData.documentService, draftResetKey],
+    );
+    const stateOwnerId = entered?.elementId === elementId ? elementId : stateHost?.element.id ?? null;
+    const shownVariantId = isUsableAppearanceModel(appearance)
+        ? entered && entered.elementId === stateOwnerId
             ? entered.variantId ?? appearance.defaultVariantId
             : appearance.defaultVariantId
         : "";
+    /** The state's name, for the variant this panel creates the first time it is edited in one. */
+    const shownStateName =
+        stateHost?.states.find(state => state.id === shownVariantId)?.name ?? shownVariantId;
+    const selectedVariantId = shownVariantId;
 
     const [containerModuleModes, setContainerModuleModes] = useState(DEFAULT_CONTAINER_MODULE_MODES);
     const [buttonModuleModes, setButtonModuleModes] = useState(DEFAULT_BUTTON_MODULE_MODES);
@@ -176,8 +192,15 @@ export function AppearanceAuthoringPanel({
         if (!isUsableAppearanceModel(model)) {
             return null;
         }
-        return model.variants.find(v => v.id === selectedVariantId) ?? model.variants[0] ?? null;
-    }, [model, selectedVariantId]);
+        const own = model.variants.find(v => v.id === selectedVariantId);
+        if (own) {
+            return own;
+        }
+        // A part that has never been given a look in this state shows the resting one, so the fields
+        // start from what is on screen; the first edit is what gives the state a variant of its own.
+        const resting = model.variants.find(v => v.id === model.defaultVariantId) ?? model.variants[0] ?? null;
+        return resting ? { ...resting, id: selectedVariantId, name: shownStateName } : null;
+    }, [model, selectedVariantId, shownStateName]);
 
     const containerMotionFieldsConfigured = useMemo(() => {
         if (!isUsableAppearanceModel(model)) {
@@ -216,9 +239,15 @@ export function AppearanceAuthoringPanel({
             if (!isUsableAppearanceModel(model) || !selectedVariant) {
                 return;
             }
-            onReplace(replaceVariant(model, selectedVariant.id, nextVariant));
+            onReplace(
+                replaceVariant(
+                    ensureVariantExists(model, selectedVariant.id, shownStateName),
+                    selectedVariant.id,
+                    nextVariant,
+                ),
+            );
         },
-        [model, onReplace, selectedVariant]
+        [model, onReplace, selectedVariant, shownStateName]
     );
 
     const appearanceDraftResetKey = useMemo(() => {
@@ -308,5 +337,9 @@ export function AppearanceAuthoringPanel({
         </div>
     );
 
-    return <AppearanceReadOnlyProvider value={readOnly}>{body}</AppearanceReadOnlyProvider>;
+    return (
+        <AppearanceReadOnlyProvider value={readOnly}>
+            <AppearancePositionInLayoutProvider value={stateHost !== null}>{body}</AppearancePositionInLayoutProvider>
+        </AppearanceReadOnlyProvider>
+    );
 }

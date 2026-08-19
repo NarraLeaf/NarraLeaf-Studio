@@ -48,6 +48,12 @@ import {
     type UIEditorReadOnly,
 } from "./readOnlyInteraction";
 
+/** Frames the selection frame has to sit still before a state transition counts as finished. */
+const MOVEABLE_FOLLOW_SETTLED_FRAMES = 3;
+
+/** Hard stop, in case something keeps the frame moving forever. Roughly two seconds at 60fps. */
+const MOVEABLE_FOLLOW_MAX_FRAMES = 120;
+
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
     const y = Math.min(preview.startY, preview.currentY);
@@ -135,6 +141,37 @@ export function UIEditorInteractionLayer({
     useEffect(() => {
         const unsubscribe = stateService.on("selectionChanged", setSelection);
         return () => unsubscribe();
+    }, [stateService]);
+
+    /**
+     * The selection frame follows the element into the state it is being shown in - and follows it
+     * while it travels there.
+     *
+     * Entering a state plays the author's own transition rather than teleporting, so a single update
+     * after the switch measures a position the element is only passing through and the handles are
+     * left standing where it used to be. Nothing here knows how long that transition is (it is per
+     * field, and the author sets it), so this follows until the frame stops moving instead of
+     * guessing a duration.
+     */
+    useEffect(() => {
+        return stateService.on("enteredStateChanged", () => {
+            let framesSinceMoved = 0;
+            let frames = 0;
+            let previous = "";
+            const tick = () => {
+                moveableRef.current?.updateRect?.();
+                const box = moveableRef.current?.getRect?.();
+                const signature = box ? `${box.left},${box.top},${box.width},${box.height}` : "";
+                framesSinceMoved = signature === previous ? framesSinceMoved + 1 : 0;
+                previous = signature;
+                frames += 1;
+                // Settled, or long past any transition worth watching - either way, stop.
+                if (framesSinceMoved < MOVEABLE_FOLLOW_SETTLED_FRAMES && frames < MOVEABLE_FOLLOW_MAX_FRAMES) {
+                    requestAnimationFrame(tick);
+                }
+            };
+            requestAnimationFrame(tick);
+        });
     }, [stateService]);
 
     useEffect(() => {

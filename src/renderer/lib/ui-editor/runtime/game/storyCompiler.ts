@@ -19,6 +19,7 @@ import {
     Puppet,
     Push,
     Reveal,
+    RuleReveal,
     Scene,
     Script,
     Sound,
@@ -726,6 +727,15 @@ type SceneCompileContext = {
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
     vfx: Map<string, Vfx>;
+    /**
+     * The clip each named overlay was built from, keyed the same way {@link SceneCompileContext.vfx}
+     * is, and compile-wide with it.
+     *
+     * Exists for the reason `soundTrackIds` does: two rows may name one overlay and only the first
+     * creates it, so a later row naming a DIFFERENT clip has to be reported rather than silently
+     * ignored.
+     */
+    vfxAssetIds: Map<string, string | undefined>;
     sounds: Map<string, Sound>;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
@@ -890,6 +900,17 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
+    /**
+     * Ambience overlays, keyed by name, for the WHOLE compile rather than per scene.
+     *
+     * A `Vfx` is the one stage object the engine does not scope to a scene: `GameState` holds it,
+     * scene exit does not remove it, and only its own `hide` does. So rain started in one scene is
+     * still falling in the next, and a per-scene map made that unreachable - the next scene's
+     * `/hide rain` resolved no handle and compiled to nothing, while a second `/vfx rain` built a
+     * SECOND overlay on top of the first. One map means one name is one overlay, everywhere.
+     */
+    const vfxByName = new Map<string, Vfx>();
+    const vfxAssetIds = new Map<string, string | undefined>();
     const scenesBuild = await createNlrScenes({
         elementIdBindings,
         document: input.document,
@@ -966,7 +987,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             puppets: new Map(),
             layers: new Map(),
             videos: new Map(),
-            vfx: new Map(),
+            vfx: vfxByName,
+            vfxAssetIds,
             // Seeded with the scene's configured track under the name the sound-control family
             // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
             sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.sound]]) : new Map(),
@@ -1018,6 +1040,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             launch: input.launch,
             nlrStory,
             allScenes,
+            vfx: vfxByName,
+            vfxAssetIds,
             actionIdBindings,
             elementIdBindings,
             diagnostics,
@@ -1089,6 +1113,10 @@ async function buildLaunchEntryScene(params: {
     launch: NonNullable<CompileInput["launch"]>;
     nlrStory: Story;
     allScenes: Record<string, Scene>;
+    /** The compile's ambience overlays - shared, so the entry scene and the story it hands over to
+     *  address one overlay per name rather than two objects wearing one id. */
+    vfx: Map<string, Vfx>;
+    vfxAssetIds: Map<string, string | undefined>;
     actionIdBindings: NlrActionIdBinding[];
     elementIdBindings: string[];
     diagnostics: NlrStoryCompileDiagnostic[];
@@ -1179,7 +1207,8 @@ async function buildLaunchEntryScene(params: {
         puppets: new Map(),
         layers: new Map(),
         videos: new Map(),
-        vfx: new Map(),
+        vfx: params.vfx,
+        vfxAssetIds: params.vfxAssetIds,
         sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
         soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
         audioClips: input.audioClips,
@@ -1408,6 +1437,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
+        vfxAssetIds: new Map(),
         sounds: new Map(),
         soundTrackIds: new Map(),
         audioClips: input.audioClips,
@@ -2104,6 +2134,10 @@ function runStoryCompilePasses(ctx: SceneCompileContext): void {
                     Math.max(0, durationMs),
                     easing as never,
                 ) as unknown as EngineAction,
+                // A pass must always get an action back, so an engine without the call gets an empty
+                // `Control.do` - it runs, changes nothing, and the reason is reported once against
+                // the scene. Returning null instead would push the version question into every pass.
+                bringToFront: () => (bringToFrontStatement(ctx, image, undefined) ?? Control.do([])) as unknown as EngineAction,
             };
         },
         // `allAsync`, never `doAsync` - see the note in storyCompilePass.ts. This is the single place
@@ -2246,7 +2280,7 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             diagnostic(ctx, "error", block.id, `Jump target scene not found: ${block.payload.targetSceneId || "(empty)"}`);
             return [];
         }
-        const chain = ctx.nlrScene.jumpTo(target, createTransition(block.payload.transition, ctx, block.id) as any);
+        const chain = ctx.nlrScene.jumpTo(target, await createTransition(block.payload.transition, ctx, block.id) as any);
         return [recordStatement(ctx, chain, block)];
     }
 
@@ -2683,7 +2717,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             diagnostic(ctx, "warning", block.id, "Background has no image or color.");
             return [];
         }
-        return [recordStatement(ctx, ctx.nlrScene.setBackground(src as any, createTransition(payload.transition, ctx, block.id) as any), block)];
+        return [recordStatement(ctx, ctx.nlrScene.setBackground(src as any, await createTransition(payload.transition, ctx, block.id) as any), block)];
     }
 
     if (payload.action === "character") {
@@ -2736,6 +2770,10 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             const label = resolveDisplayableTargetRef(ctx.scene, payload.target).label || "(empty)";
             diagnostic(ctx, "warning", block.id, `Displayable target not found: ${label}`);
             return [];
+        }
+        if (payload.operation === "bringToFront") {
+            const raise = bringToFrontStatement(ctx, target, block.id);
+            return raise ? [recordStatement(ctx, raise, block)] : [];
         }
         const chain = await compileDisplayableOperation(target, payload.operation, payload.transform, ctx, block.id);
         return chain ? [recordStatement(ctx, chain, block)] : [];
@@ -3059,7 +3097,7 @@ async function compileCharacterStageAction(
             diagnostic(ctx, "warning", block.id, `Expression for ${characterDiagnosticName(ctx, payload)} selects no tag; nothing changes.`);
             return statements;
         }
-        const chain = image.char(tags as never, createTransition(payload.transition, ctx, block.id) as any);
+        const chain = image.char(tags as never, await createTransition(payload.transition, ctx, block.id) as any);
         statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3084,7 +3122,7 @@ async function compileCharacterStageAction(
     }
 
     // expression: swap a visible character's appearance, optionally with an image transition.
-    const sourceChain = image.char(src as any, createTransition(payload.transition, ctx, block.id) as any);
+    const sourceChain = image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any);
     statements.push(recordStatement(ctx, sourceChain, block));
     return statements;
 }
@@ -3476,7 +3514,7 @@ async function compileImageAction(
         : payload.color;
 
     if ((payload.operation === "create" || payload.operation === "setSource") && src) {
-        statements.push(recordStatement(ctx, image.char(src as any, createTransition(payload.transition, ctx, block.id) as any), block));
+        statements.push(recordStatement(ctx, image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any), block));
     } else if ((payload.operation === "create" || payload.operation === "setSource") && !src) {
         diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
     }
@@ -3621,6 +3659,13 @@ async function getVfx(
     const name = normalizeObjectName(payload.objectName);
     const existing = ctx.vfx.get(name);
     if (existing) {
+        // A create row for a name that already has an overlay is the author setting the same
+        // ambience up twice - fine, and it addresses the one overlay. Naming a DIFFERENT clip is
+        // two answers to one question, and it is reported rather than resolved: silently keeping
+        // the first would leave a row whose clip never plays and nothing to say why.
+        if (payload.operation === "create" && payload.assetId && ctx.vfxAssetIds.get(name) !== payload.assetId) {
+            diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" already plays a different clip; this row reuses the first one.`);
+        }
         return existing;
     }
     if (!payload.assetId) {
@@ -3642,8 +3687,12 @@ async function getVfx(
         // since the engine does not persist a runtime `setPlaybackRate`.
         ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
     });
-    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${ctx.scene.id}:${name}`);
+    // No scene in the id, unlike every other element: this overlay does not belong to one. Naming
+    // it after the scene that happened to create it first would also make the anchor depend on
+    // scene ORDER, so reordering scenes would move it under a save that referenced it.
+    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${name}`);
     ctx.vfx.set(name, vfx);
+    ctx.vfxAssetIds.set(name, payload.assetId);
     return vfx;
 }
 
@@ -4384,6 +4433,41 @@ async function compileDisplayableOperation(
 }
 
 /**
+ * What an author reads when the installed engine has no `bringToFront`. One constant, because both
+ * callers below report it and a row skipped for this reason should read the same either way.
+ */
+const BRING_TO_FRONT_UNSUPPORTED =
+    "This version of NarraLeaf-React cannot raise an element to the front, so the row does nothing. Update to 0.30.0 or later.";
+
+/**
+ * Whether the installed engine's `Displayable` carries `bringToFront()`.
+ *
+ * **This check is temporary and belongs to this change alone.** `Displayable.bringToFront()` lands in
+ * NarraLeaf-React 0.30.0, and Studio still pins `^0.28.0` - so on the installed engine the method is
+ * simply absent, and calling it would throw while the game plays rather than fail the compile: a Dev
+ * Mode crash on a row that looks like every other row. Reporting it here turns that into a row that
+ * says why it did nothing.
+ *
+ * When the pin is raised past 0.30.0, this function, {@link BRING_TO_FRONT_UNSUPPORTED} and the two
+ * `as any` casts that go with them all come out, and both call sites become the one-liners the rest
+ * of this file's verbs are. The `as any` on an engine element is this file's ordinary register
+ * (`image.char(src as any)`, `camera.transform(sway)`); the version test is not, which is why it is
+ * spelled out here rather than left inline.
+ */
+function supportsBringToFront(element: unknown): boolean {
+    return typeof (element as { bringToFront?: unknown } | null | undefined)?.bringToFront === "function";
+}
+
+/** The raise as one statement, or null (with the reason reported) on an engine that cannot do it. */
+function bringToFrontStatement(ctx: SceneCompileContext, target: any, blockId: string | undefined): NlrStatement | null {
+    if (!supportsBringToFront(target)) {
+        diagnostic(ctx, "warning", blockId, BRING_TO_FRONT_UNSUPPORTED);
+        return null;
+    }
+    return (target as any).bringToFront();
+}
+
+/**
  * True when the bag says nothing but "end up at this opacity", which is what `show()` and `hide()`
  * already do. A bag carrying an opacity the verb does not imply (a half-visible ghost) is NOT this
  * case: it has to be animated after the element is up, or the value would be overwritten.
@@ -4455,7 +4539,7 @@ function createAnimationTransform(
     } as any);
 }
 
-function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): unknown | undefined {
+async function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): Promise<unknown | undefined> {
     if (!transition || transition.kind === "none") {
         return undefined;
     }
@@ -4517,6 +4601,28 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
                 lift: Math.min(1, Math.max(0, numberProp(props, "lift", 0.04))),
                 hold: Math.min(1, Math.max(0, numberProp(props, "hold", 0) / 100)),
             });
+        case "ruleReveal": {
+            // The only transition that reads an asset, which is why this factory is async. A rule
+            // with no picture is a row the author has not finished: reported, and played as a cut,
+            // rather than guessed at with some other engine that would look deliberate.
+            if (!transition.ruleAssetId) {
+                diagnostic(ctx, "warning", blockId, "Rule transition names no rule image; the change was played as a cut.");
+                return undefined;
+            }
+            const rule = await resolveAsset(ctx, transition.ruleAssetId, "image", blockId);
+            if (!rule) {
+                return undefined;
+            }
+            return new RuleReveal({
+                duration,
+                easing,
+                rule,
+                // Percent on the way in, like every other feather this file writes, and a fraction
+                // on the way out because that is what the engine's tonal range is measured in.
+                feather: numberProp(props, "feather", 12) / 100,
+                inverted: props.inverted === true,
+            });
+        }
         case "darkness":
             // The incoming image is swapped in at `from` darkness and lifted to `to` - so the default
             // pair (1 → 0) reads as "the new frame emerges out of black". Clamped here because

@@ -495,6 +495,7 @@ export const story = {
         skin: "Skin",
         puppetParam: "Parameter",
         puppetParamValue: "Value",
+        ruleImage: "Rule image",
         imageAsset: "Image",
         imageOrColor: "Image or Color",
         videoAsset: "Video",
@@ -585,6 +586,8 @@ export const story = {
     enumValue: {
         // Transitions (`t=`), the unified word list from `commands/transitions.ts`.
         fade: "fade",
+        // The crossfade named outright, for the contexts where `fade` means something else.
+        dissolve: "dissolve",
         slide: "slide",
         "slide-left": "slide-left",
         "slide-right": "slide-right",
@@ -602,6 +605,7 @@ export const story = {
         black: "black",
         darkness: "darkness",
         exposure: "exposure",
+        rule: "rule",
         none: "none",
         // The transform presets `t=` reaches on a show/hide that the transition words did not name.
         scale: "scale",
@@ -1027,6 +1031,7 @@ export const story = {
         layer: { label: "Layer", detail: "Create a render layer" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video" },
+        front: { label: "Bring to Front", detail: "Draw a character or a stage object in front of the rest of its layer" },
         font: { label: "Font", detail: "Change a text's size or color" },
         bgm: { label: "BGM", detail: "Set the background music" },
         sound: { label: "Sound", detail: "Play a sound effect" },

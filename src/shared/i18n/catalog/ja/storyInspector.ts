@@ -57,6 +57,8 @@ export const storyInspector = {
         fromAngle: "開始の角度 °",
         rows: "行",
         cols: "列",
+        rule: "ルール画像",
+        inverted: "明部から開始",
         stagger: "ずらし",
         shape: "形",
         pattern: "パターン",
@@ -140,6 +142,7 @@ export const storyInspector = {
         throughColor: "色を挟む",
         darkness: "暗さ",
         exposure: "露出",
+        ruleReveal: "ルール画像",
         exposureEv: "露出量（EV）",
         exposureLift: "暗部の持ち上げ 0-1",
         startX: "開始 X",
@@ -167,6 +170,7 @@ export const storyInspector = {
         darkness: "開始の暗さで画像を入れ替え、終了の暗さまで動かす。1 → 0 は暗転から明け、0 → 1 は暗転へ落とす",
         throughColor: "画面をいったん色で覆い、保持してから、新しい画像の上で外す。暗転や白転、アイリス、フラッシュ（保持 0）に使う",
         exposure: "画面を白飛びさせ、ハイライトから先に、暗部を最後に飛ばしてから新しい画面へ戻る。暗部の持ち上げが 0 だと黒は白くならない",
+        ruleReveal: "グレースケール画像が指定する順序で画面を切り替える。暗い部分が先、明るい部分が最後",
     },
 
     wipeDirection: {
@@ -332,6 +336,7 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "変形",
+        bringToFront: "最前面へ",
         mask: "マスク",
         clearMask: "マスクを外す",
         clip: "クリップパス",

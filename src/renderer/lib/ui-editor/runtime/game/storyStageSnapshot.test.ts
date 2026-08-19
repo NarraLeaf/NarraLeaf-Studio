@@ -434,4 +434,48 @@ describe("computeStoryStageSnapshot", () => {
         expect(result.diagnostics).toEqual([]);
         expect(result.displayables[0].effects.filter).toEqual({ filter: "blur(4px)" });
     });
+
+    it("moves a raised element to the end of the creation order, and leaves everything else alone", () => {
+        // `displayables` IS the stacking order: both the editor's scene preview and "play from this
+        // row" build elements straight down this array, so a `/front` that did not move the entry
+        // would produce a row that plays one way and previews another.
+        const document = baseDocument({
+            a: block("a", "action", { action: "image", operation: "show", objectName: "a" }),
+            b: block("b", "action", { action: "image", operation: "show", objectName: "b" }),
+            c: block("c", "action", { action: "image", operation: "show", objectName: "c" }),
+            raise: block("raise", "action", {
+                action: "displayable",
+                operation: "bringToFront",
+                target: { name: "b", kind: "image" },
+            }),
+            target: say("target"),
+        }, ["a", "b", "c", "raise", "target"]);
+
+        const result = snapshot(document, "target");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(result.displayables.map(entry => entry.objectName)).toEqual(["a", "c", "b"]);
+        // A raise states no pose and no visibility, so nothing else about the element may move.
+        const raised = result.displayables[2];
+        expect(raised.visible).toBe(true);
+        expect(raised.props.opacity).toBe(1);
+    });
+
+    it("raising the element that is already on top changes nothing", () => {
+        const document = baseDocument({
+            a: block("a", "action", { action: "image", operation: "show", objectName: "a" }),
+            b: block("b", "action", { action: "image", operation: "show", objectName: "b" }),
+            raise: block("raise", "action", {
+                action: "displayable",
+                operation: "bringToFront",
+                target: { name: "b", kind: "image" },
+            }),
+            target: say("target"),
+        }, ["a", "b", "raise", "target"]);
+
+        const result = snapshot(document, "target");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(result.displayables.map(entry => entry.objectName)).toEqual(["a", "b"]);
+    });
 });

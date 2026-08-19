@@ -7,10 +7,6 @@ import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget
 import { SwitchRenderer } from "./switch/renderer";
 import { createSwitchInspector } from "./switch/inspector";
 import { createSwitchDockerBarItems } from "./switch/dockerBar";
-import {
-    DEFAULT_STATE_MOTION_DURATION_MS,
-    DEFAULT_STATE_MOTION_EASING,
-} from "@shared/types/ui-editor/stateMotion";
 import { createSwitchPartProps, resolveSwitchPartGeometry } from "./switch/helpers";
 
 function createSwitchPart(input: {
@@ -28,7 +24,7 @@ function createSwitchPart(input: {
         parentId: input.parentId,
         childrenIds: [],
         layout: input.layout,
-        props: createSwitchPartProps(input.slot),
+        props: createSwitchPartProps(input.slot, input.travel),
         extra: { switchSlot: input.slot },
     };
 }
@@ -72,18 +68,6 @@ export const SwitchWidgetModule: UIWidgetModule = {
                     ...defaultSwitchWidgetProps,
                     trackElementId: trackId,
                     thumbElementId: thumbId,
-                    // The travel lives on the switch, as the motion it applies to its thumb while on.
-                    // The thumb keeps one private position, the one the author can drag.
-                    stateMotions: [
-                        {
-                            state: UI_SWITCH_ON_VARIANT_ID,
-                            target: thumbId,
-                            offsetX: travel,
-                            offsetY: 0,
-                            durationMs: DEFAULT_STATE_MOTION_DURATION_MS,
-                            easing: DEFAULT_STATE_MOTION_EASING,
-                        },
-                    ],
                 },
             },
             children: [
