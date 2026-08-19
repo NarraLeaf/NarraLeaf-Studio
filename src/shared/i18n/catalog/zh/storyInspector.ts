@@ -188,7 +188,7 @@ export const storyInspector = {
         setRate: "设置速度",
     },
     vfxBlend: {
-        normal: "正常（透明 alpha WebM）",
+        normal: "正常（不透明素材）",
         screen: "滤色（黑底辉光素材）",
         multiply: "正片叠底（白底阴影素材）",
         lighten: "变亮",
