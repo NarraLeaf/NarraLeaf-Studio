@@ -26,7 +26,7 @@ function localeSet(overrides: Partial<AssetSet> = {}): AssetSet {
         name: "Title art",
         type: "image",
         filter: ["cg:title"],
-        axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja"] },
+        axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja"], fallback: "en" },
         ...overrides,
     };
 }
@@ -136,7 +136,7 @@ describe("materializeStoryAssetSets", () => {
     describe("filling", () => {
         it("walks the project's declared fallback before the source locale", () => {
             const result = run({
-                sets: [localeSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja", "zh-CN"] } })],
+                sets: [localeSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja", "zh-CN"], fallback: "en" } })],
                 candidates: library([
                     [EN, ["cg:title", "locale:en"]],
                     [JA, ["cg:title", "locale:ja"]],
@@ -211,7 +211,7 @@ describe("materializeStoryAssetSets", () => {
                     ...parent,
                     id: "child",
                     filter: [...parent.filter, "locale:en"],
-                    axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"] },
+                    axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"], fallback: "happy" },
                 }],
             });
 
@@ -290,7 +290,7 @@ describe("build axes", () => {
             name: "Bath scene",
             type: "image",
             filter: ["cg:bath"],
-            axis: { kind: "release" as const, key: "rating", residency: "build" as const, values: ["all-ages", "adult"] },
+            axis: { kind: "release" as const, key: "rating", residency: "build" as const, values: ["all-ages", "adult"], fallback: "all-ages" },
         };
     }
 
@@ -352,8 +352,9 @@ describe("build axes", () => {
     });
 
     /**
-     * No fallback of any kind, unlike a locale axis. There the worst case is a player seeing another
-     * language's art; here the fallback would decide which bytes ship.
+     * The refusal that survives the fallback. An edition that never declared a position gets no
+     * file at all - taking the fallback for it would be the build guessing which bytes ship, which
+     * is how an adult variant reaches an all-ages package.
      */
     it("refuses an edition that never said which side it is on", () => {
         const result = build(undefined);
@@ -363,8 +364,25 @@ describe("build axes", () => {
         expect(result.collapsedBuildAxis).toBe(false);
     });
 
-    it("refuses a declared position the library has no file for", () => {
+    it("takes the fallback for a declared position the library has no file for", () => {
+        // Declared, and answered by the file the author named as the one everything falls back to.
         const result = build({ rating: "teen" });
+
+        expect(result.problems).toEqual([]);
+        expect(payloadOf(result).assetId).toBe(ALL_AGES);
+    });
+
+    it("refuses when the fallback has no file either, since nothing answers the position", () => {
+        const result = materializeStoryAssetSets({
+            documents: storyNaming(SET_ID),
+            sets: [{
+                ...ratingSet(),
+                axis: { kind: "release" as const, key: "rating", residency: "build" as const, values: ["all-ages", "adult"], fallback: "teen" },
+            }],
+            candidates: RATED_LIBRARY,
+            localization: localization(),
+            assetAxes: { rating: "teen" },
+        });
 
         expect(result.problems).toMatchObject([{ kind: "unfilled", axisKey: "rating", value: "teen" }]);
     });

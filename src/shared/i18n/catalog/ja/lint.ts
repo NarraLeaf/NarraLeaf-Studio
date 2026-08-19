@@ -57,6 +57,7 @@ export const lint = {
             messageAmbiguous: "{set} の {variant} に {count} 個のファイルが対応している",
             messageResidency: "{set} の {axis} は実行時に解決されるが、ビルド時に解決される {outerAxis} の内側にある",
             messageDeclaration: "{set} は解決できるバリアントを宣言していない",
+            messageFallback: "{set} は既定のバリアントを指定していない",
         },
         portabilityAssetName: {
             title: "安全でないファイル名",

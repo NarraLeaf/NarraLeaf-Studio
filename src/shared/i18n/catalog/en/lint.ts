@@ -56,6 +56,8 @@ export const lint = {
             messageAmbiguous: "{set} has {count} files for {variant}",
             messageResidency: "{set} resolves {axis} while the game runs, inside {outerAxis}, which the build resolves",
             messageDeclaration: "{set} declares no variants to resolve",
+            /** The one thing a set requires. Without it nothing in the set resolves at all. */
+            messageFallback: "{set} does not say which variant the others fall back to",
         },
         portabilityAssetName: {
             title: "Unsafe file name",

@@ -1,6 +1,7 @@
 import type { StoryDocument } from "@shared/types/story";
 import type { NarralangLookups } from "@/lib/story/narralang/narralangPrinter";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -38,16 +39,7 @@ export function narralangLookups(
         character: characterRowLookup(characters),
         // `assetId → name`, across every asset type: a background row stores an id and reads as one,
         // and an id the printer cannot name is a row it refuses to spell.
-        assetName: assetId => {
-            const table = assetsService.getAssets();
-            for (const byId of Object.values(table)) {
-                const asset = (byId as Record<string, { name?: string }> | undefined)?.[assetId];
-                if (asset?.name) {
-                    return asset.name;
-                }
-            }
-            return null;
-        },
+        assetName: assetId => resolveAssetDisplayName(services, assetId),
         motionName: animationId => motions.get(animationId) ?? null,
         appearanceName: narralangAppearanceNames(characters),
         // Both project scopes, because since the declaration migration the registry is the only place

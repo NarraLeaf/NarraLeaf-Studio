@@ -405,6 +405,10 @@ export const assets = {
          */
         inUseTitle: "{name} is still in use",
         inUseMessage: "The following places name it and will stop resolving:",
+        /** The picker's own section for sets, which are not files and are not listed among them. */
+        picker: {
+            section: "Asset sets",
+        },
         menu: {
             create: "New Set from Selection",
             createSub: "New Set from Selection, Here",
@@ -451,8 +455,14 @@ export const assets = {
             },
             /** Why a move or a residency change was refused. States the rule, not the reasoning. */
             residencyBlocked: "An axis resolved when built cannot sit inside one resolved while running.",
+            /** The one thing a set requires: which value the others take when they have no file. */
+            fallback: "Falls back to",
+            /** Said next to the control that fixes it: nothing in the set resolves without this. */
+            fallbackMissing: "This variant has no file, so nothing in this set resolves.",
             variants: "Variants",
-            /** One cell of the matrix with nothing in it. */
+            /** This value has no file of its own and is showing the fallback's. */
+            variantInherited: "fallback",
+            /** One cell of the matrix with nothing in it, and no fallback to answer it either. */
             variantMissing: "No file",
             /** One cell more than one file answers to. */
             variantAmbiguous: "{count} files",

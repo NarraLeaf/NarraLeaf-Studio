@@ -50,6 +50,7 @@ export const lint = {
             messageAmbiguous: "{set} 的 {variant} 对应了 {count} 个文件",
             messageResidency: "{set} 的 {axis} 在运行时解析，却嵌在构建时解析的 {outerAxis} 内",
             messageDeclaration: "{set} 没有声明可解析的变体",
+            messageFallback: "{set} 没有指定兜底变体",
         },
         portabilityAssetName: {
             title: "不安全的文件名",
