@@ -105,15 +105,19 @@ const AUDIO: Record<Exclude<OperationOf<"audio">, "muteSound">, CommandId> = {
 };
 
 /**
- * All three, and there is no fourth. v18 folded `mask`, `clip`, `filter`, `backdrop`, `blend` and
+ * Three poses and one ordering verb. v18 folded `mask`, `clip`, `filter`, `backdrop`, `blend` and
  * their `clear*` twins into `transform` + a prop bag, so every displayable row an author can make is
  * one of these - and M2 gave every one of those props a spelling, so there is no longer an operation
  * reachable only from the inspector with no line to read back as.
+ *
+ * `bringToFront` is the one that is not a pose: it writes no props and takes no time, so it reads
+ * back as its own command rather than as a `/transform` with an empty bag.
  */
 const DISPLAYABLE: Record<OperationOf<"displayable">, CommandId> = {
     show: "show",
     hide: "hide",
     transform: "transform",
+    bringToFront: "front",
 };
 
 /**

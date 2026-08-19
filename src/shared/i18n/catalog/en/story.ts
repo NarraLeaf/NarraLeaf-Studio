@@ -1027,6 +1027,7 @@ export const story = {
         layer: { label: "Layer", detail: "Create a render layer" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video" },
+        front: { label: "Bring to Front", detail: "Draw a character or a stage object in front of the rest of its layer" },
         font: { label: "Font", detail: "Change a text's size or color" },
         bgm: { label: "BGM", detail: "Set the background music" },
         sound: { label: "Sound", detail: "Play a sound effect" },
