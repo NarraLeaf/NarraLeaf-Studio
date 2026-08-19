@@ -177,6 +177,7 @@ import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
+import { holdStageAdvance } from "./stageAdvanceHold";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -619,6 +620,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [isInGame, layerStack, navigation]);
     /**
+     * The same question as `isStoryOnScreen`, asked of this render rather than of this instant.
+     *
+     * One predicate, two readers: the skip loop runs outside React and needs the answer for the
+     * moment it steps, while a suspension on the engine has to be taken and handed back as the
+     * answer changes, which is a dependency. Both read `isStageCovered` over the same four inputs -
+     * the states here are the reactive view of the stores the callback above reads.
+     */
+    const stageCovered = isStageCovered({
+        pageEntries: navStack,
+        pagesHiddenForGame: studioPageHiddenForGame,
+        gameHiddenKeys: gameHiddenNavKeys,
+        layers,
+    });
+    /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
      * below reads it, and a save has to record the time at the moment it is written.
@@ -730,6 +745,16 @@ export function GameApp(props: GameAppProps): ReactNode {
      * `hostApi.sound.subscribeMixerChanges`, which is how the video widget follows a slider drag.
      */
     const preferenceListenersRef = useRef<Set<() => void>>(new Set());
+    /**
+     * Depth of a preference write Studio made to move the engine rather than to record a choice.
+     *
+     * There is one: re-arming auto-forward after a settings screen closes writes `autoForward` the
+     * value it already holds, because that write is the only way to schedule the line on screen
+     * again (see `stageAdvanceHold`). The engine's store emits on every write, changed or not, so
+     * without this the author's `On Preference Changed` would report a setting the player did not
+     * touch. Synchronous, like the emit it brackets.
+     */
+    const engineNudgeDepthRef = useRef(0);
     const subscribeGamePreferences = useCallback((listener: () => void) => {
         preferenceListenersRef.current.add(listener);
         return () => {
@@ -2787,6 +2812,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The `skipReadText` preference cannot be honoured from outside the engine's own skip
             // loop, so the game app runs its own; see the effect that builds `skipRunController`.
             hostOwnsSkipKey: true,
+            // The author's pause length, from the bundle. A bundle written before the setting
+            // carries nothing and gets the engine's own value, which is what those builds shipped.
+            ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
         });
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are
@@ -3937,6 +3965,49 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
 
+    /**
+     * Hold the story still while a page or a modal layer is drawn over the stage.
+     *
+     * The skip loop above stops itself, because Studio runs it. Auto-forward is the engine's own
+     * timer and reaches the dialog through a click the host never sees, so nothing a predicate can
+     * say will stop it - the engine's `suspendAdvance` is what does, and this is the one place
+     * Studio takes one. It covers the stage click and the advance key with it, which is the same
+     * answer for the same reason: the player is looking at the screen on top.
+     *
+     * Mount and cleanup are the two edges of "covered", so a suspension cannot survive the render
+     * that decided the stage was clear. See `stageAdvanceHold` for what releasing has to do besides
+     * releasing.
+     */
+    useEffect(() => {
+        if (!stageCovered) {
+            return;
+        }
+        const heldLiveGame = nlrLiveGameRef.current;
+        const preference = (nlrSession?.game as {
+            preference?: {
+                getPreference?: (key: string) => unknown;
+                setPreference?: (key: string, value: unknown) => void;
+            };
+        } | undefined)?.preference;
+        const hold = holdStageAdvance({
+            suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
+            isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
+            isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
+            rearmAutoForward: () => {
+                engineNudgeDepthRef.current += 1;
+                try {
+                    preference?.setPreference?.("autoForward", true);
+                } catch {
+                    // A session torn down between the check and the write; the line it would have
+                    // woken is gone with it.
+                } finally {
+                    engineNudgeDepthRef.current -= 1;
+                }
+            },
+        });
+        return hold.release;
+    }, [nlrSession, stageCovered]);
+
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
     useEffect(() => {
@@ -4166,6 +4237,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                     liveGame,
                     preferenceSnapshotRef,
                     (key, value, previousValue) => {
+                        // A write Studio made to nudge the engine is not a change to report: the
+                        // value on both sides of it is the player's own, untouched.
+                        if (engineNudgeDepthRef.current > 0) {
+                            return;
+                        }
                         dispatchPreferenceChangeRef.current?.(key, value, previousValue);
                         preferenceListenersRef.current.forEach(listener => listener());
                     },
