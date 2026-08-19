@@ -288,6 +288,15 @@ describe("compileStudioStoryToNlr", () => {
             config: { repeat: 2, repeatDelayMs: 60 },
         };
         const blocks: Record<string, StoryBlock> = {
+            // The row that puts `hero` on stage. The three rows under it only address it, and a row
+            // that addresses a name no row declares is reported rather than conjuring a blank image.
+            create: {
+                id: "create",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" },
+            },
             show: {
                 id: "show",
                 kind: "action",
@@ -327,9 +336,10 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["show", "transform", "hide"]),
+            document: baseDocument(blocks, ["create", "show", "transform", "hide"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
         const byBlock = (blockId: string) => compiled.actionIdBindings
@@ -386,6 +396,13 @@ describe("compileStudioStoryToNlr", () => {
             },
         };
         const blocks: Record<string, StoryBlock> = {
+            create: {
+                id: "create",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" },
+            },
             show: {
                 id: "show",
                 kind: "action",
@@ -413,9 +430,10 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["show", "transform"]),
+            document: baseDocument(blocks, ["create", "show", "transform"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
         const byBlock = (blockId: string) => compiled.actionIdBindings
@@ -531,6 +549,15 @@ describe("compileStudioStoryToNlr", () => {
                     transform: { mode: "animation", animationId: animation.id },
                 },
             },
+            // A custom layer is the one displayable the engine will not conjure from a mention, so the
+            // transform row below needs the row that declares it.
+            layerCreate: {
+                id: "layerCreate",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "layer", operation: "create", objectName: "foreground" },
+            },
             layer: {
                 id: "layer",
                 kind: "action",
@@ -546,7 +573,7 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["text", "layer"]),
+            document: baseDocument(blocks, ["text", "layerCreate", "layer"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
         });
@@ -685,7 +712,7 @@ describe("compileStudioStoryToNlr", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "image", operation: "show", objectName: "hero" },
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" },
             },
             reveal: {
                 id: "reveal",
@@ -728,6 +755,7 @@ describe("compileStudioStoryToNlr", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["show", "reveal", "darken", "wipe"]),
             sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
         expect(compiled.diagnostics).toEqual([]);
@@ -745,7 +773,7 @@ describe("compileStudioStoryToNlr", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "image", operation: "show", objectName: "hero" },
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" },
             },
             mask: {
                 id: "mask",
@@ -759,6 +787,7 @@ describe("compileStudioStoryToNlr", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["show", "mask"]),
             sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
         expect(compiled.diagnostics).toEqual([
@@ -1341,9 +1370,10 @@ describe("compileStudioStoryToNlr", () => {
             document: baseDocument({ "flag-decl": persistentDecl, "set-declared": setDeclared, "set-ghost": setGhost }, ["flag-decl", "set-declared", "set-ghost"]),
             sceneId: "scene-1",
         });
-        // The undeclared reference is caught; the declared one passes validation and only trips the
-        // separate "needs host persistence" gate (no persistence bridge in this compile).
-        expect(compiled.diagnostics).toContainEqual({ level: "warning", blockId: "set-ghost", message: "Persistent variable not found; the assignment was skipped." });
+        // The undeclared reference is caught - as an ERROR, because whether a variable is declared is
+        // a fact about the document. The declared one passes validation and only trips the separate
+        // "needs host persistence" gate, which is a fact about the HOST and stays a warning.
+        expect(compiled.diagnostics).toContainEqual({ level: "error", blockId: "set-ghost", message: "Persistent variable not found; the assignment was skipped." });
         expect(compiled.diagnostics.find(d => d.blockId === "set-declared")?.message).toContain("require Dev Mode host persistence");
         expect(compiled.diagnostics.some(d => d.blockId === "set-declared" && d.message.includes("not found"))).toBe(false);
     });
@@ -3820,6 +3850,200 @@ describe("diagnostics carry their origin row", () => {
 
         expect(compiled.diagnostics).toEqual([
             { level: "error", blockId: "bad", message: "Invalid command, skipped: /show nobody" },
+        ]);
+    });
+});
+
+/**
+ * Which object a row acts on, once a reference can name the row that declared it.
+ *
+ * Two halves, and the second is why the first was worth building. A reference resolves through the
+ * DECLARING row, so renaming that row carries every reference with it - which is the whole promise.
+ * And a reference that resolves to nothing is now reported: `getImage` / `getText` / `getLayer` were
+ * get-or-create, so `/show poster` with no `poster` anywhere built a blank Image, showed nothing and
+ * said nothing. The name-only binding every older document carries still works untouched, and still
+ * reports nothing on its own - the fault is the lookup coming up empty, never the fallback.
+ */
+describe("stage object references", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    function actionBlock(id: string, payload: StoryActionPayload): StoryBlock {
+        return { id, kind: "action", parentId: null, childrenIds: [], payload };
+    }
+
+    /** The rows a compile produced statements for - a row that reported instead produces none. */
+    function compiledRows(compiled: { actionIdBindings: { blockId: string }[] }): string[] {
+        return [...new Set(compiled.actionIdBindings.map(binding => binding.blockId))];
+    }
+
+    it("hits every kind of stage object a create row declares", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                image: actionBlock("image", { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" }),
+                swap: actionBlock("swap", {
+                    action: "image",
+                    operation: "setSource",
+                    objectName: "hero",
+                    target: { kind: "image", name: "hero", label: "hero", sourceBlockId: "image" },
+                    assetId: "asset-hero-night",
+                }),
+                text: actionBlock("text", { action: "text", operation: "create", objectName: "title", text: "Chapter One" }),
+                font: actionBlock("font", {
+                    action: "text",
+                    operation: "setFontSize",
+                    objectName: "title",
+                    target: { kind: "text", name: "title", label: "title", sourceBlockId: "text" },
+                    fontSize: 24,
+                }),
+                sound: actionBlock("sound", { action: "audio", operation: "playSound", objectName: "piano", assetId: "asset-piano" }),
+                vol: actionBlock("vol", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "piano",
+                    target: { name: "piano", label: "piano", sourceBlockId: "sound" },
+                    volume: 0.4,
+                }),
+            }, ["image", "swap", "text", "font", "sound", "vol"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["swap", "font", "vol"]));
+    });
+
+    it("follows a rename of the row that declares the object", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                // The create row has been renamed since the rows below were written: their own
+                // `objectName` still spells the old name, and the reference is what carries them over.
+                image: actionBlock("image", { action: "image", operation: "create", objectName: "protagonist", assetId: "asset-hero" }),
+                swap: actionBlock("swap", {
+                    action: "image",
+                    operation: "setSource",
+                    objectName: "hero",
+                    target: { kind: "image", name: "hero", label: "hero", sourceBlockId: "image" },
+                    assetId: "asset-hero-night",
+                }),
+                sound: actionBlock("sound", { action: "audio", operation: "playSound", objectName: "grand-piano", assetId: "asset-piano" }),
+                vol: actionBlock("vol", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "piano",
+                    target: { name: "piano", label: "piano", sourceBlockId: "sound" },
+                    volume: 0.4,
+                }),
+            }, ["image", "swap", "sound", "vol"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["swap", "vol"]));
+        // The rows landed on the renamed object rather than on one conjured from their stale name.
+        expect([...(compiled.sceneElements?.["scene-1"].images.keys() ?? [])]).toEqual(["protagonist"]);
+        expect([...(compiled.sceneElements?.["scene-1"].sounds.keys() ?? [])]).toEqual(["grand-piano"]);
+    });
+
+    it("reports a reference that resolves to nothing, and builds nothing in its place", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", {
+                    action: "image",
+                    operation: "show",
+                    objectName: "poster",
+                    target: { kind: "image", name: "poster", label: "poster", sourceBlockId: "deleted" },
+                }),
+                vol: actionBlock("vol", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "piano",
+                    target: { name: "piano", label: "piano", sourceBlockId: "deleted" },
+                    volume: 0.4,
+                }),
+                fade: actionBlock("fade", {
+                    action: "layer",
+                    operation: "hide",
+                    objectName: "foreground",
+                    target: { kind: "custom", name: "foreground", sourceBlockId: "deleted" },
+                }),
+            }, ["show", "vol", "fade"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "show", message: "Image \"poster\" is not on stage; an earlier row has to create it." },
+            { level: "error", blockId: "vol", message: "Sound \"piano\" is not playing; an earlier /sound row has to start it." },
+            { level: "error", blockId: "fade", message: "Layer \"foreground\" is not on stage; an earlier row has to create it." },
+        ]);
+        // The rows compiled to nothing at all: no statements, and no blank objects left on stage.
+        expect(compiledRows(compiled)).toEqual([]);
+        expect(compiled.sceneElements?.["scene-1"].images.size).toBe(0);
+        expect(compiled.sceneElements?.["scene-1"].layers.size).toBe(0);
+        expect(compiled.elementIdBindings).not.toContain("nl:image:scene-1:poster");
+    });
+
+    it("keeps a document written before references working, and says nothing about it", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                image: actionBlock("image", { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" }),
+                show: actionBlock("show", { action: "image", operation: "show", objectName: "hero" }),
+                text: actionBlock("text", { action: "text", operation: "create", objectName: "title", text: "Chapter One" }),
+                retitle: actionBlock("retitle", { action: "text", operation: "setText", objectName: "title", text: "Chapter Two" }),
+                sound: actionBlock("sound", { action: "audio", operation: "playSound", objectName: "piano", assetId: "asset-piano" }),
+                vol: actionBlock("vol", { action: "audio", operation: "setVolume", objectName: "piano", volume: 0.4 }),
+            }, ["image", "show", "text", "retitle", "sound", "vol"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["show", "retitle", "vol"]));
+    });
+
+    it("routes the music channel through its built-in reference without reporting it", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                bgm: actionBlock("bgm", { action: "audio", operation: "setBgm", assetId: "asset-theme" }),
+                quieter: actionBlock("quieter", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "bgm",
+                    target: { builtin: "bgm", name: "bgm", label: "Background music" },
+                    volume: 0.3,
+                }),
+            }, ["bgm", "quieter"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["quieter"]));
+    });
+
+    /**
+     * The music channel outlives the scene that starts it, so a control row this compile cannot
+     * account for is not the same fact as a named sound that was never started - it stays the warning
+     * it has always been rather than joining the errors above.
+     */
+    it("leaves music with no /bgm row on its own long-standing warning", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                quieter: actionBlock("quieter", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "bgm",
+                    target: { builtin: "bgm", name: "bgm", label: "Background music" },
+                    volume: 0.3,
+                }),
+            }, ["quieter"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "warning", blockId: "quieter", message: "No background music is set before this row; /bgm has to run first." },
         ]);
     });
 });
