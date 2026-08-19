@@ -18,7 +18,7 @@ import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry
 import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
-import { composeStoryFilter } from "@shared/story/transformProps";
+import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
 import { translate } from "@/lib/i18n";
 import {
     getCharacterStageObjectName,
@@ -481,7 +481,7 @@ class SnapshotWalker {
             case "blueprint":
                 this.diagnostic(block.id, translate("story.preview.diagnostics.storyActionSkipped"));
                 return;
-            // audio / wait / screenEffect / nvl: no settled visual state.
+            // audio / wait / nvl: no settled visual state.
             default:
                 return;
         }
@@ -614,12 +614,17 @@ class SnapshotWalker {
     }
 
     /**
-     * Accumulate the stage camera's settled pose. Each op writes its own channel and the latest
-     * value wins (matching the runtime, where `/camera` transforms are absolute, not relative);
-     * `reset` returns the camera to neutral, which for a pre-pose means "nothing to apply".
+     * Accumulate the stage camera's settled pose - the same walk every displayable gets, because the
+     * camera states the same bag.
      *
-     * Values are clamped with the same idiom the compiler's `compileCameraAction` uses, because the
-     * pose is pre-posed directly onto the camera and never passes through that compile path.
+     * The latest value of a channel wins, matching the runtime where a camera transform is absolute
+     * and not relative; `reset` returns the camera to neutral, which for a pre-pose means "nothing to
+     * apply". A shot in animation mode settles like any other, through the same
+     * `storyTransformRefFinalProps` a displayable's does, so a launch placed after one opens on the
+     * frame the real playthrough would show.
+     *
+     * The zoom clamp mirrors the compiler's: the pose is pre-posed straight onto the camera and never
+     * passes through `compileCameraAction`.
      */
     private applyCamera(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "camera" }>): void {
         if (payload.operation === "reset") {
@@ -627,49 +632,17 @@ class SnapshotWalker {
             return;
         }
         const camera = this.camera ?? (this.camera = { props: {}, effects: {} });
-        switch (payload.operation) {
-            case "motion":
-                // A camera motion settles like any other transform, and this class already holds the
-                // animation assets - so the shot a `/camera motion` row leaves behind is reconstructed
-                // rather than dropped, and a row launch placed after it opens on the same frame the
-                // real playthrough would show.
-                camera.props = mergeTransformProps(camera.props, this.finalProps(payload.motion, "none", block.id));
-                return;
-            case "pan":
-                camera.props.position = getPresetPosition("custom", {
-                    xalign: payload.position?.xalign ?? 0.5,
-                    yalign: payload.position?.yalign ?? 0.5,
-                    ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
-                    ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
-                });
-                return;
-            case "zoom":
-                camera.props.zoom = Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1));
-                return;
-            case "rotate":
-                camera.props.rotation = finiteOr(payload.rotation, 0);
-                return;
-            // `darken` and `look` are ONE channel in the engine, so they are one channel here too:
-            // each clears the other. Keeping both would leave the re-apply pass free to order them,
-            // and it applies `filter` before `darkness` unconditionally - so a scene whose last grade
-            // row was a `look` would open on the earlier `darken` instead, and only when launched
-            // from a row, which is the worst possible place for the two surfaces to disagree.
-            case "darken":
-                camera.effects.filter = undefined;
-                camera.effects.darkness = Math.min(1, Math.max(0, finiteOr(payload.darkness, 0)));
-                return;
-            case "look": {
-                const filter = payload.filter?.trim() || resolveStoryCameraLook(payload.lookPreset, payload.lookIntensity);
-                if (!filter) {
-                    return;
-                }
-                camera.effects.darkness = undefined;
-                camera.effects.filter = { filter };
-                return;
-            }
-            default:
-                return;
+        const props = this.finalProps(payload.transform, "none", block.id);
+        if (props.zoom !== undefined) {
+            props.zoom = Math.max(MIN_CAMERA_ZOOM, finiteOr(props.zoom as number, 1));
         }
+        camera.props = mergeTransformProps(camera.props, props);
+        // The appearance channels re-apply on the pre-posed camera rather than riding its props, for
+        // the reason every displayable's do: a grade is a `filter()` call and a mask needs a URL. This
+        // is also what makes the lens replay: `shutter` and `vignette` ARE settled camera state now,
+        // so a launch from a row after `shutter=1` has to open with the eyes shut. They ride `props`,
+        // which is exactly where the engine reads them from.
+        applyEffectProps(camera.effects, payload.transform);
     }
 
     private resolveLayerTargetProps(payload: Extract<StoryActionPayload, { action: "layer" }>): {
@@ -925,7 +898,9 @@ class SnapshotWalker {
  * radius zero.
  */
 function applyEffectProps(effects: StageSnapshotEffects, transform: StoryTransformRef | undefined): void {
-    const to = transform?.to;
+    // Folded first, so a grade re-applies through the same `filter` channel a hand-written chain does
+    // - the preview has one CSS filter to give back, exactly as the stage has one.
+    const to = foldStoryTransformLook(transform?.to, resolveStoryCameraLook);
     if (to) {
         if (to.maskAssetId !== undefined) {
             effects.mask = to.maskAssetId === null ? "clear" : { assetId: to.maskAssetId };

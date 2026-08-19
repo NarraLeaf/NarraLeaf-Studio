@@ -420,35 +420,23 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         },
         cameraReset: { keyword: "camera reset", slots: TIMING },
         cameraMotion: { keyword: "camera motion", slots: [{ slot: "motion", value: "name" }] },
-        // `over` is the whole move on both effects; `in` and `out` split it, and sit on `blink` alone
-        // because `VignetteOptions` has one duration driving both of its halves.
+        // The lens gesture: a NAME plus the numbers a row may take over. It reads `lens blink` rather
+        // than `blink`, because the word after the verb is a preset id and the grammar has no way to
+        // say "one of a library" without one.
         //
-        // `opacity` stays on `blink` even though the engine's `BlinkOptions` has none and the compile
-        // therefore ignores it. Nothing writes it any more - the inspector stopped offering a control
-        // that could not do anything - but a document authored before that does carry it, and a
-        // grammar without the slot would drop it on the way through the script view. Silently losing
-        // an author's value is worse than printing one the engine will not read.
-        screenBlink: {
-            keyword: "blink",
+        // Every override is a lead-word slot and every one is optional: a row that only names the
+        // gesture prints as `lens blink`, which is what nearly every row is.
+        cameraLens: {
+            keyword: "lens",
             slots: [
-                { slot: "duration", lead: "over", value: "seconds" },
+                { slot: "lens", value: "name" },
                 { slot: "fadeIn", lead: "in", value: "seconds" },
-                { slot: "fadeOut", lead: "out", value: "seconds" },
                 { slot: "hold", lead: "hold", value: "seconds" },
+                { slot: "fadeOut", lead: "out", value: "seconds" },
                 { slot: "color", lead: "color", value: "color" },
-                { slot: "opacity", lead: "opacity", value: "number" },
-                { slot: "easing", lead: "ease", value: "name" },
-            ],
-        },
-        screenVignette: {
-            keyword: "vignette",
-            slots: [
-                { slot: "duration", lead: "over", value: "seconds" },
+                { slot: "opacity", lead: "amount", value: "number" },
                 { slot: "inner", lead: "inner", value: "number" },
                 { slot: "outer", lead: "outer", value: "number" },
-                { slot: "hold", lead: "hold", value: "seconds" },
-                { slot: "color", lead: "color", value: "color" },
-                { slot: "opacity", lead: "opacity", value: "number" },
                 { slot: "easing", lead: "ease", value: "name" },
             ],
         },

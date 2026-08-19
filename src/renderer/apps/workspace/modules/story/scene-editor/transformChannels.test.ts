@@ -4,14 +4,11 @@ import type { TranslationKey } from "@shared/i18n";
 import { createTranslator } from "@shared/i18n";
 import {
     addableTransformChannels,
-    cameraLookCss,
     formatBackdropBlur,
     formatStoryClipShape,
     parseBackdropBlur,
     parseStoryClipShape,
     seedStoryClipShape,
-    LOOK_INTENSITY_STEP,
-    readCameraLookCss,
     statedTransformChannels,
     TRANSFORM_CHANNELS,
     transformChannelById,
@@ -118,24 +115,18 @@ describe("transform channels", () => {
         expect(add({ mode: "props" }, "rotation").to?.rotation).toBe(0);
     });
 
-    it("round-trips a grade through the CSS it expands to", () => {
-        // The row stores only the expanded chain, so the picker can only re-open on the preset if
-        // every string the intensity control can write is one the index knows.
+    it("keeps a grade by name rather than by the chain it expands to", () => {
         const ref = add({ mode: "props" }, "look");
-        const reading = readCameraLookCss(ref.to?.filterRaw);
-        expect(reading).not.toBeNull();
+        expect(ref.to?.look?.preset).toBeTruthy();
+        expect(ref.to?.filterRaw).toBeUndefined();
         expect(idsOf(ref)).toEqual(["look"]);
-
-        const moved = cameraLookCss(reading!.preset, reading!.intensity - LOOK_INTENSITY_STEP);
-        expect(readCameraLookCss(moved)).toEqual({
-            preset: reading!.preset,
-            intensity: Number((reading!.intensity - LOOK_INTENSITY_STEP).toFixed(2)),
-        });
     });
 
-    it("reads a chain the library did not write as a hand-written one", () => {
+    it("reads a hand-written chain as one, and never as a grade", () => {
         expect(idsOf({ mode: "props", to: { filterRaw: "drop-shadow(0 0 4px #000)" } })).toEqual(["filterRaw"]);
-        expect(readCameraLookCss("drop-shadow(0 0 4px #000)")).toBeNull();
+        // The library's own output is still a chain and nothing more: the name is what makes a row a
+        // grade, so a bag holding the CSS alone is exactly what an author typed by hand.
+        expect(idsOf({ mode: "props", to: { filterRaw: "grayscale(1) brightness(0.9) contrast(1.15)" } })).toEqual(["filterRaw"]);
     });
 
     it("keeps a channel out of the timing fields it does not own", () => {

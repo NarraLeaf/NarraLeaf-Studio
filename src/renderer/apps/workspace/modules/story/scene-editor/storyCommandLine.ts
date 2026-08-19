@@ -945,82 +945,35 @@ function vfxSentence(
 /**
  * A camera row, as the `/transform camera …` line that would produce it.
  *
- * The camera is a reserved TARGET now rather than a verb of its own, so the sentence has the same
- * shape every other transform row has: a subject, then the prop it states. What is still different is
- * the payload underneath - the `camera` arm spells its state as one operation plus that operation's
- * own field, so a camera row carries exactly one prop where a displayable carries a bag. See
- * `specs/transform.ts` for why that restriction is still here and what ends it.
+ * The same sentence every other transform row has, and since v19 the same payload underneath: a
+ * subject, then the channels the bag states. There is nothing camera-shaped left here except which
+ * word names the subject and the fact that `reset` is its own verb.
  */
 function cameraSentence(
     payload: Extract<StoryActionPayload, { action: "camera" }>,
+    lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence {
     const subject = positional("target", "camera");
-    const duration = arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) });
     if (payload.operation === "reset") {
-        // Its own command since M2 - `/reset camera` - which is also the one camera row whose word the
-        // whole vocabulary shares with every other subject.
-        return { commandId, args: [subject, duration] };
+        // Its own command - `/reset camera` - and the one camera row whose word the whole vocabulary
+        // shares with every other subject. Its timing is on the payload, not in a ref, because there
+        // is no bag to hang one on.
+        return {
+            commandId,
+            args: [subject, arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) })],
+        };
     }
-    const prop = (): Arg | null => {
-        switch (payload.operation) {
-            case "pan":
-                return arg("pos", storyCameraPanPlacement(payload.position) ?? undefined, {
-                    enum: true,
-                    apply: next => ({ ...payload, position: getPresetPosition(next, {}) ?? payload.position }),
-                });
-            case "zoom":
-                return arg("zoom", numberValue(payload.zoom), { apply: next => ({ ...payload, zoom: Number(next) }) });
-            case "rotate":
-                return arg("rot", numberValue(payload.rotation), { apply: next => ({ ...payload, rotation: Number(next) }) });
-            case "darken":
-                // The retired `/camera darken 0.4` is `bright=0.6` in the prop vocabulary: the engine's
-                // `darken(d)` IS `brightness(1 - d)`, one CSS channel, so the row prints the channel.
-                return arg("bright", numberValue(1 - Math.min(1, Math.max(0, payload.darkness ?? 0))), {
-                    apply: next => ({ ...payload, darkness: 1 - Number(next) }),
-                });
-            case "look":
-                // A hand-written filter has no library word - it is CSS, not a name - so it prints
-                // through the raw escape hatch that produced it. Which is also what `bright=0.6`
-                // reads back as: the camera arm keeps one resolved string, so the sugar that composed
-                // it is not recoverable and the row shows the channel it actually wrote.
-                if (!payload.lookPreset) {
-                    return arg("filter", payload.filter);
-                }
-                return arg("look", payload.lookPreset, {
-                    enum: true,
-                    apply: next => {
-                        // Swapping the grade keeps the dial the author set: `strength` means the same
-                        // thing in every preset, so re-seeding it would throw away a real choice.
-                        const preset = getStoryCameraLookPreset(next);
-                        return preset
-                            ? { ...payload, lookPreset: preset.id, lookIntensity: payload.lookIntensity ?? preset.defaultIntensity }
-                            : payload;
-                    },
-                });
-            case "motion":
-                return arg("motion", "true");
-            case "reset":
-                return null;
-        }
-    };
-    return {
-        commandId,
-        args: [
-            subject,
-            prop(),
-            payload.operation === "look" && payload.lookIntensity !== undefined
-                ? arg("strength", numberValue(payload.lookIntensity), { apply: next => ({ ...payload, lookIntensity: Number(next) }) })
-                : null,
-            // `look` and `motion` both ignore a duration and say so by not printing one: a still grade
-            // lands in one frame (see the compiler's `look` arm) and a shot's timing is in its
-            // keyframes, so a `d=` on either would be a token that does nothing.
-            payload.operation === "motion" || payload.operation === "look" ? null : duration,
-        ],
-    };
+    if (payload.transform?.mode === "animation") {
+        // A Story Motion states its shot in a binding rather than in props, so the line says which
+        // mode the row is in and the shot's name rides the inspector.
+        return { commandId, args: [subject, arg("motion", "true")] };
+    }
+    return { commandId, args: [subject, ...transformArgs(payload, lookups)] };
 }
 
 /**
+ * The prop bag as line args, with each printed value wired back to the channel it came from./**
  * The prop bag as line args, with each printed value wired back to the channel it came from.
  *
  * Shared by every row that carries a transform, which since M2 is every displayable row: the props
@@ -1182,7 +1135,7 @@ function actionSentence(
         case "vfx":
             return vfxSentence(payload, lookups, commandId);
         case "camera":
-            return cameraSentence(payload, commandId);
+            return cameraSentence(payload, lookups, commandId);
         case "displayable":
             // All three, and there is no fourth: v18 folded the twelve appearance operations into
             // `transform` + a prop bag, and M2 gave every prop in that bag a spelling.
@@ -1217,32 +1170,6 @@ function actionSentence(
                         apply: next => ({ ...payload, mode: "duration", durationMs: msOf(next) }),
                     })
                     : positional("seconds", "click")],
-            };
-        case "screenEffect":
-            // A committed row may only show a line the author could have typed, so the halves ride
-            // only on the effect whose spec names them. They also print only when a half was actually
-            // overridden - `arg` drops an empty value - so the common symmetric line stays
-            // `/blink d=0.2 hold=0.1` rather than growing two tokens `d` already said.
-            return {
-                commandId,
-                args: [
-                    // The effect leads, as `/screen blink` is typed. The OPERATION itself is fixed
-                    // here: swapping blink for vignette changes which fields the row carries and what
-                    // they mean, which is a rebuild rather than a tweak.
-                    positional("effect", payload.effect, { enum: true }),
-                    arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
-                    ...(payload.effect === "blink" ? [
-                        arg("in", seconds(payload.inMs), { apply: next => ({ ...payload, inMs: msOf(next) }) }),
-                        arg("out", seconds(payload.outMs), { apply: next => ({ ...payload, outMs: msOf(next) }) }),
-                    ] : []),
-                    arg("hold", seconds(payload.holdMs), { apply: next => ({ ...payload, holdMs: msOf(next) }) }),
-                    arg("color", payload.color, { apply: next => ({ ...payload, color: next }) }),
-                    ...(payload.effect === "vignette" ? [
-                        arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
-                        arg("inner", numberValue(payload.inner), { apply: next => ({ ...payload, inner: Number(next) }) }),
-                        arg("outer", numberValue(payload.outer), { apply: next => ({ ...payload, outer: Number(next) }) }),
-                    ] : []),
-                ],
             };
         case "nvl":
             // NVL's `transition` is a transform ref (preset-based), not a `StoryTransitionRef` — the

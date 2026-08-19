@@ -57,6 +57,7 @@ import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { parseStoryFilter } from "@shared/story/transformProps";
 import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "@/apps/workspace/modules/story/scene-editor/commands/transitions";
+import { getStoryCameraLensPreset } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 
 import type {
@@ -807,26 +808,39 @@ function buildDraft(
         case "cameraReset":
         case "cameraMotion":
             return cameraDraft(ctx, verb, slots);
-        case "screenBlink":
-        case "screenVignette":
+        case "cameraLens": {
+            // A gesture the library does not know is a `badWord` rather than a name stored as typed,
+            // for the reason a grade is: an unknown id compiles to a diagnostic and plays nothing, so
+            // accepting it here would move a real failure from where the author is typing to where
+            // they are testing.
+            const preset = nameOf(slots, "lens");
+            if (preset === undefined || !getStoryCameraLensPreset(preset)) {
+                return fail("badWord", preset ?? "lens");
+            }
             return {
                 kind: "action",
-                payload: prune({
-                    action: "screenEffect" as const,
-                    effect: verb === "screenBlink" ? ("blink" as const) : ("vignette" as const),
-                    durationMs: msOf(slots, "duration"),
-                    // Only `blink` has these slots to fill; on a vignette they are absent from the
-                    // grammar and `prune` drops the undefined pair.
-                    inMs: msOf(slots, "fadeIn"),
-                    outMs: msOf(slots, "fadeOut"),
-                    holdMs: msOf(slots, "hold"),
-                    color: colorOf(slots, "color"),
-                    opacity: numberOf(slots, "opacity"),
-                    inner: numberOf(slots, "inner"),
-                    outer: numberOf(slots, "outer"),
-                    easing: nameOf(slots, "easing"),
-                }),
+                payload: {
+                    action: "camera",
+                    operation: "transform",
+                    transform: {
+                        mode: "props",
+                        to: {
+                            lens: prune({
+                                preset,
+                                inMs: msOf(slots, "fadeIn"),
+                                holdMs: msOf(slots, "hold"),
+                                outMs: msOf(slots, "fadeOut"),
+                                color: colorOf(slots, "color"),
+                                amount: numberOf(slots, "opacity"),
+                                inner: numberOf(slots, "inner"),
+                                outer: numberOf(slots, "outer"),
+                                easing: nameOf(slots, "easing"),
+                            }) as { preset: string },
+                        },
+                    },
+                },
             };
+        }
 
         // --- Control ---------------------------------------------------------------------------------------
         case "conditionIf":
@@ -1485,8 +1499,19 @@ function clipRevealDraft(
     return { kind: "action", payload: { ...base, operation: "transform", transform: prune({ clipReveal: { kind }, ...timing }) } };
 }
 
+/**
+ * The camera's seven words, as the one prop bag they all write.
+ *
+ * The dialect keeps a word per channel - `camera zoom 1.4` reads better in a script than a bag
+ * spelled out - but what each one BUILDS is the same `StoryTransformRef` every other subject gets, so
+ * a script row and an editor row are the same document.
+ */
 function cameraDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: NarralangSlots): NarralangBlockDraft | Fail {
     const timing = prune({ durationMs: msOf(slots, "duration"), easing: nameOf(slots, "easing") });
+    const pose = (to: StoryTransformProps): NarralangBlockDraft => ({
+        kind: "action",
+        payload: { action: "camera", operation: "transform", transform: prune({ mode: "props" as const, to, ...timing }) },
+    });
     switch (verb) {
         case "cameraPan": {
             const placement = wordOf(slots, "placement");
@@ -1499,37 +1524,30 @@ function cameraDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Nar
             if (!position) {
                 return fail("badWord", placement);
             }
-            return {
-                kind: "action",
-                payload: prune({ action: "camera" as const, operation: "pan" as const, position, ...timing }),
-            };
+            return pose({ position });
         }
         case "cameraZoom": {
             const zoom = numberOf(slots, "zoom");
             if (zoom === undefined) {
                 return fail("missingValue", "zoom");
             }
-            return { kind: "action", payload: prune({ action: "camera" as const, operation: "zoom" as const, zoom, ...timing }) };
+            return pose({ zoom });
         }
         case "cameraRotate": {
             const rotation = numberOf(slots, "rotation");
             if (rotation === undefined) {
                 return fail("missingValue", "rotation");
             }
-            return {
-                kind: "action",
-                payload: prune({ action: "camera" as const, operation: "rotate" as const, rotation, ...timing }),
-            };
+            return pose({ rotation });
         }
         case "cameraDarken": {
             const darkness = numberOf(slots, "darkness");
             if (darkness === undefined) {
                 return fail("missingValue", "darkness");
             }
-            return {
-                kind: "action",
-                payload: prune({ action: "camera" as const, operation: "darken" as const, darkness, ...timing }),
-            };
+            // `Camera.darken(d)` IS `filter("brightness(1 - d)")` in the engine, so the word keeps its
+            // spelling in the script and the bag states the channel it always wrote.
+            return pose({ filter: { brightness: 1 - Math.min(1, Math.max(0, darkness)) } });
         }
         case "cameraLook": {
             // A grade the library does not know is a `badWord` rather than a name stored as typed:
@@ -1540,17 +1558,11 @@ function cameraDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Nar
             if (look !== undefined && !getStoryCameraLookPreset(look)) {
                 return fail("badWord", look);
             }
-            return {
-                kind: "action",
-                payload: prune({
-                    action: "camera" as const,
-                    operation: "look" as const,
-                    lookPreset: look,
-                    lookIntensity: numberOf(slots, "strength"),
-                    filter,
-                    ...timing,
-                }),
-            };
+            const strength = numberOf(slots, "strength");
+            return pose(prune({
+                ...(look !== undefined ? { look: prune({ preset: look, intensity: strength }) } : {}),
+                filterRaw: filter,
+            }) as StoryTransformProps);
         }
         case "cameraReset":
             return { kind: "action", payload: prune({ action: "camera" as const, operation: "reset" as const, ...timing }) };
@@ -1561,8 +1573,9 @@ function cameraDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Nar
             }
             return {
                 kind: "action",
-                payload: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: motion.value } },
+                payload: { action: "camera", operation: "transform", transform: { mode: "animation", animationId: motion.value } },
             };
         }
     }
 }
+

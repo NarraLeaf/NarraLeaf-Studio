@@ -63,12 +63,6 @@ export const storyInspector = {
         kind: "Kind",
         effect: "Effect",
         character: "Character",
-        // A blink's two halves, named for what each one does. Empty means "follow the whole move".
-        // Only a blink has them: the engine drives a vignette's fade in and out from one duration.
-        closeIn: "Close (s)",
-        openOut: "Open (s)",
-        vignetteInner: "Clear center %",
-        vignetteOuter: "Dark edge %",
         layer: "Layer",
         muted: "Muted",
     },
@@ -243,40 +237,12 @@ export const storyInspector = {
     },
 
     cameraOperation: {
-        zoom: "Zoom",
-        pan: "Pan",
-        rotate: "Rotate",
-        // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
-        darken: "Darken stage",
-        // "Grade", the word the craft uses, so the picker teaches the vocabulary rather than only the token.
-        look: "Color grade",
-        motion: "Camera motion",
         reset: "Reset camera",
     },
 
-    // The picker labels: short enough that they fit side by side. The full names above stay as each
-    // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
-    cameraOperationShort: {
-        zoom: "Zoom",
-        pan: "Pan",
-        rotate: "Rotate",
-        darken: "Darken",
-        look: "Grade",
-        motion: "Motion",
-        reset: "Reset",
-    },
-
-    camera: {
-        zoom: "Zoom (1 = neutral)",
-        rotation: "Rotation °",
-        darkness: "Stage darkness (0-1)",
-        xalign: "X align (0-1)",
-        yalign: "Y align (0-1)",
-        look: "Look",
-        lookSnaps: "A look lands in a single frame. Fading one would walk the picture through colours nobody chose, so there is no duration to set — cut into it behind a blink or a transition.",
-        lookIntensity: "Intensity (1 = nominal)",
-        lookFilter: "Custom CSS filter",
-    },
+    // Said where the mode is chosen, because it is the one camera row whose effect the viewfinder
+    // cannot draw: it puts the whole instrument back, pose and grade and lens together.
+    cameraResetHint: "Puts the camera back: pose, grade and lens at once.",
 
     // The looks themselves. Named for the moment they are for, not for what they do to the pixels:
     // an author reaches for these while writing a flashback, not while thinking about saturation.
@@ -287,6 +253,13 @@ export const storyInspector = {
         moonlight: "Moonlight",
         faint: "Losing consciousness",
         hangover: "Hangover",
+    },
+
+    // The lens gestures. Named for the moment, like the grades above.
+    cameraLens: {
+        blink: "Blink",
+        slowBlink: "Slow blink",
+        vignettePulse: "Vignette pulse",
     },
 
     cameraLookHint: {
@@ -339,6 +312,7 @@ export const storyInspector = {
         geometry: "Position and scale",
         filter: "Filter",
         look: "Look",
+        lens: "Lens",
         composite: "Compositing",
         text: "Text",
         timing: "Timing",
@@ -405,11 +379,6 @@ export const storyInspector = {
         setRate: "Set rate",
         muteSound: "Mute / unmute",
         seekSound: "Seek",
-    },
-
-    screenEffectOption: {
-        blink: "Blink",
-        vignette: "Vignette",
     },
 
     waitMode: {

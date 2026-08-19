@@ -9,6 +9,7 @@ import { neutralStoryTransformProps, STORY_FILTER_FUNCTION_ORDER } from "@shared
 import { legacyPresetPosition } from "@shared/story/transformLegacy";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 import type { StoryCommandEnumOption, StoryCommandParamType } from "../storyCommandGrammar";
 import type { StoryCommandValue } from "../storyCommandValues";
 import {
@@ -123,6 +124,12 @@ const LOOK_OPTIONS: readonly StoryCommandEnumOption[] = [
     { value: "none" },
 ];
 
+/** The camera lens library, as `lens=`'s word list. Derived, for the reason `look=`'s is. */
+const LENS_OPTIONS: readonly StoryCommandEnumOption[] = [
+    ...STORY_CAMERA_LENS_PRESETS.map(preset => ({ value: preset.id })),
+    { value: "none" },
+];
+
 /** `none` on a channel that takes a value: the word that means "back to neutral". */
 const NONE_OPTION: StoryCommandParamType = { kind: "enum", options: [{ value: "none" }] };
 
@@ -185,7 +192,35 @@ export const TRANSFORM_PROP_PARAMS = {
     // Text targets only - it is `fontColor`, the one channel in the bag that belongs to one kind of
     // displayable. `validate` says so rather than the type, which cannot see what the target is.
     color: { hint: "color", type: { kind: "color" } },
+    // ---------------------------------------------------------------------------------------------
+    // The lens. Camera only, and for a structural reason rather than a policy one: the engine renders
+    // these from the CAMERA's own overlay, a sibling of its transform node, and no other Displayable
+    // has one. On a sprite they would write props the stage never reads. `validate` says so, for the
+    // reason `color=` does - the type cannot see what the target is.
+    // ---------------------------------------------------------------------------------------------
+    shutter: numberParam("shutter", undefined, { min: 0, max: 1 }),
+    shutterColor: { hint: "shutterColor", type: { kind: "color" } },
+    vignette: numberParam("vignette", undefined, { min: 0, max: 1 }),
+    vignetteColor: { hint: "vignetteColor", type: { kind: "color" } },
+    // Percentages of the frame rather than lengths, so the falloff means the same thing at every
+    // stage size - and so a slider cannot produce `44px` by accident.
+    vignetteInner: numberParam("vignetteInner", undefined, { min: 0, max: 100 }),
+    vignetteOuter: numberParam("vignetteOuter", undefined, { min: 0, max: 100 }),
+    // A named gesture off the lens library. It sits beside `look=` because the two are the same kind
+    // of word - a name for something the author would otherwise have to keyframe.
+    lens: { hint: "cameraLens", type: { kind: "enum", options: LENS_OPTIONS } },
 } as const satisfies StoryCommandParamsShape;
+
+/**
+ * The camera's own props: every key `validate` refuses on any other subject.
+ *
+ * A list rather than a flag on each entry, because the entries are a `satisfies` literal the command
+ * grammar reads and a second optional field there would have to be threaded through every consumer of
+ * the shape for one use.
+ */
+export const CAMERA_ONLY_PROP_KEYS: readonly string[] = [
+    "shutter", "shutterColor", "vignette", "vignetteColor", "vignetteInner", "vignetteOuter", "lens",
+];
 
 /**
  * The timing every prop row shares, plus the two things that are not props at all.
@@ -284,15 +319,12 @@ export function filterWritersOf(args: TransformArgs): readonly FilterWriter[] {
  * "leave this as it stands", and that is what lets two rows compose instead of the second one
  * silently resetting whatever the first did.
  *
- * `look=` is resolved to its CSS here rather than kept as a name, because a displayable has nowhere
- * to keep the name - `lookPreset` is a field of the CAMERA payload. A camera row reads the same arg
- * again through {@link cameraLookOf} and keeps the preset, so the inspector can re-open on the grade
- * the author chose instead of on a wall of CSS.
+ * `look=` keeps its NAME. It used to resolve to CSS here, because a displayable had nowhere to store
+ * one - the grade's preset was a field of the camera payload alone - and the cost was that every
+ * surface wanting to re-open on the author's choice had to rebuild the whole library and match the
+ * string back. The bag holds the name now, so there is nothing to recover.
  */
-export function transformPropsFromArgs(
-    args: TransformArgs,
-    resolveLook: (presetId: string, intensity: number | undefined) => string | null,
-): StoryTransformProps {
+export function transformPropsFromArgs(args: TransformArgs): StoryTransformProps {
     const props: StoryTransformProps = {};
     const position = positionOf(args.pos);
     if (position) {
@@ -364,23 +396,49 @@ export function transformPropsFromArgs(
     if (raw !== undefined) {
         props.filterRaw = raw;
     }
+    const shutter = asNumber(args.shutter);
+    if (shutter !== undefined) {
+        props.shutter = shutter;
+    }
+    const shutterColor = asColor(args.shutterColor);
+    if (shutterColor !== undefined) {
+        props.shutterColor = shutterColor;
+    }
+    const vignette = asNumber(args.vignette);
+    if (vignette !== undefined) {
+        props.vignette = vignette;
+    }
+    const vignetteColor = asColor(args.vignetteColor);
+    if (vignetteColor !== undefined) {
+        props.vignetteColor = vignetteColor;
+    }
+    // Stored as the CSS length the engine takes, written as the number an author types: the gradient
+    // stops are the one thing here that must stay resolution-independent.
+    const vignetteInner = asNumber(args.vignetteInner);
+    if (vignetteInner !== undefined) {
+        props.vignetteInner = `${vignetteInner}%`;
+    }
+    const vignetteOuter = asNumber(args.vignetteOuter);
+    if (vignetteOuter !== undefined) {
+        props.vignetteOuter = `${vignetteOuter}%`;
+    }
+    const lens = asEnum(args.lens);
+    if (lens === "none") {
+        props.lens = null;
+    } else if (lens !== undefined) {
+        props.lens = { preset: lens };
+    }
     const look = asEnum(args.look);
     if (look === "none") {
-        props.filter = null;
+        // `null` on this channel is what `none` means on every other one: put it back. It is not the
+        // same instruction as `filter=none` only in which word the author typed - both clear the one
+        // CSS channel - and the row prints back the word that produced it.
+        props.look = null;
     } else if (look !== undefined) {
-        props.filterRaw = resolveLook(look, asNumber(args.strength));
+        const intensity = asNumber(args.strength);
+        props.look = { preset: look, ...(intensity !== undefined ? { intensity } : {}) };
     }
     return props;
-}
-
-/** The grade a camera row keeps by NAME, so the inspector can re-open on it. `null` when the row names none. */
-export function cameraLookOf(args: TransformArgs): { lookPreset?: string; lookIntensity?: number } | null {
-    const look = asEnum(args.look);
-    if (look === undefined || look === "none") {
-        return null;
-    }
-    const intensity = asNumber(args.strength);
-    return { lookPreset: look, ...(intensity !== undefined ? { lookIntensity: intensity } : {}) };
 }
 
 /**
@@ -598,6 +656,10 @@ export function transformPropArgs(
     if (props.filterRaw !== undefined) {
         push("filter", props.filterRaw === null ? "none" : props.filterRaw, props.filterRaw === null);
     }
+    if (props.look !== undefined) {
+        push("look", props.look === null ? "none" : props.look.preset, true);
+        push("strength", props.look === null ? undefined : numberWord(props.look.intensity));
+    }
     if (props.maskAssetId !== undefined) {
         push("mask", props.maskAssetId === null ? "none" : assetName(props.maskAssetId), props.maskAssetId === null);
     }
@@ -611,7 +673,27 @@ export function transformPropArgs(
         push("blend", props.mixBlendMode ?? "none", true);
     }
     push("color", props.fontColor);
+    push("shutter", numberWord(props.shutter));
+    push("shutterColor", props.shutterColor);
+    push("vignette", numberWord(props.vignette));
+    push("vignetteColor", props.vignetteColor);
+    push("vignetteInner", percentWord(props.vignetteInner));
+    push("vignetteOuter", percentWord(props.vignetteOuter));
+    if (props.lens !== undefined) {
+        push("lens", props.lens === null ? "none" : props.lens.preset, true);
+    }
     return args;
+}
+
+/**
+ * A stored gradient stop as the number an author typed for it.
+ *
+ * Silent on anything that is not a plain percentage - a hand-written `calc(...)` has no spelling in
+ * the vocabulary, and a row may only ever show a line the author could type back.
+ */
+function percentWord(value: string | null | undefined): string | undefined {
+    const match = typeof value === "string" ? /^(-?\d+(?:\.\d+)?)%$/.exec(value.trim()) : null;
+    return match ? match[1] : undefined;
 }
 
 /** A `from=` bag as the quoted list that would produce it, or nothing when it states none. */
@@ -677,11 +759,28 @@ export function patchTransformProp(props: StoryTransformProps | undefined, key: 
         // Absolute, never a toggle - the same reason the retired `/mirror` never took one: a compiled
         // transform cannot read the scale it would have to invert.
         case "flip": return { ...bag, scaleX: next === "on" ? -1 : 1 };
-        case "filter": return next === "none" ? { ...bag, filter: null, filterRaw: undefined } : { ...bag, filterRaw: next, filter: undefined };
+        case "filter": return next === "none" ? { ...bag, filter: null, filterRaw: undefined, look: undefined } : { ...bag, filterRaw: next, filter: undefined, look: undefined };
+        // Swapping the grade keeps the dial the author set: `strength` means the same thing in every
+        // preset, so re-seeding it would throw away a real choice.
+        case "look": return next === "none"
+            ? { ...bag, look: null, filter: undefined, filterRaw: undefined }
+            : { ...bag, look: { preset: next, ...(bag.look?.intensity !== undefined ? { intensity: bag.look.intensity } : {}) }, filter: undefined, filterRaw: undefined };
+        case "strength": return bag.look ? { ...bag, look: { ...bag.look, intensity: amount } } : bag;
         case "clip": return { ...bag, clipPath: next === "none" ? null : next };
         case "backdrop": return { ...bag, backdropFilter: next === "none" ? null : next };
         case "blend": return { ...bag, mixBlendMode: next === "none" ? null : next };
         case "color": return { ...bag, fontColor: next };
+        case "shutter": return { ...bag, shutter: amount };
+        case "shutterColor": return { ...bag, shutterColor: next };
+        case "vignette": return { ...bag, vignette: amount };
+        case "vignetteColor": return { ...bag, vignetteColor: next };
+        case "vignetteInner": return { ...bag, vignetteInner: `${amount}%` };
+        case "vignetteOuter": return { ...bag, vignetteOuter: `${amount}%` };
+        // The overrides are not edited from the line: a gesture is a name, and its numbers are the
+        // inspector's. Swapping the name keeps them, for the reason a grade keeps its dial.
+        case "lens": return next === "none"
+            ? { ...bag, lens: null }
+            : { ...bag, lens: { ...(bag.lens ?? {}), preset: next } };
         default: return bag;
     }
 }

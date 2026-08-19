@@ -34,7 +34,6 @@ import { TransformChannelPreview } from "./TransformChannelPreview";
 import { Disclosure, type TFunc } from "./inspectorFieldKit";
 import {
     addableTransformChannels,
-    cameraLookCss,
     filterRecordOf,
     formatBackdropBlur,
     formatStoryClipShape,
@@ -42,7 +41,6 @@ import {
     LOOK_INTENSITY_STEP,
     parseBackdropBlur,
     parseStoryClipShape,
-    readCameraLookCss,
     roundLookIntensity,
     seedStoryClipShape,
     statedTransformChannels,
@@ -54,6 +52,7 @@ import {
     type TransformChannelSpec,
 } from "./transformChannels";
 import { STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 
 /**
  * The stated channels of a transform, one row each, plus the picker that adds another.
@@ -326,11 +325,7 @@ function PositionControl(props: { value: StoryTransformProps["position"]; onChan
     );
 }
 
-function LookIntensity(props: { css: string; onChange: (css: string) => void; t: TFunc }) {
-    const reading = readCameraLookCss(props.css);
-    if (!reading) {
-        return null;
-    }
+function LookIntensity(props: { value: number; onChange: (intensity: number) => void; t: TFunc }) {
     return (
         <div className="flex items-center gap-2">
             <span className="shrink-0 text-2xs text-fg-subtle">{props.t("story.paramHint.cameraLookStrength")}</span>
@@ -339,10 +334,10 @@ function LookIntensity(props: { css: string; onChange: (css: string) => void; t:
                 min={LOOK_INTENSITY_STEP}
                 max={LOOK_INTENSITY_MAX}
                 step={LOOK_INTENSITY_STEP}
-                value={reading.intensity}
-                onValueChange={next => props.onChange(cameraLookCss(reading.preset, roundLookIntensity(next)))}
+                value={props.value}
+                onValueChange={next => props.onChange(roundLookIntensity(next))}
             />
-            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{reading.intensity.toFixed(2)}</span>
+            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{props.value.toFixed(2)}</span>
         </div>
     );
 }
@@ -429,9 +424,10 @@ function channelBody(
         };
     }
     if (channel.id === "look") {
-        const css = to.filterRaw ?? "";
-        const reading = readCameraLookCss(css);
-        const onChange = (next: string) => setProps({ filterRaw: next });
+        // The NAME, not the chain it expands to. The row stores the author's choice, so the picker
+        // opens on it directly instead of matching an expanded filter string back to a preset.
+        const look = to.look ?? null;
+        const intensity = look?.intensity ?? 1;
         return {
             control: (
                 <ChannelSelect
@@ -440,11 +436,29 @@ function channelBody(
                         value: entry.id,
                         label: t(`storyInspector.cameraLook.${entry.id}` as TranslationKey),
                     }))}
-                    value={reading?.preset ?? STORY_CAMERA_LOOK_PRESETS[0]?.id ?? ""}
-                    onChange={next => onChange(cameraLookCss(next, reading?.intensity ?? 1))}
+                    value={look?.preset ?? STORY_CAMERA_LOOK_PRESETS[0]?.id ?? ""}
+                    onChange={next => setProps({ look: { preset: next, intensity } })}
                 />
             ),
-            below: <LookIntensity css={css} t={t} onChange={onChange} />,
+            below: (
+                <>
+                    <LookIntensity
+                        value={intensity}
+                        t={t}
+                        onChange={next => setProps({ look: { preset: look?.preset ?? STORY_CAMERA_LOOK_PRESETS[0]?.id ?? "", intensity: next } })}
+                    />
+                    {/* The two facts an author cannot find out from a list of names: a grade REPLACES
+                        whatever the last one put on this channel rather than layering onto it, and one
+                        of them keeps moving instead of settling. */}
+                    <p className="mt-1 text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.channel")}</p>
+                    {look?.preset === "monologue" ? (
+                        <p className="mt-1 text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.monologue")}</p>
+                    ) : null}
+                    {look?.preset === "hangover" ? (
+                        <p className="mt-1 text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.hangover")}</p>
+                    ) : null}
+                </>
+            ),
         };
     }
     if (channel.id === "filterRaw") {
@@ -518,6 +532,64 @@ function channelBody(
                     />
                     <ChannelText value={value} onChange={fontColor => setProps({ fontColor })} />
                 </div>
+            ),
+        };
+    }
+    if (channel.id === "lens") {
+        // The NAME, and only the name. The overrides beside it are the library's numbers until an
+        // author changes one, and a panel that opened with all eight filled in would read as eight
+        // choices they had made.
+        const lens = to.lens ?? null;
+        return {
+            control: (
+                <ChannelSelect
+                    label={label}
+                    options={STORY_CAMERA_LENS_PRESETS.map(entry => ({
+                        value: entry.id,
+                        label: t(`storyInspector.cameraLens.${entry.id}` as TranslationKey),
+                    }))}
+                    value={lens?.preset ?? STORY_CAMERA_LENS_PRESETS[0]?.id ?? ""}
+                    onChange={preset => setProps({ lens: { ...(lens ?? {}), preset } })}
+                />
+            ),
+        };
+    }
+    if (channel.id === "shutter" || channel.id === "vignette") {
+        const key = channel.id;
+        return { control: <ChannelNumber label={label} value={to[key]} onChange={value => setProps({ [key]: value })} fallback={0} /> };
+    }
+    if (channel.id === "shutterColor" || channel.id === "vignetteColor") {
+        const key = channel.id;
+        const value = to[key] ?? "#000000";
+        const parsed = parseColorValue(value, { hex: "#000000", alpha: 1 });
+        return {
+            control: (
+                <div className="flex items-center gap-2">
+                    <ColorPickerTrigger
+                        value={{ hex: parsed.hex, alpha: 1 }}
+                        displayMode="icon"
+                        allowOpacity={false}
+                        onChange={next => setProps({ [key]: colorValueToCss({ hex: next.hex, alpha: 1 }) })}
+                    />
+                    <ChannelText value={value} onChange={next => setProps({ [key]: next })} />
+                </div>
+            ),
+        };
+    }
+    if (channel.id === "vignetteInner" || channel.id === "vignetteOuter") {
+        // Percentages of the frame, so the falloff means the same thing at every stage size - and so a
+        // number typed here cannot become `44px` by accident.
+        const key = channel.id;
+        const raw = to[key] ?? "";
+        const parsed = Number(String(raw).replace("%", ""));
+        return {
+            control: (
+                <ChannelNumber
+                    label={label}
+                    value={Number.isFinite(parsed) ? parsed : undefined}
+                    onChange={value => setProps({ [key]: `${value}%` })}
+                    fallback={0}
+                />
             ),
         };
     }
@@ -692,7 +764,12 @@ function AddChannelPicker(props: {
 
 export function TransformChannelEditor(props: {
     value: StoryTransformRef | undefined;
-    targetKind: StoryDisplayableTargetKind;
+    /**
+     * What this row transforms. `camera` is a subject like any other since v19 - the stage camera IS
+     * a Displayable and takes the same bag - and it is spelled here rather than in
+     * `StoryDisplayableTargetKind` because that union is about objects a scene creates.
+     */
+    targetKind: StoryDisplayableTargetKind | "camera";
     /**
      * The image this row transforms, when the row transforms something that has one.
      *
@@ -707,7 +784,7 @@ export function TransformChannelEditor(props: {
     const preview = useAssetObjectUrl(props.previewAssetId, AssetType.Image);
     const ref: StoryTransformRef = props.value ?? { mode: "props" };
     const stated = statedTransformChannels(ref);
-    const addable = addableTransformChannels(ref, { isText: props.targetKind === "text" });
+    const addable = addableTransformChannels(ref, { isText: props.targetKind === "text", isCamera: props.targetKind === "camera" });
     const removeLabel = t("storyInspector.transformChannel.remove");
 
     return (

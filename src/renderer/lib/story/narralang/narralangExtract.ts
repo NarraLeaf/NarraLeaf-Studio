@@ -1002,71 +1002,95 @@ function displayableEffectShape(
     return null;
 }
 
+/**
+ * A camera row, as the one of the seven words its bag states.
+ *
+ * The dialect has a word per channel and the bag can state several, so a row naming two is reported
+ * as `customTransform` and printed as the closest word it has - the same answer `transformSlots`
+ * gives a displayable whose bag no single word names. A lossy script export that SAYS it is lossy is
+ * the contract here; silently printing half a row is not.
+ */
 function cameraShape(
     ctx: NarralangExtractContext,
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "camera" }>,
 ): NarralangShape {
-    const timing = timingSlots(payload.durationMs, payload.easing);
-    switch (payload.operation) {
-        case "pan": {
-            const placement = storyCameraPanPlacement(payload.position);
-            if (!placement) {
-                ctx.report(block.id, "customTransform", "camera");
-                return { form: "statement", verb: "cameraPan", slots: timing };
-            }
-            return { form: "statement", verb: "cameraPan", slots: { placement: asWord(placement), ...timing } };
-        }
-        case "zoom":
-            return { form: "statement", verb: "cameraZoom", slots: { zoom: asNumber(payload.zoom ?? 1), ...timing } };
-        case "rotate":
-            return {
-                form: "statement",
-                verb: "cameraRotate",
-                slots: { rotation: asNumber(payload.rotation ?? 0), ...timing },
-            };
-        case "darken":
-            return {
-                form: "statement",
-                verb: "cameraDarken",
-                slots: { darkness: asNumber(payload.darkness ?? 0), ...timing },
-            };
-        case "look": {
-            // A hand-written filter is printed as itself and the preset name goes with it when there
-            // is one: the compile prefers the filter, so a script that showed only the grade name
-            // would read as a different row than the one that plays.
-            const preset = payload.lookPreset;
-            const custom = payload.filter?.trim();
-            if (!preset && !custom) {
-                // Nothing chosen yet - the row compiles to nothing, so the script says the same.
-                return { form: "statement", verb: "cameraLook", slots: timing };
-            }
-            return {
-                form: "statement",
-                verb: "cameraLook",
-                slots: {
-                    ...(preset ? { look: asName(preset) } : {}),
-                    ...(payload.lookIntensity === undefined ? {} : { strength: asNumber(payload.lookIntensity) }),
-                    ...(custom ? { filter: asString(custom) } : {}),
-                    ...timing,
-                },
-            };
-        }
-        case "reset":
-            return { form: "statement", verb: "cameraReset", slots: timing };
-        case "motion": {
-            const animationId = payload.motion?.animationId;
-            const name = animationId ? ctx.lookups.motionName?.(animationId) ?? null : null;
-            if (!name) {
-                ctx.report(block.id, "unresolvedRef", "motion");
-                return { form: "statement", verb: "cameraMotion", slots: {} };
-            }
-            return { form: "statement", verb: "cameraMotion", slots: { motion: asName(name) } };
-        }
-        default:
-            ctx.report(block.id, "unknownPayload");
-            return { form: "silent" };
+    if (payload.operation === "reset") {
+        return { form: "statement", verb: "cameraReset", slots: timingSlots(payload.durationMs, payload.easing) };
     }
+    const ref = payload.transform;
+    if (ref?.mode === "animation") {
+        const animationId = ref.animationId;
+        const name = animationId ? ctx.lookups.motionName?.(animationId) ?? null : null;
+        if (!name) {
+            ctx.report(block.id, "unresolvedRef", "motion");
+            return { form: "statement", verb: "cameraMotion", slots: {} };
+        }
+        return { form: "statement", verb: "cameraMotion", slots: { motion: asName(name) } };
+    }
+    const timing = timingSlots(ref?.durationMs, ref?.easing);
+    const to = ref?.to;
+    const stated = to ? Object.entries(to).filter(([, value]) => value !== undefined).map(([key]) => key) : [];
+    if (stated.length > 1) {
+        ctx.report(block.id, "customTransform", "camera");
+    }
+    if (to?.lens) {
+        return {
+            form: "statement",
+            verb: "cameraLens",
+            slots: {
+                lens: asName(to.lens.preset),
+                fadeIn: optSeconds(to.lens.inMs),
+                hold: optSeconds(to.lens.holdMs),
+                fadeOut: optSeconds(to.lens.outMs),
+                color: to.lens.color === undefined ? undefined : asColor(to.lens.color),
+                opacity: optNumber(to.lens.amount),
+                inner: optNumber(to.lens.inner),
+                outer: optNumber(to.lens.outer),
+                easing: to.lens.easing === undefined ? undefined : asName(to.lens.easing),
+            },
+        };
+    }
+    if (to?.look) {
+        return {
+            form: "statement",
+            verb: "cameraLook",
+            slots: {
+                look: asName(to.look.preset),
+                ...(to.look.intensity === undefined ? {} : { strength: asNumber(to.look.intensity) }),
+                ...timing,
+            },
+        };
+    }
+    if (to?.filterRaw) {
+        return { form: "statement", verb: "cameraLook", slots: { filter: asString(to.filterRaw), ...timing } };
+    }
+    if (to?.position) {
+        const placement = storyCameraPanPlacement(to.position);
+        if (!placement) {
+            ctx.report(block.id, "customTransform", "camera");
+            return { form: "statement", verb: "cameraPan", slots: timing };
+        }
+        return { form: "statement", verb: "cameraPan", slots: { placement: asWord(placement), ...timing } };
+    }
+    if (to?.zoom !== undefined) {
+        return { form: "statement", verb: "cameraZoom", slots: { zoom: asNumber(to.zoom), ...timing } };
+    }
+    if (to?.rotation !== undefined) {
+        return { form: "statement", verb: "cameraRotate", slots: { rotation: asNumber(to.rotation), ...timing } };
+    }
+    if (to?.filter) {
+        // A lone `brightness` IS a darken - the same reading the displayable channel makes, for the
+        // same reason: `darken(d)` is `filter("brightness(1 - d)")`.
+        const keys = Object.keys(to.filter);
+        if (keys.length === 1 && keys[0] === "brightness") {
+            return { form: "statement", verb: "cameraDarken", slots: { darkness: asNumber(1 - (to.filter.brightness ?? 1)), ...timing } };
+        }
+        return { form: "statement", verb: "cameraLook", slots: { filter: asString(composeStoryFilter(to.filter)), ...timing } };
+    }
+    // A row that states nothing yet. `camera zoom 1` is the coherent empty camera line, and the one
+    // the menu path lands on.
+    return { form: "statement", verb: "cameraZoom", slots: { zoom: asNumber(1), ...timing } };
 }
 
 // --- Actions ------------------------------------------------------------------------------------------
@@ -1122,28 +1146,6 @@ function actionShape(ctx: NarralangExtractContext, block: StoryBlock, payload: S
                 form: "statement",
                 verb: "nvl",
                 slots: transformSlots(ctx, block.id, payload.transition, "nvl"),
-            };
-        case "screenEffect":
-            // Each effect's grammar names a different subset, so each is extracted against its own -
-            // printing a slot the verb does not have produces a line the matcher then refuses.
-            return {
-                form: "statement",
-                verb: payload.effect === "blink" ? "screenBlink" : "screenVignette",
-                slots: {
-                    duration: optSeconds(payload.durationMs),
-                    ...(payload.effect === "blink" ? {
-                        fadeIn: optSeconds(payload.inMs),
-                        fadeOut: optSeconds(payload.outMs),
-                    } : {}),
-                    hold: optSeconds(payload.holdMs),
-                    color: payload.color === undefined ? undefined : asColor(payload.color),
-                    opacity: optNumber(payload.opacity),
-                    ...(payload.effect === "vignette" ? {
-                        inner: optNumber(payload.inner),
-                        outer: optNumber(payload.outer),
-                    } : {}),
-                    easing: payload.easing === undefined ? undefined : asName(payload.easing),
-                },
             };
         case "blueprint":
             ctx.report(block.id, "blueprintAction");

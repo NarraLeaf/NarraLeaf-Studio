@@ -36,7 +36,7 @@ export const FAVORITES_SETTING_KEY = "story.actionCreator.starredActionIds";
  * carrying one has to be recognised rather than kept as an unknown plugin action.
  */
 export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
-    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable", string | null>
+    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable" | "screenBlink" | "screenVignette", string | null>
 > = {
     narration: null,
     conditionIf: null,
@@ -83,11 +83,14 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
     displayableShow: "show",
     displayableHide: "hide",
     displayableTransform: "transform",
-    // M2: an "effect" was one prop of the one bag, and the two screen gestures are one token with the
-    // gesture as its first positional.
+    // M2: an "effect" was one prop of the one bag. v19 finished the job: the two screen gestures are
+    // lens props on the camera, so they are a `/transform camera lens=` row like any other.
     displayableEffect: "transform",
-    screenBlink: "screen",
-    screenVignette: "screen",
+    // The two retired screen gestures, and the lens row that replaced them: all three are the one
+    // `/transform` verb, because a blink is a prop of the camera's bag now.
+    screenBlink: "transform",
+    screenVignette: "transform",
+    cameraBlink: "transform",
 
     bgm: "bgm",
     sound: "sound",

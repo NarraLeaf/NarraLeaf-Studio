@@ -2076,10 +2076,10 @@ describe("compileStudioStoryToNlr voice", () => {
             payload,
         });
         const blocks: Record<string, StoryBlock> = {
-            zoom: cameraBlock("zoom", { action: "camera", operation: "zoom", zoom: 0, durationMs: 800 }),
-            pan: cameraBlock("pan", { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 }, durationMs: 600 }),
-            rotate: cameraBlock("rotate", { action: "camera", operation: "rotate", rotation: 15, durationMs: 400 }),
-            dark: cameraBlock("dark", { action: "camera", operation: "darken", darkness: 2, durationMs: 500 }),
+            zoom: cameraBlock("zoom", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 0 }, durationMs: 800 } }),
+            pan: cameraBlock("pan", { action: "camera", operation: "transform", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 600 } }),
+            rotate: cameraBlock("rotate", { action: "camera", operation: "transform", transform: { mode: "props", to: { rotation: 15 }, durationMs: 400 } }),
+            dark: cameraBlock("dark", { action: "camera", operation: "transform", transform: { mode: "props", to: { filter: { brightness: -1 } }, durationMs: 500 } }),
             reset: cameraBlock("reset", { action: "camera", operation: "reset", durationMs: 600 }),
         };
         const compiled = await compileStudioStoryToNlr({
@@ -2134,7 +2134,7 @@ describe("compileStudioStoryToNlr voice", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: animation.id } },
+                payload: { action: "camera", operation: "transform", transform: { mode: "animation", animationId: animation.id } },
             },
             target: narrationBlock("target", "target-text", "After the push"),
         };
@@ -2173,7 +2173,7 @@ describe("compileStudioStoryToNlr voice", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "camera", operation: "motion" },
+                payload: { action: "camera", operation: "transform", transform: { mode: "animation" } },
             },
         };
         const compiled = await compileStudioStoryToNlr({
@@ -2194,12 +2194,15 @@ describe("compileStudioStoryToNlr voice", () => {
             id, kind: "action", parentId: null, childrenIds: [], payload,
         });
         const document = baseDocument({
-            zoom: cameraBlock("zoom", { action: "camera", operation: "zoom", zoom: 2 }),
-            dark: cameraBlock("dark", { action: "camera", operation: "darken", darkness: 0.6 }),
+            zoom: cameraBlock("zoom", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 2 } } }),
+            dark: cameraBlock("dark", { action: "camera", operation: "transform", transform: { mode: "props", to: { filter: { brightness: 0.4 } } } }),
             target: narrationBlock("target", "target-text", "Here"),
         }, ["zoom", "dark", "target"]);
         const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" });
-        expect(snapshot.camera).toEqual({ props: { zoom: 2 }, effects: { darkness: 0.6 } });
+        expect(snapshot.camera).toEqual({
+            props: { zoom: 2, filter: "brightness(0.4)" },
+            effects: { darkness: expect.closeTo(0.6, 10), filter: undefined },
+        });
 
         const compiled = await compileStudioStoryToNlr({
             document,

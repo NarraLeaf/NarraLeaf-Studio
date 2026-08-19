@@ -64,8 +64,8 @@ describe("accepts-driven classification (§4.2)", () => {
     });
 
     it("files a command with no target by its own category, and a reserved word by its singleton's", () => {
-        // `/screen` takes no target at all, so its own category is what files it.
-        expect(groupIds("screen")).toEqual(["scene"]);
+        // `/wait` takes no target at all, so its own category is what files it.
+        expect(groupIds("wait")).toEqual(["flow"]);
         // The camera has no target KIND - nothing in `stageObjects` is a camera - but it is a subject
         // an author browses by, so the reserved word files the two verbs that reach it under 镜头.
         expect(commandsIn("camera")).toEqual(expect.arrayContaining(["transform", "reset"]));
@@ -223,9 +223,8 @@ describe("pinned colours (§12.3)", () => {
     });
 
     it("moves exactly the three commands A1 meant to move, and no others", () => {
-        // A full-screen effect is a property of the scene it happens in, not a material domain of its
-        // own, so these two left the dissolved 特效 for 场景 and took its hue.
-        expect(groupIds("screen")).toEqual(["scene"]);
+        // The dissolved 特效 group left nothing behind: its two screen gestures are lens props on the
+        // camera now, so what is pinned here is that 场景 kept the hue they moved to.
         expect(getCommandGroup("scene").iconColor).toBe(GROUP_COLORS.scene);
         // A blueprint call is a tool, not control flow.
         expect(groupIds("blueprint")).toEqual(["utils"]);

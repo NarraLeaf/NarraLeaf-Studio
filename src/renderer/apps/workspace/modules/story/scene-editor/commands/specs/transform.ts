@@ -17,10 +17,10 @@ import {
 import { displayableTargetRef } from "../payloadHelpers";
 import { resetVariableBlock } from "./variables";
 import {
-    cameraLookOf,
     filterWritersOf,
     parseFromProps,
     parsePositionValue,
+    CAMERA_ONLY_PROP_KEYS,
     RESET_CHANNEL_KEYS,
     RESET_PROP_PARAMS,
     resetPropsFromArgs,
@@ -53,8 +53,10 @@ import {
  * renamed to `in=` / `out=` rather than folded in here: an entrance is a transform *with a
  * direction*, and the direction is what the verb already says.
  *
- * The **screen effects** are not here either. `/screen blink` is two eyelid overlays each running
- * their own timeline, which one-object-at-a-time cannot express (see `specs/effects.ts`).
+ * The **screen effects** used to be a command of their own, on the reasoning that a blink is two
+ * eyelid overlays running their own timelines and one-object-at-a-time cannot express that. They are
+ * here now, and the reasoning was the answer rather than the objection: the eyelids belong to the
+ * CAMERA's lens, so `lens=` is a prop of the one bag like every other channel.
  */
 
 /** Every kind that has a transform pipeline, and the reserved words that name the stage singletons. */
@@ -103,37 +105,6 @@ function subjectWord(subject: TransformSubject, target: StoryCommandTargetValue 
 // ---------------------------------------------------------------------------------------------
 
 /**
- * The prop keys the `camera` payload arm can carry, and the operation each one becomes.
- *
- * **This table is the one place the axiom is not yet true, and it is worth saying out loud.** The
- * engine's `Camera` IS a `Displayable` and takes the whole bag; what cannot take the whole bag is
- * Studio's `camera` payload, which still spells its state as one operation plus that operation's own
- * field (`pan` + `position`, `zoom` + `zoom`, …). So a camera row states ONE channel, and a row
- * naming two is reported rather than silently losing one of them. The fix is a `transform` operation
- * on that arm carrying a `StoryTransformRef` like every other subject's, which is a schema bump and
- * an inspector rebuild - i.e. the next milestone's, not this one's.
- */
-const CAMERA_CHANNELS = {
-    pos: "pan",
-    zoom: "zoom",
-    rot: "rotate",
-} as const;
-
-const CAMERA_CHANNEL_KEYS = Object.keys(CAMERA_CHANNELS) as readonly (keyof typeof CAMERA_CHANNELS)[];
-
-/** The filter keys a camera row may use: they all land on `look`, which is that arm's filter channel. */
-const CAMERA_FILTER_KEYS = ["look", "strength", "filter", "blur", "bright", "contrast", "gray", "sat", "sepia", "hue", "invert"] as const;
-
-/** Every key a camera row may carry at all - what an `unsupportedParam` is measured against. */
-const CAMERA_KEYS: readonly string[] = [...CAMERA_CHANNEL_KEYS, ...CAMERA_FILTER_KEYS, "d", "ease", "motion"];
-
-/** Which of the camera's channels this line states. More than one has no single operation to become. */
-function cameraChannelsOf(args: TransformArgs): readonly string[] {
-    const stated = CAMERA_CHANNEL_KEYS.filter(key => args[key] !== undefined);
-    return filterWritersOf(args).length > 0 ? [...stated, "filter"] : stated;
-}
-
-/**
  * A camera move with no stated duration is a MOVE, not a cut.
  *
  * The house number the retired `/camera` used, kept because the compile reads a missing duration as
@@ -142,71 +113,40 @@ function cameraChannelsOf(args: TransformArgs): readonly string[] {
  */
 const CAMERA_DEFAULT_DURATION_MS = 600;
 
+/**
+ * A camera row.
+ *
+ * **There is nothing left to classify.** This function used to walk a table deciding which single
+ * channel the line had named and which of six operations that channel became, and to report a row
+ * naming two of them as a conflict - because the payload could hold exactly one. Since v19 the camera
+ * carries the same {@link StoryTransformRef} every other subject does, so the line's bag IS the row
+ * and every prop in the vocabulary reaches the camera the way it reaches a sprite.
+ */
 function cameraBlock(args: TransformArgs, generateId: () => string): StoryBlock {
-    const props = transformPropsFromArgs(args, resolveStoryCameraLook);
-    const easing = args.ease?.kind === "enum" ? args.ease.value : undefined;
-    const timing = {
-        durationMs: asDurationMs(args.d) ?? CAMERA_DEFAULT_DURATION_MS,
-        ...(easing !== undefined ? { easing } : {}),
-    };
-    const payload = (extra: Partial<Extract<StoryActionPayload, { action: "camera" }>>): StoryBlock => ({
+    const block = (payload: Extract<StoryActionPayload, { action: "camera" }>): StoryBlock => ({
         id: generateId(),
         parentId: null,
         childrenIds: [],
         kind: "action",
-        payload: { action: "camera", operation: "zoom", ...extra, ...timing } as Extract<StoryActionPayload, { action: "camera" }>,
+        payload,
     });
     if (asBoolean(args.motion)) {
         // The shot itself is a binding no line can name, so the row states the mode and the inspector
         // does the picking - exactly what `/camera motion` did.
-        return payload({ operation: "motion", motion: { mode: "animation" } });
+        return block({ action: "camera", operation: "transform", transform: { mode: "animation" } });
     }
-    if (props.position) {
-        return payload({ operation: "pan", position: props.position });
-    }
-    if (props.zoom !== undefined) {
-        return payload({ operation: "zoom", zoom: props.zoom });
-    }
-    if (props.rotation !== undefined) {
-        return payload({ operation: "rotate", rotation: props.rotation });
-    }
-    const look = cameraLookOf(args);
-    if (look) {
-        // The grade keeps its NAME here, not just its CSS: `lookPreset` is what lets the inspector
-        // re-open the row on the grade the author chose instead of on a wall of resolved filter terms.
-        //
-        // A grade that CUTS is not given a duration, even the house default. `storyCameraLookTweens`
-        // answers false for any recipe that turns a hue, and the compile does not read a duration for
-        // one of those — sepia sits near 30 degrees on the wheel and moonlight near 215, so every path
-        // between them crosses the hues in between and no ordering avoids the green midpoint. Seeding
-        // a number the compile will not read would put a duration field on the row that changes
-        // nothing, which is worse than an absent one: the author would tune it and see no difference.
-        const tweens = storyCameraLookTweens(look.lookPreset, look.lookIntensity);
-        return {
-            id: generateId(),
-            parentId: null,
-            childrenIds: [],
-            kind: "action",
-            payload: {
-                action: "camera",
-                operation: "look",
-                ...look,
-                ...(tweens ? timing : {}),
-            } as Extract<StoryActionPayload, { action: "camera" }>,
-        };
-    }
-    if (props.filterRaw !== undefined || props.filter !== undefined) {
-        return payload({
-            operation: "look",
-            filter: props.filterRaw ?? composeStoryFilter(props.filter),
-        });
-    }
-    // A row that states nothing yet. `zoom` at its neutral is the coherent empty camera row and the
-    // one the menu path lands on, which is the same default the retired `/camera` built from `{}`.
-    return payload({ operation: "zoom", zoom: 1 });
+    const props = pruneStoryTransformProps(transformPropsFromArgs(args));
+    const transform: StoryTransformRef = {
+        ...transformTimingFromArgs(args),
+        durationMs: asDurationMs(args.d) ?? CAMERA_DEFAULT_DURATION_MS,
+        ...(props ? { to: props } : {}),
+    };
+    return block({ action: "camera", operation: "transform", transform });
 }
 
 // ---------------------------------------------------------------------------------------------
+// `/transform`
+// ---------------------------------------------------------------------------------------------// ---------------------------------------------------------------------------------------------
 // `/transform`
 // ---------------------------------------------------------------------------------------------
 
@@ -282,27 +222,24 @@ function validateProps(
         });
     }
 
-    if (subject.kind === "camera") {
-        for (const key of [...TRANSFORM_PROP_KEYS, ...Object.keys(TRANSFORM_TIMING_PARAMS)]) {
+    // The lens is the CAMERA's own glass: the engine renders `shutter` and `vignette` from an overlay
+    // that belongs to the camera, and no other Displayable has one. On a sprite these would write
+    // props the stage never reads, which is the silent failure this layer exists to refuse.
+    if (subject.kind !== "camera") {
+        for (const key of CAMERA_ONLY_PROP_KEYS) {
             const span = args[key] === undefined ? undefined : ctx.spanOf(key);
-            if (span && !CAMERA_KEYS.includes(key)) {
+            if (span) {
                 issues.push({ code: "unsupportedParam", span, key, kind });
             }
         }
-        const channels = cameraChannelsOf(args);
-        if (channels.length > 1) {
-            const span = ctx.spanOf(channels[1] === "filter" ? (writers[0] === "raw" ? "filter" : writers[0] === "look" ? "look" : "blur") : channels[1]);
-            if (span) {
-                issues.push({ code: "conflictingParams", span, keys: channels });
-            }
-        }
-        return issues;
     }
 
     // `color=` IS `fontColor`, the one channel of the bag that belongs to a single kind of
-    // displayable. Everything else in the vocabulary reaches every subject.
+    // displayable. Everything else in the vocabulary reaches every subject - including the camera,
+    // which since v19 is simply another one, and which has no text to colour either.
     const colorSpan = ctx.spanOf("color");
-    if (!options.reset && colorSpan && args.color !== undefined && target && !(target.type === "stageObject" && target.objectKind === "text")) {
+    const colorless = subject.kind === "camera" || (target !== undefined && !(target.type === "stageObject" && target.objectKind === "text"));
+    if (!options.reset && colorSpan && args.color !== undefined && colorless) {
         issues.push({ code: "unsupportedParam", span: colorSpan, key: "color", kind });
     }
     return issues;
@@ -341,7 +278,7 @@ export const transform = defineStoryCommand({
         if (asBoolean(args.motion)) {
             return displayableBlock(asTarget(args.target), { mode: "animation" }, ctx.generateId);
         }
-        const props = pruneStoryTransformProps(transformPropsFromArgs(args, resolveStoryCameraLook));
+        const props = pruneStoryTransformProps(transformPropsFromArgs(args));
         const transformRef: StoryTransformRef = {
             ...transformTimingFromArgs(args),
             ...(props ? { to: props } : {}),
@@ -363,7 +300,7 @@ export const transform = defineStoryCommand({
             return false;
         }
         if (block.payload.action === "camera") {
-            return block.payload.operation === "motion";
+            return block.payload.transform?.mode === "animation";
         }
         if (block.payload.action !== "displayable") {
             return false;
@@ -427,8 +364,9 @@ export const reset = defineStoryCommand({
         const subject = subjectOf(args.target);
         const durationMs = asDurationMs(args.d);
         if (subject.kind === "camera") {
-            // The camera arm has one reset and it clears everything - there is no per-channel clear to
-            // map a named flag onto, which is the same restriction `CAMERA_CHANNELS` documents.
+            // One reset and no per-channel clear, because `resetCamera` is a single engine call rather
+            // than a bag of neutral values - see the payload arm's own note for why that survived the
+            // fold. A named flag would ask for a clear the call cannot express.
             return {
                 id: ctx.generateId(),
                 parentId: null,
@@ -457,8 +395,8 @@ export const reset = defineStoryCommand({
         if (args.target?.kind === "variable" || subjectOf(args.target).kind !== "camera") {
             return issues;
         }
-        // Naming a channel on the camera would ask for a clear the payload cannot express, and a flag
-        // that parsed and then did nothing is the failure this whole layer exists to avoid.
+        // Naming a channel on the camera would ask for a clear `resetCamera` cannot express, and a
+        // flag that parsed and then did nothing is the failure this whole layer exists to avoid.
         for (const key of RESET_CHANNEL_KEYS) {
             const span = args[key] === undefined ? undefined : ctx.spanOf(key);
             if (span) {
