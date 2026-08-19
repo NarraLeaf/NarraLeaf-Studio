@@ -63,6 +63,7 @@ import {
 import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
+import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument";
 import {
     applyAppTagToBlueprint,
     applyAppTagToBlueprintDocument,
@@ -518,7 +519,7 @@ export function planSceneDrop(
  * absent from the package rather than merely unreachable in it, and what makes the story after a cut
  * point absent rather than merely unplayed.
  */
-async function loadStoryLibrary(
+export async function loadStoryLibrary(
     projectPath: string,
     variant: { id: string; name: string },
     sceneDrop: SceneDropPlan,
@@ -540,7 +541,13 @@ async function loadStoryLibrary(
         if (!documentPath) {
             continue;
         }
-        const document = await readJsonFile<StoryDocument>(documentPath);
+        // Migrated here, not trusted from disk. The story compiler runs on whatever this function
+        // returns, and it only reads the CURRENT schema: a row written by an older Studio and never
+        // re-saved compiles to nothing at all, with no diagnostic - a `/transform camera look=` that
+        // plays and grades nothing, a `/transform` preset that never moves its sprite. The editor
+        // migrates on load, but a document is only rewritten when the author edits it, so "opened the
+        // project once" is not enough and cannot be made enough.
+        const document = migrateStoryDocumentToLatest(await readJsonFile<StoryDocument>(documentPath));
         if (document.id !== entry.id) {
             throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
         }
