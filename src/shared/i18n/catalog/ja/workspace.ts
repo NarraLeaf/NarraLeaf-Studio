@@ -444,6 +444,15 @@ export const workspace = {
                 reloading: "読み込み直している…",
                 stopping: "停止している…",
             },
+            /**
+             * What a long task is called while it runs.
+             *
+             * Names the thing being made, never the machinery that makes it: an author asked
+             * for weather, not for an encode.
+             */
+            task: {
+                weatherBake: "天候を生成中",
+            },
             openConsole: "コンソールを開く",
             unsavedChanges: "未保存の変更",
             saveNow: "いま保存",
@@ -461,6 +470,7 @@ export const workspace = {
             // セル自身はアイコンが主で、自分の状態を自分で示す。
             entries: {
                 runStatus: "実行状態",
+        studioTasks: "バックグラウンド処理",
                 unsavedChanges: "未保存の変更",
                 wordCount: "ストーリーの統計",
                 shortcuts: "キーボードショートカット",
