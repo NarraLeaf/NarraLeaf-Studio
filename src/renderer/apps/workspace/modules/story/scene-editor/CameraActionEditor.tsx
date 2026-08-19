@@ -12,7 +12,7 @@ import { MotionField } from "../../story-motion";
 import { resolveStoryMotionStageSize } from "../../story-motion/StoryMotionEditorTab";
 import { TransformChannelEditor } from "./TransformChannelEditor";
 import { SampleStage } from "@/lib/story/previewSubject";
-import { FieldGrid, SecondsField, SegToggle, SelectField, Section, easingOptions } from "./inspectorFieldKit";
+import { EasingField, FieldGrid, SecondsField, SegToggle, Section } from "./inspectorFieldKit";
 
 type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;
 
@@ -135,11 +135,10 @@ export function CameraActionEditor(props: {
                             value={payload.durationMs}
                             onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
                         />
-                        <SelectField
-                            label={t("storyInspector.field.easing")}
-                            options={easingOptions(t)}
-                            value={payload.easing ?? ""}
-                            onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
+                        <EasingField
+                            t={t}
+                            value={payload.easing}
+                            onChange={easing => onChange({ ...payload, easing })}
                         />
                     </FieldGrid>
                 </div>
@@ -173,11 +172,10 @@ export function CameraActionEditor(props: {
                             value={transform.durationMs}
                             onChange={durationMs => setTransform({ ...transform, durationMs })}
                         />
-                        <SelectField
-                            label={t("storyInspector.field.easing")}
-                            options={easingOptions(t)}
-                            value={transform.easing ?? ""}
-                            onChange={easing => setTransform({ ...transform, easing: String(easing) || undefined })}
+                        <EasingField
+                            t={t}
+                            value={transform.easing}
+                            onChange={easing => setTransform({ ...transform, easing })}
                         />
                     </FieldGrid>
                     <TransformChannelEditor value={payload.transform} targetKind="camera" onChange={setTransform} />

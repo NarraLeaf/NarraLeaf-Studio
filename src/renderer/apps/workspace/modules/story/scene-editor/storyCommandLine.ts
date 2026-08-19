@@ -1,7 +1,9 @@
 import type {
+    StoryActionableTargetRef,
     StoryActionPayload,
     StoryBlock,
     StoryDeclarationPayload,
+    StoryDisplayableTargetRef,
     StoryJumpPayload,
     StoryLiteralValue,
     StoryTransformRef,
@@ -9,7 +11,9 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import {
+    actionableSubjectWord,
     declarationDefaultForType,
+    displayableSubjectWord,
     layerActionTargetRef,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
@@ -31,6 +35,7 @@ import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformPr
 import { isNeutralStoryTransformProps } from "@shared/story/transformProps";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { ACTION_TRIGGER } from "./commandTrigger";
+import { actionableTargetRef, audioTargetRef, displayableTargetRef } from "./commands/payloadHelpers";
 import { localizedEnumValue } from "./commands/localizedEnums";
 import { localizedParamKey } from "./commands/localizedParams";
 import { localizedUnit } from "./commands/localizedUnits";
@@ -59,7 +64,12 @@ import {
     type StoryCommandEnumOption,
     type StoryCommandParam,
 } from "./storyCommandGrammar";
-import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues";
+import type {
+    StoryCommandContext,
+    StoryCommandSpan,
+    StoryCommandStageObjectKind,
+    StoryCommandTargetValue,
+} from "./storyCommandValues";
 
 /**
  * A committed row read back as the command line that would produce it.
@@ -102,7 +112,16 @@ import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues
  */
 export type StoryCommandLineControl =
     | { kind: "number"; min?: number; max?: number; integer?: boolean; unit: string; presets?: readonly number[] }
-    | { kind: "enum"; options: readonly StoryCommandEnumOption[] }
+    | {
+          kind: "enum";
+          options: readonly StoryCommandEnumOption[];
+          /**
+           * This slot also takes a drawn easing curve, so the popover offers the card as well as the
+           * words. Set from the grammar (`freeform` on the enum type), never per command - a slot
+           * that takes a curve on the line is the same slot that takes one in the inspector.
+           */
+          curve?: true;
+      }
     | { kind: "boolean" }
     | { kind: "color" }
     /** A closed list the grammar cannot hold — scenes, and anything else named per project. */
@@ -348,7 +367,7 @@ function controlFor(param: StoryCommandParam | null, entry: Arg): StoryCommandLi
     }
     for (const type of paramTypes(param)) {
         if (type.kind === "enum") {
-            return { kind: "enum", options: type.options };
+            return { kind: "enum", options: type.options, ...(type.freeform ? { curve: true as const } : {}) };
         }
         if (type.kind === "number") {
             return {
@@ -495,6 +514,63 @@ function pickStageObject(
         choices: choicesOf(names),
         ...(current ? { editValue: current } : {}),
         apply,
+    };
+}
+
+/**
+ * The name a subject was re-pointed to, as the resolver would have handed it over had the author
+ * typed it: the object plus the row that declares it, when the scene holds one.
+ *
+ * The declaring row is what a reference anchors to, and a context built without a scene has no such
+ * index (`stageObjectSources` is optional for exactly that reason) - so the reference degrades to a
+ * name, which is what every document written before references carries anyway.
+ */
+function stageObjectChoice(
+    lookups: StoryCommandLineLookups,
+    kind: StoryCommandStageObjectKind,
+    name: string,
+): Extract<StoryCommandTargetValue, { type: "stageObject" }> {
+    const sourceBlockId = lookups.commandContext?.stageObjectSources?.[kind]?.[name.trim().toLowerCase()];
+    return { type: "stageObject", objectKind: kind, name, known: true, ...(sourceBlockId ? { sourceBlockId } : {}) };
+}
+
+/**
+ * Re-pointing a subject from the row rewrites the REFERENCE, not only the name.
+ *
+ * It always had to: the reference is what the compiler resolves, so a patch leaving the old anchor in
+ * place moved the word on screen and nothing else. The row reading its subject off that reference is
+ * what makes the omission visible - the line would have gone on printing the object just replaced.
+ *
+ * Written through the same helpers a typed line builds its payload with, so a subject picked from a
+ * row is indistinguishable from one an author typed.
+ */
+function retargetDisplayable<P extends { objectName: string; target?: StoryDisplayableTargetRef }>(
+    payload: P,
+    lookups: StoryCommandLineLookups,
+    kind: Extract<StoryCommandStageObjectKind, "image" | "text" | "layer">,
+    name: string,
+): P {
+    return { ...payload, objectName: name, target: displayableTargetRef(stageObjectChoice(lookups, kind, name)) };
+}
+
+/**
+ * {@link retargetDisplayable} for the `Actionable` handles — a clip, an overlay, a sound.
+ *
+ * `bgm` is why this one dispatches rather than always calling `actionableTargetRef`: the reserved
+ * word names the built-in music channel, not a handle that happens to be called after it, and
+ * `audioTargetRef` is where that rule already lives.
+ */
+function retargetActionable<P extends { objectName?: string; target?: StoryActionableTargetRef }>(
+    payload: P,
+    lookups: StoryCommandLineLookups,
+    kind: Extract<StoryCommandStageObjectKind, "video" | "audio" | "vfx">,
+    name: string,
+): P {
+    const choice = stageObjectChoice(lookups, kind, name);
+    return {
+        ...payload,
+        objectName: name,
+        target: kind === "audio" ? audioTargetRef(choice) : actionableTargetRef(choice),
     };
 }
 
@@ -711,13 +787,13 @@ function audioSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
+    const name = actionableSubjectWord(lookups.scene, payload.target, "audio", payload.objectName) || undefined;
     const asset = assetWord(lookups, payload.assetId);
     const track = payload.audioTrackId && lookups.audioTrackName ? lookups.audioTrackName(payload.audioTrackId) : null;
     const fade = arg("fade", seconds(payload.fadeMs), { apply: next => ({ ...payload, fadeMs: msOf(next) }) });
     const clip = pickAsset(payload, lookups, "audio", next => ({ ...payload, assetId: next })) ?? {};
     // The handle a control verb addresses: any sound already on stage, plus the reserved `bgm`.
-    const handle = pickStageObject(lookups, "audio", name, next => ({ ...payload, objectName: next })) ?? {};
+    const handle = pickStageObject(lookups, "audio", name, next => retargetActionable(payload, lookups, "audio", next)) ?? {};
     const tracks = lookups.commandContext?.audioTracks ?? [];
     const trackPick = tracks.length === 0
         ? {}
@@ -774,12 +850,19 @@ function audioSentence(
     }
 }
 
+/**
+ * The subject comes from the REFERENCE, not from the row's own `objectName` — the rule
+ * `displayableSubjectWord` states, and the shape every stage-object sentence below shares. A row
+ * printing its stored copy of the name kept saying `poster` after the create row was renamed to `bg`,
+ * while the compiler had already followed the reference. A `create` row carries no reference and so
+ * prints the name it is defining, which is the same fallback an older document takes.
+ */
 function imageSentence(
     payload: Extract<StoryActionPayload, { action: "image" }>,
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
+    const name = displayableSubjectWord(lookups.scene, payload.target, payload.objectName) || undefined;
     const asset = assetWord(lookups, payload.assetId);
     // `pos=` and `in=` write the SAME field — a transform holds one preset — which is why the reader
     // prints whichever one the stored preset spells and never both.
@@ -795,7 +878,7 @@ function imageSentence(
         apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
     });
     const swapAsset = pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined })) ?? {};
-    const object = pickStageObject(lookups, "image", name, next => ({ ...payload, objectName: next })) ?? {};
+    const object = pickStageObject(lookups, "image", name, next => retargetDisplayable(payload, lookups, "image", next)) ?? {};
     if (payload.operation === "create") {
         // The NAME here is the one later rows address, so it is not offered; the asset is.
         return {
@@ -817,8 +900,8 @@ function textSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
-    const object = pickStageObject(lookups, "text", name, next => ({ ...payload, objectName: next })) ?? {};
+    const name = displayableSubjectWord(lookups.scene, payload.target, payload.objectName) || undefined;
+    const object = pickStageObject(lookups, "text", name, next => retargetDisplayable(payload, lookups, "text", next)) ?? {};
     switch (payload.operation) {
         case "create":
             // `name=` before the greedy content: the one ordering rule the grammar imposes, and the
@@ -891,8 +974,8 @@ function videoSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
-    const object = pickStageObject(lookups, "video", name, next => ({ ...payload, objectName: next })) ?? {};
+    const name = actionableSubjectWord(lookups.scene, payload.target, "video", payload.objectName) || undefined;
+    const object = pickStageObject(lookups, "video", name, next => retargetActionable(payload, lookups, "video", next)) ?? {};
     if (payload.operation === "create") {
         return {
             commandId,
@@ -917,7 +1000,7 @@ function vfxSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
+    const name = actionableSubjectWord(lookups.scene, payload.target, "vfx", payload.objectName) || undefined;
     const duration = arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) });
     if (payload.operation === "create") {
         return {
@@ -930,7 +1013,7 @@ function vfxSentence(
             ],
         };
     }
-    const object = pickStageObject(lookups, "vfx", name, next => ({ ...payload, objectName: next })) ?? {};
+    const object = pickStageObject(lookups, "vfx", name, next => retargetActionable(payload, lookups, "vfx", next)) ?? {};
     if (payload.operation === "setRate") {
         return {
             commandId,
