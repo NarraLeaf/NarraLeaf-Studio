@@ -85,6 +85,14 @@ export type LintLocalizationContext = {
 export type LintVoiceContext = {
     voicedLocales: readonly string[];
     documents: ReadonlyMap<string, VoiceDocument>;
+    /**
+     * Project setting: whether choice options are lines an actor records.
+     *
+     * Only `voice/missing` reads it - the rule that says a line *should* have a take. `voice/stale`
+     * and `voice/orphan` act on takes that exist, and a recording already made goes out of date or
+     * loses its line whether or not the project counts choices as script.
+     */
+    voiceChoices: boolean;
 };
 
 export type LintContext = {

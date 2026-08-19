@@ -356,7 +356,8 @@ export const help = {
                 + "- Studio imports clips that already exist. It does not record.\n"
                 + "- A whole folder can be matched at once when the file names follow a pattern.\n"
                 + "- The lines to record can be exported as a spreadsheet file for whoever records them.\n"
-                + "- A line whose text changed after its clip was assigned is marked out of date.",
+                + "- A line whose text changed after its clip was assigned is marked out of date.\n"
+                + "- Choice options are lines to record only where the panel turns them on.",
         },
         localization: {
             title: "Languages",

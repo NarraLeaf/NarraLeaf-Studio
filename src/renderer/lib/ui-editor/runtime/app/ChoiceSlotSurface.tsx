@@ -22,6 +22,14 @@ type ChoiceSlotItem = {
     text: string;
     index: number;
     disabled: boolean;
+    /**
+     * The option's voice unit id, or "" when it has no take in any dub language.
+     *
+     * Put on the item rather than looked up on demand because a blueprint running inside a choice
+     * row can only see that row: `Play Choice Voice` reads this field, and without it the row has
+     * no handle on the take at all.
+     */
+    voiceId: string;
 };
 
 // `Script.getCtx`, `Word.getText`, and `Lambda.evaluate` are NarraLeaf-internal statics hidden
@@ -75,6 +83,22 @@ function choiceText(choice: ChoiceEvaluated): string {
 }
 
 /**
+ * The voice unit id the compiler stamped on this option's prompt, or "" when it carries none.
+ *
+ * The engine builds a `Sentence` for a prompt handed to it as words, and only the compiler's own
+ * `Sentence` carries metadata - so an option that predates a take, or a menu built by anything but
+ * the story compiler, reads as unvoiced instead of failing.
+ */
+function choiceVoiceId(choice: ChoiceEvaluated): string {
+    try {
+        const voiceId = choice.prompt?.getMetadata?.()?.voiceId;
+        return typeof voiceId === "string" ? voiceId : "";
+    } catch {
+        return "";
+    }
+}
+
+/**
  * Renders the Game UI choice slot surface as the NarraLeaf menu component. NarraLeaf mounts it
  * inside a design-size container below `UIMenuContext`; `<GameMenu>` applies the ratio scale.
  * Evaluated choices are mirrored into the widget runtime list store ({ text, index, disabled },
@@ -109,6 +133,7 @@ export function ChoiceSlotSurface(props: {
                 text: choiceText(choice),
                 index,
                 disabled,
+                voiceId: choiceVoiceId(choice),
             });
         });
         return out;

@@ -72,6 +72,24 @@ describe("extractVoiceableRows", () => {
         expect(rows.find(row => row.unitId === "t-o1")).toBeUndefined();
     });
 
+    /**
+     * The project switch grows the script, and with it the coverage denominator - which is exactly
+     * why it is a switch. An option joins in narrative order, where a booth reads it.
+     */
+    it("adds choice options in narrative order once the project voices them", () => {
+        const rows = extractVoiceableRows(buildDocument(), { includeChoices: true });
+        expect(rows.map(row => row.unitId)).toEqual(["t-n1", "t-d1", "t-o1"]);
+    });
+
+    /**
+     * The prompt stays out at every setting: the menu surface speaks options and nothing else, so a
+     * take recorded against a prompt would be coverage no game can satisfy.
+     */
+    it("never lists the choice prompt", () => {
+        const rows = extractVoiceableRows(buildDocument(), { includeChoices: true });
+        expect(rows.find(row => row.unitId === "t-c1")).toBeUndefined();
+    });
+
     it("carries speaker context on dialogue rows", () => {
         const rows = extractVoiceableRows(buildDocument());
         expect(rows.find(row => row.unitId === "t-d1")?.characterId).toBe("char-1");

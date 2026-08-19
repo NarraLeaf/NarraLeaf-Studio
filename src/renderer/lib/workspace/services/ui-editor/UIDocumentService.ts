@@ -4584,9 +4584,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 itemKeyPath: "index",
                 itemGap: 16,
                 previewItems: [
-                    { text: translate("defaultDoc.choice.previewA"), index: 0, disabled: false },
-                    { text: translate("defaultDoc.choice.previewB"), index: 1, disabled: false },
-                    { text: translate("defaultDoc.choice.previewC"), index: 2, disabled: true },
+                    { text: translate("defaultDoc.choice.previewA"), index: 0, disabled: false, voiceId: "" },
+                    { text: translate("defaultDoc.choice.previewB"), index: 1, disabled: false, voiceId: "" },
+                    { text: translate("defaultDoc.choice.previewC"), index: 2, disabled: true, voiceId: "" },
                 ],
                 scrollbar: {
                     ...cloneJson(defaultListWidgetProps.scrollbar),

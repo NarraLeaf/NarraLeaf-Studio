@@ -1157,6 +1157,12 @@ export const BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE = "blueprint.voice.getLangua
 export const BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE = "blueprint.voice.setLanguage" as const;
 export const BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES = "blueprint.voice.getAvailableLanguages" as const;
 export const BLUEPRINT_NODE_TYPE_VOICE_PLAY = "blueprint.voice.play" as const;
+/**
+ * Speaks the choice option the surrounding list row stands for. Takes no id: the row already knows
+ * which line it is, and asking the author to route one would make the node unusable in the place it
+ * exists for.
+ */
+export const BLUEPRINT_NODE_TYPE_VOICE_PLAY_CHOICE = "blueprint.voice.playChoice" as const;
 
 /**
  * Reads one value the placement supplied to the component this blueprint belongs to.

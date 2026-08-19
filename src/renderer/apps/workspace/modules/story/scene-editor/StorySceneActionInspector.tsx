@@ -700,6 +700,9 @@ function InspectorFields(props: {
                             <div className="text-2xs text-fg-subtle">{t("storyInspector.choiceOption.hint")}</div>
                         </div>
                     </Section>
+                    {/* Present only where the project voices its choices - the section reads the same
+                        switch the voice table does, and answers null when the option is not script. */}
+                    <VoiceInspectorSection block={block} />
                 </div>
             );
         }

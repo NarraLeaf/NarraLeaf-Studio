@@ -77,6 +77,19 @@ export type VoiceConfiguration = {
      * character's lines in the voice table; never affects playback.
      */
     cast: Record<string, Record<string, string>>;
+    /**
+     * Whether choice options are lines an actor records.
+     *
+     * Off by default, and the switch governs the *authoring* half only: which lines the voice table
+     * lists, what the recording script and the coverage figures count, and what `voice/missing`
+     * reports. Turning it on in an existing project therefore lowers its coverage - the denominator
+     * grows by every option in the script - which is why it is a decision rather than a default.
+     *
+     * Playback never consults it. A take that exists is a take the game plays, exactly as the
+     * per-line legacy clip always has, so switching this off does not silence recordings already
+     * made and does not need a rebuild to take effect.
+     */
+    voiceChoices: boolean;
 };
 
 export type VoiceLocaleEntry = {
@@ -96,6 +109,7 @@ export const DEFAULT_VOICE_CONFIGURATION: VoiceConfiguration = {
     voicedLocales: [],
     namingPattern: DEFAULT_VOICE_NAMING_PATTERN,
     cast: {},
+    voiceChoices: false,
 };
 
 /** Coerce an unknown value into the cast map, dropping malformed entries. */
@@ -128,7 +142,7 @@ function normalizeVoiceCast(value: unknown): Record<string, Record<string, strin
  */
 export function normalizeVoiceConfiguration(value: unknown): VoiceConfiguration {
     if (!value || typeof value !== "object") {
-        return { voicedLocales: [], namingPattern: DEFAULT_VOICE_NAMING_PATTERN, cast: {} };
+        return { voicedLocales: [], namingPattern: DEFAULT_VOICE_NAMING_PATTERN, cast: {}, voiceChoices: false };
     }
     const record = value as Record<string, unknown>;
     const voicedLocales: VoiceLocaleEntry[] = [];
@@ -154,7 +168,12 @@ export function normalizeVoiceConfiguration(value: unknown): VoiceConfiguration 
     const namingPattern = typeof record.namingPattern === "string" && record.namingPattern.trim()
         ? record.namingPattern.trim()
         : DEFAULT_VOICE_NAMING_PATTERN;
-    return { voicedLocales, namingPattern, cast: normalizeVoiceCast(record.cast) };
+    return {
+        voicedLocales,
+        namingPattern,
+        cast: normalizeVoiceCast(record.cast),
+        voiceChoices: record.voiceChoices === true,
+    };
 }
 
 /** True when the project has at least one voice language configured. */
