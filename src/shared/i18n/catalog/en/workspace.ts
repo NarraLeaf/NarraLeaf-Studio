@@ -73,6 +73,8 @@ export const workspace = {
             reviewFilterUnreviewed: "Unreviewed",
             charactersGroup: "Characters",
             characterSpeaker: "Character",
+            scenesGroup: "Scenes",
+            sceneSpeaker: "Scene",
             addKey: "Add",
             keyNamePlaceholder: "Key (menu.start…)",
             keySourcePlaceholder: "Source text",
