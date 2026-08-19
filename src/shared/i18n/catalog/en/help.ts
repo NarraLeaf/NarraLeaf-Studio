@@ -252,7 +252,8 @@ export const help = {
                 + "- Choosing a file for a value in the Variants list adds that file to the set.\n"
                 + "- Dissolve Set removes the set and leaves its files where it stood. Delete removes the "
                 + "set and the files in it. Both first list the places that name the set.\n"
-                + "- An image field on a story row accepts a set. Other asset fields accept a file.",
+                + "- Where a field accepts a set, the picker lists them under Asset sets. Character "
+                + "appearances and interface widgets accept a file.",
         },
         assetSetAxes: {
             title: "What a set varies by",
