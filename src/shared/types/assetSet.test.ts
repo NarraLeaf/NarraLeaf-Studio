@@ -3,10 +3,11 @@ import {
     assetSetCoordinateLabel,
     assetSetCoordinates,
     collectAssetTagVocabulary,
-    deriveAssetSetDraft,
     formatAssetTag,
     isAssetSetComplete,
-    isLegalAxisOrder,
+    childAssetSets,
+    isLegalNesting,
+    topLevelAssetSets,
     normalizeProjectAssetSets,
     parseAssetTag,
     resolveAssetSetContents,
@@ -19,7 +20,7 @@ import {
 } from "./assetSet";
 
 function axis(key: string, residency: AssetSetAxis["residency"], values: string[]): AssetSetAxis {
-    return { key, residency, values };
+    return { kind: key === "locale" ? "locale" : "release", key, residency, values };
 }
 
 function set(overrides: Partial<AssetSet> = {}): AssetSet {
@@ -28,7 +29,7 @@ function set(overrides: Partial<AssetSet> = {}): AssetSet {
         name: "Alice",
         type: "image",
         filter: ["char:alice"],
-        axes: [axis("mood", "build", ["happy", "sad"]), axis("locale", "runtime", ["en", "ja"])],
+        axis: axis("mood", "build", ["happy", "sad"]),
         ...overrides,
     };
 }
@@ -61,74 +62,92 @@ describe("parseAssetTag", () => {
 });
 
 describe("assetSetCoordinates", () => {
-    it("produces the product with the outermost axis varying slowest", () => {
-        expect(assetSetCoordinates(set()).map(coordinate => `${coordinate.mood}/${coordinate.locale}`)).toEqual([
-            "happy/en",
-            "happy/ja",
-            "sad/en",
-            "sad/ja",
-        ]);
+    it("produces one coordinate per value, in author order", () => {
+        expect(assetSetCoordinates(set()).map(coordinate => coordinate.mood)).toEqual(["happy", "sad"]);
     });
 
     it("promises nothing when an axis declares no values", () => {
-        expect(assetSetCoordinates(set({ axes: [axis("mood", "build", [])] }))).toEqual([]);
+        expect(assetSetCoordinates(set({ axis: axis("mood", "build", []) }))).toEqual([]);
     });
 
-    it("labels a coordinate as the tags it is made of", () => {
+    it("labels a coordinate as the tag it is made of", () => {
         const coordinates = assetSetCoordinates(set());
-        expect(assetSetCoordinateLabel(set(), coordinates[0])).toBe("mood:happy · locale:en");
+        expect(assetSetCoordinateLabel(set(), coordinates[0])).toBe("mood:happy");
     });
 });
 
 describe("resolution", () => {
     const library = [
-        candidate("a", ["char:alice", "mood:happy", "locale:en"]),
-        candidate("b", ["char:alice", "mood:happy", "locale:ja"]),
-        candidate("c", ["char:alice", "mood:sad", "locale:en"]),
+        candidate("a", ["char:alice", "mood:happy"]),
+        candidate("c", ["char:alice", "mood:sad"]),
     ];
 
     it("resolves a coordinate to the one asset carrying its tags", () => {
-        expect(resolveAssetSetMember(set(), { mood: "happy", locale: "ja" }, library)).toBe("b");
+        expect(resolveAssetSetMember(set(), { mood: "happy" }, library)).toBe("a");
     });
 
     it("answers nothing for a coordinate the library has no file for", () => {
-        expect(resolveAssetSetMember(set(), { mood: "sad", locale: "ja" }, library)).toBeNull();
+        expect(resolveAssetSetMember(set(), { mood: "sad" }, [library[0]])).toBeNull();
     });
 
     it("answers nothing rather than picking when two files match", () => {
-        const ambiguous = [...library, candidate("d", ["char:alice", "mood:happy", "locale:ja"])];
-        expect(resolveAssetSetMember(set(), { mood: "happy", locale: "ja" }, ambiguous)).toBeNull();
+        const ambiguous = [...library, candidate("d", ["char:alice", "mood:happy"])];
+        expect(resolveAssetSetMember(set(), { mood: "happy" }, ambiguous)).toBeNull();
     });
 
     it("ignores a file of another type", () => {
-        const wrongType = [candidate("z", ["char:alice", "mood:happy", "locale:en"], "audio")];
-        expect(resolveAssetSetMember(set(), { mood: "happy", locale: "en" }, wrongType)).toBeNull();
+        const wrongType = [candidate("z", ["char:alice", "mood:happy"], "audio")];
+        expect(resolveAssetSetMember(set(), { mood: "happy" }, wrongType)).toBeNull();
     });
 
     it("holds the fixed filter against every member", () => {
-        const otherCharacter = [candidate("z", ["char:bob", "mood:happy", "locale:en"])];
-        expect(resolveAssetSetMember(set(), { mood: "happy", locale: "en" }, otherCharacter)).toBeNull();
+        const otherCharacter = [candidate("z", ["char:bob", "mood:happy"])];
+        expect(resolveAssetSetMember(set(), { mood: "happy" }, otherCharacter)).toBeNull();
     });
 
     it("reads a spaced tag as the same coordinate, since the two are typed by different people", () => {
-        const spaced = [candidate("a", ["char: alice", "mood:happy ", "locale : en"])];
-        expect(resolveAssetSetMember(set(), { mood: "happy", locale: "en" }, spaced)).toBe("a");
+        const spaced = [candidate("a", ["char: alice", "mood:happy "])];
+        expect(resolveAssetSetMember(set(), { mood: "happy" }, spaced)).toBe("a");
     });
 
     it("separates the holes from the duplicates", () => {
         const contents = resolveAssetSetContents(set(), [
-            ...library,
-            candidate("d", ["char:alice", "mood:happy", "locale:en"]),
+            candidate("a", ["char:alice", "mood:happy"]),
+            candidate("d", ["char:alice", "mood:happy"]),
         ]);
-        expect(contents.cells).toHaveLength(4);
-        expect(contents.missing.map(cell => cell.label)).toEqual(["mood:sad · locale:ja"]);
+        expect(contents.cells).toHaveLength(2);
+        expect(contents.missing.map(cell => cell.label)).toEqual(["mood:sad"]);
         expect(contents.ambiguous.map(cell => cell.assetIds)).toEqual([["a", "d"]]);
-        expect(isAssetSetComplete(set(), library)).toBe(false);
+        expect(isAssetSetComplete(set(), library)).toBe(true);
     });
 
     it("is complete when every coordinate resolves to exactly one file", () => {
-        const full = [...library, candidate("d", ["char:alice", "mood:sad", "locale:ja"])];
-        expect(isAssetSetComplete(set(), full)).toBe(true);
+        expect(isAssetSetComplete(set(), library)).toBe(true);
+    });
+
+    it("counts a value answered by a sub-set as answered rather than as a hole", () => {
+        const child = set({
+            id: "child",
+            filter: ["char:alice", "mood:sad"],
+            axis: axis("locale", "runtime", ["en", "ja"]),
+        });
+        const contents = resolveAssetSetContents(set(), [library[0]], [set(), child]);
+        expect(contents.missing).toEqual([]);
+        expect(contents.cells[1].childSetIds).toEqual(["child"]);
+    });
+
+    it("lets a sub-set answer its value even though its files carry this set's tags too", () => {
+        // Every file under `child` also carries `mood:happy`, which is what makes it a member of the
+        // set above. Counting those as this set's own answers would report every nested set as
+        // ambiguous with its own contents.
+        const child = set({
+            id: "child",
+            filter: ["char:alice", "mood:happy"],
+            axis: axis("locale", "runtime", ["en"]),
+        });
+        const contents = resolveAssetSetContents(set(), library, [set(), child]);
+        expect(contents.ambiguous).toEqual([]);
+        expect(contents.cells[0].childSetIds).toEqual(["child"]);
     });
 });
 
@@ -143,48 +162,64 @@ describe("collectAssetTagVocabulary", () => {
     });
 });
 
-describe("validateAssetSet", () => {
-    it("passes a build axis enclosing a runtime axis", () => {
-        expect(validateAssetSet(set())).toEqual([]);
-        expect(isLegalAxisOrder(set().axes)).toBe(true);
+describe("nesting", () => {
+    const outer = set({ id: "outer", filter: ["char:alice"], axis: axis("mood", "build", ["happy", "sad"]) });
+    const inner = set({
+        id: "inner",
+        filter: ["char:alice", "mood:sad"],
+        axis: axis("locale", "runtime", ["en", "ja"]),
     });
 
-    it("reports a build axis placed inside a runtime axis", () => {
-        const inverted = set({
-            axes: [axis("locale", "runtime", ["en"]), axis("mood", "build", ["happy"])],
+    it("reads a set declaring one more tag as hanging under that value", () => {
+        expect(childAssetSets(outer, "sad", [outer, inner]).map(entry => entry.id)).toEqual(["inner"]);
+        expect(childAssetSets(outer, "happy", [outer, inner])).toEqual([]);
+    });
+
+    it("does not read a set two tags deeper as a direct child", () => {
+        const deeper = set({
+            id: "deeper",
+            filter: ["char:alice", "mood:sad", "locale:ja"],
+            axis: axis("outfit", "build", ["school"]),
         });
-        expect(validateAssetSet(inverted)).toContainEqual({
+        expect(childAssetSets(outer, "sad", [outer, inner, deeper]).map(entry => entry.id)).toEqual(["inner"]);
+    });
+
+    it("answers which sets stand on their own", () => {
+        expect(topLevelAssetSets([outer, inner]).map(entry => entry.id)).toEqual(["outer"]);
+    });
+
+    it("refuses a build axis under a runtime one, and allows the reverse", () => {
+        expect(isLegalNesting(axis("mood", "build", []), axis("locale", "runtime", []))).toBe(true);
+        expect(isLegalNesting(axis("locale", "runtime", []), axis("mood", "build", []))).toBe(false);
+    });
+
+    it("reports the inversion on the inner set, which is the one that can be moved", () => {
+        const runtimeOuter = { ...outer, axis: axis("mood", "runtime", ["happy", "sad"]) };
+        const buildInner = { ...inner, axis: axis("locale", "build", ["en", "ja"]) };
+        expect(validateAssetSet(buildInner, [runtimeOuter, buildInner])).toContainEqual({
             kind: "residencyInversion",
-            axisKey: "mood",
-            outerAxisKey: "locale",
+            axisKey: "locale",
+            outerAxisKey: "mood",
         });
-        expect(isLegalAxisOrder(inverted.axes)).toBe(false);
+        expect(validateAssetSet(runtimeOuter, [runtimeOuter, buildInner])).toEqual([]);
+    });
+});
+
+describe("validateAssetSet", () => {
+    it("passes a set that declares an axis with values", () => {
+        expect(validateAssetSet(set())).toEqual([]);
     });
 
-    it("names the outermost runtime axis once rather than every build axis under it", () => {
-        const inverted = set({
-            axes: [
-                axis("locale", "runtime", ["en"]),
-                axis("platform", "runtime", ["win"]),
-                axis("mood", "build", ["happy"]),
-            ],
-        });
-        const inversions = validateAssetSet(inverted).filter(problem => problem.kind === "residencyInversion");
-        expect(inversions).toEqual([
-            { kind: "residencyInversion", axisKey: "mood", outerAxisKey: "locale" },
-        ]);
-    });
-
-    it("reports an axis that promises nothing, and a set with no axes at all", () => {
-        expect(validateAssetSet(set({ axes: [axis("mood", "build", [])] }))).toContainEqual({
+    it("reports an axis that promises nothing, and a set that names no axis at all", () => {
+        expect(validateAssetSet(set({ axis: axis("mood", "build", []) }))).toContainEqual({
             kind: "emptyAxisValues",
             axisKey: "mood",
         });
-        expect(validateAssetSet(set({ axes: [] }))).toContainEqual({ kind: "noAxes" });
+        expect(validateAssetSet(set({ axis: { kind: "release", key: "", residency: "build", values: [] } }))).toContainEqual({ kind: "noAxes" });
     });
 
     it("reports a repeated value on one axis", () => {
-        expect(validateAssetSet(set({ axes: [axis("mood", "build", ["happy", "happy"])] })))
+        expect(validateAssetSet(set({ axis: axis("mood", "build", ["happy", "happy"]) })))
             .toContainEqual({ kind: "duplicateAxisValue", axisKey: "mood", value: "happy" });
     });
 });
@@ -197,46 +232,58 @@ describe("normalizeProjectAssetSets", () => {
     });
 
     it("drops a record with no id or no type, which could not be resolved or filed", () => {
+        const locale = { key: "locale", residency: "runtime", values: ["en"] };
         const document = normalizeProjectAssetSets({
-            sets: [{ id: "", type: "image" }, { id: "a", type: "" }, { id: "b", type: "image" }],
+            sets: [
+                { id: "", type: "image", axis: locale },
+                { id: "a", type: "", axis: locale },
+                { id: "b", type: "image", axis: locale },
+            ],
         });
         expect(document.sets.map(entry => entry.id)).toEqual(["b"]);
     });
 
-    it("keeps the outer of two axes over one tag category", () => {
+    it("reads a set stored the old way, and makes its inner axes the sub-sets they now are", () => {
         const document = normalizeProjectAssetSets({
             sets: [{
                 id: "a",
+                name: "Title",
                 type: "image",
+                filter: ["set:a"],
                 axes: [
-                    { key: "mood", residency: "build", values: ["happy"] },
-                    { key: "mood", residency: "runtime", values: ["sad"] },
+                    { key: "release", residency: "build", values: ["release", "demo"] },
+                    { key: "locale", residency: "runtime", values: ["en", "ja"] },
                 ],
             }],
         });
-        expect(document.sets[0].axes).toEqual([{ key: "mood", residency: "build", values: ["happy"] }]);
+        expect(document.sets.map(entry => entry.id)).toEqual(["a", "a:release", "a:demo"]);
+        expect(document.sets[0].axis).toMatchObject({ kind: "release", key: "release" });
+        expect(document.sets[1]).toMatchObject({
+            filter: ["set:a", "release:release"],
+            axis: { kind: "locale", key: "locale", residency: "runtime", values: ["en", "ja"] },
+        });
+        expect(childAssetSets(document.sets[0], "demo", document.sets).map(entry => entry.id)).toEqual(["a:demo"]);
     });
 
-    it("reads an unreadable residency as build, which is the answer that keeps bytes out", () => {
+    it("drops a set indexed by something that is no longer a kind, rather than mis-resolving it", () => {
         const document = normalizeProjectAssetSets({
-            sets: [{ id: "a", type: "image", axes: [{ key: "mood", residency: "whenever", values: ["x"] }] }],
+            sets: [
+                { id: "a", type: "image", axis: { key: "mood", residency: "build", values: ["happy"] } },
+                { id: "b", type: "image", axis: { key: "locale", residency: "runtime", values: ["en"] } },
+            ],
         });
-        expect(document.sets[0].axes[0].residency).toBe("build");
+        expect(document.sets.map(entry => entry.id)).toEqual(["b"]);
     });
 
-    it("preserves an illegal order rather than reordering an author's axes silently", () => {
+    it("derives residency from the kind rather than reading whatever was stored", () => {
         const document = normalizeProjectAssetSets({
-            sets: [{
-                id: "a",
-                type: "image",
-                axes: [
-                    { key: "locale", residency: "runtime", values: ["en"] },
-                    { key: "mood", residency: "build", values: ["happy"] },
-                ],
-            }],
+            sets: [{ id: "a", type: "image", axis: { key: "locale", residency: "whenever", values: ["en"] } }],
         });
-        expect(document.sets[0].axes.map(entry => entry.key)).toEqual(["locale", "mood"]);
-        expect(isLegalAxisOrder(document.sets[0].axes)).toBe(false);
+        expect(document.sets[0].axis.residency).toBe("runtime");
+    });
+
+    it("drops a record that names no axis at all", () => {
+        expect(normalizeProjectAssetSets({ sets: [{ id: "a", type: "image" }] }).sets).toEqual([]);
     });
 });
 
@@ -257,42 +304,3 @@ describe("formatAssetTag", () => {
     });
 });
 
-describe("deriveAssetSetDraft", () => {
-    it("fixes what every file agrees on and makes an axis of what they vary along", () => {
-        const draft = deriveAssetSetDraft([
-            candidate("a", ["char:alice", "mood:happy", "locale:en"]),
-            candidate("b", ["char:alice", "mood:happy", "locale:ja"]),
-            candidate("c", ["char:alice", "mood:sad", "locale:en"]),
-        ]);
-        expect(draft.filter).toEqual(["char:alice"]);
-        expect(draft.axes).toEqual([
-            { key: "mood", residency: "build", values: ["happy", "sad"] },
-            { key: "locale", residency: "build", values: ["en", "ja"] },
-        ]);
-    });
-
-    it("starts every axis at build, the residency that keeps bytes out of a package", () => {
-        const draft = deriveAssetSetDraft([
-            candidate("a", ["locale:en"]),
-            candidate("b", ["locale:ja"]),
-        ]);
-        expect(draft.axes.map(entry => entry.residency)).toEqual(["build"]);
-    });
-
-    it("drops a category only some files carry, which is neither fixed nor an axis", () => {
-        const draft = deriveAssetSetDraft([
-            candidate("a", ["char:alice", "mood:happy"]),
-            candidate("b", ["char:alice"]),
-        ]);
-        expect(draft.filter).toEqual(["char:alice"]);
-        expect(draft.axes).toEqual([]);
-    });
-
-    it("ignores plain labels, which index nothing", () => {
-        const draft = deriveAssetSetDraft([
-            candidate("a", ["draft", "char:alice"]),
-            candidate("b", ["draft", "char:alice"]),
-        ]);
-        expect(draft.filter).toEqual(["char:alice"]);
-    });
-});

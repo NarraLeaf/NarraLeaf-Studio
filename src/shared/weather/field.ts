@@ -182,20 +182,48 @@ export function buildWeatherField(
     };
 }
 
-/** RGBA bytes for one frame. Four bytes per pixel, alpha pinned opaque. */
-export function createWeatherFrameBuffer(width: number, height: number): Uint8ClampedArray {
-    return new Uint8ClampedArray(width * height * 4);
-}
+// ---------------------------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------------------------
 
 /**
- * Draw one ellipse of light, oriented along the fall direction.
+ * How many instants are integrated into one output frame.
+ *
+ * A frame is not an instant. A camera's shutter is open for a slice of time and what lands on the
+ * film is the *integral* over that slice, which is why real rain photographs as streaks and why a
+ * field of instantaneous dots reads as strobing rather than as falling. Eight sub-steps is enough
+ * for the fastest thing here (a near raindrop crosses about twenty pixels per frame, so the samples
+ * overlap) and it is affordable for a reason worth stating: **rasterising is about 2% of a bake, the
+ * encoder is the other 98%**. Eight times the cheap half is a few percent on the whole, which is why
+ * the editor's live preview drops it and the bake does not.
+ */
+export const WEATHER_SUB_STEPS = 8;
+
+/**
+ * The shutter is open for the whole frame interval rather than the half a film camera would use.
+ *
+ * A shorter shutter would leave gaps between one frame's streak and the next one's, and the gap is
+ * exactly the artefact being removed. It also needs no per-seed tuning: a particle that barely moves
+ * in a frame barely blurs, whichever shutter it is given.
+ */
+const SHUTTER = 1;
+
+export type WeatherRenderer = {
+    /** RGBA, four bytes per pixel, alpha opaque. Rewritten by every {@link WeatherRenderer.render}. */
+    readonly frame: Uint8ClampedArray;
+    /** Draw the loop at `phase` in `[0, 1)`. */
+    render(phase: number): void;
+};
+
+/**
+ * Add one ellipse of light, oriented along the fall direction, into the accumulator.
  *
  * Additive with a squared falloff: the core reads solid and the rim dies out without leaving the ring
- * a linear falloff produces. Written straight into the RGBA buffer rather than through any canvas
- * API, because this same code has to run in the main process with no DOM.
+ * a linear falloff produces. It accumulates in **float** rather than saturating per write, so two
+ * particles crossing do not clip early — the clamp happens once, when the frame is written out.
  */
 function addParticle(
-    buf: Uint8ClampedArray,
+    acc: Float32Array,
     width: number,
     height: number,
     cx: number,
@@ -220,11 +248,12 @@ function addParticle(
     // The basis vectors again, so the ellipse tilts with the field instead of staying screen-aligned.
     const crossX = dirY;
     const crossY = -dirX;
+    const [tr, tg, tb] = tint;
 
     for (let y = y0; y <= y1; y++) {
         const dy = y - cy;
-        let index = (y * width + x0) * 4;
-        for (let x = x0; x <= x1; x++, index += 4) {
+        let index = (y * width + x0) * 3;
+        for (let x = x0; x <= x1; x++, index += 3) {
             const dx = x - cx;
             const du = dx * dirX + dy * dirY;
             const dv = dx * crossX + dy * crossY;
@@ -233,34 +262,22 @@ function addParticle(
                 continue;
             }
             const falloff = (1 - d2) * (1 - d2) * gain;
-            buf[index] += tint[0] * falloff;
-            buf[index + 1] += tint[1] * falloff;
-            buf[index + 2] += tint[2] * falloff;
+            acc[index] += tr * falloff;
+            acc[index + 1] += tg * falloff;
+            acc[index + 2] += tb * falloff;
         }
     }
 }
 
-/**
- * Render the field at one phase into `buf`.
- *
- * `phase` runs `[0, 1)`: frame `i` of `n` is `i / n`, never `i / (n - 1)`. The distinction is the
- * whole seam — with `n - 1` the last frame would BE the first one and the loop would stutter on a
- * duplicated frame, which is exactly the artefact this construction exists to avoid.
- */
-export function renderWeatherFrame(
-    buf: Uint8ClampedArray,
+/** One instant of the field, accumulated at `weight`. The sub-steps of a frame share one accumulator. */
+function accumulateInstant(
+    acc: Float32Array,
     field: WeatherField,
     width: number,
     height: number,
     phase: number,
+    weight: number,
 ): void {
-    buf.fill(0);
-    // Alpha is opaque everywhere: the clip has no transparency by design, and leaving it at zero
-    // would make a canvas preview of it invisible while the encoder ignored the channel entirely.
-    for (let i = 3; i < buf.length; i += 4) {
-        buf[i] = 255;
-    }
-
     const twoPi = Math.PI * 2;
     const { dirX, dirY, fallSpan, originU, originV, tint } = field;
     const crossX = dirY;
@@ -278,6 +295,56 @@ export function renderWeatherFrame(
         const across = field.tumbles
             ? p.radius * (0.35 + 0.65 * Math.abs(Math.cos(twoPi * (p.spinHarm * phase + p.spinPhase))))
             : p.radius;
-        addParticle(buf, width, height, cx, cy, across, p.length, dirX, dirY, p.gain, tint);
+        addParticle(acc, width, height, cx, cy, across, p.length, dirX, dirY, p.gain * weight, tint);
     }
+}
+
+/**
+ * A renderer bound to one field and one size.
+ *
+ * An object rather than a bare function because both hosts draw hundreds of frames in a row and the
+ * accumulator is worth keeping: at 1080p it is 25 MB, which is nothing to hold and a great deal to
+ * allocate three hundred and sixty times.
+ *
+ * `subSteps` is the one knob, and the editor is expected to turn it down. A live preview is judged
+ * while it moves — the eye supplies its own persistence — and a slider that redraws at one sample is
+ * the difference between a preview that keeps up with a drag and one that does not.
+ */
+export function createWeatherRenderer(
+    field: WeatherField,
+    width: number,
+    height: number,
+    options: { frames: number; subSteps?: number },
+): WeatherRenderer {
+    // The shutter is one frame long, so the renderer has to be told how long a frame IS in phase
+    // units. Both hosts pass the same loop length for the same reason they share this file: a preview
+    // integrating over a different shutter than the bake would be a preview of something else.
+    const frames = Math.max(1, Math.round(options.frames));
+    const subSteps = Math.max(1, Math.round(options.subSteps ?? WEATHER_SUB_STEPS));
+    const acc = new Float32Array(width * height * 3);
+    const frame = new Uint8ClampedArray(width * height * 4);
+    // Alpha is opaque everywhere and never written again: the clip has no transparency by design, and
+    // a canvas preview of a zero-alpha buffer would simply be invisible.
+    for (let i = 3; i < frame.length; i += 4) {
+        frame[i] = 255;
+    }
+
+    return {
+        frame,
+        render(phase: number) {
+            acc.fill(0);
+            const weight = 1 / subSteps;
+            for (let step = 0; step < subSteps; step++) {
+                // Sub-phases spread across ONE frame's shutter. Every one of them is still a phase, so
+                // every one is still periodic: a frame rendered at phase 1 integrates the same set of
+                // instants as the frame at phase 0, and the seam survives the blur.
+                accumulateInstant(acc, field, width, height, phase + (SHUTTER * step) / (subSteps * frames), weight);
+            }
+            for (let pixel = 0, rgb = 0, rgba = 0; pixel < width * height; pixel++, rgb += 3, rgba += 4) {
+                frame[rgba] = acc[rgb];
+                frame[rgba + 1] = acc[rgb + 1];
+                frame[rgba + 2] = acc[rgb + 2];
+            }
+        },
+    };
 }

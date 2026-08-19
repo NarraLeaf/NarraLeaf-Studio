@@ -8,7 +8,7 @@ import {
     type WeatherParamKey,
     type WeatherSeedId,
 } from "./model";
-import { buildWeatherField, createWeatherFrameBuffer, renderWeatherFrame } from "./field";
+import { buildWeatherField, createWeatherRenderer } from "./field";
 import { weatherBakeDescriptor, weatherBakeKey } from "./bakeKey";
 
 /**
@@ -20,11 +20,16 @@ import { weatherBakeDescriptor, weatherBakeKey } from "./bakeKey";
 const W = 480;
 const H = 270;
 
-function frameAt(seed: WeatherSeedId, phase: number, params = resolveWeatherParams({ seed })) {
+/** Few frames and few sub-steps: the tests are about geometry and identity, not about the blur. */
+const FRAMES = 60;
+
+function frameAt(seed: WeatherSeedId, phase: number, params = resolveWeatherParams({ seed }), subSteps = 2) {
     const field = buildWeatherField(seed, params, W, H);
-    const buf = createWeatherFrameBuffer(W, H);
-    renderWeatherFrame(buf, field, W, H, phase);
-    return buf;
+    const renderer = createWeatherRenderer(field, W, H, { frames: FRAMES, subSteps });
+    renderer.render(phase);
+    // Copied: the renderer reuses its buffer, so two frames compared without this would be one frame
+    // compared with itself - a seam test that can never fail.
+    return new Uint8ClampedArray(renderer.frame);
 }
 
 function litPixels(buf: Uint8ClampedArray): number {
@@ -121,6 +126,14 @@ describe("the field", () => {
         expect(tilted).toBeLessThan(upright * 1.6);
     });
 
+    it("integrates several instants into one frame", () => {
+        // A blurred frame lights more pixels than a single instant of the same field: that difference
+        // IS the shutter. Rain is the seed it matters most for, so it is the one asserted.
+        const instant = litPixels(frameAt("rain", 0.3, undefined, 1));
+        const blurred = litPixels(frameAt("rain", 0.3, undefined, 8));
+        expect(blurred).toBeGreaterThan(instant);
+    });
+
     it("leaves the alpha channel opaque", () => {
         const buf = frameAt("snow", 0.5);
         for (let i = 3; i < buf.length; i += 4) {
@@ -189,5 +202,31 @@ describe("the bake size", () => {
             expect(size.width % 2).toBe(0);
             expect(size.height % 2).toBe(0);
         }
+    });
+});
+
+describe("the labels every surface asks for", () => {
+    // These keys are reached through a cast (`storyInspector.weather.<key>`), so the compiler cannot
+    // see them and the i18n parity test cannot either - parity compares the three languages against
+    // each other, and a key all three are missing is aligned. A missing one would silently echo its
+    // own path into the panel, which is the one place an author cannot argue with a wrong answer.
+    it("has an inspector label for every parameter and a word for every seed", async () => {
+        const { createTranslator } = await import("@shared/i18n");
+        const translator = createTranslator("en");
+        // Negative control: without this the assertion below would also pass against a translator
+        // that answered `true` to everything, which is the shape of a test that cannot fail.
+        expect(translator.has("storyInspector.weather.notAParameter" as never)).toBe(false);
+        const missing: string[] = [];
+        for (const key of Object.keys(WEATHER_PARAMS)) {
+            if (!translator.has(`storyInspector.weather.${key}` as never)) {
+                missing.push(`storyInspector.weather.${key}`);
+            }
+        }
+        for (const id of WEATHER_SEED_IDS) {
+            if (!translator.has(`story.enumValue.${id}` as never)) {
+                missing.push(`story.enumValue.${id}`);
+            }
+        }
+        expect(missing).toEqual([]);
     });
 });
