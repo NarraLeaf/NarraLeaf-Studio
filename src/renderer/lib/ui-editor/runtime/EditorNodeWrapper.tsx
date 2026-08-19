@@ -169,6 +169,15 @@ export function EditorNodeWrapper({
         () => (enteredState ? { variantId: enteredState.variantId } : null),
         [enteredState],
     );
+    /**
+     * Which state this element is being shown in, as a value that changes only when the state does.
+     *
+     * The offsets below move for two different reasons and only one of them is a trip: the element
+     * changed state, or the author changed where it sits *in* the state they are already looking at.
+     * Empty outside the editor, where nothing is ever entered and every move of an offset is the
+     * widget changing state - which is the trip the player is meant to see.
+     */
+    const enteredStateKey = enteredState ? `v:${enteredState.variantId ?? ""}` : "";
     const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
     const listScopedVariantId =
         typeof (element.extra as { runtimeVariantOverrideId?: unknown } | undefined)?.runtimeVariantOverrideId === "string"
@@ -546,12 +555,21 @@ export function EditorNodeWrapper({
     const leftValue = useMotionValue(placedLeft);
     const topValue = useMotionValue(placedTop);
     const lastPlacedOffsetsRef = useRef(placedEnteredOffsets);
+    const lastPlacedStateKeyRef = useRef(enteredStateKey);
     useEffect(() => {
         const previous = lastPlacedOffsetsRef.current;
+        const previousStateKey = lastPlacedStateKeyRef.current;
         const enteredMoved = previous.x !== placedEnteredOffsets.x || previous.y !== placedEnteredOffsets.y;
         lastPlacedOffsetsRef.current = placedEnteredOffsets;
+        lastPlacedStateKeyRef.current = enteredStateKey;
         const transition = enteredOffsetTransitionRef.current;
-        if (!enteredMoved || !transition) {
+        // Only a change of state is a trip. Moving the element *within* the state on screen - dragging
+        // it there, typing a number - is the author saying where it sits, not the element travelling:
+        // animating to it starts from where they just left, which reads as the element snapping back
+        // to its old spot for a frame and then sliding into place. It also leaves the selection frame
+        // measuring a position the element is only passing through.
+        const changedState = enteredStateKey === "" || previousStateKey !== enteredStateKey;
+        if (!enteredMoved || !changedState || !transition) {
             leftValue.set(placedLeft);
             topValue.set(placedTop);
             return undefined;
@@ -562,7 +580,7 @@ export function EditorNodeWrapper({
             runLeft.stop();
             runTop.stop();
         };
-    }, [leftValue, placedEnteredOffsets, placedLeft, placedTop, topValue]);
+    }, [enteredStateKey, leftValue, placedEnteredOffsets, placedLeft, placedTop, topValue]);
 
     const containerStyle = useMemo<CSSProperties>(() => {
         const { x, y, width, height } = layout;
@@ -622,15 +640,20 @@ export function EditorNodeWrapper({
     const poseX = useMotionValue(displayableBaseTransform.offsetX + enteredOffsets.x);
     const poseY = useMotionValue(displayableBaseTransform.offsetY + enteredOffsets.y);
     const lastEnteredOffsetsRef = useRef(enteredOffsets);
+    const lastPoseStateKeyRef = useRef(enteredStateKey);
     useEffect(() => {
         const previous = lastEnteredOffsetsRef.current;
+        const previousStateKey = lastPoseStateKeyRef.current;
         const enteredMoved = previous.x !== enteredOffsets.x || previous.y !== enteredOffsets.y;
         lastEnteredOffsetsRef.current = enteredOffsets;
+        lastPoseStateKeyRef.current = enteredStateKey;
         if (displayableMotion) {
             return undefined;
         }
         const transition = enteredOffsetTransitionRef.current;
-        if (!enteredMoved || !transition) {
+        // Same rule as placement above: the trip is between states, never inside one.
+        const changedState = enteredStateKey === "" || previousStateKey !== enteredStateKey;
+        if (!enteredMoved || !changedState || !transition) {
             poseX.set(basePose.x);
             poseY.set(basePose.y);
             return undefined;
@@ -641,7 +664,7 @@ export function EditorNodeWrapper({
             runX.stop();
             runY.stop();
         };
-    }, [basePose.x, basePose.y, displayableMotion, enteredOffsets, poseX, poseY]);
+    }, [basePose.x, basePose.y, displayableMotion, enteredOffsets, enteredStateKey, poseX, poseY]);
 
     // Once an element carries a pose (authored rotation, persistent offsets/scale, or any motion)
     // its transform must be owned by motion-managed style values: a raw `style.transform` string

@@ -72,6 +72,41 @@ describe("extractVoiceableRows", () => {
         expect(rows.find(row => row.unitId === "t-o1")).toBeUndefined();
     });
 
+    /**
+     * The project switch grows the script, and with it the coverage denominator - which is exactly
+     * why it is a switch. An option joins in narrative order, where a booth reads it.
+     */
+    it("adds choice options in narrative order once the project voices them", () => {
+        const rows = extractVoiceableRows(buildDocument(), { includeChoices: true });
+        expect(rows.map(row => row.unitId)).toEqual(["t-n1", "t-d1", "t-o1"]);
+    });
+
+    /**
+     * The prompt stays out at every setting: the menu surface speaks options and nothing else, so a
+     * take recorded against a prompt would be coverage no game can satisfy.
+     */
+    it("never lists the choice prompt", () => {
+        const rows = extractVoiceableRows(buildDocument(), { includeChoices: true });
+        expect(rows.find(row => row.unitId === "t-c1")).toBeUndefined();
+    });
+
+    /**
+     * What kind of row this is comes off the block, not off the stored `role`. Projects written by a
+     * template carry `role: "choiceOption"` on option segments - not even a member of the declared
+     * union - and reading it left every such option out of the script while the panel reported full
+     * coverage of a story it had not counted.
+     */
+    it("counts an option whose stored role disagrees with its block", () => {
+        const document = buildDocument();
+        const option = document.scenes["scene-a"].blocks.o1;
+        if (option.kind === "nodeAction" && option.payload.action === "choiceOption") {
+            option.payload.text.role = "choiceOption" as never;
+        }
+        const rows = extractVoiceableRows(document, { includeChoices: true });
+        expect(rows.map(row => row.unitId)).toEqual(["t-n1", "t-d1", "t-o1"]);
+        expect(rows.find(row => row.unitId === "t-o1")?.role).toBe("choiceText");
+    });
+
     it("carries speaker context on dialogue rows", () => {
         const rows = extractVoiceableRows(buildDocument());
         expect(rows.find(row => row.unitId === "t-d1")?.characterId).toBe("char-1");

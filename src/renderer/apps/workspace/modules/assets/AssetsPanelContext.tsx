@@ -2,6 +2,7 @@ import { AssetCategory } from '@/lib/workspace/services/assets/assetTypes';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/mediaAssetSupport';
 import { createContext, useContext } from 'react';
+import type { AssetSetAxisNaming } from '@shared/types/assetSetLabels';
 import type { ResolvedAssetSet } from './state/useAssetSets';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedItemState } from './state/useDragAndDrop';
@@ -28,6 +29,10 @@ interface AssetsPanelContextType {
      * the library is how the row they were about to fix stops being findable.
      */
     assetSets: Record<AssetCategory, ResolvedAssetSet[]>;
+    /** Only the sets that hang under nothing: what a section lists at its root. */
+    rootAssetSets: Record<AssetCategory, ResolvedAssetSet[]>;
+    /** Files some set answers with. Listed inside their set, and not again beside it. */
+    memberAssetIds: ReadonlySet<string>;
     filteredAssets: Record<AssetCategory, Asset[]>;
     filteredGroups: Record<AssetCategory, AssetGroup[]>;
     /**
@@ -45,6 +50,11 @@ interface AssetsPanelContextType {
     isMultiSelectMode: boolean;
     expandedGroups: Set<string>;
     setExpandedGroups: React.Dispatch<React.SetStateAction<Set<string>>>;
+    /** Sets drawn open, listing one row per variant. Kept apart from folders: different ids, different rows. */
+    expandedAssetSets: Set<string>;
+    setExpandedAssetSets: React.Dispatch<React.SetStateAction<Set<string>>>;
+    /** What lets a variant row name its axis in the project's words instead of in tags. */
+    assetSetNaming: AssetSetAxisNaming;
 
     // Handlers
     handleItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
@@ -53,6 +63,13 @@ interface AssetsPanelContextType {
     /** Puts a set in the properties panel, which is where its axes are edited. */
     handleAssetSetSelect: (entry: ResolvedAssetSet) => void;
     showAssetSetContextMenu: (event: React.MouseEvent, entry: ResolvedAssetSet) => void;
+    /**
+     * The menu on one value of a set, which is where a sub-set is made.
+     *
+     * A value is the only place the gesture makes sense: a sub-set hangs at a value, and a set has
+     * several of them.
+     */
+    showAssetSetValueContextMenu: (event: React.MouseEvent, entry: ResolvedAssetSet, value: string) => void;
     showContextMenu: (e: React.MouseEvent, category: AssetCategory, item: Asset | AssetGroup | null, isGroup: boolean) => void;
     handleDragStart?: (e: React.DragEvent, category: AssetCategory, item: Asset | AssetGroup, isGroup: boolean) => void;
     handleDragEnd?: () => void;

@@ -376,6 +376,19 @@ export const assets = {
     sets: {
         /** What a set's row calls itself in a rename dialog. */
         itemType: "set",
+        /**
+         * The two axes a project can name for itself, used on a variant row in place of the tag
+         * category. Everything else prints the category the author wrote.
+         */
+        axisWord: {
+            language: "Language",
+            variant: "Variant",
+        },
+        /** The two things a set may vary by. There are no others until Studio adds one. */
+        axisKind: {
+            locale: "Language",
+            release: "Variant",
+        },
         /** Every variant resolves. The only sentence a finished set shows. */
         variantCount: {
             one: "{count} variant",
@@ -387,12 +400,25 @@ export const assets = {
         unfinished: "No variants declared",
         menu: {
             create: "New Set from Selection",
+            createSub: "New Set from Selection, Here",
         },
         create: {
             title: "New asset set",
-            nameRequired: "Enter a name",
-            /** Reached only by a selection spanning two asset types. */
-            failed: "A set holds one kind of asset. Select files of one kind.",
+            subTitle: "New set under this variant",
+            /** Neither list has anything to vary along yet. */
+            no: {
+                locale: "This project declares one language.",
+                release: "This project has no variants.",
+            },
+            /** The character the file names are read apart at. */
+            delimiter: "Separator",
+            delimiterSpace: "Space",
+            /**
+             * The positions the names split into. Each one the author names becomes a tag category,
+             * and the ones that vary become the axes.
+             */
+            segments: "Name parts",
+            axis: "Varies by",
         },
         /** The inspector. Each axis is one tag category, and the order is the nesting. */
         inspector: {

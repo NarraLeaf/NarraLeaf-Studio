@@ -50,7 +50,7 @@ export function getCommandLineReason(source: string, context: StoryCommandContex
         return parserReason(line, parserIssue);
     }
     const resolutionIssue = resolveCommandLine(line, context).issues[0];
-    return resolutionIssue ? resolutionReason(resolutionIssue) : null;
+    return resolutionIssue ? resolutionReason(resolutionIssue, line.token ?? "") : null;
 }
 
 /**
@@ -142,7 +142,12 @@ function expressionReason(issue: StoryExpressionIssue): StoryCommandReason {
     }
 }
 
-function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReason {
+/**
+ * `token` is the verb as the author spelled it on this line - an alias included, because the message
+ * quotes it back. Only {@link StoryCommandResolutionIssue} codes that several commands can raise need
+ * it; the rest are about the value alone and read the same wherever they come from.
+ */
+function resolutionReason(issue: StoryCommandResolutionIssue, token: string): StoryCommandReason {
     switch (issue.code) {
         case "unknownAsset":
             return { key: reasonKey(issue.code), params: { value: issue.value, assetType: issue.assetType } };
@@ -164,7 +169,16 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
         case "unsupportedParam":
             return { key: reasonKey(issue.code), params: { key: issue.key, kind: issue.kind } };
         case "unsupportedTarget":
-            return { key: reasonKey(issue.code), params: { value: issue.value, kind: issue.kind } };
+            // Every slot that resolves a kind in order to REFUSE it raises this one code, so the
+            // message has to hold for each of them. Two things make it: the sentence names the verb
+            // on the line rather than assuming one, and the advice is picked by what the name turned
+            // out to BE - a video and an ambience overlay answer to show / hide / play / rate, a
+            // layer's front-to-back is `/layer z=`. The single message this replaced was written for
+            // `/transform` alone, and told a `/front` author their layer had no transform.
+            return {
+                key: reasonKey(issue.kind === "layer" ? "unsupportedTargetLayer" : issue.code),
+                params: { token, value: issue.value, kind: issue.kind },
+            };
         case "unsupportedOption":
             return { key: reasonKey(issue.code), params: { value: issue.value, allowed: issue.allowed.join(", ") } };
         case "conflictingParams":

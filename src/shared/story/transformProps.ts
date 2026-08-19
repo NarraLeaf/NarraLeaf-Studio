@@ -185,15 +185,59 @@ function stripTerms(source: string): string {
 export type StoryTransformPropsConflict = "filterBoth";
 
 /**
- * `filter` and `filterRaw` both write the CSS `filter` channel, so a bag carrying both has no single
- * answer and the emitter would silently take whichever it reads last. Reported rather than resolved,
- * following `/font`, which refuses a size and a colour in one row for the same reason.
+ * `filter`, `filterRaw` and `look` all write the CSS `filter` channel, so a bag carrying more than
+ * one has no single answer and the emitter would silently take whichever it reads last. Reported
+ * rather than resolved, following `/font`, which refuses a size and a colour in one row for the same
+ * reason.
  */
 export function storyTransformPropsConflicts(props: StoryTransformProps | undefined): StoryTransformPropsConflict[] {
     if (!props) {
         return [];
     }
-    return props.filter !== undefined && props.filterRaw !== undefined ? ["filterBoth"] : [];
+    const writers = [props.filter, props.filterRaw, props.look].filter(value => value !== undefined);
+    return writers.length > 1 ? ["filterBoth"] : [];
+}
+
+// ---------------------------------------------------------------------------------------------
+// The grade, folded
+// ---------------------------------------------------------------------------------------------
+
+/** Resolve a library grade to the CSS chain it expands to, or `null` for a name the library lost. */
+export type StoryLookResolver = (preset: string, intensity: number | undefined) => string | null;
+
+/**
+ * The bag with its named grade replaced by the chain it stands for.
+ *
+ * The library is a renderer module (`lib/ui-editor/runtime/game/cameraLookPresets.ts`) and this file
+ * is `@shared`, which the main process imports too - so the resolution is passed in rather than
+ * reached for. Every surface that has to turn a bag into something the browser can render calls this
+ * first: the compiler's emitter, the editor's stage snapshot and the snapshot's residual-effects
+ * pass. The result carries no `look`, so nothing downstream has to know the channel exists.
+ *
+ * A name the library no longer holds resolves to `null` and the channel is dropped rather than
+ * guessed at - `onMissing` is how the caller turns that into the diagnostic the author sees.
+ */
+export function foldStoryTransformLook(
+    props: StoryTransformProps | undefined,
+    resolve: StoryLookResolver,
+    onMissing?: (preset: string) => void,
+): StoryTransformProps | undefined {
+    if (!props || props.look === undefined) {
+        return props;
+    }
+    const next: StoryTransformProps = { ...props };
+    delete next.look;
+    if (props.look === null) {
+        next.filter = null;
+        return next;
+    }
+    const css = resolve(props.look.preset, props.look.intensity);
+    if (css === null) {
+        onMissing?.(props.look.preset);
+        return next;
+    }
+    next.filterRaw = css;
+    return next;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -219,9 +263,15 @@ const DISCRETE_KEYS = [
     // A colour is a string here, and the keyframe layer already holds one until the next keyframe
     // rather than mixing two - so a colour behaves the same way on this path.
     "fontColor",
+    // The lens's dressing. The two channels it dresses (`shutter`, `vignette`) are continuous and
+    // tween; a colour and a gradient stop are strings with no midpoint, exactly like the mask's.
+    "shutterColor",
+    "vignetteColor",
+    "vignetteInner",
+    "vignetteOuter",
 ] as const;
 
-const NUMERIC_KEYS = ["zoom", "scaleX", "scaleY", "rotation", "opacity"] as const;
+const NUMERIC_KEYS = ["zoom", "scaleX", "scaleY", "rotation", "opacity", "shutter", "vignette"] as const;
 
 /**
  * Split a change into the half that cuts and the half that tweens.
@@ -288,6 +338,18 @@ export function splitStoryTransformChange(
         } else {
             cut.filter = to.filter;
         }
+    }
+    // A named grade never reaches here in practice - every emitter folds it to `filterRaw` first,
+    // because only the library knows whether ITS OWN route is safe to ease (see
+    // `storyCameraLookTweens`). Cutting an unfolded one is the conservative answer for a channel this
+    // module cannot resolve, and not a decision about the grade.
+    if (to.look !== undefined) {
+        cut.look = to.look;
+    }
+    // A named lens gesture never reaches here either: it is three keyframes, not a destination, so the
+    // emitter plays it as its own statement. Cutting an unfolded one is the conservative answer.
+    if (to.lens !== undefined) {
+        cut.lens = to.lens;
     }
     return { cut, tween };
 }
@@ -371,11 +433,26 @@ export function storyTransformPropsToNlr(
     assign(next, "clipPath", cssOrNone(props.clipPath));
     assign(next, "backdropFilter", cssOrNone(props.backdropFilter));
     assign(next, "mixBlendMode", props.mixBlendMode === null ? "normal" : props.mixBlendMode);
+    // The camera's lens, passed straight through under the engine's own spellings. An engine that does
+    // not know them ignores them: `constructStyle` builds its style object from a literal list of
+    // keys, so an unrecognised prop is inert rather than a crash - which is what makes a project
+    // written against a newer Studio still play on an older engine, quietly missing the effect.
+    // TODO(narraleaf-react 0.31.0): the props are typed on `ImageTransformProps` from that release on,
+    // and the `as any` at the emitter's call sites can go with the pin.
+    assign(next, "shutter", props.shutter);
+    assign(next, "shutterColor", props.shutterColor);
+    assign(next, "vignette", props.vignette);
+    assign(next, "vignetteColor", props.vignetteColor);
+    assign(next, "vignetteInner", cssOrNone(props.vignetteInner));
+    assign(next, "vignetteOuter", cssOrNone(props.vignetteOuter));
     if (props.filterRaw !== undefined) {
         next.filter = props.filterRaw === null ? "none" : props.filterRaw;
     } else if (props.filter !== undefined) {
         next.filter = composeStoryFilter(props.filter);
     }
+    // `look` has no arm, and that is the contract rather than an omission: this module cannot resolve
+    // a grade name (the library is a renderer module), so every caller folds one away with
+    // `foldStoryTransformLook` before getting here. A bag still carrying one has skipped that step.
     if (maskImage !== undefined) {
         next.maskImage = maskImage;
     }

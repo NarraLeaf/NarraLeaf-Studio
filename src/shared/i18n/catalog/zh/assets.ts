@@ -266,6 +266,14 @@ export const assets = {
      */
     sets: {
         itemType: "资产集",
+        axisWord: {
+            language: "语言",
+            variant: "变体",
+        },
+        axisKind: {
+            locale: "语言",
+            release: "变体",
+        },
         variantCount: {
             one: "{count} 个变体",
             other: "{count} 个变体",
@@ -274,11 +282,19 @@ export const assets = {
         unfinished: "尚未声明变体",
         menu: {
             create: "用所选文件新建资产集",
+            createSub: "用所选文件在此新建资产集",
         },
         create: {
             title: "新建资产集",
-            nameRequired: "请输入名称",
-            failed: "一个资产集只装一种资产。请选择同一种类的文件。",
+            subTitle: "在该变体下新建资产集",
+            no: {
+                locale: "本工程只声明了一种语言。",
+                release: "本工程没有变体。",
+            },
+            delimiter: "分隔符",
+            delimiterSpace: "空格",
+            segments: "文件名分段",
+            axis: "按什么变化",
         },
         inspector: {
             axes: "轴",

@@ -13,7 +13,18 @@ describe("normalizeVoiceConfiguration", () => {
             voicedLocales: [],
             namingPattern: DEFAULT_VOICE_NAMING_PATTERN,
             cast: {},
+            voiceChoices: false,
         });
+    });
+
+    /**
+     * Choice voicing is a decision, so a project that never made it keeps the coverage figures it
+     * already had. Only the literal `true` turns it on - a half-migrated config must not.
+     */
+    it("leaves choice voicing off unless the project turned it on", () => {
+        expect(normalizeVoiceConfiguration({ voiceChoices: true }).voiceChoices).toBe(true);
+        expect(normalizeVoiceConfiguration({ voiceChoices: "yes" }).voiceChoices).toBe(false);
+        expect(normalizeVoiceConfiguration({}).voiceChoices).toBe(false);
     });
 
     it("drops invalid/duplicate locales and keeps a custom naming pattern", () => {

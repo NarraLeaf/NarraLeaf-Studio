@@ -447,10 +447,7 @@ describe("assets/group-incomplete", () => {
             name: "Alice",
             type: AssetType.Image,
             filter: ["char:alice"],
-            axes: [
-                { key: "mood", residency: "build", values: ["happy", "sad"] },
-                { key: "locale", residency: "runtime", values: ["en", "ja"] },
-            ],
+            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy", "sad"] },
             ...overrides,
         };
     }
@@ -460,10 +457,8 @@ describe("assets/group-incomplete", () => {
     }
 
     const fullLibrary = [
-        tagged("a", ["char:alice", "mood:happy", "locale:en"]),
-        tagged("b", ["char:alice", "mood:happy", "locale:ja"]),
-        tagged("c", ["char:alice", "mood:sad", "locale:en"]),
-        tagged("d", ["char:alice", "mood:sad", "locale:ja"]),
+        tagged("a", ["char:alice", "mood:happy"]),
+        tagged("c", ["char:alice", "mood:sad"]),
     ];
 
     it("says nothing about a project that declares no sets", async () => {
@@ -478,35 +473,35 @@ describe("assets/group-incomplete", () => {
 
     it("names the variant that has no file, as the tags that would fix it", async () => {
         const ctx = createTestLintContext({
-            assets: fullLibrary.slice(0, 3),
+            assets: fullLibrary.slice(0, 1),
             assetSets: [aliceSet()],
         });
 
         expect(await runSets(ctx)).toEqual([{
             ruleId: "assets/group-incomplete",
             messageKey: "lint.rule.assetsGroupIncomplete.message",
-            messageParams: { set: "Alice", variant: "mood:sad · locale:ja" },
+            messageParams: { set: "Alice", variant: "mood:sad" },
             location: { kind: "project" },
         }]);
     });
 
     it("reports a variant two files claim, which resolves to nothing just as a hole does", async () => {
         const ctx = createTestLintContext({
-            assets: [...fullLibrary, tagged("e", ["char:alice", "mood:happy", "locale:en"])],
+            assets: [...fullLibrary, tagged("e", ["char:alice", "mood:happy"])],
             assetSets: [aliceSet()],
         });
 
         expect(await runSets(ctx)).toEqual([{
             ruleId: "assets/group-incomplete",
             messageKey: "lint.rule.assetsGroupIncomplete.messageAmbiguous",
-            messageParams: { set: "Alice", variant: "mood:happy · locale:en", count: "2" },
+            messageParams: { set: "Alice", variant: "mood:happy", count: "2" },
             location: { kind: "project" },
         }]);
     });
 
     it("never names a file, so a variant a package left out cannot reach a log", async () => {
         const ctx = createTestLintContext({
-            assets: fullLibrary.slice(0, 3),
+            assets: fullLibrary.slice(0, 1),
             assetSets: [aliceSet()],
         });
 
@@ -514,29 +509,31 @@ describe("assets/group-incomplete", () => {
         expect(params.some(text => text.includes("a.png") || text.includes("\"a\""))).toBe(false);
     });
 
-    it("reports a build axis nested inside a runtime one, naming the outer axis", async () => {
+    it("reports a set resolved when built hanging under one resolved while running", async () => {
+        const outer = aliceSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en"] } });
+        const inner = aliceSet({
+            id: "inner",
+            name: "Alice EN",
+            filter: ["char:alice", "locale:en"],
+            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"] },
+        });
         const ctx = createTestLintContext({
-            assets: fullLibrary,
-            assetSets: [aliceSet({
-                axes: [
-                    { key: "locale", residency: "runtime", values: ["en", "ja"] },
-                    { key: "mood", residency: "build", values: ["happy", "sad"] },
-                ],
-            })],
+            assets: [tagged("x", ["char:alice", "locale:en", "mood:happy"])],
+            assetSets: [outer, inner],
         });
 
-        expect(await runSets(ctx)).toEqual([{
+        expect(await runSets(ctx)).toContainEqual({
             ruleId: "assets/group-incomplete",
             messageKey: "lint.rule.assetsGroupIncomplete.messageResidency",
-            messageParams: { set: "Alice", axis: "mood", outerAxis: "locale" },
+            messageParams: { set: "Alice EN", axis: "mood", outerAxis: "locale" },
             location: { kind: "project" },
-        }]);
+        });
     });
 
     it("reports an incoherent set once, instead of a hole for every cell it does not have", async () => {
         const ctx = createTestLintContext({
             assets: fullLibrary,
-            assetSets: [aliceSet({ axes: [{ key: "mood", residency: "build", values: [] }] })],
+            assetSets: [aliceSet({ axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: [] } })],
         });
 
         const findings = await runSets(ctx);
@@ -546,7 +543,7 @@ describe("assets/group-incomplete", () => {
 
     it("holds the fixed filter, so another character's files do not fill a hole", async () => {
         const ctx = createTestLintContext({
-            assets: [...fullLibrary.slice(0, 3), tagged("z", ["char:bob", "mood:sad", "locale:ja"])],
+            assets: [...fullLibrary.slice(0, 1), tagged("z", ["char:bob", "mood:sad"])],
             assetSets: [aliceSet()],
         });
 
@@ -556,8 +553,8 @@ describe("assets/group-incomplete", () => {
     it("ignores a file of another type carrying the right tags", async () => {
         const ctx = createTestLintContext({
             assets: [
-                ...fullLibrary.slice(0, 3),
-                asset("z", { type: AssetType.Audio, tags: ["char:alice", "mood:sad", "locale:ja"] }),
+                ...fullLibrary.slice(0, 1),
+                asset("z", { type: AssetType.Audio, tags: ["char:alice", "mood:sad"] }),
             ],
             assetSets: [aliceSet()],
         });

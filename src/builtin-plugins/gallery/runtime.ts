@@ -1,7 +1,7 @@
 /**
  * Gallery runtime entry: registers the blueprint node execute bindings in
  * game execution environments (Dev Mode window, Preview, Production), and
- * auto-unlocks recollections as the player reaches them.
+ * collects the entries the player reaches, hears and is spoken to.
  *
  * Editor palette metadata stays owned by the studio entry (main.tsx).
  */
@@ -10,8 +10,12 @@ import { defineRuntimePlugin } from "narraleaf-studio/runtime";
 import {
     GALLERY_STORE_NAMESPACE,
     RUNTIME_UNLOCKED_KEY,
+    collectAudioAssetVariantIds,
+    collectSceneVariantIds,
+    collectVoiceUnitVariantIds,
     normalizeGalleryStore,
     readUnlockedVariantIds,
+    type GalleryArtwork,
 } from "./catalog";
 import { createGalleryBlueprintNodes } from "./nodes";
 
@@ -35,30 +39,31 @@ export default defineRuntimePlugin({
         app.game.blueprintNodes.registerMany(createGalleryBlueprintNodes(readCatalog));
 
         /**
-         * Recollections unlock themselves when the player reaches the scene.
+         * Three of the four columns collect themselves as the player plays.
          *
-         * This is the only column that can: there is no "this image was shown"
-         * or "this clip was played" event, so CG and music entries still need an
-         * explicit Unlock Gallery in the story. Worth telling authors, or the
-         * inconsistency reads as a bug.
+         * A recollection is collected on reaching its scene, a track on being played, a voice line
+         * on being spoken. CG entries have no such moment - nothing says which picture counts as
+         * seen - so they stay on an explicit Unlock Gallery in the story. Worth telling authors, or
+         * the inconsistency reads as a bug; the editor's idle inspector says it per column.
          *
-         * `sceneEnter` is a *rendering* event - a remount fires it again - which
-         * is harmless here because unlocking is an idempotent set insert.
+         * Every source here is an *execution* signal: a remount, a rollback or a replay fires it
+         * again. That is harmless because collecting is an idempotent set insert, and the write is
+         * skipped when the set did not move.
          */
         const events = app.game.events;
         const store = app.game.store;
         if (!events || !store) {
             return;
         }
-        events.on("sceneEnter", ({ sceneId }) => {
-            if (!sceneId) {
-                return;
-            }
+
+        const collect = (
+            what: string,
+            pick: (items: GalleryArtwork[]) => string[],
+        ): void => {
             void (async () => {
                 try {
                     const data = normalizeGalleryStore(readCatalog());
-                    const reached = data.items.filter(item =>
-                        item.kind === "scene" && item.scene?.sceneId === sceneId);
+                    const reached = pick(data.items);
                     if (reached.length === 0) {
                         return;
                     }
@@ -67,24 +72,45 @@ export default defineRuntimePlugin({
                         data.items,
                     );
                     const before = unlocked.size;
-                    for (const entry of reached) {
-                        for (const variant of entry.variants) {
-                            unlocked.add(variant.id);
-                        }
+                    for (const variantId of reached) {
+                        unlocked.add(variantId);
                     }
-                    // Only write when something changed: sceneEnter fires on
-                    // every remount, and a persistence write per remount is a
-                    // needless disk hit on every scene transition.
+                    // Only write when something changed: these signals fire on every remount and
+                    // every replay, and a persistence write per signal is a needless disk hit on
+                    // every scene transition and every line of dialogue.
                     if (unlocked.size !== before) {
                         await store.set(RUNTIME_UNLOCKED_KEY, Array.from(unlocked));
                     }
                 } catch (error) {
                     app.game.log(
                         "warning",
-                        `gallery: could not auto-unlock a recollection: ${error instanceof Error ? error.message : String(error)}`,
+                        `gallery: could not collect ${what}: ${error instanceof Error ? error.message : String(error)}`,
                     );
                 }
             })();
+        };
+
+        events.on("sceneEnter", ({ sceneId }) => {
+            if (sceneId) {
+                collect("a recollection", items => collectSceneVariantIds(items, sceneId));
+            }
+        });
+
+        // Covers a `/bgm` row, a `/sound` row and a scene whose configured music starts with the
+        // mount. A clip a Page starts through Play Sound is interface sound and is not reported
+        // here, so a button click cannot collect a track.
+        events.on("audioPlayed", ({ assetId }) => {
+            if (assetId) {
+                collect("a track", items => collectAudioAssetVariantIds(items, assetId));
+            }
+        });
+
+        // The unit id a voice entry carries is the line's text id, so the line the player just
+        // finished names the entry directly.
+        events.on("dialogueEnd", ({ textId }) => {
+            if (textId) {
+                collect("a voice line", items => collectVoiceUnitVariantIds(items, textId));
+            }
         });
     },
 });

@@ -9,6 +9,11 @@ function keyEvent(key: string, target: EventTarget | null = null): KeyboardEvent
 
 function makeController(overrides: Partial<SkipRunControllerOptions> = {}) {
     const skipOnce = vi.fn();
+    // The host answers this by writing `false` into the preference, which comes straight back as
+    // `setSkipping(false)`. Modelling that here is the point: without it the controller and the
+    // value it is driven from would be tested apart, and it is their disagreement that shows up on
+    // screen as a Skip button lit over a game that stopped skipping.
+    const onSkippingEnded = vi.fn(() => controller.setSkipping(false));
     const controller = createSkipRunController({
         matchesSkipKey: key => key === SKIP_KEY,
         canSkip: () => true,
@@ -16,9 +21,10 @@ function makeController(overrides: Partial<SkipRunControllerOptions> = {}) {
         getSkipDelay: () => 0,
         getSkipInterval: () => 100,
         skipOnce,
+        onSkippingEnded,
         ...overrides,
     });
-    return { controller, skipOnce };
+    return { controller, skipOnce, onSkippingEnded };
 }
 
 describe("createSkipRunController", () => {
@@ -133,6 +139,106 @@ describe("createSkipRunController", () => {
         vi.advanceTimersByTime(80);
         // 8ms floor: ten steps, not eighty.
         expect(skipOnce).toHaveBeenCalledTimes(11);
+    });
+
+    describe("the mode", () => {
+        it("runs exactly as a held key does", () => {
+            const { controller, skipOnce } = makeController();
+            controller.setSkipping(true);
+            expect(skipOnce).toHaveBeenCalledTimes(1);
+            vi.advanceTimersByTime(300);
+            expect(skipOnce).toHaveBeenCalledTimes(4);
+        });
+
+        it("keeps running when nobody is holding a key, and stops when it is turned off", () => {
+            const { controller, skipOnce } = makeController();
+            controller.setSkipping(true);
+            vi.advanceTimersByTime(300);
+            controller.setSkipping(false);
+            const stoppedAt = skipOnce.mock.calls.length;
+            vi.advanceTimersByTime(500);
+            expect(skipOnce).toHaveBeenCalledTimes(stoppedAt);
+            expect(controller.isRunning()).toBe(false);
+        });
+
+        // Two loops on one story would skip two lines an interval and clear each other's timers.
+        it("shares one run with the key rather than starting a second", () => {
+            const { controller, skipOnce } = makeController();
+            controller.setSkipping(true);
+            expect(skipOnce).toHaveBeenCalledTimes(1);
+            // Joining the run: no extra step, and no second interval.
+            controller.handleKeyDown(keyEvent(SKIP_KEY));
+            expect(skipOnce).toHaveBeenCalledTimes(1);
+            vi.advanceTimersByTime(300);
+            expect(skipOnce).toHaveBeenCalledTimes(4);
+            // Releasing leaves the mode running - the player pressed a key over a run they did not
+            // start.
+            controller.handleKeyUp(keyEvent(SKIP_KEY));
+            vi.advanceTimersByTime(300);
+            expect(skipOnce).toHaveBeenCalledTimes(7);
+            expect(controller.isSkipping()).toBe(true);
+        });
+
+        it("refuses to start when skipping is not allowed, and says so", () => {
+            const { controller, skipOnce, onSkippingEnded } = makeController({ canSkip: () => false });
+            controller.setSkipping(true);
+            vi.advanceTimersByTime(300);
+            expect(skipOnce).not.toHaveBeenCalled();
+            expect(onSkippingEnded).toHaveBeenCalledTimes(1);
+            expect(controller.isSkipping()).toBe(false);
+        });
+
+        // The equivalent of letting go: there is no key to release, so the controller releases the
+        // value instead.
+        it("turns itself off when the guard stops the run", () => {
+            let blocked = false;
+            const { controller, skipOnce, onSkippingEnded } = makeController({ isBlocked: () => blocked });
+            controller.setSkipping(true);
+            vi.advanceTimersByTime(200);
+            expect(skipOnce).toHaveBeenCalledTimes(3);
+            blocked = true;
+            vi.advanceTimersByTime(500);
+            expect(skipOnce).toHaveBeenCalledTimes(3);
+            expect(onSkippingEnded).toHaveBeenCalledTimes(1);
+            expect(controller.isSkipping()).toBe(false);
+            expect(controller.isRunning()).toBe(false);
+        });
+
+        // Turning skipping on and then opening a settings screen: the run has no key to release
+        // and would otherwise advance the story behind the menu.
+        it("stops when the story leaves the screen", () => {
+            let allowed = true;
+            const { controller, skipOnce, onSkippingEnded } = makeController({ canSkip: () => allowed });
+            controller.setSkipping(true);
+            vi.advanceTimersByTime(200);
+            expect(skipOnce).toHaveBeenCalledTimes(3);
+            allowed = false;
+            vi.advanceTimersByTime(500);
+            expect(skipOnce).toHaveBeenCalledTimes(3);
+            expect(onSkippingEnded).toHaveBeenCalledTimes(1);
+            expect(controller.isSkipping()).toBe(false);
+        });
+
+        it("turns itself off when the stage goes away or the window loses focus", () => {
+            const { controller, onSkippingEnded } = makeController();
+            controller.setSkipping(true);
+            controller.stop();
+            expect(onSkippingEnded).toHaveBeenCalledTimes(1);
+            expect(controller.isSkipping()).toBe(false);
+            expect(controller.isRunning()).toBe(false);
+        });
+
+        // The host drives this from a change event it also causes, so the same value arriving twice
+        // has to cost nothing.
+        it("ignores a value it is already at", () => {
+            const { controller, skipOnce, onSkippingEnded } = makeController();
+            controller.setSkipping(true);
+            controller.setSkipping(true);
+            expect(skipOnce).toHaveBeenCalledTimes(1);
+            controller.setSkipping(false);
+            controller.setSkipping(false);
+            expect(onSkippingEnded).not.toHaveBeenCalled();
+        });
     });
 
     it("stops on demand, e.g. when the window loses focus mid-hold", () => {

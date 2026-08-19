@@ -105,29 +105,19 @@ const AUDIO: Record<Exclude<OperationOf<"audio">, "muteSound">, CommandId> = {
 };
 
 /**
- * All three, and there is no fourth. v18 folded `mask`, `clip`, `filter`, `backdrop`, `blend` and
+ * Three poses and one ordering verb. v18 folded `mask`, `clip`, `filter`, `backdrop`, `blend` and
  * their `clear*` twins into `transform` + a prop bag, so every displayable row an author can make is
  * one of these - and M2 gave every one of those props a spelling, so there is no longer an operation
  * reachable only from the inspector with no line to read back as.
+ *
+ * `bringToFront` is the one that is not a pose: it writes no props and takes no time, so it reads
+ * back as its own command rather than as a `/transform` with an empty bag.
  */
 const DISPLAYABLE: Record<OperationOf<"displayable">, CommandId> = {
     show: "show",
     hide: "hide",
     transform: "transform",
-};
-
-/**
- * One token for both, with the effect as its first positional (`/screen blink`).
- *
- * They were two tokens, on the reasoning that a blink and a vignette are different gestures with
- * different knobs. They are - but so are `pan` and `zoom`, which the camera always kept in one token,
- * and the knobs differing is what a param subset is for. What the two share is everything a TOKEN
- * answers for: one payload arm, one effect layer, one in-and-out-with-a-hold shape, and no subject of
- * their own anywhere else in the language.
- */
-const SCREEN_EFFECT: Record<Extract<StoryActionPayload, { action: "screenEffect" }>["effect"], CommandId> = {
-    blink: "screen",
-    vignette: "screen",
+    bringToFront: "front",
 };
 
 /** The command id whose label names this payload's verb, or `null` when no command owns it. */
@@ -149,7 +139,6 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
             return payload.operation === "muteSound"
                 ? (payload.muted === false ? "unmute" : "mute")
                 : AUDIO[payload.operation] ?? null;
-        case "screenEffect": return SCREEN_EFFECT[payload.effect] ?? null;
         case "setBackground": return "background";
         case "wait": return "wait";
         case "nvl": return "nvl";

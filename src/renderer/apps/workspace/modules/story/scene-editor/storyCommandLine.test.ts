@@ -419,9 +419,23 @@ describe("projectStoryCommandLine", () => {
         expect(edited("/goto intro", "intro", "after refusal")).toBe("/goto 'after refusal'");
         // A look belongs to the character that had it, so swapping the character drops it.
         expect(edited("/face Alice smile", "c1", "c2")).toBe("/face Doll");
-        // A vignette's own defaults fill the three values before its opacity, so this one is asked
-        // for by a number none of them share.
-        expect(edited("/screen vignette opacity=0.45", "0.45", "0.9")).toBe("/screen vignette d=0.3s hold=0.6s color=#000000 opacity=0.9");
+        // The camera's house duration fills the slot the line left empty, so this one is asked for by
+        // a number none of the seeded values share.
+        expect(edited("/transform camera vignette=0.45", "0.45", "0.9")).toBe("/transform camera vignette=0.9 d=0.6s");
+    });
+
+    it("prints a drawn easing curve, and opens the curve editor on it", () => {
+        // A curve is stored in the same field a word is, so the row prints it as the same token —
+        // and the token's control says the slot takes a curve, which is what puts the card in the
+        // popover instead of a word list the value is not in.
+        const block = build("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2,1)");
+        const line = projectStoryCommandLine(block, LOOKUPS)!;
+        expect(line.source).toContain("ease=cubic-bezier(0.4,0,0.2,1)");
+        const edit = line.edits.find(entry => entry.value === "cubic-bezier(0.4,0,0.2,1)")!;
+        expect(edit.control.kind === "enum" && edit.control.curve).toBe(true);
+        // And it retypes: the row's value is a line the parser takes back unchanged.
+        expect(projectStoryCommandLine({ ...block, payload: edit.apply("easeOut") } as StoryBlock, LOOKUPS)!.source)
+            .toContain("ease=easeOut");
     });
 
     it("offers exactly the options the grammar declares, and no writer where nothing can be edited", () => {
@@ -492,8 +506,9 @@ describe("projectStoryCommandLine", () => {
             "/transform camera bright=0.6",
             "/transform camera look=moonlight",
             "/reset camera",
-            "/screen blink d=0.2 hold=0.1",
-            "/screen vignette d=0.5 opacity=0.6",
+            "/transform camera lens=blink",
+            "/transform camera vignette=0.6 vignetteInner=30 vignetteOuter=70",
+            "/transform camera shutter=1 shutterColor=#000000",
             "/nvl in=fade d=0.4",
             "/wait 1.5",
             "/wait click",
@@ -514,6 +529,10 @@ describe("projectStoryCommandLine", () => {
             "/reset hero d=0.5",
             "/hide petals d=0.5",
             "/show title in=fade d=0.2",
+            // The raise: the subject is the whole line, so the round trip is what catches a projection
+            // that quietly grew a `d=` the payload has nowhere to store.
+            "/front hero",
+            "/front Alice",
             // The declarations: every type, with and without a default, and the shapes that have to
             // survive the tokenizer — a spaced description, a bracketed json default, a string default
             // that reads as something else.

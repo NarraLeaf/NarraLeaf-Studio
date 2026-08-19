@@ -11922,12 +11922,112 @@
                     },
                     "n2": {
                       "id": "n2",
-                      "type": "blueprint.game.skip",
+                      "type": "blueprint.game.getSkipping",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n3": {
+                      "id": "n3",
+                      "type": "blueprint.boolean.not",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n4": {
+                      "id": "n4",
+                      "type": "blueprint.game.setSkipping",
                       "params": {},
                       "meta": {
                         "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "skip.state": {
+                      "id": "skip.state",
+                      "type": "blueprint.game.getSkipping",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "skip.if": {
+                      "id": "skip.if",
+                      "type": "blueprint.flow.ifElse",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "skip.on.ref": {
+                      "id": "skip.on.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                        "elementId": "c41534aa-eaa4-4a37-a1ca-81ebecbabb14",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "skip.on.set": {
+                      "id": "skip.on.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "selected"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 80
+                        }
+                      }
+                    },
+                    "skip.off.ref": {
+                      "id": "skip.off.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "ee4bb5b4-5b79-4009-a9b0-1b5b1edcf071",
+                        "elementId": "c41534aa-eaa4-4a37-a1ca-81ebecbabb14",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 240
+                        }
+                      }
+                    },
+                    "skip.off.set": {
+                      "id": "skip.off.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "default"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 320
                         }
                       }
                     }
@@ -11939,8 +12039,88 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "n4",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "skipping"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n3",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "skipping"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n4",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "skip.if",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "skip.state",
+                        "port": "skipping"
+                      },
+                      "to": {
+                        "nodeId": "skip.if",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "skip.if",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "skip.on.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "skip.on.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "skip.on.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "skip.if",
+                        "port": "else"
+                      },
+                      "to": {
+                        "nodeId": "skip.off.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "skip.off.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "skip.off.set",
+                        "port": "element"
                       }
                     }
                   ],

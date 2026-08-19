@@ -4,7 +4,7 @@ import { createTranslator } from "@shared/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandLineReason } from "./storyCommandReason";
 import type { StoryCommandContext } from "./storyCommandResolution";
-import { EMPTY_STORY_COMMAND_CONTEXT } from "./storyCommandResolution";
+import { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS } from "./storyCommandResolution";
 
 /**
  * Why a line will not commit.
@@ -23,6 +23,9 @@ const CONTEXT: StoryCommandContext = {
     ],
     appearanceByCharacterId: { c1: [{ id: "t1", name: "smile" }] },
     puppetCharacterIds: [],
+    // A layer and an ambience overlay on stage: the two kinds a displayable slot resolves in order to
+    // refuse, and the pair that made one shared message impossible to keep true.
+    stageObjects: { ...EMPTY_STORY_COMMAND_STAGE_OBJECTS, layer: ["overlay"], vfx: ["petals"] },
 };
 
 /** The catalog entry a line resolves to, so a test failure names the message rather than a key. */
@@ -71,6 +74,38 @@ describe("getCommandLineReason", () => {
         expect(reasonFor("/face Zoe smile")).toBe(en.reason.unknownCharacter);
         expect(reasonFor("/show Alice frown")).toBe(en.reason.unknownForm);
         expect(reasonFor("/set nothere 1")).toBe(en.reason.unknownVariable);
+    });
+
+    /**
+     * One code, several verbs, and the message has to hold for each of them.
+     *
+     * `/transform` and `/reset` refuse a video and an ambience overlay; `/front` refuses those and a
+     * layer as well. The message they all shared was written for `/transform` alone - so `/front
+     * overlay` read "overlay is a layer, which has no transform. Use show, hide, play or rate", and
+     * both halves were false: a layer HAS a transform, and none of those four verbs is what puts one
+     * layer in front of another. Now the sentence quotes the verb off the line and picks its advice
+     * from what the name resolved to.
+     */
+    it("answers for the verb the author wrote, not the one the message was written for", () => {
+        const cases = [
+            { source: "/transform petals", key: "storyExpr.reason.unsupportedTarget" },
+            { source: "/front petals", key: "storyExpr.reason.unsupportedTarget" },
+            { source: "/front overlay", key: "storyExpr.reason.unsupportedTargetLayer" },
+        ] as const;
+        for (const { source, key } of cases) {
+            const reason = getCommandLineReason(source, CONTEXT);
+            expect(reason?.key, source).toBe(key as TranslationKey);
+            const text = reason ? createTranslator("en").t(reason.key, reason.params) : "";
+            // The verb on this line, never another one.
+            expect(text, source).toContain(source.split(" ")[0]);
+        }
+
+        const layer = getCommandLineReason("/front overlay", CONTEXT);
+        const text = layer ? createTranslator("en").t(layer.key, layer.params) : "";
+        // Nothing that is only true of `/transform`: not the word, not its four alternatives.
+        expect(text).not.toMatch(/transform/i);
+        expect(text).not.toMatch(/play or rate/i);
+        expect(text).toContain("/layer z=");
     });
 
     it("reports the expression's own mistake, not a generic wrapper", () => {

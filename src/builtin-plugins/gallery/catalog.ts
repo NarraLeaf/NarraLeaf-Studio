@@ -432,6 +432,69 @@ export function findArtwork(artworks: GalleryArtwork[], artworkId: string): Gall
     return id ? artworks.find(artwork => artwork.id === id) ?? null : null;
 }
 
+/**
+ * Every variant of a `scene` entry that replays the given scene.
+ *
+ * A recollection has nothing finer than the scene to be at, so reaching it collects the whole
+ * entry - unlike the two audio matchers below, where the member is the thing the player heard.
+ */
+export function collectSceneVariantIds(artworks: GalleryArtwork[], sceneId: string): string[] {
+    const id = sceneId.trim();
+    if (!id) {
+        return [];
+    }
+    return artworks
+        .filter(artwork => artwork.kind === "scene" && artwork.scene?.sceneId === id)
+        .flatMap(artwork => artwork.variants.map(variant => variant.id));
+}
+
+/**
+ * Every audio variant backed by the given asset - one track of an album, one loose voice clip.
+ *
+ * Only the member that played, not its whole entry: an album's other tracks are separately
+ * collectable, and a progress meter that jumped from 0 to 12 on the first track would be lying.
+ * Both audio kinds are searched because a voice line may be authored as a loose clip rather than
+ * as a unit of the shipped voice table.
+ */
+export function collectAudioAssetVariantIds(artworks: GalleryArtwork[], assetId: string): string[] {
+    const id = assetId.trim();
+    if (!id) {
+        return [];
+    }
+    const found: string[] = [];
+    for (const artwork of artworks) {
+        if (!isAudioGalleryKind(artwork.kind)) {
+            continue;
+        }
+        for (const variant of artwork.variants) {
+            if (variant.audioAssetId === id) {
+                found.push(variant.id);
+            }
+        }
+    }
+    return found;
+}
+
+/** Every `voice` variant carrying the given unit id, which is the story line's `textId`. */
+export function collectVoiceUnitVariantIds(artworks: GalleryArtwork[], voiceUnitId: string): string[] {
+    const id = voiceUnitId.trim();
+    if (!id) {
+        return [];
+    }
+    const found: string[] = [];
+    for (const artwork of artworks) {
+        if (artwork.kind !== "voice") {
+            continue;
+        }
+        for (const variant of artwork.variants) {
+            if (variant.voiceUnitId === id) {
+                found.push(variant.id);
+            }
+        }
+    }
+    return found;
+}
+
 /** The artwork's cover variant: the explicit choice, else the first variant. */
 export function resolveCoverVariant(artwork: GalleryArtwork): GalleryVariant | null {
     if (artwork.coverVariantId) {

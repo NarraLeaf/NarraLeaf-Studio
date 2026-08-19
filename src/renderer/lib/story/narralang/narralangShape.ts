@@ -130,8 +130,7 @@ export type NarralangVerb =
     | "cameraLook"
     | "cameraReset"
     | "cameraMotion"
-    | "screenBlink"
-    | "screenVignette"
+    | "cameraLens"
     // Control
     | "conditionIf"
     | "conditionElseIf"
@@ -233,7 +232,10 @@ export type NarralangSlot =
     | "look"
     | "strength"
     | "inner"
-    | "outer";
+    | "outer"
+    // The camera lens gesture, a `name` for the same reason `look` is: the library grows, and a closed
+    // word union here would mean every new gesture needing an entry before an author could write it.
+    | "lens";
 
 // --- Words ----------------------------------------------------------------------------------------
 

@@ -57,6 +57,8 @@ export const storyInspector = {
         fromAngle: "開始の角度 °",
         rows: "行",
         cols: "列",
+        rule: "ルール画像",
+        inverted: "明部から開始",
         stagger: "ずらし",
         shape: "形",
         pattern: "パターン",
@@ -65,10 +67,6 @@ export const storyInspector = {
         character: "キャラクター",
         layer: "レイヤー",
         muted: "消音",
-        closeIn: "閉じる（秒）",
-        openOut: "開く（秒）",
-        vignetteInner: "透明な中心 %",
-        vignetteOuter: "暗い縁 %",
     },
 
     motionTarget: {
@@ -121,6 +119,7 @@ export const storyInspector = {
         backOut: "バックアウト",
         backInOut: "バックインアウト",
         anticipate: "予備動作",
+        custom: "カスタムカーブ",
     },
 
     transition: {
@@ -140,6 +139,7 @@ export const storyInspector = {
         throughColor: "色を挟む",
         darkness: "暗さ",
         exposure: "露出",
+        ruleReveal: "ルール画像",
         exposureEv: "露出量（EV）",
         exposureLift: "暗部の持ち上げ 0-1",
         startX: "開始 X",
@@ -167,6 +167,7 @@ export const storyInspector = {
         darkness: "開始の暗さで画像を入れ替え、終了の暗さまで動かす。1 → 0 は暗転から明け、0 → 1 は暗転へ落とす",
         throughColor: "画面をいったん色で覆い、保持してから、新しい画像の上で外す。暗転や白転、アイリス、フラッシュ（保持 0）に使う",
         exposure: "画面を白飛びさせ、ハイライトから先に、暗部を最後に飛ばしてから新しい画面へ戻る。暗部の持ち上げが 0 だと黒は白くならない",
+        ruleReveal: "グレースケール画像が指定する順序で画面を切り替える。暗い部分が先、明るい部分が最後",
     },
 
     wipeDirection: {
@@ -212,7 +213,7 @@ export const storyInspector = {
     // CSS のキーワードではなく、そのモードが何のためのものかで名付ける。選択はクリップについての
     // 制作上の事実で、キーワードだけでは答えを知っている人の役にしか立たない。
     vfxBlend: {
-        normal: "通常（アルファ付き透過 WebM）",
+        normal: "通常（不透明のクリップ）",
         screen: "スクリーン（黒地の発光）",
         multiply: "乗算（白地の影）",
         lighten: "比較（明）",
@@ -228,6 +229,8 @@ export const storyInspector = {
 
     vfx: {
         name: "エフェクト名",
+        source: "ソース",
+        sourceClip: "クリップ",
         clip: "ループするクリップ",
         blendMode: "ブレンド",
         opacity: "不透明度（0-1）",
@@ -238,40 +241,21 @@ export const storyInspector = {
         fade: "フェード（秒）",
     },
 
+    weather: {
+        density: "量",
+        sizeNear: "手前の大きさ",
+        sizeFar: "奥の大きさ",
+        sway: "揺れ",
+        streak: "尾の長さ",
+        wind: "風向き（度）",
+        depthSpread: "奥行き差",
+    },
+
     cameraOperation: {
-        zoom: "ズーム",
-        pan: "パン",
-        rotate: "回転",
-        // 「画面」ではなく「ステージ」。これはカメラの明るさで、`/vignette` のシーン内マスクではない。
-        darken: "ステージを暗くする",
-        look: "カラーグレード",
-        motion: "カメラのモーション",
         reset: "カメラをリセット",
     },
 
-    // 選択ボタンのラベル。横に並ぶ短さにしてある。上の正式名はそれぞれのツールチップに残るので、
-    // 「ステージを暗くする」は必要な場所で *ステージ* と言える。
-    cameraOperationShort: {
-        zoom: "ズーム",
-        pan: "パン",
-        rotate: "回転",
-        darken: "暗く",
-        look: "グレード",
-        motion: "モーション",
-        reset: "リセット",
-    },
-
-    camera: {
-        zoom: "ズーム（1 が基準）",
-        rotation: "回転 °",
-        darkness: "ステージの暗さ（0-1）",
-        xalign: "X の基準（0-1）",
-        yalign: "Y の基準（0-1）",
-        look: "ルック",
-        lookSnaps: "ルックは一フレームで切り替わります。補間すると誰も選んでいない色を経由するため、時間の設定はありません。まばたきやトランジションの裏で切り替えてください。",
-        lookIntensity: "強さ（1 が標準）",
-        lookFilter: "カスタム CSS フィルター",
-    },
+    cameraResetHint: "位置、グレード、レンズ効果を戻します。",
 
     cameraLook: {
         memory: "回想",
@@ -282,8 +266,14 @@ export const storyInspector = {
         hangover: "二日酔い",
     },
 
+    cameraLens: {
+        blink: "まばたき",
+        slowBlink: "ゆっくりまばたき",
+        vignettePulse: "ビネットの脈動",
+    },
+
     cameraLookHint: {
-        channel: "ルックはステージの暗さに重ねるのではなく置き換える。エンジンでは同じフィルターなので、後の行が勝つ。各ルックは自前の明るさを含む。カメラをリセットすると消える。",
+        channel: "後に追加したルックはステージの暗さを上書きする。カメラをリセットすると解除される。",
         monologue: "ステージ全体の彩度と明るさを下げるだけ。周辺を暗くするにはビネットを別の行で足す。",
         hangover: "画面が二度揺れてからルックが落ち着く。行は揺れが終わるまで待ち、長さが揺れの速さを決める。",
     },
@@ -326,12 +316,14 @@ export const storyInspector = {
         geometry: "位置とスケール",
         filter: "フィルター",
         look: "ルック",
+        lens: "レンズ",
         composite: "合成",
         text: "テキスト",
         timing: "タイミング",
     },
     displayableOperation: {
         transform: "変形",
+        bringToFront: "最前面へ",
         mask: "マスク",
         clearMask: "マスクを外す",
         clip: "クリップパス",
@@ -391,11 +383,6 @@ export const storyInspector = {
         setRate: "再生速度を決める",
         muteSound: "消音を切り替え",
         seekSound: "この位置へ",
-    },
-
-    screenEffectOption: {
-        blink: "まばたき",
-        vignette: "ビネット",
     },
 
     waitMode: {

@@ -421,9 +421,11 @@ export const story = {
         skin: "皮肤",
         puppetParam: "参数",
         puppetParamValue: "数值",
+        ruleImage: "规则图",
         imageAsset: "图片",
         imageOrColor: "图片或颜色",
         videoAsset: "视频",
+        vfxSource: "片段或天气",
         audioAsset: "音频",
         objectName: "名称",
         content: "内容",
@@ -436,10 +438,7 @@ export const story = {
         displayName: "显示名",
         seekTime: "秒数",
         cameraLookStrength: "色调强度",
-        effectIn: "渐入秒数",
-        effectOut: "渐出秒数",
-        vignetteInner: "透明中心 %",
-        vignetteOuter: "全暗边缘 %",
+
         // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
         // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
         duration: "持续时间",
@@ -476,6 +475,13 @@ export const story = {
         filterInvert: "反色",
         filterCss: "滤镜代码",
         cameraLook: "色调",
+        cameraLens: "镜头效果",
+        shutter: "眼皮",
+        shutterColor: "眼皮颜色",
+        vignette: "暗角",
+        vignetteColor: "暗角颜色",
+        vignetteInner: "透明中心 %",
+        vignetteOuter: "全暗边缘 %",
         maskImage: "遮罩图",
         clipPath: "裁剪路径",
         backdropFilter: "背景滤镜",
@@ -487,7 +493,6 @@ export const story = {
         repeatDelay: "重复间隔",
         fromProps: "起始属性",
         conceal: "退场",
-        screenEffect: "闪屏 / 暗角",
     },
 
     /**
@@ -499,8 +504,14 @@ export const story = {
      * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
      */
     enumValue: {
+        // 天气种子——`/vfx` 来源槽里的保留词。
+        snow: "雪",
+        rain: "雨",
+        sakura: "樱花",
         // 转场词表（`t=`）
         fade: "淡变",
+        // "淡变"是相对词，换到差分上指的是另一种做法；这个词只指交叉溶解，在哪儿写都一样。
+        dissolve: "溶解",
         slide: "推移",
         "slide-left": "左滑",
         "slide-right": "右滑",
@@ -518,6 +529,7 @@ export const story = {
         black: "黑场",
         darkness: "压暗",
         exposure: "曝光",
+        rule: "规则图",
         none: "无",
         // `t=` 在显隐动画里能落到的另外几个变换预设——和右侧检查器"预设"下拉是同一个字段，
         // 用同一批词，作者在哪边选都读作同一件事。
@@ -581,8 +593,9 @@ export const story = {
         backInOut: "回弹入出",
         anticipate: "预备",
         // The two screen-wide gestures, as `/screen`'s first positional.
-        blink: "闪屏",
-        vignette: "暗角",
+        blink: "眨眼",
+        slowBlink: "慢眨眼",
+        vignettePulse: "暗角脉冲",
     },
 
     /**
@@ -914,6 +927,7 @@ export const story = {
         layer: { label: "图层", detail: "创建渲染图层" },
         swap: { label: "替换", detail: "替换对象的图片或文本内容" },
         play: { label: "播放", detail: "播放视频" },
+        front: { label: "置顶", detail: "将角色或舞台对象绘制在所在图层的最前" },
         font: { label: "字体", detail: "修改文本字号或颜色" },
         bgm: { label: "背景音乐", detail: "设置背景音乐" },
         sound: { label: "音效", detail: "播放音效" },
@@ -949,7 +963,6 @@ export const story = {
         cut: { label: "截断", detail: "让某个变体的剧情在此行结束，其他变体中没有这一行" },
         blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
         transform: { label: "变换", detail: "移动、缩放、旋转、遮罩、滤镜或淡入淡出舞台上的任何东西，镜头也在内" },
-        screen: { label: "全屏", detail: "全屏演出：闪屏或暗角" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
     },
     containerHeader: {
@@ -1041,19 +1054,14 @@ export const story = {
         nvl: "NVL 块",
         blueprint: "蓝图",
         pluginAction: "插件动作",
-        effect: "{effect} 屏幕特效",
         // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
         // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。
         cameraOp: {
-            pan: "平移",
-            zoom: "缩放",
-            rotate: "旋转",
-            darken: "压暗",
+            transform: "镜头",
             look: "色调",
             motion: "运镜",
             reset: "复位",
         },
-        cameraLookCustom: "自定义",
         condition: "条件",
         branch: "{branch} 分支",
         label: "标签 {name}",

@@ -2082,6 +2082,58 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(compiled.getVoicePlayback?.("text-say")).toEqual({ src: "nlr://asset-ja-say", busId: "voice" });
     });
 
+    /**
+     * The menu never speaks an option itself, so the id travels as sentence metadata - the one thing
+     * the choice slot surface can read back to hand a row's blueprint something to play.
+     */
+    it("stamps a voiced choice option with its unit id", async () => {
+        const option: StoryBlock = {
+            id: "option",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: [],
+            payload: { action: "choiceOption", text: { textId: "text-option", value: "Stay", role: "choiceText" } },
+        };
+        const plain: StoryBlock = {
+            id: "plain",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: [],
+            payload: { action: "choiceOption", text: { textId: "text-plain", value: "Go", role: "choiceText" } },
+        };
+        const choice: StoryBlock = {
+            id: "choice",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: ["option", "plain"],
+            payload: { action: "choice", prompt: { textId: "text-prompt", value: "Well?", role: "choicePrompt" } },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ choice, option, plain }, ["choice"]),
+            sceneId: "scene-1",
+            voice: {
+                voicedLocales: [{ code: "ja", displayName: "日本語" }],
+                tables: { ja: { "text-option": "asset-ja-option" } },
+                getVoiceLocale: () => "ja",
+            },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const menuElement = ((compiled.scene as any).actions as any[])
+            .flat(9)
+            .find(item => item?.choices);
+        const choices = menuElement.choices as any[];
+        expect(choices[0].prompt.getMetadata?.()).toEqual({ voiceId: "text-option" });
+        // The words survive the wrapper: a voiced option is the same shape as an unvoiced one, which
+        // the engine wraps itself, so nothing downstream can tell them apart by anything but the id.
+        expect(choices[0].prompt.text[0].text).toBe("Stay");
+        expect(choices[1].prompt.text[0].text).toBe("Go");
+        // An unvoiced option is left exactly as it was before any of this existed.
+        expect(choices[1].prompt.getMetadata?.() ?? null).toBeNull();
+        expect(compiled.getVoicePlayback?.("text-option")).toEqual({ src: "nlr://asset-ja-option", busId: "voice" });
+    });
+
     it("keeps the legacy per-line voiceAssetId as an inline fallback", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: dialogueBlock("say", "text-legacy", "hi", { voiceAssetId: "asset-voice" }) }, ["say"]),
@@ -2106,10 +2158,10 @@ describe("compileStudioStoryToNlr voice", () => {
             payload,
         });
         const blocks: Record<string, StoryBlock> = {
-            zoom: cameraBlock("zoom", { action: "camera", operation: "zoom", zoom: 0, durationMs: 800 }),
-            pan: cameraBlock("pan", { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 }, durationMs: 600 }),
-            rotate: cameraBlock("rotate", { action: "camera", operation: "rotate", rotation: 15, durationMs: 400 }),
-            dark: cameraBlock("dark", { action: "camera", operation: "darken", darkness: 2, durationMs: 500 }),
+            zoom: cameraBlock("zoom", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 0 }, durationMs: 800 } }),
+            pan: cameraBlock("pan", { action: "camera", operation: "transform", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 600 } }),
+            rotate: cameraBlock("rotate", { action: "camera", operation: "transform", transform: { mode: "props", to: { rotation: 15 }, durationMs: 400 } }),
+            dark: cameraBlock("dark", { action: "camera", operation: "transform", transform: { mode: "props", to: { filter: { brightness: -1 } }, durationMs: 500 } }),
             reset: cameraBlock("reset", { action: "camera", operation: "reset", durationMs: 600 }),
         };
         const compiled = await compileStudioStoryToNlr({
@@ -2164,7 +2216,7 @@ describe("compileStudioStoryToNlr voice", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: animation.id } },
+                payload: { action: "camera", operation: "transform", transform: { mode: "animation", animationId: animation.id } },
             },
             target: narrationBlock("target", "target-text", "After the push"),
         };
@@ -2203,7 +2255,7 @@ describe("compileStudioStoryToNlr voice", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "camera", operation: "motion" },
+                payload: { action: "camera", operation: "transform", transform: { mode: "animation" } },
             },
         };
         const compiled = await compileStudioStoryToNlr({
@@ -2224,12 +2276,15 @@ describe("compileStudioStoryToNlr voice", () => {
             id, kind: "action", parentId: null, childrenIds: [], payload,
         });
         const document = baseDocument({
-            zoom: cameraBlock("zoom", { action: "camera", operation: "zoom", zoom: 2 }),
-            dark: cameraBlock("dark", { action: "camera", operation: "darken", darkness: 0.6 }),
+            zoom: cameraBlock("zoom", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 2 } } }),
+            dark: cameraBlock("dark", { action: "camera", operation: "transform", transform: { mode: "props", to: { filter: { brightness: 0.4 } } } }),
             target: narrationBlock("target", "target-text", "Here"),
         }, ["zoom", "dark", "target"]);
         const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" });
-        expect(snapshot.camera).toEqual({ props: { zoom: 2 }, effects: { darkness: 0.6 } });
+        expect(snapshot.camera).toEqual({
+            props: { zoom: 2, filter: "brightness(0.4)" },
+            effects: { darkness: expect.closeTo(0.6, 10), filter: undefined },
+        });
 
         const compiled = await compileStudioStoryToNlr({
             document,
@@ -3287,6 +3342,109 @@ describe("story audio", () => {
         expect(compiled.sceneElements?.["scene-1"].sounds.get("bgm")).toBe(
             (compiled.scene as any).state.backgroundMusic,
         );
+    });
+
+    /**
+     * What the play head can say about a clip.
+     *
+     * A host that follows what the player is hearing (a music EXTRA that collects itself) has only
+     * these two routes: an action binding for the rows that start a clip, and the per-scene table
+     * for music that starts with the mount and never reaches the play head at all. Neither is
+     * visible in the compiled story, so nothing else would catch them going missing.
+     */
+    describe("audio asset attribution", () => {
+        function audioBindings(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>) {
+            return compiled.actionIdBindings
+                .filter(binding => binding.audioAssetId)
+                .map(binding => [binding.blockId, binding.audioAssetId] as const);
+        }
+
+        it("names the asset a /bgm and a /sound row start", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    ...bgmRow("music", "asset-theme"),
+                    se: {
+                        id: "se",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "impact", assetId: "asset-hit" },
+                    },
+                }, ["music", "se"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(audioBindings(compiled)).toEqual([["music", "asset-theme"], ["se", "asset-hit"]]);
+        });
+
+        it("names nothing for the rows that only address a clip already playing", async () => {
+            // Stopping, re-levelling or seeking is not the player hearing something, and reporting
+            // it as a start would collect a track the player only turned down.
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    ...bgmRow("music", "asset-theme"),
+                    quieter: {
+                        id: "quieter",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3 },
+                    },
+                    off: {
+                        id: "off",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "stopSound", objectName: "bgm" },
+                    },
+                }, ["music", "quieter", "off"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(audioBindings(compiled)).toEqual([["music", "asset-theme"]]);
+        });
+
+        it("reads the asset back off the handle when a replay row names no file", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    first: {
+                        id: "first",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "piano", assetId: "asset-piano" },
+                    },
+                    again: {
+                        id: "again",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "piano" },
+                    },
+                }, ["first", "again"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(audioBindings(compiled)).toEqual([["first", "asset-piano"], ["again", "asset-piano"]]);
+        });
+
+        it("publishes the music each scene configures, which no action carries", async () => {
+            const document = baseDocument({ say: narrationBlock("say", "text-say", "Quiet.") }, ["say"]);
+            document.scenes["scene-1"].bgm = { assetId: "asset-theme" };
+
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.sceneBackgroundMusicAssetIds).toEqual({ "scene-1": "asset-theme" });
+            // Scene config, not a row: the play head has nothing to report for it.
+            expect(audioBindings(compiled)).toEqual([]);
+        });
     });
 
     it("still warns when a control row addresses music no scene or row set", async () => {

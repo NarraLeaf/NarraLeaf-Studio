@@ -340,7 +340,7 @@ function createScriptExecutionContext(input: {
                 getPreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
                     input.debug.emit({ type: "function.call", functionId: "game.getPreference" });
                     input.debug.emit({ type: "function.return", functionId: "game.getPreference" });
-                    if (key === "autoForward" || key === "skip" || key === "showDialog") {
+                    if (key === "autoForward" || key === "skip" || key === "skipping" || key === "showDialog") {
                         return false;
                     }
                     if (key === "voiceEndMode") {
