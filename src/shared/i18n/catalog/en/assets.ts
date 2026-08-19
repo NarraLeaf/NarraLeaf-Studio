@@ -384,6 +384,11 @@ export const assets = {
             language: "Language",
             variant: "Variant",
         },
+        /** The two things a set may vary by. There are no others until Studio adds one. */
+        axisKind: {
+            locale: "Language",
+            release: "Variant",
+        },
         /** Every variant resolves. The only sentence a finished set shows. */
         variantCount: {
             one: "{count} variant",
@@ -398,6 +403,12 @@ export const assets = {
         },
         create: {
             title: "New asset set",
+            subTitle: "New set under this variant",
+            /** Neither list has anything to vary along yet. */
+            no: {
+                locale: "This project declares one language.",
+                release: "This project has no variants.",
+            },
             /** The character the file names are read apart at. */
             delimiter: "Separator",
             delimiterSpace: "Space",
@@ -406,6 +417,7 @@ export const assets = {
              * and the ones that vary become the axes.
              */
             segments: "Name parts",
+            axis: "Varies by",
         },
         /** The inspector. Each axis is one tag category, and the order is the nesting. */
         inspector: {

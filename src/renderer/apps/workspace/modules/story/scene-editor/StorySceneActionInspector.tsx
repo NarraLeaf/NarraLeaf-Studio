@@ -40,6 +40,14 @@ import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTi
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
 import { resolveAudioTrack } from "@shared/types/audioTrack";
 import { isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
+import {
+    resolveWeatherParams,
+    WEATHER_PARAMS,
+    WEATHER_SEED_IDS,
+    weatherParamsOf,
+    type WeatherParamKey,
+    type WeatherSeedId,
+} from "@shared/weather/model";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
@@ -1432,12 +1440,20 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                 />
                 {isCreate ? (
                     <>
-                        <AssetField
-                            label={t("storyInspector.vfx.clip")}
-                            assetType={AssetType.Video}
-                            assetId={payload.assetId}
-                            onChange={assetId => props.onChange({ ...payload, assetId })}
+                        <SelectField
+                            label={t("storyInspector.vfx.source")}
+                            options={vfxSourceOptions(t)}
+                            value={payload.seed?.seed ?? VFX_CLIP_SOURCE}
+                            onChange={source => props.onChange(withVfxSource(payload, String(source)))}
                         />
+                        {payload.seed ? null : (
+                            <AssetField
+                                label={t("storyInspector.vfx.clip")}
+                                assetType={AssetType.Video}
+                                assetId={payload.assetId}
+                                onChange={assetId => props.onChange({ ...payload, assetId })}
+                            />
+                        )}
                         <SelectField
                             label={t("storyInspector.vfx.blendMode")}
                             options={vfxBlendOptions(t)}
@@ -1490,7 +1506,82 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                     />
                 ) : null}
             </FieldGrid>
+            {isCreate && payload.seed ? (
+                <WeatherSeedFields
+                    seed={payload.seed.seed}
+                    params={payload.seed.params}
+                    onChange={params => props.onChange({ ...payload, seed: { seed: payload.seed!.seed, ...(params ? { params } : {}) } })}
+                />
+            ) : null}
         </Section>
+    );
+}
+
+/** The value the source select carries when the overlay plays a clip the author imported. */
+const VFX_CLIP_SOURCE = "clip";
+
+function vfxSourceOptions(t: TFunc): SelectOption[] {
+    return [
+        { value: VFX_CLIP_SOURCE, label: t("storyInspector.vfx.sourceClip") },
+        ...WEATHER_SEED_IDS.map(id => ({ value: id, label: t(`story.enumValue.${id}` as TranslationKey) })),
+    ];
+}
+
+/**
+ * Switch an overlay between a clip and a weather seed.
+ *
+ * The other source is CLEARED rather than left behind: the payload documents the two as mutually
+ * exclusive, and a stale `assetId` sitting under a seed would be a source no control shows and the
+ * compiler might still read. Switching between two seeds keeps no parameters either - they mean
+ * different things per seed, and carrying a rain streak into snow would produce a look the panel
+ * cannot explain.
+ */
+function withVfxSource(payload: VfxActionPayload, source: string): VfxActionPayload {
+    const next = { ...payload };
+    delete next.seed;
+    delete next.assetId;
+    if (source === VFX_CLIP_SOURCE) {
+        return next;
+    }
+    return { ...next, seed: { seed: source as WeatherSeedId } };
+}
+
+/**
+ * The tunable numbers of one weather seed.
+ *
+ * Derived from the seed table rather than listed here, so a parameter added there appears without
+ * this file changing - the same rule the transform channel list follows. A value equal to the seed's
+ * own default is not stored: the row then reads as "snow", and an author who never touched a slider
+ * has no numbers in their document to migrate later.
+ */
+function WeatherSeedFields(props: {
+    seed: WeatherSeedId;
+    params: Partial<Record<WeatherParamKey, number>> | undefined;
+    onChange: (params: Partial<Record<WeatherParamKey, number>> | undefined) => void;
+}) {
+    const { t } = useTranslation();
+    const resolved = resolveWeatherParams({ seed: props.seed, ...(props.params ? { params: props.params } : {}) });
+    const set = (key: WeatherParamKey, value: number | undefined) => {
+        const next = { ...(props.params ?? {}) };
+        const spec = WEATHER_PARAMS[key];
+        if (value === undefined) {
+            delete next[key];
+        } else {
+            next[key] = Math.min(spec.max, Math.max(spec.min, value));
+        }
+        props.onChange(Object.keys(next).length > 0 ? next : undefined);
+    };
+    return (
+        <FieldGrid cols={2}>
+            {weatherParamsOf(props.seed).map(key => (
+                <NumberField
+                    key={key}
+                    label={t(`storyInspector.weather.${key}` as TranslationKey)}
+                    value={resolved[key]}
+                    onChange={value => set(key, value)}
+                />
+            ))}
+        </FieldGrid>
     );
 }
 

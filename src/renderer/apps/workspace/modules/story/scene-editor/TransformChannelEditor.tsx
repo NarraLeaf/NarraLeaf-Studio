@@ -194,6 +194,52 @@ function AxisNumber(props: { label: string; value: number | undefined; fallback:
 // The channels that used to be a CSS text box
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A slider that writes the document once, when the drag settles.
+ *
+ * `Slider.onValueChange` fires on every pointer move - it exists to drive a live readout cheaply -
+ * and wiring the document write to it put one history entry on the stack per pixel dragged, so a
+ * single gesture buried the undo stack and `mod+z` walked back a few pixels at a time. The value
+ * shown while dragging is local; the write happens on `onValueCommit`, which is what every other
+ * slider in the app already does.
+ *
+ * The draft clears on commit so an edit from anywhere else flows back in - a slider that kept its
+ * own number after the gesture would stop tracking the row it is editing.
+ */
+function DraftSlider(props: {
+    value: number;
+    min: number;
+    max: number;
+    step: number;
+    /** Accessible name. Rendered only when `caption` says to - a channel row already names itself. */
+    label: string;
+    caption?: boolean;
+    format: (value: number) => string;
+    onCommit: (value: number) => void;
+}) {
+    const [draft, setDraft] = useState<number | null>(null);
+    const shown = draft ?? props.value;
+    return (
+        <div className="flex items-center gap-2">
+            {props.caption ? <span className="shrink-0 text-2xs text-fg-subtle">{props.label}</span> : null}
+            <Slider
+                className="min-w-0 flex-1"
+                min={props.min}
+                max={props.max}
+                step={props.step}
+                value={shown}
+                aria-label={props.label}
+                onValueChange={setDraft}
+                onValueCommit={next => {
+                    setDraft(null);
+                    props.onCommit(next);
+                }}
+            />
+            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{props.format(shown)}</span>
+        </div>
+    );
+}
+
 function ClipShapeControl(props: { value: string; onChange: (css: string) => void; t: TFunc }) {
     const shape = parseStoryClipShape(props.value);
     const set = (next: StoryClipShape) => props.onChange(formatStoryClipShape(next));
@@ -260,17 +306,15 @@ function BackdropControl(props: { value: string; onChange: (css: string) => void
         return <ChannelText value={props.value} placeholder="blur(8px)" onChange={props.onChange} />;
     }
     return (
-        <div className="flex items-center gap-2">
-            <Slider
-                className="min-w-0 flex-1"
-                min={0}
-                max={24}
-                step={0.5}
-                value={blur ?? 0}
-                onValueChange={next => props.onChange(formatBackdropBlur(next))}
-            />
-            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{(blur ?? 0).toFixed(1)}</span>
-        </div>
+        <DraftSlider
+            label={props.t("story.paramHint.backdropFilter")}
+            min={0}
+            max={24}
+            step={0.5}
+            value={blur ?? 0}
+            format={value => value.toFixed(1)}
+            onCommit={next => props.onChange(formatBackdropBlur(next))}
+        />
     );
 }
 
@@ -327,18 +371,16 @@ function PositionControl(props: { value: StoryTransformProps["position"]; onChan
 
 function LookIntensity(props: { value: number; onChange: (intensity: number) => void; t: TFunc }) {
     return (
-        <div className="flex items-center gap-2">
-            <span className="shrink-0 text-2xs text-fg-subtle">{props.t("story.paramHint.cameraLookStrength")}</span>
-            <Slider
-                className="min-w-0 flex-1"
-                min={LOOK_INTENSITY_STEP}
-                max={LOOK_INTENSITY_MAX}
-                step={LOOK_INTENSITY_STEP}
-                value={props.value}
-                onValueChange={next => props.onChange(roundLookIntensity(next))}
-            />
-            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{props.value.toFixed(2)}</span>
-        </div>
+        <DraftSlider
+            caption
+            label={props.t("story.paramHint.cameraLookStrength")}
+            min={LOOK_INTENSITY_STEP}
+            max={LOOK_INTENSITY_MAX}
+            step={LOOK_INTENSITY_STEP}
+            value={props.value}
+            format={value => value.toFixed(2)}
+            onCommit={next => props.onChange(roundLookIntensity(next))}
+        />
     );
 }
 

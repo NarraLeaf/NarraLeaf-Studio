@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument";
 
 /**
  * The two `/fx` operations: `backdrop` (CSS backdrop-filter, the
@@ -330,6 +331,54 @@ describe("compiles a camera grade as a cut", () => {
         for (const sequence of sequences) {
             expect(sequence.props?.shutterColor).toBe("#000");
         }
+    });
+
+    it("still grades the stage from a row an older Studio wrote", async () => {
+        // The other half of the chain the bundle assembler starts: bytes as v17 left them, through
+        // the ladder, to the statement that puts the grade on the camera. The two halves together
+        // are the path a story actually takes - disk, bundle, compile, stage - and this end is the
+        // one that says the answer is a FILTER rather than merely a payload of the right shape.
+        const legacy = {
+            schemaVersion: 17,
+            id: "story-1",
+            name: "Story",
+            chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
+            scenes: {
+                "scene-1": {
+                    id: "scene-1",
+                    name: "Scene 1",
+                    runtimeName: "Scene 1",
+                    rootBlockIds: ["grade"],
+                    blocks: {
+                        grade: {
+                            id: "grade", kind: "action", parentId: null, childrenIds: [],
+                            payload: {
+                                action: "camera",
+                                operation: "look",
+                                lookPreset: "moonlight",
+                                lookIntensity: 1,
+                                durationMs: 1200,
+                                easing: "easeInOut",
+                            },
+                        },
+                    },
+                },
+            },
+        } as unknown as StoryDocument;
+
+        const compiled = await compileStudioStoryToNlr({
+            document: migrateStoryDocumentToLatest(legacy),
+            sceneId: "scene-1",
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "grade")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const sequence = transformsOf(actions)[0]?.sequences?.[0];
+        // The recipe itself, and in one frame: moonlight turns a hue, so it cuts. A row that reaches
+        // the compiler unmigrated produces no statement here at all, which is the whole defect.
+        expect(String(sequence?.props?.filter)).toContain("hue-rotate(185deg)");
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
     });
 
     it("reports a camera row carrying no transform, rather than compiling to nothing", async () => {
