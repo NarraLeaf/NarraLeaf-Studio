@@ -188,8 +188,8 @@ export const uiEditor = {
             other: "{count} screens",
         },
         assetsSkipped: {
-            one: "{count} resource could not be imported.",
-            other: "{count} resources could not be imported.",
+            one: "{count} asset could not be imported.",
+            other: "{count} assets could not be imported.",
         },
         componentsAdded: {
             one: "{count} component was added to the library.",

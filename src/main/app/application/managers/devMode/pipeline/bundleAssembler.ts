@@ -29,6 +29,8 @@ import {
     normalizeLocalizationDocument,
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
+import type { DialogueConfiguration } from "@shared/types/dialogue";
+import { normalizeDialogueConfiguration } from "@shared/types/dialogue";
 import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
@@ -140,6 +142,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
+    const dialogue = await loadDialogueConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
     const brand = await loadProjectBrand(context.projectPath);
@@ -164,6 +167,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         autoSave,
         languageChange,
         saveCompatibility,
+        dialogue,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
         // drop, so two editions that carry different chapters do not claim the same story.
@@ -1020,6 +1024,17 @@ export async function loadSaveCompatibilityConfiguration(
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeSaveCompatibilityConfiguration(app?.saveCompatibility);
+}
+
+/**
+ * Load the author's dialogue settings from `.nlproj` `app.dialogue`. Dense like the autosave config:
+ * the engine reads a pause length for every line whether or not the author ever opened the page.
+ * Exported for tests.
+ */
+export async function loadDialogueConfiguration(projectPath: string): Promise<DialogueConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeDialogueConfiguration(app?.dialogue);
 }
 
 /**
