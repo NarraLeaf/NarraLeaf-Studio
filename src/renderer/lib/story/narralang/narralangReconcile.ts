@@ -39,6 +39,13 @@
  * declaration - onto the rows that are really there. Without that, an untouched `show bird` would come
  * back pointing at a copy of `image create bird` rather than at the row above it.
  *
+ * That is also why a REWRITTEN row's references are re-resolved rather than carried over from the
+ * payload it had. Carrying them over is right only while the line still points at the same object, and
+ * a script edit is exactly the thing that may re-point it. Resolving from the text every time is
+ * correct in both cases, because the declarations it resolves against are the ones this parse found -
+ * on the new text, under the ids the surviving rows already had. So a row the author edited keeps its
+ * binding, one they re-pointed follows, and one that never had a binding gains it.
+ *
  * ## An edited line is still the same row
  *
  * Lines that match are only half the picture. What is left over inside a hunk - one line where one line

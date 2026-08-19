@@ -296,6 +296,62 @@ describe("one keyword, seven statements", () => {
     });
 });
 
+// --- The one declaration that is not the first name on its line ---------------------------------------------------
+
+describe("a sound handle", () => {
+    it("binds a control row to the row that played the sound", () => {
+        // A sound is named at the TAIL of its line, which is why it needs a reading of its own: the
+        // token after the keyword is the channel, not the handle.
+        const result = parse("play sound evening_theme as piano", "volume piano 0.5");
+
+        expect(result.diagnostics).toEqual([]);
+        const [played, turned] = rows(result);
+        expect(played.payload).not.toHaveProperty("target");
+        expect(turned.payload).toMatchObject({
+            action: "audio",
+            operation: "setVolume",
+            objectName: "piano",
+            target: { name: "piano", label: "piano", sourceBlockId: played.id },
+        });
+    });
+
+    it("addresses the music channel through its built-in, which no row declares", () => {
+        // A scene can state its music on its own record, so `volume bgm` addresses the same handle
+        // whether or not this script holds the row that opened it. Binding it to a row would give one
+        // channel two identities.
+        const result = parse("play bgm evening_theme", "volume bgm 0.5");
+
+        expect(result.diagnostics).toEqual([]);
+        const [opened, turned] = rows(result);
+        expect(opened.payload).not.toHaveProperty("target");
+        expect(turned.payload).toMatchObject({ operation: "setVolume", target: { builtin: "bgm", name: "bgm" } });
+    });
+
+    it("keeps a handle no row in the script played as a bare name", () => {
+        const result = parse("volume piano 0.5");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(rows(result)[0].payload)
+            .toEqual({ action: "audio", operation: "setVolume", objectName: "piano", volume: 0.5 });
+    });
+
+    it("does not shadow a stage object that answers to the same word", () => {
+        // Sounds and displayables are separate registries in the compiler, so they are separate here
+        // too. One table would make `show rain` fail because a `rain` sound was played above it.
+        const result = parse(
+            "image create rain corridor_dusk",
+            "play sound evening_theme as rain",
+            "show rain",
+            "volume rain 0.5",
+        );
+
+        expect(result.diagnostics).toEqual([]);
+        const [image, played, shown, turned] = rows(result);
+        expect(shown.payload).toMatchObject({ action: "image", operation: "show", target: { sourceBlockId: image.id } });
+        expect(turned.payload).toMatchObject({ action: "audio", target: { sourceBlockId: played.id } });
+    });
+});
+
 // --- The table itself -------------------------------------------------------------------------------------------
 
 describe("the dialect validator", () => {

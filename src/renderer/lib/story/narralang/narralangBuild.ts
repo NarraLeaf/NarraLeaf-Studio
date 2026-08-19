@@ -31,6 +31,7 @@
 
 import type {
     StoryActionPayload,
+    StoryActionableTargetRef,
     StoryAlignPositionValue,
     StoryBlockId,
     StoryCharacterTagSelection,
@@ -52,6 +53,7 @@ import type {
     StoryVariableRef,
     StoryVfxBlendMode,
 } from "@shared/types/story";
+import { ACTIONABLE_BUILTIN_META } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
@@ -116,6 +118,15 @@ export type NarralangBuildContext = {
     readonly lookups: NarralangParseLookups;
     /** A stage object created earlier in the same text. */
     readonly stage: (name: string) => NarralangStageEntry | null;
+    /**
+     * The row that started a named sound handle in the same text, or null when nothing did.
+     *
+     * A namespace of its own rather than an entry in {@link stage}: a sound and an image may share a
+     * word without either shadowing the other (the compiler keeps `sounds` and `images` apart), and
+     * folding them into one table would make `image show rain` fail because a `rain` sound was played
+     * first.
+     */
+    readonly sound: (name: string) => StoryBlockId | null;
     /** A variable declared in the same text, falling back to the caller's table. */
     readonly variable: (name: string) => NarralangResolution<StoryVariableRef>;
     readonly expression: (source: string) => { expression: StoryExpression; ok: boolean };
@@ -391,8 +402,18 @@ function displayableTargetOf(ctx: NarralangBuildContext, slots: NarralangSlots):
     return { kind: entry.kind, name, sourceBlockId: entry.blockId };
 }
 
+/** A stage name, and the row in this same text that declared it. */
+type NarralangStageSubject = {
+    readonly name: string;
+    readonly sourceBlockId: StoryBlockId;
+};
+
 /** A stage object of exactly one kind, which is how a `show` line picks its verb. */
-function stageObjectOf(ctx: NarralangBuildContext, slots: NarralangSlots, kind: NarralangStageEntry["kind"]): Resolved<string> {
+function stageObjectOf(
+    ctx: NarralangBuildContext,
+    slots: NarralangSlots,
+    kind: NarralangStageEntry["kind"],
+): Resolved<NarralangStageSubject> {
     const name = nameOf(slots, "subject");
     if (name === undefined) {
         return fail("missingValue", "subject");
@@ -401,7 +422,60 @@ function stageObjectOf(ctx: NarralangBuildContext, slots: NarralangSlots, kind: 
     if (!entry || entry.kind !== kind) {
         return fail("unknownName", kind);
     }
-    return { ok: true, value: name };
+    return { ok: true, value: { name, sourceBlockId: entry.blockId } };
+}
+
+/**
+ * The stable reference a row addressing a stage object writes down beside the name it was spelled
+ * with - the `Displayable` half, and {@link actionableRefOf} the other.
+ *
+ * ## Why the parser resolves this and does not carry it over
+ *
+ * A reference binds a row to the ROW that declared the object, so the row follows a rename. The text
+ * view had no way to say that: a script carries names, the printer writes names, and a row the author
+ * edited came back from a re-parse with its name and nothing else - which silently downgraded a
+ * reference that was in the document a moment earlier.
+ *
+ * Copying the old payload's reference across instead would be wrong exactly when it matters: an edit
+ * to a line may be an edit to WHAT it points at, and the old reference would then be a lie the author
+ * cannot see. So the reference is resolved from the text, every time, against the declarations THIS
+ * parse found. The reconciler feeds those declarations their existing ids (`blockIdForLine`), so a
+ * creator row that survived the edit hands over the id it already had, and one the same edit renamed
+ * hands over its new name under the same id. One index, built on the new text, carrying old identity.
+ *
+ * A consequence worth having: a document written before references existed comes back from a script
+ * round trip carrying them, on the rows the author touched.
+ *
+ * `name` is what the script spelled and `label` the same word, because a stage object in NarraLang
+ * names itself - the stage key IS what the author typed. The two only diverge for a subject the
+ * script cannot spell (a character keys on its `characterId`, an unnamed sound on its `assetId`),
+ * and neither is reachable from the lines these refs are written on.
+ */
+function displayableRefOf(subject: NarralangStageSubject, kind: "image" | "text"): StoryDisplayableTargetRef {
+    return { kind, name: subject.name, label: subject.name, sourceBlockId: subject.sourceBlockId };
+}
+
+/** The `Actionable` counterpart of {@link displayableRefOf} - a clip, an overlay, a sound handle. */
+function actionableRefOf(subject: NarralangStageSubject): StoryActionableTargetRef {
+    return { name: subject.name, label: subject.name, sourceBlockId: subject.sourceBlockId };
+}
+
+/**
+ * The same reference, for a row whose subject the language does not require to exist.
+ *
+ * `image source poster …` reads without any `image create poster` ahead of it, and it has always
+ * done. Failing to find a declaration is therefore not a fault here: the row keeps its `objectName`
+ * and no reference, which is exactly the shape every document written before references carries.
+ * Reporting it is the compiler's job, and only the compiler's - a diagnostic raised here would refuse
+ * the whole reconcile over a line that parses.
+ */
+function optionalDisplayableRefOf(
+    ctx: NarralangBuildContext,
+    name: string,
+    kind: "image" | "text",
+): StoryDisplayableTargetRef | undefined {
+    const entry = ctx.stage(name);
+    return entry?.kind === kind ? displayableRefOf({ name, sourceBlockId: entry.blockId }, kind) : undefined;
 }
 
 function conditionOf(ctx: NarralangBuildContext, source: string, warnings: NarralangBuildWarning[]): StoryConditionRef {
@@ -684,7 +758,7 @@ function buildDraft(
         case "audioMute":
         case "audioUnmute":
         case "audioSeek":
-            return audioDraft(verb, slots);
+            return audioDraft(ctx, verb, slots);
 
         // --- Data --------------------------------------------------------------------------------------
         case "variableSet": {
@@ -1010,7 +1084,34 @@ function appearanceOf(ctx: NarralangBuildContext, characterId: string, names: re
     return { ok: true, value: out };
 }
 
-function audioDraft(verb: NarralangVerb, slots: NarralangSlots): NarralangBlockDraft | Fail {
+/**
+ * Which handle a sound-control row addresses, as a stable reference.
+ *
+ * Two of the three answers bind to nothing, and both stay that way on purpose:
+ *  - The music channel has no declaring row - a scene states its music on its own record, and `/vol`
+ *    addresses the same handle whether or not this script holds a `play bgm` line - so it is
+ *    referenced as `{ builtin: "bgm" }`. That is the rule `actionableSourceIdentity` states, and why
+ *    `play bgm` is not treated as a declaration.
+ *  - A name no `play sound … as …` line in this text declares gets no reference at all, exactly as
+ *    {@link optionalDisplayableRefOf} explains.
+ */
+function audioTargetOf(
+    ctx: NarralangBuildContext,
+    objectName: string | undefined,
+    bus: NarralangWord | undefined,
+): StoryActionableTargetRef | undefined {
+    if (objectName === undefined) {
+        if (bus !== "bgm") {
+            return undefined;
+        }
+        const meta = ACTIONABLE_BUILTIN_META.bgm;
+        return { builtin: "bgm", name: meta.name, label: meta.label };
+    }
+    const sourceBlockId = ctx.sound(objectName);
+    return sourceBlockId === null ? undefined : actionableRefOf({ name: objectName, sourceBlockId });
+}
+
+function audioDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: NarralangSlots): NarralangBlockDraft | Fail {
     // A row that names no handle addresses the bus, which the language spells with a word - the bus
     // has no author-facing name to resolve.
     const objectName = nameOf(slots, "subject");
@@ -1018,7 +1119,7 @@ function audioDraft(verb: NarralangVerb, slots: NarralangSlots): NarralangBlockD
     if (objectName === undefined && bus !== "bgm" && bus !== "sound") {
         return fail("missingValue", "subject");
     }
-    const base = prune({ action: "audio" as const, objectName });
+    const base = prune({ action: "audio" as const, objectName, target: audioTargetOf(ctx, objectName, bus) });
     switch (verb) {
         case "audioStop":
             return {
@@ -1084,7 +1185,14 @@ function imageDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
         if (verb === "imageSource") {
             return {
                 kind: "action",
-                payload: prune({ action: "image" as const, operation: "setSource" as const, objectName, assetId, color }),
+                payload: prune({
+                    action: "image" as const,
+                    operation: "setSource" as const,
+                    objectName,
+                    target: optionalDisplayableRefOf(ctx, objectName, "image"),
+                    assetId,
+                    color,
+                }),
             };
         }
         const layer = layerRefOf(ctx, slots, "layer");
@@ -1130,7 +1238,8 @@ function imageDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
         payload: prune({
             action: "image" as const,
             operation: verb === "imageShow" ? ("show" as const) : ("hide" as const),
-            objectName: subject.value,
+            objectName: subject.value.name,
+            target: displayableRefOf(subject.value, "image"),
             transform,
             transition,
         }),
@@ -1167,26 +1276,27 @@ function textObjectDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots:
     if (isFail(subject)) {
         return subject;
     }
-    const objectName = subject.value;
+    const objectName = subject.value.name;
+    const target = displayableRefOf(subject.value, "text");
     switch (verb) {
         case "textSet":
             return {
                 kind: "action",
-                payload: { action: "text", operation: "setText", objectName, text: stringOf(slots, "content") ?? "" },
+                payload: { action: "text", operation: "setText", objectName, target, text: stringOf(slots, "content") ?? "" },
             };
         case "textSize": {
             const fontSize = numberOf(slots, "fontSize");
             if (fontSize === undefined) {
                 return fail("missingValue", "fontSize");
             }
-            return { kind: "action", payload: { action: "text", operation: "setFontSize", objectName, fontSize } };
+            return { kind: "action", payload: { action: "text", operation: "setFontSize", objectName, target, fontSize } };
         }
         case "textColor": {
             const fontColor = colorOf(slots, "color");
             if (fontColor === undefined) {
                 return fail("missingValue", "color");
             }
-            return { kind: "action", payload: { action: "text", operation: "setFontColor", objectName, fontColor } };
+            return { kind: "action", payload: { action: "text", operation: "setFontColor", objectName, target, fontColor } };
         }
         default: {
             const transform = transformOf(slots, verb === "textShow" ? "reveal" : "conceal");
@@ -1199,6 +1309,7 @@ function textObjectDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots:
                     action: "text" as const,
                     operation: verb === "textShow" ? ("show" as const) : ("hide" as const),
                     objectName,
+                    target,
                     transform,
                 }),
             };
@@ -1298,13 +1409,14 @@ function videoDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
     if (isFail(subject)) {
         return subject;
     }
-    const objectName = subject.value;
+    const objectName = subject.value.name;
+    const target = actionableRefOf(subject.value);
     if (verb === "videoSeek") {
         const timeMs = msOf(slots, "time");
         if (timeMs === undefined) {
             return fail("missingValue", "time");
         }
-        return { kind: "action", payload: { action: "video", operation: "seek", objectName, timeMs } };
+        return { kind: "action", payload: { action: "video", operation: "seek", objectName, target, timeMs } };
     }
     const operation = verb === "videoShow"
         ? "show"
@@ -1317,7 +1429,7 @@ function videoDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
                     : verb === "videoResume"
                         ? "resume"
                         : "stop";
-    return { kind: "action", payload: { action: "video", operation, objectName } };
+    return { kind: "action", payload: { action: "video", operation, objectName, target } };
 }
 
 const BLEND_MODES: ReadonlySet<string> = new Set<StoryVfxBlendMode>([
@@ -1371,14 +1483,15 @@ function vfxDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narral
     if (isFail(subject)) {
         return subject;
     }
-    const objectName = subject.value;
+    const objectName = subject.value.name;
+    const target = actionableRefOf(subject.value);
     switch (verb) {
         case "vfxRate": {
             const rate = numberOf(slots, "rate");
             if (rate === undefined) {
                 return fail("missingValue", "rate");
             }
-            return { kind: "action", payload: { action: "vfx", operation: "setRate", objectName, rate } };
+            return { kind: "action", payload: { action: "vfx", operation: "setRate", objectName, target, rate } };
         }
         case "vfxShow":
         case "vfxHide":
@@ -1388,13 +1501,14 @@ function vfxDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narral
                     action: "vfx" as const,
                     operation: verb === "vfxShow" ? ("show" as const) : ("hide" as const),
                     objectName,
+                    target,
                     durationMs: msOf(slots, "duration"),
                 }),
             };
         default:
             return {
                 kind: "action",
-                payload: { action: "vfx", operation: verb === "vfxPause" ? "pause" : "resume", objectName },
+                payload: { action: "vfx", operation: verb === "vfxPause" ? "pause" : "resume", objectName, target },
             };
     }
 }
