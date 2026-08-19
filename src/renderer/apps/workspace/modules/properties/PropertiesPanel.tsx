@@ -1355,6 +1355,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                     candidates={setCandidates}
                     assetNames={setAssetNames}
                     service={assetSetService}
+                    assetsService={assetsService}
                 />
             );
         }
