@@ -508,6 +508,7 @@ function channelBody(
                     assetType={AssetType.Image}
                     assetId={to.maskAssetId ?? undefined}
                     onChange={maskAssetId => setProps({ maskAssetId: maskAssetId ?? "" })}
+                    allowAssetSets
                 />
             ),
             below: <MaskSettings to={to} t={t} onChange={setProps} />,
