@@ -1,10 +1,13 @@
 import { useMemo, useCallback, useState, Dispatch, SetStateAction, DragEvent } from "react";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { Upload, Link, FolderPlus, RefreshCw } from "lucide-react";
+import { Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { AssetSetListRow } from "../components/AssetSetRow";
+import { useSetSummary } from "../components/AssetSetRow";
+import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
+import type { AssetSetCell } from "@shared/types/assetSet";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
@@ -38,7 +41,7 @@ export function AssetsListView({
 }: AssetsListViewProps) {
     const { t, tn } = useTranslation();
     const freeze = useFreezeGuard();
-    const { filteredAssets, filteredGroups, assetSets, draggedItem, showContextMenu } = useAssetsPanelContext();
+    const { filteredAssets, filteredGroups, rootAssetSets, draggedItem, showContextMenu } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
 
@@ -48,7 +51,7 @@ export function AssetsListView({
                 const CategoryIcon = ASSET_CATEGORY_ICONS[category];
                 const categoryAssets = filteredAssets[category];
                 const categoryGroups = filteredGroups[category];
-                const categorySets = assetSets[category];
+                const categorySets = rootAssetSets[category];
 
                 return (
                     <AccordionItem
@@ -148,9 +151,88 @@ export function AssetsListView({
     );
 }
 
-function AssetSetItem({ entry }: { entry: ResolvedAssetSet }) {
+/**
+ * One row of the library tree.
+ *
+ * Folders and sets are the same row: same indent, same hover, same gesture - the whole row toggles,
+ * and there is no separate disclosure control, which is what the folders have always done. Written
+ * once so a set cannot drift into looking like a second kind of tree in the same panel.
+ */
+function TreeRow({
+    level,
+    icon,
+    label,
+    labelClassName,
+    meta,
+    trailing,
+    dataAttributes,
+    className,
+    draggable,
+    onClick,
+    onContextMenu,
+    onDragStart,
+    onDragEnd,
+}: {
+    level: number;
+    icon: React.ReactNode;
+    label: string;
+    labelClassName?: string;
+    /** Sits with the label, in the label's own colour band: a count, a summary. */
+    meta?: React.ReactNode;
+    /** Sits at the far right, subdued: what this row is, rather than what it holds. */
+    trailing?: string;
+    dataAttributes?: Record<string, string>;
+    className?: string;
+    draggable?: boolean;
+    onClick?: (event: React.MouseEvent) => void;
+    onContextMenu?: (event: React.MouseEvent) => void;
+    onDragStart?: (event: React.DragEvent) => void;
+    onDragEnd?: () => void;
+}) {
+    return (
+        <div
+            {...dataAttributes}
+            draggable={draggable}
+            className={cn(
+                "flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill",
+                draggable && "nl-drag-source",
+                className,
+            )}
+            style={{ paddingLeft: `${20 + level * 12}px` }}
+            onClick={onClick}
+            onContextMenu={onContextMenu}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+        >
+            {icon}
+            <span className={cn("min-w-0 truncate text-sm", labelClassName)}>{label}</span>
+            {meta && <span className="shrink-0 text-xs">{meta}</span>}
+            {trailing && <span className="ml-auto shrink-0 truncate text-2xs text-fg-subtle">{trailing}</span>}
+        </div>
+    );
+}
+
+/**
+ * A set in the tree.
+ *
+ * The row is the folder's row - same component, same gesture, same indent - because a set is a
+ * folder to whoever is browsing: it opens, it holds rows, and a sub-set nests inside it exactly as
+ * a sub-folder does. What differs is only what the rows underneath are: one per value the set
+ * varies by, answered either by a file or by a set one level down.
+ *
+ * The band of colour runs the length of the set and ends with it. A set is not a folder in the one
+ * way that matters here - its members stay filed in whatever folder they were imported into and are
+ * listed there too - so the band is what says these rows are one thing being shown twice.
+ */
+function AssetSetItem({ entry, level = 0, trailing }: {
+    entry: ResolvedAssetSet;
+    level?: number;
+    /** What the parent set's row prints on the right for this one: the value it hangs at. */
+    trailing?: string;
+}) {
     const {
         assets,
+        assetSets,
         assetSetNaming,
         expandedAssetSets,
         setExpandedAssetSets,
@@ -159,6 +241,7 @@ function AssetSetItem({ entry }: { entry: ResolvedAssetSet }) {
         showAssetSetContextMenu,
         isMultiSelectMode,
     } = useAssetsPanelContext();
+    const summary = useSetSummary(entry);
 
     // The whole library of that section, not the filtered list: a set's rows are its own, and one of
     // them turning into "no file" because a search is narrowing the panel would read as a hole in the
@@ -167,7 +250,12 @@ function AssetSetItem({ entry }: { entry: ResolvedAssetSet }) {
         () => new Map(assets[entry.category].map(asset => [asset.id, asset])),
         [assets, entry.category],
     );
+    const setsById = useMemo(
+        () => new Map(assetSets[entry.category].map(resolved => [resolved.set.id, resolved])),
+        [assetSets, entry.category],
+    );
 
+    const open = expandedAssetSets.has(entry.set.id);
     const toggle = useCallback(() => {
         setExpandedAssetSets(current => {
             const next = new Set(current);
@@ -181,20 +269,82 @@ function AssetSetItem({ entry }: { entry: ResolvedAssetSet }) {
     }, [entry.set.id, setExpandedAssetSets]);
 
     return (
-        <AssetSetListRow
-            entry={entry}
-            level={0}
-            // A set is not part of the library's multi-selection: nothing that acts on marked rows
-            // (copy, export, delete bytes) means anything for a set, so it is never one of them.
-            selected={false}
-            focused={false}
-            open={expandedAssetSets.has(entry.set.id)}
-            naming={assetSetNaming}
-            assetsById={assetsById}
-            onSelect={() => handleAssetSetSelect(entry)}
-            onToggle={toggle}
-            onOpenMember={asset => handleAssetClick(asset, isMultiSelectMode)}
-            onContextMenu={event => showAssetSetContextMenu(event, entry)}
+        <div className={cn(level === 0 && "bg-fill-subtle/50", level === 0 && open && "border-y border-edge-subtle")}>
+            <TreeRow
+                level={level}
+                icon={<Layers className={cn("w-4 h-4 shrink-0", entry.incomplete ? "text-warning" : "text-primary")} />}
+                label={entry.set.name}
+                meta={<span className={entry.incomplete ? "text-warning" : "text-fg-subtle"}>{summary}</span>}
+                trailing={trailing}
+                dataAttributes={{ "data-asset-set-id": entry.set.id }}
+                onClick={() => {
+                    // A set is not part of the library's multi-selection: nothing that acts on marked
+                    // rows (copy, export, delete bytes) means anything for a set.
+                    handleAssetSetSelect(entry);
+                    toggle();
+                }}
+                onContextMenu={event => showAssetSetContextMenu(event, entry)}
+            />
+            {open && entry.contents.cells.map(cell => {
+                const coordinate = formatAssetSetCoordinateReading(
+                    readAssetSetCoordinate(entry.set, cell.coordinate, assetSetNaming),
+                );
+                const child = cell.childSetIds.length === 1 ? setsById.get(cell.childSetIds[0]) : undefined;
+                if (child) {
+                    return <AssetSetItem key={cell.label} entry={child} level={level + 1} trailing={coordinate} />;
+                }
+                const asset = cell.assetIds.length === 1 ? assetsById.get(cell.assetIds[0]) : undefined;
+                return (
+                    <AssetSetMemberRow
+                        key={cell.label}
+                        cell={cell}
+                        level={level + 1}
+                        coordinate={coordinate}
+                        asset={asset ?? null}
+                        onOpen={() => { if (asset) handleAssetClick(asset, isMultiSelectMode); }}
+                    />
+                );
+            })}
+        </div>
+    );
+}
+
+function MemberIcon({ asset }: { asset: Asset }) {
+    const Icon = ASSET_TYPE_ICONS[asset.type];
+    return <Icon className="w-4 h-4 shrink-0 text-fg-muted" />;
+}
+
+/**
+ * One value of a set, answered by a file.
+ *
+ * A value with no file keeps its row: the value is the reason the row exists, and dropping it would
+ * leave a set that is missing something looking complete.
+ */
+function AssetSetMemberRow({ cell, level, coordinate, asset, onOpen }: {
+    cell: AssetSetCell;
+    level: number;
+    coordinate: string;
+    asset: Asset | null;
+    onOpen: () => void;
+}) {
+    const { t } = useTranslation();
+    return (
+        <TreeRow
+            level={level}
+            // The ordinary file mark, because a member is an ordinary file: it is filed in a folder
+            // as well, and a mark of its own here would make the same file look like two things.
+            icon={asset
+                ? <MemberIcon asset={asset} />
+                : <span className="h-4 w-4 shrink-0" />}
+            label={asset
+                ? asset.name
+                : cell.assetIds.length > 1
+                    ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
+                    : t("assets.sets.inspector.variantMissing")}
+            labelClassName={asset ? undefined : "text-warning"}
+            trailing={coordinate}
+            dataAttributes={{ "data-asset-set-member": cell.label }}
+            onClick={onOpen}
         />
     );
 }
@@ -273,11 +423,19 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
                 }
             }}
         >
-            <div
+            <TreeRow
+                level={level}
                 draggable
-                data-asset-group-id={group.id}
-                className={`nl-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-fill-subtle' : ''} ${isDragging ? 'opacity-50' : ''} ${isCut ? 'opacity-40' : ''}`}
-                style={{ paddingLeft: `${20 + level * 12}px` }}
+                dataAttributes={{ "data-asset-group-id": group.id }}
+                className={cn(
+                    isSelected && "bg-primary/20 border-l-2 border-primary",
+                    isFocused(`group:${group.id}`) && "bg-fill-subtle",
+                    isDragging && "opacity-50",
+                    isCut && "opacity-40",
+                )}
+                icon={<FolderPlus className="w-4 h-4 shrink-0 text-primary" />}
+                label={group.name}
+                meta={<span className="text-fg-subtle">({groupAssets.length + childGroups.length})</span>}
                 onClick={(e) => {
                     handleItemSelect(group.id, true, e);
                     handleGroupFocus(group.id);
@@ -286,11 +444,7 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
                 onContextMenu={(e) => showContextMenu(e, category, group, true)}
                 onDragStart={(e) => handleDragStart?.(e, category, group, true)}
                 onDragEnd={() => handleDragEnd?.()}
-            >
-                <FolderPlus className="w-4 h-4 text-primary" />
-                <span className="text-sm">{group.name}</span>
-                <span className="text-xs text-fg-subtle">({groupAssets.length + childGroups.length})</span>
-            </div>
+            />
 
             {isOpen && (
                 <div>

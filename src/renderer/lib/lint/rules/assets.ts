@@ -399,12 +399,12 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
             }));
             const findings: LintFinding[] = [];
             for (const set of ctx.assetSets) {
-                const problems = validateAssetSet(set);
+                const problems = validateAssetSet(set, ctx.assetSets);
                 if (problems.length > 0) {
                     findings.push(...problems.map(problem => assetSetFinding(set, problem)));
                     continue;
                 }
-                const contents = resolveAssetSetContents(set, candidates);
+                const contents = resolveAssetSetContents(set, candidates, ctx.assetSets);
                 for (const cell of contents.missing) {
                     findings.push({
                         ruleId: "assets/group-incomplete",
@@ -462,9 +462,7 @@ function assetSetFinding(set: AssetSet, problem: AssetSetProblem): LintFinding {
                 },
             };
         case "noAxes":
-        case "emptyAxisKey":
         case "emptyAxisValues":
-        case "duplicateAxis":
         case "duplicateAxisValue":
             return {
                 ...base,
