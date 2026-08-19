@@ -1,3 +1,23 @@
+/**
+ * What `app://` is allowed to do, declared once for every handler bound to it.
+ *
+ * `registerSchemesAsPrivileged` takes ONE decision per scheme, so these must agree across handlers -
+ * a divergent copy would silently win or lose depending on registration order.
+ *
+ * `stream` is the one that is easy to leave out and impossible to diagnose from the symptom. Without
+ * it a `<video>` or `<audio>` can only play a file small enough to arrive in the first response;
+ * anything larger fails with a bare `MEDIA_ELEMENT_ERROR: Format error` on a file that `fetch`
+ * returns whole and that plays perfectly from a Blob of those same bytes. Measured on this scheme: a
+ * 17 KB clip played, a 121 KB clip did not.
+ */
+export const APP_SCHEME_PRIVILEGES: ProtocolScheme["privileges"] = {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true,
+    stream: true,
+};
+
 export interface ProtocolScheme {
     scheme: string;
     privileges: {
