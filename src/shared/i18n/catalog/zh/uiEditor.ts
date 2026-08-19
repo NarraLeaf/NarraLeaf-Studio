@@ -183,8 +183,8 @@ export const uiEditor = {
             other: "{count} 个界面",
         },
         assetsSkipped: {
-            one: "有 {count} 个资源导入失败",
-            other: "有 {count} 个资源导入失败",
+            one: "有 {count} 个资产导入失败",
+            other: "有 {count} 个资产导入失败",
         },
         componentsAdded: {
             one: "已向组件库添加 {count} 个组件",

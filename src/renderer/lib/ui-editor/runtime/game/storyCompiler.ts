@@ -3716,7 +3716,12 @@ async function getVfx(
     }
     const vfx = new Vfx({
         src: url,
-        ...(payload.blendMode ? { blendMode: payload.blendMode } : {}),
+        // A seed's clip is lit particles on black, and it has exactly one correct compositing route:
+        // `screen`, which drops the black and keeps the light. It is not the author's choice because
+        // there is no alternative to choose - WebKit discards a WebM's alpha, so the clip cannot be
+        // transparent, and `normal` would cover the stage with a black rectangle. An imported clip
+        // still declares its own route, because only the author knows how theirs was rendered.
+        ...(payload.seed ? { blendMode: "screen" as const } : payload.blendMode ? { blendMode: payload.blendMode } : {}),
         ...(payload.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(payload.opacity, 1))) } : {}),
         ...(payload.loop !== undefined ? { loop: payload.loop } : {}),
         ...(payload.fit ? { fit: payload.fit } : {}),

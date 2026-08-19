@@ -22,6 +22,7 @@ import {
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
+import type { DialogueConfiguration } from "@shared/types/dialogue";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
@@ -65,6 +66,13 @@ export {
     normalizeAutoSaveConfiguration,
 } from "@shared/types/saves";
 export type { AutoSaveConfiguration } from "@shared/types/saves";
+export {
+    AUTO_FORWARD_DEFAULT_PAUSE_MAX,
+    AUTO_FORWARD_DEFAULT_PAUSE_MIN,
+    DEFAULT_DIALOGUE_CONFIGURATION,
+    normalizeDialogueConfiguration,
+} from "@shared/types/dialogue";
+export type { DialogueConfiguration } from "@shared/types/dialogue";
 export {
     DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
     normalizeSaveCompatibilityConfiguration,
@@ -393,6 +401,13 @@ export type ProjectAppConfiguration = {
      * is what a *new* player gets, not a cap on what the game may do.
      */
     preferences?: PlayerPreferences;
+    /**
+     * The author's dialogue settings (see @shared/types/dialogue); absent until configured.
+     *
+     * Not a player default: what is here is part of how the script is written, and no settings
+     * screen offers it.
+     */
+    dialogue?: DialogueConfiguration;
     /**
      * The key that ties this project to the builds it produces; absent until the
      * author mints one. Travels with the project on purpose - see the type.

@@ -10,6 +10,7 @@
 import { ProjectGameSection } from "../sections/ProjectGameSection";
 import { ProjectSaveCompatibilitySection } from "../sections/ProjectSaveCompatibilitySection";
 import { ProjectLanguageSection } from "../sections/ProjectLanguageSection";
+import { ProjectDialogueSection } from "../sections/ProjectDialogueSection";
 import { ProjectPreferencesSection } from "../sections/ProjectPreferencesSection";
 import { ProjectAudioSection } from "../sections/ProjectAudioSection";
 import type { ProjectSectionProps } from "../sections/types";
@@ -20,6 +21,7 @@ export function ProjectGamePage(props: ProjectSectionProps) {
             <ProjectGameSection {...props} />
             <ProjectSaveCompatibilitySection {...props} />
             <ProjectLanguageSection {...props} />
+            <ProjectDialogueSection {...props} />
             <ProjectPreferencesSection {...props} />
             <ProjectAudioSection {...props} />
         </div>

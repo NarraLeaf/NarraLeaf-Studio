@@ -6,6 +6,7 @@ import {
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
 } from "@shared/utils/pluginRuntimeApiModule";
 import type { PluginManager } from "../pluginManager";
+import { APP_SCHEME_PRIVILEGES } from "./types";
 import type { ProtocolHandler, ProtocolResponse, ProtocolScheme } from "./types";
 
 const PLUGIN_API_MODULE = `
@@ -85,12 +86,7 @@ export class PluginEntryHandler implements ProtocolHandler {
 
 export class PluginApiHandler implements ProtocolHandler {
     public readonly scheme = AppProtocol;
-    public readonly privileges: ProtocolScheme["privileges"] = {
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        corsEnabled: true,
-    };
+    public readonly privileges: ProtocolScheme["privileges"] = APP_SCHEME_PRIVILEGES;
 
     canHandle(url: URL): boolean {
         return url.protocol === `${this.scheme}:` && url.hostname === AppHost.PluginApi && Boolean(PLUGIN_API_MODULES[url.pathname]);
