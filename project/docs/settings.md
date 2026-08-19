@@ -149,6 +149,21 @@ Studio 自己的下载分两类，不要混：
 解析器在 `src/shared/utils/downloadSource.ts`（纯函数，构建 worker 也要用），主进程侧的入口是
 `managers/downloadRewrites.ts`。改写只允许 https，命中会往日志写一行 `原地址 -> 新地址`。
 
+四个 source 键在设置面里是 `SettingValueType.Source`：一份具名的来源清单，最后一行是自填地址的
+输入框。存的仍旧是同一个键上的普通字符串，「空 = 官方源」这条约定没变（见 `resolveDownloadSource`），
+所以这四个键的下游一律不受影响。
+
+**具名镜像只给 `plugins.registryUrl`。** 另外三个只提供「官方源／不使用镜像」加自填，各有各的理由：
+
+- 两个构建镜像没有 Studio 能担保的对应物，而**按名字列出来就等于背书**。
+- `uiTemplates.registryUrl` 更进一步：模板的文档、图形和它声明的每个资源都按索引所在目录
+  （`uiTemplateRegistryClient` 的 `registryBaseDir`）解析，也就是说它们会**跟着这个键走**。
+  社区镜像 gh-mirror.mewbaka.cn **只放行 `index.json`，其余一律 403**（实测，它自己的报错里就这么写），
+  指过去会得到「列得出模板、没有预览、装一个炸一个」——正是重写表当初要消灭的那个状态。
+  哪天有一台驮得动整个仓库的镜像，再具名不迟。
+
+插件那边则够用：索引之外插件只需要 `.zip`，而它在索引里是一条 github.com 的绝对地址，归重写表管。
+
 ## 缓存
 
 `src/main/app/application/managers/storage/cacheInventory.ts` 是**唯一**知道 Studio 在磁盘上留了

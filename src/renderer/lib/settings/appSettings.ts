@@ -59,7 +59,6 @@ import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/K
 import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
 import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
 import { MIRROR_PLUGIN_REGISTRY_URL } from "@shared/constants/pluginRegistry";
-import { MIRROR_UI_TEMPLATE_REGISTRY_URL } from "@shared/constants/uiTemplateRegistry";
 import {
     EDITOR_LINE_NUMBERS_DEFAULT,
     EDITOR_LINE_NUMBERS_KEY,
@@ -942,9 +941,10 @@ export const AppSettings: AppSettingDefinition[] = [
     {
         // Read by the main process (uiTemplateRegistryClient.resolveTemplateRegistryUrl)
         // when the UI editor's template store fetches the index or a template bundle.
-        // Empty = the official NarraLeaf/UI-Templates registry index. Unlike the plugin
-        // registry this one really is enough on its own: template files resolve against
-        // the index's own directory (registryBaseDir), so they follow it to a mirror.
+        // Empty = the official NarraLeaf/UI-Templates registry index. This key reaches
+        // further than the plugin one: a template's files resolve against the index's own
+        // directory (registryBaseDir), so they follow it wherever it points - which is why
+        // no mirror is offered by name here. See uiTemplateRegistry.ts for the measurement.
         key: "uiTemplates.registryUrl",
         category: "network",
         scope: SettingScope.Global,
@@ -954,10 +954,9 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Where the template store looks for its index.",
         descriptionKey: "settings.items.uiTemplateRegistryUrl.description",
         defaultValue: "",
-        options: [OFFICIAL_SOURCE_VALUE, MIRROR_UI_TEMPLATE_REGISTRY_URL],
+        options: [OFFICIAL_SOURCE_VALUE],
         optionLabelKeys: {
             [OFFICIAL_SOURCE_VALUE]: "settings.source.official",
-            [MIRROR_UI_TEMPLATE_REGISTRY_URL]: "settings.source.chinaMirror",
         },
     },
     {
