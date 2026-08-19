@@ -132,6 +132,7 @@ export const workspace = {
             namingTitle: "Recording filename pattern",
             namingHint: "Tokens: {tokens}. Imported audio is matched to lines by this name.",
             namingReset: "Reset to default",
+            choicesTitle: "Voice choice options",
         },
         table: {
             storyLabel: "Story",
@@ -149,6 +150,8 @@ export const workspace = {
             auditionFilterPending: "Pending",
             narrationSpeaker: "Narration",
             narrationGroup: "Narration",
+            choiceSpeaker: "Choice",
+            choiceGroup: "Choices",
             castPlaceholder: "Voice actor…",
             assign: "Assign audio",
             replace: "Replace audio",
