@@ -188,7 +188,8 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
     // Voiceable rows of the selected story, in narrative order.
     //
     // The row's text is what an actor for THIS language reads, so the extraction depends on the
-    // locale's translation table as much as on the story - and re-runs when either moves.
+    // locale's translation table as much as on the story - and re-runs when either moves. It also
+    // re-runs when choice voicing is switched, which decides whether the options are rows at all.
     useEffect(() => {
         if (!voiceService || !storyService || !storyId || !locale) {
             setRows([]);
@@ -239,7 +240,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
             unsubscribeStory();
             unsubscribeTranslation?.();
         };
-    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, characters]);
+    }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, characters, config?.voiceChoices]);
 
     // Voice document for this language.
     useEffect(() => {
