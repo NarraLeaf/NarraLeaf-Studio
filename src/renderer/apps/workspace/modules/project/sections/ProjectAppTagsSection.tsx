@@ -29,6 +29,8 @@ import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Button, IconButton, Input, Select, type SelectOption } from "@/lib/components/elements";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import type { AssetSet } from "@shared/types/assetSet";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
@@ -97,8 +99,10 @@ async function loadMechanisms(context: WorkspaceContext): Promise<{
     mechanisms: UnreadableMechanism[];
     scenes: DeclarableScene[];
     surfaces: EndingPage[];
+    buildAxes: BuildAxis[];
 }> {
     const services = context.services;
+    const buildAxes = readBuildAxes(context);
     // The page list is watched separately, so the picker sees a page made while this panel is open.
     const surfaces = readSurfaces(context);
     let blueprints: Blueprint[] = [];
@@ -122,7 +126,7 @@ async function loadMechanisms(context: WorkspaceContext): Promise<{
     const mechanisms = listUnreadableMechanisms({ blueprints, plugins });
     if (mechanisms.length === 0) {
         // Nothing to declare, so nothing to read every story document for.
-        return { mechanisms, scenes: [], surfaces };
+        return { mechanisms, scenes: [], surfaces, buildAxes };
     }
 
     const storyService = services.get<StoryService>(Services.Story);
@@ -137,8 +141,39 @@ async function loadMechanisms(context: WorkspaceContext): Promise<{
             // A story that will not load reports itself elsewhere; the rest are still declarable.
         }
     }
-    return { mechanisms, scenes, surfaces };
+    return { mechanisms, scenes, surfaces, buildAxes };
 }
+
+/**
+ * Every build-time axis the project's asset sets declare, with the values each one ranges over.
+ *
+ * One row per axis rather than per set, because a position is taken on the axis: two sets that both
+ * vary by `rating` are one question about this edition, and asking it twice would let an author
+ * answer it two different ways.
+ */
+function readBuildAxes(context: WorkspaceContext): BuildAxis[] {
+    let sets: readonly AssetSet[];
+    try {
+        sets = context.services.get<AssetSetService>(Services.AssetSets).listSets();
+    } catch {
+        return [];
+    }
+    const byKey = new Map<string, Set<string>>();
+    for (const set of sets) {
+        for (const axis of set.axes) {
+            if (axis.residency !== "build") {
+                continue;
+            }
+            const values = byKey.get(axis.key) ?? new Set<string>();
+            axis.values.forEach((value: string) => values.add(value));
+            byKey.set(axis.key, values);
+        }
+    }
+    return [...byKey.entries()].map(([key, values]) => ({ key, values: [...values] }));
+}
+
+/** One build-time axis the project declares, and the values it ranges over. */
+type BuildAxis = { key: string; values: string[] };
 
 export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps) {
     const { t, tn } = useTranslation();
@@ -158,10 +193,12 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
         mechanisms: UnreadableMechanism[];
         scenes: DeclarableScene[];
         surfaces: EndingPage[];
+        buildAxes: BuildAxis[];
     }>({
         mechanisms: [],
         scenes: [],
         surfaces: [],
+        buildAxes: [],
     });
     /** Collapsed by default. A variant the author just created is the exception - they made it to name it. */
     const [openIds, setOpenIds] = useState<string[]>([]);
@@ -325,6 +362,7 @@ export function ProjectAppTagsSection({ config, uiService }: ProjectSectionProps
                             service={tagService}
                             uses={references[tag.id]?.total ?? 0}
                             mechanisms={unreadable.mechanisms}
+                            buildAxes={unreadable.buildAxes}
                             scenes={unreadable.scenes}
                             surfaces={unreadable.surfaces}
                             onDelete={() => void removeTag(tag)}
@@ -350,6 +388,7 @@ function TagItem({
     service,
     uses,
     mechanisms,
+    buildAxes,
     scenes,
     surfaces,
     onDelete,
@@ -362,6 +401,7 @@ function TagItem({
     service: AppTagService | null;
     uses: number;
     mechanisms: readonly UnreadableMechanism[];
+    buildAxes: readonly BuildAxis[];
     scenes: readonly DeclarableScene[];
     surfaces: readonly EndingPage[];
     onDelete: () => void;
@@ -433,6 +473,25 @@ function TagItem({
                     />
                 ))}
 
+                {/* Absent until the project's art actually varies by edition, which is most of
+                    them. A part that cannot have content is not content. */}
+                {buildAxes.length === 0 ? null : (
+                    <div className="grid gap-2 border-t border-edge pt-2">
+                        <span className="text-2xs font-medium text-fg-muted">
+                            {t("project.appTags.assetAxesTitle")}
+                        </span>
+                        {buildAxes.map(axis => (
+                            <AssetAxisField
+                                key={axis.key}
+                                tag={tag}
+                                axis={axis}
+                                service={service}
+                                disabled={frozen.disabled}
+                            />
+                        ))}
+                    </div>
+                )}
+
                 {/* Absent in a project where nothing can start a scene the build cannot read, which
                     is most of them. A part that cannot have content is not content. */}
                 {mechanisms.length === 0 ? null : (
@@ -500,6 +559,70 @@ function TagItem({
  * its own, so there is nowhere else for its answer to go, and that is the same rule a `global`-scoped
  * plugin field follows.
  */
+/**
+ * Where one edition sits on one build-time axis.
+ *
+ * A picker rather than a text field: the values are the axis's own, and an author who could type
+ * one would type a value no asset carries and learn about it from a build failure. The blank option
+ * is "inherit", which is what every edition that has no opinion says.
+ *
+ * The release row edits the project's own record, which every variant inherits - it stores nothing
+ * of its own - and that is also where an axis's default belongs: the full product is the edition
+ * whose art an author thinks of as the art.
+ */
+function AssetAxisField({
+    tag,
+    axis,
+    service,
+    disabled,
+}: {
+    tag: ProjectAppTag;
+    axis: BuildAxis;
+    service: AppTagService | null;
+    disabled: boolean;
+}) {
+    const { t } = useTranslation();
+    const stated = tag.builtin ? undefined : tag.assetAxes?.[axis.key];
+    const effective = service?.resolveAssetAxes(tag.id)[axis.key] ?? "";
+
+    return (
+        <Field
+            label={axis.key}
+            trailing={stated === undefined ? undefined : (
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() => service?.clearAssetAxis(tag.id, axis.key)}
+                    className="h-auto px-1 py-0 text-2xs"
+                >
+                    {t("project.appTags.restore")}
+                </Button>
+            )}
+        >
+            <Select
+                size="sm"
+                fullWidth
+                value={effective}
+                disabled={disabled}
+                ariaLabel={axis.key}
+                options={[
+                    { value: "", label: t("project.appTags.assetAxisUnset") },
+                    ...axis.values.map(value => ({ value, label: value })),
+                ]}
+                onChange={value => {
+                    const next = String(value);
+                    if (next) {
+                        service?.setAssetAxis(tag.id, axis.key, next);
+                    } else {
+                        service?.clearAssetAxis(tag.id, axis.key);
+                    }
+                }}
+            />
+        </Field>
+    );
+}
+
 function MechanismField({
     tag,
     mechanism,

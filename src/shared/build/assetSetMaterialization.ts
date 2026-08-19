@@ -54,43 +54,63 @@ import type { StoryAssetVariants, StoryBlock, StoryDocument } from "../types/sto
  */
 type LocaleResolver = (locale: LocaleCode) => { id: string } | { ambiguous: true } | null;
 
+type ProblemSite = { storyId: string; sceneId: string; blockId: string };
+
 export type AssetSetMaterializationProblem =
-    | {
+    | ({
           kind: "unfilled";
           setId: string;
           setName: string;
-          /** The locale with no member, named so the author knows which language to import for. */
-          locale: LocaleCode;
-          storyId: string;
-          sceneId: string;
-          blockId: string;
-      }
-    /** A set this build cannot resolve at all: no axes, more than one, or a build-time axis. */
-    | {
+          axisKey: string;
+          /**
+           * The axis value with no member: a locale for a runtime axis, an edition's position for a
+           * build one. Named so the author knows which file to go and tag.
+           */
+          value: string;
+      } & ProblemSite)
+    /** A set this build cannot resolve at all: no axes, or more than one. */
+    | ({
           kind: "unsupported";
           setId: string;
           setName: string;
-          reason: "noAxes" | "multipleAxes" | "buildAxis";
-          storyId: string;
-          sceneId: string;
-          blockId: string;
-      }
+          reason: "noAxes" | "multipleAxes";
+      } & ProblemSite)
     /** Two files answer to one coordinate, so the set does not name a file there. */
-    | {
+    | ({
           kind: "ambiguous";
           setId: string;
           setName: string;
-          locale: LocaleCode;
-          storyId: string;
-          sceneId: string;
-          blockId: string;
-      };
+          axisKey: string;
+          value: string;
+      } & ProblemSite)
+    /**
+     * A build axis this edition never took a position on.
+     *
+     * Refused rather than defaulted. A build axis decides which art ships and which is withheld, and
+     * an edition that has not said which side it is on is exactly the case where guessing ships the
+     * wrong one.
+     */
+    | ({
+          kind: "axisUnset";
+          setId: string;
+          setName: string;
+          axisKey: string;
+      } & ProblemSite);
 
 export type AssetSetMaterializationResult = {
     documents: Record<string, StoryDocument>;
     problems: AssetSetMaterializationProblem[];
     /** Every member id written into a map, so a caller can assert the bytes were carried. */
     materializedAssetIds: Set<string>;
+    /**
+     * Whether a build axis was collapsed, which changes what the package must not carry.
+     *
+     * The caller has to trim when this is true, whichever edition is being built. Trimming is
+     * normally skipped for the release edition on the grounds that it removes no content and so
+     * carries nothing unreachable - a collapsed axis is precisely a counter-example, and shipping
+     * the variants it dropped is the failure a build axis exists to prevent.
+     */
+    collapsedBuildAxis: boolean;
 };
 
 /**
@@ -133,18 +153,45 @@ function assetIdsInBlock(block: StoryBlock): string[] {
  * are real work, and a build that quietly picked one variant would ship the wrong language with no
  * sign of it.
  */
-function soleRuntimeAxis(set: AssetSet): { axis: AssetSet["axes"][number] } | { reason: "noAxes" | "multipleAxes" | "buildAxis" } {
+function soleAxis(set: AssetSet): { axis: AssetSet["axes"][number] } | { reason: "noAxes" | "multipleAxes" } {
     if (set.axes.length === 0) {
         return { reason: "noAxes" };
     }
     if (set.axes.length > 1) {
+        // Two axes need a derived storage key rather than an inline map - an inline one is the
+        // product of both, at every reference point - so this build refuses rather than picking.
         return { reason: "multipleAxes" };
     }
-    const axis = set.axes[0];
-    if (axis.residency !== "runtime") {
-        return { reason: "buildAxis" };
+    return { axis: set.axes[0] };
+}
+
+/**
+ * The one member a build axis keeps, or why the package cannot be written.
+ *
+ * The opposite shape from the runtime case, and deliberately so: nothing is written into the row
+ * for the reader to consult, because there is no choice left to make at runtime. The chosen member
+ * simply *becomes* the row's asset, and the variants this edition did not take stop occurring in the
+ * payload at all - which is what makes the existing byte scan leave them out of the package without
+ * being told anything about axes.
+ */
+function collapseBuildAxis(
+    set: AssetSet,
+    axisKey: string,
+    position: string | undefined,
+    candidates: readonly AssetSetCandidate[],
+): { id: string } | { unset: true } | { unfilled: string } | { ambiguous: string } {
+    if (!position) {
+        return { unset: true };
     }
-    return { axis };
+    const matches = matchAssetSetCoordinate(set, { [axisKey]: position }, candidates);
+    if (matches.length > 1) {
+        return { ambiguous: position };
+    }
+    // No fallback of any kind. A runtime axis falls back because every variant is in the package
+    // anyway, so the worst case is a player seeing another language's art; here the fallback would
+    // decide which bytes ship, and an edition quietly taking a position it never declared is how an
+    // adult variant reaches an all-ages package.
+    return matches.length === 1 ? { id: matches[0] } : { unfilled: position };
 }
 
 /**
@@ -209,6 +256,13 @@ export function materializeStoryAssetSets(input: {
     /** The library, as tag resolution sees it. */
     candidates: readonly AssetSetCandidate[];
     localization: Pick<GameLocalizationBundle, "sourceLocale" | "locales"> | undefined;
+    /**
+     * Where the edition being built sits on each build axis, already folded for it.
+     *
+     * Absent is an edition that declared nothing, which is refused per axis rather than defaulted -
+     * see {@link collapseBuildAxis}.
+     */
+    assetAxes?: Readonly<Record<string, string>>;
 }): AssetSetMaterializationResult {
     const problems: AssetSetMaterializationProblem[] = [];
     const materializedAssetIds = new Set<string>();
@@ -217,9 +271,10 @@ export function materializeStoryAssetSets(input: {
     // set reference in it is a fault this cannot describe - reported by the caller's own check
     // rather than guessed at here.
     const localization = input.localization;
+    let collapsedBuildAxis = false;
 
     if (setsById.size === 0) {
-        return { documents: input.documents, problems, materializedAssetIds };
+        return { documents: input.documents, problems, materializedAssetIds, collapsedBuildAxis };
     }
 
     const documents: Record<string, StoryDocument> = {};
@@ -230,23 +285,31 @@ export function materializeStoryAssetSets(input: {
             let sceneChanged = false;
             const blocks: typeof scene.blocks = {};
             for (const [blockId, block] of Object.entries(scene.blocks ?? {})) {
-                const variants = variantsForBlock({
+                const resolved = resolveBlockSets({
                     block,
                     setsById,
                     candidates: input.candidates,
                     localization,
+                    assetAxes: input.assetAxes,
                     storyId,
                     sceneId,
                     blockId,
                     problems,
                     materializedAssetIds,
                 });
-                if (!variants) {
+                if (!resolved) {
                     blocks[blockId] = block;
                     continue;
                 }
                 sceneChanged = true;
-                blocks[blockId] = { ...block, assetVariants: variants };
+                collapsedBuildAxis = collapsedBuildAxis || resolved.collapsed.size > 0;
+                let next = resolved.collapsed.size > 0
+                    ? rewriteBlockAssetIds(block, resolved.collapsed)
+                    : block;
+                if (resolved.variants) {
+                    next = { ...next, assetVariants: resolved.variants };
+                }
+                blocks[blockId] = next;
             }
             scenes[sceneId] = sceneChanged ? { ...scene, blocks } : scene;
             documentChanged = documentChanged || sceneChanged;
@@ -254,36 +317,73 @@ export function materializeStoryAssetSets(input: {
         documents[storyId] = documentChanged ? { ...document, scenes } : document;
     }
 
-    return { documents, problems, materializedAssetIds };
+    return { documents, problems, materializedAssetIds, collapsedBuildAxis };
 }
 
-function variantsForBlock(input: {
+/**
+ * Replace the set ids a row names with the assets a build axis collapsed them to.
+ *
+ * Written back into the payload rather than recorded beside it, because the point of a build axis is
+ * that the package must not be able to name the variants it did not take.
+ */
+function rewriteBlockAssetIds(block: StoryBlock, collapsed: ReadonlyMap<string, string>): StoryBlock {
+    const payload = { ...(block.payload as Record<string, unknown>) };
+    for (const field of ["assetId", "voiceAssetId", "maskAssetId"] as const) {
+        const current = payload[field];
+        if (typeof current === "string") {
+            const member = collapsed.get(current.trim());
+            if (member) {
+                payload[field] = member;
+            }
+        }
+    }
+    return { ...block, payload } as StoryBlock;
+}
+
+function resolveBlockSets(input: {
     block: StoryBlock;
     setsById: ReadonlyMap<string, AssetSet>;
     candidates: readonly AssetSetCandidate[];
     localization: Pick<GameLocalizationBundle, "sourceLocale" | "locales"> | undefined;
+    assetAxes: Readonly<Record<string, string>> | undefined;
     storyId: string;
     sceneId: string;
     blockId: string;
     problems: AssetSetMaterializationProblem[];
     materializedAssetIds: Set<string>;
-}): StoryAssetVariants | undefined {
+}): { variants?: StoryAssetVariants; collapsed: Map<string, string> } | undefined {
     let variants: StoryAssetVariants | undefined;
+    const collapsed = new Map<string, string>();
     for (const assetId of assetIdsInBlock(input.block)) {
         const set = input.setsById.get(assetId);
         if (!set) {
             continue;
         }
         const where = { storyId: input.storyId, sceneId: input.sceneId, blockId: input.blockId };
-        const axis = soleRuntimeAxis(set);
+        const axis = soleAxis(set);
         if ("reason" in axis) {
             input.problems.push({ kind: "unsupported", setId: set.id, setName: set.name, reason: axis.reason, ...where });
             continue;
         }
+        const axisKey = axis.axis.key;
+        if (axis.axis.residency === "build") {
+            const outcome = collapseBuildAxis(set, axisKey, input.assetAxes?.[axisKey], input.candidates);
+            if ("unset" in outcome) {
+                input.problems.push({ kind: "axisUnset", setId: set.id, setName: set.name, axisKey, ...where });
+            } else if ("ambiguous" in outcome) {
+                input.problems.push({ kind: "ambiguous", setId: set.id, setName: set.name, axisKey, value: outcome.ambiguous, ...where });
+            } else if ("unfilled" in outcome) {
+                input.problems.push({ kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: outcome.unfilled, ...where });
+            } else {
+                collapsed.set(set.id, outcome.id);
+                input.materializedAssetIds.add(outcome.id);
+            }
+            continue;
+        }
         if (!input.localization || input.localization.locales.length === 0) {
             // A set reference in a project with no languages: there is no coordinate to resolve it
-            // at, so it is reported as unfilled against the empty locale rather than silently kept.
-            input.problems.push({ kind: "unfilled", setId: set.id, setName: set.name, locale: "", ...where });
+            // at, so it is reported as unfilled against the empty value rather than silently kept.
+            input.problems.push({ kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: "", ...where });
             continue;
         }
         const filled = fillVariantMap(
@@ -297,11 +397,11 @@ function variantsForBlock(input: {
             input.localization,
         );
         if ("ambiguous" in filled) {
-            input.problems.push({ kind: "ambiguous", setId: set.id, setName: set.name, locale: filled.ambiguous, ...where });
+            input.problems.push({ kind: "ambiguous", setId: set.id, setName: set.name, axisKey, value: filled.ambiguous, ...where });
             continue;
         }
         if ("unfilled" in filled) {
-            input.problems.push({ kind: "unfilled", setId: set.id, setName: set.name, locale: filled.unfilled, ...where });
+            input.problems.push({ kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: filled.unfilled, ...where });
             continue;
         }
         variants = { ...(variants ?? {}), [set.id]: filled.map };
@@ -309,7 +409,8 @@ function variantsForBlock(input: {
             input.materializedAssetIds.add(memberId);
         }
     }
-    return variants;
+    // Nothing to say about this row when neither shape applied: the caller leaves it as it was.
+    return variants || collapsed.size > 0 ? { variants, collapsed } : undefined;
 }
 
 /**

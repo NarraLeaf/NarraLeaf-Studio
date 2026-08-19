@@ -163,6 +163,15 @@ export type GameRuntimeArtifactCompileInput = {
      */
     declaredScenes?: AppTagReachableScenes;
     /**
+     * Where {@link appTag} sits on each build-time asset axis, already resolved for it.
+     *
+     * Read only when a story names an asset set whose axis resolves at build time. Absent is "this
+     * edition states no position", which every preview compile passes and which a project with no
+     * build axes never needs - and which is refused rather than defaulted where one is needed, since
+     * the position decides which art the package carries and which it withholds.
+     */
+    assetAxes?: Readonly<Record<string, string>>;
+    /**
      * The language a failure this compile reports is written in.
      *
      * Carried on the input rather than read from Electron because this module also runs off the main
@@ -298,6 +307,18 @@ export type GameRuntimeArtifactCompileResult = {
      * author is reading.
      */
     notices: string[];
+    /**
+     * Whether an asset set collapsed a build axis, i.e. this artifact deliberately leaves part of
+     * the library out.
+     *
+     * Travels on the result so the worker can decide whether to audit. The audit is otherwise
+     * skipped for the release edition on the grounds that a build carrying the library whole has
+     * nothing to have got wrong - the same premise that decides trimming above, and a collapsed axis
+     * is the counter-example to both. They have to move together: trimming without the audit is the
+     * dangerous half, because it removes assets with nothing checking that the game still has the
+     * ones it reaches for.
+     */
+    collapsedBuildAxis: boolean;
 };
 
 /**
@@ -378,6 +399,10 @@ export async function compileGameRuntimeArtifact(
     }
     const bundleId = crypto.randomUUID();
     const notices: string[] = [];
+    // Set from inside the assembly below, and read after it to decide whether the library must be
+    // narrowed. A `let` rather than a return value because the assembler answers with a bundle, and
+    // this is a fact about how that bundle was produced rather than part of it.
+    let collapsedBuildAxis = false;
     const assembled = await assembleDevModeBundleFromProjectPath({
         projectPath: input.projectPath,
         bundleId,
@@ -396,14 +421,22 @@ export async function compileGameRuntimeArtifact(
         })),
         ...(input.declaredScenes ? { declaredScenes: input.declaredScenes } : {}),
         ...(input.locale ? { locale: input.locale } : {}),
+        ...(input.assetAxes ? { assetAxes: input.assetAxes } : {}),
         onNotice: message => notices.push(message),
+        onAssetSetCollapse: () => { collapsedBuildAxis = true; },
     });
     // A variant that removed story also carries an asset library sized for the story it removed, and
     // a package is public the moment someone opens it. The release edition removes nothing, so it
     // narrows nothing: there is no unreachable content for it to be carrying.
+    //
+    // Unless an asset set collapsed a build axis. That drops variants from every edition including
+    // the release one - the axis is a statement about the art, not about which edition is narrower -
+    // so the premise above stops holding and the library has to be narrowed either way. Skipping it
+    // there would leave the withheld variants sitting in the package, which is the one failure a
+    // build axis exists to prevent.
     const stripping = Boolean(input.packaging)
-        && Boolean(input.appTag)
-        && !isBuiltinAppTagId(input.appTag?.id ?? APP_TAG_ID_RELEASE);
+        && (collapsedBuildAxis
+            || (Boolean(input.appTag) && !isBuiltinAppTagId(input.appTag?.id ?? APP_TAG_ID_RELEASE)));
     const shipped = stripping
         ? await planShippedAssets(
             input.projectPath,
@@ -606,6 +639,7 @@ export async function compileGameRuntimeArtifact(
             pack,
             copiedAssetCount: Object.keys(assetManifest).length,
             notices,
+            collapsedBuildAxis,
         };
     } catch (error) {
         if (target.kind === "sealed") {
