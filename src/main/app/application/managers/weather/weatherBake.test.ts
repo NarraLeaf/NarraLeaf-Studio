@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WEATHER_FPS, type WeatherBakeSpec } from "@shared/weather/model";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { parseBakeFrame, startWeatherBake, weatherBakeArgs, type BakeChildProcess, type BakeSpawn } from "./weatherBake";
+import { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
 import { WeatherBakeManager } from "./WeatherBakeManager";
 
 /** Small and short: these tests are about the plumbing, and every frame is really rendered. */
@@ -298,7 +299,7 @@ describe("WeatherBakeManager", () => {
     });
 
     it("keeps its clips inside the project cache, which version control excludes", () => {
-        const manager = new WeatherBakeManager(app);
+        const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const target = manager.pathFor(dir, SPEC);
         expect(path.relative(dir, target).split(path.sep).slice(0, 2)).toEqual(["editor", "cache"]);
         expect(path.basename(target)).toBe(`${weatherBakeKey(SPEC)}.webm`);
@@ -307,62 +308,68 @@ describe("WeatherBakeManager", () => {
     it("bakes one clip for rows that describe the same weather", async () => {
         let spawns = 0;
         const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
-        const manager = new WeatherBakeManager(app);
+        const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC, { ...SPEC }, { ...SPEC, ref: { seed: "snow", params: {} } }] },
+            { projectRoot: dir, specs: [SPEC, { ...SPEC }, { ...SPEC, ref: { seed: "snow", params: {} } }], priority: "blocking" },
             { spawnProcess: encoder.spawnProcess, ...withTool() },
         );
 
         expect(spawns).toBe(1);
         expect(outcome.paths.size).toBe(1);
-        expect(outcome.snapshot.status).toBe("done");
+        expect(outcome.failures.size).toBe(0);
     });
 
     it("does no work at all when the clip is already on disk", async () => {
         let spawns = 0;
         const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
-        const manager = new WeatherBakeManager(app);
+        const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const target = manager.pathFor(dir, SPEC);
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.writeFile(target, "already here");
 
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC] },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking" },
             { spawnProcess: encoder.spawnProcess, ...withTool() },
         );
 
         expect(spawns).toBe(0);
         expect(outcome.paths.get(weatherBakeKey(SPEC))).toBe(target);
-        expect(outcome.snapshot.status).toBe("idle");
+        expect(outcome.failures.size).toBe(0);
     });
 
-    it("counts the clips it has to make, so a caller can say which one it is on", async () => {
-        const snapshots: string[] = [];
+    it("puts every clip through the scheduler, where the progress is visible", async () => {
         const encoder = fakeEncoder();
-        const manager = new WeatherBakeManager(app);
-        await manager.ensure(
-            { projectRoot: dir, specs: [SPEC, { ...SPEC, ref: { seed: "rain" } }] },
-            {
-                spawnProcess: encoder.spawnProcess,
-                ...withTool(),
-                onChanged: snapshot => snapshots.push(`${snapshot.status}:${snapshot.clip}/${snapshot.clips}`),
-            },
+        const scheduler = new StudioTaskScheduler();
+        const kinds: string[] = [];
+        scheduler.onChanged(overview => {
+            if (overview.active) {
+                kinds.push(`${overview.active.kind}:${overview.active.status}`);
+            }
+        });
+        const manager = new WeatherBakeManager(app, scheduler);
+
+        const outcome = await manager.ensure(
+            { projectRoot: dir, specs: [SPEC, { ...SPEC, ref: { seed: "rain" } }], priority: "idle" },
+            { spawnProcess: encoder.spawnProcess, ...withTool() },
         );
 
-        expect(snapshots[0]).toBe("baking:1/2");
-        expect(snapshots).toContain("baking:2/2");
-        expect(snapshots[snapshots.length - 1]).toBe("done:0/0");
+        expect(outcome.paths.size).toBe(2);
+        expect(kinds).toContain("weatherBake:running");
+        // And the queue is empty afterwards - a task that never settles would hold every later one.
+        expect(scheduler.getOverview().active).toBeNull();
     });
 
-    it("says a host without an encoder is unavailable rather than broken", async () => {
-        const manager = new WeatherBakeManager(app);
+    it("says a host without an encoder is missing a tool rather than broken", async () => {
+        const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC] },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking" },
             // A directory with no binaries in it: the resolver looks, finds nothing, and says so.
             { env: { NLS_FFMPEG_DIR: path.join(dir, "no-ffmpeg-here") } },
         );
 
-        expect(outcome.snapshot.status).toBe("unavailable");
         expect(outcome.paths.size).toBe(0);
+        // The sentence names the missing tool, which is what lets a caller say something other than
+        // "this seed is broken".
+        expect(outcome.failures.get(weatherBakeKey(SPEC))).toContain("ffmpeg");
     });
 });
