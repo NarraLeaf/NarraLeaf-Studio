@@ -1,6 +1,7 @@
 export * from "./document";
 export * from "./expression";
 export * from "./displayableTarget";
+export * from "./actionableTarget";
 export * from "./layerRef";
 export * from "./declarations";
 export * from "./labels";

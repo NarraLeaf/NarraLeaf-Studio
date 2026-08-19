@@ -618,6 +618,17 @@ export type StoryActionPayload =
               | "muteSound"
               | "seekSound";
           objectName?: string;
+          /**
+           * Which sound handle a control op addresses, bound to the `playSound` row that created it
+           * so the row follows a rename - or `{ builtin: "bgm" }` for the music channel, which is the
+           * one target with no block to bind to (see {@link StoryActionableBuiltin}).
+           *
+           * Additive beside `objectName`, on the same terms as the `image` arm's `target`. Note the
+           * legacy fallback is not simply `objectName`: a `playSound` row with no name keys on its
+           * `assetId`, so consumers must go through the shared stage-name rule rather than read the
+           * field directly.
+           */
+          target?: StoryActionableTargetRef;
           assetId?: string;
           /**
            * The project audio track this row plays on (`ProjectAudioTrack.id`) — the bus it lands on,
@@ -674,6 +685,16 @@ export type StoryActionPayload =
           action: "image";
           operation: "create" | "setSource" | "show" | "hide";
           objectName: string;
+          /**
+           * Which image a non-`create` op acts on, bound to the block that created it so the row
+           * follows a rename. `create` names a new image via {@link objectName}.
+           *
+           * Additive, and `objectName` keeps being written beside it: the stage key is what the
+           * NarraLang script view shows and the only identity a typed line can carry, so it stays the
+           * legacy fallback rather than being replaced. Absent - every document written before this -
+           * means "resolve by `objectName`", which is what every consumer did already.
+           */
+          target?: StoryDisplayableTargetRef;
           assetId?: string;
           color?: string;
           layer?: StoryLayerRef;
@@ -707,6 +728,8 @@ export type StoryActionPayload =
           action: "text";
           operation: "create" | "setText" | "show" | "hide" | "setFontSize" | "setFontColor";
           objectName: string;
+          /** Which text a non-`create` op acts on. Same rule as the `image` arm's `target`. */
+          target?: StoryDisplayableTargetRef;
           text?: string;
           fontSize?: number;
           fontColor?: string;
@@ -736,6 +759,8 @@ export type StoryActionPayload =
           action: "video";
           operation: "create" | "show" | "hide" | "play" | "pause" | "resume" | "stop" | "seek";
           objectName: string;
+          /** Which clip a non-`create` op addresses. Same rule as the `image` arm's `target`. */
+          target?: StoryActionableTargetRef;
           assetId?: string;
           muted?: boolean;
           /** `seek` — where to jump to, in milliseconds. The engine's `seek` takes seconds; the compiler converts. */
@@ -816,6 +841,8 @@ export type StoryActionPayload =
           action: "vfx";
           operation: "create" | "show" | "hide" | "pause" | "resume" | "setRate";
           objectName: string;
+          /** Which overlay a non-`create` op addresses. Same rule as the `image` arm's `target`. */
+          target?: StoryActionableTargetRef;
           /** The looping clip — a video asset, the same pipeline `/video` uses. */
           assetId?: string;
           /**
@@ -1125,6 +1152,19 @@ export type StoryDisplayableTargetRef = {
     kind?: StoryDisplayableTargetKind;
     name: string;
     /**
+     * The last-known AUTHOR-FACING name, for the case where the reference cannot be resolved.
+     *
+     * `name` above is the stage KEY, and the two are not interchangeable: a character with no stage
+     * name keys on its `characterId`, so `name` can be a UUID. While the reference resolves, the
+     * creator block supplies both halves and this field is not read; once it dangles, `name` is the
+     * only thing left to show - and showing a UUID is how a deleted creator block turns into a row
+     * the author cannot read. Same `name`/`label` split `displayableSourceIdentity` states.
+     *
+     * Additive: a reference written before this carries none, and falls back to `name` exactly as it
+     * always did.
+     */
+    label?: string;
+    /**
      * Stable identity of the displayable: the id of the action block that introduced it
      * (character enter / image / text / layer). Displayables can only be declared statically,
      * so this always points at a real creator block. When present it is the source of truth -
@@ -1153,6 +1193,53 @@ export type StoryDisplayableTargetRef = {
 export type StoryLayerRef =
     | { kind: "default"; layer: "background" | "displayable" }
     | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
+
+/** The three stage objects that are `Actionable`s rather than Displayables, and so cannot use {@link StoryDisplayableTargetRef}. */
+export type StoryActionableKind = "video" | "vfx" | "audio";
+
+/**
+ * A stage singleton an `Actionable` row can address without any creator block of its own.
+ *
+ * Only the background-music channel qualifies: a scene declares its music on the scene record, and
+ * the reserved name `bgm` addresses that handle whether or not this scene holds a `/bgm` row - so a
+ * reference to it can never be bound to a block the way a named sound is. Same role `builtin` plays
+ * on {@link StoryDisplayableTargetRef}, for the same reason.
+ */
+export type StoryActionableBuiltin = "bgm";
+
+/**
+ * Reference to a video / vfx / sound handle, the `Actionable` counterpart of
+ * {@link StoryDisplayableTargetRef}: `sourceBlockId` is the identity, `name` the legacy fallback and
+ * last-known label, `builtin` the escape hatch for a singleton that has no creator block.
+ *
+ * A sibling type rather than a widening of {@link StoryDisplayableTargetRef}, because that type's
+ * `kind` is {@link StoryDisplayableTargetKind}, which deliberately excludes video and vfx so that "a
+ * vfx cannot be transformed" stays a fact of the type system. This ref carries no `kind` at all: the
+ * owning payload's `action` already states it, and a second answer to one question is how the two
+ * drift apart. {@link StoryLayerRef} omits it for exactly the same reason.
+ */
+export type StoryActionableTargetRef = {
+    /**
+     * The stage key as it stood when the row was written. Read only when `sourceBlockId` resolves to
+     * nothing - a document authored before stable ids, or a creator block since deleted.
+     */
+    name: string;
+    /**
+     * The last-known AUTHOR-FACING name, for the case where the reference cannot be resolved.
+     *
+     * Not a duplicate of `name`: an unnamed `playSound` row registers its handle under its `assetId`,
+     * so a sound's stage key can be an asset UUID. One field cannot be both the registry key that
+     * finds the handle and the word a person reads, which is why {@link StoryDisplayableTargetRef}
+     * carries the same pair.
+     *
+     * Additive: a reference written before this carries none, and falls back to `name`.
+     */
+    label?: string;
+    /** Id of the action block that created this handle (`video`/`vfx` create, `audio` playSound). */
+    sourceBlockId?: StoryBlockId;
+    /** When set it is the source of truth; `name`/`sourceBlockId` are display fallbacks only. */
+    builtin?: StoryActionableBuiltin;
+};
 
 /** Tag id per axis id. Partial selections are legal and mean "leave every other axis alone". */
 export type StoryCharacterTagSelection = Record<string, string>;
