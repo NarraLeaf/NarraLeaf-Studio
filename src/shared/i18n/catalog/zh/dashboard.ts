@@ -48,7 +48,7 @@ export const dashboard = {
         dialogueLines: "对白行",
         totalWords: "字数",
         characters: "角色",
-        assets: "资源",
+        assets: "资产",
         blueprintNodes: "蓝图节点",
         uiSurfaces: "界面",
         variables: "变量",

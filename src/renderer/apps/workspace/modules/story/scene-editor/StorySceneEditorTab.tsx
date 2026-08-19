@@ -53,6 +53,7 @@ import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
+import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
 import {
     getSegmentSlot,
     replaceInSegment,
@@ -1737,7 +1738,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         /** The row's block, by id, from whatever scene is current. */
         const blockOf = (blockId: StoryBlockId) => latest().editor.scene?.blocks[blockId] ?? null;
         return {
-            select: (blockId, event) => latest().editor.selectRow(blockId, event),
+            // The row's `click`, which selects only when its `mousedown` declined - see
+            // `storyRowSelectionGesture`. Wiring this to `selectRow` is what made Ctrl+click a no-op:
+            // the row would then be selected twice per press, and a toggle applied twice is nothing.
+            select: (blockId, event) => latest().editor.selectRowFromClick(blockId, event),
             contextMenu: (blockId, event) => latest().openRowContextMenu(event, blockId),
             mouseDown: (blockId, event) => latest().editor.beginDragSelection(blockId, event),
             mouseEnter: blockId => latest().editor.extendDragSelection(blockId),
@@ -1940,6 +1944,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         {/* Resolved once for the whole scene: every committed row reads itself back as a command line,
             and each of these lookups is an IPC round trip or a service subscription per mount. */}
         <StoryCommandLineProvider slashAtAlias={editor.slashAtAlias} commandContext={editor.commandContext}>
+        {/* Following a name to the thing it names is READING, so it sits outside the row-action
+            surface above and keeps working while the workspace is frozen — that is the state in which
+            looking a reference up is all there is left to do. */}
+        <StoryRefNavigationProvider document={document} sceneId={scene.id}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
         <div
             ref={editor.rootRef}
@@ -2418,6 +2426,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
         </div>
         </StoryRowActionsContext.Provider>
+        </StoryRefNavigationProvider>
         </StoryCommandLineProvider>
         </StoryEditorTextStyleProvider>
     );

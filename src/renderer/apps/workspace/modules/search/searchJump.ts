@@ -13,6 +13,8 @@ import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEd
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
 import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
 import { openSceneFlowTab } from "../story-flow/openSceneFlowTab";
+import { createCharacterEditorTab } from "../characters/state/useCharacterFocus";
+import { STORY_VARIABLES_PANEL_ID } from "../story-variables/storyVariablesPanelId";
 
 export interface SearchJumpDeps {
     openEditorTab: (tab: EditorTabDefinition<any>) => void;
@@ -23,7 +25,6 @@ export interface SearchJumpDeps {
 
 const LOCALIZATION_PANEL_ID = "narraleaf-studio:localization";
 const ASSETS_PANEL_ID = "narraleaf-studio:assets";
-const CHARACTERS_PANEL_ID = "narraleaf-studio:characters";
 
 /**
  * Navigate to a search hit. Shared by the search panel and the command palette's search mode.
@@ -71,8 +72,11 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             if (!character) {
                 return false;
             }
-            // Characters have no editor tab — the panel selection IS how one is opened.
-            deps.setPanelVisibility(CHARACTERS_PANEL_ID, true);
+            // The character's own editor, which is what "open a character" means everywhere else in
+            // the workspace — the cast list has opened one since it gained a tab, and a search hit
+            // that instead revealed the panel and selected a row was the odd one out. The selection
+            // still follows so the inspector rail shows who was opened.
+            deps.openEditorTab(createCharacterEditorTab(character));
             context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "character", data: character });
             return true;
         }
@@ -113,6 +117,13 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
         }
         case "localizationKey":
             deps.setPanelVisibility(LOCALIZATION_PANEL_ID, true);
+            return true;
+        case "storyVariable":
+            // A saved or persistent variable is declared in the variables panel rather than by any
+            // row, so the panel IS its address — the same bargain `localizationKey` makes above. The
+            // panel cannot yet be told which entry to reveal; the target carries the identity so that
+            // the day it can, nothing that produces one of these has to change.
+            deps.setPanelVisibility(STORY_VARIABLES_PANEL_ID, true);
             return true;
         case "asset": {
             const context = deps.context;
