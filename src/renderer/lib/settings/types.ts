@@ -5,6 +5,21 @@ export enum SettingValueType {
     Boolean = "boolean",
     Enum = "enum",
     /**
+     * A download address offered as a short list of known sources, with "custom" as the last
+     * answer and a field for it.
+     *
+     * Still a plain string in storage, and still the "empty means official" convention every
+     * source setting documents (see `resolveDownloadSource`) - the official entry stores `""`.
+     * `options` carries the preset addresses in the order they are offered; anything stored that
+     * is not one of them is a custom address and shows in the field.
+     *
+     * The type exists because these settings have two audiences at once: an author on a slow
+     * network needs a mirror they could not have been expected to know the address of, and an
+     * author running their own registry needs to type one. A bare text field served only the
+     * second, and a bare dropdown would take the second away.
+     */
+    Source = "source",
+    /**
      * An enum whose options are colors, shown as a row of swatches rather than a dropdown.
      *
      * Still a fixed option list — the stored value is an id, not a hex — because the colors a
@@ -47,6 +62,7 @@ export type TypeofSettingSchema<T extends SettingValueType> =
     T extends SettingValueType.Integer ? number :
     T extends SettingValueType.Boolean ? boolean :
     T extends SettingValueType.Enum ? string :
+    T extends SettingValueType.Source ? string :
     T extends SettingValueType.Color ? string :
     T extends SettingValueType.Font ? string :
     T extends SettingValueType.Slider ? number :
