@@ -236,6 +236,11 @@ export class DevModeResolveWeatherClipHandler extends IPCHandler<IPCEventType.de
             return { success: false, error: outcome.failures.get(key) ?? "The weather could not be produced" };
         }
         const hash = window.app.storageManager.allocateHash(clipPath, true, "read");
+        // A freshly allocated grant is `allocated`, and the protocol handler serves only `ready` -
+        // every other allocator marks it after checking the file, and skipping it here yields a URL
+        // that looks correct everywhere (the element carries it, the log shows the request arriving)
+        // and answers 403 forever. The bake just wrote this file, so the existence check is done.
+        window.app.storageManager.updateStatus(hash, "ready");
         const granted = await promoteDevModeAssetGrant(window, `${AppProtocol}://${AppHost.Fs}/${hash}`);
         return { success: true, data: { url: granted } };
     }
