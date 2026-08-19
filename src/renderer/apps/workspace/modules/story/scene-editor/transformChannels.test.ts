@@ -5,6 +5,11 @@ import { createTranslator } from "@shared/i18n";
 import {
     addableTransformChannels,
     cameraLookCss,
+    formatBackdropBlur,
+    formatStoryClipShape,
+    parseBackdropBlur,
+    parseStoryClipShape,
+    seedStoryClipShape,
     LOOK_INTENSITY_STEP,
     readCameraLookCss,
     statedTransformChannels,
@@ -159,5 +164,38 @@ describe("transform channels", () => {
     it("gives every channel a distinct id", () => {
         const ids = TRANSFORM_CHANNELS.map(channel => channel.id);
         expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it("reads a clip path back as the shape it is", () => {
+        expect(parseStoryClipShape("inset(10% 20% 30% 40%)")).toEqual({ kind: "inset", top: 10, right: 20, bottom: 30, left: 40 });
+        expect(parseStoryClipShape("circle(45% at 50% 60%)")).toEqual({ kind: "circle", radius: 45, x: 50, y: 60 });
+        expect(parseStoryClipShape("ellipse(40% 25% at 50% 50%)")).toEqual({ kind: "ellipse", radiusX: 40, radiusY: 25, x: 50, y: 50 });
+    });
+
+    it("keeps a path the shape controls cannot hold", () => {
+        // The escape hatch is what stops the visual control from making a hand-written clip
+        // unreachable: a polygon opens on the text box rather than being rewritten into a circle.
+        const polygon = "polygon(50% 0%, 100% 100%, 0% 100%)";
+        expect(parseStoryClipShape(polygon)).toEqual({ kind: "raw", value: polygon });
+        expect(formatStoryClipShape({ kind: "raw", value: polygon })).toBe(polygon);
+    });
+
+    it("round-trips every shape through its own string", () => {
+        for (const kind of ["inset", "circle", "ellipse"] as const) {
+            const shape = seedStoryClipShape(kind, { kind: "raw", value: "" });
+            expect(parseStoryClipShape(formatStoryClipShape(shape))).toEqual(shape);
+        }
+    });
+
+    it("opens an empty clip on a shape that crops nothing", () => {
+        expect(parseStoryClipShape("")).toEqual({ kind: "inset", top: 0, right: 0, bottom: 0, left: 0 });
+        expect(parseStoryClipShape(undefined)).toEqual({ kind: "inset", top: 0, right: 0, bottom: 0, left: 0 });
+    });
+
+    it("reads a backdrop blur only when the chain is exactly one", () => {
+        expect(parseBackdropBlur("blur(8px)")).toBe(8);
+        expect(parseBackdropBlur(formatBackdropBlur(2.5))).toBe(2.5);
+        expect(parseBackdropBlur("blur(8px) saturate(1.4)")).toBeNull();
+        expect(parseBackdropBlur("")).toBeNull();
     });
 });
