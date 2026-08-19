@@ -149,7 +149,37 @@ export function AssetsListView({
 }
 
 function AssetSetItem({ entry }: { entry: ResolvedAssetSet }) {
-    const { handleAssetSetSelect, showAssetSetContextMenu } = useAssetsPanelContext();
+    const {
+        assets,
+        assetSetNaming,
+        expandedAssetSets,
+        setExpandedAssetSets,
+        handleAssetSetSelect,
+        handleAssetClick,
+        showAssetSetContextMenu,
+        isMultiSelectMode,
+    } = useAssetsPanelContext();
+
+    // The whole library of that section, not the filtered list: a set's rows are its own, and one of
+    // them turning into "no file" because a search is narrowing the panel would read as a hole in the
+    // project.
+    const assetsById = useMemo(
+        () => new Map(assets[entry.category].map(asset => [asset.id, asset])),
+        [assets, entry.category],
+    );
+
+    const toggle = useCallback(() => {
+        setExpandedAssetSets(current => {
+            const next = new Set(current);
+            if (next.has(entry.set.id)) {
+                next.delete(entry.set.id);
+            } else {
+                next.add(entry.set.id);
+            }
+            return next;
+        });
+    }, [entry.set.id, setExpandedAssetSets]);
+
     return (
         <AssetSetListRow
             entry={entry}
@@ -158,7 +188,12 @@ function AssetSetItem({ entry }: { entry: ResolvedAssetSet }) {
             // (copy, export, delete bytes) means anything for a set, so it is never one of them.
             selected={false}
             focused={false}
+            open={expandedAssetSets.has(entry.set.id)}
+            naming={assetSetNaming}
+            assetsById={assetsById}
             onSelect={() => handleAssetSetSelect(entry)}
+            onToggle={toggle}
+            onOpenMember={asset => handleAssetClick(asset, isMultiSelectMode)}
             onContextMenu={event => showAssetSetContextMenu(event, entry)}
         />
     );
