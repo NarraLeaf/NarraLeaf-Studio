@@ -6,6 +6,13 @@ export interface ContextMenuTargetState {
     category: AssetCategory;
     item: Asset | AssetGroup | null;
     isGroup: boolean;
+    /**
+     * The set value this row is being drawn as the answer to, when it is drawn inside a set.
+     *
+     * A member is an ordinary file and its menu is the ordinary one; this is what adds the single
+     * row that belongs to the place rather than to the file — the sub-set that hangs at this value.
+     */
+    assetSetValue?: { setId: string; value: string };
 }
 
 /** One row an action will act on, carrying enough to call the group or asset service method. */

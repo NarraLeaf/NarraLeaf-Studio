@@ -380,6 +380,8 @@ export const assets = {
         menu: {
             create: "選択したファイルからセットを作成",
             createSub: "選択したファイルからここにセットを作成",
+            createHere: "アセットセットを新規作成",
+            dissolve: "セットを解除",
         },
         create: {
             title: "アセットセットの新規作成",
@@ -388,6 +390,7 @@ export const assets = {
                 locale: "このプロジェクトの言語は 1 つ。",
                 release: "このプロジェクトにバリアントはない。",
             },
+            type: "ファイルの種類",
             delimiter: "区切り文字",
             delimiterSpace: "空白",
             segments: "ファイル名の構成",
@@ -418,6 +421,8 @@ export const assets = {
             add: "セット {name} を追加",
             rename: "セット {name} の名前を変更",
             delete: "セット {name} を削除",
+            dissolve: "セット {name} を解除",
+            move: "セット {name} を移動",
         },
     },
     menu: {

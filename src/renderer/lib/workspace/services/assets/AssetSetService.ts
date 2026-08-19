@@ -7,6 +7,7 @@ import {
     makeAssetSetAxis,
     createEmptyAssetSetDocument,
     assetSetParent,
+    assetSetSubtree,
     isLegalNesting,
     normalizeProjectAssetSets,
     uniqueAssetSetName,
@@ -264,6 +265,79 @@ export class AssetSetService extends Service<AssetSetService> {
             return false;
         }
         this.applySetMutation(sets => sets.filter(set => set.id !== id), assetSetLabel("delete", existing.name));
+        return true;
+    }
+
+    /**
+     * Drop a set and the sets drawn inside it.
+     *
+     * What removing the row means when the files go with it: a sub-set resolves against the files
+     * its parent's members are among, so leaving one behind would leave a row that promises variants
+     * nothing answers.
+     */
+    public deleteSetSubtree(id: string): boolean {
+        const existing = this.getSet(id);
+        if (!existing) {
+            return false;
+        }
+        const subtree = new Set(assetSetSubtree(existing, this.listSets()).map(set => set.id));
+        this.applySetMutation(
+            sets => sets.filter(set => !subtree.has(set.id)),
+            assetSetLabel("delete", existing.name),
+        );
+        return true;
+    }
+
+    /**
+     * Drop the declaration and keep the files.
+     *
+     * The same edit as {@link deleteSet} and a different thing to the author, which is why it is
+     * named here rather than left to the caller to label: the members carry the tags that made them
+     * members, so undo brings the set back whole, and a file the set answered with is an ordinary
+     * file again the moment the row is gone.
+     */
+    public dissolveSet(id: string): boolean {
+        const existing = this.getSet(id);
+        if (!existing) {
+            return false;
+        }
+        this.applySetMutation(sets => sets.filter(set => set.id !== id), assetSetLabel("dissolve", existing.name));
+        return true;
+    }
+
+    /**
+     * File a set in another folder, taking the sets nested inside it along.
+     *
+     * One step for the whole subtree, because a sub-set is drawn inside its parent and nowhere
+     * else: moving only the row the author dragged would leave the children filed in a folder that
+     * does not draw them, and they would surface there the moment the parent stopped holding them.
+     *
+     * Only where the row is drawn. A set holds no files, so nothing about what it resolves to
+     * changes here - the panel moves the members it answers with, which is a library edit.
+     */
+    public moveSetToGroup(id: string, groupId?: string): boolean {
+        const existing = this.getSet(id);
+        if (!existing) {
+            return false;
+        }
+        const next = groupId?.trim() || undefined;
+        const moving = assetSetSubtree(existing, this.listSets());
+        // Dropped back where it already is. Answered as done rather than written, so the gesture
+        // does not leave an undo step that changes nothing.
+        if (moving.every(set => (set.groupId ?? undefined) === next)) {
+            return true;
+        }
+        const subtree = new Set(moving.map(set => set.id));
+        this.applySetMutation(
+            sets => sets.map(set => {
+                if (!subtree.has(set.id)) {
+                    return set;
+                }
+                const { groupId: _current, ...rest } = set;
+                return next ? { ...rest, groupId: next } : rest;
+            }),
+            assetSetLabel("move", existing.name),
+        );
         return true;
     }
 
