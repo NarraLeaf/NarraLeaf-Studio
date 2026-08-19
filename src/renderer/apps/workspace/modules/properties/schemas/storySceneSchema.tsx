@@ -11,6 +11,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { Select } from "@/lib/components/elements";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -59,7 +60,18 @@ function SceneDefaultBackgroundField({ data }: CustomFieldProps<StorySceneEditor
     );
     // The picked image by name, never by id — the rail's own rule (a bare uuid names nothing).
     const asset = assetId ? assetsService?.getAssets()[AssetType.Image]?.[assetId] ?? null : null;
-    const label = asset?.name ?? (assetId ? t("story.background.missingImage") : t("story.background.none"));
+    // A scene's background is the field a set is most often wanted for, and assembly resolves the
+    // scene's own two asset fields, so the picker offers them here.
+    const { virtualGroups, resolveAssetPreviewUrl, findSet } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
+    const set = assetId && !asset ? findSet(assetId) : null;
+    const label = asset?.name
+        ?? set?.set.name
+        ?? (assetId ? t("story.background.missingImage") : t("story.background.none"));
 
     const handleSelect = (assets: Asset[]) => {
         const selected = assets[0];
@@ -113,6 +125,7 @@ function SceneDefaultBackgroundField({ data }: CustomFieldProps<StorySceneEditor
                 anchorRef={selectButtonRef}
                 title={t("story.sceneEditor.selectDefaultBackground")}
                 multiple={false}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </div>
     );
@@ -139,7 +152,17 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
         [context, isInitialized],
     );
     const asset = bgm?.assetId ? assetsService?.getAssets()[AssetType.Audio]?.[bgm.assetId] ?? null : null;
-    const label = asset?.name ?? (bgm?.assetId ? t("story.music.missingAudio") : t("story.music.none"));
+    // A scene's music varies by language as readily as its art does (a theme with a sung vocal), and
+    // assembly resolves this field, so the picker offers the project's audio sets here too.
+    const {
+        virtualGroups: musicSetGroups,
+        resolveAssetPreviewUrl: resolveMusicSetPreviewUrl,
+        findSet: findMusicSet,
+    } = useAssetSetPickerSource({ context, isInitialized, assetType: AssetType.Audio, enabled: true });
+    const musicSet = bgm?.assetId && !asset ? findMusicSet(bgm.assetId) : null;
+    const label = asset?.name
+        ?? musicSet?.set.name
+        ?? (bgm?.assetId ? t("story.music.missingAudio") : t("story.music.none"));
     const region = normalizeAudioClipRegion(asset?.extras);
     const tracks = useProjectAudioTracks();
     const track = resolveAudioTrack(tracks, bgm?.audioTrackId, "bgm");
@@ -235,6 +258,7 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
             <AssetSelector
                 visible={selectorOpen}
                 assetType={AssetType.Audio}
+                {...(musicSetGroups ? { virtualGroups: musicSetGroups, resolveAssetPreviewUrl: resolveMusicSetPreviewUrl } : {})}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={assets => {
                     const selected = assets[0];

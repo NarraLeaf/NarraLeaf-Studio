@@ -60,6 +60,15 @@ interface AssetsPanelContextType {
 
     // Handlers
     handleItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
+    /**
+     * The selection keys of the rows this view is drawing, in the order it draws them.
+     *
+     * A shift range is a slice of this list. The view is the only thing that knows what is on
+     * screen - which section is open, which folder is walked into, which set is stepped inside - and
+     * a range sliced out of the library records instead marks rows the author cannot see. Published
+     * from a layout effect, and cleared when the view goes away.
+     */
+    publishRowOrder: (keys: readonly string[]) => void;
     handleAssetClick: (asset: Asset, isMultiSelectMode: boolean) => void;
     handleGroupFocus: (groupId: string) => void;
     /** Puts a set in the properties panel, which is where its axes are edited. */

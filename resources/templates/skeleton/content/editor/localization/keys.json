@@ -51,6 +51,15 @@
     "config.voice": {
       "sourceText": "Voice"
     },
+    "load.autoSaves": {
+      "sourceText": "Auto saves"
+    },
+    "load.title": {
+      "sourceText": "Load"
+    },
+    "log.title": {
+      "sourceText": "Log"
+    },
     "menu.continue": {
       "sourceText": "Continue"
     },
@@ -86,6 +95,24 @@
     },
     "nav.title": {
       "sourceText": "Title"
+    },
+    "save.title": {
+      "sourceText": "Save"
+    },
+    "scenes.sceneClubroom": {
+      "sourceText": "The clubroom"
+    },
+    "scenes.sceneCorridor": {
+      "sourceText": "The corridor"
+    },
+    "scenes.sceneLastLight": {
+      "sourceText": "Last light"
+    },
+    "scenes.title": {
+      "sourceText": "Scenes"
+    },
+    "slot.empty": {
+      "sourceText": "No Data"
     }
   },
   "schemaVersion": 1
