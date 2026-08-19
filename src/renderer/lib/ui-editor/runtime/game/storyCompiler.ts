@@ -34,6 +34,8 @@ import {
 } from "narraleaf-react";
 import type { MaskPattern } from "narraleaf-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
+import { weatherRefIdentity } from "@shared/weather/bakeKey";
+import type { WeatherSeedRef } from "@shared/weather/model";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
@@ -632,6 +634,14 @@ export type StagePreviewCompileInput = {
     characters?: readonly DevModeCharacterSummary[];
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: CompileInput["resolveAssetUrl"];
+    /**
+     * Optional here for the same reason it is optional on {@link CompileInput}, and usually absent.
+     *
+     * A stage preview is a still of a settled stage; an ambience overlay is a moving thing that has
+     * to be produced first. A host that has a baker may pass one and get the overlay; one that does
+     * not gets a preview without it, and a diagnostic saying so rather than a silent omission.
+     */
+    resolveWeatherClip?: CompileInput["resolveWeatherClip"];
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
     persistentVariables?: PersistentVariableRuntimeTable;
@@ -769,6 +779,8 @@ type SceneCompileContext = {
     sounds: Map<string, Sound>;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    /** Absent when the host compiles for something other than playback; see {@link CompileInput}. */
+    resolveWeatherClip: CompileInput["resolveWeatherClip"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
@@ -791,6 +803,16 @@ type CompileInput = {
     characters?: readonly DevModeCharacterSummary[];
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: (assetId: string, assetType?: StoryAssetKind) => Promise<string | null | undefined> | string | null | undefined;
+    /**
+     * The clip a weather seed describes, as a URL this host's engine can fetch.
+     *
+     * A seed is not an asset - there is no id to look up, and the file it names may not exist yet -
+     * so producing one is the HOST's business: Dev Mode bakes and hands back a granted URL, a build
+     * bakes and packages, and the hosts that only want the graph (save anchors, the shipped-content
+     * audit) pass nothing and get a diagnostic instead of a clip. The compiler deliberately does not
+     * know the size to bake at either; that follows the project's stage, which the host owns.
+     */
+    resolveWeatherClip?: (ref: WeatherSeedRef) => Promise<string | null | undefined> | string | null | undefined;
     /** Blueprint document; enables Story Action Blueprints and shared Persistent resolution. */
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
@@ -1019,6 +1041,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             videos: new Map(),
             vfx: vfxByName,
             vfxAssetIds,
+            resolveWeatherClip: input.resolveWeatherClip,
             // Seeded with the scene's configured track under the name the sound-control family
             // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
             sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.sound]]) : new Map(),
@@ -1088,7 +1111,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistentVariables,
             animations,
             resolveAssetUrl,
-            assetUrlCache,
+                assetUrlCache,
             localization,
             voicedUnitIds,
             nextActionIndex,
@@ -1185,7 +1208,7 @@ async function buildLaunchEntryScene(params: {
             assetType: "image",
             blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
             resolveAssetUrl,
-            assetUrlCache,
+                assetUrlCache,
             diagnostics,
         })
         : snapshot.background?.color
@@ -1243,6 +1266,7 @@ async function buildLaunchEntryScene(params: {
         videos: new Map(),
         vfx: params.vfx,
         vfxAssetIds: params.vfxAssetIds,
+        resolveWeatherClip: params.input.resolveWeatherClip,
         sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
         soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
         soundAssetIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.assetId]]) : new Map(),
@@ -1429,7 +1453,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
             assetType: "image",
             blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
             resolveAssetUrl,
-            assetUrlCache,
+                assetUrlCache,
             diagnostics,
         })
         : snapshot.background?.color
@@ -1480,6 +1504,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         audioTracks: input.audioTracks ?? BUILTIN_AUDIO_TRACKS,
         animations,
         resolveAssetUrl,
+        resolveWeatherClip: input.resolveWeatherClip,
         assetUrlCache,
         diagnostics,
         actionIdBindings,
@@ -3588,21 +3613,27 @@ async function getVfx(
 ): Promise<Vfx | null> {
     const name = normalizeObjectName(payload.objectName);
     const existing = ctx.vfx.get(name);
+    // What this row asks to play, whichever kind of source it names. Both arms answer the same
+    // question - "is this the same ambience as the row that made the overlay?" - so they share one
+    // identity rather than two parallel checks that could disagree.
+    const source = payload.seed ? `seed:${weatherRefIdentity(payload.seed)}` : payload.assetId;
     if (existing) {
         // A create row for a name that already has an overlay is the author setting the same
         // ambience up twice - fine, and it addresses the one overlay. Naming a DIFFERENT clip is
         // two answers to one question, and it is reported rather than resolved: silently keeping
         // the first would leave a row whose clip never plays and nothing to say why.
-        if (payload.operation === "create" && payload.assetId && ctx.vfxAssetIds.get(name) !== payload.assetId) {
+        if (payload.operation === "create" && source && ctx.vfxAssetIds.get(name) !== source) {
             diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" already plays a different clip; this row reuses the first one.`);
         }
         return existing;
     }
-    if (!payload.assetId) {
+    if (!source) {
         diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" has no clip.`);
         return null;
     }
-    const url = await resolveAsset(ctx, payload.assetId, "video", blockId);
+    const url = payload.seed
+        ? await resolveWeatherClip(ctx, payload.seed, name, blockId)
+        : await resolveAsset(ctx, payload.assetId!, "video", blockId);
     if (!url) {
         return null;
     }
@@ -3622,8 +3653,36 @@ async function getVfx(
     // scene ORDER, so reordering scenes would move it under a save that referenced it.
     setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${name}`);
     ctx.vfx.set(name, vfx);
-    ctx.vfxAssetIds.set(name, payload.assetId);
+    ctx.vfxAssetIds.set(name, source);
     return vfx;
+}
+
+/**
+ * The URL for a weather seed's clip, or null with a diagnostic saying why there is none.
+ *
+ * Refused rather than guessed at. A `Vfx` REQUIRES a source - the engine throws on one without -
+ * so a compile that could not produce the clip has to leave the overlay out and say so, which is a
+ * scene that plays without weather rather than a runtime that will not start.
+ */
+async function resolveWeatherClip(
+    ctx: SceneCompileContext,
+    ref: WeatherSeedRef,
+    name: string,
+    blockId: string,
+): Promise<string | null> {
+    if (!ctx.resolveWeatherClip) {
+        // The host asked for a graph rather than something playable (save anchors, the content
+        // audit). Said out loud so a compile that quietly lost an overlay is never mistaken for one
+        // that never had it.
+        diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" needs its weather produced, which this compile cannot do.`);
+        return null;
+    }
+    const url = await ctx.resolveWeatherClip(ref);
+    if (!url) {
+        diagnostic(ctx, "warning", blockId, `Weather for ambience effect "${name}" could not be produced.`);
+        return null;
+    }
+    return url;
 }
 
 async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
