@@ -176,6 +176,7 @@ import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from 
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
+import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -566,6 +567,32 @@ export function GameApp(props: GameAppProps): ReactNode {
         stageVisible: gameStageVisibleRef,
         gameEntered: gameEnteredRef,
     }), []);
+    /**
+     * Whether the story is the thing the player is looking at, rather than merely the thing behind
+     * what they are looking at.
+     *
+     * `isInGame` answers "is a session mounted with its stage on screen", and stays true under a
+     * settings screen the player opened mid-game - which is correct for it, and is what lets a quick
+     * menu drawn over the stage know it has a game to act on. Anything that drives the story forward
+     * on its own needs the narrower question, because the stage being on screen underneath a menu is
+     * not the player watching it. MEASURED: skipping turned on from the quick menu and then Config
+     * opened ran the story to its end behind the settings screen.
+     *
+     * Both stores are read at call time, never captured: they are external stores exactly so a
+     * reader outside React gets the answer for this instant. See `sessionGate` for why anything a
+     * Game UI slot surface can reach has to be built that way.
+     */
+    const isStoryOnScreen = useCallback((): boolean => {
+        if (!isInGame()) {
+            return false;
+        }
+        return !isStageCovered({
+            pageEntries: navigation.getState().navStack,
+            pagesHiddenForGame: studioPageHiddenForGameRef.current,
+            gameHiddenKeys: gameHiddenNavKeysRef.current,
+            layers: layerStack.getSnapshot().layers,
+        });
+    }, [isInGame, layerStack, navigation]);
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
@@ -3289,7 +3316,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
         ? visibleEntries
             .filter(entry => entry.sessionKey === host.sessionKey)
-            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
+            .filter(entry => isPageEntryDrawn({
+                entryKey: entry.key,
+                pagesHiddenForGame: studioPageHiddenForGame,
+                gameHiddenKeys: gameHiddenNavKeys,
+            }))
             .map(entry => {
                 const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
                 return visibleSurface ? { entry, surface: visibleSurface } : null;
@@ -3345,7 +3376,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
-        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)) &&
+        isPageEntryDrawn({
+            entryKey: activeEntry.key,
+            pagesHiddenForGame: studioPageHiddenForGame,
+            gameHiddenKeys: gameHiddenNavKeys,
+        }) &&
         // The app-level keyDown/keyUp dispatch belongs to the page lane, so it stops the moment a
         // layer takes the keyboard - otherwise Escape would reach the page under an open modal.
         compositeInput.keyboardOwnerKey === activeEntry.key,
@@ -3820,9 +3855,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
         const controller = createSkipRunController({
             matchesSkipKey: key => game.keyMap.match(STUDIO_SKIP_KEY_BINDING, key),
-            // `skip` is the author's permission to skip at all, and `isInGame` is what keeps a held
-            // key on a title screen from advancing the story behind it.
-            canSkip: () => isInGame() && readPreference("skip") !== false,
+            // `skip` is the author's permission to skip at all, and `isStoryOnScreen` is what keeps
+            // a held key on a title screen - or a mode left on under a settings screen - from
+            // advancing the story behind it.
+            canSkip: () => isStoryOnScreen() && readPreference("skip") !== false,
             isBlocked: () => {
                 // A session that went away mid-hold ends the run rather than ticking into nothing.
                 if (!nlrLiveGameRef.current?.getGameState()) {
@@ -3868,7 +3904,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             window.removeEventListener("keyup", onKeyUp);
             window.removeEventListener("blur", onBlur);
         };
-    }, [isInGame, nlrSession, subscribeGamePreferences]);
+    }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
 
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
