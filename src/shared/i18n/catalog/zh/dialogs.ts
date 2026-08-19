@@ -58,7 +58,7 @@ export const dialogs = {
         scene: "场景",
         chapter: "章节",
         component: "组件",
-        asset: "资源",
+        asset: "资产",
         page: "页面",
         gameUi: "游戏 UI",
         image: "图片",

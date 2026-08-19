@@ -2389,6 +2389,62 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(actionOf("create")?.callee?.config).toMatchObject({ blendMode: "screen", opacity: 1, zIndex: 3, fit: "cover" });
     });
 
+    it("composites a weather seed's clip with screen, whatever the row says", async () => {
+        const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: vfxBlock("create", {
+                action: "vfx", operation: "create", objectName: "snow",
+                seed: { seed: "snow" },
+                // An author cannot reach this on a seed row through the inspector, but a document
+                // written by an older Studio - or by hand - can carry it, and honouring it would put
+                // an opaque black rectangle over the stage.
+                blendMode: "normal",
+            }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            resolveWeatherClip: async ref => `nlr://weather/${ref.seed}`,
+        });
+
+        const create = compiled.actionIdBindings.find(binding => binding.blockId === "create")?.action as any;
+        expect(compiled.diagnostics).toEqual([]);
+        expect(create?.callee?.config).toMatchObject({ src: "nlr://weather/snow", blendMode: "screen" });
+    });
+
+    it("leaves out a weather overlay the host cannot produce, and says so", async () => {
+        const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: vfxBlock("create", { action: "vfx", operation: "create", objectName: "snow", seed: { seed: "snow" } }),
+        };
+        // A `Vfx` with no src throws inside the engine, so "no clip" has to mean "no overlay".
+        const noHost = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(noHost.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
+        expect(noHost.diagnostics).toEqual([
+            { level: "warning", blockId: "create", message: 'Ambience effect "snow" needs its weather produced, which this compile cannot do.' },
+        ]);
+
+        const failedBake = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            resolveWeatherClip: async () => null,
+        });
+        expect(failedBake.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
+        expect(failedBake.diagnostics).toEqual([
+            { level: "warning", blockId: "create", message: 'Weather for ambience effect "snow" could not be produced.' },
+        ]);
+    });
+
     it("compiles the video transport operations, converting seek to seconds", async () => {
         const videoBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "video" }>): StoryBlock => ({
             id, kind: "action", parentId: null, childrenIds: [], payload,
