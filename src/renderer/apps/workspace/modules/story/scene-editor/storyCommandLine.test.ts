@@ -548,3 +548,109 @@ describe("projectStoryCommandLine", () => {
         }
     });
 });
+
+/**
+ * The line a row prints after its object was renamed somewhere else.
+ *
+ * A rename edits the DECLARING row only. Every row addressing the object keeps the name it was
+ * written with, beside a reference that follows - and the line used to print that stored name, so an
+ * author who renamed `poster` to `bg` read a scene full of rows still addressing `poster` while the
+ * compiler had already moved on. Its own describe because it needs a scene with declarations in it,
+ * which the fixture above deliberately does not have.
+ */
+describe("projectStoryCommandLine — after a rename", () => {
+    const DECLARED_SCENE = {
+        id: "s1",
+        name: "Chapter 2",
+        rootIds: ["d_img", "d_snd"],
+        blocks: {
+            d_img: {
+                id: "d_img", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "image", operation: "create", objectName: "bg", assetId: "i1" },
+            },
+            d_snd: {
+                id: "d_snd", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "audio", operation: "playSound", objectName: "keys", assetId: "a1" },
+            },
+        },
+    } as unknown as StoryScene;
+
+    /** The context that scene produces: the names on stage, and which row declares each. */
+    const RENAMED_CONTEXT: StoryCommandContext = {
+        ...CONTEXT,
+        stageObjects: { ...CONTEXT.stageObjects, image: ["bg"], audio: ["keys"] },
+        stageObjectSources: { image: { bg: "d_img" }, text: {}, layer: {}, video: {}, audio: { keys: "d_snd" }, vfx: {} },
+    };
+
+    const RENAMED_LOOKUPS: StoryCommandLineLookups = {
+        ...LOOKUPS,
+        commandContext: RENAMED_CONTEXT,
+        scene: DECLARED_SCENE,
+        scenes: { s1: DECLARED_SCENE },
+    };
+
+    const row = (payload: StoryBlock["payload"]): StoryBlock =>
+        ({ id: "r", parentId: null, childrenIds: [], kind: "action", payload } as StoryBlock);
+
+    /** The stale pair a rename leaves behind: the old name stored, the reference still bound. */
+    const staleImage = row({
+        action: "image", operation: "show", objectName: "poster",
+        target: { kind: "image", name: "poster", label: "poster", sourceBlockId: "d_img" },
+    });
+    const staleSound = row({
+        action: "audio", operation: "stopSound", objectName: "piano",
+        target: { name: "piano", label: "piano", sourceBlockId: "d_snd" },
+    });
+
+    it("addresses the object by the name its declaring row carries now", () => {
+        expect(projectStoryCommandLine(staleImage, RENAMED_LOOKUPS)!.source).toBe("/show bg");
+        expect(projectStoryCommandLine(staleSound, RENAMED_LOOKUPS)!.source).toBe("/stop keys");
+    });
+
+    it("prints a spelling the line would take back, which is the whole invariant", () => {
+        // Not "it looks right": the name printed has to be one the resolver accepts and binds to the
+        // same declaring row, or the row would be showing a command the editor would refuse.
+        for (const block of [staleImage, staleSound]) {
+            const source = projectStoryCommandLine(block, RENAMED_LOOKUPS)!.source;
+            const line = parseCommandLine(source);
+            expect(line.kind, source).toBe("command");
+            const { args, issues } = resolveCommandLine(line as never, RENAMED_CONTEXT);
+            expect(issues, source).toEqual([]);
+            const rebuilt = getCommandSpec((line as { def: { commandId: string } }).def.commandId)!
+                .build!(args, { generateId, context: RENAMED_CONTEXT });
+            expect((rebuilt.payload as { target?: { sourceBlockId?: string } }).target?.sourceBlockId, source)
+                .toBe((block.payload as { target?: { sourceBlockId?: string } }).target!.sourceBlockId);
+        }
+    });
+
+    it("leaves a document written before references reading exactly as it did", () => {
+        expect(projectStoryCommandLine(row({ action: "image", operation: "show", objectName: "poster" }), RENAMED_LOOKUPS)!.source)
+            .toBe("/show poster");
+        expect(projectStoryCommandLine(row({ action: "audio", operation: "stopSound", objectName: "piano" }), RENAMED_LOOKUPS)!.source)
+            .toBe("/stop piano");
+    });
+
+    it("shows the last name an author saw once the declaring row is gone, never a key", () => {
+        const gone: StoryCommandLineLookups = { ...RENAMED_LOOKUPS, scene: { ...DECLARED_SCENE, blocks: {} } as StoryScene };
+        expect(projectStoryCommandLine(staleImage, gone)!.source).toBe("/show poster");
+        // An unnamed sound's registry key is its asset id, so `name` here is a UUID and only `label`
+        // is printable. This is the case that reference pair exists for.
+        const orphan = row({
+            action: "audio", operation: "stopSound", objectName: "piano",
+            target: { name: "a1", label: "piano", sourceBlockId: "gone" },
+        });
+        const source = projectStoryCommandLine(orphan, gone)!.source;
+        expect(source).toBe("/stop piano");
+        expect(source).not.toContain("a1");
+    });
+
+    it("re-points the reference too when a subject is picked from the row", () => {
+        // The other half of reading the reference: an inline edit that changed only `objectName` used
+        // to leave the anchor behind, so the line went on printing - and the compiler on acting on -
+        // the object just replaced.
+        const line = projectStoryCommandLine(staleImage, RENAMED_LOOKUPS)!;
+        const edit = line.edits.find(entry => entry.value === "bg");
+        expect(edit, "the subject is offered as a choice").toBeDefined();
+        expect(edit!.apply("hero")).toMatchObject({ objectName: "hero", target: { kind: "image", name: "hero", label: "hero" } });
+    });
+});

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     actionableSourceIdentity,
+    actionableSubjectWord,
     resolveActionableTargetRef,
     soundStageObjectName,
 } from "./actionableTarget";
@@ -126,5 +127,43 @@ describe("resolveActionableTargetRef", () => {
         const document = scene([action("play-1", { action: "audio", operation: "playSound", assetId: "asset-7" })]);
         expect(resolveActionableTargetRef(document, { name: "asset-7", sourceBlockId: "play-1" }, "audio"))
             .toEqual({ name: "asset-7", label: "Sound", resolved: true });
+    });
+});
+
+describe("actionableSubjectWord", () => {
+    it("follows a rename of the declaring row", () => {
+        const document = scene([action("play-1", { action: "audio", operation: "playSound", objectName: "keys" })]);
+        expect(actionableSubjectWord(document, { name: "piano", label: "piano", sourceBlockId: "play-1" }, "audio", "piano"))
+            .toBe("keys");
+    });
+
+    it("leaves a document written before references exactly as it read", () => {
+        const document = scene([action("create-1", { action: "video", operation: "create", objectName: "opening" })]);
+        expect(actionableSubjectWord(document, undefined, "video", "intro")).toBe("intro");
+    });
+
+    it("shows the stored label for a reference whose declaring row is gone", () => {
+        expect(actionableSubjectWord(scene([]), { name: "intro", label: "intro", sourceBlockId: "gone" }, "video", "intro"))
+            .toBe("intro");
+    });
+
+    it("never prints the asset key a nameless sound is registered under", () => {
+        // The special case the whole guard exists for: the declaring row named nothing, so the key is
+        // an asset id and the label the placeholder `Sound`. The declaring line prints no name either,
+        // so there is no word to address the handle by - the row keeps the last one an author saw.
+        const document = scene([action("play-1", { action: "audio", operation: "playSound", assetId: "asset-7" })]);
+        const word = actionableSubjectWord(document, { name: "piano", label: "piano", sourceBlockId: "play-1" }, "audio", "piano");
+        expect(word).toBe("piano");
+        expect(word).not.toBe("asset-7");
+        expect(word).not.toBe("Sound");
+    });
+
+    it("spells the music channel by its reserved word, never by its label", () => {
+        // "Background music" is two tokens and a subject slot takes one.
+        expect(actionableSubjectWord(scene([]), { builtin: "bgm", name: "bgm", label: "Background music" }, "audio", "bgm"))
+            .toBe("bgm");
+        // A row the script view built states the bus with a word instead of a name, so it stores none.
+        expect(actionableSubjectWord(scene([]), { builtin: "bgm", name: "bgm", label: "Background music" }, "audio", undefined))
+            .toBe("");
     });
 });

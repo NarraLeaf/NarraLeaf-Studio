@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { displayableCreatorIdentity, displayableSourceIdentity, resolveDisplayableTargetRef } from "./displayableTarget";
+import {
+    displayableCreatorIdentity,
+    displayableSourceIdentity,
+    displayableSubjectWord,
+    resolveDisplayableTargetRef,
+} from "./displayableTarget";
 import type { StoryActionPayload, StoryBlock, StoryScene } from "./document";
 
 /**
@@ -88,5 +93,39 @@ describe("resolveDisplayableTargetRef - the dangling case", () => {
         const document = scene([action("create-1", { action: "image", operation: "create", objectName: "banner" })]);
         expect(resolveDisplayableTargetRef(document, { kind: "image", name: "poster", label: "poster", sourceBlockId: "create-1" }))
             .toEqual({ name: "banner", kind: "image", label: "banner" });
+    });
+});
+
+describe("displayableSubjectWord", () => {
+    it("follows a rename of the declaring row", () => {
+        // The bug an author reported: the create row was renamed `poster` -> `bg`, the compiler
+        // followed the reference, and every surface went on printing `poster`.
+        const document = scene([action("create-1", { action: "image", operation: "create", objectName: "bg" })]);
+        expect(displayableSubjectWord(document, { kind: "image", name: "poster", label: "poster", sourceBlockId: "create-1" }, "poster"))
+            .toBe("bg");
+    });
+
+    it("leaves a document written before references exactly as it read", () => {
+        const document = scene([action("create-1", { action: "image", operation: "create", objectName: "bg" })]);
+        expect(displayableSubjectWord(document, undefined, "poster")).toBe("poster");
+    });
+
+    it("shows the stored label for a reference whose declaring row is gone", () => {
+        expect(displayableSubjectWord(scene([]), { kind: "image", name: "poster", label: "poster", sourceBlockId: "gone" }, "poster"))
+            .toBe("poster");
+    });
+
+    it("keeps the stored spelling when the declaring row named nothing", () => {
+        // The key falls back to the literal `object` and the label to the placeholder `Image`;
+        // neither is a word the candidate list offers, so the row prints what it stored.
+        const document = scene([action("create-1", { action: "image", operation: "create", objectName: "" })]);
+        const word = displayableSubjectWord(document, { kind: "image", name: "object", label: "object", sourceBlockId: "create-1" }, "object");
+        expect(word).toBe("object");
+        expect(word).not.toBe("Image");
+    });
+
+    it("spells a built-in by the reserved word the row already stores, never by its label", () => {
+        expect(displayableSubjectWord(scene([]), { builtin: "background", kind: "image", name: "Scene background", label: "Scene background" }, "background"))
+            .toBe("background");
     });
 });

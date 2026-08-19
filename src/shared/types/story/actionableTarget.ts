@@ -115,3 +115,28 @@ export function resolveActionableTargetRef(
     const name = ref.name ?? "";
     return { name, label: ref.label ?? name, resolved: false };
 }
+
+/**
+ * The word a row that ADDRESSES an `Actionable` handle is written with - the counterpart of
+ * `displayableSubjectWord`, under the same rule and for the same reasons. Read that one; the only
+ * difference is that the reference does not carry its kind, so the row's own `action` states it.
+ *
+ * The one case the rule earns its keep on lives here: a `playSound` row that names nothing registers
+ * its handle under the `assetId`, so the resolved key is a UUID and the resolved label the
+ * placeholder "Sound". Neither is a word the sound can be addressed by - the declaring line prints no
+ * name either - so the row keeps the spelling it stored. The music channel lands in the same arm from
+ * the other side: it is a built-in, and it is spelled by its reserved word.
+ */
+export function actionableSubjectWord(
+    scene: StoryScene | null | undefined,
+    target: StoryActionableTargetRef | undefined,
+    kind: StoryActionableKind,
+    objectName: string | undefined,
+): string {
+    const stored = objectName?.trim() ?? "";
+    if (!target || target.builtin) {
+        return stored;
+    }
+    const resolved = resolveActionableTargetRef(scene, target, kind);
+    return resolved.label && resolved.label === resolved.name ? resolved.label : stored || resolved.label;
+}
