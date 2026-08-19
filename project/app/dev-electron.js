@@ -363,6 +363,30 @@ function broadcastReload(target = 'all') {
         console.log('[compileWorker] built.');
     });
 
+    /**
+     * The shipped-content audit, which the compile worker loads by path.
+     *
+     * Built here as well as in build-main.js because the worker requires it at runtime and a dev
+     * instance had no copy at all: every build that narrows what it ships - a variant build, and now
+     * a release build whose asset set collapsed a build axis - died on "Cannot find module
+     * contentAudit.js" before it wrote anything. Bundled against the RENDERER tsconfig, like its
+     * production twin: it runs the story compiler, which resolves "@/" the renderer's way.
+     */
+    const buildContentAudit = () => watchBuild({
+        entryPoints: [path.join(rootDir, 'src', 'renderer', 'lib', 'build', 'contentAuditEntry.ts')],
+        outfile: path.join(distDir, 'main', 'contentAudit.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        sourcemap: true,
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'renderer', 'tsconfig.json'),
+    }, () => {
+        // No Electron restart: the compile worker requires it fresh on every audit.
+        console.log('[contentAudit] built.');
+    });
+
     /** Build & watch preload script */
     const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
     const buildPreloadScript = async () => {
@@ -466,6 +490,7 @@ function broadcastReload(target = 'all') {
         buildGameBuildWorker(),
         buildPsdImportWorker(),
         buildArtifactCompileWorker(),
+        buildContentAudit(),
         buildPreloadScript(),
         buildRenderers(),
         buildInitialBuiltInPlugins(),

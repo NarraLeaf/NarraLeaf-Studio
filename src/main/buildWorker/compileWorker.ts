@@ -58,10 +58,15 @@ parentPort.on("message", event => {
             // Only an edition that removes content can be missing any: a build that carries the
             // library whole has nothing to have got wrong, and paying for the check there would tax
             // every release build for a question with one possible answer.
+            //
+            // A collapsed build axis is the case where the release edition removes content too, so
+            // it is audited like any other narrowed edition. This condition and the one that decides
+            // trimming are the same premise read twice and must not drift apart: trimming without
+            // the audit removes assets with nothing checking that the shipped game still reaches
+            // every one it needs.
             const tagId = message.input.appTag?.id;
-            const audit = tagId && !isBuiltinAppTagId(tagId)
-                ? await auditShippedContent(result.appDir)
-                : undefined;
+            const narrowed = (tagId && !isBuiltinAppTagId(tagId)) || result.collapsedBuildAxis;
+            const audit = narrowed ? await auditShippedContent(result.appDir) : undefined;
             send({ type: "done", result, ...(audit ? { audit } : {}) });
         })
         .catch((error: unknown) => {
