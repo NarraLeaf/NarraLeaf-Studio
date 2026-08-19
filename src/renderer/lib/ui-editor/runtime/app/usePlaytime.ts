@@ -26,6 +26,22 @@ import { PLAYTIME_TICK_INTERVAL_MS, PlaytimeClock } from "./playtimeClock";
 export type UsePlaytimeOptions = {
     /** True while a playthrough is running. The same gate autosave asks. */
     isPlaying: () => boolean;
+    /**
+     * Whatever owns the store the two functions below reach, or null while nothing does.
+     *
+     * Only its identity is used, and it is what makes the stored total readable at all. The host's
+     * runtime core is state a mounting effect installs, so on the hook's own first commit there is
+     * no store yet: a read issued then reaches nothing, resolves to nothing, and — since it is
+     * issued once — is never retried. That is not a rare race but the ordinary path, and its cost is
+     * the whole point of this option: the total starts every session from zero and the first write
+     * puts that figure over the hours already banked (493.8 stored, 60.9 written back one launch
+     * later). Keyed on identity rather than on a flag because the core is rebuilt when the bundle or
+     * the persistence adapter changes, and the new store owes its own answer.
+     *
+     * The two functions cannot serve as the signal themselves — they are closures rebuilt on every
+     * render, so an effect keyed on them would re-read forever.
+     */
+    persistenceSource: object | null;
     /** Project persistence (scope bridge); values are JSON-safe. */
     persistenceGetAsync: (key: string) => Promise<unknown>;
     /**
@@ -79,24 +95,42 @@ export function usePlaytime(options: UsePlaytimeOptions): PlaytimeRuntime {
         [],
     );
 
-    // Read the stored total once. A value that arrives after play started is merged rather than
-    // assigned (see `seedTotal`), so a slow read cannot roll the counter back.
+    // Read the stored total once per store, and hold the clock's writes until that read comes back
+    // one way or the other. A value arriving after play started is installed underneath the seconds
+    // accrued meanwhile rather than replacing them (see `seedTotal`), so being slow costs nothing;
+    // being absent is what used to cost everything, which is why the hold exists.
+    const persistenceSource = options.persistenceSource;
     useEffect(() => {
+        if (!persistenceSource) {
+            return;
+        }
         let cancelled = false;
+        clock.awaitTotalBaseline();
         void latest.current.persistenceGetAsync(BLUEPRINT_PLAYTIME_TOTAL_PERSISTENCE_KEY)
             .then(stored => {
-                if (cancelled || typeof stored !== "number") {
+                if (cancelled) {
                     return;
                 }
-                clock.seedTotal(stored);
+                if (typeof stored === "number") {
+                    clock.seedTotal(stored);
+                    return;
+                }
+                // Nothing stored yet — a project being played for the first time.
+                clock.startTotalFromZero();
             })
             // An unreadable store means the total starts from zero for this session, which is worth
-            // strictly less than refusing to count at all.
-            .catch(() => undefined);
+            // strictly less than refusing to count at all. Settled rather than left waiting: the
+            // seconds this session is banking have to reach disk eventually, and a store that
+            // cannot be read holds nothing this can be standing on top of.
+            .catch(() => {
+                if (!cancelled) {
+                    clock.startTotalFromZero();
+                }
+            });
         return () => {
             cancelled = true;
         };
-    }, [clock]);
+    }, [clock, persistenceSource]);
 
     const intervalMs = options.tickIntervalMs ?? PLAYTIME_TICK_INTERVAL_MS;
     useEffect(() => {

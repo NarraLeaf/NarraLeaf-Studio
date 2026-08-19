@@ -5,6 +5,12 @@ function harness(overrides?: {
     playing?: boolean;
     hidden?: boolean;
     flushThresholdSeconds?: number;
+    /**
+     * Whether the stored total has already been read back. True by default because that is the
+     * state the clock spends a session in; the tests below that pass false are the ones about the
+     * window before it, where writing is held.
+     */
+    totalBaselineKnown?: boolean;
 }) {
     const persisted: number[] = [];
     const state = {
@@ -19,6 +25,9 @@ function harness(overrides?: {
         now: () => state.now,
         flushThresholdSeconds: overrides?.flushThresholdSeconds,
     });
+    if (overrides?.totalBaselineKnown ?? true) {
+        clock.startTotalFromZero();
+    }
     /** Advance the injected clock and tick, the way the real interval would. */
     const advance = (ms: number, ticks = 1) => {
         for (let index = 0; index < ticks; index += 1) {
@@ -172,17 +181,74 @@ describe("PlaytimeClock", () => {
         expect(clock.getRunSeconds()).toBe(6);
     });
 
-    it("ignores a stale total read back while the game was already counting", () => {
-        const { clock, advance } = harness();
+    it("puts a late total read back underneath the seconds accrued while it was in flight", () => {
+        const { clock, advance } = harness({ totalBaselineKnown: false });
+        clock.awaitTotalBaseline();
         advance(PLAYTIME_TICK_INTERVAL_MS, 21);
+        // Nothing stored is known yet, so the total is only what this session has counted.
         expect(clock.getTotalSeconds()).toBe(20);
 
-        // The persistence read resolves late carrying a smaller number; adopting it would throw
-        // away the seconds accrued while it was in flight.
-        clock.seedTotal(5);
-        expect(clock.getTotalSeconds()).toBe(20);
-
+        // Neither number is thrown away: the player had an hour before this session and has twenty
+        // seconds in it. Assigning would lose the twenty; ignoring would lose the hour.
         clock.seedTotal(3_600);
-        expect(clock.getTotalSeconds()).toBe(3_600);
+        expect(clock.getTotalSeconds()).toBe(3_620);
+    });
+
+    it("never lets a stale answer walk the stored total backwards", () => {
+        const { clock, advance, persisted } = harness({ flushThresholdSeconds: 10 });
+        advance(PLAYTIME_TICK_INTERVAL_MS, 12);
+        expect(persisted).toEqual([10]);
+
+        // A second store answering with a figure this session has already written past: adopting it
+        // would subtract the difference from the title's history.
+        clock.seedTotal(4);
+        expect(clock.getTotalSeconds()).toBe(11);
+    });
+
+    it("writes nothing until the stored total it would stand on is known", () => {
+        const { clock, persisted, advance } = harness({
+            flushThresholdSeconds: 10,
+            totalBaselineKnown: false,
+        });
+        advance(PLAYTIME_TICK_INTERVAL_MS, 30);
+        // Well past the threshold, and past an explicit flush: a write here would carry a total
+        // measured from zero and stand it on top of whatever the store already holds.
+        clock.flush();
+        expect(persisted).toEqual([]);
+
+        clock.seedTotal(493.8);
+        clock.flush();
+        // The held seconds are not lost, and they are added to the stored figure rather than
+        // replacing it.
+        expect(persisted).toEqual([493.8 + 29]);
+    });
+
+    it("keeps counting from zero once a store has been asked and had nothing to give", () => {
+        const { clock, persisted, advance } = harness({
+            flushThresholdSeconds: 10,
+            totalBaselineKnown: false,
+        });
+        advance(PLAYTIME_TICK_INTERVAL_MS, 12);
+        expect(persisted).toEqual([]);
+
+        // The documented degradation: an unreadable or empty store costs the history, not the
+        // counting. What it must not do is stay silent forever.
+        clock.startTotalFromZero();
+        clock.flush();
+        expect(persisted).toEqual([11]);
+    });
+
+    it("does not add a written total to itself when the store answers with it again", () => {
+        const { clock, persisted, advance } = harness({ flushThresholdSeconds: 10 });
+        advance(PLAYTIME_TICK_INTERVAL_MS, 12);
+        expect(persisted).toEqual([10]);
+
+        // A rebuilt store reads back exactly what was just written. Those seconds are already in
+        // the stored figure; counting them twice would inflate the title total on every reload.
+        clock.awaitTotalBaseline();
+        clock.seedTotal(10);
+        advance(PLAYTIME_TICK_INTERVAL_MS, 10);
+        expect(clock.getTotalSeconds()).toBe(21);
+        expect(persisted).toEqual([10, 20]);
     });
 });
