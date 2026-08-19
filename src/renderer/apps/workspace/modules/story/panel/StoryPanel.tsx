@@ -15,6 +15,8 @@ import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import type { PanelComponentProps } from "../../types";
 import { closeStoryEditorTabs, closeStorySceneEditorTabs } from "./closeStoryEditorTabs";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
+import { getStorySceneEditorTabId } from "../scene-editor/storySceneEditorTabId";
+import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 import { useStoryScriptIo } from "../script/useStoryScriptIo";
@@ -452,8 +454,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         if (!name) {
             return;
         }
-        storyService.renameScene(selectedStoryId, scene.id, name);
-    }, [inputDialog, selectedStoryId, storyService]);
+        if (storyService.renameScene(selectedStoryId, scene.id, name)) {
+            // The tab strip holds a snapshot of the name it was opened under, so the open scene has
+            // to be re-titled here as well as in the editor's own rename path.
+            syncEditorTabTitle(uiService, getStorySceneEditorTabId(selectedStoryId, scene.id), name);
+        }
+    }, [inputDialog, selectedStoryId, storyService, uiService]);
 
     const handleDeleteScene = useCallback(async (scene: StoryScene) => {
         if (!storyService || !uiService || !selectedStoryId) {
