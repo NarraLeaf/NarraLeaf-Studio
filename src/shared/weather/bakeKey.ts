@@ -57,6 +57,23 @@ export function weatherBakeDescriptor(identity: WeatherBakeIdentity): string {
     ].join("|");
 }
 
+/**
+ * What a seed and its parameters are, independent of the size they will be rendered at.
+ *
+ * The compiler holds one overlay per stage name and has to answer "is this row asking for the same
+ * weather as the row that made it?" — a question about the seed, not about the picture's dimensions,
+ * which the compiler does not even know. Sharing {@link weatherBakeDescriptor}'s rounding is what
+ * keeps the two answers from ever disagreeing.
+ */
+export function weatherRefIdentity(ref: WeatherSeedRef): string {
+    const params = resolveWeatherParams(ref);
+    const ordered = (Object.keys(WEATHER_PARAMS) as WeatherParamKey[])
+        .sort()
+        .map(key => `${key}=${round(params[key])}`)
+        .join(",");
+    return `${ref.seed}|${ordered}`;
+}
+
 /** Four decimals: the renderer cannot resolve a finer difference, and a float tail is not identity. */
 function round(value: number): number {
     return Math.round(value * 10000) / 10000;

@@ -9,6 +9,11 @@
  * `Play Voice` takes a voice unit id - the same id a backlog entry reports as `voiceId`. That is
  * what makes a backlog replay button buildable: the entry's `voice` field is a resolved URL the
  * player already heard, and nothing in the runtime accepts a URL.
+ *
+ * `Play Choice Voice` is the menu's counterpart and takes no id at all: a choice row already knows
+ * which option it is, and the id reaches it on the list item the choice slot injects. It also holds
+ * the one piece of state a hover-driven trigger needs - a line already speaking does not restart on
+ * a second hover - while leaving whether a *different* option cuts it to the author.
  * Comments in English per project convention.
  */
 
@@ -16,6 +21,7 @@ import {
     BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES,
     BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE,
     BLUEPRINT_NODE_TYPE_VOICE_PLAY,
+    BLUEPRINT_NODE_TYPE_VOICE_PLAY_CHOICE,
     BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE,
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
@@ -34,6 +40,18 @@ function resolvePinString(ctx: NodeExecuteContext, pinId: string): string {
         executionOwner: ctx.executionOwner,
     });
     return raw === null || raw === undefined ? "" : String(raw);
+}
+
+/** An optional boolean pin, false when unwired and left blank. */
+function resolvePinBoolean(ctx: NodeExecuteContext, pinId: string): boolean {
+    const raw = resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    return raw === true || raw === "true" || raw === 1;
 }
 
 export const voiceBlueprintNodes: BlueprintNodeDef[] = [
@@ -128,6 +146,46 @@ export const voiceBlueprintNodes: BlueprintNodeDef[] = [
             // A line with no take in the current dub language is a normal state, not a failure: a
             // backlog row for an unvoiced line just gets a replay button that reports false.
             const played = unitId ? await api.voice.play(unitId) : false;
+            return { nextPort: "next", outputValues: { value: played } };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_VOICE_PLAY_CHOICE,
+        displayName: "Play Choice Voice",
+        category: "Voice",
+        keywords: ["voice", "choice", "menu", "option", "hover", "audio", "play"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            { id: "in", kind: "input", semantic: "exec", label: "In" },
+            { id: "next", kind: "output", semantic: "exec", label: "Next" },
+            {
+                id: "interruptOthers",
+                kind: "input",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Interrupt Others",
+                optional: true,
+                allowInlineLiteral: true,
+            },
+            { id: "value", kind: "output", semantic: "data", valueType: "boolean", label: "Played" },
+        ],
+        async execute(ctx) {
+            const api = requireHostApi(ctx);
+            // Only a choice row carries an option to speak. Anywhere else the node has no line at
+            // all, which is an authoring mistake rather than a state to report on a pin - unlike an
+            // option with no take, which is ordinary and answers `false`.
+            const item = ctx.listItemScope?.item;
+            if (!item || typeof item !== "object") {
+                throw new BlueprintGraphExecutionError(
+                    "Play Choice Voice runs inside a choice list row",
+                    ctx.node.id,
+                );
+            }
+            const unitId = String((item as { voiceId?: unknown }).voiceId ?? "").trim();
+            const interruptOthers = resolvePinBoolean(ctx, "interruptOthers");
+            const played = unitId ? await api.voice.playChoice(unitId, { interruptOthers }) : false;
             return { nextPort: "next", outputValues: { value: played } };
         },
     },
