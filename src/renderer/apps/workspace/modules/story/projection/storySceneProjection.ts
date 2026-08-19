@@ -352,7 +352,10 @@ function formatAction(
         // is the only half of the pair the document actually holds.
         return `/${payload.actionId}`;
     }
-    return `/effect ${payload.effect}`;
+    // Defensive rather than reachable: every arm above is exhaustive over the union. A document from
+    // a newer schema can still carry an action this build has no word for, and a row that prints
+    // nothing at all would read as an empty line in an exported script.
+    return "/action";
 }
 
 /**

@@ -278,4 +278,74 @@ describe("compiles a camera grade as a cut", () => {
         expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
     });
 
+    it("eases a grade that turns no hue, over the row's own duration", async () => {
+        // The finer half of the same rule: `memory` moves saturate, sepia, brightness, contrast and
+        // blur monotonically toward their targets and never touches the wheel, so the slide IS the
+        // effect rather than decoration.
+        const document = cameraDocument({
+            grade: {
+                id: "grade", kind: "action", parentId: null, childrenIds: [],
+                payload: {
+                    action: "camera",
+                    operation: "transform",
+                    transform: { mode: "props", to: { look: { preset: "memory", intensity: 1 } }, durationMs: 900 },
+                },
+            },
+        }, ["grade"]);
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toEqual([]);
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "grade")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const sequence = transformsOf(actions)[0]?.sequences?.[0];
+        expect(String(sequence?.props?.filter)).not.toContain("hue-rotate");
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 900 }));
+    });
+
+    it("plays a lens gesture as its three legs, ending with the channel back at rest", async () => {
+        const document = cameraDocument({
+            wink: {
+                id: "wink", kind: "action", parentId: null, childrenIds: [],
+                payload: {
+                    action: "camera",
+                    operation: "transform",
+                    transform: { mode: "props", to: { lens: { preset: "blink" } } },
+                },
+            },
+        }, ["wink"]);
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toEqual([]);
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "wink")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const sequences = transformsOf(actions)[0]?.sequences ?? [];
+        // In, hold, out - the library's own timings, and the last leg opens the eyes again: a gesture
+        // leaves no residue, which is what tells it apart from `shutter=1`.
+        expect(sequences.map(sequence => sequence.options?.duration)).toEqual([180, 100, 220]);
+        expect(sequences.map(sequence => sequence.props?.shutter)).toEqual([1, 1, 0]);
+        // Every leg names the same props: a browser interpolates two keyframes only when they match,
+        // and a leg that dropped the colour because it had not changed would make the next one snap.
+        for (const sequence of sequences) {
+            expect(sequence.props?.shutterColor).toBe("#000");
+        }
+    });
+
+    it("reports a lens gesture the library does not know, rather than playing a different one", async () => {
+        const document = cameraDocument({
+            wink: {
+                id: "wink", kind: "action", parentId: null, childrenIds: [],
+                payload: {
+                    action: "camera",
+                    operation: "transform",
+                    transform: { mode: "props", to: { lens: { preset: "wobble" } } },
+                },
+            },
+        }, ["wink"]);
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics.map(diagnostic => diagnostic.level)).toEqual(["warning"]);
+    });
+
 });

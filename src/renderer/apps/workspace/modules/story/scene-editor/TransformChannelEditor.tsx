@@ -52,6 +52,7 @@ import {
     type TransformChannelSpec,
 } from "./transformChannels";
 import { STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 
 /**
  * The stated channels of a transform, one row each, plus the picker that adds another.
@@ -531,6 +532,64 @@ function channelBody(
                     />
                     <ChannelText value={value} onChange={fontColor => setProps({ fontColor })} />
                 </div>
+            ),
+        };
+    }
+    if (channel.id === "lens") {
+        // The NAME, and only the name. The overrides beside it are the library's numbers until an
+        // author changes one, and a panel that opened with all eight filled in would read as eight
+        // choices they had made.
+        const lens = to.lens ?? null;
+        return {
+            control: (
+                <ChannelSelect
+                    label={label}
+                    options={STORY_CAMERA_LENS_PRESETS.map(entry => ({
+                        value: entry.id,
+                        label: t(`storyInspector.cameraLens.${entry.id}` as TranslationKey),
+                    }))}
+                    value={lens?.preset ?? STORY_CAMERA_LENS_PRESETS[0]?.id ?? ""}
+                    onChange={preset => setProps({ lens: { ...(lens ?? {}), preset } })}
+                />
+            ),
+        };
+    }
+    if (channel.id === "shutter" || channel.id === "vignette") {
+        const key = channel.id;
+        return { control: <ChannelNumber label={label} value={to[key]} onChange={value => setProps({ [key]: value })} fallback={0} /> };
+    }
+    if (channel.id === "shutterColor" || channel.id === "vignetteColor") {
+        const key = channel.id;
+        const value = to[key] ?? "#000000";
+        const parsed = parseColorValue(value, { hex: "#000000", alpha: 1 });
+        return {
+            control: (
+                <div className="flex items-center gap-2">
+                    <ColorPickerTrigger
+                        value={{ hex: parsed.hex, alpha: 1 }}
+                        displayMode="icon"
+                        allowOpacity={false}
+                        onChange={next => setProps({ [key]: colorValueToCss({ hex: next.hex, alpha: 1 }) })}
+                    />
+                    <ChannelText value={value} onChange={next => setProps({ [key]: next })} />
+                </div>
+            ),
+        };
+    }
+    if (channel.id === "vignetteInner" || channel.id === "vignetteOuter") {
+        // Percentages of the frame, so the falloff means the same thing at every stage size - and so a
+        // number typed here cannot become `44px` by accident.
+        const key = channel.id;
+        const raw = to[key] ?? "";
+        const parsed = Number(String(raw).replace("%", ""));
+        return {
+            control: (
+                <ChannelNumber
+                    label={label}
+                    value={Number.isFinite(parsed) ? parsed : undefined}
+                    onChange={value => setProps({ [key]: `${value}%` })}
+                    fallback={0}
+                />
             ),
         };
     }

@@ -33,7 +33,6 @@ import {
     Word,
 } from "narraleaf-react";
 import type { MaskPattern } from "narraleaf-react";
-import { blink, vignette } from "narraleaf-react/built-in";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
@@ -141,6 +140,7 @@ import {
 // its third reader rather than its owner, which is the same relation `storyReplace` already has with
 // the scene editor's find/replace model.
 import { resolveStoryCameraLook, resolveStoryCameraLookOscillation, storyCameraLookTweens } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { neutralStoryCameraLensProps, resolveStoryCameraLensSteps } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
@@ -2792,10 +2792,6 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return compileVfxAction(ctx, block, payload);
     }
 
-    if (payload.action === "screenEffect") {
-        return compileScreenEffectAction(ctx, block, payload);
-    }
-
     if (payload.action === "camera") {
         return await compileCameraAction(ctx, block, payload);
     }
@@ -2805,70 +2801,6 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
 
 /** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
 const MIN_CAMERA_ZOOM = 0.05;
-
-/**
- * The engine's own `VignetteOptions` defaults, restated so a row that sets only one radius still
- * orders the pair against the value the other half will actually take.
- */
-const DEFAULT_VIGNETTE_INNER = 44;
-const DEFAULT_VIGNETTE_OUTER = 78;
-
-/**
- * `/blink` and `/vignette` - the two screen-wide gestures, sharing one parameter grammar.
- *
- * `durationMs` is the whole in-and-out move; `inMs` / `outMs` override one half each and fall back to
- * it. `blink` honours the split outright, because the engine splits it too (`closeDuration` /
- * `openDuration`) - which Studio used to collapse by filling both from the one number, making "slam
- * the eyes shut, open them slowly" inexpressible rather than unsupported.
- *
- * `vignette` has no halves to split, and does not offer them: the engine's helper drives its fade in
- * AND its fade out from a single `duration`, so `/vignette` names no `in` / `out` and there is
- * nothing here to report. Rebuilding the effect from `effectLayer` plus a hand-written mask WOULD
- * express it, and is deliberately not done: the gradient geometry, the layer's identity and the mask
- * teardown are the engine's business, and a copy living in this file would go stale the first time
- * the engine tunes its vignette - invisibly, since the effect would keep rendering, just no longer
- * like every other build's. The split has to arrive in `VignetteOptions` first.
- */
-function compileScreenEffectAction(
-    ctx: SceneCompileContext,
-    block: StoryBlock,
-    payload: Extract<StoryActionPayload, { action: "screenEffect" }>,
-): NlrStatement[] {
-    // A negative duration is not a fast move, it is a value the engine hands to a tween that never
-    // finishes - and the row is awaited, so the scene would stop there. `undefined` is passed through
-    // rather than floored to 0, so an unset field still lands on the engine's own default.
-    const seconds = (value: number | undefined): number | undefined =>
-        value === undefined ? undefined : Math.max(0, finiteOr(value, 0));
-    /** A blink half: its own override, or the whole move it was never split off from. */
-    const half = (value: number | undefined): number | undefined => seconds(value ?? payload.durationMs);
-    const hold = seconds(payload.holdMs);
-
-    if (payload.effect === "blink") {
-        const chain = blink(ctx.nlrScene, {
-            closeDuration: half(payload.inMs),
-            openDuration: half(payload.outMs),
-            hold,
-            color: payload.color,
-            easing: payload.easing,
-        } as any);
-        return [recordStatement(ctx, chain, block)];
-    }
-
-    // `inner` above `outer` is not a wider vignette - it is a `radial-gradient` whose stops run
-    // backwards, which the browser drops whole, taking the mask and therefore the entire effect with
-    // it. Ordering them here is the same discipline the camera's clamps follow.
-    const inner = Math.min(100, Math.max(0, finiteOr(payload.inner, DEFAULT_VIGNETTE_INNER)));
-    const outer = Math.min(100, Math.max(inner, finiteOr(payload.outer, DEFAULT_VIGNETTE_OUTER)));
-    const chain = vignette(ctx.nlrScene, {
-        duration: seconds(payload.durationMs),
-        hold,
-        color: payload.color,
-        opacity: payload.opacity,
-        easing: payload.easing,
-        ...(payload.inner === undefined && payload.outer === undefined ? {} : { inner: `${inner}%`, outer: `${outer}%` }),
-    } as any);
-    return [recordStatement(ctx, chain, block)];
-}
 
 /** A finite number, or the neutral fallback - a NaN reaching a Transform prop silently kills the whole animation. */
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -2916,6 +2848,37 @@ async function compileCameraAction(
     }
     const chain = await emitTransformProps(camera, clampCameraTransform(transform), ctx, block.id);
     return chain === camera ? [] : [recordStatement(ctx, chain, block)];
+}
+
+/**
+ * A named lens gesture, as the keyframes it plays.
+ *
+ * In, hold, out - and the last leg returns the channel to zero, so a gesture leaves no residue. A row
+ * that wants the eyes to STAY shut writes `shutter=1`, which is a different instruction and reads
+ * like one.
+ *
+ * The legs are handed to a `Transform` rather than chained as three calls because a browser
+ * interpolates a keyframe list as one animation: three separate awaited statements would each settle
+ * and restart, which is visible as a hitch at every joint.
+ */
+function cameraLensGesture(
+    lens: NonNullable<StoryTransformProps["lens"]>,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Transform | null {
+    const steps = resolveStoryCameraLensSteps(lens);
+    if (!steps) {
+        diagnostic(ctx, "warning", blockId, `Camera lens "${lens.preset}" is not a known effect.`);
+        return null;
+    }
+    const sequences = steps.map(step => ({
+        // `as any` for the same reason the sway's is: these props land on `ImageTransformProps` in
+        // narraleaf-react 0.31.0, and the pin is still on the release before it. An engine that does
+        // not know them ignores them rather than failing - see `storyTransformPropsToNlr`.
+        props: storyTransformPropsToNlr(step.props),
+        options: { duration: step.durationMs, ease: step.easing },
+    }));
+    return new Transform(sequences as any);
 }
 
 /**
@@ -4189,7 +4152,13 @@ async function emitTransformProps(
     // A SWAY never settles onto its grade until its last step, so the recipe's resting chain is the
     // sway statement's own business and must not also be written into the pose - a bag carrying both
     // would put the grade on at frame zero and then swing away from it.
-    const bag = grade?.sway ? { ...ref.to, look: undefined } : ref.to;
+    let bag = grade?.sway ? { ...ref.to, look: undefined } : ref.to;
+    // A lens GESTURE is three keyframes rather than a destination, so it plays as its own statement
+    // too. `lens: null` is the opposite instruction and IS a destination: put the glass back.
+    const gesture = ref.to?.lens ? cameraLensGesture(ref.to.lens, ctx, blockId) : null;
+    if (ref.to?.lens !== undefined) {
+        bag = { ...bag, lens: undefined, ...(ref.to.lens === null ? neutralStoryCameraLensProps() : {}) };
+    }
     const to = foldStoryTransformLook(bag, resolveStoryCameraLook, preset =>
         diagnostic(ctx, "warning", blockId, `Camera look "${preset}" is not a known grade.`));
     const { cut, tween } = splitStoryTransformChange(ref.from, to);
@@ -4214,6 +4183,9 @@ async function emitTransformProps(
         // so the swing ends on its last step rather than at neutral, and the settle is what leaves
         // the stage in the state a still grade would have left it in.
         next = next.transform(grade.sway).filter(grade.css, { duration: grade.settleMs, ease: "easeOut" });
+    }
+    if (gesture) {
+        next = next.transform(gesture);
     }
     if (ref.clipReveal) {
         next = emitClipReveal(next, ref.clipReveal, timing, ctx, blockId);

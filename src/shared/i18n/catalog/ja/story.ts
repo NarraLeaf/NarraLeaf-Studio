@@ -473,10 +473,7 @@ export const story = {
         seekTime: "秒",
         // カメラ
         cameraLookStrength: "ルックの強さ",
-        effectIn: "イン秒数",
-        effectOut: "アウト秒数",
-        vignetteInner: "透明な中心 %",
-        vignetteOuter: "暗い縁 %",
+
         // 修飾
         duration: "秒",
         transition: "トランジション",
@@ -513,6 +510,13 @@ export const story = {
         filterInvert: "反転",
         filterCss: "CSS フィルター",
         cameraLook: "ルック",
+        cameraLens: "レンズ効果",
+        shutter: "シャッター",
+        shutterColor: "シャッターの色",
+        vignette: "ビネット",
+        vignetteColor: "ビネットの色",
+        vignetteInner: "透明な中心 %",
+        vignetteOuter: "暗い縁 %",
         maskImage: "マスク画像",
         clipPath: "クリップパス",
         backdropFilter: "背景フィルター",
@@ -524,7 +528,6 @@ export const story = {
         repeatDelay: "繰り返し間隔",
         fromProps: "開始プロパティ",
         conceal: "退場",
-        screenEffect: "フラッシュ / ビネット",
     },
 
     /**
@@ -620,8 +623,9 @@ export const story = {
         backInOut: "バックインアウト",
         anticipate: "アンティシペート",
         // The two screen-wide gestures, as `/screen`'s first positional.
-        blink: "フラッシュ",
-        vignette: "ビネット",
+        blink: "まばたき",
+        slowBlink: "ゆっくりまばたき",
+        vignettePulse: "ビネットの脈動",
     },
 
     /**
@@ -1011,7 +1015,6 @@ export const story = {
         // 「シーンをまたいで残る」は詳細の行に置く。どのコマンドにも詳細はあり、スラッシュメニューと
         // コマンドの手引きで、作者がカメラについて最初に読む場所がそこだから。
         transform: { label: "変形", detail: "舞台上のものを移動・拡大縮小・回転・マスク・フィルター・フェードする。カメラも含む" },
-        screen: { label: "画面演出", detail: "画面全体の演出：フラッシュまたはビネット" },
         note: { label: "メモ", detail: "Studio にだけ見えるメモ" },
     },
     containerHeader: {
@@ -1106,7 +1109,6 @@ export const story = {
         nvl: "NVL ブロック",
         blueprint: "ブループリント",
         pluginAction: "プラグインアクション",
-        effect: "{effect} の画面演出",
         cameraOp: {
             transform: "カメラ",
             look: "グレード",

@@ -57,6 +57,7 @@ import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { parseStoryFilter } from "@shared/story/transformProps";
 import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "@/apps/workspace/modules/story/scene-editor/commands/transitions";
+import { getStoryCameraLensPreset } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 
 import type {
@@ -807,26 +808,39 @@ function buildDraft(
         case "cameraReset":
         case "cameraMotion":
             return cameraDraft(ctx, verb, slots);
-        case "screenBlink":
-        case "screenVignette":
+        case "cameraLens": {
+            // A gesture the library does not know is a `badWord` rather than a name stored as typed,
+            // for the reason a grade is: an unknown id compiles to a diagnostic and plays nothing, so
+            // accepting it here would move a real failure from where the author is typing to where
+            // they are testing.
+            const preset = nameOf(slots, "lens");
+            if (preset === undefined || !getStoryCameraLensPreset(preset)) {
+                return fail("badWord", preset ?? "lens");
+            }
             return {
                 kind: "action",
-                payload: prune({
-                    action: "screenEffect" as const,
-                    effect: verb === "screenBlink" ? ("blink" as const) : ("vignette" as const),
-                    durationMs: msOf(slots, "duration"),
-                    // Only `blink` has these slots to fill; on a vignette they are absent from the
-                    // grammar and `prune` drops the undefined pair.
-                    inMs: msOf(slots, "fadeIn"),
-                    outMs: msOf(slots, "fadeOut"),
-                    holdMs: msOf(slots, "hold"),
-                    color: colorOf(slots, "color"),
-                    opacity: numberOf(slots, "opacity"),
-                    inner: numberOf(slots, "inner"),
-                    outer: numberOf(slots, "outer"),
-                    easing: nameOf(slots, "easing"),
-                }),
+                payload: {
+                    action: "camera",
+                    operation: "transform",
+                    transform: {
+                        mode: "props",
+                        to: {
+                            lens: prune({
+                                preset,
+                                inMs: msOf(slots, "fadeIn"),
+                                holdMs: msOf(slots, "hold"),
+                                outMs: msOf(slots, "fadeOut"),
+                                color: colorOf(slots, "color"),
+                                amount: numberOf(slots, "opacity"),
+                                inner: numberOf(slots, "inner"),
+                                outer: numberOf(slots, "outer"),
+                                easing: nameOf(slots, "easing"),
+                            }) as { preset: string },
+                        },
+                    },
+                },
             };
+        }
 
         // --- Control ---------------------------------------------------------------------------------------
         case "conditionIf":

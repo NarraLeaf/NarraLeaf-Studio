@@ -419,9 +419,9 @@ describe("projectStoryCommandLine", () => {
         expect(edited("/goto intro", "intro", "after refusal")).toBe("/goto 'after refusal'");
         // A look belongs to the character that had it, so swapping the character drops it.
         expect(edited("/face Alice smile", "c1", "c2")).toBe("/face Doll");
-        // A vignette's own defaults fill the three values before its opacity, so this one is asked
-        // for by a number none of them share.
-        expect(edited("/screen vignette opacity=0.45", "0.45", "0.9")).toBe("/screen vignette d=0.3s hold=0.6s color=#000000 opacity=0.9");
+        // The camera's house duration fills the slot the line left empty, so this one is asked for by
+        // a number none of the seeded values share.
+        expect(edited("/transform camera vignette=0.45", "0.45", "0.9")).toBe("/transform camera vignette=0.9 d=0.6s");
     });
 
     it("offers exactly the options the grammar declares, and no writer where nothing can be edited", () => {
@@ -492,8 +492,9 @@ describe("projectStoryCommandLine", () => {
             "/transform camera bright=0.6",
             "/transform camera look=moonlight",
             "/reset camera",
-            "/screen blink d=0.2 hold=0.1",
-            "/screen vignette d=0.5 opacity=0.6",
+            "/transform camera lens=blink",
+            "/transform camera vignette=0.6 vignetteInner=30 vignetteOuter=70",
+            "/transform camera shutter=1 shutterColor=#000000",
             "/nvl in=fade d=0.4",
             "/wait 1.5",
             "/wait click",

@@ -452,8 +452,8 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // line to something outside the scene's own vocabulary. It needs to be tellable apart at a
         // glance precisely because it is the one row whose behaviour is not in the document.
         if (block.payload.action === "plugin") return badge("plugin", "story.badge.plugin", "utils");
-        // A screen effect is a property of the scene it happens in (§4.1), so it wears the scene hue;
-        // the Sparkles badge is what still tells a `/blink` row apart from a `/bg` row at a glance.
+        // Defensive rather than reachable: the arms above are exhaustive over the union, and a
+        // document from a newer schema can still carry an action this build has no badge for.
         return badge("effect", "story.badge.effect", "scene");
     }
     if (block.kind === "control") {
@@ -793,7 +793,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId)
                 ?? translate("story.describe.pluginAction");
         }
-        return translate("story.describe.effect", { effect: payload.effect });
+        return translate("story.badge.effect");
     }
     if (block.kind === "control") {
         if (block.payload.control === "condition") return translate("story.describe.condition");
