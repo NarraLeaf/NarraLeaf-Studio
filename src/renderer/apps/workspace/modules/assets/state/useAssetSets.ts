@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    deriveAssetSetDraft,
-    parseAssetTag,
     resolveAssetSetContents,
     validateAssetSet,
     type AssetSet,
@@ -103,51 +101,5 @@ export function useAssetSets({
         [resolved],
     );
 
-    /**
-     * Make a set out of the rows the author has marked.
-     *
-     * The tags on those rows are the declaration - see `deriveAssetSetDraft`. Refused for a
-     * selection spanning two asset types: a set resolves within one type, and picking one of them
-     * would silently leave the other half out of everything the set is about.
-     */
-    /**
-     * The name to offer for a set made of these rows.
-     *
-     * The values of the tags they all agree on - `char:alice` and `outfit:school` suggest
-     * "alice school" - because those are what the set *is*, whereas the first file's name is one
-     * corner of it (`alice-happy-en` for a set that also holds sad and Japanese). Empty when the
-     * rows agree on nothing, which is the honest answer: there is no name to guess.
-     */
-    const suggestNameFor = useCallback((selected: readonly Asset[]): string => {
-        if (selected.length === 0) {
-            return "";
-        }
-        const draft = deriveAssetSetDraft(selected.map(asset => ({
-            id: asset.id,
-            type: asset.type,
-            tags: asset.tags,
-        })));
-        return draft.filter
-            .map(tag => parseAssetTag(tag)?.value)
-            .filter((value): value is string => Boolean(value))
-            .join(" ");
-    }, []);
-
-    const createFromAssets = useCallback((selected: readonly Asset[], name: string): AssetSet | null => {
-        if (!service || selected.length === 0) {
-            return null;
-        }
-        const type = selected[0].type;
-        if (selected.some(asset => asset.type !== type)) {
-            return null;
-        }
-        const draft = deriveAssetSetDraft(selected.map(asset => ({
-            id: asset.id,
-            type: asset.type,
-            tags: asset.tags,
-        })));
-        return service.createSet({ name, type, filter: draft.filter, axes: draft.axes });
-    }, [service]);
-
-    return { service, sets, resolved, byCategory, findSet, createFromAssets, suggestNameFor };
+    return { service, sets, resolved, byCategory, findSet };
 }

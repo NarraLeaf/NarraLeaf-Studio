@@ -390,9 +390,14 @@ export const assets = {
         },
         create: {
             title: "New asset set",
-            nameRequired: "Enter a name",
-            /** Reached only by a selection spanning two asset types. */
-            failed: "A set holds one kind of asset. Select files of one kind.",
+            /** The character the file names are read apart at. */
+            delimiter: "Separator",
+            delimiterSpace: "Space",
+            /**
+             * The positions the names split into. Each one the author names becomes a tag category,
+             * and the ones that vary become the axes.
+             */
+            segments: "Name parts",
         },
         /** The inspector. Each axis is one tag category, and the order is the nesting. */
         inspector: {

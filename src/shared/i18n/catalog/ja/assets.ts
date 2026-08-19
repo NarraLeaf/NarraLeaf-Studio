@@ -374,8 +374,9 @@ export const assets = {
         },
         create: {
             title: "アセットセットの新規作成",
-            nameRequired: "名前を入力",
-            failed: "1 つのセットが持つのは 1 種類のアセット。同じ種類のファイルを選択。",
+            delimiter: "区切り文字",
+            delimiterSpace: "空白",
+            segments: "ファイル名の構成",
         },
         inspector: {
             axes: "軸",
