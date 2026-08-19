@@ -316,6 +316,10 @@ export type StoryCommandResolutionIssue =
      * wrong - a `Vfx` and a `Video` are engine `Actionable`s with no transform pipeline at all, so
      * no amount of retyping makes a transform reach one. The slot RESOLVES these kinds precisely so
      * it can say that, which is why they sit in `refuses` rather than being left out of `accepts`.
+     *
+     * Several verbs raise it (`/transform`, `/reset`, `/front`) and they refuse different kinds, so
+     * `kind` is the whole payload the message has to work from - see the reason renderer, which picks
+     * the advice by it and quotes the verb from the line rather than naming one here.
      */
     | { code: "unsupportedTarget"; span: StoryCommandSpan; value: string; kind: StoryCommandTargetKind }
     /** Two things share this name, so the line does not say which one. */
