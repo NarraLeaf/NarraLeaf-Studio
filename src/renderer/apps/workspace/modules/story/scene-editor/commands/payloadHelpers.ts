@@ -157,10 +157,6 @@ export function withRevealTransform(
  *
  * Shared because more than one command builds that payload from a target param, and the mapping is a
  * rule rather than a formality: which kinds are Displayables at all is stated here once.
- *
- * (`specs/effects.ts` still carries a private twin of this, from before there was a second caller.
- * Collapsing it onto this one is a one-line follow-up, left out here only to keep this change off a
- * file another branch is editing.)
  */
 export function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplayableTargetRef | undefined {
     if (!target) {
