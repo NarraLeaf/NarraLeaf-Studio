@@ -214,6 +214,15 @@ export interface AssetSet {
     filter: string[];
     /** The one thing this set's members vary by. See the module note. */
     axis: AssetSetAxis;
+    /**
+     * The folder it is filed in, or absent for one at the top of its section.
+     *
+     * A set is a folder to whoever is browsing, so it is filed where it was made rather than at the
+     * top of the section: a project with twenty of them would otherwise open on twenty rows before
+     * the first folder. It is only where the row is drawn - a set holds no files, and its members
+     * stay in whatever folder they were imported into.
+     */
+    groupId?: string;
 }
 
 export interface ProjectAssetSetDocument {
@@ -646,12 +655,15 @@ export function normalizeAssetSet(raw: unknown): AssetSet | null {
     if (!axis) {
         return null;
     }
+    const groupId = typeof record.groupId === "string" ? record.groupId.trim() : "";
     return {
         id,
         name: typeof record.name === "string" ? record.name.trim() : "",
         type,
         filter: normalizeStringList(record.filter),
         axis,
+        // Omitted rather than stored empty, so "at the top of the section" is one state and not two.
+        ...(groupId ? { groupId } : {}),
     };
 }
 
@@ -685,6 +697,7 @@ function splitLegacyAxes(raw: unknown, set: AssetSet): AssetSet[] {
                 id: `${parent.id}:${value}`,
                 name: `${parent.name} ${value}`.trim(),
                 type: parent.type,
+                ...(parent.groupId ? { groupId: parent.groupId } : {}),
                 filter: [...parent.filter, formatAssetTag(parent.axis.key, value)],
                 axis: { ...inner, values: [...inner.values] },
             };

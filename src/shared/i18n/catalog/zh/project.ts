@@ -225,6 +225,10 @@ export const project = {
             title: "自动前进",
             description: "一句显示完之后自动进入下一句",
         },
+        autoForwardDelay: {
+            title: "自动前进等待时间",
+            description: "一句显示完之后到进入下一句之间的等待时间，受游戏速度影响",
+        },
         showDialog: {
             title: "显示对话框",
             description: "关闭后游戏以隐藏对话框的状态启动",

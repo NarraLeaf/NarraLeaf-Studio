@@ -50,12 +50,14 @@ export interface AssetSetWizardProps {
      * than from whatever the last one left behind.
      */
     assets: Asset[];
+    /** The folder the author was in. The set's row is drawn there rather than at the section's top. */
+    groupId?: string;
     /** The set and value this one hangs under, when the author is making a sub-set. */
     parent?: { set: AssetSet; value: string };
     onClose: () => void;
 }
 
-export function AssetSetWizard({ assets, parent, onClose }: AssetSetWizardProps) {
+export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWizardProps) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const [name, setName] = useState("");
@@ -168,6 +170,7 @@ export function AssetSetWizard({ assets, parent, onClose }: AssetSetWizardProps)
                 type: type as AssetType,
                 filter: plan.filter,
                 axis: plan.axis,
+                ...(groupId ? { groupId } : {}),
             });
             onClose();
         } finally {
@@ -239,6 +242,9 @@ export function AssetSetWizard({ assets, parent, onClose }: AssetSetWizardProps)
                             label: t(`assets.sets.axisKind.${entry}`),
                         }))}
                         onChange={value => chooseKind(value as AssetSetAxisKind)}
+                        // The menu leaves the dialog: a select near the bottom of a modal opens into
+                        // the modal's own overflow otherwise, and its options are cut off.
+                        portalMenu
                         ariaLabel={t("assets.sets.create.axis")}
                     />
                 </div>
@@ -268,6 +274,7 @@ export function AssetSetWizard({ assets, parent, onClose }: AssetSetWizardProps)
                                             placeholder={t("assets.sets.inspector.variantMissing")}
                                             options={assets.map(asset => ({ value: asset.id, label: asset.name }))}
                                             onChange={value => chooseMember(entry.value, String(value))}
+                                            portalMenu
                                             ariaLabel={entry.label}
                                         />
                                     </div>
