@@ -137,6 +137,11 @@
       "status": "translated",
       "target": "廊下にはまだチョークとワックスの匂いが残っている。背後で、冷えていくロッカーがかすかに鳴った。"
     },
+    "key:config.autoForwardDelay": {
+      "sourceHash": "fnv1a:e727e3f0",
+      "status": "translated",
+      "target": "自動送りの待ち時間"
+    },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",
       "status": "translated",

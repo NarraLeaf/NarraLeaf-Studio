@@ -1,5 +1,8 @@
 {
   "keys": {
+    "config.autoForwardDelay": {
+      "sourceText": "Auto forward delay"
+    },
     "menu.continue": {
       "sourceText": "Continue"
     },
