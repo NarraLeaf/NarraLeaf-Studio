@@ -142,6 +142,41 @@ describe("attachPlayerPreferences", () => {
         expect(log).toHaveBeenCalledWith("warning", expect.stringContaining("store offline"));
     });
 
+    // `autoForwardDelay` is game config in the engine, not a preference, so a value in the store
+    // paces nothing until it is copied across. These two are that copy.
+    it("applies the auto forward wait to the engine at boot", async () => {
+        const preference = fakePreferenceStore();
+        const configureEngine = vi.fn();
+        await attachPlayerPreferences({
+            preference,
+            defaults: normalizePlayerPreferences({ autoForwardDelay: 1200 }),
+            read: async () => ({ autoForwardDelay: 800 }),
+            write: async () => undefined,
+            configureEngine,
+        });
+        // The player's stored value, not the author's default: the same precedence every other
+        // preference has.
+        expect(configureEngine).toHaveBeenLastCalledWith({ autoForwardDelay: 800 });
+    });
+
+    it("re-applies it whenever it changes", async () => {
+        const preference = fakePreferenceStore();
+        const configureEngine = vi.fn();
+        await attachPlayerPreferences({
+            preference,
+            read: async () => undefined,
+            write: async () => undefined,
+            configureEngine,
+        });
+        configureEngine.mockClear();
+        preference.set("autoForwardDelay", 2500);
+        expect(configureEngine).toHaveBeenCalledWith({ autoForwardDelay: 2500 });
+        // A change to anything else costs nothing.
+        configureEngine.mockClear();
+        preference.set("cps", 33);
+        expect(configureEngine).not.toHaveBeenCalled();
+    });
+
     it("is a no-op against an engine build with no preference store", async () => {
         const dispose = await attachPlayerPreferences({
             preference: undefined,

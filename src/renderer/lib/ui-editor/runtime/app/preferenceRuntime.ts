@@ -23,12 +23,19 @@
  * `Get`/`Set` pair, the `gamePreferenceChanged` event, this persistence, and one settings page.
  * What acts on it is Studio (see `skipRunController`).
  *
+ * `autoForwardDelay` rides the same way but has a second half: the engine reads it from
+ * `game.config`, not from the preference store, so a value here means nothing until it is copied
+ * across. {@link PlayerPreferencePersistenceOptions.configureEngine} is that copy, applied once on
+ * the boot path and again on every change, which is what makes a settings screen's slider move the
+ * pace of the game rather than a number nobody reads.
+ *
  * Comments in English per project convention.
  */
 
 import {
     DEFAULT_PLAYER_PREFERENCES,
     PLAYER_PREFERENCE_KEYS,
+    PLAYER_PREFERENCE_SPECS,
     normalizePlayerPreference,
     type PlayerPreferenceKey,
     type PlayerPreferenceValue,
@@ -63,6 +70,14 @@ export type PlayerPreferencePersistenceOptions = {
     defaults?: PlayerPreferences;
     read: (key: string) => Promise<unknown> | unknown;
     write: (key: string, value: unknown) => Promise<void> | void;
+    /**
+     * Push the preferences the engine keeps as *config* into the game (`Game.configure`).
+     *
+     * There is one today, `autoForwardDelay`. The engine reads it per line straight off
+     * `game.config`, so this is what a player changing it in a settings screen actually moves, and
+     * omitting it (the story preview, tests) simply leaves the engine's own value in place.
+     */
+    configureEngine?: (config: { autoForwardDelay: number }) => void;
     log?: (level: "info" | "warning" | "error", message: string) => void;
 };
 
@@ -123,7 +138,7 @@ function collectPlayerPreferences(preference: PreferenceStoreLike): Partial<Play
 export async function attachPlayerPreferences(
     options: PlayerPreferencePersistenceOptions,
 ): Promise<() => void> {
-    const { preference, defaults, read, write, log } = options;
+    const { preference, defaults, read, write, configureEngine, log } = options;
     if (!preference || typeof preference.importPreferences !== "function") {
         return () => undefined;
     }
@@ -147,12 +162,20 @@ export async function attachPlayerPreferences(
         log?.("warning", `Player preferences could not be restored: ${String(error)}`);
     }
 
+    // Once the store holds the effective values, and before the Player mounts: the first line's
+    // auto-forward wait is read as it plays, so a config applied later is a line already paced by
+    // the engine's own number.
+    applyEngineConfig(preference, configureEngine, log);
+
     let disposed = false;
     // Subscribed after both imports so the boot path writes nothing: the restore would otherwise
     // fire a change per key and echo the store straight back at itself.
     const token = preference.onPreferenceChange((key: string) => {
         if (disposed || !isKnownPreference(key)) {
             return;
+        }
+        if (key === "autoForwardDelay") {
+            applyEngineConfig(preference, configureEngine, log);
         }
         try {
             void write(PLAYER_PREFERENCES_PERSISTENCE_KEY, collectPlayerPreferences(preference));
@@ -173,4 +196,31 @@ export async function attachPlayerPreferences(
 
 function isKnownPreference(key: string): key is PlayerPreferenceKey {
     return (PLAYER_PREFERENCE_KEYS as readonly string[]).includes(key);
+}
+
+/**
+ * Mirror the config-backed preferences onto the game.
+ *
+ * Total, like everything else on this path: a store that answers with nonsense falls back to the
+ * spec's default rather than handing the engine a `NaN` it would divide a delay by.
+ */
+function applyEngineConfig(
+    preference: PreferenceStoreLike,
+    configureEngine: ((config: { autoForwardDelay: number }) => void) | undefined,
+    log?: (level: "info" | "warning" | "error", message: string) => void,
+): void {
+    if (!configureEngine) {
+        return;
+    }
+    try {
+        const raw = preference.getPreferences()["autoForwardDelay"];
+        const value = normalizePlayerPreference("autoForwardDelay", raw);
+        configureEngine({
+            autoForwardDelay: typeof value === "number"
+                ? value
+                : PLAYER_PREFERENCE_SPECS.autoForwardDelay.defaultValue as number,
+        });
+    } catch (error) {
+        log?.("warning", `Auto forward wait could not be applied: ${String(error)}`);
+    }
 }
