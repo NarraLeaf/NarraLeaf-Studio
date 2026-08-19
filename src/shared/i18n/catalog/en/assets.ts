@@ -398,6 +398,13 @@ export const assets = {
         variantsResolved: "{resolved} of {total} variants",
         /** The set does not describe any variants yet, so there is nothing to count. */
         unfinished: "No variants declared",
+        /**
+         * Asked before a set stops existing, either way it goes. The rows below name the set itself,
+         * so they break whether or not the files survive - which is why this is separate from the
+         * library's own "these assets are still in use".
+         */
+        inUseTitle: "{name} is still in use",
+        inUseMessage: "The following places name it and will stop resolving:",
         menu: {
             create: "New Set from Selection",
             createSub: "New Set from Selection, Here",
