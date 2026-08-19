@@ -164,6 +164,13 @@ export const lint = {
             description: "Two rows creating one stage name; the second reuses the first",
             message: "{object} is already created above, so this row acts on that one",
         },
+        storyTransitionUnavailable: {
+            title: "Unavailable transition",
+            description: "A row naming a transition this version cannot play",
+            // The stored word is printed even though no picker offers it any more: it is the only
+            // handle the author has on a transition that is otherwise gone from every menu.
+            message: "The transition {transition} is not available, so this change plays as a cut",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",

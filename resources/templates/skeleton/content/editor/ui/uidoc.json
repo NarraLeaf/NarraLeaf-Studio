@@ -2703,7 +2703,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.save"
       }
     },
     "e3ee3f26-1538-433a-a2ff-8052664099de": {
@@ -2741,7 +2742,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.load"
       }
     },
     "53035b8b-715e-4e50-9d5e-418d216f480a": {
@@ -2779,7 +2781,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.config"
       }
     },
     "21b58ced-62f0-4995-ae7e-e7904ba8b55c": {
@@ -3188,7 +3191,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.back"
       }
     },
     "d68d4baa-b176-426a-874d-a9c66269e0da": {
@@ -3226,7 +3230,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.title"
       }
     },
     "29fd091e-8a94-489b-9a95-2f5e2e659aa3": {
@@ -3414,7 +3419,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "log.title"
       }
     },
     "77b38a1d-cace-4f78-a66a-ebaf80fec374": {
@@ -32349,7 +32355,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.save"
       }
     },
     "2c1f9691-a3f1-42f9-8239-b789456cbd74": {
@@ -32758,7 +32765,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.load"
       }
     },
     "2bd4d5de-6e58-4438-92f1-13db78304813": {
@@ -32796,7 +32804,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.config"
       }
     },
     "b919294e-a700-4365-8cac-c98292a63ec4": {
@@ -32834,7 +32843,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.back"
       }
     },
     "3b48abce-4359-40fc-ad3e-808cc8dc7f05": {
@@ -32872,7 +32882,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.title"
       }
     },
     "eb7c1fef-8eca-41d7-8098-fc7c302f64f8": {
@@ -33060,7 +33071,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "load.title"
       }
     },
     "b63c53ed-e760-4559-8067-67a5f42991ac": {
@@ -40509,7 +40521,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "661cff80-79c9-40f5-807d-717a9fa6c4cf": {
@@ -42203,7 +42216,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "65beaf55-bbb5-4282-988d-cca491e69b45": {
@@ -49364,7 +49378,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "bae3cf65-4575-46f2-b854-480481991713": {
@@ -49552,7 +49567,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "230d9bb8-5d4c-41bc-aeb5-e241dedc2fb6": {
@@ -49740,7 +49756,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "225b84d8-d2ea-4a34-9faa-9ce290a4aead": {
@@ -49928,7 +49945,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "1678e315-828c-4c04-9c9f-63593a36a1d6": {
@@ -51862,7 +51880,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.save"
       }
     },
     "32a5585a-6502-4c13-b150-1293d171ee0b": {
@@ -52271,7 +52290,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.load"
       }
     },
     "c51ff06a-1d55-4698-98f5-539825b59a87": {
@@ -52309,7 +52329,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.config"
       }
     },
     "6a041a92-623c-4d48-bb46-ee0d0e2c2a68": {
@@ -52347,7 +52368,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.back"
       }
     },
     "8bad6736-b4c1-4eaf-94e0-3b2fe0b07dc5": {
@@ -52385,7 +52407,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.title"
       }
     },
     "216dc3b7-ec84-4fb0-9135-0babad12b3ef": {
@@ -52573,7 +52596,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "save.title"
       }
     },
     "139c835c-044c-4a2d-9ce5-8ecc34c3b5e6": {
@@ -53914,7 +53938,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "e2ec3068-cad2-4a7d-8566-18fda7993c30": {
@@ -55636,7 +55661,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "970bc26e-cf54-41ef-8d53-6de832a04429": {
@@ -57358,7 +57384,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "dddb715a-4271-4fde-8c7c-64bece662721": {
@@ -59080,7 +59107,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "31a68e07-67a6-4231-a740-999168152423": {
@@ -60774,7 +60802,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "9410e136-3750-4323-847a-fe0029d62f9c": {
@@ -62842,7 +62871,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "slot.empty"
       }
     },
     "f2ac3c7e-181b-4fb7-9aa3-0ada0bff0a14": {
@@ -75107,7 +75137,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "load.autoSaves"
       }
     },
     "3d379905-7bf0-4070-b528-d2098ce9034e": {
@@ -77181,7 +77212,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.back"
       }
     },
     "59da63be-cfb9-40b4-a216-d6a4caf369e9": {
@@ -77369,7 +77401,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "scenes.title"
       }
     },
     "39ef8ddd-7373-4d4d-b6f6-9f80b54759c2": {
