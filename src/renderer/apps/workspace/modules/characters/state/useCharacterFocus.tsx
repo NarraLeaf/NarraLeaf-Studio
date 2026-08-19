@@ -13,6 +13,28 @@ export function characterEditorTabId(characterId: string): string {
     return `narraleaf-studio:character-editor-${characterId}`;
 }
 
+/**
+ * The editor tab for one character, as every path that opens one builds it.
+ *
+ * A factory beside the id for the same reason `createStorySceneEditorTab` is one: opening a character
+ * is no longer only "click it in the panel". A search hit, a lint finding, an asset's reference list
+ * and a name on a story row all open the same tab now, and a tab definition copied per call site is a
+ * title, an icon or a `closable` that drifts between the ways in.
+ *
+ * The title is a SNAPSHOT of the name, which is why {@link syncCharacterEditorTabTitle} exists.
+ */
+export function createCharacterEditorTab(character: Character): EditorTabDefinition<{ character: Character }> {
+    const profile = character.profile.getProfile();
+    return {
+        id: characterEditorTabId(profile.id),
+        title: profile.name,
+        icon: <User className="w-4 h-4" />,
+        component: CharacterEditor,
+        closable: true,
+        payload: { character },
+    };
+}
+
 function findTabInLayout(
     layout: EditorLayout | null | undefined,
     tabId: string,
@@ -76,14 +98,7 @@ export function useCharacterFocus({ context, panelId }: UseCharacterFocusParams)
         uiService.focus.setFocus(FocusArea.LeftPanel, panelId);
         setFocusedCharacterId(characterId);
 
-        uiService.editor.open({
-            id: characterEditorTabId(characterId),
-            title: profile.name,
-            icon: <User className="w-4 h-4" />,
-            component: CharacterEditor,
-            closable: true,
-            payload: { character },
-        }, undefined, { activate: true });
+        uiService.editor.open(createCharacterEditorTab(character), undefined, { activate: true });
 
         // Return focus to the list so keyboard scope stays in the panel.
         uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
