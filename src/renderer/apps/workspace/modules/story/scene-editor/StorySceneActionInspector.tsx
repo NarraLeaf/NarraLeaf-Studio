@@ -98,6 +98,7 @@ import { AssetField } from "./AssetField";
 import { TransformChannelEditor } from "./TransformChannelEditor";
 import {
     Disclosure,
+    EasingField,
     FIELD_LABEL_CLASS,
     FieldGrid,
     NumberField,
@@ -106,7 +107,6 @@ import {
     SelectField,
     Section,
     TextField,
-    easingOptions,
     type TFunc,
 } from "./inspectorFieldKit";
 
@@ -1498,11 +1498,10 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                     />
                 ) : null}
                 {fades ? (
-                    <SelectField
-                        label={t("storyInspector.field.easing")}
-                        options={easingOptions(t)}
-                        value={payload.easing ?? ""}
-                        onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                    <EasingField
+                        t={t}
+                        value={payload.easing}
+                        onChange={easing => props.onChange({ ...payload, easing })}
                     />
                 ) : null}
             </FieldGrid>
@@ -2263,11 +2262,10 @@ function TransformPresetEditor(props: {
                             value={value.durationMs}
                             onChange={durationMs => props.onChange({ ...value, durationMs })}
                         />
-                        <SelectField
-                            label={t("storyInspector.field.easing")}
-                            options={easingOptions(t)}
-                            value={value.easing ?? ""}
-                            onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
+                        <EasingField
+                            t={t}
+                            value={value.easing}
+                            onChange={easing => props.onChange({ ...value, easing })}
                         />
                     </FieldGrid>
                     <TransformChannelEditor
@@ -2307,11 +2305,10 @@ function TransitionEditor(props: {
                 {kind === "none" ? null : (
                     <>
                         <SecondsField label={t("storyInspector.field.duration")} value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
-                        <SelectField
-                            label={t("storyInspector.field.easing")}
-                            options={easingOptions(t)}
-                            value={value.easing ?? ""}
-                            onChange={easing => setBase({ easing: String(easing) || undefined })}
+                        <EasingField
+                            t={t}
+                            value={value.easing}
+                            onChange={easing => setBase({ easing })}
                         />
                     </>
                 )}

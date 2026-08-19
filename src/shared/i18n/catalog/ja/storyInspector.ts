@@ -119,6 +119,7 @@ export const storyInspector = {
         backOut: "バックアウト",
         backInOut: "バックインアウト",
         anticipate: "予備動作",
+        custom: "カスタムカーブ",
     },
 
     transition: {

@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils/cn";
 import { SETTING_PANELS } from "../panels";
 import { SettingColorPicker } from "./SettingColorPicker";
 import { SettingFontPicker } from "./SettingFontPicker";
+import { SettingSourcePicker } from "./SettingSourcePicker";
 import {
     SETTINGS_HIGHLIGHT_RING,
     SettingsHighlightContext,
@@ -86,6 +87,7 @@ function parseSettingInput(type: SettingValueType, rawValue: string): SettingVal
         case SettingValueType.Enum:
         case SettingValueType.Color:
         case SettingValueType.Font:
+        case SettingValueType.Source:
             return rawValue;
         case SettingValueType.Boolean:
             return rawValue === "true";
@@ -321,6 +323,26 @@ export function SettingsExplorer<T>({
         [handleCommit, handleInputChange],
     );
 
+    /**
+     * Put a row back to its default and forget what this session had it showing.
+     *
+     * The stored value is only half of what a row displays: text typed into a field lives in
+     * `pendingInputs` until it is committed. Resetting without clearing it leaves the old text on
+     * screen, which is a row saying it is at its default and showing something else.
+     */
+    const handleResetRow = useCallback(
+        async (entry: SettingEntry<T>) => {
+            const id = entry.descriptor.id;
+            setPendingInputs(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+            await onReset?.(entry.source, entry.descriptor);
+        },
+        [onReset],
+    );
+
     const renderControl = (entry: SettingEntry<T>) => {
         const { descriptor } = entry;
         const currentValue = getValue(entry.source, descriptor);
@@ -428,6 +450,24 @@ export function SettingsExplorer<T>({
                         disabled={isSaving || options.length === 0}
                         placeholder={descriptor.optionLabels?.[displayValue] ?? displayValue}
                     />
+                );
+            }
+            case SettingValueType.Source: {
+                // A little wider than a dropdown gets, because what this control shows once an
+                // address has been typed is the address. Not wide enough to spell one out, though:
+                // no width this row can spare fits a URL, and what an offered source shows is a
+                // two-word name, so the extra room only made an empty bar beside a short label.
+                return (
+                    <div className="w-48 max-w-full">
+                        <SettingSourcePicker
+                            value={displayValue}
+                            presets={descriptor.options ?? []}
+                            presetLabels={descriptor.optionLabels}
+                            onChange={(next) => handleEnumChange(entry, next)}
+                            disabled={isSaving || descriptor.disabled}
+                            ariaLabel={descriptor.label}
+                        />
+                    </div>
                 );
             }
             case SettingValueType.Font: {
@@ -631,7 +671,7 @@ export function SettingsExplorer<T>({
                                     type="button"
                                     data-tip={t("settings.resetToDefault")}
                                     aria-label={t("settings.resetToDefault")}
-                                    onClick={() => void onReset?.(entry.source, descriptor)}
+                                    onClick={() => void handleResetRow(entry)}
                                     className="rounded-md p-0.5 text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 group-hover/setting:opacity-100"
                                 >
                                     <RotateCcw className="h-3 w-3" />

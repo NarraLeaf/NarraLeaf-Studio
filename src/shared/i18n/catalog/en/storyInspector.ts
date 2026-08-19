@@ -117,6 +117,7 @@ export const storyInspector = {
         backOut: "Back out",
         backInOut: "Back in/out",
         anticipate: "Anticipate",
+        custom: "Custom curve",
     },
 
     transition: {
