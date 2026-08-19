@@ -84,6 +84,44 @@ export function displayableSourceIdentity(
 }
 
 /**
+ * **Which operation of each action DECLARES a stage object**, rather than addressing one that
+ * already exists. The one table, and the only place the split is written down.
+ *
+ * It lives here rather than beside the scene-wide helpers in `stageObjects.ts` because the two
+ * identity functions - {@link displayableCreatorIdentity} here and `actionableSourceIdentity` in
+ * `actionableTarget.ts` - both read it, and both are imported by that module. This file is already
+ * where the stage-naming rules those two share live (`normalizeStageObjectName`,
+ * {@link characterStageName}), so the table sits with them and the imports stay one-way.
+ *
+ * The story compiler dispatches on it too: `create` builds through a get-or-create constructor,
+ * everything else looks up and reports a miss. That is exactly one rule and it now has exactly one
+ * expression, so the compiler's split and lint's cannot drift apart.
+ *
+ * Anything not listed addresses only - `/transform` and `/fx` never create - and any action with no
+ * stage object at all answers false.
+ */
+export function declaresStageObject(payload: StoryActionPayload): boolean {
+    switch (payload.action) {
+        // A character portrait comes into existence when the character walks on.
+        case "character":
+            return payload.operation === "enter";
+        case "image":
+        case "text":
+        case "layer":
+        case "video":
+        case "vfx":
+            return payload.operation === "create";
+        // `setBgm` is left out on purpose: it points the reserved music channel at a clip, and that
+        // channel is referenced as a built-in rather than bound to the row - see
+        // `actionableSourceIdentity`.
+        case "audio":
+            return payload.operation === "playSound";
+        default:
+            return false;
+    }
+}
+
+/**
  * The identity of the displayable a block **declares**, or null when the block only addresses one
  * that already exists. The strict half of {@link displayableSourceIdentity}: same naming rules, but
  * only a row that brings the object into existence answers - `character` enter, `image` create,
@@ -108,14 +146,10 @@ export function displayableCreatorIdentity(
     if (block.kind !== "action") {
         return null;
     }
-    const payload = block.payload;
-    const declares =
-        (payload.action === "character" && payload.operation === "enter")
-        || ((payload.action === "image" || payload.action === "text" || payload.action === "layer")
-            && payload.operation === "create");
-    // Delegated rather than re-derived: the stage key / label rules live in one function, so the
-    // strict reading can never disagree with the permissive one about what an object is called.
-    return declares ? displayableSourceIdentity(block) : null;
+    // Delegated twice over: {@link declaresStageObject} states WHICH rows declare, and
+    // {@link displayableSourceIdentity} states what the object is called - so the strict reading can
+    // never disagree with the permissive one about a name, nor with the compiler about a split.
+    return declaresStageObject(block.payload) ? displayableSourceIdentity(block) : null;
 }
 
 /**

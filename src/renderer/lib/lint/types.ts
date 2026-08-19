@@ -94,6 +94,8 @@ export type LintRuleId =
     | "story/app-tag-unknown"
     | "story/cut-point-orphan"
     | "story/cut-point-unreachable"
+    | "story/stage-object-missing"
+    | "story/stage-object-duplicate"
     | "blueprint/reference-missing"
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"
