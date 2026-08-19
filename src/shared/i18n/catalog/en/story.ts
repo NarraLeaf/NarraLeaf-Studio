@@ -585,6 +585,8 @@ export const story = {
     enumValue: {
         // Transitions (`t=`), the unified word list from `commands/transitions.ts`.
         fade: "fade",
+        // The crossfade named outright, for the contexts where `fade` means something else.
+        dissolve: "dissolve",
         slide: "slide",
         "slide-left": "slide-left",
         "slide-right": "slide-right",

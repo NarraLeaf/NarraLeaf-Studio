@@ -20,7 +20,7 @@ import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKi
  */
 export function withTransitionRef(
     current: StoryTransitionRef | undefined,
-    context: "scene" | "character",
+    context: "scene" | "character" | "expression",
     t: StoryCommandValue | undefined,
     d: StoryCommandValue | undefined,
 ): StoryTransitionRef | undefined {

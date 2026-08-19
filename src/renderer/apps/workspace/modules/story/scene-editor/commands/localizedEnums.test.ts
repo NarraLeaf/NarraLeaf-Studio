@@ -54,8 +54,12 @@ describe("matchEnumOptionLocalized", () => {
             i18nStore.setLocale(locale);
             const t = enumType("bg", "t");
             expect(matchEnumOptionLocalized(t, "fade")?.value, locale).toBe("fade");
-            expect(matchEnumOptionLocalized(t, "dissolve")?.value, locale).toBe("fade");
+            expect(matchEnumOptionLocalized(t, "fadein")?.value, locale).toBe("fade");
             expect(matchEnumOptionLocalized(t, "FADE")?.value, locale).toBe("fade");
+            // `dissolve` used to be an alias of `fade` and is now a word of its own — it has to be,
+            // since on a portrait swap `fade` means the other thing. On a scene the two still land
+            // on one kind, so nothing an author wrote changed meaning.
+            expect(matchEnumOptionLocalized(t, "dissolve")?.value, locale).toBe("dissolve");
         }
     });
 
@@ -94,7 +98,8 @@ describe("the parse, end to end", () => {
         i18nStore.setLocale("zh");
         expect(stored("/背景 forest 转场=淡变")).toMatchObject({ kind: "enum", value: "fade" });
         expect(stored("/bg forest t=fade")).toMatchObject({ kind: "enum", value: "fade" });
-        expect(stored("/bg forest t=dissolve")).toMatchObject({ kind: "enum", value: "fade" });
+        // Its own word now, not an alias of `fade` — and on a `/bg` both still compile to a crossfade.
+        expect(stored("/bg forest t=dissolve")).toMatchObject({ kind: "enum", value: "dissolve" });
     });
 
     it("still rejects a value this command does not support", () => {

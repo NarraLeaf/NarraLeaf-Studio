@@ -62,9 +62,20 @@ describe("getQuickParams", () => {
         // with no transform at all has no number to edit rather than a zero to invent.
         expect(getQuickParams(action({ action: "character", operation: "enter", characterId: "c1", transform: { mode: "animation", animationId: "anim1" } }))).toEqual([]);
         expect(getQuickParams(action({ action: "character", operation: "enter", characterId: "c1" }))).toEqual([]);
-        // `move` and `expression` carry no token at all: neither is declared with `quickParams`.
-        expect(getQuickParams(action({ action: "character", operation: "expression", characterId: "c1", transition: { kind: "fadeIn", durationMs: 200 } }))).toEqual([]);
+        // `move` carries no token at all: it is not declared with `quickParams`.
         expect(getQuickParams(action({ action: "character", operation: "move", characterId: "c1", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 300 } }))).toEqual([]);
+    });
+
+    it("exposes a swap's duration off the TRANSITION - the mirror of the enter/exit rule", () => {
+        // `/face` is the one character row whose transition ref is played (`char(src, transition)`),
+        // so here the transform is the field nothing reads and the transition is the live one. Same
+        // regression in the other direction: a token reading the transform would print `d 0s` beside
+        // a `/face Alice smile d=0.2`.
+        const swap = getQuickParams(action({ action: "character", operation: "expression", characterId: "c1", transition: { kind: "fadeIn", durationMs: 200 } }));
+        expect(swap[0]).toMatchObject({ id: "d", value: { kind: "duration", ms: 200 } });
+        expect(swap[0].apply({ kind: "duration", ms: 500 })).toMatchObject({ transition: { kind: "fadeIn", durationMs: 500 } });
+        // No transition yet, no token - a quick edit must never invent the kind.
+        expect(getQuickParams(action({ action: "character", operation: "expression", characterId: "c1" }))).toEqual([]);
     });
 });
 

@@ -253,6 +253,43 @@ describe("puppet state channels", () => {
         expect(issuesOf("/face Nobody smile")).toEqual(["unknownCharacter"]);
     });
 
+    it("/face takes a transition, and writes it on the ref the swap actually plays", () => {
+        // `expression` is the one character operation the engine plays a `StoryTransitionRef` on -
+        // it compiles to `char(src, transition)`. So `d=` is THAT ref's duration; the transform's
+        // duration is the entrance/exit timing, and a swap that wrote it would edit a live-looking
+        // field nothing on stage reads.
+        expect(build("/face Alice smile t=wipe d=0.4")).toMatchObject({
+            payload: {
+                action: "character",
+                operation: "expression",
+                characterId: "c1",
+                pose: "t1",
+                transition: { kind: "softWipe", durationMs: 400 },
+            },
+        });
+        expect(build("/face Alice smile t=wipe d=0.4").payload).not.toHaveProperty("transform");
+        // `fade` on a swap is a fade-in, not the crossfade it is on a `/bg`: `Dissolve` half-fades
+        // both frames at once and shows the background through the middle, while `FadeIn` leaves the
+        // outgoing frame fully opaque and brings the new one up over it. The crossfade is still
+        // reachable - by name.
+        expect(build("/face Alice smile t=fade")).toMatchObject({ payload: { transition: { kind: "fadeIn" } } });
+        expect(build("/face Alice smile t=dissolve")).toMatchObject({ payload: { transition: { kind: "dissolve" } } });
+        // No `t=`, no ref: a row that says nothing about the swap must not gain a field.
+        expect(build("/face Alice smile").payload).not.toHaveProperty("transition");
+    });
+
+    it("refuses a transition on a puppet, whose expression has no second frame", () => {
+        // A puppet's expression compiles to `puppet.setExpression(name)` - the backend owns the inside
+        // of the box, and nothing in that call takes a transition. The key is the mistake, not the
+        // character, so the report names the key.
+        expect(issuesOf("/face Doll smile t=wipe")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/face Doll smile d=0.4")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/face Doll smile t=wipe d=0.4")).toEqual(["unsupportedParam", "unsupportedParam"]);
+        // The verb itself is untouched on both kinds of character.
+        expect(issuesOf("/face Doll smile")).toEqual([]);
+        expect(issuesOf("/face Alice smile t=wipe d=0.4")).toEqual([]);
+    });
+
     it("/motion and /skin write their own operation and nothing else", () => {
         expect(build("/motion Doll run")).toMatchObject({
             kind: "action",

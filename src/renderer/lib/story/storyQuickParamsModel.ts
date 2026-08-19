@@ -73,6 +73,16 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
         }
         return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
     }
+    if (payload.action === "character" && payload.operation === "expression") {
+        // The swap's own transition, and the only character row where that ref is played at all:
+        // `expression` compiles to `char(src, transition)`. Same rule as `setBackground` above - the
+        // number appears only once a transition exists, so a quick edit never has to invent a kind.
+        const transition = payload.transition;
+        if (!transition) {
+            return [];
+        }
+        return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
+    }
     if (payload.action === "character" && (payload.operation === "enter" || payload.operation === "exit")) {
         // The TRANSFORM, not the transition: an entering character has nothing to transition from, so
         // `/show Alice d=2` writes `transform.durationMs` and the compiler drives the entrance entirely
