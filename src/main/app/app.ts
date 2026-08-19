@@ -12,6 +12,7 @@ import { GameBuildManager } from "./application/managers/build/GameBuildManager"
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
 import { StudioTaskScheduler } from "./application/managers/tasks/StudioTaskScheduler";
+import { WeatherBakeManager } from "./application/managers/weather/WeatherBakeManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
@@ -75,6 +76,7 @@ export class App extends BaseApp {
         this.gameTestManager = new GameTestManager(this);
         this.gameBuildManager = new GameBuildManager(this);
         this.taskScheduler = new StudioTaskScheduler();
+        this.weatherBakeManager = new WeatherBakeManager(this, this.taskScheduler);
         this.mediaConvertManager = new MediaConvertManager(this);
         // The commit pipeline has to settle the renderer's auto-save debt before it
         // stages, and only the window layer can ask a window to do that. Handed in as a
@@ -126,6 +128,7 @@ export class App extends BaseApp {
     private readonly gameBuildManager: GameBuildManager;
     private readonly mediaConvertManager: MediaConvertManager;
     private readonly taskScheduler: StudioTaskScheduler;
+    private readonly weatherBakeManager: WeatherBakeManager;
     private readonly vcsManager: VcsManager;
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
@@ -167,6 +170,11 @@ export class App extends BaseApp {
      */
     public getTaskScheduler(): StudioTaskScheduler {
         return this.taskScheduler;
+    }
+
+    /** Produces the clips weather seeds describe, and finds the ones already made. */
+    public getWeatherBakeManager(): WeatherBakeManager {
+        return this.weatherBakeManager;
     }
 
     public getVcsManager(): VcsManager {
