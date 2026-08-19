@@ -19,6 +19,7 @@ import { useMediaAssetSupport } from "./state/useMediaAssetSupport";
 
 import { useAssetData } from "./state/useAssetData";
 import { useAssetSets, type ResolvedAssetSet } from "./state/useAssetSets";
+import { useAssetSetNaming } from "./state/useAssetSetNaming";
 import { useMultiSelection } from "./state/useMultiSelection";
 import { useAssetSearch } from "./state/useAssetSearch";
 import { useAssetFilters, filtersNeedLibrarySnapshot } from "./state/useAssetFilters";
@@ -89,6 +90,7 @@ interface AssetsPanelState {
      */
     assetTypeOpenItems?: string[];
     expandedGroupIds?: string[];
+    expandedAssetSetIds?: string[];
     iconGroupPathIds?: string[];
 }
 
@@ -160,6 +162,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTargetState | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const [expandedAssetSets, setExpandedAssetSets] = useState<Set<string>>(new Set());
     
     // Magic Tags state
     const [magicTagDialogVisible, setMagicTagDialogVisible] = useState(false);
@@ -220,6 +223,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         if (Array.isArray(saved?.expandedGroupIds)) {
             setExpandedGroups(new Set(sanitizeStringIds(saved.expandedGroupIds)));
         }
+        if (Array.isArray(saved?.expandedAssetSetIds)) {
+            setExpandedAssetSets(new Set(sanitizeStringIds(saved.expandedAssetSetIds)));
+        }
         setIconGroupPathIds(sanitizeStringIds(saved?.iconGroupPathIds));
         setStateReady(true);
     }, [context, panelId]);
@@ -232,9 +238,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             iconSize,
             assetTypeOpenItems: filterKnownAssetCategoryIds(categoryOpenItems),
             expandedGroupIds: Array.from(expandedGroups),
+            expandedAssetSetIds: Array.from(expandedAssetSets),
             iconGroupPathIds,
         });
-    }, [categoryOpenItems, context, expandedGroups, iconGroupPathIds, iconSize, panelId, stateReady, viewMode]);
+    }, [categoryOpenItems, context, expandedAssetSets, expandedGroups, iconGroupPathIds, iconSize, panelId, stateReady, viewMode]);
 
     useEffect(() => {
         if (!stateReady) return;
@@ -342,6 +349,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // declaration measured against the library, and the measurement wants the library this panel is
     // already holding.
     const { byCategory: assetSets, findSet } = useAssetSets({ context, isInitialized, assets });
+    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
     const {
         menuState: setMenuState,
         showMenu: showSetMenu,
@@ -693,6 +701,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const contextValue = {
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
+        expandedAssetSets, setExpandedAssetSets, assetSetNaming,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu,
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
