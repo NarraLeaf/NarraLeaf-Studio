@@ -203,6 +203,7 @@ export enum IPCEventType {
     mediaConvertCancel = "media.convert.cancel",
     mediaConvertGetStatus = "media.convert.getStatus",
     studioTasksGetOverview = "studioTasks.getOverview",
+    studioTasksPrebakeWeather = "studioTasks.prebakeWeather",
     devModeResolveWeatherClip = "devMode.resolveWeatherClip",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
@@ -1838,6 +1839,15 @@ export type IPCWorkspaceEvents = {
         response: {
             overview: StudioTaskOverview;
         };
+    };
+    [IPCEventType.studioTasksPrebakeWeather]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            projectPath: string;
+            specs: WeatherBakeSpec[];
+        };
+        response: Record<string, never>;
     };
     [IPCEventType.mediaConvertGetStatus]: {
         type: IPCMessageType.request;
