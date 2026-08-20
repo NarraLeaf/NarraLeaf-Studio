@@ -131,7 +131,11 @@ function resolveEditorAssetSet(context: WorkspaceContext, assetId: string): stri
         sourceLocale = undefined;
     }
     const axis = set.axis;
-    const chain = [sourceLocale, ...axis.values].filter((value): value is string => Boolean(value));
+    // The project's own language first, then what the author named as the fallback, and only then
+    // whatever else the axis lists. The editor draws one picture and the author is writing in the
+    // source language, so that is the variant they mean to be looking at.
+    const chain = [sourceLocale, axis.fallback, ...axis.values]
+        .filter((value): value is string => Boolean(value));
     for (const value of chain) {
         const member = resolveAssetSetMember(set, { [axis.key]: value }, candidates);
         if (member) {

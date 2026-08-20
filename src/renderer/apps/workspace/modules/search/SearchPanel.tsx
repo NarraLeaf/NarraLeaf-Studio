@@ -23,6 +23,7 @@ import { segmentPlainText } from "@/apps/workspace/modules/story/scene-editor/st
 import type { TranslationKey } from "@shared/i18n";
 import { SearchBox } from "../assets/components/SearchBox";
 import { jumpToSearchTarget } from "./searchJump";
+import { SEARCH_FOCUS_REQUEST_EVENT, consumeSearchFocusRequest } from "./searchFocusRequest";
 
 const QUERY_DEBOUNCE_MS = 150;
 
@@ -139,8 +140,36 @@ export function SearchPanel() {
     const [planNonce, setPlanNonce] = useState(0);
     const queryRef = useRef(query);
     queryRef.current = query;
+    const queryInputRef = useRef<HTMLInputElement | null>(null);
     const expandedRef = useRef(expandedGroups);
     expandedRef.current = expandedGroups;
+
+    /**
+     * Take the caret when ⇧⌘F asks for it - on mount for a request that arrived while this panel
+     * was still hidden, and on the event for every request after that.
+     *
+     * The existing query is selected rather than cleared: pressing the shortcut again to search for
+     * something else should let the author type straight over it, while one that was pressed to
+     * come back and read the results is not destroyed by having done so.
+     */
+    useEffect(() => {
+        const focusQuery = () => {
+            const input = queryInputRef.current;
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        };
+        if (consumeSearchFocusRequest()) {
+            focusQuery();
+        }
+        const onRequest = () => {
+            consumeSearchFocusRequest();
+            focusQuery();
+        };
+        window.addEventListener(SEARCH_FOCUS_REQUEST_EVENT, onRequest);
+        return () => window.removeEventListener(SEARCH_FOCUS_REQUEST_EVENT, onRequest);
+    }, []);
 
     const searchService = context ? context.services.get<SearchService>(Services.Search) : null;
 
@@ -291,6 +320,7 @@ export function SearchPanel() {
                     <SearchBox
                         value={query}
                         onChange={setQuery}
+                        inputRef={queryInputRef}
                         placeholder={t("workspace.shell.search.placeholder")}
                         className="min-w-0 flex-1"
                     />

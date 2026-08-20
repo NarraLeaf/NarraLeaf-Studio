@@ -50,6 +50,7 @@ export const lint = {
             messageAmbiguous: "{set} 的 {variant} 对应了 {count} 个文件",
             messageResidency: "{set} 的 {axis} 在运行时解析，却嵌在构建时解析的 {outerAxis} 内",
             messageDeclaration: "{set} 没有声明可解析的变体",
+            messageFallback: "{set} 没有指定兜底变体",
         },
         portabilityAssetName: {
             title: "不安全的文件名",
@@ -157,6 +158,12 @@ export const lint = {
             title: "重复的舞台对象",
             description: "两行创建同一个舞台名称，后一行沿用前一行创建的对象",
             message: "{object} 已在上方创建，该行操作的是已创建的对象",
+        },
+        storyTransitionUnavailable: {
+            title: "转场不可用",
+            description: "行中指定的转场，当前版本无法播放",
+            // 仍然打印存下来的那个词：菜单里已经找不到它，作者手上只剩这一个抓手。
+            message: "转场 {transition} 不可用，该行的画面将直接切换",
         },
         blueprintReferenceMissing: {
             title: "目标缺失",

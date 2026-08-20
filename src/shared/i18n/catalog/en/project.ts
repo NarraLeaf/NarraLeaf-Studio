@@ -92,7 +92,7 @@ export const project = {
         copyrightTextLabel: "Copyright Notice",
         copyrightTextPlaceholder: "Fonts, music and assets used, and who they belong to…",
         copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. No file is shipped when this is empty.",
-        descriptionPlaceholder: "Describe your project…",
+        descriptionPlaceholder: "Describe the project…",
         required: "Required",
     },
     // Where a shipped game writes what belongs to the player. Stated, not offered: nothing on this
@@ -338,7 +338,7 @@ export const project = {
         volumeTitle: "Volume",
         volumeUnit: "%",
         loopTitle: "Loop by default",
-        loopDescription: "Clips played on this track repeat unless the action that plays them says otherwise.",
+        loopDescription: "Clips played on this track repeat unless the action that plays them specifies otherwise.",
         duplicate: "Duplicate",
         delete: "Delete",
         // Sits beside Delete inside an open bus: the count the confirmation is about to be about.
@@ -394,7 +394,7 @@ export const project = {
         networkAllowlist: {
             title: "Network request allowlist",
             description: "One address or host pattern per row.",
-            matchHint: "A host on its own covers every path under it. * can replace the first host label (*.example.com) or end a path (/v1/*). The scheme, the host and the port must match exactly.",
+            matchHint: "A host written alone covers every path under it. * can replace the first host label (*.example.com) or end a path (/v1/*). The scheme, the host and the port must match exactly.",
             placeholder: "https://api.example.com/*",
             invalid: "Enter an http:// or https:// address. Use * as a leading host label or at the end of a path.",
             add: "Add address",

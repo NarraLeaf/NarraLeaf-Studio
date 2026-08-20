@@ -147,6 +147,176 @@
       "status": "translated",
       "target": "走廊里还留着粉笔和地板蜡的味道。身后有个储物柜正在降温，咔、咔地响。"
     },
+    "key:config.autoForwardDelay": {
+      "sourceHash": "fnv1a:e727e3f0",
+      "status": "translated",
+      "target": "自动前进等待时间"
+    },
+    "key:config.bgm": {
+      "sourceHash": "fnv1a:e26859b1",
+      "status": "translated",
+      "target": "背景音乐"
+    },
+    "key:config.categorySound": {
+      "sourceHash": "fnv1a:b3ca9a34",
+      "status": "translated",
+      "target": "声音"
+    },
+    "key:config.categoryText": {
+      "sourceHash": "fnv1a:3e142d5e",
+      "status": "translated",
+      "target": "文本"
+    },
+    "key:config.fullscreen": {
+      "sourceHash": "fnv1a:3d2aca78",
+      "status": "translated",
+      "target": "全屏"
+    },
+    "key:config.fullscreenOff": {
+      "sourceHash": "fnv1a:0dc6b4aa",
+      "status": "translated",
+      "target": "关闭"
+    },
+    "key:config.fullscreenOn": {
+      "sourceHash": "fnv1a:60e47df0",
+      "status": "translated",
+      "target": "开启"
+    },
+    "key:config.masterVolume": {
+      "sourceHash": "fnv1a:55ee5043",
+      "status": "translated",
+      "target": "主音量"
+    },
+    "key:config.secondsSuffix": {
+      "sourceHash": "fnv1a:f60c4582",
+      "status": "translated",
+      "target": "秒"
+    },
+    "key:config.skip": {
+      "sourceHash": "fnv1a:c197c7e2",
+      "status": "translated",
+      "target": "跳过"
+    },
+    "key:config.skipAllText": {
+      "sourceHash": "fnv1a:9805954b",
+      "status": "translated",
+      "target": "全部"
+    },
+    "key:config.skipDelay": {
+      "sourceHash": "fnv1a:37403aa9",
+      "status": "translated",
+      "target": "跳过等待时间"
+    },
+    "key:config.skipReadOnly": {
+      "sourceHash": "fnv1a:60c591e1",
+      "status": "translated",
+      "target": "仅已读"
+    },
+    "key:config.soundEffects": {
+      "sourceHash": "fnv1a:d40ba662",
+      "status": "translated",
+      "target": "音效"
+    },
+    "key:config.textSpeed": {
+      "sourceHash": "fnv1a:d6227bfd",
+      "status": "translated",
+      "target": "文字速度"
+    },
+    "key:config.title": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "设置"
+    },
+    "key:config.voice": {
+      "sourceHash": "fnv1a:27d1a499",
+      "status": "translated",
+      "target": "语音"
+    },
+    "key:confirm.cancel": {
+      "sourceHash": "fnv1a:35afca3b",
+      "status": "translated",
+      "target": "取消"
+    },
+    "key:confirm.deleteSave": {
+      "sourceHash": "fnv1a:8dd920c3",
+      "status": "translated",
+      "target": "删除这个存档？删除后无法恢复。"
+    },
+    "key:confirm.deleteSaveAnswer": {
+      "sourceHash": "fnv1a:5797ea6a",
+      "status": "translated",
+      "target": "删除"
+    },
+    "key:confirm.historyBack": {
+      "sourceHash": "fnv1a:e97e8c49",
+      "status": "translated",
+      "target": "回到这一行？在此之后的内容都会被撤销。"
+    },
+    "key:confirm.historyBackAnswer": {
+      "sourceHash": "fnv1a:628e5a9e",
+      "status": "translated",
+      "target": "返回"
+    },
+    "key:confirm.load": {
+      "sourceHash": "fnv1a:3ac0fe9a",
+      "status": "translated",
+      "target": "加载这个存档？未保存的进度将会丢失。"
+    },
+    "key:confirm.loadAnswer": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "加载"
+    },
+    "key:confirm.loadAuto": {
+      "sourceHash": "fnv1a:14c2706a",
+      "status": "translated",
+      "target": "加载这个自动存档？当前进行中的游戏将被放弃。"
+    },
+    "key:confirm.overwrite": {
+      "sourceHash": "fnv1a:72168a30",
+      "status": "translated",
+      "target": "该槽位已有存档。要覆盖吗？"
+    },
+    "key:confirm.overwriteAnswer": {
+      "sourceHash": "fnv1a:78ff0e92",
+      "status": "translated",
+      "target": "覆盖"
+    },
+    "key:confirm.quit": {
+      "sourceHash": "fnv1a:f165e3fa",
+      "status": "translated",
+      "target": "退出游戏？"
+    },
+    "key:confirm.quitAnswer": {
+      "sourceHash": "fnv1a:c7b3d356",
+      "status": "translated",
+      "target": "退出"
+    },
+    "key:confirm.toTitle": {
+      "sourceHash": "fnv1a:313d8223",
+      "status": "translated",
+      "target": "返回标题画面？未保存的进度将会丢失。"
+    },
+    "key:confirm.toTitleAnswer": {
+      "sourceHash": "fnv1a:bdf9bb42",
+      "status": "translated",
+      "target": "返回标题"
+    },
+    "key:load.autoSaves": {
+      "sourceHash": "fnv1a:c13c80d4",
+      "status": "translated",
+      "target": "自动存档"
+    },
+    "key:load.title": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "加载"
+    },
+    "key:log.title": {
+      "sourceHash": "fnv1a:a1dd7bf1",
+      "status": "translated",
+      "target": "记录"
+    },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",
       "status": "reviewed",
@@ -181,6 +351,76 @@
       "sourceHash": "fnv1a:0ae8097f",
       "status": "reviewed",
       "target": "开始"
+    },
+    "key:nav.back": {
+      "sourceHash": "fnv1a:c2954bc2",
+      "status": "translated",
+      "target": "返回"
+    },
+    "key:nav.config": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "设置"
+    },
+    "key:nav.load": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "加载"
+    },
+    "key:nav.save": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "保存"
+    },
+    "key:nav.title": {
+      "sourceHash": "fnv1a:24d471a9",
+      "status": "translated",
+      "target": "标题"
+    },
+    "key:save.title": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "保存"
+    },
+    "key:scenes.sceneClubroom": {
+      "sourceHash": "fnv1a:2a32664b",
+      "status": "translated",
+      "target": "社团活动室"
+    },
+    "key:scenes.sceneCorridor": {
+      "sourceHash": "fnv1a:a2523866",
+      "status": "translated",
+      "target": "走廊"
+    },
+    "key:scenes.sceneLastLight": {
+      "sourceHash": "fnv1a:63546e65",
+      "status": "translated",
+      "target": "最后的光"
+    },
+    "key:scenes.title": {
+      "sourceHash": "fnv1a:8c5a5640",
+      "status": "translated",
+      "target": "场景"
+    },
+    "key:slot.empty": {
+      "sourceHash": "fnv1a:fd6263ee",
+      "status": "translated",
+      "target": "无存档"
+    },
+    "scene:5143dcd8-bebc-4468-b4e2-00f6d5781af6": {
+      "sourceHash": "fnv1a:2a32664b",
+      "status": "translated",
+      "target": "社团活动室"
+    },
+    "scene:c083e0f3-8665-451a-800a-6d2cd5650d33": {
+      "sourceHash": "fnv1a:63546e65",
+      "status": "translated",
+      "target": "最后的光"
+    },
+    "scene:f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33": {
+      "sourceHash": "fnv1a:a2523866",
+      "status": "translated",
+      "target": "走廊"
     }
   }
 }

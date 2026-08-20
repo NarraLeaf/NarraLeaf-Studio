@@ -37,7 +37,7 @@ export const pluginPermission = {
         type: "插件信任请求",
         title: "{requester} 请求信任 {plugin}",
         body1: "受信任的插件，Studio 会直接启用，不再询问",
-        body2: "请仅信任来自你所认识来源的插件",
+        body2: "请仅信任来源可辨识的插件",
         permission: "信任此插件身份",
     },
     generic: {
@@ -53,7 +53,7 @@ export const pluginPermission = {
     permissions: {
         section: {
             sidecar: "在玩家设备上运行的程序",
-            sidecarNote: "此插件会在你构建的游戏中附带一个程序",
+            sidecarNote: "此插件会在构建出的游戏中附带一个程序",
             buildDependency: "构建时下载",
             runtime: "游戏内能力",
             externalLink: "从游戏跳转出去",

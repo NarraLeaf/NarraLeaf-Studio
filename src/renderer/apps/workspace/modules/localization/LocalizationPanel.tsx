@@ -29,6 +29,7 @@ import {
     buildTranslationExchangeRows,
     extractCharacterTranslationRows,
     extractKeyTranslationRows,
+    extractSceneTranslationRows,
     extractUiTranslationRows,
     type LocalizationProgress,
     type TranslatableUnitContext,
@@ -144,9 +145,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         return localizationService.onConfigChanged(setConfig);
     }, [localizationService]);
 
-    // Every translatable unit of the project: character names, story lines
-    // (narrative order), opted-in UI widget texts, and named keys — with
-    // translator-facing context (feeds both progress and CSV export).
+    // Every translatable unit of the project: character names, scene names and
+    // story lines (narrative order), opted-in UI widget texts, and named keys —
+    // with translator-facing context (feeds both progress and CSV export).
     useEffect(() => {
         if (!storyService || !localizationService) {
             return;
@@ -164,6 +165,15 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             for (const entry of storyService.listStories()) {
                 try {
                     const document = await storyService.loadStory(entry.id);
+                    for (const row of extractSceneTranslationRows(document)) {
+                        // The story is the context a scene name needs: the name itself is the source
+                        // column, so repeating it there would tell the translator nothing.
+                        collected.push({
+                            unitId: row.unitId,
+                            sourceText: row.sourceText,
+                            context: document.name || row.sourceText,
+                        });
+                    }
                     for (const row of localizationService.extractRows(document)) {
                         collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.sceneName });
                     }

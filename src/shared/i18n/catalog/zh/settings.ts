@@ -230,7 +230,7 @@ export const settings = {
         versionControlAuthor: {
             label: "作者名",
             description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
-            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录你自己的名字。",
+            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录此处填写的名字。",
         },
         versionControlAuthorEmail: {
             label: "作者邮箱",
@@ -242,7 +242,7 @@ export const settings = {
         },
         reopenLastProject: {
             label: "启动时打开上次的项目",
-            description: "关闭此项则每次启动都停在启动器",
+            description: "打开上次所在的项目，而不是停在启动器",
         },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",

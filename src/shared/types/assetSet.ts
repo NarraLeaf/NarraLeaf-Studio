@@ -172,15 +172,38 @@ export interface AssetSetAxis {
      * author gets them from - a list in the project, not a line they type.
      */
     values: string[];
+    /**
+     * The value every other one falls back to, and the only thing a set requires.
+     *
+     * A set says "this is the picture; these are the exceptions". Without it every value needed a
+     * file of its own, which for a set that varies in one language out of six is five files the
+     * author has to produce to say nothing changed. With it, a value with no file of its own
+     * resolves to this one's, and only the exceptions are worth tagging.
+     *
+     * A value, not an asset id: the set still holds no member ids, so a file joins or leaves it by
+     * being tagged, and renaming or deleting a file cannot leave a stale pointer here.
+     */
+    fallback: string;
 }
 
-/** The axis a kind describes, over the values the project currently declares. */
-export function makeAssetSetAxis(kind: AssetSetAxisKind, values: readonly string[]): AssetSetAxis {
+/**
+ * The axis a kind describes, over the values the project currently declares.
+ *
+ * The fallback defaults to the first value, which is the project's own first language or its
+ * release edition - the answer an author would give for "which one is the normal one".
+ */
+export function makeAssetSetAxis(
+    kind: AssetSetAxisKind,
+    values: readonly string[],
+    fallback?: string,
+): AssetSetAxis {
+    const list = [...values];
     return {
         kind,
         key: assetSetAxisKey(kind),
         residency: assetSetAxisResidency(kind),
-        values: [...values],
+        values: list,
+        fallback: fallback && list.includes(fallback) ? fallback : list[0] ?? "",
     };
 }
 
@@ -501,8 +524,18 @@ export interface AssetSetCell {
     label: string;
     /** The axis value this cell stands for. */
     value: string;
-    /** Every match. One is resolved; none is a hole; more than one is ambiguous. */
+    /** Every file carrying this coordinate's tags. None is not a hole - see {@link assetId}. */
     assetIds: string[];
+    /**
+     * The file this value actually resolves to, fallback included, or null when nothing does.
+     *
+     * What every reader outside the editor wants: the build, the running game and the reference
+     * index all ask "which file is this value" and none of them cares whether the answer came from
+     * a tag of its own or from the fallback.
+     */
+    assetId: string | null;
+    /** True when {@link assetId} is the fallback's file rather than one tagged for this value. */
+    inherited: boolean;
     /**
      * Sets hanging under this value, if any.
      *
@@ -532,25 +565,78 @@ export function resolveAssetSetContents(
     candidates: readonly AssetSetCandidate[],
     sets: readonly AssetSet[] = [],
 ): AssetSetContents {
+    const fallbackAssetId = resolveAssetSetFallbackAsset(set, candidates);
     const cells: AssetSetCell[] = assetSetCoordinates(set).map(coordinate => {
         const value = coordinate[set.axis.key] ?? "";
+        const assetIds = matchAssetSetCoordinate(set, coordinate, candidates);
+        const childSetIds = childAssetSets(set, value, sets).map(child => child.id);
+        // Ambiguity does not fall back. Two files claiming one value is a fault the author has to
+        // resolve, and quietly using the fallback instead would hide it behind a picture that works.
+        const own = assetIds.length === 1 ? assetIds[0] : null;
+        const inherited = own === null && assetIds.length === 0 && childSetIds.length === 0;
         return {
             coordinate,
             label: assetSetCoordinateLabel(set, coordinate),
             value,
-            assetIds: matchAssetSetCoordinate(set, coordinate, candidates),
-            childSetIds: childAssetSets(set, value, sets).map(child => child.id),
+            assetIds,
+            assetId: own ?? (inherited ? fallbackAssetId : null),
+            inherited: inherited && fallbackAssetId !== null,
+            childSetIds,
         };
     });
     return {
         cells,
+        // A value with no file of its own is not a hole while the fallback answers it; what is left
+        // here is the set whose fallback itself resolves to nothing, and then every value is a hole
+        // because there is nothing for any of them to fall back to.
         // A sub-set answers its value, and answers it alone. The files it holds carry this set's
         // coordinate too - that is what makes them its members - so counting them here as well would
         // report every nested set as ambiguous with its own contents.
-        missing: cells.filter(cell => cell.childSetIds.length === 0 && cell.assetIds.length === 0),
+        missing: cells.filter(cell => cell.childSetIds.length === 0
+            && cell.assetIds.length === 0
+            && cell.assetId === null),
         ambiguous: cells.filter(cell => (cell.childSetIds.length === 0 && cell.assetIds.length > 1)
             || cell.childSetIds.length > 1),
     };
+}
+
+/**
+ * The file the fallback value resolves to, or null when the library does not say unambiguously.
+ *
+ * Read on its own rather than off the cells, because every other cell's answer depends on it: a set
+ * whose fallback has no file promises variants nothing can answer, however many of the others are
+ * tagged.
+ */
+export function resolveAssetSetFallbackAsset(
+    set: AssetSet,
+    candidates: readonly AssetSetCandidate[],
+): string | null {
+    const fallback = set.axis.fallback?.trim();
+    if (!fallback || !set.axis.values.includes(fallback)) {
+        return null;
+    }
+    return resolveAssetSetMember(set, { [set.axis.key]: fallback }, candidates);
+}
+
+/**
+ * The one file a value means, the fallback included.
+ *
+ * The single entry point for "what does this set resolve to here", so the build, the preview and
+ * the reference index cannot disagree about whether a value falls back.
+ */
+export function resolveAssetSetValue(
+    set: AssetSet,
+    value: string,
+    candidates: readonly AssetSetCandidate[],
+): string | null {
+    const matches = matchAssetSetCoordinate(set, { [set.axis.key]: value }, candidates);
+    if (matches.length === 1) {
+        return matches[0];
+    }
+    if (matches.length > 1) {
+        return null;
+    }
+    return resolveAssetSetFallbackAsset(set, candidates);
 }
 
 /** Whether a set resolves everything it promises. What the panel tints a row on. */
@@ -579,6 +665,8 @@ export type AssetSetProblem =
     | { kind: "noAxes" }
     | { kind: "emptyAxisValues"; axisKey: string }
     | { kind: "duplicateAxisValue"; axisKey: string; value: string }
+    /** No value is named as the one the others fall back to, or the named one is not on the axis. */
+    | { kind: "noFallback"; axisKey: string }
     /** A set resolved when built hangs under one resolved while running. See the module note. */
     | { kind: "residencyInversion"; axisKey: string; outerAxisKey: string };
 
@@ -598,6 +686,11 @@ export function validateAssetSet(set: AssetSet, sets: readonly AssetSet[] = []):
             problems.push({ kind: "duplicateAxisValue", axisKey: key, value: trimmed });
         }
         seenValues.add(trimmed);
+    }
+    // Only reported for an axis that has values at all: a set with none is already incoherent for a
+    // reason the author can act on, and "and it has no fallback" is the same news twice.
+    if (set.axis.values.length > 0 && !set.axis.values.includes(set.axis.fallback?.trim() ?? "")) {
+        problems.push({ kind: "noFallback", axisKey: key });
     }
 
     // Reported on the inner set, which is the one whose position can be changed: the outer set is
@@ -659,7 +752,13 @@ function normalizeAxis(raw: unknown): AssetSetAxis | null {
     }
     // Key and residency are derived from the kind rather than read, so a hand-edited file cannot
     // produce a set that indexes one tag and claims another, or one that ships when it should not.
-    return { ...makeAssetSetAxis(kind, normalizeStringList(record.values)) };
+    //
+    // A record written before the fallback existed names none, and `makeAssetSetAxis` takes the
+    // first value - the project's own first language, or its release edition. That is what those
+    // sets already meant to an author who filled every variant, and it is the only reading that does
+    // not turn every set in an existing project into one the panel reports as unfinished.
+    const fallback = typeof record.fallback === "string" ? record.fallback.trim() : undefined;
+    return { ...makeAssetSetAxis(kind, normalizeStringList(record.values), fallback) };
 }
 
 export function normalizeAssetSet(raw: unknown): AssetSet | null {

@@ -105,6 +105,20 @@ export interface MainCommandLineOptions {
      * `@shared/types/experimental` for what the flags are and why there are two levels of them.
      */
     experimental: ExperimentalCommandLineOptions;
+    /**
+     * Bare paths the launch was given, in the order they appeared - a double-clicked `.nlproj`, a
+     * `.nlspkg` dropped on the icon, a folder passed on the command line.
+     *
+     * Kept as strings and nothing more. What a path *is* is decided by `resolveLaunchOpenRequest`
+     * against the disk, and this file has no business touching the disk (same rule `--project`
+     * follows). Anything that is not a project, a project folder or a package is ignored there,
+     * which is what makes it safe to collect every positional argument here without knowing where
+     * it came from.
+     *
+     * NOT dev-gated, unlike `--project`. This is the mechanism a packaged Studio is supposed to
+     * answer file associations with; `--project`'s doc comment names it as the one that is not.
+     */
+    openPaths: string[];
 }
 
 export function isMainDevMode(options: MainCommandLineOptions, isPackaged: boolean): boolean {
@@ -137,6 +151,30 @@ function takeValue(value: string | undefined): string | null {
     return value;
 }
 
+/**
+ * Flags whose *next* argument is a value rather than a path.
+ *
+ * Without this list, `--project demo` would offer "demo" to the open-request resolver as well.
+ * Only the separated forms need it; `--flag=value` is one argument and never looks positional.
+ */
+const VALUE_TAKING_FLAGS = new Set([
+    "--project",
+    "--cdp-port",
+    "--dev-reload-port",
+]);
+
+/**
+ * Whether `argv[1]` is the app script rather than something the launch was asked to open.
+ *
+ * Only development has one: `electron dist/main/index.js --dev` puts the entry point where a
+ * packaged launch puts the first real argument. Matching on the extension rather than on
+ * `process.defaultApp` keeps this file pure, and costs nothing in the packaged case that matters -
+ * neither a project folder nor a `.nlproj` nor a `.nlspkg` ends in `.js`.
+ */
+function isAppScriptArgument(argument: string | undefined): boolean {
+    return argument !== undefined && /\.(?:js|mjs|cjs)$/i.test(argument);
+}
+
 export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOptions {
     let cdpEnabled = false;
     let cdpPort = DEFAULT_CDP_PORT;
@@ -149,9 +187,21 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     let projectError: string | null = null;
     const experimentalConditions = new Set<ExperimentalConditionId>();
     const unknownConditionFlags = new Set<string>();
+    const openPaths: string[] = [];
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
+
+        // Index 0 is the executable and index 1 may be the app script, neither of which is an
+        // argument. Everything else that is not a switch and does not follow one is a candidate
+        // path - `resolveLaunchOpenRequest` decides whether it is anything at all, so a Chromium
+        // positional or a stray word costs nothing here.
+        const isPositional = i > (isAppScriptArgument(argv[1]) ? 1 : 0)
+            && !arg.startsWith("-")
+            && !VALUE_TAKING_FLAGS.has(argv[i - 1] ?? "");
+        if (isPositional) {
+            openPaths.push(arg);
+        }
 
         if (arg === "--dev" || arg === "--onboarding" || arg === "--skip-onboarding"
             || arg === "--launcher") {
@@ -291,5 +341,6 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             conditions: EXPERIMENTAL_CONDITION_IDS.filter(id => experimentalConditions.has(id)),
             unknownConditionFlags: [...unknownConditionFlags],
         },
+        openPaths,
     };
 }

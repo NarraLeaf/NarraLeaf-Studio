@@ -33,8 +33,10 @@ import {
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -49,6 +51,18 @@ type Blueprint = {
 };
 type Surface = { id: string; name: string };
 type UIDoc = { surfaces: Surface[]; elements: Record<string, { id: string; name: string }> };
+/** The node feeding one data input, resolved and type-checked. */
+type GraphSource = (toId: string, port: string, type: string) => GraphNode;
+
+/**
+ * Nodes that decorate the route without deciding anything, and are stepped over on the way through.
+ *
+ * A sound cue sits ahead of the logic so it is heard even when the click navigates away; the three
+ * `Get Text` lookups sit ahead of a question because that is where its words come from. Neither
+ * changes which node the press ends up running, and this file is about the question, not about
+ * them - the cues have `starterSoundCues.test.ts`, and the words are asserted on the pins below.
+ */
+const PASSED_THROUGH: readonly string[] = [BLUEPRINT_NODE_TYPE_SOUND_PLAY, BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT];
 
 function readTemplate(file: string): unknown {
     return JSON.parse(
@@ -73,13 +87,26 @@ function graphFor(elementId: string) {
     expect(graphs).toHaveLength(1);
     const { nodes, edges } = graphs[0]!.graph;
 
-    /** The node an exec output leads to, asserted to be the only one and of the expected type. */
+    /**
+     * The node an exec output leads to, asserted to be the only one and of the expected type.
+     *
+     * Anything in {@link PASSED_THROUGH} on the way is stepped over rather than asserted on.
+     */
     const step = (fromId: string, port: string, type: string): GraphNode => {
-        const out = edges.filter(edge => edge.from.nodeId === fromId && edge.from.port === port);
-        expect(out, `${fromId}.${port} leads to ${out.length} nodes`).toHaveLength(1);
-        const target = nodes[out[0]!.to.nodeId]!;
-        expect(target?.type, `${fromId}.${port} leads to ${target?.type}`).toBe(type);
-        return target;
+        let currentId = fromId;
+        let currentPort = port;
+        for (;;) {
+            const out = edges.filter(edge => edge.from.nodeId === currentId && edge.from.port === currentPort);
+            expect(out, `${currentId}.${currentPort} leads to ${out.length} nodes`).toHaveLength(1);
+            const target = nodes[out[0]!.to.nodeId]!;
+            if (PASSED_THROUGH.includes(target?.type) && type !== target?.type) {
+                currentId = target.id;
+                currentPort = "next";
+                continue;
+            }
+            expect(target?.type, `${currentId}.${currentPort} leads to ${target?.type}`).toBe(type);
+            return target;
+        }
     };
     /** The node feeding a data input, asserted to be the only one and of the expected type. */
     const source = (toId: string, port: string, type: string): GraphNode => {
@@ -100,19 +127,59 @@ function graphFor(elementId: string) {
 }
 
 /**
+ * The words themselves, which no longer sit on the node.
+ *
+ * Each prompt pin is fed by a `Get Text`, so what a question says is a key away: the key's source
+ * text is the sentence, and a target in every language the template ships is what makes the
+ * question askable in that language at all. Asserting the sentence through the key rather than off
+ * the node keeps the old claim - this question says exactly this - and adds the one the literals
+ * could never make, that it says it in three languages.
+ */
+type LocalizationKeys = { keys: Record<string, { sourceText: string }> };
+type LocalizationBundle = { units: Record<string, { target?: string }> };
+
+function readLocalization(file: string): unknown {
+    return JSON.parse(
+        fs.readFileSync(
+            path.join(process.cwd(), "resources/templates/skeleton/content/editor/localization", file),
+            "utf-8",
+        ),
+    );
+}
+
+const localizationKeys = readLocalization("keys.json") as LocalizationKeys;
+const TARGET_LOCALES = ["ja", "zh-CN"] as const;
+const localeBundles = new Map<string, LocalizationBundle>(
+    TARGET_LOCALES.map(locale => [locale, readLocalization(`${locale}.json`) as LocalizationBundle]),
+);
+
+function assertSays(source: GraphSource, confirm: GraphNode, pin: string, sentence: string): void {
+    // Nothing left on the node: a literal here would win in one language and be wrong in the others.
+    expect(confirm.params?.[pin], `${confirm.id}.${pin} still carries a literal`).toBeUndefined();
+    const lookup = source(confirm.id, pin, BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT);
+    const key = String(lookup.params?.key ?? "");
+    expect(localizationKeys.keys[key], `${key} is not a declared key`).toBeDefined();
+    expect(localizationKeys.keys[key]!.sourceText).toBe(sentence);
+    for (const locale of TARGET_LOCALES) {
+        const unit = localeBundles.get(locale)!.units[`key:${key}`];
+        expect(unit?.target?.trim(), `${key} has nothing to say in ${locale}`).toBeTruthy();
+    }
+}
+
+/**
  * The prompt itself: the page it puts up, the words on it, and the branch its first answer takes.
  *
  * Pins are resolved for the node's own params rather than the bare definition, because the answers
  * are pins the author added - reading them off the definition would assert nothing about whether
  * the template's stored pin list produces the ports it wires.
  */
-function assertPrompt(confirm: GraphNode, message: string, answer: string): void {
+function assertPrompt(source: GraphSource, confirm: GraphNode, message: string, answer: string): void {
     registerCoreBlueprintNodes();
     expect(confirm.params?.surfaceId).toBe(confirmSurfaceId);
-    expect(confirm.params?.message).toBe(message);
-    expect(confirm.params?.button_1_label).toBe(answer);
+    assertSays(source, confirm, "message", message);
+    assertSays(source, confirm, "button_1_label", answer);
     // The way out. Every question the template asks offers one, and it is never the destructive one.
-    expect(confirm.params?.button_2_label).toBe("Cancel");
+    assertSays(source, confirm, "button_2_label", "Cancel");
     const pins = blueprintNodeRegistry
         .resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_LAYER_CONFIRM, confirm.params)
         .pins.map(pin => pin.id);
@@ -170,7 +237,7 @@ describe("the questions the starter template asks before it takes something away
             source(branch.id, "condition", BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME);
 
             const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-            assertPrompt(confirm, "Return to the title screen? Unsaved progress is lost.", "Return to title");
+            assertPrompt(source, confirm, "Return to the title screen? Unsaved progress is lost.", "Return to title");
 
             // Both ways out reach the same Go Page: opened from the title, nothing is lost, so the
             // false branch is the old wiring untouched rather than a second copy of it.
@@ -195,7 +262,7 @@ describe("the questions the starter template asks before it takes something away
             expect(source(contains.id, "item", BLUEPRINT_NODE_TYPE_LITERAL_STRING).params?.value).toBe(String(slot));
 
             const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-            assertPrompt(confirm, "This slot already holds a save. Overwrite it?", "Overwrite");
+            assertPrompt(source, confirm, "This slot already holds a save. Overwrite it?", "Overwrite");
 
             const write = step(branch.id, "false", BLUEPRINT_NODE_TYPE_PERSISTENT_GET);
             expect(leadsTo(confirm.id, "button_1_pressed", write.id)).toBe(true);
@@ -219,7 +286,7 @@ describe("the questions the starter template asks before it takes something away
             source(branch.id, "condition", BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME);
 
             const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-            assertPrompt(confirm, "Load this save? Unsaved progress is lost.", "Load");
+            assertPrompt(source, confirm, "Load this save? Unsaved progress is lost.", "Load");
 
             const load = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
             expect(leadsTo(confirm.id, "button_1_pressed", load.id)).toBe(true);
@@ -248,7 +315,7 @@ describe("the questions the starter template asks before it takes something away
             expect(source(contains.id, "item", BLUEPRINT_NODE_TYPE_LITERAL_STRING).params?.value).toBe(String(slot));
 
             const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-            assertPrompt(confirm, "Delete this save? It cannot be brought back.", "Delete");
+            assertPrompt(source, confirm, "Delete this save? It cannot be brought back.", "Delete");
 
             // Unlike the other shapes there is no false branch to the act: a slot with nothing in it
             // is left alone rather than deleted quietly.
@@ -261,10 +328,10 @@ describe("the questions the starter template asks before it takes something away
     );
 
     it("asks before going back to a line in the log, because everything after it is undone", () => {
-        const { step, leadsTo, only } = graphFor("5aab5352-98e9-4d9e-af03-1938fa5b5032");
+        const { step, source, leadsTo, only } = graphFor("5aab5352-98e9-4d9e-af03-1938fa5b5032");
         const itemClick = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         const confirm = step(itemClick.id, "then", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-        assertPrompt(confirm, "Go back to this line? Everything after it is undone.", "Go back");
+        assertPrompt(source, confirm, "Go back to this line? Everything after it is undone.", "Go back");
 
         // Unconditional on purpose: every row in the log is behind the play head, so there is always
         // something after it to lose.
@@ -276,10 +343,10 @@ describe("the questions the starter template asks before it takes something away
     });
 
     it("asks before quitting, because the window closing is not something a click can take back", () => {
-        const { step, leadsTo, only } = graphFor("281a47c0-277d-4ffb-83b9-8bee6a984480");
+        const { step, source, leadsTo, only } = graphFor("281a47c0-277d-4ffb-83b9-8bee6a984480");
         const click = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
         const confirm = step(click.id, "then", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-        assertPrompt(confirm, "Quit the game?", "Quit");
+        assertPrompt(source, confirm, "Quit the game?", "Quit");
         const quit = only(BLUEPRINT_NODE_TYPE_PAGE_QUIT);
         expect(leadsTo(confirm.id, "button_1_pressed", quit.id)).toBe(true);
     });
@@ -291,7 +358,7 @@ describe("the questions the starter template asks before it takes something away
         source(branch.id, "condition", BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME);
 
         const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-        assertPrompt(confirm, "Load this auto save? The game you are in is left behind.", "Load");
+        assertPrompt(source, confirm, "Load this auto save? The game you are in is left behind.", "Load");
 
         const load = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
         expect(leadsTo(confirm.id, "button_1_pressed", load.id)).toBe(true);

@@ -38,11 +38,18 @@ export type StoryRowDiagnosticInput = {
     context: StoryCommandContext;
 };
 
-/** Whether an asset id still resolves to something in the project, in any of the three libraries. */
+/**
+ * Whether an id still resolves to something in the project.
+ *
+ * Asset sets count. A row may name one where it would name a file, and a set is not in any of the
+ * three libraries - without this every row using one would be marked as pointing at something the
+ * project no longer has.
+ */
 function assetExists(context: StoryCommandContext, assetId: string): boolean {
     return context.images.some(asset => asset.id === assetId)
         || context.audio.some(asset => asset.id === assetId)
-        || context.videos.some(asset => asset.id === assetId);
+        || context.videos.some(asset => asset.id === assetId)
+        || (context.assetSets ?? []).some(set => set.id === assetId);
 }
 
 /** The asset a row points at, when it points at one by id. */

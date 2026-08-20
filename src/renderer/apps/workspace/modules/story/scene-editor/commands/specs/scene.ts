@@ -33,7 +33,7 @@ export const bg = defineStoryCommand({
     params: {
         image: {
             hint: "imageOrColor",
-            type: [{ kind: "asset", assetType: "image" }, { kind: "color" }],
+            type: [{ kind: "asset", assetType: "image", allowSets: true }, { kind: "color" }],
             positional: true,
             core: true,
         },

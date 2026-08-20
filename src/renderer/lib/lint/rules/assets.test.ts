@@ -453,7 +453,7 @@ describe("assets/group-incomplete", () => {
             name: "Alice",
             type: AssetType.Image,
             filter: ["char:alice"],
-            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy", "sad"] },
+            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy", "sad"], fallback: "happy" },
             ...overrides,
         };
     }
@@ -478,9 +478,10 @@ describe("assets/group-incomplete", () => {
     });
 
     it("names the variant that has no file, as the tags that would fix it", async () => {
+        // The fallback is the one that has to resolve, so it is the one whose absence is a hole.
         const ctx = createTestLintContext({
             assets: fullLibrary.slice(0, 1),
-            assetSets: [aliceSet()],
+            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
         });
 
         expect(await runSets(ctx)).toEqual([{
@@ -516,12 +517,12 @@ describe("assets/group-incomplete", () => {
     });
 
     it("reports a set resolved when built hanging under one resolved while running", async () => {
-        const outer = aliceSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en"] } });
+        const outer = aliceSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en"], fallback: "en" } });
         const inner = aliceSet({
             id: "inner",
             name: "Alice EN",
             filter: ["char:alice", "locale:en"],
-            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"] },
+            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"], fallback: "happy" },
         });
         const ctx = createTestLintContext({
             assets: [tagged("x", ["char:alice", "locale:en", "mood:happy"])],
@@ -539,7 +540,7 @@ describe("assets/group-incomplete", () => {
     it("reports an incoherent set once, instead of a hole for every cell it does not have", async () => {
         const ctx = createTestLintContext({
             assets: fullLibrary,
-            assetSets: [aliceSet({ axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: [] } })],
+            assetSets: [aliceSet({ axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: [], fallback: "" } })],
         });
 
         const findings = await runSets(ctx);
@@ -550,10 +551,45 @@ describe("assets/group-incomplete", () => {
     it("holds the fixed filter, so another character's files do not fill a hole", async () => {
         const ctx = createTestLintContext({
             assets: [...fullLibrary.slice(0, 1), tagged("z", ["char:bob", "mood:sad"])],
-            assetSets: [aliceSet()],
+            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
         });
 
         expect(await runSets(ctx)).toHaveLength(1);
+    });
+
+    it("says nothing about a variant with no file while the fallback answers it", async () => {
+        // The whole point of the fallback: one file, and the variants that do not differ say nothing.
+        const ctx = createTestLintContext({
+            assets: fullLibrary.slice(0, 1),
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toEqual([]);
+    });
+
+    it("reports the set when the fallback itself has no file, which leaves nothing to fall back to", async () => {
+        const ctx = createTestLintContext({
+            assets: [tagged("c", ["char:alice", "mood:sad"])],
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.message",
+            messageParams: { set: "Alice", variant: "mood:happy" },
+            location: { kind: "project" },
+        }]);
+    });
+
+    it("reports a set that names no fallback at all", async () => {
+        const ctx = createTestLintContext({
+            assets: fullLibrary,
+            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "" } })],
+        });
+
+        const findings = await runSets(ctx);
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsGroupIncomplete.messageFallback");
     });
 
     it("ignores a file of another type carrying the right tags", async () => {
@@ -562,7 +598,7 @@ describe("assets/group-incomplete", () => {
                 ...fullLibrary.slice(0, 1),
                 asset("z", { type: AssetType.Audio, tags: ["char:alice", "mood:sad"] }),
             ],
-            assetSets: [aliceSet()],
+            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
         });
 
         expect(await runSets(ctx)).toHaveLength(1);

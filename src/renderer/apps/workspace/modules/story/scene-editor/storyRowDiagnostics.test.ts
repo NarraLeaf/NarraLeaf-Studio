@@ -7,6 +7,7 @@ const CONTEXT = {
     images: [{ id: "i1", name: "forest_day" }],
     audio: [{ id: "a1", name: "theme" }],
     videos: [{ id: "v1", name: "intro" }],
+    assetSets: [{ id: "set-1", name: "Title" }],
     characters: [{ id: "c1", name: "Alice" }],
     tempSpeakers: [],
     scenes: [],
@@ -73,6 +74,10 @@ describe("diagnoseRow", () => {
 
     it("says nothing when the asset resolves", () => {
         expect(diagnoseRow({ block: background("i1"), context: CONTEXT })).toBeNull();
+    });
+
+    it("says nothing when the row names an asset set, which is not a library row", () => {
+        expect(diagnoseRow({ block: background("set-1"), context: CONTEXT })).toBeNull();
     });
 
     /**

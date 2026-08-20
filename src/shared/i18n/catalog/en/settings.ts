@@ -29,7 +29,7 @@ export const settings = {
         // Each row is set in its own face, so this is the specimen for a family whose NAME says
         // nothing about it — most CJK families are named in Latin.
         sample: "AaBb 字体",
-        noMatches: "No fonts match your search.",
+        noMatches: "No fonts match the search.",
         loading: "Reading the fonts installed on this computer…",
         unavailable: "This build cannot list installed fonts. The presets above still work.",
         denied: "Studio could not read the installed fonts. Bring this window to the front and reopen the list.",
@@ -252,7 +252,7 @@ export const settings = {
             // Replaces the description above while the field is closed, so the row says why
             // rather than merely refusing to be typed in. Shown on both author fields.
             fromServer:
-                "Comes from the server this installation is signed in to. Sign out to record a name of your own again.",
+                "Comes from the server this installation is signed in to. Sign out to record a name entered here again.",
         },
         versionControlAuthorEmail: {
             label: "Author email",
@@ -264,7 +264,7 @@ export const settings = {
         },
         reopenLastProject: {
             label: "Reopen the last project on startup",
-            description: "Turn this off to start on the launcher instead.",
+            description: "Open the project the last session was in, instead of starting on the launcher.",
         },
         dashboardOnOpen: {
             label: "Show the project dashboard by default",
@@ -418,11 +418,11 @@ export const settings = {
                 },
                 pluginIcons: {
                     label: "Plugin store thumbnails",
-                    description: "Downloaded again the next time you open the store.",
+                    description: "Downloaded again the next time the store is opened.",
                 },
                 uiTemplatePosters: {
                     label: "Template store posters",
-                    description: "Downloaded again the next time you open the store.",
+                    description: "Downloaded again the next time the store is opened.",
                 },
                 spellcheckDictionaries: {
                     label: "Spelling dictionaries",

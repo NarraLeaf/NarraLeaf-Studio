@@ -405,6 +405,10 @@ export const assets = {
          */
         inUseTitle: "{name} is still in use",
         inUseMessage: "The following places name it and will stop resolving:",
+        /** The picker's own section for sets, which are not files and are not listed among them. */
+        picker: {
+            section: "Asset sets",
+        },
         menu: {
             create: "New Set from Selection",
             createSub: "New Set from Selection, Here",
@@ -421,43 +425,30 @@ export const assets = {
                 locale: "This project declares one language.",
                 release: "This project has no variants.",
             },
-            /** The character the file names are read apart at. */
             /** Which kind of file the members are, where the section stands for more than one. */
             type: "File type",
-            delimiter: "Separator",
-            delimiterSpace: "Space",
-            /**
-             * The positions the names split into. Each one the author names becomes a tag category,
-             * and the ones that vary become the axes.
-             */
-            segments: "Name parts",
             axis: "Varies by",
         },
-        /** The inspector. Each axis is one tag category, and the order is the nesting. */
+        /** The inspector: what the set varies by, which value the rest fall back to, and what resolves. */
         inspector: {
-            axes: "Axes",
+            axes: "Varies by",
             /** The tags every member carries, which is what keeps a set from meaning the whole library. */
             filter: "Members carry",
-            addAxis: "Add axis",
-            removeAxis: "Remove axis",
-            moveOut: "Move out",
-            moveIn: "Move in",
-            axisKey: "Tag category",
-            axisValues: "Values",
-            residency: {
-                label: "Resolved",
-                build: "When built",
-                runtime: "While running",
-            },
-            /** Why a move or a residency change was refused. States the rule, not the reasoning. */
-            residencyBlocked: "An axis resolved when built cannot sit inside one resolved while running.",
+            /** Why a change of what a set varies by was refused. States the rule, not the reasoning. */
+            residencyBlocked: "A set that varies by variant cannot sit under one that varies by language.",
+            /** The one thing a set requires: which value the others take when they have no file. */
+            fallback: "Falls back to",
+            /** Said next to the control that fixes it: nothing in the set resolves without this. */
+            fallbackMissing: "This variant has no file, so nothing in this set resolves.",
             variants: "Variants",
-            /** One cell of the matrix with nothing in it. */
+            /** This value has no file of its own and is showing the fallback's. */
+            variantInherited: "fallback",
+            /** One cell of the matrix with nothing in it, and no fallback to answer it either. */
             variantMissing: "No file",
             /** One cell more than one file answers to. */
             variantAmbiguous: "{count} files",
-            /** Shown instead of the matrix while the declaration cannot produce one. */
-            noVariants: "Declare an axis to resolve variants.",
+            /** Shown instead of the matrix when the project declares nothing to vary by. */
+            noVariants: "This project has nothing for the set to vary by.",
         },
         history: {
             edit: "Edit asset sets",
@@ -614,7 +605,7 @@ export const assets = {
     },
     fontPreview: {
         sampleText: "The quick brown fox jumps over the lazy dog - 敏捷的棕色狐狸跳过懒狗 0123456789",
-        typePlaceholder: "Type to preview your own text…",
+        typePlaceholder: "Type to preview text…",
     },
     jsonPreview: {
         invalid: "This file is not valid JSON. Showing the raw content.",

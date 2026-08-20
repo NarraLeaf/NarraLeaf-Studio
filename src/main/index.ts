@@ -1,5 +1,6 @@
 import { dialog } from 'electron';
 import { App } from '@/app/app';
+import { decideWindowClosedTeardown } from '@/app/application/windowClosedTeardown';
 import { getMainTranslator } from '@/app/application/i18n';
 
 const app = App.create({});
@@ -64,7 +65,20 @@ process.on('uncaughtException', (error) => {
     app.crash(error instanceof Error ? error : new Error(String(error)));
 });
 
-// Another Studio already owns this profile. It has been told to show itself (see the
+// macOS hands a double-clicked document over here and nowhere else - the path never appears in
+// argv - and it does so BEFORE `ready`, which is why this is registered at module scope rather
+// than beside the other listeners below. `openLaunchRequest` holds anything that arrives this
+// early until there is a window to put it in; see `App.openStartupWindow`.
+//
+// preventDefault() because the default is to do nothing useful and log that the app has no handler.
+app.electronApp.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    void app.openLaunchPaths([filePath]).catch((error) => {
+        app.logger.error('Failed to open the file macOS handed over:', error);
+    });
+});
+
+// Another Studio already owns this profile. It has been told what this launch was for (see the
 // 'second-instance' handler below); this process has nothing left to do. exit() rather than
 // quit() so none of the shutdown work runs - the saves it would try to flush belong to the other
 // process, not to this one.
@@ -79,8 +93,23 @@ app.whenReady().then(async () => {
     // A second launch (Start menu, a shortcut, a file association) reaches the running instance
     // here instead of starting a rival one. Studio may well have no window at all at this point,
     // which is exactly the case this exists for.
-    app.electronApp.on('second-instance', () => {
-        void app.revealLauncher();
+    //
+    // **What the second launch was FOR travels with it.** A double-clicked project arrives as a
+    // path in that process's argv, resolved against that process's working directory - both of
+    // which Electron reports here and neither of which this process can work out for itself. Only
+    // a launch that named nothing Studio can open falls back to the home screen; answering a
+    // double-clicked project with the launcher would look exactly like the association being
+    // broken.
+    app.electronApp.on('second-instance', (_event, argv, workingDirectory) => {
+        void app.openLaunchPaths(argv, workingDirectory)
+            .then((opened) => {
+                if (!opened) {
+                    return app.revealLauncher();
+                }
+            })
+            .catch((error) => {
+                app.logger.error('Failed to act on a second launch:', error);
+            });
     });
 
     // macOS: clicking the Dock icon of an app with no windows. The Dock is what stands in for the
@@ -90,19 +119,23 @@ app.whenReady().then(async () => {
     });
 
     app.windowManager.events.on("window-closed", (window) => {
-        // Lore takes an EXCLUSIVE repository lock for as long as a store handle is
-        // open, and a second process blocks (does not fail) trying to acquire it.
-        // Holding it past the project's lifetime would leave the `lore` CLI and any
-        // other tool hanging on a project the user already closed.
-        //
-        // Not while quitting, though. Windows close as part of the quit, AFTER the drain below
-        // has already released every session - so this would find nothing to do in the good case,
-        // and in the bad one (a session reopened in between) it would start Lore calls that
-        // nothing waits for, moments before Node destroys the environment they must report back
-        // into. That is not a leak, it is an abort: see VcsShuttingDownError.
         const projectPath = window.getProps()?.projectPath;
-        if (typeof projectPath === "string" && projectPath.length > 0 && !app.isQuitting()) {
-            void app.getVcsManager().closeProject(projectPath).catch((error) => {
+        const named = typeof projectPath === "string" && projectPath.length > 0 ? projectPath : null;
+        // Both rules, and the reasoning for each, live in `decideWindowClosedTeardown`.
+        const teardown = decideWindowClosedTeardown({
+            windowType: window.getWindowType(),
+            projectPath: named,
+            quitting: app.isQuitting(),
+            projectStillOpen: named !== null && app.hasLiveWindowForProject(named),
+        });
+
+        if (named && teardown.stopRuntimes) {
+            void app.stopProjectRuntimes(named).catch((error) => {
+                app.logger.warn("[Runtime] Failed to stop this project's runtimes on window close", error);
+            });
+        }
+        if (named && teardown.releaseVersionControl) {
+            void app.getVcsManager().closeProject(named).catch((error) => {
                 app.logger.warn("[Vcs] Failed to release session on window close", error);
             });
         }
@@ -156,11 +189,20 @@ app.whenReady().then(async () => {
         }
         quitFlush = 'running';
 
-        // Saves first, sessions second, and neither allowed to skip the other: a failed flush is
-        // still a quit that has to close its stores, and a failed close is still a quit.
+        // Saves first, then the runtimes, then the stores - and none of the three allowed to skip
+        // another: a failed flush is still a quit that has to close what it started, and a failed
+        // stop is still a quit.
+        //
+        // The runtimes are here rather than left to the windows closing because a preview and a
+        // test run are separate *processes*. Windows' job object happens to reap them with their
+        // parent; macOS and Linux reparent them, so quitting Studio left a game running with
+        // nothing left to stop it from.
         const teardown = (async () => {
             await app.flushAllWorkspacesPendingSaves().catch(error => {
                 app.logger.warn('Failed to flush pending saves before quit:', error);
+            });
+            await app.stopAllProjectRuntimes().catch(error => {
+                app.logger.warn('Failed to stop the running game processes before quit:', error);
             });
             await app.getVcsManager().dispose().catch(error => {
                 app.logger.warn('Failed to close version control before quit:', error);

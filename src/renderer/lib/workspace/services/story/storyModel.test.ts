@@ -897,6 +897,26 @@ describe("story document migration ladder", () => {
             expect(payloadOf(migrated, "shot").transform).toEqual({ mode: "animation", animationId: "anim-1" });
         });
 
+        it("leaves the OTHER `transition` alone - the one that is a transition, not a transform", () => {
+            const migrated = migrateStoryDocumentToLatest(v17With({
+                bg: { action: "setBackground", assetId: "asset-1", transition: { kind: "dissolve", durationMs: 600 } },
+                face: { action: "character", operation: "expression", characterId: "c1", pose: "smile", transition: { kind: "throughColor", durationMs: 800, props: { color: "#000000", hold: 25 } } },
+                swap: { action: "image", operation: "setSource", objectName: "hero", assetId: "asset-2", transition: { kind: "blinds", props: { slats: 6 } } },
+            }));
+            // Byte for byte: a transition ref has a `kind` and that kind's own `props`, neither of
+            // which a transform has, so the transform migration answered with `{mode:"props",to:{}}`
+            // and the compiler was left with a transition nothing named.
+            expect(payloadOf(migrated, "bg").transition).toEqual({ kind: "dissolve", durationMs: 600 });
+            expect(payloadOf(migrated, "face").transition).toEqual({ kind: "throughColor", durationMs: 800, props: { color: "#000000", hold: 25 } });
+            expect(payloadOf(migrated, "swap").transition).toEqual({ kind: "blinds", props: { slats: 6 } });
+            // The transform beside it on the same row is still migrated.
+            const both = migrateStoryDocumentToLatest(v17With({
+                enter: { action: "character", operation: "enter", characterId: "c1", transform: { mode: "preset", preset: "center" }, transition: { kind: "fadeIn", durationMs: 400 } },
+            }));
+            expect(payloadOf(both, "enter").transform).toEqual({ mode: "props", to: { position: { xalign: 0.5, yalign: 0.5 } } });
+            expect(payloadOf(both, "enter").transition).toEqual({ kind: "fadeIn", durationMs: 400 });
+        });
+
         it("is idempotent: a document already at the new shape is returned unchanged", () => {
             const already = v17With({
                 move: { action: "image", operation: "show", objectName: "hero", transform: { to: { zoom: 1.4 }, durationMs: 200 } },

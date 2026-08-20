@@ -645,6 +645,18 @@ export class BaseApp {
     }
 
     /**
+     * Bare paths this launch was given, in the order they appeared.
+     *
+     * Not dev-gated: this is how a packaged Studio is reached by a file association, which is the
+     * one thing `--project` explicitly is not for. What any of them mean is decided against the
+     * disk by `resolveLaunchOpenRequest`, which recognises only a project config, a project folder
+     * and a package - so everything argv happens to carry is ignored rather than trusted.
+     */
+    public getLaunchOpenPaths(): readonly string[] {
+        return this.commandLine.openPaths;
+    }
+
+    /**
      * Whether this launch asked to start on the home screen rather than back in the last project -
      * `--launcher`.
      *
