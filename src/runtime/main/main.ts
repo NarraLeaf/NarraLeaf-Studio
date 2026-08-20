@@ -22,6 +22,11 @@ import {
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
 import {
+    DEFAULT_SAVE_LOCATION_CONFIGURATION,
+    normalizeSaveLocationConfiguration,
+    type SaveLocationConfiguration,
+} from "@shared/utils/userDataLocation";
+import {
     buildGameRuntimeAssetVersionArg,
     buildGameRuntimeCrashPolicyArg,
     buildGameRuntimeLogPathArg,
@@ -58,7 +63,7 @@ import {
     sweepAbandonedTempFiles,
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
-import { resolveRuntimeUserDataDir } from "./userDataDir";
+import { resolveGameRootDir, resolvePlayerFilesDir, resolveRuntimeUserDataDir } from "./userDataDir";
 import {
     readGameProgressFile,
     writeGameProgressFile,
@@ -80,20 +85,27 @@ const appDir = __dirname;
 function readShellManifest(): {
     mode: "preview" | "production";
     userDataDirName: string | null;
+    saveLocation: SaveLocationConfiguration;
     debuggable: boolean;
 } {
     try {
         const manifest = JSON.parse(fsSync.readFileSync(path.join(appDir, "package.json"), "utf-8")) as {
-            narraleaf?: { mode?: unknown; userDataDir?: unknown; debuggable?: unknown };
+            narraleaf?: { mode?: unknown; userDataDir?: unknown; saveLocation?: unknown; debuggable?: unknown };
         };
         const userDataDir = manifest.narraleaf?.userDataDir;
         return {
             mode: manifest.narraleaf?.mode === "production" ? "production" : "preview",
             userDataDirName: typeof userDataDir === "string" && userDataDir.trim() ? userDataDir.trim() : null,
+            saveLocation: normalizeSaveLocationConfiguration(manifest.narraleaf?.saveLocation),
             debuggable: manifest.narraleaf?.debuggable === true,
         };
     } catch {
-        return { mode: "preview", userDataDirName: null, debuggable: false };
+        return {
+            mode: "preview",
+            userDataDirName: null,
+            saveLocation: { ...DEFAULT_SAVE_LOCATION_CONFIGURATION },
+            debuggable: false,
+        };
     }
 }
 
@@ -137,6 +149,38 @@ const userDataDir = useSiblingUserData
         move: (from, to) => { fsSync.renameSync(from, to); },
         warn: message => { console.warn(`[GameRuntime] ${message}`); },
     });
+
+/**
+ * The folder holding the player's copy of this game, and - when the author said so - the player's
+ * files with it.
+ *
+ * Resolved once here so that "where this game is" has one answer. Patch discovery asks the same
+ * question below and still answers it for itself, because the two do not agree on macOS: a patch is
+ * a file the player drops in, and where they drop it is not settled.
+ */
+const gameRootDir = resolveGameRootDir({
+    platform: process.platform,
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appDir,
+    ...(process.env.APPIMAGE ? { appImagePath: process.env.APPIMAGE } : {}),
+});
+
+/**
+ * Where the save and persistence stores write.
+ *
+ * Only these two follow the author's setting: everything else under {@link userDataDir} belongs to
+ * the shell rather than to the player. A preview never follows it at all - it has no installation
+ * to sit beside, and its saves are the author's own working copies.
+ */
+const playerFilesDir = shellMode === "production" && !useSiblingUserData
+    ? resolvePlayerFilesDir({
+        platform: process.platform,
+        config: shellManifest.saveLocation,
+        gameRootDir,
+        userDataDir,
+    })
+    : userDataDir;
 
 /**
  * Where the progress document lives, which is deliberately not under {@link userDataDir}.
@@ -1026,16 +1070,16 @@ async function serveIndexDocument(
 
 function registerRuntimeIpc(): void {
     // Module-level refs so the before-quit handler can flush pending writes.
-    const saves = new RuntimeSaveStore(userDataDir);
-    const persistence = new RuntimePersistenceStore(userDataDir);
+    const saves = new RuntimeSaveStore(playerFilesDir);
+    const persistence = new RuntimePersistenceStore(playerFilesDir);
     saveStore = saves;
     persistenceStore = persistence;
     // Housekeeping, once, on the way up: a store write that was interrupted between its temp file
     // and the rename leaves the temp behind for good. Not awaited and never fatal - nothing here
     // is worth delaying a boot for, let alone failing one.
     void Promise.all([
-        sweepAbandonedTempFiles(userDataDir),
-        sweepAbandonedTempFiles(path.join(userDataDir, "saves")),
+        sweepAbandonedTempFiles(playerFilesDir),
+        sweepAbandonedTempFiles(path.join(playerFilesDir, "saves")),
     ]).catch(() => undefined);
 
     ipcMain.handle("runtime:read-pack", () => readPack());

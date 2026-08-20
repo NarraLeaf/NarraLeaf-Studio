@@ -94,7 +94,17 @@ export const project = {
     // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
     // 任何平台，把这些交给谁是作者自己的判断。描述只说这些路径是什么，到此为止。
     userData: {
-        description: "发布后的游戏把玩家的存档与进度存放在该目录。修改应用名称不会移动它。",
+        description: "发布后的桌面版游戏把玩家的存档与进度存放在这里。",
+        windowsLinux: "Windows 和 Linux",
+        windowsLinuxDescription: "Windows 与 Linux 版本把玩家文件放在哪里。",
+        macos: "macOS",
+        macosDescription: "macOS 版本把玩家文件放在哪里。",
+        mode: {
+            appRoot: "游戏文件夹内",
+            userData: "用户文件夹内",
+        },
+        // 代表玩家把这份游戏放在哪个文件夹，只有他自己的机器写得出这条路径。
+        gameFolder: "<游戏文件夹>",
         copy: "复制位置",
         copied: "位置已复制",
         copyFailed: "无法复制位置",

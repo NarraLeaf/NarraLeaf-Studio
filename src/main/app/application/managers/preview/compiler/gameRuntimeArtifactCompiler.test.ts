@@ -792,7 +792,14 @@ describe("game runtime artifact compiler", () => {
             // The shipped game reads userDataDir before it can open the pack, and
             // names the player's directory after it rather than after productName,
             // which a rename would move. See shared/utils/userDataLocation.ts.
-            narraleaf: { mode: "production", userDataDir: "fixture.project" },
+            // Where those files go travels beside the name, and is complete even for a project
+            // that has never been asked: the runtime settles both before Chromium starts and has
+            // nowhere to go back to for the other half.
+            narraleaf: {
+                mode: "production",
+                userDataDir: "fixture.project",
+                saveLocation: { windowsLinux: "app-root", macos: "user-data" },
+            },
         });
         // Absent, not false: every build an author can make refuses a debugging switch, and the
         // runtime reads the marker's presence.

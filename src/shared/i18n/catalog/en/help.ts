@@ -576,6 +576,19 @@ export const help = {
                 + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
                 + "with the NarraLeaf icon.",
         },
+        saveLocation: {
+            title: "Where saves are kept",
+            body:
+                "A shipped desktop game writes the player's files to one of two places, answered "
+                + "here for Windows and Linux and again for macOS.\n"
+                + "\n"
+                + "- The game's folder: the files travel with the player's copy of the game. Copying "
+                + "that folder to another machine carries their progress; removing the game removes "
+                + "them; everyone using that computer shares one set.\n"
+                + "- The user folder: every person using the computer has their own, and removing "
+                + "the game leaves them in place. A storefront's save synchronisation can be pointed "
+                + "at this one.",
+        },
         // The three states a save can be in against the build in front of it, and which of the two
         // settings answers for each. A parent topic rather than a preamble repeated on both rows.
         olderSaves: {
