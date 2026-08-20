@@ -233,7 +233,7 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         // Action shortcuts auto-register on the keybinding service as `action:<id>`, so that is
         // also the id an override and a catalog entry for one are keyed by. Reading the catalog
         // here is what lets an action carry a *rebindable* default chord (Production Build's
-        // ⇧⌘B is one) without declaring `shortcut`, which would register a second binding that
+        // F10 is one) without declaring `shortcut`, which would register a second binding that
         // no catalog entry governs.
         const shortcutId = `action:${action.id}`;
         const effectiveShortcut =

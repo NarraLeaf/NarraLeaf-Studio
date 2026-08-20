@@ -222,7 +222,7 @@ describe("collectPaletteCommands", () => {
         const commands = collectPaletteCommands(
             build({ actions: [action({ id: "narraleaf-studio:build", label: "Production Build" })] }),
         );
-        expect(commands[0]).toMatchObject({ keybinding: "mod+shift+b", source: "action" });
+        expect(commands[0]).toMatchObject({ keybinding: "f10", source: "action" });
     });
 
     it("drops the keybinding a catalogued command already shows the chord for", () => {
