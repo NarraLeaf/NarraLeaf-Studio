@@ -33,7 +33,7 @@ import {
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
-import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
+import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
@@ -437,7 +437,7 @@ function StorySceneOverviewBlock(props: {
 }
 
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     // Subscribed to, not called: the empty scene's example chips spell their commands through the
     // registry's imperative read, which cannot tell React it went stale. Without this the chips keep
     // the old vocabulary after a language change until something else re-renders the tab.
@@ -1937,12 +1937,40 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const menuTarget = menuTargetId;
     const menuRoots = editor.selectionRootIds();
     const menuAllDisabled = menuRoots.length > 0 && menuRoots.every(id => scene.blocks[id]?.disabled);
+    // What the selection-wide entries act on, and — of those — the rows whose speaker resolves to
+    // nothing: a bare name nobody backs, or a character id this project has never heard of. The second
+    // is what rows pasted in from another project carry, since a character id is minted per project.
+    const menuSelectionIds = menuTarget
+        ? (editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget])
+        : [];
+    // Anchored on the row the menu was opened from, so a selection holding several unresolved
+    // speakers repairs the one the author pointed at instead of collapsing them into one character.
+    const menuSpeakerRowIds = editor.unresolvedSpeakerRowIds(menuSelectionIds, menuTargetId);
+    // The same candidate list the speaker chooser offers, minus its bare-name entries: this repair
+    // binds to a character that exists, and swapping one unbacked name for another is not a repair.
+    const menuSpeakerTargets = menuSpeakerRowIds.length > 0
+        ? getSpeakerCandidates(editor.characters, [], "").flatMap(candidate => (candidate.kind === "character"
+            ? [{
+                id: `bind-speaker-${candidate.key}`,
+                label: candidate.name,
+                onClick: () => editor.bindSpeakerForRows(menuSpeakerRowIds, candidate.key),
+            }]
+            : []))
+        : [];
     const rowMenuItems: ContextMenuDef = menuTarget ? [
         { id: "insert-above", label: t("story.rowMenu.insertAbove"), ...freeze.menuRow(), onClick: () => editor.startInsertBefore(menuTarget) },
         { id: "insert-below", label: t("story.rowMenu.insertBelow"), ...freeze.menuRow(), onClick: () => editor.startInsertAfter(menuTarget, true) },
         { id: "sep-insert", separator: true },
         { id: "duplicate", label: t("story.rowMenu.duplicate"), ...freeze.menuRow(), onClick: () => editor.duplicateSelection() },
         { id: "disable", label: menuAllDisabled ? t("story.rowMenu.enable") : t("story.rowMenu.disable"), ...freeze.menuRow(), onClick: () => editor.toggleDisableSelection() },
+        // Absent rather than greyed when there is nothing to repair or no character to repair it to:
+        // this is a rung the author reaches for after a paste, not a standing property of a row.
+        ...(menuSpeakerTargets.length > 0 ? [{
+            id: "bind-speaker",
+            label: tn("story.rowMenu.bindSpeaker", menuSpeakerRowIds.length),
+            ...freeze.menuRow(),
+            submenu: menuSpeakerTargets,
+        }] : []),
         { id: "sep-op", separator: true },
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
         { id: "inspector", label: t("story.rowMenu.openInspector"), onClick: () => editor.activateBlockForInspectorOrOp(menuTarget) },

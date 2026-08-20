@@ -211,6 +211,24 @@ export const story = {
         bulkConfirmDetail: "現在の行の下に、1 回分の取り消しとして足す",
         scriptFile: "これはストーリーのスクリプト。戻すには「スクリプトを読み込む」を使う",
     },
+    // コピー元とは別のプロジェクトに貼り付けた行。行が入ったあとに、結果だけを一度知らせる。
+    crossProject: {
+        pasted: {
+            other: "{count} 行を貼り付けた",
+        },
+        pastedFrom: {
+            other: "{project} から {count} 行を貼り付けた",
+        },
+        speakerNames: {
+            other: "話者 {count} 件は名前のみになった",
+        },
+        imported: {
+            other: "アセット {count} 件を取り込んだ",
+        },
+        unresolved: {
+            other: "未解決の参照 {count} 件",
+        },
+    },
     flow: {
         tabTitle: "シーンフロー",
         tabTitleNamed: "シーンフロー：{name}",
@@ -1158,6 +1176,9 @@ export const story = {
         duplicate: "複製",
         disable: "無効にする",
         enable: "有効にする",
+        bindSpeaker: {
+            other: "{count} 行の話者を割り当て",
+        },
         playFromHere: "ここから再生",
         openInspector: "インスペクタを開く",
         delete: "削除",

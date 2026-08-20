@@ -87,8 +87,20 @@ export function getPasteAnchorId(
     return anchor?.block.id ?? activeBlockId;
 }
 
-export function isStoryClipboardPayload(payload: StoryClipboardPayload): payload is StoryClipboardPayload {
-    return payload.kind === "narraleaf.story.actions" && payload.roots.length > 0;
+/**
+ * Whether a parsed clipboard payload is one of ours, and has rows in it.
+ *
+ * The parameter is `unknown` because the value came off the system clipboard: another Studio wrote
+ * it, of another version, and nothing about its shape is promised. Only the two fields the paste
+ * cannot proceed without are checked here - the optional ones a foreign paste reads are each
+ * rebuilt from whatever arrived, at the point they are read.
+ */
+export function isStoryClipboardPayload(payload: unknown): payload is StoryClipboardPayload {
+    if (!payload || typeof payload !== "object") {
+        return false;
+    }
+    const { kind, roots } = payload as { kind?: unknown; roots?: unknown };
+    return kind === "narraleaf.story.actions" && Array.isArray(roots) && roots.length > 0;
 }
 
 function structuredCloneBlock(block: StoryBlock): StoryBlock {

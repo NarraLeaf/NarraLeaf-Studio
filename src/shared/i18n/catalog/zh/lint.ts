@@ -159,6 +159,13 @@ export const lint = {
             description: "两行创建同一个舞台名称，后一行沿用前一行创建的对象",
             message: "{object} 已在上方创建，该行操作的是已创建的对象",
         },
+        storyCharacterMissing: {
+            title: "不存在的角色",
+            description: "该行指定的角色不在本工程中",
+            // 句子里不写出对象：引用解析不到时只剩存下来的 id，而它是一个 UUID，
+            // 把 UUID 写进报告等于给作者一个在工程里搜不到的词。
+            message: "该行指定的角色不在本工程中，该行没有可操作的对象",
+        },
         storyTransitionUnavailable: {
             title: "转场不可用",
             description: "行中指定的转场，当前版本无法播放",

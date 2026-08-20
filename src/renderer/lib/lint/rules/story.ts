@@ -20,12 +20,13 @@ import {
     type StoryBlock,
     type StoryBlockId,
     type StoryExpr,
+    type StoryInlineEvent,
     type StoryScene,
 } from "@shared/types/story";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
-import type { LintContext, LintStoryEntry } from "../context";
+import type { LintCharacterEntry, LintContext, LintStoryEntry } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 
 /**
@@ -128,6 +129,63 @@ export function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: S
 }
 
 /**
+ * The project's character for an id, or undefined when the project has no character with it.
+ *
+ * The single answer to "does this reference resolve", asked by the two rules that need it from
+ * opposite ends: {@link stageObjectLabel} asks so it can print the name an author would recognise,
+ * and `story/character-missing` asks because a miss is the whole finding. A second copy of the
+ * lookup would let the rule that stops a build disagree with the word the report prints.
+ *
+ * Deliberately returns the entry rather than its name: a character whose name is blank still exists,
+ * and a lookup that answered with the name alone would report it as missing.
+ */
+function findProjectCharacter(ctx: LintContext, characterId: string): LintCharacterEntry | undefined {
+    return ctx.characters.find(character => character.id === characterId);
+}
+
+/**
+ * The reveal-time event tokens a row carries.
+ *
+ * Read off the payload's text segment by name rather than by walking the payload structurally,
+ * because `event` is not a rare word in this schema and a loose scan would collect things that are
+ * not tokens at all. Four payloads hold a segment and the choice is the one that calls it `prompt`;
+ * a note is not among them, since an editor note reaches no player and its tokens never fire.
+ */
+function inlineEventRuns(block: StoryBlock): { event: StoryInlineEvent }[] {
+    if (block.kind !== "nodeAction") {
+        return [];
+    }
+    const payload = block.payload;
+    const segment = payload.action === "choice" ? payload.prompt : payload.text;
+    return (segment?.rich ?? []).filter((run): run is { event: StoryInlineEvent } => "event" in run);
+}
+
+/**
+ * Whether a row names a character id the project has nothing for. See `story/character-missing`,
+ * which states which of the three character-id sites are read and why the dialogue speaker is not.
+ *
+ * A blank id is not a miss. A character row that carries none addresses its portrait by stage name
+ * instead, which is an ordinary row and already `story/stage-object-missing`'s question: there is no
+ * reference to the character list to resolve, so there is nothing here to resolve it against.
+ */
+function namesMissingCharacter(ctx: LintContext, block: StoryBlock): boolean {
+    const named: string[] = [];
+    const collect = (id: string | undefined): void => {
+        const trimmed = id?.trim();
+        if (trimmed) {
+            named.push(trimmed);
+        }
+    };
+    if (block.kind === "action" && block.payload.action === "character") {
+        collect(block.payload.characterId);
+    }
+    for (const run of inlineEventRuns(block)) {
+        collect(run.event.expression?.characterId);
+    }
+    return named.some(id => !findProjectCharacter(ctx, id));
+}
+
+/**
  * The word to print for a stage object the scene never creates.
  *
  * The reference's LABEL, never its key: an unnamed sound keys on its asset id, and a UUID in a
@@ -141,7 +199,7 @@ export function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: S
  */
 function stageObjectLabel(ctx: LintContext, reference: StageObjectReference): string {
     if (reference.subject === "character") {
-        const name = ctx.characters.find(character => character.id === reference.name)?.name.trim();
+        const name = findProjectCharacter(ctx, reference.name)?.name.trim();
         if (name) {
             return name;
         }
@@ -769,6 +827,56 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         messageParams: { object: duplicate.label },
                         location: storyLocation(entry, scene, duplicate.blockId),
                         target: blockTarget(entry, scene, duplicate.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A row naming a character the project does not have.
+         *
+         * `error`, because every remaining reading of the row is a wrong one. The story compiler's
+         * `getCharacter` falls back to a placeholder name so a preview still runs, and a portrait
+         * lookup against an id nothing answers to simply finds nothing - so what an unresolved id
+         * ships as is a speaker labelled with a word the author never wrote, or a character who
+         * never appears. Neither says anything about itself on screen.
+         *
+         * A character id is stored in three places and this rule reads two of them:
+         *
+         *  - A **character action** (`/show`, `/hide`, `/face`, `/setname`, the puppet channels) has
+         *    no field beside the id saying who the row is about, so an id that resolves to nothing
+         *    leaves the row addressing nobody.
+         *  - An **inline expression event** - the reveal-time portrait switch a line can carry - is
+         *    the same case one level down: the token stores an id alone.
+         *  - A **dialogue row's speaker is deliberately out of scope.** A speaker with no character
+         *    record behind it is a first-class shippable state rather than a defect: NarraLeaf's
+         *    dialogue box displays whatever name its `Character` carries, which is why the payload
+         *    has a `speakerName` field and why an unresolved speaker degrades to it. Reporting that
+         *    here would call a working line broken. An inline event inside such a row is still
+         *    reported, because it has no bare-name arm to degrade to.
+         *
+         * An id is the only thing a miss leaves behind, and an id is a UUID, so the sentence names
+         * no subject: printing the stored id would put a word in a report that nobody can search a
+         * project for. The row itself is the answer, and the finding carries the jump to it.
+         */
+        id: "story/character-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyCharacterMissing",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    if (!namesMissingCharacter(ctx, block)) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/character-missing",
+                        messageKey: "lint.rule.storyCharacterMissing.message",
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
                     });
                 }
             }
