@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import { Check } from "lucide-react";
 import { useHostWindow } from "@/lib/components/layout";
 
@@ -78,6 +79,9 @@ export function useSurfaceToolbarPopover(contentKey?: unknown): SurfaceToolbarPo
 
     const close = useCallback(() => setOpen(false), []);
     const toggle = useCallback(() => setOpen(v => !v), []);
+    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
+    // moved to unless it is told (`useDismissWhenHidden`).
+    useDismissWhenHidden(close, open);
 
     useLayoutEffect(() => {
         if (!open) {

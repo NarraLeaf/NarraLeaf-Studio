@@ -22,6 +22,7 @@ import {
     type StoryRowSpeakerKey,
     type StoryRowTallies,
 } from "./storyRowFilter";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 
 const PANEL_WIDTH = 236;
 /** Roughly the panel's natural height with a small cast — what it is pushed up by. */
@@ -178,6 +179,9 @@ export function StoryRowFilterMenu(props: {
     onChange: (filter: StoryRowFilter) => void;
     onClose: () => void;
 }) {
+    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
+    // whatever the author moved to; the caller's own dismissal is what puts it away.
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
 

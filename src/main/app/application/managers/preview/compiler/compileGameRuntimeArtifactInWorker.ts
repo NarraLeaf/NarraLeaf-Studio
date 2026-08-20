@@ -5,12 +5,13 @@ import type {
     CompileWorkerOutboundMessage,
     ShippedContentAuditReport,
 } from "@/buildWorker/compileWorkerProtocol";
+import { bakeWeatherClipsForPack } from "../../weather/weatherClipsForPack";
 import type {
     GameRuntimeArtifactCompileInput,
     GameRuntimeArtifactCompileResult,
 } from "./gameRuntimeArtifactCompiler";
 
-type CompileWorkerHostApp = Pick<App, "getDistDir" | "getDefaultGameIconPath">;
+type CompileWorkerHostApp = Pick<App, "getDistDir" | "getDefaultGameIconPath" | "getWeatherBakeManager">;
 
 export type CompileWorkerHooks = {
     /**
@@ -43,7 +44,7 @@ export type CompileWorkerHooks = {
  * opaque pack key travels inside `input` (the same value the in-process call
  * received) and never leaves the machine.
  */
-export function compileGameRuntimeArtifactInWorker(
+export async function compileGameRuntimeArtifactInWorker(
     app: CompileWorkerHostApp,
     input: GameRuntimeArtifactCompileInput,
     hooks?: CompileWorkerHooks,
@@ -54,15 +55,24 @@ export function compileGameRuntimeArtifactInWorker(
     // its own icon produces should wear NarraLeaf's mark.
     const defaultIconPath = app.getDefaultGameIconPath();
     const opaqueIconPath = app.getDefaultGameIconPath(true);
-    const withDefaults: GameRuntimeArtifactCompileInput = input.defaultIcon || !defaultIconPath
-        ? input
-        : {
-            ...input,
-            defaultIcon: {
-                path: defaultIconPath,
-                ...(opaqueIconPath ? { opaquePath: opaqueIconPath } : {}),
-            },
-        };
+    // Also filled in here, and for a stronger reason than convenience: producing a weather clip
+    // spawns an encoder, which is the main process's to do, while the pack is written in the worker.
+    // Every artifact goes through this function - preview, test run and build alike - so doing it
+    // here is what keeps a previewed scene and a shipped one showing the same weather.
+    const weatherClips = input.weatherClips
+        ?? await bakeWeatherClipsForPack(app.getWeatherBakeManager(), input.projectPath);
+    const withDefaults: GameRuntimeArtifactCompileInput = {
+        ...input,
+        ...(weatherClips.length > 0 ? { weatherClips } : {}),
+        ...(input.defaultIcon || !defaultIconPath
+            ? {}
+            : {
+                defaultIcon: {
+                    path: defaultIconPath,
+                    ...(opaqueIconPath ? { opaquePath: opaqueIconPath } : {}),
+                },
+            }),
+    };
     return new Promise<GameRuntimeArtifactCompileResult>((resolve, reject) => {
         const worker = utilityProcess.fork(workerPath, [], {
             serviceName: "narraleaf-artifact-compile",
