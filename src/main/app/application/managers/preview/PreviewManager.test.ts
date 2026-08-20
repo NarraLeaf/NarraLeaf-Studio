@@ -181,6 +181,39 @@ describe("PreviewManager.stop while the artifact is still compiling", () => {
         await expect(launch).resolves.toBe("idle");
     });
 
+    // Windows only, and reported as skipped elsewhere rather than passing vacuously: case is part
+    // of a project's identity there and nowhere else.
+    it.runIf(process.platform === "win32")("stops a session started under a differently-cased path", async () => {
+        // The session table is keyed by project identity, not by the spelling the caller used -
+        // the same rule the window lookup follows. A workspace closing hands over whatever path it
+        // was opened with, and a session it could not find is one that keeps running with nothing
+        // left to stop it.
+        const compile = stallingCompile();
+        const manager = makeManager();
+        const launch = manager.launch(projectPath, entry);
+        await compile.started;
+
+        await expect(manager.stop(projectPath.toUpperCase())).resolves.toBe("idle");
+        expect(compile.worker.kill).toHaveBeenCalled();
+        await expect(launch).resolves.toBe("idle");
+    });
+
+    it("stopAll reaches every project, not just the first", async () => {
+        // What the quit teardown relies on: a preview is a separate process, and on macOS and Linux
+        // nothing else would ever end it.
+        const compile = stallingCompile();
+        const manager = makeManager();
+        const second = path.join(os.tmpdir(), "nls-preview-cancel-project-2");
+        const launches = [manager.launch(projectPath, entry), manager.launch(second, entry)];
+        await compile.started;
+
+        await manager.stopAll();
+
+        expect(manager.getStatus(projectPath)).toBe("idle");
+        expect(manager.getStatus(second)).toBe("idle");
+        await Promise.all(launches.map(launch => expect(launch).resolves.toBe("idle")));
+    });
+
     it("never spawns the runtime it was told to abandon", async () => {
         const compile = stallingCompile();
         const manager = makeManager();

@@ -929,6 +929,70 @@ export class App extends BaseApp {
         }
     }
 
+    /**
+     * Whether any live window still holds this project - a workspace, or the Dev Mode window a
+     * workspace opened.
+     *
+     * The window that is going away has usually not been unregistered yet when this is asked (the
+     * `window-closed` event runs before `unregisterWindow`), which is why "live" means
+     * `!isClosed()`: a destroyed window answers no for itself.
+     */
+    public hasLiveWindowForProject(projectPath: string): boolean {
+        const target = normalizeProjectPath(projectPath);
+        return this.windowManager.getWindows().some(window => {
+            if (window.isClosed()) {
+                return false;
+            }
+            const candidate = (window.getProps() as { projectPath?: unknown } | undefined)?.projectPath;
+            return typeof candidate === "string" && normalizeProjectPath(candidate) === target;
+        });
+    }
+
+    /**
+     * Stop everything this project has running: Dev Mode, the preview runtime, and a test's game
+     * process.
+     *
+     * **A project's runtimes belong to its window.** Everything that drives them lives there - the
+     * Run control that started them, the stop button, the console they report into, the status the
+     * toolbar shows. With the window gone, a Dev Mode window went on recompiling on every file
+     * change with its output going nowhere and no way to stop it short of closing it by hand, and a
+     * preview went on running as a whole separate process. Leaving them was never a decision; there
+     * simply was no hook.
+     *
+     * Called for every way a workspace can end - the close box, Cmd+W, Back to Launcher, and a
+     * switch retiring the window it came from - because it hangs off the window closing rather than
+     * off any one of those gestures.
+     *
+     * Never throws and never blocks the close: the window is already gone by the time this runs.
+     */
+    public async stopProjectRuntimes(projectPath: string): Promise<void> {
+        const results = await Promise.allSettled([
+            this.devModeManager.stop(projectPath),
+            this.previewManager.stop(projectPath),
+            this.gameTestManager.stopProject(projectPath),
+        ]);
+        for (const result of results) {
+            if (result.status === "rejected") {
+                this.logger.warn(`[Runtime] Could not stop a runtime for "${projectPath}":`, result.reason);
+            }
+        }
+    }
+
+    /**
+     * Stop every project's runtimes. Used on the way out of the app.
+     *
+     * Not the same thing as the windows closing, and that is the whole reason it exists: a preview
+     * and a test run are separate *processes*, and only Windows' job object reaps those with their
+     * parent - on macOS and Linux they are reparented and outlive Studio.
+     */
+    public async stopAllProjectRuntimes(): Promise<void> {
+        await Promise.allSettled([
+            this.devModeManager.stopAll(),
+            this.previewManager.stopAll(),
+            this.gameTestManager.stopAll(),
+        ]);
+    }
+
     /** Flush every open workspace concurrently. Used on the way out of the app. */
     public async flushAllWorkspacesPendingSaves(): Promise<void> {
         const workspaces = this.windowManager.getWindows().filter(
