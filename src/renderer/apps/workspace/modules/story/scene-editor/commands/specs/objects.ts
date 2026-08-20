@@ -27,7 +27,7 @@ export const image = defineStoryCommand({
     icon: Image,
     examples: ["/image night", "/image night name=sky pos=center", "/image forest_day name=backdrop in=fade d=0.4"],
     params: {
-        image: { aliases: ["src"], hint: "imageAsset", type: { kind: "asset", assetType: "image" }, positional: true, core: true },
+        image: { aliases: ["src"], hint: "imageAsset", type: { kind: "asset", assetType: "image", allowSets: true }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
         pos: placementParam(),
         // `in=`, the same rename `/show` carries: what this writes is the create's entrance TRANSFORM,
@@ -98,7 +98,7 @@ export const video = defineStoryCommand({
     icon: Video,
     examples: ["/video intro", "/video intro name=cutscene muted"],
     params: {
-        video: { aliases: ["src"], hint: "videoAsset", type: { kind: "asset", assetType: "video" }, positional: true, core: true },
+        video: { aliases: ["src"], hint: "videoAsset", type: { kind: "asset", assetType: "video", allowSets: true }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
         muted: { hint: "muted", type: { kind: "boolean" } },
     },
@@ -164,7 +164,7 @@ export const swap = defineStoryCommand({
     params: {
         target: targetParam(["image", "text"], { core: true }),
         // Typed by the target: an image's new content is an image asset, a text's is its new words.
-        content: { hint: "content", type: { kind: "content", dependsOn: "target" }, positional: true, greedy: true, core: true },
+        content: { hint: "content", type: { kind: "content", dependsOn: "target", allowSets: true }, positional: true, greedy: true, core: true },
     },
     build(args, ctx) {
         const target = asTarget(args.target);
