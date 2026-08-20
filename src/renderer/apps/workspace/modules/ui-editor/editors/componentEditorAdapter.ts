@@ -300,6 +300,17 @@ export class ComponentDocumentServiceAdapter {
         action();
     }
 
+    /**
+     * The workspace behind the real document service.
+     *
+     * Delegated because the clipboard reads its project - the path a pasted payload is compared
+     * against, the library a foreign paste imports into - off whichever document service the editor
+     * hands it, and a component editor is the same project as the surfaces around it.
+     */
+    public getContext(): ReturnType<UIDocumentService["getContext"]> {
+        return this.base.getContext();
+    }
+
     private mapParentId(parentId: string): string | null {
         if (this.isVirtualRoot(parentId)) {
             return this.base.getComponent(this.componentId)?.rootElementId ?? null;

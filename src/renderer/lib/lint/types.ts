@@ -106,6 +106,8 @@ export type LintRuleId =
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
+    | "ui/component-missing"
+    | "ui/frame-target-missing"
     | "blueprint/save-field-empty"
     | "variables/undeclared"
     | "variables/unused"

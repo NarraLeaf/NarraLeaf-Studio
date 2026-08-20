@@ -506,6 +506,83 @@ function runEmptyBehavior(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+/**
+ * An instance of a library component the project does not have.
+ *
+ * A linked instance holds nothing of its own - its whole appearance is the definition it points at,
+ * so an instance whose `componentId` resolves to nothing draws exactly nothing, in the canvas and
+ * in the game alike, with no mark on the page to say why. That is the one shape this programme
+ * refuses to let a project ship silently.
+ *
+ * It arises two ways and the report is the same for both: a component deleted from the library
+ * while instances of it were still placed, and a selection copied out of another project, where
+ * every id is a UUID that project minted (`uiEditorForeignPaste`). An error rather than a warning,
+ * because both leave a page with a hole in it, and both have a gesture that answers them - add the
+ * component, or unlink the instance.
+ *
+ * Only the stage pool is swept, for the reason at the head of this file: a component definition is
+ * not a page, and an instance nested inside one has no surface to file the finding under. A
+ * definition holding a broken instance is reported through whichever pages place it.
+ */
+function runComponentMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const known = new Set((document.components ?? []).map(component => component.id));
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        const componentId = getUIComponentLink(site.element)?.componentId;
+        if (!componentId || known.has(componentId)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/component-missing",
+            messageKey: "lint.rule.uiComponentMissing.message",
+            location: surfaceLocation(site.surface, site.element),
+            target: surfaceTarget(site.surface),
+        });
+    }
+    return findings;
+}
+
+/**
+ * A Page widget embedding a page the project does not have.
+ *
+ * The sibling of {@link runComponentMissing}, and there for the same reason: a frame draws the page
+ * its `targetSurfaceId` names and nothing else, so a target that resolves to nothing is a
+ * rectangle of nothing on a page that gives no sign why. It arises from deleting a page that was
+ * still embedded, and from pasting a frame copied out of another project, where the surface id is a
+ * UUID that project minted.
+ *
+ * A frame with no target at all is a frame the author has not finished placing, not a broken one -
+ * it is skipped, so a page under construction is never reported.
+ */
+function runFrameTargetMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const known = new Set((document.surfaces ?? []).map(surface => surface.id));
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        if (site.element.type !== UI_FRAME_ELEMENT_TYPE) {
+            continue;
+        }
+        const target = getUIFrameWidgetProps(site.element).targetSurfaceId;
+        if (!target || known.has(target)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/frame-target-missing",
+            messageKey: "lint.rule.uiFrameTargetMissing.message",
+            location: surfaceLocation(site.surface, site.element),
+            target: surfaceTarget(site.surface),
+        });
+    }
+    return findings;
+}
+
 export const UI_LINT_RULES: readonly LintRule[] = [
     {
         id: "ui/unlocalized-text",
@@ -529,5 +606,21 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "uiEmptyBehavior",
         run: ctx => runEmptyBehavior(ctx),
+    },
+    {
+        id: "ui/component-missing",
+        category: "ui",
+        // An error, like every other dangling reference: the widget draws nothing and says nothing,
+        // and a build that shipped it would ship a hole in a page.
+        defaultSeverity: "error",
+        slug: "uiComponentMissing",
+        run: ctx => runComponentMissing(ctx),
+    },
+    {
+        id: "ui/frame-target-missing",
+        category: "ui",
+        defaultSeverity: "error",
+        slug: "uiFrameTargetMissing",
+        run: ctx => runFrameTargetMissing(ctx),
     },
 ];

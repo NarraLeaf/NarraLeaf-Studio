@@ -210,6 +210,12 @@ export const story = {
         },
         bulkConfirmDetail: "現在の行の下に、1 回分の取り消しとして足す",
         scriptFile: "これはストーリーのスクリプト。戻すには「スクリプトを読み込む」を使う",
+        translationsCarried: {
+            other: "翻訳 {count} 件を引き継いだ",
+        },
+        translationsDropped: {
+            other: "このプロジェクトにない言語の翻訳 {count} 件",
+        },
     },
     // コピー元とは別のプロジェクトに貼り付けた行。行が入ったあとに、結果だけを一度知らせる。
     crossProject: {

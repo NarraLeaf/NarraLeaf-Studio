@@ -85,13 +85,13 @@ export function createOutlinePanelMenuActions(params: {
                 data?.editor === "ui" && data.surfaceId === surfaceId
                     ? (data.primaryId ?? data.elementIds[data.elementIds.length - 1] ?? null)
                     : null;
-            uiEditorPaste(documentService, localBlueprint, stateService, surfaceId, {
+            void uiEditorPaste(documentService, localBlueprint, stateService, surfaceId, {
                 hitElementId: pasteHitElementId,
                 primaryElementId: primary,
             });
         },
         pasteIntoParent: parentId => {
-            uiEditorPasteIntoParent(documentService, localBlueprint, stateService, surfaceId, parentId, null);
+            void uiEditorPasteIntoParent(documentService, localBlueprint, stateService, surfaceId, parentId, null);
         },
         copy: () => uiEditorCopySelection(documentService, localBlueprint, surfaceId, menuSel),
         cut: () => uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, menuSel, uiService),
