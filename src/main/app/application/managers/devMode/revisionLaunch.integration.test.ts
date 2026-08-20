@@ -102,7 +102,7 @@ function fakeWindow(): FakeWindow {
 }
 
 /**
- * Just enough app for the manager: a logger, a window list (empty, so console output goes nowhere) and
+ * Just enough app for the manager: a logger, no workspace window (so console output goes nowhere) and
  * the real VcsManager - the point of the file is that the real materialiser runs.
  */
 function fakeApp(): App {
@@ -111,6 +111,9 @@ function fakeApp(): App {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
         isQuitting: () => false,
         windowManager: { getWindows: () => [] },
+        // The manager asks App which window has a project open rather than matching paths itself -
+        // that lookup is what "one project, one window" is built on. Nothing is open here.
+        findWorkspaceForProject: () => undefined,
         getVcsManager: () => vcs,
         // Every host resolves which edition it is running as; this profile picked none.
         getGlobalState: () => ({ get: () => undefined }),

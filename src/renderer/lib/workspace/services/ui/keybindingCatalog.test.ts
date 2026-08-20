@@ -83,9 +83,9 @@ describe("catalog coverage of declared keybindings", () => {
          * The `useKeybindings` array this came from, or null for a standalone `useKeybinding`.
          *
          * One array is registered under one `when`, so all of its bindings are live together.
-         * Standalone calls carry their own `when` - `editor.close-active-tab` and
-         * `editor.close-selected-tabs` share ⌘W on purpose, scoped to the editor body and the tab
-         * strip - so they are not comparable and must not be lumped in by their id prefix.
+         * Standalone calls carry their own `when` - `editor.close-tab` is declared twice on ⌘W on
+         * purpose, once scoped to the editor body and once to the tab strip - so they are not
+         * comparable and must not be lumped in by their id prefix.
          */
         set: string | null;
         where: string;

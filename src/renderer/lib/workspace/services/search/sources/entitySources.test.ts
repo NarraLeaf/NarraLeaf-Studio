@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractAssetEntries } from "./assetSource";
+import { extractAssetEntries, extractAssetSetEntries } from "./assetSource";
 import { extractCharacterEntries } from "./characterSource";
 import { extractLocalizationKeyEntries } from "./localizationKeySource";
 import { extractSurfaceEntries } from "./surfaceSource";
@@ -76,5 +76,27 @@ describe("extractAssetEntries", () => {
 
     it("skips unnamed assets", () => {
         expect(extractAssetEntries([{ id: "a3", type: "image", name: "" }])).toHaveLength(0);
+    });
+});
+
+describe("extractAssetSetEntries", () => {
+    it("indexes sets beside the files, under a target that opens them differently", () => {
+        // The same group as the files on purpose: an author searching for "Room" has not first
+        // decided whether it is a file or a set, and the target is what tells the jump which.
+        const entries = extractAssetSetEntries([
+            { id: "s1", type: "image", name: "Room", filter: ["room"] },
+            { id: "s2", type: "audio", name: "Chime" },
+        ]);
+        expect(entries[0]).toMatchObject({
+            group: "asset",
+            text: "Room",
+            detail: "room",
+            target: { kind: "assetSet", assetSetId: "s1" },
+        });
+        expect(entries[1]?.detail).toBeUndefined();
+    });
+
+    it("skips unnamed sets", () => {
+        expect(extractAssetSetEntries([{ id: "s3", type: "image", name: "" }])).toHaveLength(0);
     });
 });

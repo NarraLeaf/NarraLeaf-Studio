@@ -233,7 +233,7 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         // Action shortcuts auto-register on the keybinding service as `action:<id>`, so that is
         // also the id an override and a catalog entry for one are keyed by. Reading the catalog
         // here is what lets an action carry a *rebindable* default chord (Production Build's
-        // ⇧⌘B is one) without declaring `shortcut`, which would register a second binding that
+        // F10 is one) without declaring `shortcut`, which would register a second binding that
         // no catalog entry governs.
         const effectiveShortcut = action.shortcutId
             ? resolveShortcut(action.shortcutId, keybindingOverrides, action.shortcut)
@@ -299,10 +299,17 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             return;
         }
         seenIds.add(id);
+        // A panel-navigation command can carry a chord too (⇧⌘F reveals the search panel), and it
+        // is catalogued under this very id - so the same override → catalog resolution the other
+        // two sources use applies here, and claiming it keeps the binding from being listed again
+        // under its own name.
+        const panelBinding = keybindingOverrides[id] ?? getKeybindingCatalogEntry(id)?.key;
+        claimBinding(panelBinding);
         out.push({
             id,
             title,
             category: panelCategory,
+            keybinding: panelBinding,
             icon: panel.icon,
             source: "panel",
             run: () => {

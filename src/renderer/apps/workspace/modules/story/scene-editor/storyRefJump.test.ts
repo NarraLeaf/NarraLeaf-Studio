@@ -61,6 +61,22 @@ describe("storyRefJumpTarget", () => {
             .toEqual({ kind: "asset", assetId: "a1", assetType: "" });
     });
 
+    it("sends an id no library holds to the asset set that answers for it", () => {
+        // A row may name a set where it would name a file, and the two open by different means. Asked
+        // in the order the row's own name lookup reads in: the library first, the sets after, so the
+        // word leads to the thing it is printed as.
+        expect(storyRefJumpTarget({ kind: "asset", assetId: "set1" }, { ...WHERE, isAssetSet: () => true }))
+            .toEqual({ kind: "assetSet", assetSetId: "set1" });
+        // A file wins even when a set would also answer - ids are uuids, so this is a rule about
+        // order rather than a case that occurs.
+        expect(storyRefJumpTarget({ kind: "asset", assetId: "a1" }, { ...WHERE, assetType: () => "image", isAssetSet: () => true }))
+            .toEqual({ kind: "asset", assetId: "a1", assetType: "image" });
+        // Neither answers: still an asset target, because the caller may simply have no services to
+        // ask with - see the note on `assetType`.
+        expect(storyRefJumpTarget({ kind: "asset", assetId: "gone" }, { ...WHERE, isAssetSet: () => false }))
+            .toEqual({ kind: "asset", assetId: "gone", assetType: "" });
+    });
+
     it("carries the story a scene belongs to, which the projection never knew", () => {
         expect(storyRefJumpTarget({ kind: "scene", sceneId: THERE }, WHERE))
             .toEqual({ kind: "storyScene", storyId: "story-1", sceneId: THERE, storyName: "Chapter One", sceneName: "Hallway" });
