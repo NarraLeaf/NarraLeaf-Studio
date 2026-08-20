@@ -522,7 +522,7 @@ describe("projectStoryCommandLine", () => {
             "/video intro name=cutscene muted",
             "/play clip",
             "/layer overlay z=10",
-            "/vfx intro name=petals opacity=0.5 d=0.8",
+            "/vfx intro name=petals opacity=0.5",
             "/transform camera zoom=2",
             "/transform camera pan=left",
             "/transform camera rot=15 d=0.5",
@@ -836,6 +836,20 @@ describe("projectStoryCommandLine — what a word points at", () => {
         expect(links(row({ action: "layer", operation: "show", objectName: "overlay", target: { kind: "custom", name: "overlay", sourceBlockId: "d_layer" } })))
             .toEqual([{ text: "overlay", ref: { kind: "block", blockId: "d_layer" } }]);
         expect(typed("/transform overlay opacity=0.4")).toContainEqual({ text: "overlay", ref: { kind: "block", blockId: "d_layer" } });
+    });
+
+    it("points an overlay at its declaring row in ANOTHER scene, which is where it usually is", () => {
+        // The overlay is the one stage object the engine does not scope to a scene, so the row that
+        // started the rain a scene hides is normally somewhere else - and the link has to say where,
+        // or the jump opens the right row number in the scene being read.
+        const context: StoryCommandContext = {
+            ...LINK_CONTEXT,
+            stageObjects: { ...LINK_CONTEXT.stageObjects, vfx: ["petals", "rain"] },
+            vfxSources: { rain: { blockId: "d_rain", sceneId: "s2" } },
+        };
+        const lookups: StoryCommandLineLookups = { ...LINK_LOOKUPS, commandContext: context };
+        expect(links(row({ action: "vfx", operation: "hide", objectName: "rain" }), lookups))
+            .toContainEqual({ text: "rain", ref: { kind: "block", blockId: "d_rain", sceneId: "s2" } });
     });
 
     it("resolves an old document by name, since that is what the engine does with it", () => {

@@ -79,6 +79,12 @@ function build(source: string): StoryBlock {
 }
 
 /** Resolution issues for a line - for asserting what must NOT commit. */
+/** What the PARSE rejected, before any target is resolved - an unknown word for the command. */
+function commandLineIssues(source: string): string[] {
+    const line = parseCommandLine(source);
+    return line.kind === "command" ? line.issues.map(issue => issue.code) : [];
+}
+
 function issuesOf(source: string): string[] {
     const line = parseCommandLine(source);
     if (line.kind !== "command" || !line.def) {
@@ -187,7 +193,7 @@ describe("generic verbs", () => {
         expect(issuesOf("/show Alice rate=2")).toEqual(["unsupportedParam"]);
         // On the way out there is nothing to say - a fade out ends at zero, with the clip stopped -
         // so `/hide` does not take either word at all, rather than taking one and ignoring it.
-        expect(parseCommandLine("/hide petals opacity=0.4").issues.map(issue => issue.code)).toEqual(["unknownParam"]);
+        expect(commandLineIssues("/hide petals opacity=0.4")).toEqual(["unknownParam"]);
     });
 
     it("/hide is direction-aware: the same word fades OUT", () => {
@@ -963,7 +969,7 @@ describe("logic and effects", () => {
         });
         // The row reveals nothing, so it carries no fade: `d=` is not a parameter of it, and a stored
         // duration would be a number the compile does not read.
-        expect(parseCommandLine("/vfx intro d=1.2").issues.map(issue => issue.code)).toEqual(["unknownParam"]);
+        expect(commandLineIssues("/vfx intro d=1.2")).toEqual(["unknownParam"]);
         // Blend mode decides whether the material reads at all, so the create row opens the inspector.
         expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
     });
