@@ -98,6 +98,15 @@ export const settings = {
                 dark: "ダーク",
             },
         },
+        windowIcon: {
+            label: "ウィンドウアイコン",
+            description: "Studio のウィンドウとタスクバーボタンに表示するアイコン。デスクトップとスタートメニューのショートカットはインストール時のアイコンのまま",
+            options: {
+                default: "NarraLeaf",
+                narra: "Narra",
+            },
+            unsupportedPlatform: "この項目はこのオペレーティングシステムでは使用できない",
+        },
         accentColor: {
             label: "アクセントカラー",
             description: "選択、フォーカスの枠、主要なボタンに使う色",

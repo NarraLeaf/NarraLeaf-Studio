@@ -99,6 +99,15 @@ export const settings = {
                 dark: "Dark",
             },
         },
+        windowIcon: {
+            label: "Window icon",
+            description: "The icon on Studio's windows and taskbar buttons. Desktop and Start menu shortcuts keep the installed icon.",
+            options: {
+                default: "NarraLeaf",
+                narra: "Narra",
+            },
+            unsupportedPlatform: "Not available on this operating system.",
+        },
         accentColor: {
             label: "Accent color",
             description: "Color used for selection, focus rings, and primary buttons.",
