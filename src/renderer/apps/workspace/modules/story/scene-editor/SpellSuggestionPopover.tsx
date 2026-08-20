@@ -8,6 +8,7 @@ import type { DictionaryService } from "@/lib/workspace/services/dictionary/Dict
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 
 const PANEL_WIDTH_PX = 208;
 
@@ -43,6 +44,9 @@ export function SpellSuggestionPopover(props: {
     /** Take the panel down. The caller clears the state that renders it. */
     onClose: () => void;
 }) {
+    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
+    // whatever the author moved to; the caller's own dismissal is what puts it away.
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const freeze = useFreezeGuard();

@@ -12,6 +12,7 @@ import {
     type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "../layout/hostVisibility";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "../../utils/cn";
 
@@ -53,6 +54,9 @@ export function EnhancedInput({
     const { t } = useTranslation();
     const [hasFocus, setHasFocus] = useState(false);
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+    // A dropdown portalled to the body survives the `display: none` that puts a kept-alive
+    // tab or panel away, so it has to be told when that happens (`useDismissWhenHidden`).
+    useDismissWhenHidden(() => setIsPopoverOpen(false), isPopoverOpen);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
     const [popoverPosition, setPopoverPosition] = useState({ left: 0, top: 0, width: 220 });
     const containerRef = useRef<HTMLButtonElement | HTMLDivElement | null>(null);
