@@ -73,6 +73,7 @@ export function useFileMenu(): void {
             icon: fileActionGroup.icon,
             order: fileActionGroup.order,
             menuSlot: fileActionGroup.menuSlot,
+            mnemonic: fileActionGroup.mnemonic,
             items,
         });
     }, [recentProjects, openRecentProject, registerActionGroup]);

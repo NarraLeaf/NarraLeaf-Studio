@@ -150,6 +150,7 @@ export function useModuleLoader() {
                         actions: group.actions,
                         order: group.order,
                         menuSlot: group.menuSlot,
+                        mnemonic: group.mnemonic,
                     });
                 });
             }
@@ -189,6 +190,7 @@ export function useModuleLoader() {
                 actions: group.actions,
                 order: group.order,
                 menuSlot: group.menuSlot,
+                mnemonic: group.mnemonic,
             });
         });
 

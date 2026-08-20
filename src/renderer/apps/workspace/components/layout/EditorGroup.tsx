@@ -9,6 +9,7 @@ import { FocusArea } from "@/lib/workspace/services/ui";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { HostVisibility } from "@/lib/components/layout";
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
 import { openNewTab } from "../../modules/new-tab/openNewTab";
 import { useEditorGroupDrop } from "./useEditorGroupDrop";
@@ -565,7 +566,12 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                 regionLabel={String(tab.title)}
                                 isolationKey={tab.id}
                             >
-                                <tab.component tabId={tab.id} payload={tab.payload} active={isActive} />
+                                {/* A kept-alive tab keeps its popups too, and a popup portalled to
+                                    the body is not inside the box that just went `display: none`.
+                                    This is how it learns to put itself away. */}
+                                <HostVisibility visible={isActive}>
+                                    <tab.component tabId={tab.id} payload={tab.payload} active={isActive} />
+                                </HostVisibility>
                             </WorkspacePanelErrorBoundary>
                         </div>
                     );
