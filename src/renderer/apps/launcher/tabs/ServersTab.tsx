@@ -13,9 +13,9 @@ import {
 } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
-import { ServerRow, serverCan, serverDisplayName, serverHost, useServers } from "@/lib/vcs/servers";
+import { ServerRow, serverCan, serverDisplayName, serverHost, signInWithPassword, useServers } from "@/lib/vcs/servers";
+import { AddServerModal } from "@/apps/settings/panels";
 import type { TranslationKey } from "@shared/i18n";
-import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import type {
     VcsLocalRepository,
@@ -170,11 +170,19 @@ export function ServersTab() {
         [opened, projects],
     );
 
-    // Adding a server signs the whole installation in, so it happens in Settings. Both ways
-    // into this tab's emptiness lead to the same place.
-    const manageServers = useCallback(() => {
-        void getInterface().app.launchSettings({ highlight: SERVERS_PANEL_SETTING_KEY });
-    }, []);
+    // Adding a server is the same sequence wherever it is started, so this mounts the one
+    // dialog rather than sending somebody to Settings to find it. Settings keeps the list
+    // - which servers this installation is signed in to - and this tab keeps what they
+    // hold; the dialog belongs to neither and is opened by both.
+    const [adding, setAdding] = useState(false);
+
+    /** A server was added, so this tab has one more to show and may need to choose it. */
+    const serverAdded = useCallback((session: VcsServerSession) => {
+        void reload();
+        // Chosen straight away when it is the first: an author who has just added their
+        // only server did not mean to land on "pick one from the list of one".
+        setChosen(current => current ?? session.remoteOrigin);
+    }, [reload]);
 
     /** Fetch a copy of a project through the wizard, then take account of what happened. */
     const getProject = useCallback(async (remote: string) => {
@@ -213,13 +221,20 @@ export function ServersTab() {
     if (servers.length === 0) {
         return (
             <div className="h-full w-full" data-servers-tab="empty">
+                {adding && (
+                    <AddServerModal
+                        onAdded={serverAdded}
+                        onClose={() => setAdding(false)}
+                        signInWithPassword={signInWithPassword}
+                    />
+                )}
                 <EmptyState
                     className="h-full"
                     icon={<Server className="h-8 w-8" />}
                     title={t("launcher.servers.empty.title")}
                     description={t("launcher.servers.empty.description")}
                     action={(
-                        <Button size="sm" onClick={manageServers} data-servers-action="manage">
+                        <Button size="sm" onClick={() => setAdding(true)} data-servers-action="manage">
                             {t("launcher.servers.empty.action")}
                         </Button>
                     )}
@@ -230,6 +245,13 @@ export function ServersTab() {
 
     return (
         <div className="flex h-full w-full min-h-0" data-servers-tab="list">
+            {adding && (
+                <AddServerModal
+                    onAdded={serverAdded}
+                    onClose={() => setAdding(false)}
+                    signInWithPassword={signInWithPassword}
+                />
+            )}
             <aside className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto border-r border-edge p-3">
                 {servers.map(entry => (
                     <ServerRow
@@ -245,7 +267,7 @@ export function ServersTab() {
                     server is not in the list looks at the end of the list. */}
                 <button
                     type="button"
-                    onClick={manageServers}
+                    onClick={() => setAdding(true)}
                     data-servers-action="manage"
                     className={cn(
                         "flex items-center gap-2 rounded-md border border-dashed border-edge px-3",
