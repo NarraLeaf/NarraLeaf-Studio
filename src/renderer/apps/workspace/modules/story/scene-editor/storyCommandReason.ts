@@ -150,7 +150,12 @@ function expressionReason(issue: StoryExpressionIssue): StoryCommandReason {
 function resolutionReason(issue: StoryCommandResolutionIssue, token: string): StoryCommandReason {
     switch (issue.code) {
         case "unknownAsset":
-            return { key: reasonKey(issue.code), params: { value: issue.value, assetType: issue.assetType } };
+            // A slot that would have taken a set says so, or the author reads "no image named X" and
+            // goes looking in the library for a row that was never going to be there.
+            return {
+                key: reasonKey(issue.allowSets ? "unknownAssetOrSet" : issue.code),
+                params: { value: issue.value, assetType: issue.assetType },
+            };
         case "unknownCharacter":
         case "unknownScene":
         case "unknownAudioTrack":

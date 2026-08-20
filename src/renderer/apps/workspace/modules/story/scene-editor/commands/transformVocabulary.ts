@@ -205,7 +205,9 @@ export const TRANSFORM_PROP_PARAMS = {
     // one CSS `filter` channel, and two writers of one channel means whichever is read last wins
     // silently - the same fault `/font` refuses a size and a colour for.
     filter: { hint: "filterCss", type: [NONE_OPTION, { kind: "text" }] as readonly StoryCommandParamType[] },
-    mask: { hint: "maskImage", type: [NONE_OPTION, { kind: "asset", assetType: "image" }] as readonly StoryCommandParamType[] },
+        // A set is legal here for the same reason the inspector's mask field offers one: the id lands in
+    // `transform.to.maskAssetId`, which is one of the slots the materializer resolves.
+mask: { hint: "maskImage", type: [NONE_OPTION, { kind: "asset", assetType: "image", allowSets: true }] as readonly StoryCommandParamType[] },
     clip: { hint: "clipPath", type: [NONE_OPTION, { kind: "text" }] as readonly StoryCommandParamType[] },
     backdrop: { hint: "backdropFilter", type: [NONE_OPTION, { kind: "text" }] as readonly StoryCommandParamType[] },
     blend: { hint: "blendMode", type: { kind: "enum", options: BLEND_MODES } },
