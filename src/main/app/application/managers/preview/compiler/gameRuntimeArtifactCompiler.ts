@@ -74,7 +74,7 @@ import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import { deriveGameAppId, type GameBuildPlatform } from "@shared/types/gameBuild";
-import { userDataDirectoryName } from "@shared/utils/userDataLocation";
+import { normalizeSaveLocationConfiguration, userDataDirectoryName } from "@shared/utils/userDataLocation";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
@@ -726,6 +726,11 @@ function buildAppManifest(
             // renames it, and there the project's own name is the more stable
             // of the two anyway.
             userDataDir: userDataDirectoryName(appId ?? deriveGameAppId(identifier, pack.project.name)),
+            // Which of the two places the player's files go, per platform group. It travels beside
+            // the directory name because it is answered at the same moment and by the same reader:
+            // the runtime settles both before Chromium starts. Normalized here so the runtime reads
+            // a complete answer rather than a project's partial one.
+            saveLocation: normalizeSaveLocationConfiguration(projectConfig?.app?.saveLocation),
         },
     };
 }

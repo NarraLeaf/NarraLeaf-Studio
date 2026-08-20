@@ -73,6 +73,30 @@ const TRANSFORM_ACCEPTS = ["image", "text", "layer", "character"] as const;
  */
 const TRANSFORM_REFUSES = ["video", "vfx"] as const;
 
+type DisplayableTransformOperation = Extract<StoryActionPayload, { action: "displayable" }>["operation"];
+type CameraTransformOperation = Extract<StoryActionPayload, { action: "camera" }>["operation"];
+
+/**
+ * Which of the three things a `/transform` line is: settle into a pose, start repeating one, or stop
+ * repeating.
+ *
+ * **Bare flags on the one verb rather than two verbs of their own**, and the precedent is `/bgm theme
+ * loop`: the author already knows `loop` as the word that means "keep going until something stops
+ * it", and the subject a transform addresses does not change because the motion repeats. It also
+ * cannot be a second verb - `loop` is `/repeat`'s alias, and the story language's loop is control
+ * flow.
+ *
+ * The word is on the line either way, so the one thing this must not hide stays visible: a `loop` row
+ * does NOT hold the scene up. The story carries straight on and the motion keeps running underneath
+ * everything after it.
+ */
+function operationOf(args: TransformArgs): "transform" | "loop" | "stopLoop" {
+    if (asBoolean(args.stopLoop)) {
+        return "stopLoop";
+    }
+    return asBoolean(args.loop) ? "loop" : "transform";
+}
+
 type TransformSubject =
     | { kind: "camera" }
     | { kind: "displayable"; target: StoryCommandTargetValue }
@@ -122,7 +146,7 @@ const CAMERA_DEFAULT_DURATION_MS = 600;
  * carries the same {@link StoryTransformRef} every other subject does, so the line's bag IS the row
  * and every prop in the vocabulary reaches the camera the way it reaches a sprite.
  */
-function cameraBlock(args: TransformArgs, generateId: () => string): StoryBlock {
+function cameraBlock(args: TransformArgs, generateId: () => string, operation: CameraTransformOperation): StoryBlock {
     const block = (payload: Extract<StoryActionPayload, { action: "camera" }>): StoryBlock => ({
         id: generateId(),
         parentId: null,
@@ -130,10 +154,16 @@ function cameraBlock(args: TransformArgs, generateId: () => string): StoryBlock 
         kind: "action",
         payload,
     });
+    if (operation === "stopLoop") {
+        // Ending a sway states no destination: the camera goes back to the pose it kept underneath,
+        // and the only thing the line can say about that is how long it takes.
+        const durationMs = asDurationMs(args.d);
+        return block({ action: "camera", operation, transform: durationMs === undefined ? {} : { durationMs } });
+    }
     if (asBoolean(args.motion)) {
         // The shot itself is a binding no line can name, so the row states the mode and the inspector
         // does the picking - exactly what `/camera motion` did.
-        return block({ action: "camera", operation: "transform", transform: { mode: "animation" } });
+        return block({ action: "camera", operation, transform: { mode: "animation" } });
     }
     const props = pruneStoryTransformProps(transformPropsFromArgs(args));
     const transform: StoryTransformRef = {
@@ -141,7 +171,7 @@ function cameraBlock(args: TransformArgs, generateId: () => string): StoryBlock 
         durationMs: asDurationMs(args.d) ?? CAMERA_DEFAULT_DURATION_MS,
         ...(props ? { to: props } : {}),
     };
-    return block({ action: "camera", operation: "transform", transform });
+    return block({ action: "camera", operation, transform });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -154,12 +184,13 @@ function displayableBlock(
     target: StoryCommandTargetValue | undefined,
     transform: StoryTransformRef,
     generateId: () => string,
+    operation: DisplayableTransformOperation = "transform",
 ): StoryBlock {
     const block = createBlockForCommand("displayableTransform", generateId);
     if (block.kind !== "action" || block.payload.action !== "displayable") {
         return block;
     }
-    const payload = { ...block.payload };
+    const payload = { ...block.payload, operation };
     const ref = displayableTargetRef(target);
     if (ref) {
         payload.target = ref;
@@ -180,6 +211,10 @@ function validateProps(
     const subject = subjectOf(args.target);
     const target = asTarget(args.target);
     const kind = subjectWord(subject, target);
+
+    if (!options.reset) {
+        issues.push(...validateLoopFlags(args, ctx));
+    }
 
     // Three keys write the one CSS `filter` channel. Reported rather than resolved, the way `/font`
     // refuses a size and a colour: two writers of one channel means whichever the emitter reads last
@@ -245,6 +280,45 @@ function validateProps(
     return issues;
 }
 
+/**
+ * What a `loop` / `stopLoop` line can and cannot also say.
+ *
+ * Three refusals, and each is a row that would parse, commit, and then quietly not do the thing it
+ * names - the failure this layer exists to catch.
+ */
+function validateLoopFlags(args: TransformArgs, ctx: StoryCommandValidateContext): StoryCommandResolutionIssue[] {
+    const issues: StoryCommandResolutionIssue[] = [];
+    const looping = asBoolean(args.loop);
+    const stopping = asBoolean(args.stopLoop);
+
+    // Start it and end it on one line: two instructions about the same element, and no rule can say
+    // which the author meant, so the line must not commit at all.
+    if (looping && stopping) {
+        const span = ctx.spanOf("stopLoop") ?? ctx.spanOf("loop");
+        if (span) {
+            issues.push({ code: "conflictingParams", span, keys: ["loop", "stopLoop"] });
+        }
+    }
+    // A count and "until something stops it" are two answers to how many times the motion runs.
+    if (looping && args.repeat !== undefined) {
+        const span = ctx.spanOf("repeat");
+        if (span) {
+            issues.push({ code: "conflictingParams", span, keys: ["loop", "repeat"] });
+        }
+    }
+    // Ending a loop states no destination - it goes back to the pose the element kept underneath -
+    // so a bag beside it is a pose that would be stored and then never reach the stage.
+    if (stopping) {
+        for (const key of [...TRANSFORM_PROP_KEYS, "from", "motion"] as const) {
+            const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+            if (span) {
+                issues.push({ code: "conflictingParams", span, keys: ["stopLoop", key] });
+            }
+        }
+    }
+    return issues;
+}
+
 export const transform = defineStoryCommand({
     id: "transform",
     token: "transform",
@@ -257,6 +331,8 @@ export const transform = defineStoryCommand({
         "/transform hero pos=left d=0.4",
         "/transform hero blur=4 gray=1",
         "/transform Alice flip=on",
+        "/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror",
+        "/transform hero stopLoop d=0.3",
         "/transform camera zoom=1.6 d=0.8",
         "/transform camera look=moonlight",
     ],
@@ -269,21 +345,35 @@ export const transform = defineStoryCommand({
         }),
         ...TRANSFORM_PROP_PARAMS,
         ...TRANSFORM_TIMING_PARAMS,
+        // Bare flags, the shape `/bgm theme loop` and `/reset hero mask` already have - two words on
+        // the line rather than a value the author has to invent a spelling for.
+        loop: { hint: "loop", type: { kind: "boolean" } },
+        stopLoop: { hint: "stopLoop", type: { kind: "boolean" } },
     },
     build(args, ctx) {
         const subject = subjectOf(args.target);
+        const operation = operationOf(args);
         if (subject.kind === "camera") {
-            return cameraBlock(args, ctx.generateId);
+            return cameraBlock(args, ctx.generateId, operation);
+        }
+        if (operation === "stopLoop") {
+            const durationMs = asDurationMs(args.d);
+            return displayableBlock(
+                asTarget(args.target),
+                durationMs === undefined ? {} : { durationMs },
+                ctx.generateId,
+                operation,
+            );
         }
         if (asBoolean(args.motion)) {
-            return displayableBlock(asTarget(args.target), { mode: "animation" }, ctx.generateId);
+            return displayableBlock(asTarget(args.target), { mode: "animation" }, ctx.generateId, operation);
         }
         const props = pruneStoryTransformProps(transformPropsFromArgs(args));
         const transformRef: StoryTransformRef = {
             ...transformTimingFromArgs(args),
             ...(props ? { to: props } : {}),
         };
-        return displayableBlock(asTarget(args.target), transformRef, ctx.generateId);
+        return displayableBlock(asTarget(args.target), transformRef, ctx.generateId, operation);
     },
     validate: (args, ctx) => validateProps(args, ctx, { reset: false }),
     /**
@@ -300,9 +390,14 @@ export const transform = defineStoryCommand({
             return false;
         }
         if (block.payload.action === "camera") {
-            return block.payload.transform?.mode === "animation";
+            return block.payload.operation !== "stopLoop" && block.payload.transform?.mode === "animation";
         }
         if (block.payload.action !== "displayable") {
+            return false;
+        }
+        // Ending a loop states everything it needs on the line - there is no bag to pick and no
+        // channel left unsaid, so yanking the caret out of the row would be pure interruption.
+        if (block.payload.operation === "stopLoop") {
             return false;
         }
         const ref = block.payload.transform;

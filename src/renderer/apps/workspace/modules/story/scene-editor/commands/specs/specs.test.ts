@@ -853,6 +853,35 @@ describe("logic and effects", () => {
         expect(parseCommandLine("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2)")).toMatchObject({ issues: [{ code: "badValue" }] });
     });
 
+    it("/transform loop is the same bag, played until something stops it", () => {
+        // A bare flag rather than a verb of its own: `loop` is `/repeat`'s alias, and the author
+        // already knows the word from `/bgm theme loop`.
+        expect(build("/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror")).toMatchObject({
+            kind: "action",
+            payload: {
+                action: "displayable",
+                operation: "loop",
+                transform: { to: { scaleY: 1.02 }, durationMs: 900, repeatType: "mirror" },
+            },
+        });
+        // The camera loops too - a handheld sway is the same row about the stage's own glass.
+        expect(build("/transform camera loop rot=0.4 d=1.2")).toMatchObject({
+            payload: { action: "camera", operation: "loop", transform: { to: { rotation: 0.4 } } },
+        });
+    });
+
+    it("/transform stopLoop states the way back and nothing else", () => {
+        expect(build("/transform hero stopLoop d=0.3")).toMatchObject({
+            payload: { action: "displayable", operation: "stopLoop", transform: { durationMs: 300 } },
+        });
+        // A bag beside it would be a pose stored and then never reached, so the line must not commit.
+        expect(issuesOf("/transform hero stopLoop zoom=2")).toEqual(["conflictingParams"]);
+        // Start it and end it on one line: two instructions about one element, and no rule can pick.
+        expect(issuesOf("/transform hero loop stopLoop zoom=2")).toContain("conflictingParams");
+        // A count and "until something stops it" are two answers to how many times it runs.
+        expect(issuesOf("/transform hero loop zoom=2 repeat=3")).toEqual(["conflictingParams"]);
+    });
+
     it("/transform camera reads the camera as a reserved target word", () => {
         expect(build("/transform camera zoom=1.5 d=0.8")).toMatchObject({
             kind: "action",

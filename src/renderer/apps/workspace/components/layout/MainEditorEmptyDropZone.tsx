@@ -8,8 +8,7 @@ import {
 import { openNewTab } from "@/apps/workspace/modules/new-tab/openNewTab";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
-
-const LOGO_MASK = "url(/img/narraleaf-studio/logo-icon-white.png)";
+import { ProductLogoWatermark } from "./ProductLogoWatermark";
 
 interface MainEditorEmptyDropZoneProps {
     groupId: string;
@@ -56,27 +55,7 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
                 {!backgroundUrl && (
                     <div>
                         <div className="relative mb-8">
-                            {/*
-                              * The logo art is a fixed white silhouette, which is invisible against the
-                              * light theme's surface. Drawing it as a mask over `bg-fg` instead lets the
-                              * watermark take the theme's foreground colour — the same way the wordmark
-                              * below follows `text-fg`.
-                              */}
-                            <div
-                                role="img"
-                                aria-label={t("workspace.shell.logoAlt")}
-                                className="w-64 h-64 mx-auto bg-fg opacity-5"
-                                style={{
-                                    maskImage: LOGO_MASK,
-                                    WebkitMaskImage: LOGO_MASK,
-                                    maskSize: "contain",
-                                    WebkitMaskSize: "contain",
-                                    maskRepeat: "no-repeat",
-                                    WebkitMaskRepeat: "no-repeat",
-                                    maskPosition: "center",
-                                    WebkitMaskPosition: "center",
-                                }}
-                            />
+                            <ProductLogoWatermark />
                         </div>
 
                         <div className="space-y-4 mb-8">

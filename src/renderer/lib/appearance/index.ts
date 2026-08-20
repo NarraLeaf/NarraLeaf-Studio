@@ -7,6 +7,7 @@ import {
 } from "@/lib/settings/editorSurfaceOptions";
 import { TOOLTIP_DELAY_KEY } from "@/lib/settings/tooltipOptions";
 import { setTooltipDelay } from "@/lib/tooltip";
+import { WINDOW_ICON_DEFAULT, WINDOW_ICON_KEY, resolveWindowIcon, windowIconUrl } from "@shared/constants/windowIcon";
 
 /**
  * Apply the appearance preferences CSS cannot resolve on its own: `ui.accentColor`,
@@ -29,6 +30,11 @@ let subscribed = false;
 /** Listeners for the motion preference, for the React side (see `MotionConfig` in renderApp). */
 const motionListeners = new Set<(reduced: boolean) => void>();
 let reduceMotion = false;
+
+/** Listeners for the product mark, for the React side (see `useProductIcon`). */
+const productIconListeners = new Set<() => void>();
+let productIconId: string = WINDOW_ICON_DEFAULT;
+let productIconSrc: string = windowIconUrl(WINDOW_ICON_DEFAULT);
 
 function applyAccentColor(value: unknown): void {
     const accent = normalizeAccentColor(value);
@@ -60,6 +66,21 @@ function applyTooltipDelay(value: unknown): void {
     const numeric = typeof value === "number" ? value : Number(value);
     if (Number.isFinite(numeric)) {
         setTooltipDelay(numeric);
+    }
+}
+
+/**
+ * Follow `ui.windowIcon` on the interface's own logo surfaces, not just on the window itself.
+ *
+ * The title bars, the launcher's sidebar and the empty-editor watermark all draw the product mark,
+ * and none of them is reachable from `BrowserWindow.setIcon` - so a change that stopped at the OS
+ * would leave a window showing one mark in the taskbar and another in its own title bar.
+ */
+function applyProductIcon(value: unknown): void {
+    productIconId = resolveWindowIcon(typeof value === "string" ? value : null).id;
+    productIconSrc = windowIconUrl(productIconId);
+    for (const listener of productIconListeners) {
+        listener();
     }
 }
 
@@ -95,6 +116,28 @@ export function previewAccentColor(value: unknown): void {
     applyAccentColor(value);
 }
 
+/** The URL every logo surface in the interface draws. */
+export function getProductIconSrc(): string {
+    return productIconSrc;
+}
+
+/**
+ * Whether the mark is the one the interface was drawn around.
+ *
+ * The empty-editor watermark asks: the shipped mark is a flat silhouette meant to be painted
+ * through a mask, and masking a full-colour portrait would reduce it to a blob.
+ */
+export function isProductIconDefault(): boolean {
+    return productIconId === WINDOW_ICON_DEFAULT;
+}
+
+export function subscribeProductIcon(listener: () => void): () => void {
+    productIconListeners.add(listener);
+    return () => {
+        productIconListeners.delete(listener);
+    };
+}
+
 export function subscribeReduceMotion(listener: (reduced: boolean) => void): () => void {
     motionListeners.add(listener);
     return () => {
@@ -106,11 +149,12 @@ export async function initAppearance(): Promise<void> {
     const state = getInterface().app.state;
 
     try {
-        const [accent, motion, surfaceOpacity, tooltipDelay] = await Promise.all([
+        const [accent, motion, surfaceOpacity, tooltipDelay, productIcon] = await Promise.all([
             state.getGlobalState("ui.accentColor"),
             state.getGlobalState("ui.reduceMotion"),
             state.getGlobalState(EDITOR_SURFACE_OPACITY_KEY),
             state.getGlobalState(TOOLTIP_DELAY_KEY),
+            state.getGlobalState(WINDOW_ICON_KEY),
         ]);
         if (accent.success) {
             applyAccentColor(accent.data.value);
@@ -123,6 +167,9 @@ export async function initAppearance(): Promise<void> {
         }
         if (tooltipDelay.success) {
             applyTooltipDelay(tooltipDelay.data.value);
+        }
+        if (productIcon.success) {
+            applyProductIcon(productIcon.data.value);
         }
     } catch (error) {
         console.warn("[appearance] Failed to load appearance preferences; using defaults.", error);
@@ -139,6 +186,8 @@ export async function initAppearance(): Promise<void> {
                 applyEditorSurfaceOpacity(change.value);
             } else if (change.key === TOOLTIP_DELAY_KEY) {
                 applyTooltipDelay(change.value);
+            } else if (change.key === WINDOW_ICON_KEY) {
+                applyProductIcon(change.value);
             }
         });
     }

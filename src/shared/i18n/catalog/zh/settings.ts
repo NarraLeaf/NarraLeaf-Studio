@@ -90,6 +90,15 @@ export const settings = {
                 dark: "暗色",
             },
         },
+        windowIcon: {
+            label: "窗口图标",
+            description: "Studio 窗口与任务栏按钮所用的图标。桌面与开始菜单的快捷方式仍使用安装时的图标",
+            options: {
+                default: "NarraLeaf",
+                narra: "Narra",
+            },
+            unsupportedPlatform: "此选项不适用于此操作系统",
+        },
         accentColor: {
             label: "强调色",
             description: "选中项、焦点框和主要按钮所用的颜色",

@@ -326,6 +326,32 @@ describe("computeStoryStageSnapshot", () => {
         ]);
     });
 
+    it("leaves the pose alone for a loop and for the row that ends it", () => {
+        // The engine's own rule, and the reason this snapshot can honour it: a looping transform
+        // never writes the element's transform state, so the settled pose - what a save records and
+        // what "play from this row" starts from - stays the one the element had before it started.
+        const document = baseDocument({
+            show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { mode: "props", to: { zoom: 1.5 } } }),
+            breathe: block("breathe", "action", {
+                action: "displayable",
+                operation: "loop",
+                target: { name: "hero", kind: "image" },
+                transform: { mode: "props", to: { zoom: 3, scaleY: 1.2 }, durationMs: 900 },
+            }),
+            stop: block("stop", "action", {
+                action: "displayable",
+                operation: "stopLoop",
+                target: { name: "hero", kind: "image" },
+                transform: { durationMs: 300 },
+            }),
+            target: say("target"),
+        }, ["show", "breathe", "stop", "target"]);
+
+        const hero = snapshot(document, "target").displayables[0];
+        expect(hero.props.zoom).toBe(1.5);
+        expect(hero.props.scaleY).toBeUndefined();
+    });
+
     it("tracks residual effects and their clears", () => {
         const document = baseDocument({
             show: block("show", "action", { action: "image", operation: "show", objectName: "hero" }),

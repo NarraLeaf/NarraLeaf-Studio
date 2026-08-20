@@ -17,6 +17,7 @@ import {
     PlayerPreferences,
     ProjectAppConfiguration,
     SaveCompatibilityConfiguration,
+    SaveLocationConfiguration,
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
@@ -32,6 +33,7 @@ import {
     normalizeNetworkConfiguration,
     normalizePlayerPreferences,
     normalizeSaveCompatibilityConfiguration,
+    normalizeSaveLocationConfiguration,
     normalizeSecurityConfiguration,
     normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
@@ -479,6 +481,36 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 saveCompatibility,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /** Where a shipped desktop game writes the player's files; the default for projects without one. */
+    public getSaveLocationConfiguration(): SaveLocationConfiguration {
+        return normalizeSaveLocationConfiguration(this.getProjectConfig().app?.saveLocation);
+    }
+
+    /**
+     * Merge a partial patch into the save-location setting. Written by the project App page and
+     * baked into the app manifest, which is where the runtime reads it: the answer is needed before
+     * Chromium starts, long before anything can open the pack.
+     */
+    public async updateSaveLocationConfiguration(
+        patch: Partial<SaveLocationConfiguration>,
+    ): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const saveLocation = normalizeSaveLocationConfiguration({
+                ...normalizeSaveLocationConfiguration(config.app?.saveLocation),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                saveLocation,
             };
             return {
                 ...config,

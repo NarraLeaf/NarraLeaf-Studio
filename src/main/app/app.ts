@@ -238,15 +238,6 @@ export class App extends BaseApp {
         return this.updateManager;
     }
 
-    private applyWindowIcon(window: AppWindow): void {
-        const iconPath = this.getWindowIconPath();
-        if (!iconPath) {
-            return;
-        }
-
-        window.setIcon(iconPath);
-    }
-
     /**
      * Whether the launcher about to be built should open in first-run setup.
      *

@@ -4,6 +4,7 @@ export enum AppHost {
     Public = "public",
     Windows = "windows",
     Fs = "fs",
+    AppIcon = "app-icon",
     Plugins = "plugins",
     PluginApi = "plugin-api",
 }

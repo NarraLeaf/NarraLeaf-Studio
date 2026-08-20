@@ -1,6 +1,7 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
+import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
@@ -71,6 +72,12 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.runMode": "devMode" | "preview" | string;
     /** Studio UI zoom as a whole percentage; see @shared/constants/zoom. */
     "ui.zoomPercent": number;
+    /**
+     * Which built-in mark Studio's windows wear, as an id from `@shared/constants/windowIcon` -
+     * not a file name. Applied by the main process, which is the only side that can call
+     * `BrowserWindow.setIcon`; Windows and Linux only, since macOS has no per-window icon at all.
+     */
+    "ui.windowIcon": string;
     /**
      * Accent preset id from @shared/constants/accent — not a free color. Applied by the renderer
      * (lib/appearance) by overriding the `--nl-primary` channels, which every `*-primary` utility
@@ -355,6 +362,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
+    "ui.windowIcon": WINDOW_ICON_DEFAULT,
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
     "ui.reduceMotion": false,
     "ui.statusBar.visible": true,

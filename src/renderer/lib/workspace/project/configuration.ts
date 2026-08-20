@@ -24,6 +24,7 @@ import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { DialogueConfiguration } from "@shared/types/dialogue";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
+import type { SaveLocationConfiguration } from "@shared/utils/userDataLocation";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
@@ -82,6 +83,11 @@ export type {
     SaveCompatiblePolicy,
     SaveIncompatiblePolicy,
 } from "@shared/types/saveCompatibility";
+export {
+    DEFAULT_SAVE_LOCATION_CONFIGURATION,
+    normalizeSaveLocationConfiguration,
+} from "@shared/utils/userDataLocation";
+export type { SaveLocationConfiguration, SaveLocationMode } from "@shared/utils/userDataLocation";
 export {
     DEFAULT_LANGUAGE_CHANGE_CONFIGURATION,
     normalizeLanguageChangeConfiguration,
@@ -388,6 +394,12 @@ export type ProjectAppConfiguration = {
      * player back where it stopped).
      */
     saveCompatibility?: SaveCompatibilityConfiguration;
+    /**
+     * Where a shipped desktop game keeps the player's files; absent until configured (see the
+     * defaults, which put them beside the game on Windows and Linux and in the per-user directory
+     * on macOS).
+     */
+    saveLocation?: SaveLocationConfiguration;
     /**
      * What a language change does to a running playthrough; absent until configured (see the
      * default, which restarts the game and puts the player back where they were).
