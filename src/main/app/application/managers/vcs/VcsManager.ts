@@ -635,8 +635,8 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * Put a project under version control, creating the repository and its first
-     * commit. Fails if the directory already has one.
+     * Put a project under version control, recording its first version. Fails if the
+     * directory already holds a repository that has one.
      *
      * Never called on Studio's behalf. Creating a repository writes `.lore/` into the
      * author's project and takes an exclusive lock on it, so it is theirs to decide.
@@ -644,7 +644,10 @@ export class VcsManager extends Manager {
      * Ordering matters and runs against the grain of the rest of this class: every
      * other entry point starts from {@link sessionFor}, which cannot exist yet - it
      * reads the repository id off the revision history, and there is no history until
-     * this method makes one. So init works on bare globals and takes no session.
+     * this method makes one. So init works on bare globals and takes no session. That
+     * is also true of a repository this finds rather than creates: a clone with no
+     * revisions in it has no session either, which is why the release below has to run
+     * for that case as much as for a fresh one.
      */
     public async initRepository(
         projectPath: string,
@@ -654,11 +657,18 @@ export class VcsManager extends Manager {
             const backend = await this.requireBackend();
             const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
-            // Decided before the attempt, because the cleanup below must not run when
-            // the answer is "it was already one": that path can have a LIVE SESSION on
-            // the same directory, and releasing the repository out from under it would
-            // leave an open store handle pointing at nothing.
-            const preexisting = backend.isRepositoryDirectory(root);
+            /**
+             * Whether this call is the only thing holding the repository.
+             *
+             * Cleared for one refusal and one only: a directory that was already a
+             * repository WITH revisions can have a LIVE SESSION on it - `isRepository`
+             * opens one on every project the workspace shows - and releasing the
+             * repository out from under that would leave an open store handle pointing
+             * at nothing. Every other way out of this block, including the empty
+             * repository that gets adopted and committed into, is a repository nothing
+             * else can have opened.
+             */
+            let held = true;
             try {
                 // Through the same resolver as every other write: the first commit's
                 // author must not be the one revision in the repository attributed
@@ -685,13 +695,16 @@ export class VcsManager extends Manager {
                         .then((identity) => identity.branch)
                         .catch(() => ""),
                 };
+            } catch (error) {
+                if (error instanceof backend.RepositoryExistsError) held = false;
+                throw error;
             } finally {
                 // No session was opened here, so nothing else in this class will ever
                 // let go of the repository - and Lore holds it open after the last
                 // call. Left held, the project directory cannot be moved or deleted
                 // and the author's own `lore` CLI blocks on the lock without an error.
                 // In the `finally` because a half-created repository holds it too.
-                if (!preexisting) {
+                if (held) {
                     await backend.releaseRepository(globals).catch((error) => {
                         this.app.logger.warn("[Vcs] Failed to release the repository after init", root, error);
                     });
