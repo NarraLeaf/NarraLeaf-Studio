@@ -50,3 +50,25 @@ yarn stop
 `--cdp` enables the Electron Chrome DevTools Protocol endpoint during development. `--cdp-port` is optional and defaults to `9222`; the main process ignores CDP flags outside development mode.
 
 `yarn stop` ends the session `yarn dev` started — the dev server on port `5588` and the Electron app it spawned. Only this checkout's processes are stopped; anything else holding those ports is reported instead of killed (`--force` overrides, `--dry-run` previews). Reach for it when `yarn dev` reports that another session owns the port, which it refuses to start alongside.
+
+### Checks
+
+```bash
+yarn lint          # typecheck, five projects
+yarn lint:oxc      # oxlint, type-aware
+yarn style:ratchet # design-system debt counter
+yarn test
+```
+
+`yarn lint:oxc` runs the same type-check `yarn lint` does, through the TypeScript 7
+preview oxlint type-checks with, and adds the lint rules on top. Everything in the
+correctness category is a warning today and there are a few hundred of them, almost
+all React effect and ref rules — so the step fails only on a type error. Raising them
+to errors is a decision for when that backlog is worked down.
+
+`yarn format` runs oxfmt over the whole repository, which currently rewrites nearly
+every file: the style in `.oxfmtrc.json` is agreed but has never been applied. Do not
+run it as part of ordinary work — the reformat is meant to land as one mechanical
+commit, at a moment when little else is in flight, together with a
+`.git-blame-ignore-revs` entry. `yarn format:check` reports the same thing without
+writing.
