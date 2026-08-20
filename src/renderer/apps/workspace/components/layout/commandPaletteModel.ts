@@ -4,7 +4,7 @@ import type { TranslationKey } from "@shared/i18n";
 import type { Workspace } from "@/lib/workspace/workspace";
 import type { FocusContext, Keybinding } from "@/lib/workspace/services/ui/types";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
-import { getKeybindingCatalogEntry } from "@/lib/workspace/services/ui/keybindingCatalog";
+import { getKeybindingCatalogEntry, resolveActionShortcut, resolveShortcut } from "@/lib/workspace/services/ui/keybindingCatalog";
 import type { ActionDefinition, ActionGroup, ActionMenuItem, PanelDefinition } from "../../registry/types";
 import {
     getActionGroupItems,
@@ -199,11 +199,11 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             // has a shortcut shows it here rather than being listed twice - once as itself and once
             // as the keybinding below. Overrides win, for the reason they win everywhere else: the
             // palette must show the chord the author would actually press.
-            const bindingId = command.keybindingId ?? command.id;
-            const effectiveBinding =
-                keybindingOverrides[bindingId]
-                ?? getKeybindingCatalogEntry(bindingId)?.key
-                ?? command.keybinding;
+            const effectiveBinding = resolveShortcut(
+                command.keybindingId ?? command.id,
+                keybindingOverrides,
+                command.keybinding,
+            );
             seenIds.add(command.id);
             claimBinding(effectiveBinding);
             out.push({
@@ -235,11 +235,9 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         // here is what lets an action carry a *rebindable* default chord (Production Build's
         // F10 is one) without declaring `shortcut`, which would register a second binding that
         // no catalog entry governs.
-        const shortcutId = `action:${action.id}`;
-        const effectiveShortcut =
-            keybindingOverrides[shortcutId]
-            ?? getKeybindingCatalogEntry(shortcutId)?.key
-            ?? action.shortcut;
+        const effectiveShortcut = action.shortcutId
+            ? resolveShortcut(action.shortcutId, keybindingOverrides, action.shortcut)
+            : resolveActionShortcut(action.id, keybindingOverrides, action.shortcut);
         claimBinding(effectiveShortcut);
         out.push({
             id: action.id,

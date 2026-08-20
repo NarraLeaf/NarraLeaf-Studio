@@ -46,10 +46,10 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const recentProjects = useRecentProjects();
     const openRecentProject = useOpenRecentProject();
 
-    // Held in the title bar's bar of menus, so opening this one puts away whatever was open. It is
-    // NOT part of the chain the pointer walks (`hotTrack`): this is the window's identity that
-    // happens to carry a menu, and crossing it on the way to the File menu is not a request to see
-    // the project list. See `../ui/titleBarMenus`.
+    // Held in the title bar's bar of menus, so opening this one puts away whatever was open, and
+    // Escape closes it. It is NOT part of the chain the pointer and the arrow keys walk
+    // (`hotTrack`): this is the window's identity that happens to carry a menu, and crossing it on
+    // the way to the File menu is not a request to see the project list. See `../ui/titleBarMenus`.
     const { ref: containerRef, open, toggle, close } = useTitleBarMenu("narraleaf-studio:project-switcher");
     // The project the author picked, held while the dialog asks which window it should open in.
     const [pending, setPending] = useState<PendingOpen | null>(null);
@@ -67,19 +67,6 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     // often enough that a text comparison offered the author their own project as somewhere to go.
     const currentIdentity = normalizeProjectPath(currentPath);
     const others = recentProjects.filter(project => normalizeProjectPath(project.path) !== currentIdentity);
-
-    // Only Escape: a pointer landing outside is the bar's to notice, for every menu it holds.
-    useEffect(() => {
-        if (!open) return;
-
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                close();
-            }
-        };
-        window.addEventListener("keydown", onKeyDown);
-        return () => window.removeEventListener("keydown", onKeyDown);
-    }, [open, close]);
 
     /**
      * Carry out the choice the dialog collected, or the one there was no choice to make.

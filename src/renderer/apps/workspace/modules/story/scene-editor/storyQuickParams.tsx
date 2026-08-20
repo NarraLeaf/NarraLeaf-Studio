@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
@@ -235,6 +236,9 @@ function QuickParamPopover(props: {
     onApply: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
 }) {
+    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
+    // moved to unless it is told (`useDismissWhenHidden`).
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { param } = props;
