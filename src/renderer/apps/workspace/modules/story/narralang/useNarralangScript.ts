@@ -4,6 +4,7 @@ import { printNarralangScene } from "@/lib/story/narralang/narralangPrinter";
 import { useWorkspace } from "../../../context";
 import { narralangIssueRows, type NarralangIssueRow } from "./narralangIo";
 import { narralangLookups } from "./narralangLookups";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 
 /**
  * How long the script waits after a document change before it is printed again.
@@ -56,6 +57,12 @@ export function useNarralangScript(
 ): NarralangScript {
     const { context } = useWorkspace();
     const [script, setScript] = useState<NarralangScript>(EMPTY);
+    /**
+     * The script spells asset ids as names, and the library edits its records in place - so a rename
+     * changes what this scene reads as while `document` sits still. Without this the view kept
+     * printing the old word until the next edit to the story.
+     */
+    const assetLibraryRevision = useAssetLibraryRevision();
 
     /**
      * The print itself, out of the effect's dependency list.
@@ -103,7 +110,7 @@ export function useNarralangScript(
         // effect is the change signal and the timer is the only thing between an edit and a print.
         const timer = window.setTimeout(() => printRef.current(), REPRINT_DEBOUNCE_MS);
         return () => window.clearTimeout(timer);
-    }, [context, document, enabled, scene]);
+    }, [assetLibraryRevision, context, document, enabled, scene]);
 
     return script;
 }

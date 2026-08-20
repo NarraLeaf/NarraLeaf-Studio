@@ -485,15 +485,22 @@ export class ReferenceService extends Service<ReferenceService> {
             return [];
         }
         const rescan = () => this.scheduleRebuild("story-library", () => this.resyncStoryLibrary());
+        // Only the tags matter here, and only while the project declares a set. A project with none
+        // reads every id literally, so no asset edit can change the index.
+        const rescanIfSetsExist = () => {
+            if (assetSetService.listSets().length > 0) {
+                rescan();
+            }
+        };
         return [
             assetSetService.onSetsChanged(rescan),
-            assetsService.getEvents().on("updated", () => {
-                // Only the tags matter here, and only while the project declares a set. A project
-                // with none reads every id literally, so no asset edit can change the index.
-                if (assetSetService.listSets().length > 0) {
-                    rescan();
-                }
-            }),
+            assetsService.getEvents().on("updated", rescanIfSetsExist),
+            // Deletion counts for exactly the reason a tag edit does: a set resolves to the tagged
+            // files that exist right now, so removing one changes what every row naming that set is
+            // indexed as using. Leaving it out made the index go on claiming a use of a file the
+            // project no longer has - the same stale claim the doc above is about, reached by the
+            // one door that was not watched.
+            assetsService.getEvents().on("deleted", rescanIfSetsExist),
         ];
     }
 
