@@ -67,6 +67,7 @@ import {
     type AssetSetRecordProblem,
 } from "@shared/build/characterAssetSets";
 import { attachUiAssetSetVariants } from "@shared/build/uiAssetSets";
+import { attachBlueprintAssetSetVariants, blueprintGraphs } from "@shared/build/blueprintAssetSets";
 import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
@@ -151,6 +152,15 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // And the third: the interface names sets from its widgets and its Surfaces, which have no rows
     // and are not characters. Same library, same edition, same refusal.
     await resolveUiAssetSets(context, uidoc, localization, variant.name);
+    // And the fourth: a blueprint's asset pins. After the fold above on purpose - a branch this
+    // edition cannot take has already been deleted, so a set named only from there is not this
+    // package's problem and must not be able to refuse its build.
+    await resolveBlueprintAssetSets(
+        context,
+        [...Object.values(localBlueprints.blueprints ?? {}), ...sharedBlueprints.map(asset => asset.blueprint)],
+        localization,
+        variant.name,
+    );
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
@@ -709,6 +719,43 @@ async function resolveUiAssetSets(
     }
     const result = attachUiAssetSetVariants({
         document,
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+        assetAxes: context.assetAxes,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeShippedAssetSetProblem(problem, variantName);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        context.onAssetSetCollapse?.();
+    }
+}
+
+/**
+ * Resolve the sets a blueprint's asset pins name, and refuse to package one that cannot be.
+ *
+ * The answer goes on the node that STORES the id, which is not always the node that consumes it:
+ * an asset pin can be fed by an edge from a literal. See `@shared/build/blueprintAssetSlots` for
+ * why this walk knows fewer pins than the reference index does, and why that asymmetry is what
+ * keeps a plugin's own pin refused rather than half-supported.
+ */
+async function resolveBlueprintAssetSets(
+    context: DevModeBundleLoadContext,
+    blueprints: readonly Blueprint[],
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+): Promise<void> {
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return;
+    }
+    const result = attachBlueprintAssetSetVariants({
+        graphs: blueprintGraphs(blueprints),
         sets,
         candidates: await loadAssetSetCandidates(context.projectPath),
         localization,
