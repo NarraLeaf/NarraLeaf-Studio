@@ -68,7 +68,8 @@ import { useVersionSurface } from "../../hooks/useVersionSurface";
 
 interface WorkspaceLayoutProps {
     title: string;
-    iconSrc: string;
+    /** See `TitleBarProps.iconSrc`: omit for the product mark, `""` for none. */
+    iconSrc?: string;
 }
 
 

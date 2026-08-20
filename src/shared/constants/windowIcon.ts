@@ -1,3 +1,5 @@
+import { AppHost, AppProtocol } from "@shared/types/constants";
+
 /**
  * Which built-in mark Studio's own windows wear.
  *
@@ -43,4 +45,16 @@ export const WINDOW_ICON_IDS: readonly string[] = WINDOW_ICONS.map(icon => icon.
  */
 export function resolveWindowIcon(id: string | undefined | null): WindowIconEntry {
     return WINDOW_ICONS.find(icon => icon.id === id) ?? WINDOW_ICONS[0];
+}
+
+/**
+ * The `app://` URL that serves an icon, for the interface's own logo surfaces.
+ *
+ * The id sits in the path rather than in a query string, so picking a different mark is a
+ * different URL: the cache never has to be invalidated, and each answer stays immutable. The main
+ * process resolves the id through `resolveWindowIcon` and serves nothing else, so an id nobody
+ * declares yields the default mark rather than a broken image.
+ */
+export function windowIconUrl(id: string | undefined | null): string {
+    return `${AppProtocol}://${AppHost.AppIcon}/${encodeURIComponent(resolveWindowIcon(id).id)}`;
 }
