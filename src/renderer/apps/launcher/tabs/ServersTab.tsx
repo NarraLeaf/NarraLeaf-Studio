@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Server } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronRight, Server } from "lucide-react";
 
 import { getInterface } from "@/lib/app/bridge";
 import {
@@ -9,11 +9,19 @@ import {
     IconButton,
     Input,
     Modal,
+    TabStrip,
     dialogFooterButtonClass,
 } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
-import { ServerRow, serverCan, serverDisplayName, signInWithPassword, useServers } from "@/lib/vcs/servers";
+import {
+    ServerRow,
+    serverCan,
+    serverDisplayName,
+    serverHost,
+    signInWithPassword,
+    useServers,
+} from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import type { TranslationKey } from "@shared/i18n";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
@@ -32,23 +40,34 @@ import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
  *
  * **The division with the Projects tab is the design.** Projects answers "what do I have":
  * a list of folders on this disk, every one of them openable. This answers "what is there
- * that I could have", which is a different list with a different action at the end of each
- * row, and the two must not be folded together - a recent project is not on this list
+ * that I could have", which is a different list with a different thing to do at the end of
+ * it, and the two must not be folded together - a recent project is not on this list
  * because it is not news, and a project on a server does not belong on that one because
  * nothing here can be opened without first being fetched.
  *
  * **The launcher window is 800x500 and cannot be resized**, and that decides the shape here
  * more than any judgement about it does: with the navigation column taken off, this tab has
- * 560x460 CSS pixels for everything it draws. A column of servers standing permanently down
- * the left of that spent 256 of the 560 on a list that usually holds one row, and left the
- * projects - the thing somebody opened this tab for - in a strip too narrow to read a name
- * in. So the servers are a strip along the top, drawn only where there is more than one to
- * choose between, and what is on the chosen one has the full width beneath it.
+ * 560x460 CSS pixels for everything it draws, and 512x420 inside its own padding.
+ *
+ * So the screen is a head and a body, and the head is three bands that each answer one
+ * question and hold one kind of control:
+ *
+ * 1. **which servers there are**, as a strip of chips, drawn only where there is more than
+ *    one to choose between. A column of servers standing permanently down the left spent
+ *    256 of the 560 on a list that usually holds one row.
+ * 2. **which server this is**, as a heading - a name, and under it the address and the
+ *    account. It is text and not a control: it is the subject of the screen, and a heading
+ *    that answers a click is a heading somebody clicks by mistake. The one primary control
+ *    of the current view sits at its right, and there is never a second.
+ * 3. **which view of it is on screen**, as a {@link TabStrip}. Projects and People are two
+ *    views of one server rather than two commands, and a tab with an underline is the only
+ *    thing on this screen that says so. Adding a server is the one act here that is not
+ *    about the server being read, so it sits at the far end of that rule, as an icon.
  *
  * **One scrolling region at a time.** The project list, one project, and the roster are
- * three views of the same space rather than three boxes dividing it. Each is put away
- * behind the next rather than taken down, so what was read once is not read again and
- * coming back is the list as it was left.
+ * three views of the same body rather than three boxes dividing it. Each is put away behind
+ * the next rather than taken down, so what was read once is not read again and coming back
+ * is the list as it was left.
  *
  * Nothing is asked of a server until an author opens it. The list of servers is local, so
  * the strip costs nothing; choosing one is the deliberate act that goes to the network, and
@@ -56,6 +75,9 @@ import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
  * the roster if it has one. **A capability it did not advertise is never asked for**, so a
  * deployment that offers less has fewer sections rather than more errors.
  */
+
+/** The two views of one server. Projects is where a reader lands and where a project opens. */
+type ServersView = "projects" | "people";
 
 /** Where a project's remote lives, without the repository name on the end. */
 function originOf(remote: string): string {
@@ -71,8 +93,8 @@ function originOf(remote: string): string {
  * open. The id is written once when the repository is made and survives both.
  *
  * A project this machine cannot produce an id for - no repository, an unreadable
- * `.lore/id` - simply does not match. That is the safe direction: the row then offers to
- * fetch a copy, which asks where to put it and touches nothing that is already there,
+ * `.lore/id` - simply does not match. That is the safe direction: the project then offers
+ * to fetch a copy, which asks where to put it and touches nothing that is already there,
  * where a wrong match would open the wrong project.
  *
  * More than one local copy of one repository is possible (a second clone in another
@@ -102,19 +124,19 @@ export function ServersTab() {
     const [reading, setReading] = useState(false);
     const [repositories, setRepositories] = useState<VcsLocalRepository[]>([]);
     const [creating, setCreating] = useState(false);
-    /** Which project is open, by id. The pane shows the list or one project, never both. */
+    /** Which project is open, by id. The body shows the list or one project, never both. */
     const [opened, setOpened] = useState<string | null>(null);
     /**
-     * Whether the roster is the view on screen.
+     * Which of the server's two views is on screen.
      *
      * Who else is on a server is reference material: it answers a question raised somewhere
      * else, once, and then it is done with. A section holding it open under the projects
      * charged every reading of the project list for a list of colleagues nobody was reading,
      * which on this window is the difference between six project rows and two. So it is a
-     * view somebody goes to and comes back from, by the one control in the header that took
-     * them there - which is still on screen, and lit, the whole time they are in it.
+     * view somebody goes to and comes back from, named on the same tab strip as the one they
+     * came from, which stays on screen and lit the whole time they are in it.
      */
-    const [people, setPeople] = useState(false);
+    const [view, setView] = useState<ServersView>("projects");
     // Which servers have already been asked what they are, this visit. A refresh is a
     // network call and the answer is a name and a version, so once per server is
     // proportionate and twice is a habit.
@@ -148,9 +170,9 @@ export function ServersTab() {
         setProblem(null);
         setProjects(null);
         // A project open on the server being left does not stay open on the one arriving,
-        // and neither does its roster.
+        // and a reader who was in the roster arrives in the list.
         setOpened(null);
-        setPeople(false);
+        setView("projects");
 
         void (async () => {
             const bridge = getInterface();
@@ -188,8 +210,10 @@ export function ServersTab() {
     // section for it, which is not the same thing as a section that failed.
     const canDetail = serverCan(session, "project-detail");
     const canHistory = serverCan(session, "project-history");
-    const canOpenProject = canDetail || canHistory;
     const canMembers = serverCan(session, "members");
+    // A server with no roster has one view, and one tab is not a choice. The strip is then
+    // not drawn at all, so the view cannot be anything but the projects.
+    const current: ServersView = canMembers ? view : "projects";
 
     /** The project on screen, if the list still has the one that was opened. */
     const openedProject = useMemo(
@@ -216,7 +240,7 @@ export function ServersTab() {
         await createProjectFromWizard({ remoteUrl: remote });
         // A wizard that created something has already opened the workspace and retired this
         // window; one that was cancelled leaves this list on screen, and re-reading is what
-        // keeps a row that has since been fetched from still offering to fetch it.
+        // keeps a project that has since been fetched from still offering to fetch it.
         await readLocal();
     }, [readLocal]);
 
@@ -261,7 +285,12 @@ export function ServersTab() {
                     title={t("launcher.servers.empty.title")}
                     description={t("launcher.servers.empty.description")}
                     action={(
-                        <Button size="sm" onClick={() => setAdding(true)} data-servers-action="manage">
+                        <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => setAdding(true)}
+                            data-servers-action="manage"
+                        >
                             {t("launcher.servers.empty.action")}
                         </Button>
                     )}
@@ -282,7 +311,7 @@ export function ServersTab() {
 
             {/* Drawn only where there is something to choose between, which is the reading
                 the wizard's picker already takes. One server is not a choice, and a strip of
-                one is a second copy of the name on the row below it. */}
+                one is a second copy of the name in the heading below it. */}
             {servers.length > 1 && (
                 <div className="mb-2 flex shrink-0 flex-wrap gap-1" data-servers-strip>
                     {servers.map(entry => (
@@ -299,58 +328,81 @@ export function ServersTab() {
                 </div>
             )}
 
-            <div className="mb-3 flex shrink-0 items-center gap-3">
-                {session === null ? <div className="flex-1" /> : (
-                    <ServerRow
-                        session={session}
-                        size="md"
-                        // The shared row, so the name, the address under it and whose account
-                        // this is read here exactly as they read in Settings and in the
-                        // wizard. Flush with the list beneath it and not a target: nothing
-                        // happens when it is clicked, so nothing lights up when it is not.
-                        className="min-w-0 flex-1 px-0 hover:bg-transparent"
-                        // With one server the strip is not drawn, so this row is the element
-                        // that stands for that choice. With several the strip carries them
-                        // and this must not be a second copy of one of them.
-                        data-server-choice={servers.length > 1 ? undefined : session.remoteOrigin}
-                    />
-                )}
-                <div className="flex shrink-0 items-center gap-2">
-                    {/* An icon, and a server rather than a plus: beside "New Project" a plus
-                        reads as a second way to make one. Adding a server is rare once there
-                        is one, and it is the only thing here that is not about the server
-                        being read, so it sits apart from the two that are. */}
-                    <IconButton
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setAdding(true)}
-                        data-servers-action="manage"
-                        data-tip={t("launcher.servers.manage")}
-                        aria-label={t("launcher.servers.manage")}
-                    >
-                        <Server className="h-4 w-4" />
-                    </IconButton>
-                    {session !== null && canMembers && (
+            {session !== null && (
+                <ServerHeading
+                    session={session}
+                    // With one server the strip is not drawn, so this heading is the element
+                    // that stands for that choice. With several the strip carries them and
+                    // this must not be a second copy of one of them.
+                    marked={servers.length === 1}
+                    action={current === "projects" && openedProject === null ? (
                         <Button
                             size="sm"
-                            variant={people ? "secondary" : "ghost"}
-                            aria-pressed={people}
-                            onClick={() => setPeople(current => !current)}
-                            data-servers-action="people"
-                        >
-                            {t("launcher.servers.people.title")}
-                        </Button>
-                    )}
-                    {session !== null && (
-                        <Button
-                            size="sm"
+                            variant="primary"
+                            className="shrink-0"
                             onClick={() => setCreating(true)}
                             data-servers-action="new-project"
                         >
                             {t("launcher.servers.newProject")}
                         </Button>
-                    )}
-                </div>
+                    ) : null}
+                />
+            )}
+
+            {/* The two views, and the one act that is not about either of them. The rule
+                under this row is the only line across the screen: everything above it says
+                which server and which view, everything below it is that view. */}
+            <div
+                className="mb-3 flex shrink-0 items-center gap-2 border-b border-edge"
+                data-servers-views
+            >
+                {session !== null && canMembers ? (
+                    <TabStrip
+                        size="sm"
+                        className="min-w-0 flex-1 border-b-0"
+                        activeId={current}
+                        onChange={id => setView(id as ServersView)}
+                        tabs={[
+                            {
+                                id: "projects",
+                                // The attribute rides on the label rather than on the tab,
+                                // which is the shared component's own element: a script that
+                                // clicks it clicks the tab, because that is where the click
+                                // lands anyway.
+                                label: (
+                                    <span data-servers-action="projects">
+                                        {t("launcher.servers.tabs.projects")}
+                                    </span>
+                                ),
+                            },
+                            {
+                                id: "people",
+                                label: (
+                                    <span data-servers-action="people">
+                                        {t("launcher.servers.people.title")}
+                                    </span>
+                                ),
+                            },
+                        ]}
+                    />
+                ) : (
+                    <div className="min-h-7 flex-1" />
+                )}
+                {/* An icon, and a server rather than a plus: beside "New Project" a plus
+                    reads as a second way to make one. Adding a server is rare once there is
+                    one, and it is the only thing here that is not about the server being
+                    read, so it sits at the end of the rule rather than beside the heading. */}
+                <IconButton
+                    size="sm"
+                    variant="ghost"
+                    className="shrink-0"
+                    onClick={() => setAdding(true)}
+                    data-servers-action="manage"
+                    data-tip={t("launcher.servers.manage")}
+                    aria-label={t("launcher.servers.manage")}
+                >
+                    <Server className="h-4 w-4" />
+                </IconButton>
             </div>
 
             {/* One region, three views, one of them on screen. The two that are not are put
@@ -363,12 +415,18 @@ export function ServersTab() {
                 ) : (
                     <>
                         {canMembers && (
-                            <div className={cn("flex min-h-0 flex-1 flex-col", !people && "hidden")}>
+                            <div className={cn(
+                                "flex min-h-0 flex-1 flex-col",
+                                current !== "people" && "hidden",
+                            )}>
                                 <ServerPeople remoteOrigin={session.remoteOrigin} />
                             </div>
                         )}
                         {openedProject !== null && (
-                            <div className={cn("flex min-h-0 flex-1 flex-col", people && "hidden")}>
+                            <div className={cn(
+                                "flex min-h-0 flex-1 flex-col",
+                                current !== "projects" && "hidden",
+                            )}>
                                 <ServerProjectDetailView
                                     remoteOrigin={session.remoteOrigin}
                                     project={openedProject}
@@ -388,16 +446,14 @@ export function ServersTab() {
                         )}
                         <div className={cn(
                             "flex min-h-0 flex-1 flex-col",
-                            (people || openedProject !== null) && "hidden",
+                            (current !== "projects" || openedProject !== null) && "hidden",
                         )}>
                             <ProjectList
                                 projects={projects}
                                 problem={problem}
                                 reading={reading}
                                 repositories={repositories}
-                                onOpen={openProject}
-                                onGet={remote => void getProject(remote)}
-                                onSelect={canOpenProject ? setOpened : null}
+                                onSelect={setOpened}
                             />
                         </div>
                     </>
@@ -415,28 +471,74 @@ export function ServersTab() {
     );
 }
 
+/**
+ * Which server this is, as a heading rather than as a row.
+ *
+ * It used to be the shared {@link ServerRow}, drawn as a button and then told not to look
+ * like one (`px-0 hover:bg-transparent`). That component exists so that *lists* of servers
+ * read alike in Settings, in the wizard and in the strip above; a page heading is not one of
+ * those, and dressing it as a row put a target at the top of the screen that answers nothing.
+ * So the order the row reads in is kept - the name, then the address, then whose account this
+ * is - and the identity comes from the same two functions, but the element is text.
+ */
+function ServerHeading({
+    session,
+    marked,
+    action,
+}: {
+    session: VcsServerSession;
+    /** Whether this heading is the element standing for the choice of server. */
+    marked: boolean;
+    /** The one primary control of the view on screen, or nothing where the view has none. */
+    action: ReactNode;
+}) {
+    const name = serverDisplayName(session);
+    const host = serverHost(session.remoteOrigin);
+
+    return (
+        <div
+            className="mb-2 flex shrink-0 items-center gap-3"
+            data-server-choice={marked ? session.remoteOrigin : undefined}
+        >
+            <div className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-fg" data-tip={session.authUrl}>
+                    {name}
+                </span>
+                <span className="flex gap-3 text-2xs text-fg-subtle">
+                    {/* The address is what every project remote and stored session is keyed
+                        on, so it stays; it is only dropped where a server that gave no name
+                        would have it printed twice. */}
+                    {name !== host && <span className="min-w-0 truncate">{host}</span>}
+                    <span className="min-w-0 truncate" data-tip={session.account.identity}>
+                        {session.account.displayName}
+                    </span>
+                </span>
+            </div>
+            {action}
+        </div>
+    );
+}
+
 function ProjectList({
     projects,
     problem,
     reading,
     repositories,
-    onOpen,
-    onGet,
     onSelect,
 }: {
     projects: VcsServerProject[] | null;
     problem: TranslationKey | null;
     reading: boolean;
     repositories: readonly VcsLocalRepository[];
-    onOpen: (projectPath: string) => void;
-    onGet: (remote: string) => void;
-    /** Null where this server says nothing about a project beyond listing it. */
-    onSelect: ((projectId: string) => void) | null;
+    onSelect: (projectId: string) => void;
 }) {
     const { t } = useTranslation();
 
     return (
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-edge">
+        // No box of its own. The tab strip's rule is the only line on this screen, and a
+        // bordered list hung directly under it drew a second one two pixels away and gave
+        // the list the same weight as the head above it.
+        <div className="min-h-0 flex-1 overflow-y-auto">
             {reading && <p className="px-3 py-2 text-xs text-fg-subtle">{t("launcher.servers.loading")}</p>}
             {!reading && problem !== null && (
                 <p className="px-3 py-2 text-xs text-danger">{t(problem)}</p>
@@ -449,8 +551,6 @@ function ProjectList({
                     key={project.id}
                     project={project}
                     local={localCopyOf(project, repositories)}
-                    onOpen={onOpen}
-                    onGet={onGet}
                     onSelect={onSelect}
                 />
             ))}
@@ -459,83 +559,92 @@ function ProjectList({
 }
 
 /**
- * One project a server holds, and the one thing to do about it.
+ * One project a server holds, as one place to go.
  *
- * Either this machine already has it, in which case there is a folder to open, or it does
- * not, in which case there is a copy to fetch. Never both, and never neither: two actions
- * on a row where only one of them can apply is a row that has to be read before it can be
- * used.
+ * **The row is a single target and the whole of it is that target.** It used to be two: a
+ * button around the name that opened the project, and a second button at the end that either
+ * opened the copy on this disk or fetched one. Nothing said which was which, the second one
+ * changed weight from row to row depending on whether a copy happened to be here, and the
+ * two together are how a reader lands somewhere they did not aim for. So the act moved to
+ * the project's own page, where it is that page's one primary control, and what is left is a
+ * row that goes there - said by the chevron, which is a mark and not a control.
  *
- * The name reads on into what the server knows about the project, where the server knows
- * anything. It is a control of its own rather than the whole row, because the row already
- * ends in a control and a button inside a button is neither.
+ * The row goes there on every server, including one that answers nothing about a project
+ * beyond listing it: the page is then written from what the list already carried, which is
+ * the same thing this row was showing. What is *asked* still depends on what the server
+ * advertised, which is the part that matters - see `ServerProjectDetailView`.
  *
- * **Two lines, not three.** The description and the last version are both things said about
- * the project rather than the project itself, they are both at the secondary size, and the
- * row is now wide enough to hold them side by side - which is what the width bought. The
- * third line was costing every row a fifth of its height for a date.
+ * **Whether this machine already has it stays on the row, as a word.** It is the whole
+ * question the tab exists to answer, so it did not leave with the button that used to
+ * carry it; it reads at the size and colour everything secondary on this screen reads at,
+ * beside the description, the way the roster marks an operator. A coloured pill, or a
+ * button that changes weight from row to row, is the thing this replaced.
+ *
+ * **Two lines, not three.** The description, the last version and that word are all things
+ * said about the project rather than the project itself, they are all at the secondary
+ * size, and the row is wide enough to hold them side by side. The third line was costing
+ * every row a fifth of its height for a date.
  */
 function ProjectRow({
     project,
     local,
-    onOpen,
-    onGet,
     onSelect,
 }: {
     project: VcsServerProject;
     local: VcsLocalRepository | null;
-    onOpen: (projectPath: string) => void;
-    onGet: (remote: string) => void;
-    onSelect: ((projectId: string) => void) | null;
+    onSelect: (projectId: string) => void;
 }) {
     const { t, formatDate } = useTranslation();
     const version = lastVersionLine(project, t, formatDate);
-
-    const body = (
-        <>
-            <span className="block truncate text-sm text-fg">{project.name}</span>
-            {(project.description !== "" || version !== null) && (
-                <span className="flex gap-2 text-xs text-fg-subtle">
-                    {project.description !== "" && (
-                        <span className="min-w-0 truncate">{project.description}</span>
-                    )}
-                    {/* The date holds its width and the description gives way: a truncated
-                        description still says what the project is, and half a date says
-                        nothing at all. */}
-                    {version !== null && <span className="shrink-0">{version}</span>}
-                </span>
-            )}
-        </>
-    );
+    const said = project.description !== "" || version !== null || local !== null;
 
     return (
-        <div
+        <button
+            type="button"
+            onClick={() => onSelect(project.id)}
             data-server-project={project.id}
-            className="flex items-center gap-3 border-t border-edge px-3 py-2 transition-colors duration-150 first:border-t-0 hover:bg-fill"
-        >
-            {onSelect === null ? (
-                <span className="min-w-0 flex-1">{body}</span>
-            ) : (
-                <button
-                    type="button"
-                    onClick={() => onSelect(project.id)}
-                    data-project-action="select"
-                    className="min-w-0 flex-1 cursor-default text-left"
-                >
-                    {body}
-                </button>
+            data-project-action="select"
+            className={cn(
+                "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left",
+                "cursor-default transition-colors duration-150 hover:bg-fill",
             )}
-            <ProjectAction project={project} local={local} onOpen={onOpen} onGet={onGet} />
-        </div>
+        >
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-fg">{project.name}</span>
+                {said && (
+                    <span className="flex gap-2 text-xs text-fg-subtle">
+                        {project.description !== "" && (
+                            <span className="min-w-0 truncate">{project.description}</span>
+                        )}
+                        {/* The date and the word hold their width and the description gives
+                            way: a truncated description still says what the project is, and
+                            half a date says nothing at all. */}
+                        {version !== null && <span className="shrink-0">{version}</span>}
+                        {local !== null && (
+                            <span className="shrink-0" data-project-here={project.id}>
+                                {t("launcher.servers.here")}
+                            </span>
+                        )}
+                    </span>
+                )}
+            </span>
+            <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-subtle" />
+        </button>
     );
 }
 
 /**
  * Open the copy that is here, or fetch one.
  *
- * One component for the row and for the project opened out of it, so that the action does
- * not change wording or behaviour depending on which of the two a reader is looking at -
- * and so that a project fetched from the detail leaves the same list re-read behind it.
+ * **One control, two words.** Either this machine already has the project, in which case
+ * there is a folder to open, or it does not, in which case there is a copy to fetch; it is
+ * the same act at the same level either way, and it was drawn at two different weights -
+ * filled for Open, ghost for Get - which made the answer to "is this already here" a
+ * difference in how loud a button is. It is now one button with one appearance, and the
+ * only thing that changes is what it says.
+ *
+ * It is the primary control of the page it sits on, and the only one: the heading above
+ * gives up its own while a project is open.
  */
 function ProjectAction({
     project,
@@ -550,25 +659,16 @@ function ProjectAction({
 }) {
     const { t } = useTranslation();
 
-    return local !== null ? (
+    return (
         <Button
             size="sm"
-            onClick={() => onOpen(local.path)}
-            data-project-action="open"
-            data-tip={local.path}
+            variant="primary"
             className="shrink-0"
+            onClick={() => (local !== null ? onOpen(local.path) : onGet(project.remote))}
+            data-project-action={local !== null ? "open" : "get"}
+            data-tip={local?.path}
         >
-            {t("launcher.servers.open")}
-        </Button>
-    ) : (
-        <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onGet(project.remote)}
-            data-project-action="get"
-            className="shrink-0"
-        >
-            {t("launcher.servers.get")}
+            {t(local !== null ? "launcher.servers.open" : "launcher.servers.get")}
         </Button>
     );
 }

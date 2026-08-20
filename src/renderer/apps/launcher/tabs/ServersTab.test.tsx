@@ -162,6 +162,33 @@ function visibleScrollers(): number {
         .length;
 }
 
+/**
+ * Every filled control a reader can see, named by what it does.
+ *
+ * The screen is allowed one, and which one it is depends on which view is on: this is the
+ * assertion behind "one primary control at a time". Filled means the brand fill, which is
+ * what `Button variant="primary"` writes; the chosen server's chip is `bg-primary/15` and
+ * the active tab's underline is a span, so neither is counted as a control.
+ */
+function filledControls(): string[] {
+    return [...document.querySelectorAll<HTMLElement>("button.bg-primary")]
+        .filter(node => node.closest(".hidden") === null)
+        .map(node => node.getAttribute("data-servers-action")
+            ?? node.getAttribute("data-project-action")
+            ?? "unnamed");
+}
+
+/**
+ * Open one project's page, which is where the act on it lives.
+ *
+ * A row used to end in Open or Get and now it does not: the row is one target and it leads
+ * here, so a test about what happens to a project starts by going to the project.
+ */
+async function openPage(id = REPOSITORY): Promise<void> {
+    fireEvent.click(await find(`[data-server-project='${id}']`));
+    await find("[data-server-project-detail]");
+}
+
 describe("a project row", () => {
     it("says nothing about versions for a server that has not read the repository", async () => {
         // The shape a real server sends most often: recorded a moment ago, not yet read.
@@ -202,8 +229,8 @@ describe("open, or get", () => {
     it("offers to open a project this machine already holds, by repository id", async () => {
         open([project()], [{ path: "D:/games/Renamed Folder", name: "Renamed Folder", repositoryId: REPOSITORY }]);
 
-        await waitFor(() => expect(document.querySelector("[data-project-action='open']")).not.toBeNull());
-        fireEvent.click(document.querySelector("[data-project-action='open']")!);
+        await openPage();
+        fireEvent.click(await find("[data-project-action='open']"));
         // The path the history remembers, spelled as the author has it - never the id.
         expect(bridge.launchWorkspace).toHaveBeenCalledWith({ projectPath: "D:/games/Renamed Folder" }, true);
     });
@@ -212,9 +239,9 @@ describe("open, or get", () => {
         // The case a name match would get wrong: same name, different work.
         open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: "ffffffffffffffffffffffffffffffff" }]);
 
-        await waitFor(() => expect(document.querySelector("[data-project-action='get']")).not.toBeNull());
+        await openPage();
         expect(document.querySelector("[data-project-action='open']")).toBeNull();
-        fireEvent.click(document.querySelector("[data-project-action='get']")!);
+        fireEvent.click(await find("[data-project-action='get']"));
         // Into the wizard's clone flow with the address filled in; no clone happens here.
         await waitFor(() => expect(bridge.launchProjectWizard)
             .toHaveBeenCalledWith({ remoteUrl: `${ORIGIN}/moonlit` }));
@@ -225,8 +252,30 @@ describe("open, or get", () => {
         // match on, and fetching a copy is the answer that cannot open the wrong project.
         open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit" }]);
 
-        await waitFor(() => expect(document.querySelector("[data-project-action='get']")).not.toBeNull());
+        await openPage();
+        expect(await find("[data-project-action='get']")).not.toBeNull();
         expect(document.querySelector("[data-project-action='open']")).toBeNull();
+    });
+
+    /**
+     * One act, one appearance.
+     *
+     * Open and Get are the same act at the same level - do something with this project - and
+     * they were drawn at two weights, filled and ghost, so the answer to "is this already
+     * here" arrived as a difference in how loud a button was. The only thing that may differ
+     * between them now is the word.
+     */
+    it("draws the two words as one control", async () => {
+        open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY }]);
+        await openPage();
+        const opening = (await find("[data-project-action='open']")).className;
+
+        cleanup();
+        open([project()]);
+        await openPage();
+        const getting = (await find("[data-project-action='get']")).className;
+
+        expect(getting).toBe(opening);
     });
 
     it("prefers the local copy pointed at the server being read", () => {
@@ -322,8 +371,14 @@ describe("what a server offers", () => {
         // Not an error and not an empty section: there is simply no roster on this screen.
         expect(document.querySelector("[data-server-people]")).toBeNull();
         expect(document.body.textContent).not.toContain("launcher.servers.people");
-        // And with nothing to say about a project, its row does not open into anything.
-        expect(document.querySelector("[data-project-action='select']")).toBeNull();
+
+        // A row still leads to the project's page, because that is where the one act on a
+        // project lives and a row that goes nowhere on some servers is a row nobody can
+        // read. What a capability decides is what is *asked*, and here nothing is: the page
+        // is written from what the list already carried.
+        await openPage();
+        expect(bridge.getServerProject).not.toHaveBeenCalled();
+        expect(bridge.listServerProjectHistory).not.toHaveBeenCalled();
     });
 
     it("reads the roster of a server that offers one", async () => {
@@ -384,15 +439,96 @@ describe("what a server offers", () => {
         expect(bridge.listServerProjects).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps the row's own action working where the row can also be opened", async () => {
+    /**
+     * A row is one target, and the whole of it is that target.
+     *
+     * It used to be two: a button around the name that opened the project, and a second one
+     * at the end that opened the copy on this disk or fetched one. Nothing said which was
+     * which, so a reader aiming for the name landed on the act, and the act moved the
+     * window out from under them. The act now lives on the project's own page.
+     */
+    it("gives a row one target and puts the act on the page it leads to", async () => {
+        bridge.getServerProject.mockResolvedValue({
+            success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
+        });
         open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY }],
             ["projects", "project-detail"]);
 
-        fireEvent.click(await find("[data-project-action='open']"));
+        const row = await find(`[data-server-project='${REPOSITORY}']`);
+        expect(row.getAttribute("data-project-action")).toBe("select");
+        // Nothing inside it to hit instead of it.
+        expect(row.querySelector("button")).toBeNull();
+        expect(document.querySelector("[data-project-action='open']")).toBeNull();
 
+        await openPage();
+        fireEvent.click(await find("[data-project-action='open']"));
         expect(bridge.launchWorkspace).toHaveBeenCalledWith({ projectPath: "D:/games/Moonlit" }, true);
-        // Opening the project on this disk is not opening the panel about it.
-        expect(bridge.getServerProject).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * What is loud on this screen, and what a reader's eye is meant to land on.
+ *
+ * The tab used to draw five species of control in one 36px band and two filled-ish buttons
+ * competing in it, so nothing on it was the primary thing. There is now one filled control
+ * at a time and it belongs to the view on screen.
+ */
+describe("one primary control", () => {
+    it("hands the weight from the server's act to the project's while a project is open", async () => {
+        bridge.getServerProject.mockResolvedValue({
+            success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
+        });
+        open([project()], [], ["projects", "project-detail"]);
+
+        await find("[data-server-project]");
+        expect(filledControls()).toEqual(["new-project"]);
+
+        await openPage();
+        expect(filledControls()).toEqual(["get"]);
+    });
+
+    it("leaves the reference view with none, because it has nothing to act on", async () => {
+        bridge.listServerMembers.mockResolvedValue({ success: true, data: { ok: true, members: [] } });
+        open([project()], [], ["projects", "members"]);
+
+        await find("[data-server-project]");
+        fireEvent.click(await find("[data-servers-action='people']"));
+
+        expect(filledControls()).toEqual([]);
+    });
+});
+
+/**
+ * The two views of one server, said as two views rather than as a command.
+ *
+ * People was a ghost button that turned secondary when it was on, standing between an icon
+ * button and a filled one - a fourth command in a row of commands, with nothing saying it
+ * was a place. It is a tab now, and the tab is where a reader looks to find out where they
+ * are.
+ */
+describe("the two views of a server", () => {
+    it("names them on one strip and marks the one on screen", async () => {
+        bridge.listServerMembers.mockResolvedValue({ success: true, data: { ok: true, members: [] } });
+        open([project()], [], ["projects", "members"]);
+
+        const strip = await find("[data-servers-views] [role='tablist']");
+        const selected = () => [...strip.querySelectorAll("[role='tab']")]
+            .map(tab => tab.getAttribute("aria-selected"));
+
+        expect(selected()).toEqual(["true", "false"]);
+        fireEvent.click(await find("[data-servers-action='people']"));
+        expect(selected()).toEqual(["false", "true"]);
+    });
+
+    it("draws no strip where the server has only the one view", async () => {
+        open([project()], [], ["projects"]);
+
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalled());
+        // One tab is not a choice, the same reading a strip of one server takes. The rule
+        // stays, and so does the one act that is about neither view.
+        expect(document.querySelector("[data-servers-views] [role='tablist']")).toBeNull();
+        expect(document.querySelector("[data-servers-views]")).not.toBeNull();
+        expect(document.querySelector("[data-servers-action='manage']")).not.toBeNull();
     });
 });
 
@@ -401,8 +537,8 @@ describe("what a server offers", () => {
  *
  * It used to be a capped box under the project list, which cost every reading of the
  * projects a list of colleagues nobody was reading - on this window, the difference
- * between six project rows and two. It is now somewhere a reader goes, by a control that
- * stays on screen and lit while they are there.
+ * between six project rows and two. It is now somewhere a reader goes, by a tab that stays
+ * on screen and lit while they are there.
  */
 describe("who else is on the server", () => {
     const ROSTER = {
@@ -435,7 +571,7 @@ describe("who else is on the server", () => {
         expect(visibleScrollers()).toBe(1);
     });
 
-    it("comes back by the control that went there, to the project that was open", async () => {
+    it("comes back by the other tab, to the project that was open", async () => {
         bridge.listServerMembers.mockResolvedValue(ROSTER);
         bridge.getServerProject.mockResolvedValue({
             success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
@@ -446,11 +582,11 @@ describe("who else is on the server", () => {
         await waitFor(() => expect(document.querySelector("[data-project-unread]")).not.toBeNull());
         expect(visibleScrollers()).toBe(1);
 
-        const people = () => document.querySelector("[data-servers-action='people']")!;
-        fireEvent.click(people());
+        const tab = (id: string) => document.querySelector(`[data-servers-action='${id}']`)!;
+        fireEvent.click(tab("people"));
         expect(visible("[data-server-project-detail]")).toBe(false);
 
-        fireEvent.click(people());
+        fireEvent.click(tab("projects"));
         expect(visible("[data-server-project-detail]")).toBe(true);
         // Put away, not taken down: the project was not asked about a second time.
         expect(bridge.getServerProject).toHaveBeenCalledTimes(1);
