@@ -6,7 +6,6 @@ import { SectionCard } from "@/lib/components/elements/SectionCard";
 import type {
     VcsServerAuthority,
     VcsServerDiscovery,
-    VcsServerSession,
     VcsSignInProblem,
 } from "@shared/types/vcs";
 import type { TranslationKey } from "@shared/i18n";
@@ -65,8 +64,8 @@ type WizardStage =
     | { kind: "no-account"; discovery: VcsServerDiscovery };
 
 export interface ServerWizardProps {
-    /** The list as it stands once a server was added, so nothing has to be read again. */
-    onAdded: (servers: VcsServerSession[]) => void;
+    /** A server was added. The list it joined is read where it is shown. */
+    onAdded: () => void;
     onLeave: () => void;
 }
 
@@ -138,7 +137,15 @@ export function ServerWizard({ onAdded, onLeave }: ServerWizardProps) {
         setBusy(true);
         setError(null);
         const result = await getInterface().vcs
-            .addServer(stage.discovery.auth.url, stage.discovery.data.url, token.trim())
+            // What the server said about itself travels with the token, from the answer
+            // this wizard already has. Reaching the address again for a name would be a
+            // second answer to a question that was put a moment ago, and the sentence
+            // above the token box would then be describing a different reading.
+            .addServer(stage.discovery.auth.url, stage.discovery.data.url, token.trim(), {
+                name: stage.discovery.name,
+                version: stage.discovery.version,
+                capabilities: stage.discovery.capabilities,
+            })
             .catch(() => null);
         setBusy(false);
         if (!result?.success) {
@@ -152,7 +159,7 @@ export function ServerWizard({ onAdded, onLeave }: ServerWizardProps) {
         // The token is not kept for a moment longer than the call that used it. A box still
         // holding a credential is one a screenshot or the next person at this desk can read.
         setToken("");
-        onAdded(result.data.servers);
+        onAdded();
     }, [busy, onAdded, stage, token]);
 
     const sentence = error && (

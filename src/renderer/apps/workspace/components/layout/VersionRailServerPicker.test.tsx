@@ -45,11 +45,12 @@ afterEach(() => {
     bridge.launchSettings.mockClear();
 });
 
-function session(origin: string, displayName: string): VcsServerSession {
+function session(origin: string, displayName: string, name?: string): VcsServerSession {
     return {
         remoteOrigin: origin,
         authUrl: `https://${displayName}.example.lan`,
         account: { userId: displayName, username: displayName, displayName, identity: displayName },
+        ...(name === undefined ? {} : { name }),
     } as VcsServerSession;
 }
 
@@ -101,6 +102,19 @@ describe("the server picker", () => {
 
         expect(bridge.launchSettings).toHaveBeenCalledWith({ highlight: SERVERS_PANEL_SETTING_KEY });
         expect(onClose).toHaveBeenCalled();
+    });
+
+    it("calls a server by the name it gave, with its address still under it", async () => {
+        bridge.servers = [session(ONE, "ada", "Blackwood Studio")];
+        picker(null);
+
+        await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+
+        const row = document.querySelector(`[data-server-choice='${ONE}']`)!;
+        expect(row.textContent).toContain("Blackwood Studio");
+        // The address is what this project's remote is written against, so choosing between
+        // two deployments of one name is still possible.
+        expect(row.textContent).toContain("one.example.lan:41337");
     });
 
     it("opens with nothing chosen for a project that uses no server", async () => {
