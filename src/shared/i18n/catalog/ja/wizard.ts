@@ -121,7 +121,7 @@ export const wizard = {
         addressHint: "このアドレスはプロジェクトを用意した人から渡される",
         // 「無効」とは言わず、足りないものを名指しする。ここで捕まえる間違いは、ほぼ必ず
         // サーバーまでは書けていて末尾のプロジェクト名が抜けているもの。
-        addressInvalid: "プロジェクトのアドレスは末尾にプロジェクト名が要る。例：lore://studio.example.lan:41337/my-game",
+        addressInvalid: "プロジェクトのアドレスは末尾にプロジェクト名が必要。例：lore://studio.example.lan:41337/my-game",
         parsedServer: "サーバー",
         onServerLabel: "サーバー上のプロジェクト",
         onServerHint: "選んでください。未追加のサーバーは下にアドレスを入力します。",

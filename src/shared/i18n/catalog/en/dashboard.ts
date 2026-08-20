@@ -11,7 +11,7 @@ export const dashboard = {
     },
 
     greeting: {
-        lateNight: "Working late",
+        lateNight: "Late night",
         morning: "Good morning",
         noon: "Good afternoon",
         afternoon: "Good afternoon",

@@ -57,7 +57,7 @@ export const project = {
         mobile: "移动端",
     },
     distribution: {
-        description: "随工程保存，参与构建的每个人用的是同一把密钥。一个构建只接受用它自己那把密钥做出的补丁。",
+        description: "随工程保存，参与构建的每个人使用同一把密钥。一个构建只接受用它自己那把密钥做出的补丁。",
         absent: "尚未创建密钥",
         rotatedAt: "上次更换于 {date}",
         createAction: "创建",
@@ -83,12 +83,12 @@ export const project = {
         websiteLabel: "网站",
         // 会写进打包后应用的文件属性与「关于」框。改在这里，构建对话框只回读不再询问。
         copyrightLabel: "版权",
-        copyrightPlaceholder: "© 你的工作室",
+        copyrightPlaceholder: "© 工作室名称",
         // 长文形式，与上面那一行分开：那一行进二进制的文件属性，这一段进玩家能打开的文件。
         copyrightTextLabel: "版权声明",
         copyrightTextPlaceholder: "用到的字体、音乐与资产，以及它们各自归谁所有…",
         copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
-        descriptionPlaceholder: "描述你的项目…",
+        descriptionPlaceholder: "描述本项目…",
         required: "必填",
     },
     // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
