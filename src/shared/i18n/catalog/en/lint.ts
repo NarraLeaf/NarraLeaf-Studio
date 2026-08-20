@@ -174,7 +174,7 @@ export const lint = {
             description: "A row naming a character the project does not have",
             // No subject in the sentence: an unresolved reference leaves only its stored id, which
             // is a UUID, and a UUID in a report is a word nobody can search a project for.
-            message: "This row names a character the project does not have, so it acts on nothing",
+            message: "This row names a character the project does not have",
         },
         storyTransitionUnavailable: {
             title: "Unavailable transition",
@@ -195,6 +195,11 @@ export const lint = {
             messageChoice: "Names a choice that no longer exists",
             messageCharacter: "Names a character that no longer exists",
             messageTextKey: "Names a text key the project does not declare",
+        },
+        blueprintElementRefMissing: {
+            title: "Missing widget",
+            description: "A node bound to a widget the project no longer has",
+            message: "Bound to a widget that no longer exists",
         },
         blueprintUnreachableNode: {
             title: "Unreachable node",

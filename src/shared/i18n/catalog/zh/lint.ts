@@ -169,7 +169,7 @@ export const lint = {
             description: "该行指定的角色不在本工程中",
             // 句子里不写出对象：引用解析不到时只剩存下来的 id，而它是一个 UUID，
             // 把 UUID 写进报告等于给作者一个在工程里搜不到的词。
-            message: "该行指定的角色不在本工程中，该行没有可操作的对象",
+            message: "该行指定的角色不在本工程中",
         },
         storyTransitionUnavailable: {
             title: "转场不可用",
@@ -188,6 +188,11 @@ export const lint = {
             messageChoice: "指向的选项已不存在",
             messageCharacter: "指向的角色已不存在",
             messageTextKey: "指向的文本键在工程中未声明",
+        },
+        blueprintElementRefMissing: {
+            title: "控件缺失",
+            description: "节点绑定的控件在工程中已不存在",
+            message: "绑定的控件已不存在",
         },
         blueprintUnreachableNode: {
             title: "无法到达的节点",

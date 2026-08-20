@@ -56,6 +56,8 @@ import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
+import { copyUiSurface, pasteUiSurface } from "@/lib/ui-editor/commands/uiSurfaceCommands";
+import { useUiSurfaceClipboardPresence } from "@/lib/ui-editor/commands/useUiSurfaceClipboardSync";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -150,6 +152,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         return context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     }, [context]);
     const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
+    // Absent, not greyed, while the machine's clipboard holds no interface - see `SurfaceActions`.
+    const canPasteSurface = useUiSurfaceClipboardPresence(Boolean(documentService));
     // Renaming, duplicating and deleting a surface write the interface document. Opening one - and the
     // filter, the search and the previews - do not.
     const freeze = useFreezeGuard();
@@ -349,6 +353,29 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }
     }, [documentService, editorLayout, inputDialog, uiService]);
 
+    // A copy reads the document and the blueprint store; nothing about it writes, so it stays
+    // available while the workspace is frozen.
+    const handleCopySurface = useCallback((surface: UISurface) => {
+        if (!documentService) {
+            return;
+        }
+        copyUiSurface(documentService, localBlueprintService, surface.id);
+    }, [documentService, localBlueprintService]);
+
+    const handlePasteSurface = useCallback(async () => {
+        if (!documentService) {
+            return;
+        }
+        const pasted = await pasteUiSurface(documentService);
+        if (!pasted) {
+            return;
+        }
+        // The list is filtered by kind and a copied Game UI keeps its kind, so an interface pasted
+        // while the other tab is showing would arrive out of sight.
+        setKind(pasted.kind);
+        handleOpenSurface(pasted);
+    }, [documentService, handleOpenSurface]);
+
     const handleDuplicateSurface = useCallback((surface: UISurface) => {
         if (!documentService || surface.kind !== "appSurface") {
             return;
@@ -394,8 +421,17 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     },
                 });
             }
+            // The main page is left out of both: a project has exactly one, so it can be neither
+            // duplicated nor imported, and a copy of it would paste as nothing.
             if (surface.id !== MAIN_APP_SURFACE_ID) {
                 items.push(
+                    {
+                        id: "copy-surface",
+                        label: t("uiEditor.panel.copySurface", { label }),
+                        onClick: () => {
+                            handleCopySurface(surface);
+                        },
+                    },
                     {
                         id: "surface-separator",
                         separator: true,
@@ -417,7 +453,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             ));
             showMenu(event);
         },
-        [freeze, showMenu, hideMenu, uiService, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
+        [freeze, showMenu, hideMenu, uiService, handleOpenSurface, handleRenameSurface, handleCopySurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
@@ -581,6 +617,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 onOpenTemplateStore={() => setTemplateStoreOpen(true)}
                 templateLabel={t("uiEditor.templateStore.open")}
                 templateDisabled={!documentService}
+                onPaste={canPasteSurface ? () => void handlePasteSurface() : undefined}
+                pasteLabel={t("uiEditor.panel.pasteSurface")}
             />
             <SurfaceList
                 surfaces={filteredSurfaces}

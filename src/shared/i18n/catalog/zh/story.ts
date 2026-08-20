@@ -198,7 +198,7 @@ export const story = {
             other: "已带入 {count} 条译文",
         },
         translationsDropped: {
-            other: "{count} 条译文的语言不在本工程中",
+            other: "已跳过 {count} 条译文",
         },
     },
     // 粘贴到另一个工程里的行。行落位之后，只报一次结果。
@@ -210,7 +210,7 @@ export const story = {
             other: "已从 {project} 粘贴 {count} 行",
         },
         speakerNames: {
-            other: "{count} 位说话人改为只用名字",
+            other: "未关联角色 {count} 行",
         },
         imported: {
             other: "已导入 {count} 项资产",

@@ -33,6 +33,8 @@ export const uiEditor = {
         openSurface: "Open {label}",
         renameSurface: "Rename {label}",
         duplicateSurface: "Duplicate {label}",
+        copySurface: "Copy {label}",
+        pasteSurface: "Paste interface",
         deleteSurface: "Delete {label}",
         surfaceActions: "{label} actions",
         deleteConfirm: "Delete {label}?",
@@ -163,7 +165,7 @@ export const uiEditor = {
         },
     },
     /**
-     * A paste of elements copied in another project.
+     * A paste of elements, or of a whole interface, copied in another project.
      *
      * Counts only: what came across, and what still needs the author. Each unresolved reference is
      * named again by the project lint, where it can be jumped to.
@@ -185,6 +187,16 @@ export const uiEditor = {
             one: "{count} reference unresolved",
             other: "{count} references unresolved",
         },
+        surfacePasted: {
+            one: "{count} interface added",
+            other: "{count} interfaces added",
+        },
+        surfacePastedFrom: {
+            one: "{count} interface added from {project}",
+            other: "{count} interfaces added from {project}",
+        },
+        slotTaken: "The {slot} slot already has a Game UI",
+        surfaceNotAdded: "The interface could not be added",
     },
     templateStore: {
         open: "Start from a template",

@@ -15,7 +15,8 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
-import type { BlueprintAssetPin, BlueprintAssetPinResolver } from "@/lib/workspace/services/references/referenceModel";
+import { createCatalogAssetPinResolver } from "@/lib/workspace/services/ui-editor/blueprint/catalogAssetPins";
+import type { BlueprintAssetPinResolver } from "@/lib/workspace/services/references/referenceModel";
 import type { Service } from "@/lib/workspace/services/Service";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -109,7 +110,7 @@ export function readUiClipboardEnvironment(documentService: UIDocumentService): 
         uiService: get<UIService>(Services.UI),
         uuidService: get<UuidService>(Services.Uuid),
         isFrozen: () => freezeService?.isFrozen() ?? false,
-        resolveAssetPins: nodeType => resolveCatalogAssetPins(catalog, nodeType),
+        resolveAssetPins: createCatalogAssetPinResolver(catalog),
     };
 }
 
@@ -128,7 +129,10 @@ export function publishUiClipboard(
     payload: UIEditorClipboardPayload,
 ): void {
     void (async () => {
-        const assets = await offerClipboardAssets(environment, payload);
+        const assets = await offerClipboardAssetGrant(
+            environment,
+            collectUiClipboardAssetIds(payload, environment.resolveAssetPins),
+        );
         // The offer is folded into the payload the clipboard receives and into the one this window
         // holds, so a same-window paste and a cross-window paste describe the same copy.
         const published: UIEditorClipboardPayload = assets ? { ...payload, assets } : payload;
@@ -226,7 +230,7 @@ export type ForeignUiPasteReport = {
 export async function importForeignUiAssets(source: UiPasteSource): Promise<ForeignUiPasteReport> {
     const { environment, payload } = source;
     const report: ForeignUiPasteReport = { imported: 0, unresolved: 0, frozen: false };
-    const port = createPortFor(environment);
+    const port = createClipboardAssetPort(environment);
     if (!environment || !port) {
         return report;
     }
@@ -258,7 +262,7 @@ export function reportForeignUiPaste(
     if (!environment) {
         return;
     }
-    const port = createPortFor(environment);
+    const port = createClipboardAssetPort(environment);
     const surfaceIds = new Set(documentService.getDocument().surfaces?.map(surface => surface.id) ?? []);
     const unresolved = countUnresolvedUiAssetSites(
         payload,
@@ -279,21 +283,24 @@ export function reportForeignUiPaste(
 }
 
 /**
- * Vouch for the files a copied selection references, and take back the token standing for them.
+ * Vouch for the files a copy references, and take back the token standing for them.
  *
- * A selection whose widgets reference no importable file offers nothing at all, which is most
- * selections. A refusal is data and arrives as one; a transport that throws is logged rather than
- * raised, because the copy has already happened.
+ * A copy whose widgets reference no importable file offers nothing at all, which is most copies. A
+ * refusal is data and arrives as one; a transport that throws is logged rather than raised, because
+ * the copy has already happened.
+ *
+ * Takes the ids rather than a payload, so a copied selection and a copied surface reach the main
+ * process through the same offer - which is what makes a pasting window's redeem the same round
+ * trip whichever of the two it is holding.
  */
-async function offerClipboardAssets(
+export async function offerClipboardAssetGrant(
     environment: UiClipboardEnvironment,
-    payload: UIEditorClipboardPayload,
+    assetIds: readonly string[],
 ): Promise<UIEditorClipboardPayload["assets"]> {
     const { assetsService } = environment;
     if (!assetsService) {
         return undefined;
     }
-    const assetIds = collectUiClipboardAssetIds(payload, environment.resolveAssetPins);
     const entries: AssetTransferEntry[] = buildAssetTransferEntries(assetsService, assetIds);
     if (entries.length === 0) {
         return undefined;
@@ -326,7 +333,13 @@ async function readSystemClipboardPayload(): Promise<UIEditorClipboardPayload | 
     }
 }
 
-function createPortFor(environment: UiClipboardEnvironment | null): TransferredAssetPort | null {
+/**
+ * The workspace an asset import writes into, or null when this window has no project behind it.
+ *
+ * Exported because the surface clipboard imports its files through the same port: one project, one
+ * answer about what its library already holds.
+ */
+export function createClipboardAssetPort(environment: UiClipboardEnvironment | null): TransferredAssetPort | null {
     if (!environment?.assetsService || !environment.fileSystemService) {
         return null;
     }
@@ -342,44 +355,13 @@ function tryGetContext(documentService: UIDocumentService): ReturnType<UIDocumen
 }
 
 /**
- * The asset-bearing pins a node type declares, or null when the catalogue has never heard of it.
- *
- * Null and "declares none" are different answers, and `referenceModel` acts on the difference: a
- * node left behind by a plugin this project does not have could be holding anything.
- */
-function resolveCatalogAssetPins(
-    catalog: BlueprintNodeCatalogService | null,
-    nodeType: string,
-): readonly BlueprintAssetPin[] | null {
-    if (!catalog) {
-        return null;
-    }
-    try {
-        if (!catalog.get(nodeType)) {
-            return null;
-        }
-        return catalog.resolveCatalogEntry(nodeType).pins.flatMap(pin => (pin.assetRef
-            ? [{
-                pinId: pin.id,
-                kind: pin.assetRef.kind,
-                paramKey: pin.assetRef.paramKey ?? pin.id,
-                input: pin.kind === "input",
-                origin: pin.assetRef.origin,
-            }]
-            : []));
-    } catch {
-        return null;
-    }
-}
-
-/**
  * The source project's name, when it is one a notification can carry.
  *
  * A payload written by another process says what it likes about itself, so a name that is blank or
  * longer than a line is dropped rather than shortened - the paste then reports its counts without
  * naming where they came from, which is true either way.
  */
-function readClipboardProjectName(value: unknown): string | null {
+export function readClipboardProjectName(value: unknown): string | null {
     if (typeof value !== "string") {
         return null;
     }
