@@ -1073,6 +1073,31 @@ function extractElementAssetReferences(
 }
 
 /**
+ * The library asset ids one element names, in the order they are met, each once.
+ *
+ * The same sweep the index runs, asked of a single element: what a clipboard has to carry when a
+ * selection is copied into another project is exactly what "where is this used?" would report for
+ * those elements, dormant sites included. A second opinion written next to the copy would drift
+ * from this one the first time a widget grew a prop.
+ *
+ * URL props are deliberately not followed. An `app://fs/{token}` value names a grant this session
+ * minted, and a grant does not survive the trip: importing the file behind it would leave the
+ * pasted URL naming a token the other window has never heard of, so there is nothing to be gained
+ * by bringing it. Those sites are `hashUrlUnresolved` gaps here and are simply not collected.
+ */
+export function listUIElementAssetIds(element: UIElement): string[] {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    for (const reference of extractElementAssetReferences(element, undefined, undefined, [])) {
+        if (!seen.has(reference.assetId)) {
+            seen.add(reference.assetId);
+            ids.push(reference.assetId);
+        }
+    }
+    return ids;
+}
+
+/**
  * UI slice: both element pools. `document.elements` is the stage; `document.components[].elements`
  * is a disjoint pool — a component's elements are not mirrored into the stage pool, so scanning
  * only the stage misses every asset used inside a reusable component.

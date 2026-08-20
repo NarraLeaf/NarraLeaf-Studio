@@ -49,6 +49,7 @@ import type {
 } from "./spellcheck";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
+import type { StudioClipboardKind } from "./studioClipboard";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -323,6 +324,9 @@ export enum IPCEventType {
     assetExportToFolder = "asset.exportToFolder",
     assetTransferOffer = "asset.transfer.offer",
     assetTransferRedeem = "asset.transfer.redeem",
+
+    clipboardWriteEditorSelection = "clipboard.editorSelection.write",
+    clipboardReadEditorSelection = "clipboard.editorSelection.read",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -3256,6 +3260,37 @@ export type IPCAssetEvents = {
             token: string;
         },
         response: AssetTransferRedeemResult;
+    };
+    /**
+     * Put an editor selection on the platform clipboard under Studio's own private format.
+     *
+     * `stored: false` answers a payload main declined to write - an unknown kind, or one over the
+     * size ceiling. The copy still holds its in-window clipboard, so the gesture is not lost; only
+     * its reach into other windows is. See `@shared/types/studioClipboard`.
+     */
+    [IPCEventType.clipboardWriteEditorSelection]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            kind: StudioClipboardKind;
+            payload: string;
+        },
+        response: { stored: boolean };
+    };
+    /**
+     * Read back whatever an editor selection format currently holds.
+     *
+     * `payload: null` is the ordinary answer whenever the clipboard holds something else - text from
+     * another application, or nothing at all - and callers read it as "no editor selection here"
+     * rather than as a failure.
+     */
+    [IPCEventType.clipboardReadEditorSelection]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            kind: StudioClipboardKind;
+        },
+        response: { payload: string | null };
     };
 };
 

@@ -1,7 +1,12 @@
-import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 import type { StoryBlock, StoryBlockId, StoryScene } from "@shared/types/story";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { listBlockAssetSites } from "@/lib/workspace/services/references/referenceModel";
+import {
+    importTransferredAssets,
+    type TransferredAssetGrant,
+    type TransferredAssetImport,
+    type TransferredAssetPort,
+} from "@/lib/workspace/services/assets/assetTransferImport";
 import type { SerializedStoryBlock, StoryClipboardPayload } from "./storySceneEditorTypes";
 
 /**
@@ -210,115 +215,14 @@ export function collectSubtreeBlocks(scene: StoryScene, rootIds: readonly StoryB
 }
 
 /**
- * What {@link importTransferredAssets} needs of the workspace around it.
+ * The asset half of a foreign paste, which the interface editor's clipboard shares.
  *
- * Stated as functions rather than taken as services so the import order - redeem, skip what is
- * already here, read, create, and stop the moment the workspace freezes - can be exercised without
- * a project behind it.
+ * Re-exported rather than redefined: the decision - import under the source's own id, treat an
+ * unavailable manifest as an ordinary outcome - belongs to one file
+ * (`assets/assetTransferImport.ts`), and the story editor is one of its two callers.
  */
-export interface TransferredAssetPort {
-    /** Trade the clipboard's token for the files it stands for, or null when it stands for none. */
-    redeem(token: string): Promise<AssetTransferEntry[] | null>;
-    /** Whether this project's library already holds that id, under any type. */
-    has(assetId: string): boolean;
-    /** The bytes at a path the redeem granted read access to, or null when they cannot be read. */
-    read(sourcePath: string): Promise<Uint8Array | null>;
-    /**
-     * File the bytes under the id they had in the source project.
-     *
-     * `"present"` answers an id the library turned out to be holding after all, which is the same
-     * outcome as {@link has} and not a failure: the reference already resolves.
-     */
-    create(entry: AssetTransferEntry, bytes: Uint8Array): Promise<"created" | "present" | "failed">;
-    /** Whether this window's project data has frozen. Asked again after every await. */
-    isFrozen(): boolean;
-}
-
-/**
- * The clipboard's half of an asset transfer: a token, and the ids the copy said it stands for.
- *
- * Only the ids are read. What each file is called and where it lives are answered by the main
- * process at redeem time, against the window that offered them - nothing written on a clipboard
- * addresses a file.
- */
-export type TransferredAssetGrant = {
-    token: string;
-    declaredAssetIds: readonly string[];
-};
-
-export type TransferredAssetImport = {
-    /** Files that were not in this project and now are. */
-    imported: number;
-    /** Files that could not be brought over. One of these costs the author nothing but that file. */
-    failed: number;
-    /**
-     * The workspace froze part-way through.
-     *
-     * The caller must abandon the paste rather than finish it: rows written into a frozen
-     * workspace reach the in-memory scene, are refused at the file-system boundary and are gone
-     * again when the thaw re-reads the document.
-     */
-    frozen: boolean;
-};
-
-/**
- * Bring the files a foreign payload references into this project, under the ids they already have.
- *
- * Importing under the source's own id is what lets the rows be pasted verbatim: every reference in
- * them keeps naming the file it named, so nothing has to be rewritten inside payload shapes that
- * are open-ended by design.
- *
- * An unavailable manifest is an ordinary outcome, not an error - the copying window has closed, or
- * the copy came from another Studio process whose grants this one cannot see. The rows still paste;
- * their asset references stay foreign and `assets/missing` reports each one.
- */
-export async function importTransferredAssets(
-    port: TransferredAssetPort,
-    grant: TransferredAssetGrant | undefined,
-    wantedAssetIds: readonly string[],
-): Promise<TransferredAssetImport> {
-    const result: TransferredAssetImport = { imported: 0, failed: 0, frozen: false };
-    // What the copy declared, intersected with what the rows actually name and what this project is
-    // missing. A token answers with the whole manifest it was minted for, and a paste takes out of
-    // that only the files its own rows point at - never simply whatever the grant reaches.
-    const declared = new Set(grant?.declaredAssetIds ?? []);
-    const wanted = new Set(wantedAssetIds.filter(id => declared.has(id) && !port.has(id)));
-    if (!grant?.token || wanted.size === 0) {
-        return result;
-    }
-
-    const granted = await port.redeem(grant.token);
-    if (port.isFrozen()) {
-        return { ...result, frozen: true };
-    }
-    if (!granted) {
-        return result;
-    }
-
-    for (const entry of granted) {
-        if (!wanted.has(entry.assetId)) {
-            continue;
-        }
-        const bytes = await port.read(entry.sourcePath);
-        if (port.isFrozen()) {
-            return { ...result, frozen: true };
-        }
-        if (!bytes) {
-            result.failed += 1;
-            continue;
-        }
-        const outcome = await port.create(entry, bytes);
-        if (port.isFrozen()) {
-            return { ...result, frozen: true };
-        }
-        if (outcome === "created") {
-            result.imported += 1;
-        } else if (outcome === "failed") {
-            result.failed += 1;
-        }
-    }
-    return result;
-}
+export { importTransferredAssets };
+export type { TransferredAssetGrant, TransferredAssetImport, TransferredAssetPort };
 
 /** The character id a row is about, or null when it names none. */
 function rowCharacterId(block: StoryBlock): string | null {

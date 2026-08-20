@@ -14,16 +14,49 @@ export function serializeBlockSubtree(scene: StoryScene, blockId: StoryBlockId):
     };
 }
 
-export function cloneSerializedBlock(source: SerializedStoryBlock, generateId: () => string): SerializedStoryBlock {
+/**
+ * Copy a subtree onto fresh ids - block ids and the `textId` of every text segment in it.
+ *
+ * The text ids have to be new: a `textId` is the id of a translation unit, and two rows sharing one
+ * would share whatever any language says about them. `textIds` collects what that renaming did, old
+ * id → new id, for the one caller that has to follow a line across it - the translations copied
+ * with the rows are keyed by the ids they had over there (see `storyTranslationTransfer`). Passing
+ * nothing collects nothing.
+ */
+export function cloneSerializedBlock(
+    source: SerializedStoryBlock,
+    generateId: () => string,
+    textIds?: Map<string, string>,
+): SerializedStoryBlock {
     const block = structuredCloneBlock(source.block);
     block.id = generateId();
     block.parentId = null;
     block.childrenIds = [];
-    block.payload = clonePayloadWithNewTextIds(block.payload, generateId);
+    block.payload = clonePayloadWithNewTextIds(block.payload, generateId, textIds);
     return {
         block,
-        children: source.children.map(child => cloneSerializedBlock(child, generateId)),
+        children: source.children.map(child => cloneSerializedBlock(child, generateId, textIds)),
     };
+}
+
+/**
+ * The text-segment ids the given blocks carry, in the order they are met, each once.
+ *
+ * Read off the same fields {@link cloneSerializedBlock} renames, so what a copy carries translations
+ * for and what a paste re-keys them onto can never describe two different sets of lines.
+ */
+export function listBlockTextIds(blocks: Iterable<StoryBlock>): string[] {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    for (const block of blocks) {
+        for (const segment of payloadTextSegments(block.payload)) {
+            if (segment.textId && !seen.has(segment.textId)) {
+                seen.add(segment.textId);
+                ids.push(segment.textId);
+            }
+        }
+    }
+    return ids;
 }
 
 export function insertSerializedClone(
@@ -107,21 +140,41 @@ function structuredCloneBlock(block: StoryBlock): StoryBlock {
     return JSON.parse(JSON.stringify(block)) as StoryBlock;
 }
 
-function clonePayloadWithNewTextIds(payload: StoryBlock["payload"], generateId: () => string): StoryBlock["payload"] {
+function clonePayloadWithNewTextIds(
+    payload: StoryBlock["payload"],
+    generateId: () => string,
+    textIds?: Map<string, string>,
+): StoryBlock["payload"] {
     const clone = JSON.parse(JSON.stringify(payload)) as StoryBlock["payload"];
-    const replaceTextId = (text: StoryTextSegment | string | undefined) => {
-        if (isStoryTextSegment(text)) {
-            text.textId = generateId();
+    for (const segment of payloadTextSegments(clone)) {
+        const previous = segment.textId;
+        segment.textId = generateId();
+        if (previous) {
+            textIds?.set(previous, segment.textId);
         }
-    };
-    if ("text" in clone) {
-        replaceTextId(clone.text);
-    }
-    if ("prompt" in clone) {
-        replaceTextId(clone.prompt);
     }
     return clone;
 }
+
+/**
+ * The text segments of one payload: the two fields a row's translatable line can occupy.
+ *
+ * One walk rather than one per caller, so a payload that grows a third such field is served by a
+ * single edit instead of by several that have to be remembered together.
+ */
+function payloadTextSegments(payload: StoryBlock["payload"]): StoryTextSegment[] {
+    const record = payload as unknown as Record<string, unknown>;
+    const segments: StoryTextSegment[] = [];
+    for (const field of TEXT_SEGMENT_FIELDS) {
+        const value = record[field];
+        if (isStoryTextSegment(value)) {
+            segments.push(value);
+        }
+    }
+    return segments;
+}
+
+const TEXT_SEGMENT_FIELDS = ["text", "prompt"] as const;
 
 function isStoryTextSegment(value: unknown): value is StoryTextSegment {
     return Boolean(value && typeof value === "object" && "textId" in value && "value" in value);
