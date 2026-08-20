@@ -73,9 +73,9 @@ export const launcher = {
     // The Servers tab. It lists what exists on the servers this installation is signed in to;
     // what is already on this disk is the Projects tab's answer and is not repeated here.
     servers: {
-        // Adding a server signs the whole installation in, so it happens in Settings and this
-        // tab points at it - from the end of the list, and from the empty state.
-        manage: "Manage servers",
+        // The one control that opens the add-a-server dialog, on the rule beside the views
+        // and in the empty state. It is a tooltip and a label, never a visible word.
+        manage: "Add a server",
         empty: {
             title: "No servers",
             description: "Projects on a server appear here.",
