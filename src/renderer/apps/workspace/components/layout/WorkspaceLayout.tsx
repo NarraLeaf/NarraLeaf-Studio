@@ -618,7 +618,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         keybindings: [
             {
                 id: "left-sidebar",
-                key: "mod+alt+b",
+                key: "mod+shift+b",
                 description: "Show or hide the left sidebar",
                 allowInEditable: true,
                 handler: () => panelTogglesRef.current.toggleLeftSidebar(),
