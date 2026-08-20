@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
@@ -11,6 +12,11 @@ import {
 import type { SaveSchemaField } from "@shared/types/saveSchema";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
+import {
+    ELEMENT_REF_PARAM_ELEMENT_ID,
+    ELEMENT_REF_PARAM_ELEMENT_TYPE,
+    ELEMENT_REF_PARAM_SURFACE_ID,
+} from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -231,6 +237,123 @@ describe("blueprint/reference-missing", () => {
                 "neither resolves nor waives. Add a resolver in REFERENCE_KIND_BY_OPTIONS_SOURCE, or list the\n" +
                 "source in UNCHECKED_OPTIONS_SOURCES with the reason it cannot be checked.\n",
         ).toEqual([]);
+    });
+});
+
+describe("blueprint/element-ref-missing", () => {
+    /** `On Element Click`, bound to whatever `(surface, element)` is passed. */
+    function elementClickGraph(surfaceId: string, elementId: string): BlueprintGraphIr {
+        return {
+            nodes: {
+                head: {
+                    id: "head",
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                    params: {
+                        [ELEMENT_REF_PARAM_SURFACE_ID]: surfaceId,
+                        [ELEMENT_REF_PARAM_ELEMENT_ID]: elementId,
+                        [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.button",
+                    },
+                },
+            },
+            edges: [],
+        };
+    }
+
+    /** A page holding `pageElementIds`, plus one component definition holding `componentElementId`. */
+    function uiDocumentWithElements(pageElementIds: string[], componentElementId?: string): UIDocument {
+        return {
+            surfaces: [{ id: "s1", kind: "appSurface", rootElementId: "root" }],
+            elements: Object.fromEntries(pageElementIds.map(id => [id, { id, type: "nl.button", childrenIds: [] }])),
+            ...(componentElementId
+                ? {
+                    components: [{
+                        id: "c1",
+                        name: "Card",
+                        rootElementId: componentElementId,
+                        elements: {
+                            [componentElementId]: { id: componentElementId, type: "nl.button", childrenIds: [] },
+                        },
+                    }],
+                }
+                : {}),
+        } as unknown as UIDocument;
+    }
+
+    it("is an error by default", () => {
+        expect(rule("blueprint/element-ref-missing").defaultSeverity).toBe("error");
+    });
+
+    it("reports a head bound to a widget the project does not have", async () => {
+        // The shape a graph fragment pasted from another project arrives in: the element id is a
+        // UUID that project minted, and nothing here answers to it.
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onClick: elementClickGraph("surface-elsewhere", "element-elsewhere") },
+                }),
+                uiDocument: uiDocumentWithElements(["button-here"]),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "blueprint/element-ref-missing",
+            messageKey: "lint.rule.blueprintElementRefMissing.message",
+            location: { kind: "blueprint", blueprintId: "bp1", graphId: "onClick", nodeId: "head" },
+            target: { kind: "blueprint", ownerKey: "surfaceMain:s1", focusEventId: "onClick", focusNodeId: "head" },
+        });
+    });
+
+    it("says nothing about a widget that is on a page", async () => {
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onClick: elementClickGraph("s1", "button-here") } }),
+                uiDocument: uiDocumentWithElements(["button-here"]),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a widget that lives inside a component definition", async () => {
+        // The one shape that makes a narrower universe wrong: a component keeps its elements in its
+        // own table, so a set built from `document.elements` alone would report every binding inside
+        // a component's blueprint - a rule firing on correct graphs.
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onClick: elementClickGraph("component-editor:c1", "button-in-component") },
+                }),
+                uiDocument: uiDocumentWithElements(["button-here"], "button-in-component"),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a node with no widget chosen", async () => {
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onClick: elementClickGraph("s1", "") } }),
+                uiDocument: uiDocumentWithElements(["button-here"]),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("reports nothing when the interface document could not be read", async () => {
+        // A null document is not an empty one: treating it as one would report every binding in the
+        // project off a single failed read.
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onClick: elementClickGraph("surface-elsewhere", "element-elsewhere") },
+                }),
+            }),
+        );
+        expect(findings).toEqual([]);
     });
 });
 

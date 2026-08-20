@@ -174,7 +174,7 @@ export const lint = {
             description: "プロジェクトに存在しないキャラクターを指定した行",
             // 文中に対象を出さない。参照が解決しないとき残るのは保存された id だけで、それは UUID -
             // 作者がプロジェクト内を検索できない語を報告に出すことになる。
-            message: "この行が指すキャラクターはプロジェクトに存在しないため、この行には操作する対象がない",
+            message: "この行が指すキャラクターはプロジェクトに存在しない",
         },
         storyTransitionUnavailable: {
             title: "利用できないトランジション",
@@ -194,6 +194,11 @@ export const lint = {
             messageChoice: "指している選択肢が存在しない",
             messageCharacter: "指しているキャラクターが存在しない",
             messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
+        },
+        blueprintElementRefMissing: {
+            title: "ウィジェットの欠落",
+            description: "プロジェクトに存在しないウィジェットに結び付いたノード",
+            message: "結び付いているウィジェットが存在しない",
         },
         blueprintUnreachableNode: {
             title: "到達できないノード",

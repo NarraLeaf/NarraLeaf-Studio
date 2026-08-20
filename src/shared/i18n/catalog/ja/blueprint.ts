@@ -46,6 +46,24 @@ export const blueprint = {
         selectLayer: "左でレイヤーを選ぶ",
         previewUnavailable: "プレビューを出せない",
     },
+    crossProject: {
+        pasted: {
+            one: "{count} 個のノードを貼り付けた",
+            other: "{count} 個のノードを貼り付けた",
+        },
+        pastedFrom: {
+            one: "{project} から {count} 個のノードを貼り付けた",
+            other: "{project} から {count} 個のノードを貼り付けた",
+        },
+        imported: {
+            one: "{count} 個のアセットを取り込んだ",
+            other: "{count} 個のアセットを取り込んだ",
+        },
+        unresolved: {
+            one: "{count} 件の参照が未解決",
+            other: "{count} 件の参照が未解決",
+        },
+    },
     addNode: {
         close: "ノード追加のメニューを閉じる",
         searchPlaceholder: "ノードを検索",

@@ -240,8 +240,8 @@ export const story = {
             other: "{count} translations carried",
         },
         translationsDropped: {
-            one: "{count} translation in a language this project does not have",
-            other: "{count} translations in languages this project does not have",
+            one: "{count} translation skipped",
+            other: "{count} translations skipped",
         },
     },
     // Rows pasted into a project other than the one they were copied from. One line of counts,
@@ -256,8 +256,8 @@ export const story = {
             other: "{count} rows pasted from {project}",
         },
         speakerNames: {
-            one: "{count} speaker kept as a name",
-            other: "{count} speakers kept as names",
+            one: "{count} line without a character",
+            other: "{count} lines without a character",
         },
         imported: {
             one: "{count} asset imported",
