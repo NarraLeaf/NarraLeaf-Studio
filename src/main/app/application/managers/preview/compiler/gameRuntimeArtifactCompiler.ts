@@ -30,6 +30,7 @@ import {
     restrictCharacterUnits,
     restrictRecordToAssetIds,
 } from "@shared/build/variantPayload";
+import { collectAssetSetIds, type ShippedAssetSetTable } from "@shared/build/assetSetTable";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { readProjectIconSet, resolveIconFile, resolveIconSource } from "@shared/types/projectIcons";
@@ -940,6 +941,10 @@ async function planShippedAssets(
     const cast = planShippedCharacters(bundle, pluginData, onNotice);
     const assetNames = cast.bundle.storyLibrary?.assetNames ?? {};
     const clips = cast.bundle.audio?.clips ?? {};
+    // Narrowed BEFORE the asset sweep, not after: an entry for a set only a dropped character named
+    // would otherwise keep that set's files in the package by naming their ids. Held out of its own
+    // scan for the reason the cast list is - it lists every set it holds by construction.
+    const assetSets = shippedAssetSetTable(cast.bundle);
     const swept = {
         bundle: {
             ...cast.bundle,
@@ -947,6 +952,7 @@ async function planShippedAssets(
                 ? { storyLibrary: { ...cast.bundle.storyLibrary, assetNames: {} } }
                 : {}),
             ...(cast.bundle.audio ? { audio: { ...cast.bundle.audio, clips: {} } } : {}),
+            ...(cast.bundle.assetSets ? { assetSets } : {}),
         },
         pluginData,
     };
@@ -954,6 +960,7 @@ async function planShippedAssets(
     return {
         bundle: {
             ...cast.bundle,
+            ...(cast.bundle.assetSets ? { assetSets } : {}),
             ...(cast.bundle.storyLibrary
                 ? {
                     storyLibrary: {
@@ -970,6 +977,28 @@ async function planShippedAssets(
         characterIds: cast.characterIds,
         removedAssetCount: libraryAssetIds.size - include.size,
     };
+}
+
+/**
+ * The set answers this edition still needs.
+ *
+ * An entry is worth carrying only while something in the package names its set. A character dropped
+ * with its chapter takes its set references with it, and an entry left behind would keep that set's
+ * files in the package - the id is in the table, and the table is in the bytes the sweep reads.
+ *
+ * Scanned against the bundle WITHOUT the table, since a table lists the very ids being looked for.
+ */
+function shippedAssetSetTable(bundle: DevModeBundle): ShippedAssetSetTable | undefined {
+    const table = bundle.assetSets;
+    if (!table || Object.keys(table).length === 0) {
+        return undefined;
+    }
+    const named = collectAssetSetIds({ ...bundle, assetSets: undefined }, Object.keys(table));
+    const kept: ShippedAssetSetTable = {};
+    for (const setId of named) {
+        kept[setId] = table[setId];
+    }
+    return Object.keys(kept).length > 0 ? kept : undefined;
 }
 
 /**
