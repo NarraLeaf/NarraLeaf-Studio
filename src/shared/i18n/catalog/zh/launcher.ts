@@ -145,10 +145,10 @@ export const launcher = {
         forget: {
             action: "从这台服务器移除",
             title: "从这台服务器移除",
-            message: "{name} 将不再出现在 {server} 的项目列表中。移除只是把它从那份列表里拿掉，不会删除任何东西",
+            message: "{name} 将不再出现在 {server} 的项目列表中。仓库及其中的所有版本仍保留在服务器上。",
             confirm: "移除",
             cancel: "取消",
-            failed: "项目未能移除",
+            failed: "项目未能移除。",
         },
         // 这台服务器上还有谁。账号地址随列表一起读取，但只在读者打开某个成员时才显示。
         people: {
