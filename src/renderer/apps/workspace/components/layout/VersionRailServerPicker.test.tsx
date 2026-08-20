@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VcsServerSession } from "@shared/types/vcs";
-import { ServerPickerDialog } from "./VersionRail";
+import { ServerPickerDialog, ServerSection } from "./VersionRail";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 
 /**
@@ -14,6 +14,12 @@ import type { VersionSurface } from "../../hooks/useVersionSurface";
  * below, because each of them reads as a convenience while it is being written: an address
  * being preselected for a project that has no server, the add row drifting away from the list
  * it belongs to, and pressing it leaving this dialog up over a list it will not re-read.
+ *
+ * The rail section that reaches this dialog is pinned in the same file, for the same reason: the
+ * two are one decision about how much weight a once-a-year act is given, and the drift is always
+ * in the direction of giving it more. So the suite below holds the shape - Send and Get a press
+ * away, everything rare behind the menu, and the server line reading as a line rather than as the
+ * button that covers the rail.
  */
 
 vi.mock("@/lib/i18n", async importOriginal => ({
@@ -70,6 +76,42 @@ function picker(remote: string | null) {
     } as unknown as VersionSurface;
     render(<ServerPickerDialog surface={surface} isOpen onClose={onClose} />);
     return { onClose, surface };
+}
+
+/** The rail's server section, for a project already pointed at one. */
+function section(overrides: Partial<VersionSurface> = {}) {
+    const surface = {
+        authorName: "Ada Blackwood",
+        busy: null,
+        failure: null,
+        remote: `${ONE}/my-game`,
+        remoteNeedsSignIn: false,
+        syncState: null,
+        serverSession: null,
+        signIn: null,
+        merge: null,
+        checkRemote: vi.fn(),
+        setRemote: vi.fn(() => Promise.resolve(true)),
+        pushToRemote: vi.fn(() => Promise.resolve(true)),
+        syncFromRemote: vi.fn(() => Promise.resolve(true)),
+        signOutOfServer: vi.fn(() => Promise.resolve()),
+        ...overrides,
+    } as unknown as VersionSurface;
+    render(<ServerSection surface={surface} />);
+    return surface;
+}
+
+function seam(name: string): HTMLElement {
+    const node = document.querySelector<HTMLElement>(`[data-vcs-seam='${name}']`);
+    if (node === null) throw new Error(`no [data-vcs-seam='${name}'] on screen`);
+    return node;
+}
+
+/** What the overflow menu offers, in the order it offers it. Separators read as nothing. */
+function menuRows(): string[] {
+    const menu = document.querySelector("[data-context-menu='true']");
+    if (menu === null) return [];
+    return [...menu.children].map(row => row.textContent ?? "").filter(text => text !== "");
 }
 
 /** The rows, in the order they are drawn, so "at the end of the list" is a real assertion. */
@@ -148,5 +190,111 @@ describe("the server picker", () => {
         // bare server can read or change where its work goes.
         expect(document.querySelector<HTMLInputElement>("input")?.value)
             .toBe("lore://plain.example.lan:41337/my-game");
+    });
+});
+
+/**
+ * The rail's server section, and the weights in it.
+ *
+ * Send and Get are pressed every working day; choosing a server is decided about once per project.
+ * The section used to give them the same weight - the host line WAS the control that opened the
+ * change-server dialog, one line above Send - so the whole point of the suite is that the rare acts
+ * stay behind the menu and the daily two stay a press away, at full size, on one row.
+ */
+describe("the rail's server section", () => {
+    it("holds exactly the rare acts in its overflow menu", () => {
+        section();
+
+        expect(menuRows()).toEqual([]);
+        fireEvent.click(seam("server-menu"));
+
+        expect(menuRows()).toEqual([
+            "workspace.shell.versionControl.server.check",
+            "workspace.shell.versionControl.server.change",
+            "workspace.shell.versionControl.server.disconnect",
+        ]);
+    });
+
+    it("keeps sending and getting a press away, at full width, with no menu in between", () => {
+        const surface = section();
+
+        expect(document.querySelector("[data-context-menu='true']")).toBeNull();
+        fireEvent.click(seam("server-push"));
+        fireEvent.click(seam("server-sync"));
+
+        expect(surface.pushToRemote).toHaveBeenCalledTimes(1);
+        expect(surface.syncFromRemote).toHaveBeenCalledTimes(1);
+        // Both on the control scale's `sm` step and sharing the row equally: the menu was added
+        // above them, not squeezed in beside them, and this is what says so.
+        for (const control of [seam("server-push"), seam("server-sync")]) {
+            expect(control.className).toContain("h-7");
+            expect(control.className).toContain("flex-1");
+        }
+    });
+
+    it("names the server rather than reading out its address", () => {
+        section({ serverSession: session(ONE, "ada", "Blackwood Studio") });
+
+        expect(seam("server-name").textContent).toBe("Blackwood Studio");
+        // The address is a hover away and is still what every session and project is keyed on.
+        expect(seam("server-name").getAttribute("data-tip")).toBe(`${ONE}/my-game`);
+    });
+
+    it("falls back to the address for a server that gave no name", () => {
+        section();
+
+        expect(seam("server-name").textContent).toBe("one.example.lan:41337");
+    });
+
+    it("says where things stand beside the name, with the sentence behind it", () => {
+        section({
+            syncState: {
+                remoteAvailable: true,
+                remoteAuthorized: true,
+                remoteBranchExists: true,
+                localAhead: true,
+                remoteAhead: false,
+            },
+        });
+
+        expect(seam("server-state").textContent)
+            .toBe("workspace.shell.versionControl.server.state.localAhead");
+        expect(seam("server-state").getAttribute("data-tip"))
+            .toBe("workspace.shell.versionControl.server.localAhead");
+    });
+
+    it("reaches the change-server dialog from the menu, and from nowhere in front of it", () => {
+        section();
+
+        // The line that names the server is a line. It used to be the button that covered the
+        // rail with this dialog, which is the regression this pins.
+        expect(seam("server-name").tagName).toBe("SPAN");
+        expect(document.querySelector("[data-vcs-seam='server-picker']")).toBeNull();
+
+        fireEvent.click(seam("server-menu"));
+        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
+            .find(row => row.textContent === "workspace.shell.versionControl.server.change")!);
+
+        expect(document.querySelector("[data-vcs-seam='server-picker']")).not.toBeNull();
+    });
+
+    it("asks the server where things stand from the menu", () => {
+        const surface = section();
+
+        fireEvent.click(seam("server-menu"));
+        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
+            .find(row => row.textContent === "workspace.shell.versionControl.server.check")!);
+
+        expect(surface.checkRemote).toHaveBeenCalledTimes(1);
+    });
+
+    it("disconnects from the menu", () => {
+        const surface = section();
+
+        fireEvent.click(seam("server-menu"));
+        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
+            .find(row => row.textContent === "workspace.shell.versionControl.server.disconnect")!);
+
+        expect(surface.setRemote).toHaveBeenCalledWith(null);
     });
 });

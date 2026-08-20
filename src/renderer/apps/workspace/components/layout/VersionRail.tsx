@@ -9,6 +9,7 @@ import {
     ChevronsLeft,
     Clock,
     Copy,
+    Ellipsis,
     FileMinus,
     FilePen,
     FilePlus,
@@ -39,7 +40,8 @@ import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { IconButton } from "@/lib/components/elements/Button";
-import { ServerRow, serverHost, useServers } from "@/lib/vcs/servers";
+import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ServerRow, serverDisplayName, serverHost, useServers } from "@/lib/vcs/servers";
 import { getInterface } from "@/lib/app/bridge";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { useWorkspace } from "../../context";
@@ -1294,6 +1296,10 @@ function describeReach(reach: VcsServerReach): TranslationKey {
  * in front of it asks nobody who they are, so there is no account to add and nothing to
  * put in that list. It sits below the add row rather than beside the list, because a
  * project that reaches one is the exception and typing an address is not the way in.
+ *
+ * **Reached from "Change server" in the rail's overflow menu, and from nowhere else.** It
+ * covers the rail with a question about where the work goes, which is decided about once
+ * per project - so it is not a press away from Send.
  */
 export function ServerPickerDialog({ surface, isOpen, onClose }: {
     surface: VersionSurface;
@@ -1510,10 +1516,34 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
     );
 }
 
-function ServerSection({ surface }: { surface: VersionSurface }) {
+/**
+ * The server this project synchronises with: which one it is, where that stands, and the two
+ * controls that move versions between here and there.
+ *
+ * **Send and Get are the section, and nothing beside them is a control of the same weight.**
+ * They are pressed every working day; which server the work goes to is settled once and then
+ * not thought about again for a year. This section used to make those the same size: the host
+ * line WAS the button that opened the change-server dialog, one line above Send, so the rarest
+ * act in the feature was the easiest thing in the panel to hit - and hitting it covered the rail
+ * with a dialog about where the work is sent. Everything decided that rarely is behind the `…`
+ * menu now: checking, changing the server, disconnecting.
+ *
+ * **The line says the server's NAME**, from the session it was added under, and falls back to its
+ * address only where it gave none. The address is still one hover away and still what the picker
+ * matches on - a name is a label a deployment can change, and nothing is keyed on it.
+ *
+ * **Nothing here contacts the server until the author asks.** Whether a server is CONFIGURED is a
+ * local read and is known on open; whether it ANSWERS costs up to two seconds against a host that
+ * is not there (measured), so the section opens on "not checked" and `checkRemote` is the only
+ * thing that reaches out. A row that phoned home on mount would put those two seconds on the path
+ * of opening the panel, and would do it again on every project.
+ */
+export function ServerSection({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
     const { remote, syncState, busy } = surface;
     const [picking, setPicking] = useState(false);
+    /** Where the overflow menu is drawn, or null while it is closed. */
+    const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
     const running = busy !== null;
 
     const open = () => setPicking(true);
@@ -1552,47 +1582,94 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
     }
 
     const face = serverFace(syncState);
+    // The name the server answers to. `serverSession` is null for one that asks nobody who they
+    // are, and that is the single case with no name to read - its address is then all there is to
+    // call it by, which is what `serverDisplayName` falls back to for a session as well.
+    const name = surface.serverSession ? serverDisplayName(surface.serverSession) : serverHost(remote);
+
+    /**
+     * Everything about the server that is not sending or getting.
+     *
+     * Three acts, and between them they are performed a handful of times in a project's life:
+     * asking where things stand, pointing the project elsewhere, and unpointing it. None of them
+     * is worth a control standing beside the two that are pressed daily, and the change-server
+     * one is worth less than none - it covers the rail with a dialog.
+     */
+    const actions: ContextMenuDef = [
+        {
+            id: "check",
+            label: t("workspace.shell.versionControl.server.check"),
+            onClick: surface.checkRemote,
+        },
+        {
+            id: "change",
+            label: t("workspace.shell.versionControl.server.change"),
+            onClick: open,
+        },
+        { id: "disconnect-separator", separator: true as const },
+        {
+            id: "disconnect",
+            label: t("workspace.shell.versionControl.server.disconnect"),
+            onClick: () => void surface.setRemote(null),
+        },
+    ];
 
     return (
         <div data-vcs-seam="server" data-help-topic="versionServer" className="border-b border-edge px-3 py-2">
             <ServerPickerDialog surface={surface} isOpen={picking} onClose={() => setPicking(false)} />
-            <div className="group/help flex items-center justify-between gap-2">
-                <div className="flex shrink-0 items-center gap-0.5">
-                    <span className="text-2xs tracking-wide text-fg-subtle">
-                        {t("workspace.shell.versionControl.server.title")}
-                    </span>
-                    {/* Sending and getting are the two controls in this rail that reach another
-                        machine, and the difference between them is the question this answers. */}
-                    <HelpTrigger topic="versionServer" className="-my-1 h-5 w-5" />
-                </div>
-                {/* Editing the address is reachable from the host line itself rather than from a
-                    button of its own: it is a once-per-project act, and a 320px row has no space
-                    for a control that is pressed twice a year. */}
-                <button
-                    type="button"
-                    onClick={open}
-                    disabled={running}
-                    data-tip={remote} aria-label={remote}
-                    className="min-w-0 truncate text-2xs text-fg-muted transition-colors cursor-default hover:text-fg disabled:opacity-50"
+            {menu && (
+                <ContextMenu items={actions} position={menu} onClose={() => setMenu(null)} />
+            )}
+            {/* One line for the whole question "where does this go, and how does it stand" - name,
+                state, and the way to everything rare. It is a line rather than two because the two
+                controls below it are what this section is for, and every row above them pushes
+                them further from the eye. */}
+            <div className="group/help flex items-center gap-1.5">
+                {/* Shrinkable but not growable, so the `?` stays against the name it belongs to
+                    rather than floating off beside the state; the state is what `ml-auto` holds
+                    against the far edge. A name longer than the column truncates and keeps its
+                    address on hover. */}
+                <span
+                    data-vcs-seam="server-name"
+                    data-tip={remote}
+                    className="min-w-0 truncate text-2xs text-fg"
                 >
-                    {serverHost(remote)}
-                </button>
-            </div>
-
-            <div className="mt-1 flex items-center gap-1.5">
-                <span className={cn("text-2xs", face.tone)}>{t(face.key)}</span>
-                <button
-                    type="button"
-                    onClick={surface.checkRemote}
-                    disabled={running}
-                    data-tip={t("workspace.shell.versionControl.server.check")}
-                    aria-label={t("workspace.shell.versionControl.server.check")}
-                    className="ml-auto flex h-5 w-5 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+                    {name}
+                </span>
+                {/* Sending and getting are the two controls in this rail that reach another
+                    machine, and the difference between them is the question this answers. */}
+                <HelpTrigger topic="versionServer" className="-my-1 h-5 w-5" />
+                {/* The short form, with the sentence it stands for on hover: seven states whose
+                    remedies all differ, in a column with room for two words. */}
+                <span
+                    data-vcs-seam="server-state"
+                    data-tip={t(face.detail)}
+                    className={cn("ml-auto shrink-0 text-2xs", face.tone)}
                 >
+                    {t(face.key)}
+                </span>
+                <IconButton
+                    size="sm"
+                    variant="ghost"
+                    onClick={event => {
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        setMenu({ x: rect.left, y: rect.bottom + 4 });
+                    }}
+                    disabled={running}
+                    aria-haspopup="menu"
+                    aria-expanded={menu !== null}
+                    data-vcs-seam="server-menu"
+                    data-tip={t("workspace.shell.versionControl.server.more")}
+                    aria-label={t("workspace.shell.versionControl.server.more")}
+                    className="-my-1 shrink-0 text-fg-subtle"
+                >
+                    {/* The spinner lives here now that checking is a row of this menu: the check is
+                        the one thing in it that takes seconds, and the control it was started from
+                        is the only place an author is looking when it does. */}
                     {busy === "remote"
                         ? <Loader2 className="h-3 w-3 animate-spin" />
-                        : <RefreshCw className="h-3 w-3" />}
-                </button>
+                        : <Ellipsis className="h-3.5 w-3.5" />}
+                </IconButton>
             </div>
 
             <SignInSection surface={surface} />
@@ -1618,12 +1695,17 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                 never press it - so a Send button that only appeared when a stale snapshot said
                 "ahead" would be a button that vanished exactly when it was needed. The backend is
                 the authority on whether either is possible, and it refuses with a sentence that
-                names the remedy. */}
+                names the remedy.
+
+                They are the only controls in this section that are a press away, they share the
+                width equally, and they stay on the `sm` step of the control scale. Anything that
+                would make them narrower or shorter belongs in the menu above instead. */}
             <div className="mt-2 flex items-center gap-1.5">
                 <button
                     type="button"
                     onClick={() => void surface.pushToRemote()}
                     disabled={running}
+                    data-vcs-seam="server-push"
                     className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-edge px-2 text-2xs text-fg transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                 >
                     {busy === "push"
@@ -1635,6 +1717,7 @@ function ServerSection({ surface }: { surface: VersionSurface }) {
                     type="button"
                     onClick={() => void surface.syncFromRemote()}
                     disabled={running}
+                    data-vcs-seam="server-sync"
                     className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-edge px-2 text-2xs text-fg transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                 >
                     {busy === "sync"
@@ -1703,37 +1786,63 @@ function MergeSection({ surface }: { surface: VersionSurface }) {
 }
 
 /**
- * What the last check said, as one line.
+ * The seven answers the last check can have given.
  *
- * Six states and they are NOT collapsible into "ok / not ok": the remedy differs for every one of
- * them. Unreachable is the author's network, unauthorized is their credentials, diverged needs a
- * sync before a push will work, and "not checked" is the honest answer to a question nobody has
- * asked - which is where this section spends most of its life, because checking costs two seconds
- * and never happens on its own.
+ * They are NOT collapsible into "ok / not ok": the remedy differs for every one of them.
+ * Unreachable is the author's network, unauthorized is their credentials, diverged needs a sync
+ * before a push will work, and "not checked" is the honest answer to a question nobody has asked -
+ * which is where this section spends most of its life, because checking costs two seconds and
+ * never happens on its own.
+ */
+type ServerFaceState =
+    | "notChecked"
+    | "unreachable"
+    | "unauthorized"
+    | "diverged"
+    | "localAhead"
+    | "remoteAhead"
+    | "upToDate";
+
+const SERVER_FACE_TONE: Record<ServerFaceState, string> = {
+    notChecked: "text-fg-subtle",
+    unreachable: "text-danger",
+    unauthorized: "text-danger",
+    diverged: "text-warning",
+    localAhead: "text-fg-muted",
+    remoteAhead: "text-fg-muted",
+    upToDate: "text-success",
+};
+
+/**
+ * Which of them the last check came to.
  *
  * Ordered by which fact dominates: a server that cannot be reached has no opinion about whether
  * anyone is ahead, and one that refuses us cannot be trusted about that either.
  */
-function serverFace(sync: VcsSyncState | null): { key: TranslationKey; tone: string } {
-    if (sync === null) {
-        return { key: "workspace.shell.versionControl.server.notChecked", tone: "text-fg-subtle" };
-    }
-    if (!sync.remoteAvailable) {
-        return { key: "workspace.shell.versionControl.server.unreachable", tone: "text-danger" };
-    }
-    if (!sync.remoteAuthorized) {
-        return { key: "workspace.shell.versionControl.server.unauthorized", tone: "text-danger" };
-    }
-    if (sync.localAhead && sync.remoteAhead) {
-        return { key: "workspace.shell.versionControl.server.diverged", tone: "text-warning" };
-    }
-    if (sync.localAhead) {
-        return { key: "workspace.shell.versionControl.server.localAhead", tone: "text-fg-muted" };
-    }
-    if (sync.remoteAhead) {
-        return { key: "workspace.shell.versionControl.server.remoteAhead", tone: "text-fg-muted" };
-    }
-    return { key: "workspace.shell.versionControl.server.upToDate", tone: "text-success" };
+function serverFaceState(sync: VcsSyncState | null): ServerFaceState {
+    if (sync === null) return "notChecked";
+    if (!sync.remoteAvailable) return "unreachable";
+    if (!sync.remoteAuthorized) return "unauthorized";
+    if (sync.localAhead && sync.remoteAhead) return "diverged";
+    if (sync.localAhead) return "localAhead";
+    if (sync.remoteAhead) return "remoteAhead";
+    return "upToDate";
+}
+
+/**
+ * What the last check said, in two lengths.
+ *
+ * `key` is what the line reads at a glance and `detail` is the sentence behind it on hover. Both
+ * are built from one state name rather than listed twice, so a state cannot come to show one
+ * state's word over another state's explanation.
+ */
+function serverFace(sync: VcsSyncState | null): { key: TranslationKey; detail: TranslationKey; tone: string } {
+    const state = serverFaceState(sync);
+    return {
+        key: `workspace.shell.versionControl.server.state.${state}` as TranslationKey,
+        detail: `workspace.shell.versionControl.server.${state}` as TranslationKey,
+        tone: SERVER_FACE_TONE[state],
+    };
 }
 
 /**
