@@ -2,6 +2,9 @@
 export const launcher = {
     nav: {
         projects: "Projects",
+        // Between Projects and Plugins because it answers the other half of the same
+        // question: Projects is what this machine has, Servers is what it could have.
+        servers: "Servers",
         plugins: "Plugins",
         learning: "Learning",
         settings: "Settings",
@@ -65,6 +68,47 @@ export const launcher = {
             relocate: "Locate…",
             remove: "Remove from list",
             errorNotAProject: "That folder is not a NarraLeaf project.",
+        },
+    },
+    // The Servers tab. It lists what exists on the servers this installation is signed in to;
+    // what is already on this disk is the Projects tab's answer and is not repeated here.
+    servers: {
+        // Adding a server signs the whole installation in, so it happens in Settings and this
+        // tab points at it - from the end of the list, and from the empty state.
+        manage: "Manage servers",
+        empty: {
+            title: "No servers",
+            description: "Projects on a server appear here.",
+            action: "Add a server",
+        },
+        // Which server is being read, when there is more than one to read.
+        choose: "Select a server.",
+        signedInAs: "Signed in as {name}",
+        newProject: "New Project",
+        loading: "Reading the project list",
+        noProjects: "This server holds no projects.",
+        // One action per row, and only one: the project is either already on this disk or it
+        // is not. "Get" rather than "Clone" - the wizard behind it asks where the copy lands.
+        open: "Open",
+        get: "Get",
+        // Only ever drawn when the server named a time. A server that has not read the
+        // repository says nothing about it, and nothing is what this reads back.
+        lastVersion: "Last version {date}",
+        lastVersionBy: "Last version {date} by {name}",
+        problem: {
+            noToken: "This server cannot be asked from this installation. Add it again with its token.",
+            refused: "This server refused the account signed in here.",
+            unreachable: "This server did not answer.",
+            unknown: "This server could not be read.",
+        },
+        create: {
+            title: "New project on {server}",
+            name: "Name",
+            description: "Description",
+            descriptionOptional: "Optional",
+            submit: "Create",
+            cancel: "Cancel",
+            failed: "The project was not created.",
         },
     },
     // Plural example - read with translator.tn("launcher.recentCount", count).

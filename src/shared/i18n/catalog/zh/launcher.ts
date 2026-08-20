@@ -3,6 +3,9 @@ import type { LocaleNamespace } from "../types";
 export const launcher = {
     nav: {
         projects: "项目",
+        // 排在「项目」和「插件」之间：它回答的是同一个问题的另一半。「项目」是这台机器上已有的，
+        // 「服务器」是这台机器可以取到的。
+        servers: "服务器",
         plugins: "插件",
         learning: "学习",
         settings: "设置",
@@ -56,6 +59,45 @@ export const launcher = {
             relocate: "重新定位…",
             remove: "从列表移除",
             errorNotAProject: "所选文件夹不是 NarraLeaf 项目",
+        },
+    },
+    // 「服务器」标签页。它列的是已登录服务器上有什么；这台机器上已有的由「项目」标签页回答，
+    // 这里不重复。
+    servers: {
+        // 添加服务器登录的是整个安装，所以那件事在设置里做，这里只是指过去：从列表末尾，
+        // 以及从空状态。
+        manage: "管理服务器",
+        empty: {
+            title: "没有服务器",
+            description: "服务器上的项目会显示在这里",
+            action: "添加服务器",
+        },
+        choose: "选择一台服务器",
+        signedInAs: "已登录为 {name}",
+        newProject: "新建项目",
+        loading: "正在读取项目列表",
+        noProjects: "这台服务器上没有项目",
+        // 每行只有一个操作：这个项目要么已经在本机，要么不在。用「获取」而不是「克隆」，
+        // 因为它背后的向导还会问副本放在哪里。
+        open: "打开",
+        get: "获取",
+        // 只有服务器给出了时间才会出现。服务器还没读过仓库时它什么都不说，这里也就什么都不写。
+        lastVersion: "上一个版本 {date}",
+        lastVersionBy: "上一个版本 {date}，由 {name} 记录",
+        problem: {
+            noToken: "本机无法向这台服务器提问，请用令牌重新添加它",
+            refused: "这台服务器拒绝了此处登录的账号",
+            unreachable: "这台服务器没有响应",
+            unknown: "无法读取这台服务器",
+        },
+        create: {
+            title: "在 {server} 上新建项目",
+            name: "名称",
+            description: "说明",
+            descriptionOptional: "可选",
+            submit: "创建",
+            cancel: "取消",
+            failed: "项目未能创建",
         },
     },
     // 中文只有一种复数形式，只需给出 other。
