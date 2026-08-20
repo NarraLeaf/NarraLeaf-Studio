@@ -62,6 +62,11 @@ import {
     materializeStoryAssetSets,
     type AssetSetMaterializationProblem,
 } from "@shared/build/assetSetMaterialization";
+import {
+    buildShippedAssetSetTable,
+    type AssetSetTableProblem,
+    type ShippedAssetSetTable,
+} from "@shared/build/assetSetTable";
 import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
@@ -139,6 +144,13 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // their declared fallbacks; before everything else, because what it rewrites is the story the
     // rest of this bundle describes.
     const resolvedStoryLibrary = await materializeAssetSets(context, storyLibrary, localization, variant.name);
+    // The other half: the sets named by content that has no rows to write an answer into. Read after
+    // the story pass so both are resolved against the same library and the same edition, and against
+    // the story library this build actually ships - a character dropped with its chapter names no set.
+    const assetSets = await resolveShippedAssetSets(context, {
+        characters: resolvedStoryLibrary?.characters,
+        ui: { uidoc, uigraphs, localBlueprints, sharedBlueprints },
+    }, localization, variant.name);
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
@@ -164,6 +176,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         },
         storyLibrary: resolvedStoryLibrary,
         localization,
+        ...(assetSets ? { assetSets } : {}),
         voice,
         audio,
         autoSave,
@@ -636,6 +649,74 @@ async function materializeAssetSets(
         context.onAssetSetCollapse?.();
     }
     return { ...storyLibrary, documents: result.documents };
+}
+
+/**
+ * Resolve the sets named by everything that is not a story, and refuse to package one that cannot be.
+ *
+ * The same rule as the story pass in every respect that matters - resolved against the same library
+ * and the same edition, refused on a build, reported as a notice in Dev Mode - and different in the
+ * one respect the content forces: there is no row to write the answer into, so the answers travel as
+ * a table. See `@shared/build/assetSetTable`.
+ *
+ * A character or a widget naming a set is the whole reason this exists; a project that names none
+ * gets no table and nothing changes for it.
+ */
+async function resolveShippedAssetSets(
+    context: DevModeBundleLoadContext,
+    payloads: { characters: unknown; ui: unknown },
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+): Promise<ShippedAssetSetTable | undefined> {
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return undefined;
+    }
+    const result = buildShippedAssetSetTable({
+        payloads: [
+            { slice: "characters", payload: payloads.characters },
+            { slice: "the interface", payload: payloads.ui },
+        ],
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+        assetAxes: context.assetAxes,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeShippedAssetSetProblem(problem, variantName);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        context.onAssetSetCollapse?.();
+    }
+    return Object.keys(result.table).length > 0 ? result.table : undefined;
+}
+
+/**
+ * The same sentence the story faults get, with the part of the project in place of the scene.
+ *
+ * The set's name is what the author acts on either way; what changes is where to go and look, and
+ * "in the interface" is as precise as a scan of the document can honestly be.
+ */
+function describeShippedAssetSetProblem(problem: AssetSetTableProblem, variantName: string): string {
+    const set = `Asset set "${problem.setName}", used in ${problem.slice}`;
+    if (problem.kind === "ambiguous") {
+        return `${set}, has more than one asset for ${problem.axisKey} ${problem.value}.`;
+    }
+    if (problem.kind === "unsupported") {
+        const reason = problem.reason === "multipleAxes"
+            ? "has more than one axis, which this build cannot resolve yet"
+            : "declares no axis to resolve";
+        return `${set}, ${reason}.`;
+    }
+    if (problem.kind === "axisUnset") {
+        return `${set}, resolves ${problem.axisKey} when the game is built, and "${variantName}" does not say which ${problem.axisKey} it is.`;
+    }
+    const coordinate = problem.value ? `${problem.axisKey} ${problem.value}` : "the project's language";
+    return `${set}, has no asset for ${coordinate}.`;
 }
 
 /**

@@ -271,6 +271,49 @@ function expandReferencedAsset(assetId: string, expand?: AssetSetExpander): read
     return members ? members : [assetId];
 }
 
+/**
+ * Split a slice's references into "what this uses" and "what named a set".
+ *
+ * The story scan does this as it walks, because it is building both lists from one pass over a
+ * document it is already inside. Every other slice produces its references first and asks afterwards,
+ * which is the same answer arrived at from the other end: a reference whose id is a set stands for
+ * one reference per member, and the site itself is recorded so removing the set can name it.
+ *
+ * Applied per slice rather than once over the whole index, because the two lists are stored per
+ * slice and rebuilt per slice - a slice that re-reads has to replace both of its own halves.
+ *
+ * Without this, a set id in a character or a widget reaches the index as an ordinary asset id, and
+ * `assets/missing` - an error, which refuses the build - reports it as a reference to a file that
+ * does not exist. That is the whole reason a set is usable in those fields at all.
+ */
+export function splitAssetSetReferences(
+    references: readonly AssetReference[],
+    expand?: AssetSetExpander,
+): { references: AssetReference[]; setReferences: AssetReference[] } {
+    if (!expand) {
+        return { references: [...references], setReferences: [] };
+    }
+    const out: AssetReference[] = [];
+    const setReferences: AssetReference[] = [];
+    for (const reference of references) {
+        const members = expand(reference.assetId);
+        if (!members) {
+            out.push(reference);
+            continue;
+        }
+        // Recorded whether or not it resolves to anything: a set with no files is exactly the one
+        // whose removal leaves a field naming an id nothing in the project has.
+        setReferences.push(reference);
+        for (const memberId of members) {
+            // The member is in the key for the reason the story scan gives: one field naming a set
+            // uses several assets, and a single key would leave every language after the first
+            // invisible to the index.
+            out.push({ ...reference, id: `${reference.id}:${memberId}`, assetId: memberId });
+        }
+    }
+    return { references: out, setReferences };
+}
+
 /** One story read: what the index answers with, and the sites that named an asset set. */
 export interface StoryAssetReferenceScan {
     references: AssetReference[];

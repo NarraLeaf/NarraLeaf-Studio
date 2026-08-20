@@ -30,7 +30,9 @@ import { useAssetFocus } from "./state/useAssetFocus";
 import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions";
 import { useImportQueue } from "./state/useImportQueue";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
-import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from './AssetsPanelContext';
+import { AssetsPanelContext, type AssetSetRevealState, type AssetsIconViewToolbarCenter } from './AssetsPanelContext';
+import { ASSET_SET_REVEAL_EVENT, consumeAssetSetReveal, type AssetSetRevealRequest } from "./assetSetReveal";
+import { planAssetSetReveal } from "./state/assetSetRevealPlan";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
@@ -55,6 +57,9 @@ export type AssetViewMode = "list" | "icons" | "overview";
 
 /** How many places naming a set are spelled out before the rest are counted. Matches the delete warning. */
 const ASSET_SET_REFERENCE_PREVIEW_LIMIT = 5;
+
+/** How long a jumped-to set's row stays marked. Long enough to find, short enough not to read as state. */
+const ASSET_SET_REVEAL_MARK_MS = 2200;
 
 const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any> }[] = [
     {
@@ -391,6 +396,93 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             .setSelection({ type: "assetSet", data: entry.set });
     }, [context]);
 
+    /* --- Landing a jump on a set ------------------------------------------------------------ */
+
+    /**
+     * The set a jump asked for, held until the library has loaded enough to say where it is.
+     *
+     * The request arrives on mount - revealing a hidden panel is what mounts it - and at that moment
+     * the library is still being read, so nothing can be opened yet.
+     */
+    const [pendingRevealSetId, setPendingRevealSetId] = useState<string | null>(null);
+    const [assetSetReveal, setAssetSetReveal] = useState<AssetSetRevealState | null>(null);
+    const revealNonce = useRef(0);
+
+    useEffect(() => {
+        const requested = consumeAssetSetReveal(panelId);
+        if (requested) {
+            setPendingRevealSetId(requested);
+        }
+        const onRequest = (event: Event) => {
+            const detail = (event as CustomEvent<AssetSetRevealRequest>).detail;
+            if (detail?.panelId !== panelId) {
+                return;
+            }
+            // Spend the slot as well: this panel was already mounted, so the copy left for the next
+            // mount would open folders in a panel the author opens later for something else.
+            consumeAssetSetReveal(panelId);
+            setPendingRevealSetId(detail.setId);
+        };
+        window.addEventListener(ASSET_SET_REVEAL_EVENT, onRequest);
+        return () => window.removeEventListener(ASSET_SET_REVEAL_EVENT, onRequest);
+    }, [panelId]);
+
+    useEffect(() => {
+        if (!pendingRevealSetId || !hasLoaded) {
+            return;
+        }
+        // One attempt, against a loaded library. A set that is not there went away between the click
+        // and this render, and holding the request would open folders under the author later.
+        setPendingRevealSetId(null);
+        const plan = planAssetSetReveal({
+            setId: pendingRevealSetId,
+            placements: resolvedAssetSets,
+            groups: Object.values(groups).flat(),
+        });
+        if (!plan) {
+            return;
+        }
+        setCategoryOpenItems(prev => (prev.includes(plan.category) ? prev : [...prev, plan.category]));
+        setExpandedGroups(prev => {
+            const next = new Set(prev);
+            plan.groupPathIds.forEach(id => next.add(id));
+            return next;
+        });
+        setExpandedAssetSets(prev => {
+            const next = new Set(prev);
+            plan.ancestorSetIds.forEach(id => next.add(id));
+            return next;
+        });
+        // The grid shows one folder at a time, so it has to be standing in the right one. Harmless
+        // while the tree is showing, which reads folders from `expandedGroups` instead.
+        setIconGroupPathIds(plan.groupPathIds);
+        // The overview is the one view with no row to land on. Nothing else about the author's view
+        // is touched - a tree stays a tree, a grid stays a grid.
+        setViewMode(prev => (prev === "overview" ? "list" : prev));
+        const entry = findSet(pendingRevealSetId);
+        if (entry) {
+            handleAssetSetSelect(entry);
+        }
+        revealNonce.current += 1;
+        setAssetSetReveal({
+            setId: pendingRevealSetId,
+            ancestorSetIds: plan.ancestorSetIds,
+            nonce: revealNonce.current,
+        });
+    }, [findSet, groups, handleAssetSetSelect, hasLoaded, pendingRevealSetId, resolvedAssetSets]);
+
+    /**
+     * The mark goes away on its own: it says "here", and a ring that stays says "wrong" - the same
+     * bargain the settings highlight makes.
+     */
+    useEffect(() => {
+        if (!assetSetReveal) {
+            return;
+        }
+        const timer = window.setTimeout(() => setAssetSetReveal(null), ASSET_SET_REVEAL_MARK_MS);
+        return () => window.clearTimeout(timer);
+    }, [assetSetReveal]);
+
     const showAssetSetContextMenu = useCallback((event: React.MouseEvent, entry: ResolvedAssetSet) => {
         event.preventDefault();
         event.stopPropagation();
@@ -628,7 +720,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         }
         const targets: AssetActionTarget[] = assetSetSubtreeAssets(entry)
             .map(asset => ({ isGroup: false, category: entry.category, item: asset }));
-        if (targets.length > 0 && !(await handleDelete(targets))) {
+        if (targets.length > 0
+            && !(await handleDelete(targets, { confirmMessage: t("assets.sets.deleteConfirmMessage") }))) {
             return;
         }
         context.services.get<AssetSetService>(Services.AssetSets).deleteSetSubtree(entry.set.id);
@@ -969,7 +1062,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const contextValue = {
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, draggedAssetSet, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
-        expandedAssetSets, setExpandedAssetSets, assetSetNaming, rootAssetSets, memberAssetIds,
+        expandedAssetSets, setExpandedAssetSets, assetSetReveal, assetSetNaming, rootAssetSets, memberAssetIds,
         handleItemSelect, publishRowOrder, handleAssetClick, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu, showAssetSetValueContextMenu,
         handleDragStart, handleAssetSetDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
