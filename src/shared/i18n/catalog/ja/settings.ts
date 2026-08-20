@@ -353,7 +353,7 @@ export const settings = {
         signingIn: "サインインしています…",
         addressLabel: "サーバーアドレス",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
-        reached: "{name} が {address} で応答した",
+        reached: "{address} のサーバーは {name}",
         tokenLabel: "アクセストークン",
         tokenPlaceholder: "アクセストークンを貼り付ける",
         hint: "アクセストークンはサーバー管理者が発行する",

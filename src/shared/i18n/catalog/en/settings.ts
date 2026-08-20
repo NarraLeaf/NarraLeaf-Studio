@@ -372,7 +372,10 @@ export const settings = {
         // the `lore://` remote, which is stored and never named to anybody.
         addressLabel: "Server address",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
-        reached: "{name} answered at {address}.",
+        // What the address turned out to be, on the step that asks who you are there. It
+        // names the server rather than narrating the request that found it: the reader is
+        // deciding whether this is the one they meant, not reading a log of the attempt.
+        reached: "The server at {address} is {name}.",
         // "Access token" rather than "password": it is not one, and it cannot be chosen,
         // remembered or reset by the person pasting it.
         tokenLabel: "Access token",
