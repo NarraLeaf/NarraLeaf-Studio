@@ -110,6 +110,42 @@ export const launcher = {
             cancel: "Cancel",
             failed: "The project was not created.",
         },
+        // What one project's row opens into. Only reached on a server that offers to say
+        // something about a project beyond listing it.
+        detail: {
+            back: "All projects",
+            loading: "Reading this project",
+            createdBy: "Created by",
+            created: "Created",
+            lastVersion: "Last version",
+            // Only drawn where the server read the project file, so every one of these is
+            // a number it gave rather than one this end worked out.
+            title: "Title",
+            stage: "Stage",
+            scenes: "Scenes",
+            assets: "Assets",
+            // The ordinary answer for a project recorded a moment ago, and the only answer
+            // from a deployment whose reader is not working. It replaces the facts rather
+            // than filling them with zeroes, and it does not repeat what the server said
+            // about it - that sentence is written for whoever runs the server.
+            unread: "The server has not read this project.",
+            versions: "Recent versions",
+            noVersions: "No versions recorded.",
+            olderVersions: "Older versions are not shown.",
+        },
+        // Who else works on this server. The account addresses are read with the list and
+        // shown one at a time, for the member a reader opens.
+        people: {
+            title: "People",
+            loading: "Reading the member list",
+            none: "This server holds no accounts.",
+            // Marks rather than badges: what they say matters on the day it applies and
+            // never otherwise, so they read as words beside a name.
+            operator: "Operator",
+            disabled: "Disabled",
+            serviceAccount: "Service account",
+            noAddress: "No address on this account.",
+        },
     },
     // Plural example - read with translator.tn("launcher.recentCount", count).
     recentCount: {
