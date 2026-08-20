@@ -194,17 +194,7 @@ export type { };
             // skip the only thing worth checking.
             skipLibCheck: false,
             noUnusedLocals: false,
-            // ...which means the engine's declarations are checked here too, and
-            // every module they import has to resolve to something. Two of them do
-            // not on their own, so both stand-ins under ambient/ have to be visible
-            // from this program - howler because it ships no types at all, clsx
-            // because of how narraleaf-react reads the ones it does ship. Each file
-            // says which error it exists for. Without them the step fails on the
-            // engine's declarations rather than on the ones we generate.
-            //
-            // Paths are relative to dist/, where this file is written.
-            typeRoots: ["../../../node_modules/@types", "../ambient"],
-            types: ["node", "howler", "clsx"],
+            types: ["node"],
         },
         files: ["./plugin.d.ts", "./runtime.d.ts", "./__verify.ts"],
     }, null, 2));
