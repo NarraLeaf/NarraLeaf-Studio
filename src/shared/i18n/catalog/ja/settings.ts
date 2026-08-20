@@ -356,6 +356,12 @@ export const settings = {
         tokenPlaceholder: "アクセストークンを貼り付ける",
         hint: "アクセストークンはサーバー管理者が発行する",
         noAccount: "{name} は誰にも身元を尋ねないため、サーバーは追加されない",
+        joined: {
+            signedInAs: "{name} としてサインインしている",
+            projects: {
+                other: "プロジェクト {count} 件",
+            },
+        },
         probe: {
             unreachable: "そのアドレスから応答がない",
             notAServer: "そのアドレスからの応答は NarraLeaf Team サーバーのものではない",
