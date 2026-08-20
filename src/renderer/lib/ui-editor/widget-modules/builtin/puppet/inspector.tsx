@@ -7,6 +7,7 @@ import type { ColorValue, CustomFieldProps } from "@/apps/workspace/modules/prop
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -104,12 +105,15 @@ function PuppetModelField(props: CustomFieldProps<UIInspectorData>) {
         [context],
     );
 
+    // See the video inspector: asset records are mutated in place, so the revision is the only thing
+    // that tells this memo the model was renamed or removed.
+    const assetLibraryRevision = useAssetLibraryRevision();
     const assetName = useMemo(() => {
         if (!current.assetId || !assetsService) {
             return null;
         }
         return assetsService.getAssets()[AssetType.Model]?.[current.assetId]?.name ?? null;
-    }, [current.assetId, assetsService]);
+    }, [current.assetId, assetLibraryRevision, assetsService]);
 
     // An id with no library record is a broken reference, not an empty slot - saying "None" there
     // would hide the very thing `resourceDiagnostics` is warning about.

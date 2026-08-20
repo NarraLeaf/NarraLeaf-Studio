@@ -415,7 +415,7 @@ export function SettingsApp() {
     }, [applyHighlight]);
 
     return (
-        <AppLayout title={t("settings.title")} iconSrc="/favicon.ico">
+        <AppLayout title={t("settings.title")}>
             <div
                 className="flex h-full overflow-hidden rounded-md border border-edge bg-surface shadow-xl"
                 data-help-topic="studioSettings"

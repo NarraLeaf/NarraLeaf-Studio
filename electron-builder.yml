@@ -86,6 +86,36 @@ files:
       - '**/*'
 extraMetadata:
   main: dist/main/index.js
+# The two file types Studio owns, and the only two paths a launch from outside will act on
+# (`src/main/app/application/launchOpenRequest.ts` has to agree with this list - it decides what a
+# double-clicked path means, and a type registered here but unrecognised there would open Studio
+# and then do nothing).
+#
+#   - `.nlproj` is a project's config file, so double-clicking one opens the FOLDER it sits in.
+#   - `.nlspkg` is an exported project, which is not a project until it has been unpacked; it opens
+#     the import wizard with the package already chosen.
+#
+# A second double-click reaches the Studio that is already running rather than starting a rival one
+# (`app.acquireSingleInstanceLock` + the `second-instance` handler in src/main/index.ts). That is
+# packaged-only by design: development restarts the main process on every rebuild, and a new
+# instance racing the old one out the door would lose the lock and quit.
+#
+# The icon is the app's own. electron-builder appends the extension the platform needs (.ico on
+# Windows, .icns on macOS), so the name is given without one; a document icon distinct from the app
+# icon would be better and is not worth blocking this on.
+fileAssociations:
+  - ext: nlproj
+    name: NarraLeaf Studio Project
+    description: NarraLeaf Studio Project
+    mimeType: application/x-narraleaf-project
+    icon: resources/app-icon
+    role: Editor
+  - ext: nlspkg
+    name: NarraLeaf Studio Project Package
+    description: NarraLeaf Studio Project Package
+    mimeType: application/x-narraleaf-project-package
+    icon: resources/app-icon
+    role: Editor
 
 asar: true
 # The in-app game build worker runs electron-builder with Electron's asar fs
@@ -318,9 +348,17 @@ nsis:
   # Overrides the global name above only to keep the word the Windows convention expects; the
   # no-spaces rule is the same and the reason for it is written there.
   artifactName: NarraLeaf-Studio-Setup-${version}-${arch}.${ext}
-  # The wizard. `allowToChangeInstallationDirectory` has no effect without it.
+  # The wizard.
   oneClick: false
-  allowToChangeInstallationDirectory: true
+  # Off because the folder is chosen in the installer's own UI, which calls the same shell dialog
+  # from the page that shows the path (project/installer/installer.nsh). Leaving it on would put
+  # the template's own MUI_PAGE_DIRECTORY in the flow as well, and there is no hook to suppress it:
+  # the template attaches its own PRE to that page, and a page can only be dropped from its PRE.
+  #
+  # Nothing is lost on the fallback path. installer.nsh declares a welcome page and a directory page
+  # of its own, guarded to draw only when the custom UI is not in charge - so a machine with no
+  # WebView2 runtime still gets asked before anything is installed.
+  allowToChangeInstallationDirectory: false
   # Per-user by default, with the "anyone who uses this computer" option still on the install-mode
   # page (allowElevation). This is the choice that decides what updating feels like: a per-user
   # install updates silently, while an all-users one needs elevation on every update, which the
@@ -335,12 +373,22 @@ nsis:
   # took them would be taking the user's work. Explicit because it is worth being sure about.
   deleteAppDataOnUninstall: false
   # Studio itself ships in English and Chinese, so its installer does too rather than defaulting
-  # to whatever NSIS picks. The selector appears before the first page.
+  # to whatever NSIS picks.
   multiLanguageInstaller: true
-  displayLanguageSelector: true
+  # No selector. It is a Win32 dialog that opens before the installer's own window, so with the
+  # custom UI it would be the first thing seen and the only thing that does not belong; and asking
+  # which of two languages to read a five-line installer in is a question worth answering from the
+  # OS setting instead. NSIS matches $LANGUAGE against the two below and falls back to the first.
+  #
+  # The document carries both languages and is told which to use (installer.nsh, nlPushInit).
+  displayLanguageSelector: false
+  # Studio's three (src/shared/i18n/locales.ts). This list governs what *NSIS* says - the fallback
+  # wizard and any message box - and is fixed for a run; the installer's own document carries all
+  # three and can be re-pointed from the picker in its corner while it is open.
   installerLanguages:
     - en_US
     - zh_CN
+    - ja_JP
   # Resolved against directories.buildResources. Baked from the app icon by
   # `node project/build/prepare-installer-bitmaps.js`; see that script for why they are 2x.
   installerHeader: header.bmp

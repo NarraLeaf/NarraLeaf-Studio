@@ -21,6 +21,7 @@ const CONTEXT: StoryCommandContext = {
     images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
+    assetSets: [],
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
     tempSpeakers: [],
     scenes: [{ id: "s1", name: "Chapter 2" }],
@@ -58,7 +59,7 @@ const SCENE: StoryScene = {
             payload: { scope: "scene", name: "gold", valueType: "number", defaultValue: 10, storageKey: "var_gold" },
         },
     },
-    rootIds: ["var_gold"],
+    rootBlockIds: ["var_gold"],
 } as unknown as StoryScene;
 
 const LOOKUPS: StoryCommandLineLookups = {
@@ -75,20 +76,26 @@ const LOOKUPS: StoryCommandLineLookups = {
 let nextId = 0;
 const generateId = () => `id_${nextId++}`;
 
-/** Parse → resolve → build, the exact path Enter takes. Throws if the line would not commit. */
-function build(source: string): StoryBlock {
+/**
+ * Parse → resolve → build, the exact path Enter takes. Throws if the line would not commit.
+ *
+ * The context is a parameter so a describe with its own scene can build rows that resolve against
+ * IT — a reference is only as good as the declarations it was resolved against, and a row built
+ * against the fixture above would carry none of the anchors the one below is about.
+ */
+function build(source: string, context: StoryCommandContext = CONTEXT): StoryBlock {
     const line = parseCommandLine(source);
     if (line.kind !== "command" || !line.def) {
         throw new Error(`not a command: ${source}`);
     }
     expect(line.issues, source).toEqual([]);
-    const { args, issues } = resolveCommandLine(line, CONTEXT);
+    const { args, issues } = resolveCommandLine(line, context);
     expect(issues, source).toEqual([]);
     const spec = getCommandSpec(line.def.commandId);
     if (!spec?.build) {
         throw new Error(`no build on ${line.def.commandId}`);
     }
-    return spec.build(args, { generateId, context: CONTEXT });
+    return spec.build(args, { generateId, context });
 }
 
 /**
@@ -136,6 +143,22 @@ describe("projectStoryCommandLine", () => {
         expect(project("/show Alice pos=left d=0.3")).toBe("/show Alice pos=left d=0.3s");
         expect(project("/wait 1.5")).toBe("/wait 1.5s");
         expect(project("/wait click")).toBe("/wait click");
+    });
+
+    it("keeps the loop flag on the row, because it is what the row IS", () => {
+        // A `loop` row does not hold the scene up, and the only thing that says so on the line is
+        // the word - so it prints next to the subject rather than being inferred from the payload.
+        // Spelled out as `loop=true`, which is what a bare flag reads back as everywhere: the row is
+        // the full spelling of a line the author may have typed short (`/bgm theme loop` too).
+        expect(project("/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror"))
+            .toBe("/transform hero loop=true scaleY=1.02 d=0.9s repeatType=mirror");
+        // The way back, and nothing else: a `stopLoop` row holds no bag to print.
+        expect(project("/transform hero stopLoop d=0.3")).toBe("/transform hero stopLoop=true d=0.3s");
+        // Both round-trip: the line the row prints builds the row again.
+        expect(build(project("/transform hero loop zoom=1.1 d=0.5")).payload)
+            .toEqual(build("/transform hero loop zoom=1.1 d=0.5").payload);
+        expect(build(project("/transform hero stopLoop d=0.3")).payload)
+            .toEqual(build("/transform hero stopLoop d=0.3").payload);
     });
 
     it("says it in the command language, keys and values and all", () => {
@@ -499,7 +522,10 @@ describe("projectStoryCommandLine", () => {
             "/video intro name=cutscene muted",
             "/play clip",
             "/layer overlay z=10",
-            "/vfx intro name=petals opacity=0.5 d=0.8",
+            "/vfx intro name=petals opacity=0.5",
+            // A weather seed: the word IS the source, so the line has to print it.
+            "/vfx snow",
+            "/vfx rain name=storm opacity=0.7",
             "/transform camera zoom=2",
             "/transform camera pan=left",
             "/transform camera rot=15 d=0.5",
@@ -581,7 +607,7 @@ describe("projectStoryCommandLine — after a rename", () => {
     const DECLARED_SCENE = {
         id: "s1",
         name: "Chapter 2",
-        rootIds: ["d_img", "d_snd"],
+        rootBlockIds: ["d_img", "d_snd"],
         blocks: {
             d_img: {
                 id: "d_img", parentId: null, childrenIds: [], kind: "action",
@@ -671,5 +697,255 @@ describe("projectStoryCommandLine — after a rename", () => {
         const edit = line.edits.find(entry => entry.value === "bg");
         expect(edit, "the subject is offered as a choice").toBeDefined();
         expect(edit!.apply("hero")).toMatchObject({ objectName: "hero", target: { kind: "image", name: "hero", label: "hero" } });
+    });
+});
+
+/**
+ * What a word on the line POINTS AT — the third string the projection records beside its edits and
+ * its faces.
+ *
+ * Its own describe because the whole subject is references, and a reference needs a scene with
+ * declarations in it: the fixture at the top of this file deliberately has none, which is exactly the
+ * state in which nothing may link. Both halves are asserted here — that a resolvable name yields a
+ * link over the right stretch of the line, and that an unresolvable one yields none at all. The
+ * second is the one worth the words: the line already prints an unresolvable reference as something
+ * readable, so a link offered on one of those would look correct and open the wrong thing.
+ */
+describe("projectStoryCommandLine — what a word points at", () => {
+    /** A scene that DECLARES one of everything, so every kind of reference has something to resolve to. */
+    const LINK_SCENE = {
+        id: "s1",
+        name: "Chapter 2",
+        rootBlockIds: ["d_char", "d_img", "d_text", "d_layer", "d_video", "d_snd", "d_vfx", "l_intro", "var_gold"],
+        blocks: {
+            d_char: {
+                id: "d_char", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice" },
+            },
+            d_img: {
+                id: "d_img", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "image", operation: "create", objectName: "bg", assetId: "i1" },
+            },
+            d_text: {
+                id: "d_text", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "text", operation: "create", objectName: "title", text: { value: "Chapter One", textId: "t1" } },
+            },
+            d_layer: {
+                id: "d_layer", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "layer", operation: "create", objectName: "overlay", zIndex: 10 },
+            },
+            d_video: {
+                id: "d_video", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "video", operation: "create", objectName: "clip", assetId: "v1" },
+            },
+            d_snd: {
+                id: "d_snd", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "audio", operation: "playSound", objectName: "keys", assetId: "a1" },
+            },
+            d_vfx: {
+                id: "d_vfx", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "vfx", operation: "create", objectName: "petals", assetId: "v1" },
+            },
+            l_intro: {
+                id: "l_intro", parentId: null, childrenIds: [], kind: "control",
+                payload: { control: "label", name: "intro" },
+            },
+            var_gold: {
+                id: "var_gold", parentId: null, childrenIds: [], kind: "declaration",
+                payload: { scope: "scene", name: "gold", valueType: "number", defaultValue: 10, storageKey: "var_gold" },
+            },
+        },
+    } as unknown as StoryScene;
+
+    const LINK_CONTEXT: StoryCommandContext = {
+        ...CONTEXT,
+        stageObjects: {
+            image: ["bg"], text: ["title"], layer: ["overlay"],
+            video: ["clip"], audio: ["keys"], vfx: ["petals"],
+        },
+        stageObjectSources: {
+            image: { bg: "d_img" }, text: { title: "d_text" }, layer: { overlay: "d_layer" },
+            video: { clip: "d_video" }, audio: { keys: "d_snd" }, vfx: { petals: "d_vfx" },
+        },
+        characterSources: { c1: { blockId: "d_char", name: "Alice" } },
+    };
+
+    const LINK_LOOKUPS: StoryCommandLineLookups = {
+        ...LOOKUPS,
+        commandContext: LINK_CONTEXT,
+        scene: LINK_SCENE,
+        scenes: { s1: LINK_SCENE },
+    };
+
+    const row = (payload: StoryBlock["payload"]): StoryBlock =>
+        ({ id: "r", parentId: null, childrenIds: [], kind: "action", payload } as StoryBlock);
+
+    /** Every link on the row's line, as the word it covers and what that word means. */
+    function links(block: StoryBlock, lookups: StoryCommandLineLookups = LINK_LOOKUPS) {
+        const line = projectStoryCommandLine(block, lookups)!;
+        return line.links.map(link => ({ text: line.source.slice(link.span.start, link.span.end), ref: link.ref }));
+    }
+
+    /** The same, for a line the author could have typed against this scene. */
+    const typed = (source: string, lookups: StoryCommandLineLookups = LINK_LOOKUPS) =>
+        links(build(source, LINK_CONTEXT), lookups);
+
+    it("points a character's name at the cast member, not at the row they walk on in", () => {
+        // The row already offers a picker on this word. The link is the OTHER intention — who Alice
+        // is — and it lands on the same token without replacing the first.
+        expect(typed("/show Alice")).toContainEqual({ text: "Alice", ref: { kind: "character", characterId: "c1" } });
+        expect(typed("/face Alice smile")).toContainEqual({ text: "Alice", ref: { kind: "character", characterId: "c1" } });
+        // The `displayable` arm reaches the same answer from the other side: its target carries the
+        // entering row's id, and that row is what says which character it is.
+        expect(typed("/front Alice")).toEqual([{ text: "Alice", ref: { kind: "character", characterId: "c1" } }]);
+    });
+
+    it("points an asset's name at the asset, wherever the line names one", () => {
+        expect(typed("/bg forest_day")).toEqual([{ text: "forest_day", ref: { kind: "asset", assetId: "i1" } }]);
+        expect(typed("/bgm theme")).toContainEqual({ text: "theme", ref: { kind: "asset", assetId: "a1" } });
+        expect(typed("/video intro name=cutscene")).toContainEqual({ text: "intro", ref: { kind: "asset", assetId: "v1" } });
+        expect(typed("/vfx intro name=rain")).toContainEqual({ text: "intro", ref: { kind: "asset", assetId: "v1" } });
+        // The one prop on a transform bag that names a project file.
+        expect(typed("/transform bg mask=night")).toContainEqual({ text: "night", ref: { kind: "asset", assetId: "i2" } });
+        // And the picture a rule transition plays in the order of — an asset id like any other, in
+        // the one slot that reaches it through a transition rather than through the row's own field.
+        expect(typed("/bg forest_day rule=night")).toContainEqual({ text: "night", ref: { kind: "asset", assetId: "i2" } });
+    });
+
+    it("points a jump's scene name at that scene", () => {
+        expect(typed("/jump 'Chapter 2'")).toEqual([{ text: "'Chapter 2'", ref: { kind: "scene", sceneId: "s1" } }]);
+    });
+
+    it("points a /set at the variable's own reference, and no further", () => {
+        // The ref, not a destination: a scene variable is declared by a row and a project one by the
+        // registry, so where it opens is the navigation layer's decision.
+        expect(typed("/set gold 100")).toEqual([
+            { text: "gold", ref: { kind: "variable", target: { scope: "scene", variableId: "var_gold" } } },
+        ]);
+    });
+
+    it("points a /goto at the label row it lands on", () => {
+        expect(typed("/goto intro")).toEqual([{ text: "intro", ref: { kind: "block", blockId: "l_intro" } }]);
+    });
+
+    it("points a stage object's name at the row that declares it, in every kind", () => {
+        expect(typed("/hide bg")).toContainEqual({ text: "bg", ref: { kind: "block", blockId: "d_img" } });
+        expect(typed("/font title 24")).toContainEqual({ text: "title", ref: { kind: "block", blockId: "d_text" } });
+        expect(typed("/seek clip 12")).toContainEqual({ text: "clip", ref: { kind: "block", blockId: "d_video" } });
+        expect(typed("/stop keys")).toContainEqual({ text: "keys", ref: { kind: "block", blockId: "d_snd" } });
+        expect(typed("/hide petals")).toContainEqual({ text: "petals", ref: { kind: "block", blockId: "d_vfx" } });
+        // The layer, through both of its rows: the `layer` action the inspector writes, and the
+        // `displayable` one a `/transform` line builds.
+        expect(links(row({ action: "layer", operation: "show", objectName: "overlay", target: { kind: "custom", name: "overlay", sourceBlockId: "d_layer" } })))
+            .toEqual([{ text: "overlay", ref: { kind: "block", blockId: "d_layer" } }]);
+        expect(typed("/transform overlay opacity=0.4")).toContainEqual({ text: "overlay", ref: { kind: "block", blockId: "d_layer" } });
+    });
+
+    it("points an overlay at its declaring row in ANOTHER scene, which is where it usually is", () => {
+        // The overlay is the one stage object the engine does not scope to a scene, so the row that
+        // started the rain a scene hides is normally somewhere else - and the link has to say where,
+        // or the jump opens the right row number in the scene being read.
+        const context: StoryCommandContext = {
+            ...LINK_CONTEXT,
+            stageObjects: { ...LINK_CONTEXT.stageObjects, vfx: ["petals", "rain"] },
+            vfxSources: { rain: { blockId: "d_rain", sceneId: "s2" } },
+        };
+        const lookups: StoryCommandLineLookups = { ...LINK_LOOKUPS, commandContext: context };
+        expect(links(row({ action: "vfx", operation: "hide", objectName: "rain" }), lookups))
+            .toContainEqual({ text: "rain", ref: { kind: "block", blockId: "d_rain", sceneId: "s2" } });
+    });
+
+    it("resolves an old document by name, since that is what the engine does with it", () => {
+        // No reference at all — every row written before anchors existed. The name still resolves,
+        // through the same declaration index the compiler matches on.
+        expect(links(row({ action: "image", operation: "show", objectName: "bg" })))
+            .toEqual([{ text: "bg", ref: { kind: "block", blockId: "d_img" } }]);
+        expect(links(row({ action: "audio", operation: "stopSound", objectName: "keys" })))
+            .toEqual([{ text: "keys", ref: { kind: "block", blockId: "d_snd" } }]);
+    });
+
+    it("gives no link at all when the name answers to nothing", () => {
+        // A name nothing declares: the row prints it, because it is the last word the author saw, and
+        // it leads nowhere.
+        expect(links(row({ action: "image", operation: "show", objectName: "poster" }))).toEqual([]);
+        // A dangling anchor beside a name nothing declares either — the pair a deleted create row
+        // leaves behind.
+        expect(links(row({
+            action: "image", operation: "show", objectName: "poster",
+            target: { kind: "image", name: "poster", label: "poster", sourceBlockId: "gone" },
+        }))).toEqual([]);
+        // An asset id the library no longer holds. The row says "this image is gone" in words; a link
+        // on those words would be a way through to nothing.
+        expect(links(build("/bg night", LINK_CONTEXT), { ...LINK_LOOKUPS, assetName: () => null })).toEqual([]);
+        // A `/set` on a variable nothing declares — the row prints the fallback word, which is not a
+        // name and not a destination.
+        expect(links(row({ action: "setVariable", target: { scope: "saved", variableId: "gone" }, value: 1 }))).toEqual([]);
+        // A jump whose scene was deleted.
+        expect(links({ id: "j", parentId: null, childrenIds: [], kind: "jump", payload: { targetSceneId: "s_gone" } } as unknown as StoryBlock))
+            .toEqual([]);
+    });
+
+    it("gives no link to a stage singleton, which no row declares", () => {
+        // `bgm` is the engine's music channel and the two default layers ship with every scene —
+        // reserved words, not names an author gave anything, so there is nothing to open.
+        expect(typed("/vol bgm 0.5")).toEqual([]);
+        expect(typed("/transform backgroundLayer opacity=0.4")).toEqual([]);
+    });
+
+    it("never points a create row at itself — a definition is not a reference", () => {
+        // The name a create row DEFINES is the row the reader is already looking at. Its asset is a
+        // reference and does link; its own name does not.
+        expect(typed("/image night name=sky")).toEqual([{ text: "night", ref: { kind: "asset", assetId: "i2" } }]);
+        expect(typed("/layer sky z=4")).toEqual([]);
+        expect(typed("/label chorus")).toEqual([]);
+    });
+
+    it("says nothing at all with no project in hand", () => {
+        // The projection is pure, and a surface with no scene and no context (the Dev Mode timeline,
+        // a clipboard preview) resolves nothing — which must read as "no links", never as a guess.
+        const bare: StoryCommandLineLookups = { character: () => null };
+        expect(projectStoryCommandLine(build("/hide bg", LINK_CONTEXT), bare)!.links).toEqual([]);
+    });
+
+    it("covers the whole token, and exactly the token an edit would cover", () => {
+        // The two spans come from the same two offsets of the same arg, which is the property the
+        // renderer's grouping rests on: identical or disjoint, never overlapping by halves.
+        const line = projectStoryCommandLine(build("/show Alice pos=left d=0.3", LINK_CONTEXT), LINK_LOOKUPS)!;
+        const link = line.links[0];
+        expect(line.source.slice(link.span.start, link.span.end)).toBe("Alice");
+        const edit = line.edits.find(entry => entry.value === "c1")!;
+        expect(edit.span).toEqual(link.span);
+        // And a link never lands on a value the line only prints: the placement and the duration are
+        // edits and nothing more.
+        expect(line.links).toHaveLength(1);
+    });
+
+    it("groups a token that is both an edit and a link into one part", () => {
+        // The failure this guards is the one the edit grouping already guards against, doubled: a run
+        // split in two would put the picker on one half of the word and the link on the other.
+        const line = projectStoryCommandLine(build("/show Alice pos=left", LINK_CONTEXT), LINK_LOOKUPS)!;
+        const parts = storyCommandLineParts(line.source, line.edits, false, line.links);
+        const both = parts.filter(part => part.edit && part.link);
+        expect(both.map(part => part.pieces.map(piece => piece.text).join(""))).toEqual(["Alice"]);
+        // Nothing is dropped by the wider grouping.
+        expect(parts.flatMap(part => part.pieces).map(piece => piece.text).join("")).toBe(line.source);
+    });
+
+    it("groups a token that is only a link, with no editor behind it", () => {
+        // `mask=` prints an asset's name and has no writer — it is re-pointed from the inspector — so
+        // this is a part the old grouping had no reason to collect at all.
+        const line = projectStoryCommandLine(build("/transform bg mask=night", LINK_CONTEXT), LINK_LOOKUPS)!;
+        const parts = storyCommandLineParts(line.source, line.edits, false, line.links);
+        const linkOnly = parts.filter(part => part.link && !part.edit);
+        expect(linkOnly.map(part => part.pieces.map(piece => piece.text).join(""))).toEqual(["bg", "night"]);
+        expect(parts.flatMap(part => part.pieces).map(piece => piece.text).join("")).toBe(line.source);
+    });
+
+    it("leaves the grouping exactly as it was when no links are passed", () => {
+        // Every existing caller passes at most three arguments. The fourth defaulting to none is what
+        // keeps the row rendering identical until a surface asks for the links.
+        const line = projectStoryCommandLine(build("/show Alice pos=left", LINK_CONTEXT), LINK_LOOKUPS)!;
+        expect(storyCommandLineParts(line.source, line.edits)).toEqual(storyCommandLineParts(line.source, line.edits, false, []));
+        expect(storyCommandLineParts(line.source, line.edits).some(part => part.link)).toBe(false);
     });
 });

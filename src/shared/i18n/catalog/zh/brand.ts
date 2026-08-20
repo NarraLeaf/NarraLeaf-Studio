@@ -53,7 +53,7 @@ export const brand = {
         deleteColor: "删除{name}",
         delete: "删除",
         deleteConfirm: "删除「{name}」？",
-        deleteUnused: "没有地方使用这个颜色",
+        deleteUnused: "没有位置使用该颜色",
         // 诚实地说明后果：指向被删颜色的地方不会被改写，解析不到任何值，各自改用自身的兜底颜色；
         // 工程检查会把它们列出来。
         deleteDetail: {

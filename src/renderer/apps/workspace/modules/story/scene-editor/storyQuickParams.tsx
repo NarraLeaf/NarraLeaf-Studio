@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
@@ -20,6 +21,7 @@ import {
     useStoryCommandLineContext,
 } from "./StoryCommandLineView";
 import { StoryLineValueToken } from "./StoryLineValueToken";
+import { StoryLineRefToken } from "./StoryLineRefToken";
 import { StoryLineCharacterFace } from "./storyCharacterFace";
 import type { StoryCommandLineProjection } from "./storyCommandLine";
 import { storyActionRowFragments, type StoryRowFragment, type StoryRowLookups } from "@/lib/story/storyRowProjection";
@@ -163,8 +165,12 @@ function StoryCommandLineRow(props: {
                 trigger={trigger}
                 hideParamNames={hideParamNames}
                 edits={props.line.edits}
-                renderEdit={(edit, content) => (
-                    <StoryLineValueToken edit={edit} onApply={props.onUpdatePayload}>{content}</StoryLineValueToken>
+                renderEdit={(edit, content, link) => (
+                    <StoryLineValueToken edit={edit} target={link?.ref} onApply={props.onUpdatePayload}>{content}</StoryLineValueToken>
+                )}
+                links={props.line.links}
+                renderLink={(link, content) => (
+                    <StoryLineRefToken target={link.ref}>{content}</StoryLineRefToken>
                 )}
                 ornaments={props.line.ornaments}
                 // The block, not the ornament's id: the picture is of this row's own look — the pose
@@ -230,6 +236,9 @@ function QuickParamPopover(props: {
     onApply: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
 }) {
+    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
+    // moved to unless it is told (`useDismissWhenHidden`).
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { param } = props;

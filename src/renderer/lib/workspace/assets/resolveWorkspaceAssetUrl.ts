@@ -64,7 +64,7 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
         // scene preview compiles the document the author is editing. Resolving live keeps the
         // preview honest - the row shows a picture rather than a missing-asset diagnostic - and it
         // reads the same tags the build will read, so what the author sees is what will ship.
-        const assetId = resolveEditorAssetSet(context, rawAssetId) ?? rawAssetId;
+        const assetId = resolveEditorAssetSetMember(context, rawAssetId) ?? rawAssetId;
         const avatarPath = characterAvatarProjectPath(assetId);
         if (avatarPath) {
             const request = await appPrivilegedFacade.fs.requestReadRaw(context.project.resolve(avatarPath));
@@ -107,7 +107,7 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
  * their own row does not name. Answers null for every ordinary asset id, which is the common case
  * and costs one map lookup.
  */
-function resolveEditorAssetSet(context: WorkspaceContext, assetId: string): string | null {
+export function resolveEditorAssetSetMember(context: WorkspaceContext, assetId: string): string | null {
     let set: AssetSet | undefined;
     try {
         set = context.services.get<AssetSetService>(Services.AssetSets).getSet(assetId);
@@ -117,7 +117,15 @@ function resolveEditorAssetSet(context: WorkspaceContext, assetId: string): stri
     if (!set || !set.axis.key) {
         return null;
     }
-    const assetsService = context.services.get<AssetsService>(Services.Assets);
+    // Defensively, like the set service above it: this is now called from `useAssetObjectUrl`, which
+    // renders in windows that carry only part of the service set, and a throw there would take the
+    // picture down rather than the set resolution.
+    let assetsService: AssetsService;
+    try {
+        assetsService = context.services.get<AssetsService>(Services.Assets);
+    } catch {
+        return null;
+    }
     const candidates: AssetSetCandidate[] = [];
     for (const bucket of Object.values(assetsService.getAssets())) {
         for (const asset of Object.values(bucket ?? {})) {
@@ -131,7 +139,11 @@ function resolveEditorAssetSet(context: WorkspaceContext, assetId: string): stri
         sourceLocale = undefined;
     }
     const axis = set.axis;
-    const chain = [sourceLocale, ...axis.values].filter((value): value is string => Boolean(value));
+    // The project's own language first, then what the author named as the fallback, and only then
+    // whatever else the axis lists. The editor draws one picture and the author is writing in the
+    // source language, so that is the variant they mean to be looking at.
+    const chain = [sourceLocale, axis.fallback, ...axis.values]
+        .filter((value): value is string => Boolean(value));
     for (const value of chain) {
         const member = resolveAssetSetMember(set, { [axis.key]: value }, candidates);
         if (member) {

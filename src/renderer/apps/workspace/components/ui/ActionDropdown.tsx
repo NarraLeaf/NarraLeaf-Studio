@@ -5,8 +5,7 @@ import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusContext } from "@/lib/workspace/services/ui";
-import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
-import { isMacPlatform } from "@/lib/app/platform";
+import { cn } from "@/lib/utils/cn";
 import {
     getActionGroupItems,
     getVisibleActionMenuItems,
@@ -14,7 +13,10 @@ import {
     isActionMenuSeparator,
 } from "./actionMenuModel";
 import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
+import { MnemonicLabel, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
+import { MenuShortcut } from "./MenuShortcut";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useShortcutLabels, type ShortcutLabels } from "../../hooks/useShortcutLabels";
 import { useTranslation } from "@/lib/i18n";
 
 interface ActionDropdownProps {
@@ -42,6 +44,10 @@ interface ActionDropdownProps {
  * While the workspace is frozen the menu still OPENS and still lists everything - only its items are
  * disabled, and only for groups the exemption table does not name (see `./freezeActionPolicy`). A
  * menu that refused to open would hide what the freeze is doing, which is the opposite of the point.
+ *
+ * These are the menus of the title bar's menu bar, so they hold their open state in the bar rather
+ * than each on its own (`./titleBarMenus`): one at a time, and the pointer walks between them once
+ * one is open.
  */
 export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: ActionDropdownProps) {
     const { t } = useTranslation();
@@ -49,11 +55,25 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
     const frozen = useWorkspaceFrozen();
     const frozenOut = frozen && !preFrozen && !isFreezeExemptActionGroup(group.id);
     const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
-    const [isOpen, setIsOpen] = useState(false);
+    // The bar delivers keys to the open menu, so the handler has to exist before the hook that will
+    // call it; it is handed over through a box that each render refreshes.
+    const keyHandlerRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
+    const {
+        ref: dropdownRef,
+        open: isOpen,
+        setOpen: setIsOpen,
+        toggle: toggleDropdown,
+        triggerProps,
+    } = useTitleBarMenu(group.id, {
+        hotTrack: true,
+        mnemonic: group.mnemonic,
+        onKeyDown: event => keyHandlerRef.current(event),
+    });
+    const revealMnemonic = useMnemonicReveal();
+    const shortcuts = useShortcutLabels();
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
     const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
     const rootMenuRef = useRef<HTMLDivElement>(null);
     const hoverOpenTimerRef = useRef<number | null>(null);
     const hoverCloseTimerRef = useRef<number | null>(null);
@@ -103,10 +123,6 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
         };
     }, []);
 
-    const toggleDropdown = () => {
-        setIsOpen((v) => !v);
-    };
-
     const handleActionClick = (action: ActionDefinition) => {
         if (!workspace) {
             console.warn("[ActionDropdown] Unhandled action click: workspace is not initialized");
@@ -119,69 +135,71 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
         }
     };
 
-    const handleGlobalKeyDown = (event: React.KeyboardEvent) => {
-        if (!isOpen) return;
+    /**
+     * The keys this menu answers while it is open. What it declines - Escape at the top level, and
+     * an arrow that would leave the menu sideways - falls through to the bar, which closes it or
+     * walks to the next menu. That split is the whole reason this returns a verdict rather than
+     * calling `preventDefault` itself.
+     */
+    const handleMenuKeyDown = (event: KeyboardEvent): boolean => {
         if (event.key === "Escape") {
-            // Close current submenu or whole menu
-            if (openPath.length > 0) {
-                setOpenPath(openPath.slice(0, -1));
-                setFocusPath(focusPath.slice(0, -1));
-            } else {
-                setIsOpen(false);
-            }
-            event.preventDefault();
-            return;
+            // One level of submenu at a time; the last Escape is the bar's to answer.
+            if (openPath.length === 0) return false;
+            setOpenPath(openPath.slice(0, -1));
+            setFocusPath(focusPath.slice(0, -1));
+            return true;
         }
 
         const { key } = event;
-        if (!focusPath.length) return;
+        if (!focusPath.length) return false;
 
         const level = focusPath.length - 1;
         const itemsAtLevel = getItemsAtPath(rootItems, focusPath.slice(0, -1), focusContext);
         const focusedIndex = focusPath[level];
         const focusedItem = itemsAtLevel[focusedIndex];
+        const openSubmenu = (): boolean => {
+            if (isActionMenuAction(focusedItem) || isActionMenuSeparator(focusedItem)) return false;
+            const visible = getVisibleActionMenuItems(focusedItem.items, focusContext);
+            if (visible.length === 0) return false;
+            setOpenPath(focusPath);
+            const first = firstEnabledIndex(visible);
+            if (first !== -1) setFocusPath([...focusPath, first]);
+            return true;
+        };
 
         if (key === "ArrowDown" || key === "Down") {
             const next = nextEnabledIndex(itemsAtLevel, focusedIndex);
             if (next !== -1) setFocusPath(replaceIndex(focusPath, level, next));
-            event.preventDefault();
-        } else if (key === "ArrowUp" || key === "Up") {
+            return true;
+        }
+        if (key === "ArrowUp" || key === "Up") {
             const prev = prevEnabledIndex(itemsAtLevel, focusedIndex);
             if (prev !== -1) setFocusPath(replaceIndex(focusPath, level, prev));
-            event.preventDefault();
-        } else if (key === "ArrowRight" || key === "Right") {
-            if (!isActionMenuAction(focusedItem) && !isActionMenuSeparator(focusedItem)) {
-                // open submenu and focus first item
-                const visible = getVisibleActionMenuItems(focusedItem.items, focusContext);
-                if (visible.length > 0) {
-                    setOpenPath(focusPath);
-                    const first = firstEnabledIndex(visible);
-                    if (first !== -1) setFocusPath([...focusPath, first]);
-                }
-            }
-            event.preventDefault();
-        } else if (key === "ArrowLeft" || key === "Left") {
-            if (openPath.length > 0) {
-                setOpenPath(openPath.slice(0, -1));
-                setFocusPath(focusPath.slice(0, -1));
-            } else {
-                setIsOpen(false);
-            }
-            event.preventDefault();
-        } else if (key === "Enter" || key === " ") {
+            return true;
+        }
+        if (key === "ArrowRight" || key === "Right") {
+            // A row with nothing to open is the end of this menu: the bar takes the key.
+            return openSubmenu();
+        }
+        if (key === "ArrowLeft" || key === "Left") {
+            if (openPath.length === 0) return false;
+            setOpenPath(openPath.slice(0, -1));
+            setFocusPath(focusPath.slice(0, -1));
+            return true;
+        }
+        if (key === "Enter" || key === " ") {
             if (isActionMenuAction(focusedItem) && !focusedItem.disabled) {
                 handleActionClick(focusedItem);
-            } else if (!isActionMenuAction(focusedItem) && !isActionMenuSeparator(focusedItem)) {
-                const visible = getVisibleActionMenuItems(focusedItem.items, focusContext);
-                if (visible.length > 0) {
-                    setOpenPath(focusPath);
-                    const first = firstEnabledIndex(visible);
-                    if (first !== -1) setFocusPath([...focusPath, first]);
-                }
+                return true;
             }
-            event.preventDefault();
+            return openSubmenu();
         }
+        return false;
     };
+
+    useEffect(() => {
+        keyHandlerRef.current = handleMenuKeyDown;
+    });
 
     if (rootItems.length === 0) {
         return null;
@@ -191,13 +209,21 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
         <div className="relative" ref={dropdownRef}>
             <button
                 onClick={toggleDropdown}
+                {...triggerProps}
                 onKeyDown={(e) => {
                     if ((e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") && !isOpen) {
                         setIsOpen(true);
                         e.preventDefault();
                     }
                 }}
-                className={`${iconOnly ? "h-8 w-8 justify-center" : "h-8 px-2"} rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-fg`}
+                className={cn(
+                    iconOnly ? "h-8 w-8 justify-center" : "h-8 px-2",
+                    "rounded-md flex items-center gap-2 text-sm transition-colors cursor-default",
+                    // The open menu keeps the pressed fill after the pointer has left the button for
+                    // the panel below it - and while the pointer is walking the bar, it is the only
+                    // thing naming which menu the panel belongs to.
+                    isOpen ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                )}
                 data-tip={String(groupLabel)}
                 aria-label={String(groupLabel)}
                 aria-expanded={isOpen}
@@ -206,7 +232,13 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
                 {group.icon && <span className="w-4 h-4">{group.icon}</span>}
                 {!iconOnly && (
                     <>
-                        <span>{String(groupLabel)}</span>
+                        <span>
+                            <MnemonicLabel
+                                label={String(groupLabel)}
+                                mnemonic={group.mnemonic}
+                                reveal={revealMnemonic}
+                            />
+                        </span>
                         <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                     </>
                 )}
@@ -214,20 +246,26 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
 
             {isOpen && (
                 <>
-                    {/* Backdrop */}
+                    {/* Backdrop. Dismissal itself belongs to the bar, which watches for a pointer
+                        landing outside this menu; what this adds is that a click meant to put the
+                        menu away does not also press whatever it landed on. It reaches only the
+                        content below the title bar, which is why the bar's own watch is what closes
+                        the menu when the click lands on a sibling or on the title bar itself. */}
                     <div
                         className="nl-window-content-layer z-10"
                         onClick={() => setIsOpen(false)}
                     />
 
-                    {/* Root menu */}
+                    {/* Root menu. Keys arrive from the bar rather than from this element: an open
+                        menu answers the keyboard whether or not it managed to keep focus, which a
+                        menu opened by the pointer or by Alt has no reason to have. It still takes
+                        focus below, so the reading order follows what is on screen. */}
                     <div
                         ref={rootMenuRef}
                         className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1"
                         role="menu"
                         aria-label={groupLabel}
                         tabIndex={0}
-                        onKeyDown={handleGlobalKeyDown}
                     >
                         <MenuLevel
                             level={0}
@@ -240,6 +278,7 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
                             hoverOpenTimerRef={hoverOpenTimerRef}
                             hoverCloseTimerRef={hoverCloseTimerRef}
                             focusContext={focusContext}
+                            shortcuts={shortcuts}
                             disabledTitle={frozenOut ? t("workspace.shell.freeze.unavailable") : undefined}
                         />
                     </div>
@@ -320,6 +359,8 @@ interface MenuLevelProps {
     hoverOpenTimerRef: React.MutableRefObject<number | null>;
     hoverCloseTimerRef: React.MutableRefObject<number | null>;
     focusContext: FocusContext | null;
+    /** Resolves the chord printed at the right of a row; see `useShortcutLabels`. */
+    shortcuts: ShortcutLabels;
     /**
      * Hover text for the items this menu has turned off wholesale - the frozen workspace's reason.
      * Set only when the freeze is the cause, so a row disabled by its own registration is not given
@@ -333,7 +374,7 @@ interface MenuLevelProps {
 
 function MenuLevel(props: MenuLevelProps) {
     const { t } = useTranslation();
-    const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext, disabledTitle } = props;
+    const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext, shortcuts, disabledTitle } = props;
     const parentPath = focusPath.slice(0, level);
     const focusedIndex = focusPath[level] ?? -1;
 
@@ -352,6 +393,9 @@ function MenuLevel(props: MenuLevelProps) {
                     const isDisabled = isActionMenuAction(item)
                         ? !!item.disabled
                         : getVisibleActionMenuItems(item.items, focusContext).length === 0;
+                    // What an author would press instead of opening this menu - the rebinding they
+                    // made included, which is why it is resolved rather than read off the item.
+                    const shortcut = isActionMenuAction(item) ? shortcuts.forMenuItem(item) : undefined;
 
                     const onMouseEnter = () => {
                         if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
@@ -421,11 +465,7 @@ function MenuLevel(props: MenuLevelProps) {
                             </span>
                             {/* Right side: shortcut + badge/chevron */}
                             <span className="flex items-center gap-2">
-                                {isActionMenuAction(item) && item.shortcut ? (
-                                    <span className="text-sm text-fg-muted tabular-nums">
-                                        {formatKeybinding(item.shortcut, isMacPlatform())}
-                                    </span>
-                                ) : null}
+                                <MenuShortcut of={shortcut} />
                                 {isActionMenuAction(item) ? (
                                     item.badge ? (
                                         <span className="bg-danger text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{item.badge}</span>
@@ -447,6 +487,7 @@ function MenuLevel(props: MenuLevelProps) {
                                         hoverOpenTimerRef={hoverOpenTimerRef}
                                         hoverCloseTimerRef={hoverCloseTimerRef}
                                         focusContext={focusContext}
+                                        shortcuts={shortcuts}
                                         disabledTitle={item.disabledReason ?? disabledTitle}
                                     />
                                 </div>

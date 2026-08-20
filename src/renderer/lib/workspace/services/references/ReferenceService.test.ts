@@ -25,12 +25,15 @@ type MountOptions = {
     /** The project's default font stack, which is a reference site like any other. */
     projectFonts?: ReadonlyArray<{ assetId: string }>;
     designFails?: boolean;
+    /** Records what the service subscribes to, so a rescan trigger can be fired at it. */
+    hooks?: { setsChanged?: () => void; storyLoads?: string[] };
 };
 
 const noop = () => () => { };
 
 function mount(options: MountOptions = {}): ReferenceService {
     const stories = options.stories ?? [];
+    const storyLoads = options.hooks?.storyLoads;
     const ctx = {
         services: {
             get: (id: Services) => {
@@ -40,6 +43,7 @@ function mount(options: MountOptions = {}): ReferenceService {
                             loadLibrary: async () => undefined,
                             listStories: () => stories,
                             loadStory: async (storyId: string) => {
+                                storyLoads?.push(storyId);
                                 if (storyId === options.storyLoadFails) {
                                     throw new Error("story will not parse");
                                 }
@@ -96,6 +100,21 @@ function mount(options: MountOptions = {}): ReferenceService {
                         return { getDocument: () => ({ elements: {} }), onDocumentChanged: noop };
                     case Services.UIGraph:
                         return { onGraphsChanged: noop };
+                    case Services.AssetSets:
+                        return {
+                            listSets: () => [],
+                            onSetsChanged: (handler: () => void) => {
+                                if (options.hooks) {
+                                    options.hooks.setsChanged = handler;
+                                }
+                                return () => { };
+                            },
+                        };
+                    case Services.Assets:
+                        return {
+                            getAssets: () => ({}),
+                            getEvents: () => ({ on: () => () => { } }),
+                        };
                     case Services.Character:
                         return {
                             listCharacter: () => {
@@ -127,6 +146,25 @@ function mount(options: MountOptions = {}): ReferenceService {
     service.setContext(ctx);
     return service;
 }
+
+describe("ReferenceService and what an asset set resolves to", () => {
+    it("re-reads the stories when the set declarations change", async () => {
+        // The defect this pins: a story slice records a row naming a set as a use of the files that
+        // set resolves to. Dissolve the set and the index still claims the row uses those files, so
+        // the project check reports nothing over a row that now names an id the project does not
+        // have - and it only surfaces after a reload.
+        const hooks: { setsChanged?: () => void; storyLoads: string[] } = { storyLoads: [] };
+        const service = mount({ stories: [{ id: "s1", name: "Main Story" }], hooks });
+
+        await service.ensureReady();
+        expect(hooks.storyLoads).toEqual(["s1"]);
+
+        hooks.setsChanged?.();
+        await service.flushPendingRebuilds();
+
+        expect(hooks.storyLoads).toEqual(["s1", "s1"]);
+    });
+});
 
 describe("ReferenceService.getIndexResult", () => {
     it("reports an index that has never been built as incomplete, not as empty", async () => {

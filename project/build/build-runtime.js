@@ -136,13 +136,27 @@ function runtimeAliasPlugin() {
     };
 }
 
-(async () => {
+/**
+ * Build the game runtime into `dist/runtime`.
+ *
+ * Exported rather than only run as a script because `yarn dev` calls it in
+ * process. Spawning `node build-runtime.js` for it cost ~2.5s of node + esbuild
+ * + tailwind module loading on every startup AND on every runtime source change,
+ * and - the larger half - gave the runtime's renderer bundle a cold Tailwind JIT
+ * of its own, even though the Studio app bundles being compiled a few
+ * milliseconds away in the parent process pull the very same stylesheet through
+ * the very same config. In process it shares that warm context (see
+ * postCss-plugin.js).
+ *
+ * @param {{ dev?: boolean }} options `dev` only turns sourcemaps on; see below.
+ */
+async function buildRuntime(options = {}) {
     // The runtime is ALWAYS built as production, even under `--dev` / `yarn dev`.
     // Game packs (preview and shipped builds alike) copy dist/runtime verbatim,
     // so a dev-flavored runtime built during a Studio dev session would leak
     // development React/motion/narraleaf-react into "Production" games and tank
     // their frame rate. `--dev` only keeps sourcemaps on for readable stacks.
-    const dev = isDev();
+    const dev = options.dev ?? isDev();
     console.log(`[build-runtime] Building production runtime${dev ? ' (with sourcemaps)' : ''}...`);
 
     fs.rmSync(runtimeOutDir, { recursive: true, force: true });
@@ -246,7 +260,7 @@ function runtimeAliasPlugin() {
     );
 
     console.log('[build-runtime] Runtime built successfully.');
-})();
+}
 
 // The bundled runtime main.js reaches for sibling support modules through
 // requires the bundler cannot inline (the specifiers are computed, not literals),
@@ -274,4 +288,13 @@ function copyRuntimeSupportSidecar(runtimeOutDir) {
         }
         fs.copyFileSync(source, path.join(runtimeOutDir, sidecar));
     }
+}
+
+module.exports = { buildRuntime };
+
+if (require.main === module) {
+    buildRuntime().catch(error => {
+        console.error('[build-runtime] build failed:', error);
+        process.exitCode = 1;
+    });
 }

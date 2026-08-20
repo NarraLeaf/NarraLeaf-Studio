@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import {
     getVideoPreviewRestartGeneration,
     isVideoPreviewPlaying,
@@ -77,8 +78,12 @@ export function VideoRenderer(props: WidgetRendererProps) {
 
     // Pool names as bare strings, not `AssetType.*`: the enum lives in a workspace service module
     // the game-runtime bundle is not allowed to import (see `build-runtime.js`).
-    const { url: sourceUrl } = useAssetObjectUrl(videoProps.assetId, "video");
-    const { url: posterUrl } = useAssetObjectUrl(videoProps.posterAssetId, "image");
+    // The element is the reference point for both slots: either may name an asset set, and the
+    // answer the build wrote is on this element and nowhere else.
+    const sourceAssetId = useLocalizedAssetId(element, videoProps.assetId);
+    const posterAssetId = useLocalizedAssetId(element, videoProps.posterAssetId);
+    const { url: sourceUrl } = useAssetObjectUrl(sourceAssetId, "video");
+    const { url: posterUrl } = useAssetObjectUrl(posterAssetId, "image");
 
     const preview = useVideoPreviewState(element.id, !isLiveHost);
     const shouldPlay = isLiveHost ? videoProps.autoplay : preview.playing;

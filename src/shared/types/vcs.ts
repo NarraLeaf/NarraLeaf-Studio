@@ -512,6 +512,34 @@ export function isVcsSignInAddress(url: string): boolean {
  * signing in at all.
  */
 /**
+ * What a server has read off one project's repository, when it has read it.
+ *
+ * **Every field is optional and an empty object is the ordinary answer.** A server
+ * records a project the moment it is created and reads its repository afterwards, so
+ * between those two moments it answers `history: {}` - an object with no facts in it -
+ * and a server older than this claim answers nothing at all. Both mean the same thing,
+ * which is that nothing is known, and neither is a project with zero versions.
+ *
+ * So a reader must decide per field. There is no count to fall back on: `revisions`
+ * being absent is not zero, `lastAt` being absent is not the epoch, and a surface that
+ * fills either in has invented a fact about somebody's work.
+ */
+export interface VcsServerProjectHistory {
+    /** Revisions on the recorded branch. */
+    revisions?: number;
+    /** The branch the rest of this describes. */
+    branch?: string;
+    /** What the repository occupies on the server. */
+    bytes?: number;
+    /** When the last revision was recorded. Epoch ms. */
+    lastAt?: number;
+    /** Who recorded it, as the identity written on the revision. */
+    lastBy?: string;
+    /** The message it was recorded with. */
+    lastMessage?: string;
+}
+
+/**
  * One project a server holds, as that server lists it.
  *
  * The whole of what an author needs in order to choose one: a name to read, a
@@ -530,6 +558,33 @@ export interface VcsServerProject {
     createdAt: number;
     /** Where the repository is, e.g. `lore://studio.example.lan:41337`. */
     remote: string;
+    /**
+     * What the server knows about the work inside it, when it knows anything.
+     *
+     * Absent from an older server and empty from one that has not read the repository
+     * yet - see {@link VcsServerProjectHistory}. Nothing here is ever a default.
+     */
+    history?: VcsServerProjectHistory;
+}
+
+/**
+ * One project this machine already has, by the only identity that survives a rename.
+ *
+ * **Read off plain files, never by opening the repository.** Lore's repository lock is
+ * exclusive and blocking: opening a store another process holds does not fail, it waits
+ * for ever, and every later call on that project queues behind it. So this is `.lore/id`
+ * and one line of `.lore/config.toml`, and a project that cannot be read this way is
+ * simply one with nothing to match on.
+ */
+export interface VcsLocalRepository {
+    /** Where the project is, spelled as the author's history remembers it. Shown, never compared. */
+    path: string;
+    /** What that history calls it. */
+    name: string;
+    /** The repository id from `.lore/id`, as hex. Absent when there is nothing to read. */
+    repositoryId?: string;
+    /** The server it is configured against, as an origin. Absent when it names none. */
+    remoteOrigin?: string;
 }
 
 export interface VcsServerAccount {
@@ -641,7 +696,56 @@ export interface VcsServerDiscovery {
     authority: { sha256: string };
     /** The server's own version, for a support conversation. */
     version: string;
+    /**
+     * What this deployment offers beyond the protocol every server answers.
+     *
+     * Opaque names, kept as they came: a name this Studio does not know is still worth
+     * recording, because the Studio that knows it is the next one. Empty when the server
+     * named none, which is every server older than this field.
+     */
+    capabilities: string[];
 }
+
+/**
+ * What a server says it is, kept beside the session that reaches it.
+ *
+ * Carried from the answer the wizard already read rather than asked for again: the author
+ * has just been shown what answered at that address, and a second reading is a second
+ * chance for the two to differ.
+ */
+export interface VcsServerDescription {
+    /** What the deployment calls itself. */
+    name: string;
+    /** The server's own version, for a support conversation. */
+    version: string;
+    /** What it offers, as opaque names. */
+    capabilities: string[];
+}
+
+/**
+ * The capability names Studio knows how to use.
+ *
+ * **Not the set a server may advertise** - `capabilities` stays `string[]` precisely
+ * because a name this Studio does not know is still worth recording. This is the other
+ * half: the names a call site is allowed to gate on, so that asking for one is checked
+ * against something rather than spelled from memory.
+ *
+ * A server that does not advertise one is not asked, and the surface that would have
+ * shown the answer is simply not there. That is not a failure and never reads as one:
+ * the deployment does not offer it, which is a fact about the server rather than about
+ * this machine, and there is nothing for an author to do about it.
+ */
+export type VcsServerCapability =
+    /** Lists projects, and makes them. Every server that answers this API at all. */
+    | "projects"
+    /** Answers what it knows about one project, including what it read inside the file. */
+    | "project-detail"
+    /** Answers a project's recent revisions. */
+    | "project-history"
+    /** Answers who has an account on it. */
+    | "members"
+    /** Mints a token from a username and password, rather than only accepting a pasted one. */
+    | "password-sign-in";
 
 /**
  * What reaching an address came to, before anything has been added.
@@ -680,6 +784,19 @@ export interface VcsServerSession {
     account: VcsServerAccount;
     /** When this installation signed in. Epoch ms. */
     signedInAt: number;
+    /**
+     * What the server called itself when it was added.
+     *
+     * **Absent on a session stored before Studio kept it**, and that is a supported
+     * state rather than a gap to migrate: nobody is asked to add a server again for a
+     * label, so a session without one reads as its address until `vcs.refreshServer`
+     * asks the server. The address stays the identity in either case.
+     */
+    name?: string;
+    /** The server's version as it read then. Absent for the same reason as {@link name}. */
+    version?: string;
+    /** What it offered then, as opaque names. Absent for the same reason as {@link name}. */
+    capabilities?: string[];
 }
 
 /**
@@ -855,12 +972,19 @@ export type VcsAddServerOutcome =
  * directly, which happens on a machine whose keyring is unavailable and on one
  * that added the server before Studio kept tokens at all. The way out is to add
  * the server again with the token.
+ *
+ * `wrong-repository` is the one that can only happen while publishing: the server
+ * answered with a project whose repository is not the one it was asked to record,
+ * which is what a server too old to understand the request does. It is a refusal
+ * rather than a success because the project on screen is not this project, and
+ * pushing into it would be pushing into a repository nobody made.
  */
 export type VcsServerProjectsProblem =
     | { kind: "no-token" }
     | { kind: "refused" }
     | { kind: "rejected"; detail: string }
     | { kind: "unreachable" }
+    | { kind: "wrong-repository" }
     | { kind: "unknown" };
 
 /** What a server answered when asked for its projects. */
@@ -871,6 +995,169 @@ export type VcsServerProjectsOutcome =
 /** What a server answered when asked to make one. */
 export type VcsServerProjectOutcome =
     | { ok: true; project: VcsServerProject }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * How putting a project on to a server ended.
+ *
+ * **Only the first step of three answers this way.** Publishing registers the project,
+ * connects it and sends it, and the last two are the calls the rail already makes on
+ * their own - so they refuse by throwing, with the sentences and the sign-in offer that
+ * the rail already draws for them. What is left is the one step with no existing shape:
+ * the server would not record the project, for one of the reasons any question to a
+ * server is refused for.
+ *
+ * A refusal here means nothing was written: the address is untouched and no version has
+ * left the machine.
+ */
+export type VcsPublishOutcome =
+    | { ok: true }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * One account on a server, as that server lists it.
+ *
+ * The roster behind the names on revisions. Everything here is the server's own record;
+ * nothing is inferred, and the three flags are false on a server too old to have an
+ * opinion - marking nobody is a plain list, where marking somebody would be a claim about
+ * their authority.
+ */
+export interface VcsServerMember {
+    /** The name this account answers to, and what a revision is written with. */
+    username: string;
+    /** What to call it on screen; the username again when the server gave nothing else. */
+    displayName: string;
+    /**
+     * The address on this account's revisions, or "" when the server holds none.
+     *
+     * **Fetched, and not drawn until a reader opens one member.** Within a server this is
+     * not a secret - every account can ask for this list - but a list printing everybody's
+     * address at once is a different thing from an address on one revision.
+     */
+    email: string;
+    /** Whether this account administers the server. */
+    operator: boolean;
+    /** Whether the server has stopped accepting it. */
+    disabled: boolean;
+    /** Whether the account belongs to a machine rather than to a person. */
+    serviceAccount: boolean;
+    /** When it was made. Epoch ms; absent from a server that did not say. */
+    createdAt?: number;
+}
+
+/** What a server answered when asked who is on it. */
+export type VcsServerMembersOutcome =
+    | { ok: true; members: VcsServerMember[] }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * Why a username and password did not produce a token.
+ *
+ * **Four reasons, and only one of them is about the person typing.** A server too old to
+ * offer this at all (`unavailable`) sends them to ask for a token instead; a server that
+ * did not answer (`unreachable`) is a different errand again. `refused` is the whole of
+ * what a server says about credentials: measured against a real one, an unknown account,
+ * a wrong password, a disabled account and a machine account are one identical refusal,
+ * so nothing here may claim to tell them apart.
+ */
+export type VcsPasswordSignInReason = "refused" | "unavailable" | "unreachable" | "unknown";
+
+/**
+ * What presenting a username and password came to.
+ *
+ * The token is the same kind an operator would have minted and handed over, so what
+ * happens next - `addServer`, and the record this installation keeps - is unchanged by
+ * which of the two ways it arrived.
+ */
+export type VcsPasswordSignInOutcome =
+    | { ok: true; token: string }
+    | { ok: false; reason: VcsPasswordSignInReason };
+
+/**
+ * What a server could read inside one project's own file.
+ *
+ * **`readable` is the whole of it, and false is an ordinary answer.** A server records a
+ * project the moment it is created and opens the file afterwards, so a project made a
+ * moment ago has nothing here; so does every project on a deployment whose reader is not
+ * working. The server's own explanation is deliberately not carried: it is an English
+ * sentence written for whoever runs the server, and Studio has its own line for this in
+ * every language it speaks.
+ *
+ * Every other field is absent unless the server gave it, so nothing here is ever zero
+ * because nobody looked.
+ */
+export interface VcsServerProjectFile {
+    readable: boolean;
+    /** The title inside the project, which need not be the name the server lists it under. */
+    title?: string;
+    stageWidth?: number;
+    stageHeight?: number;
+    scenes?: number;
+    assets?: number;
+    assetBytes?: number;
+}
+
+/** One project as the server knows it, with whatever it could read inside. */
+export interface VcsServerProjectDetail {
+    project: VcsServerProject;
+    file: VcsServerProjectFile;
+}
+
+/** What a server answered when asked about one project. */
+export type VcsServerProjectDetailOutcome =
+    | { ok: true; detail: VcsServerProjectDetail }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * How taking a project off a server ended.
+ *
+ * **What it removes is the project, not the work.** The server stops listing it and
+ * stops answering for it; the repository keeps its store and every revision in it, so a
+ * project taken off by mistake is published again under the same repository id and comes
+ * back with its history. Nothing here destroys anything an author wrote, and nothing on
+ * this side is a way to ask for that.
+ *
+ * The success carries nothing because there is nothing to carry: what a reader wants
+ * afterwards is the list, which is fetched again rather than patched from here.
+ */
+export type VcsServerProjectDeleteOutcome =
+    | { ok: true }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * One revision on a server's copy of a project.
+ *
+ * Only the id is certain. A server that has read a repository has the rest, and one part
+ * way through reading it may not; an absent author is drawn as an absent author rather
+ * than as "unknown".
+ */
+export interface VcsServerRevision {
+    id: RevisionId;
+    /** When it was recorded. Epoch ms. */
+    at?: number;
+    /** The identity written on it. */
+    by?: string;
+    message?: string;
+}
+
+/**
+ * A page of a project's history, as the server holds it.
+ *
+ * **An absent `revisions` is not an empty one.** The field is left out entirely for a
+ * project the server has not read - which is the ordinary answer, and the only answer at
+ * all on a deployment whose reader is not working - while a project that genuinely has no
+ * versions yet would carry an empty list. A surface that treats the two alike says "no
+ * versions" about work that has plenty.
+ */
+export interface VcsServerProjectHistoryPage {
+    revisions?: VcsServerRevision[];
+    /** Whether older revisions exist beyond this page. */
+    more: boolean;
+}
+
+/** What a server answered when asked for one project's recent versions. */
+export type VcsServerProjectHistoryOutcome =
+    | { ok: true; page: VcsServerProjectHistoryPage }
     | { ok: false; problem: VcsServerProjectsProblem };
 
 /**

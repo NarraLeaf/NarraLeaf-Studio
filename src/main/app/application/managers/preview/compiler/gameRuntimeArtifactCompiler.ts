@@ -71,9 +71,10 @@ import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
+import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
 import { deriveGameAppId, type GameBuildPlatform } from "@shared/types/gameBuild";
-import { userDataDirectoryName } from "@shared/utils/userDataLocation";
+import { normalizeSaveLocationConfiguration, userDataDirectoryName } from "@shared/utils/userDataLocation";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
@@ -145,6 +146,17 @@ export type GameRuntimeArtifactCompileInput = {
     };
     /** Runtime entries of enabled plugins to ship inside the pack. */
     runtimePlugins?: GameRuntimePluginSource[];
+    /**
+     * Baked weather clips available to this pack, keyed by the id the game computes for itself.
+     *
+     * Filled in by `compileGameRuntimeArtifactInWorker`, because producing one spawns an encoder and
+     * that is the main process's job. Absent - and empty - is a project whose stories name no weather
+     * seed, which is most of them.
+     *
+     * Offered rather than prescribed: this list is what the project *could* need, and the packer
+     * carries only the ones the shipped stories still reach.
+     */
+    weatherClips?: readonly PackedWeatherClip[];
     /**
      * The build variant this artifact is. Absent is the release variant, which is what every preview
      * compile passes - nothing about a preview picks one.
@@ -492,6 +504,16 @@ export async function compileGameRuntimeArtifact(
             manifest: assetManifest,
             characterIds: shipped?.characterIds ?? null,
         });
+        // Weather clips are derived the same way and are invisible to the sweep for a stronger
+        // reason: the id that addresses one is COMPUTED by the running game rather than written in
+        // any document, so no scan over the shipped bytes could ever find it.
+        await copyWeatherClips({
+            clips: input.weatherClips ?? [],
+            bundle,
+            assetsDir,
+            target,
+            manifest: assetManifest,
+        });
         // The desktop icon set feeds the window/dock; a web site instead gets
         // a favicon (best-effort - only a configured PNG qualifies).
         const projectIcon = shell === "web"
@@ -704,6 +726,11 @@ function buildAppManifest(
             // renames it, and there the project's own name is the more stable
             // of the two anyway.
             userDataDir: userDataDirectoryName(appId ?? deriveGameAppId(identifier, pack.project.name)),
+            // Which of the two places the player's files go, per platform group. It travels beside
+            // the directory name because it is answered at the same moment and by the same reader:
+            // the runtime settles both before Chromium starts. Normalized here so the runtime reads
+            // a complete answer rather than a project's partial one.
+            saveLocation: normalizeSaveLocationConfiguration(projectConfig?.app?.saveLocation),
         },
     };
 }
@@ -1397,6 +1424,62 @@ async function copyBakedCharacterAvatars(input: {
                 mimeType: "image/png",
             };
         }
+    }
+}
+
+/**
+ * Copy the baked weather clips this pack's stories still reach, one manifest entry each.
+ *
+ * ## Why the narrowing happens here and not at the baker
+ *
+ * The offered list is what the *project* asks for; a variant that dropped the scene with the snow in
+ * it must not carry the snow. The shipped bundle is the first place that is knowable, because it is
+ * the fold and the scene drop applied. Re-walking it costs one pass over documents already in memory.
+ *
+ * ## Why an id with no clip is silent
+ *
+ * A clip that could not be produced was already logged where the encoder failed, and the compile
+ * that runs inside the shipped game reports it on the row that wanted it. Repeating it here would
+ * name a file rather than a row, which is the wrong end for an author.
+ */
+async function copyWeatherClips(input: {
+    clips: readonly PackedWeatherClip[];
+    bundle: DevModeBundle;
+    assetsDir: string;
+    target: PackTarget;
+    manifest: Record<string, GameRuntimeAssetManifestEntry>;
+}): Promise<void> {
+    if (input.clips.length === 0) {
+        return;
+    }
+    const reached = new Set(
+        collectWeatherSpecs(
+            Object.values(input.bundle.storyLibrary?.documents ?? {}),
+            input.bundle.ui.uidoc,
+        ).map(weatherClipAssetId),
+    );
+    for (const clip of input.clips) {
+        if (!reached.has(clip.id)) {
+            continue;
+        }
+        const fileName = `${clip.id.replace(/[^\w.-]+/g, "-")}.webm`;
+        let relativePath: string;
+        if (input.target.kind === "sealed") {
+            relativePath = gameRuntimeBundleAssetEntry(clip.id);
+            input.target.writer.add(relativePath, await fs.readFile(clip.path));
+        } else {
+            relativePath = path.posix.join("assets", fileName);
+            await fs.copyFile(clip.path, path.join(input.assetsDir, fileName));
+        }
+        input.manifest[clip.id] = {
+            id: clip.id,
+            type: "video",
+            name: path.basename(clip.path),
+            source: "local",
+            relativePath,
+            ext: "webm",
+            mimeType: "video/webm",
+        };
     }
 }
 

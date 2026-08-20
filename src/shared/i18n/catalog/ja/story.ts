@@ -193,7 +193,7 @@ export const story = {
         regexPlaceholder: "^(?<speaker>[^:]+):\\s*(?<text>.+)$",
         problem: {
             invalidRegex: "このパターンはまだ正しくない",
-            missingGroups: "パターンには (?<speaker>…) と (?<text>…) の両方が要る",
+            missingGroups: "パターンには (?<speaker>…) と (?<text>…) の両方が必要",
         },
         presetNamePlaceholder: "この区切りに名前を付ける",
         savePreset: "保存",
@@ -210,6 +210,30 @@ export const story = {
         },
         bulkConfirmDetail: "現在の行の下に、1 回分の取り消しとして足す",
         scriptFile: "これはストーリーのスクリプト。戻すには「スクリプトを読み込む」を使う",
+        translationsCarried: {
+            other: "翻訳 {count} 件を引き継いだ",
+        },
+        translationsDropped: {
+            other: "見送った翻訳 {count} 件",
+        },
+    },
+    // コピー元とは別のプロジェクトに貼り付けた行。行が入ったあとに、結果だけを一度知らせる。
+    crossProject: {
+        pasted: {
+            other: "{count} 行を貼り付けた",
+        },
+        pastedFrom: {
+            other: "{project} から {count} 行を貼り付けた",
+        },
+        speakerNames: {
+            other: "キャラクター未設定 {count} 行",
+        },
+        imported: {
+            other: "アセット {count} 件を取り込んだ",
+        },
+        unresolved: {
+            other: "未解決の参照 {count} 件",
+        },
     },
     flow: {
         tabTitle: "シーンフロー",
@@ -527,6 +551,8 @@ export const story = {
         delay: "遅延秒数",
         repeat: "繰り返し回数",
         repeatDelay: "繰り返し間隔",
+        repeatType: "繰り返し方向",
+        stopLoop: "ループ停止",
         fromProps: "開始プロパティ",
         conceal: "退場",
     },
@@ -539,6 +565,10 @@ export const story = {
      * 綴りを落とすので、訳していない項目は必ずパーサが受け付ける語に落ちる。
      */
     enumValue: {
+        // 各回の再生方向（`repeatType=`）。
+        loop: "最初から",
+        reverse: "逆再生",
+        mirror: "往復",
         // 天候シード。`/vfx` のソース欄では予約語。
         snow: "雪",
         rain: "雨",
@@ -839,7 +869,7 @@ export const story = {
         loadingScene: "ストーリーのシーンを読み込んでいる…",
         notFound: "ストーリーまたはシーンが見つからない",
         addRow: "クリックするか打ち始めると行が増える…",
-        emptyHint: "このシーンは空。新しい行で {trigger} を打つとコマンドを選べる。地の文を書いてもよい",
+        emptyHint: "このシーンは空。新しい行で {trigger} を入力するとコマンドを選べる。地の文を書いてもよい",
         emptyExampleBg: "背景を出す",
         emptyExampleShow: "誰かを舞台に出す",
         emptyExampleSay: "台詞を書く",
@@ -974,10 +1004,10 @@ export const story = {
         skin: { label: "スキン", detail: "ランタイムが描くキャラクターが着るスキンを決める" },
         rename: { label: "改名", detail: "キャラクターが話すときの表示名を変える" },
         say: { label: "台詞", detail: "台詞を 1 行" },
-        image: { label: "画像", detail: "舞台に画像を置く" },
-        text: { label: "テキスト", detail: "舞台にテキストを置く" },
-        video: { label: "動画", detail: "舞台に動画を置く" },
-        vfx: { label: "環境演出", detail: "全画面でループする重ね描き。花びら、雨、埃、光" },
+        image: { label: "画像", detail: "舞台に画像を宣言する。表示は /show" },
+        text: { label: "テキスト", detail: "舞台にテキストを宣言する。表示は /show" },
+        video: { label: "動画", detail: "舞台に動画を宣言する。表示は /show" },
+        vfx: { label: "環境演出", detail: "全画面でループする重ね描きを宣言。花びら、雨、埃、光" },
         layer: { label: "レイヤー", detail: "描画のレイヤーを作る" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
         play: { label: "再生", detail: "動画を再生する" },
@@ -1152,6 +1182,9 @@ export const story = {
         duplicate: "複製",
         disable: "無効にする",
         enable: "有効にする",
+        bindSpeaker: {
+            other: "{count} 行の話者を割り当て",
+        },
         playFromHere: "ここから再生",
         openInspector: "インスペクタを開く",
         delete: "削除",

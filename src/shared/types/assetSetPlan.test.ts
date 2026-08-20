@@ -68,6 +68,8 @@ describe("planAssetSet", () => {
             key: "locale",
             residency: "runtime",
             values: ["en", "zh-CN"],
+            // Not asked for, so the first value: the project's own first language.
+            fallback: "en",
         });
     });
 
@@ -141,7 +143,7 @@ describe("planAssetSet", () => {
             name: "Title",
             type: "image",
             filter: [assetSetIdentityTag("p")],
-            axis: { kind: "release", key: "release", residency: "build", values: ["release", "demo"] },
+            axis: { kind: "release", key: "release", residency: "build", values: ["release", "demo"], fallback: "release" },
         };
         const plan = planAssetSet({
             setId: "c",

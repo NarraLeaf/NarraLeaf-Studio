@@ -4,13 +4,23 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
-    "outDir": "dist",
+    // Typecheck only, for the same reason src/main/tsconfig.json is: the
+    // renderer bundles through project/build/build-apps.js and nothing reads
+    // the declarations this used to emit into src/renderer/dist. Keeping an
+    // output layout here also forces a rootDir that `../shared/**/*` breaks.
+    //
+    // packages/plugin-types/tsconfig.gen.json extends this file and overrides
+    // the emit settings it needs, so it is unaffected - which is the reason to
+    // fix the rootDir complaint by removing the output rather than by pinning
+    // `rootDir` here: an inherited rootDir puts the generator's own transient
+    // entry outside it and the plugin API types stop building.
+    "noEmit": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "declaration": true,
-    "emitDeclarationOnly": true,
+    // No `baseUrl`: TypeScript 7 removed the option (oxc-project/tsgolint#351),
+    // and every mapping below is already written relative to this file, which
+    // is all `baseUrl: "."` ever meant here. Resolution under 5.x is unchanged.
     "paths": {
       "@/*": ["./*"],
       "@shared/*": ["../shared/*"],

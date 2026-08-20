@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import type { HelpTopicId } from "@/lib/help";
 import { NavigationLayout, Sidebar, LauncherTabKey } from "./components";
 import { ProjectsTab } from "./tabs/ProjectsTab";
+import { forgetServerProject } from "@/lib/vcs/servers";
+import { ServersTab } from "./tabs/ServersTab";
 import { PluginsTab } from "./tabs/PluginsTab";
 import { LearningTab } from "./tabs/LearningTab";
 import { OnboardingFlow, useOnboardingMode } from "./onboarding";
@@ -42,6 +44,8 @@ export function LauncherApp() {
         switch (active) {
             case "projects":
                 return <ProjectsTab />;
+            case "servers":
+                return <ServersTab onForget={forgetServerProject} />;
             case "plugins":
                 return <PluginsTab />;
             case "learning":

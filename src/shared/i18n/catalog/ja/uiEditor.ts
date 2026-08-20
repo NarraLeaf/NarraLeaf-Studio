@@ -4,7 +4,7 @@ export const uiEditor = {
     surfaceKind: {
         page: "ページ",
         gameUi: "ゲーム UI",
-        pageDescription: "ページはタイトル、設定、セーブ、履歴、ギャラリーのような 1 画面まるごとのもの",
+        pageDescription: "ページはタイトル、設定、セーブ、履歴、ギャラリーのような 1 画面全体を占めるもの",
         gameUiDescription: "ゲーム UI はプレイ中に働くもの。ダイアログ、選択肢、HUD、ショートカット、通知など",
     },
     // ゲーム UI が取れる 5 つの舞台スロット。作成ダイアログ、サーフェス一覧、プロパティパネル、
@@ -34,6 +34,8 @@ export const uiEditor = {
         openSurface: "{label} を開く",
         renameSurface: "{label} の名前を変更",
         duplicateSurface: "{label} を複製",
+        copySurface: "{label} をコピー",
+        pasteSurface: "インターフェースを貼り付け",
         deleteSurface: "{label} を削除",
         surfaceActions: "{label} の操作",
         deleteConfirm: "{label} を削除するか",
@@ -162,6 +164,34 @@ export const uiEditor = {
             left: "左",
         },
     },
+    crossProject: {
+        pasted: {
+            one: "{count} 個の要素を貼り付けた",
+            other: "{count} 個の要素を貼り付けた",
+        },
+        pastedFrom: {
+            one: "{project} から {count} 個の要素を貼り付けた",
+            other: "{project} から {count} 個の要素を貼り付けた",
+        },
+        imported: {
+            one: "{count} 個のアセットを取り込んだ",
+            other: "{count} 個のアセットを取り込んだ",
+        },
+        unresolved: {
+            one: "{count} 件の参照が未解決",
+            other: "{count} 件の参照が未解決",
+        },
+        surfacePasted: {
+            one: "{count} 個のインターフェースを貼り付けた",
+            other: "{count} 個のインターフェースを貼り付けた",
+        },
+        surfacePastedFrom: {
+            one: "{project} から {count} 個のインターフェースを貼り付けた",
+            other: "{project} から {count} 個のインターフェースを貼り付けた",
+        },
+        slotTaken: "{slot} スロットにはすでにゲーム UI がある",
+        surfaceNotAdded: "このインターフェースを貼り付けられなかった",
+    },
     templateStore: {
         open: "テンプレートから始める",
         title: "UI テンプレート",
@@ -187,7 +217,7 @@ export const uiEditor = {
             other: "{count} 画面",
         },
         assetsSkipped: {
-            other: "リソース {count} 件を読み込めなかった",
+            other: "アセット {count} 件を読み込めなかった",
         },
         componentsAdded: {
             other: "コンポーネント {count} 個をライブラリに追加した",

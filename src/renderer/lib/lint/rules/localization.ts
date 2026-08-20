@@ -123,9 +123,10 @@ function runStale(ctx: LintContext): LintFinding[] {
  * A translation whose line is gone.
  *
  * The unit id space is shared: `key:<name>` (named developer strings), `char:<id>` (character
- * nametags) and `ui:<element>.<prop>` (widget text) live in the same per-locale document and are not
- * story lines at all. Story `textId`s are UUID v4, which cannot contain a colon - so a namespaced id
- * is excluded by construction rather than by chasing the list of namespaces as it grows.
+ * nametags), `scene:<id>` (scene names) and `ui:<element>.<prop>` (widget text) live in the same
+ * per-locale document and are not story lines at all. Story `textId`s are UUID v4, which cannot
+ * contain a colon - so a namespaced id is excluded by construction rather than by chasing the list
+ * of namespaces as it grows.
  *
  * A disabled row's unit does read as an orphan, and that is correct: the row is not in the game, so
  * neither is the line it would have translated. `info` severity is what keeps that honest rather

@@ -15,13 +15,14 @@
  * than guesses at.
  */
 
-import type { GameLocalizationBundle } from "@shared/types/localization";
+import { parseSceneTranslationUnitId, type GameLocalizationBundle } from "@shared/types/localization";
 import type { GameVoiceBundle } from "@shared/types/voice";
 
 /**
  * Unit id prefixes that name something no scene owns: a UI element's text, a character's display
  * name, an author-named key. A scene drop cannot take any of them away, so they ship whole.
- * Everything without one of these prefixes is a story `textId`, which belongs to exactly one row.
+ * Everything without one of these prefixes is a story `textId`, which belongs to exactly one row -
+ * except `scene:`, which belongs to a whole scene and is narrowed by {@link isShippedSceneUnit}.
  */
 const SCENE_INDEPENDENT_UNIT_PREFIXES = ["ui:", "char:", "key:"] as const;
 
@@ -66,7 +67,22 @@ export function collectTextIds(value: unknown): Set<string> {
     return found;
 }
 
-/** Drop translation units whose story row is no longer in the build. */
+/**
+ * Whether a `scene:` unit names a scene this build still has, or null when the id is not one.
+ *
+ * The scene-name table is assembled from the documents the bundle carries, so membership in it is
+ * the same question as "did this scene survive the drop". A bundle that carries no table at all
+ * (nothing assembled one) cannot answer, and keeping the unit is the answer that loses nothing.
+ */
+function isShippedSceneUnit(bundle: GameLocalizationBundle, unitId: string): boolean | null {
+    const sceneId = parseSceneTranslationUnitId(unitId);
+    if (sceneId === null) {
+        return null;
+    }
+    return bundle.scenes ? sceneId in bundle.scenes : true;
+}
+
+/** Drop translation units whose story row - or whole scene - is no longer in the build. */
 export function restrictLocalizationToTextIds(
     bundle: GameLocalizationBundle,
     textIds: ReadonlySet<string>,
@@ -76,7 +92,14 @@ export function restrictLocalizationToTextIds(
     for (const [locale, table] of Object.entries(bundle.tables)) {
         const kept: Record<string, string> = {};
         for (const [unitId, target] of Object.entries(table)) {
-            if (isSceneIndependentUnitId(unitId) || textIds.has(unitId)) {
+            const shippedScene = isShippedSceneUnit(bundle, unitId);
+            if (shippedScene !== null) {
+                if (shippedScene) {
+                    kept[unitId] = target;
+                } else {
+                    removedUnitCount += 1;
+                }
+            } else if (isSceneIndependentUnitId(unitId) || textIds.has(unitId)) {
                 kept[unitId] = target;
             } else {
                 removedUnitCount += 1;

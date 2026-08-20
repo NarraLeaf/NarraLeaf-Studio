@@ -20,6 +20,8 @@ import { StringKeyOf } from "@shared/utils/types";
 import path from "path";
 import { MenuManager } from "./managers/menuManager";
 import { TrayManager } from "./managers/trayManager";
+import { WINDOW_ICON_KEY, WindowIconEntry, resolveWindowIcon } from "@shared/constants/windowIcon";
+import type { AppWindow } from "./managers/window/appWindow";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
@@ -277,6 +279,13 @@ export class BaseApp {
                 }
             }
         }
+
+        // Like the zoom above and unlike the theme: there is no single switch to flip. Each window
+        // carries its own icon and the tray carries a third, so the new mark has to be pushed to
+        // all of them.
+        if (key === WINDOW_ICON_KEY) {
+            this.refreshWindowIcons();
+        }
     }
 
     /**
@@ -385,16 +394,57 @@ export class BaseApp {
         return path.resolve(this.getResourcesDir(), p);
     }
 
+    /**
+     * The file the current icon preference resolves to, or null where there is nothing to set.
+     *
+     * macOS returns null because it has no per-window icon at all - `BrowserWindow.setIcon` does
+     * not exist there, and the Dock tile is application-wide (`configurePlatformAppIcon`).
+     */
     public getWindowIconPath(): string | null {
         if (process.platform === "darwin") {
             return null;
         }
 
-        if (process.platform === "win32") {
-            return this.resolveExistingResource("app-icon.ico", "app-icon.png");
+        // Windows prefers the .ico, whose several sizes let the taskbar pick one rather than
+        // downsample a single bitmap; everything else prefers the PNG. Each entry offers both, and
+        // the default mark is appended behind the chosen one - so an icon whose files never made
+        // it into the build leaves Studio wearing NarraLeaf's mark rather than Electron's.
+        const order = (entry: WindowIconEntry): string[] =>
+            process.platform === "win32" ? [entry.ico, entry.png] : [entry.png, entry.ico];
+        const chosen = resolveWindowIcon(this.globalState.get(WINDOW_ICON_KEY));
+        const candidates = [...new Set([...order(chosen), ...order(resolveWindowIcon(null))])];
+
+        return this.resolveExistingResource(...candidates);
+    }
+
+    /**
+     * Put the current icon on one window. Every window creation site calls this, because the icon
+     * is a property of the window rather than of the application on the platforms that have one.
+     */
+    public applyWindowIcon(window: AppWindow): void {
+        const iconPath = this.getWindowIconPath();
+        if (!iconPath) {
+            return;
         }
 
-        return this.resolveExistingResource("app-icon.png", "app-icon.ico");
+        window.setIcon(iconPath);
+    }
+
+    /**
+     * Re-apply the icon everywhere it is already showing.
+     *
+     * The open windows are the obvious half. The tray is the half that gets forgotten: it is built
+     * once at startup and holds its own copy of the image, so a window-only refresh leaves Studio
+     * wearing two different marks at once.
+     */
+    public refreshWindowIcons(): void {
+        for (const window of this.windowManager.getWindows()) {
+            if (!window.isClosed()) {
+                this.applyWindowIcon(window);
+            }
+        }
+
+        this.trayManager?.refreshIcon();
     }
 
     public getDockIconPath(): string | null {
@@ -642,6 +692,18 @@ export class BaseApp {
     /** What was wrong with `--project`, for the one place that reports it. Dev-gated as above. */
     public getStartupProjectError(): string | null {
         return this.isDevMode() ? this.commandLine.project.error : null;
+    }
+
+    /**
+     * Bare paths this launch was given, in the order they appeared.
+     *
+     * Not dev-gated: this is how a packaged Studio is reached by a file association, which is the
+     * one thing `--project` explicitly is not for. What any of them mean is decided against the
+     * disk by `resolveLaunchOpenRequest`, which recognises only a project config, a project folder
+     * and a package - so everything argv happens to carry is ignored rather than trusted.
+     */
+    public getLaunchOpenPaths(): readonly string[] {
+        return this.commandLine.openPaths;
     }
 
     /**

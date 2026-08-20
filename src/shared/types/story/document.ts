@@ -1,4 +1,5 @@
 import type { StoryExpression } from "./expression";
+import { resolveAssetVariantMember, type AssetVariantMap } from "../assetSet";
 import type { WeatherSeedRef } from "../../weather/model";
 
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
@@ -259,6 +260,18 @@ export type StoryScene = {
      * Per-scene and additive (no schema bump); the scene-variable rows shown re-bind per scene.
      */
     sceneSnapshots?: StorySceneSnapshot[];
+    /**
+     * What each asset set the SCENE itself names resolves to, per locale.
+     *
+     * The same thing `StoryBlock.assetVariants` is, one level up, and for the same two fields a scene
+     * owns rather than a row: its opening background and its music. **Never authored and never on
+     * disk under `editor/`** - written while a package is assembled and present only in the bundle a
+     * game runs from.
+     *
+     * A separate map rather than a row's, because these two fields belong to no row: the compiler
+     * resolves them while it is building the scene, before any block has run.
+     */
+    assetVariants?: StoryAssetVariants;
     meta?: StoryMeta;
 };
 
@@ -437,17 +450,19 @@ export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
  *
  * Total over the project's locales by construction - see `materializeStoryAssetSets` - so reading it
  * is a lookup and not a search.
+ *
+ * The shape moved to `@shared/types/assetSet` when the interface began carrying one too; the name
+ * stays here because the story documents are where it is written and read most.
  */
-export type StoryAssetVariants = Record<string, Record<string, string>>;
+export type StoryAssetVariants = AssetVariantMap;
 
 /**
  * The asset a row's set reference resolves to for `locale`, or null when the row does not name a
  * set at all.
  *
- * The one function every consumer goes through: the compiler on its way to a URL, and the shipped
- * content check on its way to the bytes. Falling back to the source locale is defence rather than
- * policy - materialization already filled every locale, so reaching that line means the pack and the
- * project it was built from disagree, and one language's stage is a better answer than none.
+ * A thin name over {@link resolveAssetVariantMember}, kept so the story call sites read in story
+ * terms; the rule (locale, then the source locale, then nothing) is one implementation for every
+ * kind of record that carries an answer.
  */
 export function resolveStoryAssetVariant(
     variants: StoryAssetVariants | undefined,
@@ -455,16 +470,7 @@ export function resolveStoryAssetVariant(
     locale: string | undefined,
     sourceLocale?: string,
 ): string | null {
-    const map = variants?.[assetId];
-    if (!map) {
-        return null;
-    }
-    const direct = locale ? map[locale] : undefined;
-    if (direct) {
-        return direct;
-    }
-    const source = sourceLocale ? map[sourceLocale] : undefined;
-    return source ?? null;
+    return resolveAssetVariantMember(variants, assetId, locale, sourceLocale);
 }
 
 export type StoryNodeActionBlock = StoryBlockBase<"nodeAction", StoryNodeActionPayload>;
@@ -698,6 +704,23 @@ export type StoryActionPayload =
           durationMs?: number;
       }
     | {
+          /**
+           * An image on stage.
+           *
+           * **`create` DECLARES; it does not show.** The row names the object, gives it a source and
+           * settles its pose, and nothing appears until a `show` row reveals it — the rule every
+           * stage object follows (`text`, `video`, `vfx`) with one exception, `layer`, because a
+           * layer is a container and one that mounted invisible would take its contents with it.
+           *
+           * The engine mounts every element a scene mentions at scene start, at opacity zero, so a
+           * declaration is not merely bookkeeping: the picture is fetched and decoded by the time
+           * something shows it, which is the other half of why the two are separate rows.
+           *
+           * ⚠ This changed. Documents written before it have `create` rows that were expected to
+           * reveal, and they are NOT migrated: such a row now declares and the object stays
+           * invisible until a `show` row is added. `story/declared-never-shown` reports the ones
+           * that never are.
+           */
           action: "image";
           operation: "create" | "setSource" | "show" | "hide";
           objectName: string;
@@ -746,8 +769,18 @@ export type StoryActionPayload =
            *
            * Additive: no document written before it carries the value, so no schema bump - the same
            * rule `camera` and `vfx` came in under.
+           *
+           * `loop` and `stopLoop` are the fifth and sixth, and they are the one pair here that is not
+           * a pose the story waits for. A loop repeats until something ends it, so the row states it
+           * and the scene carries straight on; `stopLoop` ends it and eases the element back to the
+           * pose it kept underneath. Anything else addressed at the same element - a `transform`, a
+           * `show`, a `reset` - ends the loop too, because an element carries one transform at a time.
+           *
+           * Additive (narraleaf-react 0.32.0's `Displayable.loop` / `stopLoop`): no document written
+           * before this carries either value, so no schema bump - the same rule `bringToFront` came
+           * in under.
            */
-          operation: "show" | "hide" | "transform" | "bringToFront";
+          operation: "show" | "hide" | "transform" | "bringToFront" | "loop" | "stopLoop";
           target: StoryDisplayableTargetRef;
           transform?: StoryTransformRef;
       }
@@ -779,6 +812,9 @@ export type StoryActionPayload =
           /**
            * A `Video` — an Actionable, not a Displayable, which is why it has its own verb set rather
            * than sharing `displayable`'s. `play` waits for the clip to finish; `resume` does not.
+           *
+           * `create` declares, like the `image` arm's: it compiles to `Video.preload()`, which puts a
+           * hidden element on stage so the clip starts buffering, and `show` is what reveals it.
            *
            * Additive: the four transport operations and `timeMs` are new in A3, and no document
            * written before them carries either, so no schema bump.
@@ -820,8 +856,12 @@ export type StoryActionPayload =
            * filter in a zero-duration sequence and eases only the pose. Writing neutral values into a
            * ref instead would put the filter back in the same transform as the pose and walk the picture
            * blue → cyan → green → olive again, which is the defect that fix exists for.
+           *
+           * `loop` and `stopLoop` are the camera's half of narraleaf-react 0.32.0's looping
+           * transform - a handheld sway, a slow drift - and carry the same {@link transform} a
+           * `transform` row does. Additive on the same terms as the `displayable` arm's pair.
            */
-          operation: "transform" | "reset";
+          operation: "transform" | "reset" | "loop" | "stopLoop";
           /**
            * `transform` — where the camera ends up, in the same shape `/transform` hands a sprite.
            *
@@ -845,8 +885,12 @@ export type StoryActionPayload =
            * pipeline, which is why `StoryDisplayableTargetKind` excludes it and `/transform` `/fx`
            * never offer it as a target.
            *
-           * `create` is what puts it on stage AND registers the name the later verbs address, the
-           * same shape `video` uses. Additive: no document before A3 carries it, so no schema bump.
+           * `create` DECLARES the overlay: it registers the name every later verb addresses, settles
+           * how the clip composites, and preloads it - `Vfx.preload()` - without showing anything.
+           * `show` is the only row that puts it on screen. The two are separate because an overlay
+           * is one thing across the whole story: rain declared once is shown, hidden and shown again
+           * from anywhere, and every one of those rows points back at the row that declared it.
+           * Additive: no document before A3 carries it, so no schema bump.
            */
           action: "vfx";
           operation: "create" | "show" | "hide" | "pause" | "resume" | "setRate";
@@ -884,14 +928,27 @@ export type StoryActionPayload =
            * a Safari-engine target until the row is changed.
            */
           blendMode?: StoryVfxBlendMode;
+          /**
+           * How strongly the overlay reads.
+           *
+           * On a `create` row it is the overlay's own - a property of the material, how heavy that
+           * rain IS - and it is what every plain showing goes back to. On a `show` row it is that
+           * showing's alone: the same rain faint behind a memory and full strength in the storm.
+           * Nothing else reads it, which is why `hide` does not offer it (a fade out ends at zero).
+           */
           opacity?: number;
           loop?: boolean;
           fit?: "cover" | "contain" | "fill";
           zIndex?: number;
           /**
            * Playback speed; 0.5 drifts slowly, 2 falls twice as fast. On `setRate` it is the change;
-           * on `create` it is the loop's resting speed — and only the latter survives a save, since
-           * the engine does not persist a runtime rate change.
+           * on `show` it is that showing's own, restated every time so it cannot leak into the next;
+           * on `create` it is the loop's resting speed — and only the last of the three survives a
+           * save, since the engine does not persist a runtime rate change.
+           *
+           * For a weather seed this is a playback trim on top of the baked `fallSpeed`, not the way
+           * to make it rain harder: playing the clip faster shortens the loop and speeds the sway
+           * with it, while the baked speed leaves both alone. See `@shared/weather/model`.
            */
           rate?: number;
           /** `show` / `hide` — the fade the action waits out. */
@@ -1490,6 +1547,17 @@ export type StoryClipReveal = {
  * `CommonTransformProps.delay` and `TransformConfig.repeat/repeatDelay` have always been there and
  * Studio simply never passed them.
  */
+/**
+ * How a repeat plays each time round - the engine's `TransformDefinitions.RepeatType`.
+ *
+ * A value tuple as well as a type for the same reason {@link STORY_TRANSITION_KINDS} is one: the
+ * command layer needs the closed set at runtime to offer it as an enum, and a second hand-written
+ * list would drift.
+ */
+export const STORY_TRANSFORM_REPEAT_TYPES = ["loop", "reverse", "mirror"] as const;
+
+export type StoryTransformRepeatType = (typeof STORY_TRANSFORM_REPEAT_TYPES)[number];
+
 export type StoryTransformRef = {
     /** Absent means `"props"`. Only a Story Motion has to say which it is. */
     mode?: "props" | "animation";
@@ -1506,38 +1574,83 @@ export type StoryTransformRef = {
     delayMs?: number;
     repeat?: number;
     repeatDelayMs?: number;
+    /**
+     * Which way each repeat runs - see {@link StoryTransformRepeatType}. Read by a finite `repeat`
+     * and by a `loop` row alike; absent is the engine's default, which restarts from the first pose.
+     *
+     * Additive (narraleaf-react 0.32.0): no document written before it carries one.
+     */
+    repeatType?: StoryTransformRepeatType;
     /** A clip-path generator - see {@link StoryClipReveal}. Runs on this ref's own timing. */
     clipReveal?: StoryClipReveal;
     animationId?: StoryAnimationAssetId;
 };
 
+/**
+ * Every transition kind a document may name, as a value rather than only a type.
+ *
+ * {@link StoryTransitionRef} derives its `kind` from this tuple, so the two cannot drift. The
+ * runtime copy exists because a stored `kind` is just a string on disk: a document written by a
+ * newer Studio, or one carrying a kind that has since been retired, holds a word no build here can
+ * play, and only a value can be asked whether it contains that word.
+ * {@link isPlayableStoryTransitionKind} is what asks, on behalf of `story/transition-unavailable`.
+ */
+export const STORY_TRANSITION_KINDS = [
+    "none",
+    "dissolve",
+    "fadeIn",
+    "maskCircle",
+    "maskWipe",
+    "softWipe",
+    "blinds",
+    "slide",
+    "softIris",
+    // 0.16.0 Mask-vocabulary additions (engine `Reveal` + `Mask.*`). Additive: existing documents
+    // never carry these, so no schema bump is needed.
+    "barnDoor",
+    "clock",
+    "fan",
+    "dots",
+    "blurDissolve",
+    // 0.28.0: engine `Exposure` — the frame burns out per channel instead of
+    // being covered. Additive, like the mask additions above.
+    "exposure",
+    // 0.30.0: engine `RuleReveal` — a greyscale picture decides the order the frame changes
+    // over. Additive as well; the picture it needs is {@link StoryTransitionRef.ruleAssetId}.
+    "ruleReveal",
+    "throughColor",
+    "darkness",
+    "custom",
+] as const;
+
+export type StoryTransitionKind = (typeof STORY_TRANSITION_KINDS)[number];
+
+/**
+ * Members of the union above that no build can actually play.
+ *
+ * Exactly one, and it stays one by construction: the story compiler's `createTransition` switch is
+ * exhaustive over {@link StoryTransitionKind}, so a kind added to the tuple without an engine behind
+ * it fails to compile there rather than reaching an author. `custom` is the standing exception - a
+ * transition that is nothing but its `props`. Nothing writes one, but the union has always allowed
+ * it, so documents may carry it and it is handled rather than removed.
+ */
+export const UNPLAYABLE_STORY_TRANSITION_KINDS = ["custom"] as const satisfies readonly StoryTransitionKind[];
+
+/**
+ * Whether a stored `kind` names a transition this build will actually play.
+ *
+ * `false` covers both ways a row can name one it will not get: a word outside the union entirely -
+ * a document written by a newer Studio, or one carrying a kind that has since been retired - and a
+ * member of the union with nothing behind it. The author sees the same thing either way, so the two
+ * are one question. `none` is playable: it is the author saying "cut", and it gets a cut.
+ */
+export function isPlayableStoryTransitionKind(kind: string): boolean {
+    return (STORY_TRANSITION_KINDS as readonly string[]).includes(kind)
+        && !(UNPLAYABLE_STORY_TRANSITION_KINDS as readonly string[]).includes(kind);
+}
+
 export type StoryTransitionRef = {
-    kind:
-        | "none"
-        | "dissolve"
-        | "fadeIn"
-        | "maskCircle"
-        | "maskWipe"
-        | "softWipe"
-        | "blinds"
-        | "slide"
-        | "softIris"
-        // 0.16.0 Mask-vocabulary additions (engine `Reveal` + `Mask.*`). Additive: existing documents
-        // never carry these, so no schema bump is needed.
-        | "barnDoor"
-        | "clock"
-        | "fan"
-        | "dots"
-        | "blurDissolve"
-        // 0.28.0: engine `Exposure` — the frame burns out per channel instead of
-        // being covered. Additive, like the mask additions above.
-        | "exposure"
-        // 0.30.0: engine `RuleReveal` — a greyscale picture decides the order the frame changes
-        // over. Additive as well; the picture it needs is {@link StoryTransitionRef.ruleAssetId}.
-        | "ruleReveal"
-        | "throughColor"
-        | "darkness"
-        | "custom";
+    kind: StoryTransitionKind;
     durationMs?: number;
     easing?: string;
     /**

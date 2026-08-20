@@ -58,6 +58,8 @@ import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThem
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
+import type { StudioClipboardKind } from "./studioClipboard";
 import type {
     AvailableSpellcheckDictionary,
     InstalledSpellcheckDictionary,
@@ -71,7 +73,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -241,6 +243,8 @@ export interface RendererPreloadedInterface {
      */
     studioTasks: {
         getOverview(): Promise<RequestStatus<{ overview: StudioTaskOverview }>>;
+        /** Speculative: have these clips ready before a run asks for them. Resolves on submission. */
+        prebakeWeather(projectPath: string, specs: WeatherBakeSpec[]): Promise<RequestStatus<Record<string, never>>>;
     };
     mediaConvert: {
         start(request: MediaConvertRequest): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
@@ -819,8 +823,25 @@ export interface RendererPreloadedInterface {
          *
          * **Goes to the network.** Pass empty strings for the two addresses: a token
          * carries both, and they are asked for only after this answers that it does not.
+         *
+         * `description` is what `probeServer` just answered. Passing it is how the server
+         * keeps its own name without this reaching the same address a second time.
          */
-        addServer(authUrl: string, remoteUrl: string, token: string): Promise<RequestStatus<VcsAddServerOutcome>>;
+        addServer(
+            authUrl: string,
+            remoteUrl: string,
+            token: string,
+            description?: VcsServerDescription,
+        ): Promise<RequestStatus<VcsAddServerOutcome>>;
+        /**
+         * Ask one server what it is now. **Goes to the network.**
+         *
+         * Records the name, version and capabilities it answers with, and nothing else:
+         * the account and the addresses are untouched, so this is not a sign-in. A server
+         * added before Studio kept any of that is what this exists for. One that does not
+         * answer leaves its record as it was.
+         */
+        refreshServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /** Take a server off this machine, token and record together. Local. */
         forgetServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /**
@@ -830,12 +851,108 @@ export interface RendererPreloadedInterface {
          * right when it was stored is wrong the moment somebody else pushes.
          */
         listServerProjects(remoteOrigin: string): Promise<RequestStatus<VcsServerProjectsOutcome>>;
+        /**
+         * What one server knows about one of its projects. **Goes to the network.**
+         *
+         * **Ask only a server whose session advertises `project-detail`.** A deployment
+         * that offers none has no such surface in front of it - the absence of a
+         * capability is a fact about the server, not something to put a sentence to.
+         *
+         * A `file` that is not readable is a complete answer: the server records a project
+         * when it is created and opens the file afterwards. The server's own explanation
+         * for that does not cross this boundary, so there is nothing here to print.
+         */
+        getServerProject(
+            remoteOrigin: string,
+            projectId: string,
+        ): Promise<RequestStatus<VcsServerProjectDetailOutcome>>;
+        /**
+         * Take one project off a server. **Goes to the network**, and it is the one call
+         * in this group that changes what a server holds rather than reading it.
+         *
+         * **What it removes is the project, not the work.** The server stops listing it
+         * and stops answering for it; the repository keeps its store and every revision
+         * in it, and a project removed by mistake is published again under the same
+         * repository id and comes back with its history. Nothing here destroys anything
+         * an author wrote, so a surface offering this must not say that it does.
+         *
+         * Nothing on this machine changes either: a local copy goes on opening, and its
+         * remote goes on pointing where it pointed.
+         */
+        deleteServerProject(
+            remoteOrigin: string,
+            projectId: string,
+        ): Promise<RequestStatus<VcsServerProjectDeleteOutcome>>;
+        /**
+         * The latest revisions on one of a server's projects, newest first.
+         * **Goes to the network**, and only where `project-history` is advertised.
+         *
+         * **An answer with no `revisions` is not an empty history.** The field is left out
+         * for a project the server has not read, which is the ordinary answer for one made
+         * a moment ago, and a surface that reads it as zero says so about work that has
+         * plenty.
+         */
+        listServerProjectHistory(
+            remoteOrigin: string,
+            projectId: string,
+            limit?: number,
+            before?: string,
+        ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>>;
+        /**
+         * Who has an account on one server. **Goes to the network**, and only where
+         * `members` is advertised.
+         *
+         * Every account carries the address recorded on its revisions. Within a server
+         * that is not a secret, but a list that prints all of them at once is a different
+         * thing from an address on one revision - so a surface showing this shows the
+         * address for the one member a reader opens, and not for the list.
+         */
+        listServerMembers(remoteOrigin: string): Promise<RequestStatus<VcsServerMembersOutcome>>;
+        /**
+         * Exchange a username and password for a token, where a server offers it.
+         *
+         * **Goes to the network, and carries no token** - this is where one comes from,
+         * so it names the endpoint rather than a server this installation already knows.
+         * Hand the token straight to {@link addServer}; it is the same kind an operator
+         * would have minted, so nothing after this point differs by how it arrived.
+         *
+         * A server says one thing about credentials however they were wrong, so the
+         * outcome says `refused` and nothing more precise. Do not keep the password.
+         */
+        signInWithPassword(
+            authUrl: string,
+            username: string,
+            password: string,
+        ): Promise<RequestStatus<VcsPasswordSignInOutcome>>;
         /** Ask a server to make a project. **Goes to the network, and writes there.** */
         createServerProject(
             remoteOrigin: string,
             name: string,
             description?: string,
         ): Promise<RequestStatus<VcsServerProjectOutcome>>;
+        /**
+         * Put this project on a server: register it, connect it, send it.
+         *
+         * **Goes to the network, and writes on both ends.** The opposite act to the one
+         * above, which makes a new and empty repository.
+         */
+        publishProject(
+            projectPath: string,
+            remoteOrigin: string,
+            name: string,
+        ): Promise<RequestStatus<VcsPublishOutcome>>;
+        /**
+         * Which repositories this machine already holds, by id. Local.
+         *
+         * The answer to "do I already have this one" for a project a server lists. Keyed on
+         * the repository id and never on the name, because two projects share a name and a
+         * folder gets renamed.
+         *
+         * **Reads `.lore/id` and `.lore/config.toml` as files; opens no repository.** Lore's
+         * lock is exclusive and blocking, so a sweep that opened stores would never return
+         * on the first project the author already has open.
+         */
+        listLocalRepositories(): Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>;
         /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.
@@ -1093,6 +1210,35 @@ export interface RendererPreloadedInterface {
          * the dialog is a success carrying `canceled: true`, not a failure.
          */
         exportToFolder(entries: AssetExportEntry[]): Promise<RequestStatus<AssetExportResult>>;
+
+        /**
+         * Moving an asset's bytes between two workspace windows of one Studio process.
+         *
+         * A window may read only its own project, so a paste into another project cannot open the
+         * files the copied rows reference. `offer` asks main to vouch for a manifest the copying
+         * window can read and hands back a token to put on the clipboard; `redeem` trades that token
+         * for read access to exactly those files. Bytes and paths never cross on the clipboard, and
+         * a token main did not mint answers `available: false` rather than failing - see
+         * `@shared/types/assetTransfer`.
+         */
+        transfer: {
+            offer(entries: AssetTransferEntry[]): Promise<RequestStatus<AssetTransferOfferResult>>;
+            redeem(token: string): Promise<RequestStatus<AssetTransferRedeemResult>>;
+        };
+    };
+
+    /**
+     * The platform clipboard, for the editor selections that move between project windows.
+     *
+     * One project per window means one renderer process per window, so an editor's own clipboard
+     * cannot leave the window that filled it. These two put the selection where every window can
+     * reach it, under a private format name. `stored: false` and `payload: null` are ordinary
+     * answers - a payload main declined, or a clipboard holding something else - and neither is a
+     * failure. See `@shared/types/studioClipboard`.
+     */
+    clipboard: {
+        writeEditorSelection(kind: StudioClipboardKind, payload: string): Promise<RequestStatus<{ stored: boolean }>>;
+        readEditorSelection(kind: StudioClipboardKind): Promise<RequestStatus<{ payload: string | null }>>;
     };
 
     /**

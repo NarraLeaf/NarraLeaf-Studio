@@ -7,6 +7,7 @@ import { Minus, Square, X } from "lucide-react";
 import { ReactNode } from "react";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 import { cn } from "../../utils/cn";
+import { useProductIconSrc } from "@/lib/appearance/useProductIcon";
 
 /**
  * Room to leave for the macOS traffic lights.
@@ -23,7 +24,12 @@ const TITLEBAR_EDGE_GAP = 5;
 
 export interface TitleBarProps {
     title: string;
-    iconSrc: string;
+    /**
+     * Overrides the mark drawn at the leading edge. Omit it to draw whatever the product mark
+     * currently is - which is what every window wants. Pass `""` to draw none: the launcher keeps
+     * its mark in the sidebar, and first-run setup wants a bare bar.
+     */
+    iconSrc?: string;
     className?: string;
     actionBar?: ReactNode;
     /** Interactive content for the centered slot; takes the place of `title` when provided. */
@@ -48,6 +54,11 @@ export function TitleBar({
     windowControlPolicy = WindowControlPolicy.Standard,
 }: TitleBarProps) {
     const { t } = useTranslation();
+    // Unconditionally, before the choice: `iconSrc ?? useProductIconSrc()` would short-circuit the
+    // hook away for any caller that passes one, and the call order has to be the same every render.
+    const productIconSrc = useProductIconSrc();
+    // `??` rather than `||`: an empty string is a caller asking for no mark at all, and survives.
+    const resolvedIconSrc = iconSrc ?? productIconSrc;
     const isMac = isMacPlatform();
     const isFullscreen = useWindowFullscreen();
     const usesInlineMacControls = isMac && windowControlPolicy === WindowControlPolicy.Standard;
@@ -58,7 +69,7 @@ export function TitleBar({
     const reserveMacTrafficLights = usesInlineMacControls && !isFullscreen;
     const leftInset = reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
     const rightInset = usesInlineMacControls
-        ? (controlBar || iconSrc ? `${TITLEBAR_EDGE_GAP}px` : (reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0))
+        ? (controlBar || resolvedIconSrc ? `${TITLEBAR_EDGE_GAP}px` : (reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0))
         : 0;
     const leftSafeAreaStyle = leftInset ? { paddingLeft: leftInset } : undefined;
     const rightSafeAreaStyle = rightInset ? { paddingRight: rightInset } : undefined;
@@ -78,10 +89,10 @@ export function TitleBar({
         <div className={cn("titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken border-b border-edge", className)}>
             {/* Left side - App Icon and Action Bar */}
             <div className="no-drag flex h-full min-w-0 items-center" style={leftSafeAreaStyle}>
-                {!usesInlineMacControls && iconSrc && (
+                {!usesInlineMacControls && resolvedIconSrc && (
                     <div className="flex h-full shrink-0 items-center px-4">
                         <img
-                            src={iconSrc}
+                            src={resolvedIconSrc}
                             alt={t("dialogs.window.appIcon")}
                             className="w-5 h-5"
                         />
@@ -124,10 +135,10 @@ export function TitleBar({
                         <>{controlBar}</>
                     </ErrorBoundary>
                 ) : null}
-                {usesInlineMacControls && iconSrc && (
+                {usesInlineMacControls && resolvedIconSrc && (
                     <div className="flex h-full shrink-0 items-center px-4">
                         <img
-                            src={iconSrc}
+                            src={resolvedIconSrc}
                             alt={t("dialogs.window.appIcon")}
                             className="w-5 h-5"
                         />

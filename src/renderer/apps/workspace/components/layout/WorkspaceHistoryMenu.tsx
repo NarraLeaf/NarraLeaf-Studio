@@ -72,8 +72,13 @@ export function WorkspaceHistoryMenu() {
         registerActionGroup({
             id: groupId,
             label: t("common.edit"),
-            order: 10,
+            // Between File (10) and Help (30). It shared File's 10 until 2026-08-19, and the tie was
+            // broken by whoever registered last - so this menu, which re-registers on every undo and
+            // every focus change to keep its "Undo <step>" label current, kept swapping places with
+            // File while the author worked.
+            order: 20,
             menuSlot: "edit",
+            mnemonic: "E",
             actions: [
                 {
                     id: `${groupId}-undo`,
@@ -81,6 +86,9 @@ export function WorkspaceHistoryMenu() {
                         ? t("workspace.history.menu.undoNamed", { step: undoStep })
                         : t("menu.edit.undo"),
                     icon: <Undo2 className="w-4 h-4" />,
+                    // Printed, not registered: the row says Ctrl+Z because that is what the author
+                    // would press, while the key itself stays with whichever editor has focus.
+                    shortcutId: "workspace.undo",
                     // No `shortcut`, deliberately. The registry turns an action's shortcut into a
                     // real keybinding guarded by that action's `when` - and `when` also decides
                     // whether the item is *shown*, so there is no value that both keeps Undo in the
@@ -102,6 +110,7 @@ export function WorkspaceHistoryMenu() {
                         ? t("workspace.history.menu.redoNamed", { step: redoStep })
                         : t("menu.edit.redo"),
                     icon: <Redo2 className="w-4 h-4" />,
+                    shortcutId: "workspace.redo",
                     menuRole: "redo",
                     onClick: freeze.run(() => {
                         history.redo(scopeId);

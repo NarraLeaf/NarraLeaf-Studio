@@ -128,10 +128,10 @@ export const story = {
             unknownStatement: "该行以关键词开头，但不符合该语句的写法",
             unknownName: "该行提到的名字在工程中不存在",
             unknownNameNamed: "该行提到的{what}在工程中不存在",
-            ambiguousName: "有多个对象叫这个名字，无法判断指的是哪一个",
-            ambiguousNameNamed: "有多个{what}叫这个名字，无法判断指的是哪一个",
+            ambiguousName: "有多个对象使用该名称，无法判断指的是哪一个",
+            ambiguousNameNamed: "有多个{what}使用该名称，无法判断指的是哪一个",
             ambiguousStatement: "有多条语句都符合该行，无法区分",
-            badWord: "该语句在这个位置不接受这个词",
+            badWord: "该语句在此位置不接受该词",
             missingValue: "该语句缺少必需的内容",
             conflictingValues: "该行用两种写法设定了同一件事",
             badIndent: "该行的缩进不是整数级，或跳过了一级",
@@ -177,10 +177,10 @@ export const story = {
         },
         regexPlaceholder: "^(?<speaker>[^：]+)：\\s*(?<text>.+)$",
         problem: {
-            invalidRegex: "这个表达式还不完整",
+            invalidRegex: "该表达式尚不完整",
             missingGroups: "表达式需要同时含有 (?<speaker>…) 和 (?<text>…) 两个命名分组",
         },
-        presetNamePlaceholder: "给这个分隔方式起个名字",
+        presetNamePlaceholder: "为该分隔方式命名",
         savePreset: "保存",
         forgetPreset: "删除此预设",
         target: {
@@ -194,6 +194,30 @@ export const story = {
         },
         bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
         scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+        translationsCarried: {
+            other: "已带入 {count} 条译文",
+        },
+        translationsDropped: {
+            other: "已跳过 {count} 条译文",
+        },
+    },
+    // 粘贴到另一个工程里的行。行落位之后，只报一次结果。
+    crossProject: {
+        pasted: {
+            other: "已粘贴 {count} 行",
+        },
+        pastedFrom: {
+            other: "已从 {project} 粘贴 {count} 行",
+        },
+        speakerNames: {
+            other: "未关联角色 {count} 行",
+        },
+        imported: {
+            other: "已导入 {count} 项资产",
+        },
+        unresolved: {
+            other: "{count} 处引用未解析",
+        },
     },
     flow: {
         tabTitle: "场景流程",
@@ -491,6 +515,8 @@ export const story = {
         delay: "延迟秒数",
         repeat: "重复次数",
         repeatDelay: "重复间隔",
+        repeatType: "重复方式",
+        stopLoop: "停止循环",
         fromProps: "起始属性",
         conceal: "退场",
     },
@@ -504,6 +530,10 @@ export const story = {
      * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
      */
     enumValue: {
+        // 每一轮怎么放（`repeatType=`）。
+        loop: "重新开始",
+        reverse: "反向",
+        mirror: "往返",
         // 天气种子——`/vfx` 来源槽里的保留词。
         snow: "雪",
         rain: "雨",
@@ -641,8 +671,8 @@ export const story = {
         },
     },
     diagnostics: {
-        missingAsset: "这一行指向的资源已经不在项目里了",
-        unknownPuppetName: "这个角色的模型里没有这个名字",
+        missingAsset: "这一行指向的资产已经不在项目里了",
+        unknownPuppetName: "该角色的模型中没有此名称",
     },
     find: {
         placeholder: "在场景中查找",
@@ -683,9 +713,9 @@ export const story = {
         star: "收藏",
         unstar: "取消收藏",
         type: {
-            image: "图片资源",
-            audio: "音频资源",
-            video: "视频资源",
+            image: "图片资产",
+            audio: "音频资产",
+            video: "视频资产",
             character: "角色",
             characterOrName: "角色，或任意名字",
             characterForm: "该角色的某个表情",
@@ -745,7 +775,7 @@ export const story = {
         insertTitle: "在此行后插入空行（{keys}）",
         deleteTitle: "删除此行（{keys}）",
         playFromRow: "从这一行开始播放",
-        playBranch: "试玩这个分支",
+        playBranch: "试玩该分支",
         insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
         insertPlaceholderCharacter: "为 {name} 选择一个动作…",
         noCategoryActionFound: "未找到{category}动作",
@@ -789,7 +819,7 @@ export const story = {
         sceneMusicIntroLoop: "从 {from}s 播放，循环 {loop}s 至 {to}s",
         sceneMusicFromIn: "从 {from}s 开始",
         sceneMusicWholeClip: "整曲",
-        backgroundResolveError: "无法解析图片资源：{error}",
+        backgroundResolveError: "无法解析图片资产：{error}",
         selectDefaultBackground: "选择默认背景",
         tabInvalid: "故事场景编辑器标签无效",
         loadingScene: "正在加载故事场景…",
@@ -827,7 +857,7 @@ export const story = {
             targetUnreachable: "预览目标从场景开头走不到，改为预览场景结尾",
             repeatedGroupOnce: "预览把重复组只执行一次",
             sceneJumpIgnored: "预览会忽略场景跳转",
-            choiceNotTaken: "预览假定前面这个选项的分支都没有被选中",
+            choiceNotTaken: "预览假定此前该选项的分支均未被选中",
             conditionUnresolved: "条件 `{expression}` 无法求值，在预览里按 false 处理",
             blueprintConditionFalse: "蓝图条件在预览里按 false 处理",
             persistentConditionDefaults: "持久化变量的条件在预览里按默认值求值",
@@ -920,10 +950,10 @@ export const story = {
         skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
         rename: { label: "改名", detail: "改变角色说话时显示的名字" },
         say: { label: "对白", detail: "一句台词" },
-        image: { label: "图片", detail: "在舞台上放置图片" },
-        text: { label: "文本", detail: "在舞台上放置文本" },
-        video: { label: "视频", detail: "在舞台上放置视频" },
-        vfx: { label: "氛围特效", detail: "全屏循环叠加：落花、雨雪、尘埃、光斑" },
+        image: { label: "图片", detail: "在舞台上声明图片，由 /show 显示" },
+        text: { label: "文本", detail: "在舞台上声明文本，由 /show 显示" },
+        video: { label: "视频", detail: "在舞台上声明视频，由 /show 显示" },
+        vfx: { label: "氛围特效", detail: "声明全屏循环叠加：落花、雨雪、尘埃、光斑" },
         layer: { label: "图层", detail: "创建渲染图层" },
         swap: { label: "替换", detail: "替换对象的图片或文本内容" },
         play: { label: "播放", detail: "播放视频" },
@@ -1028,7 +1058,7 @@ export const story = {
         choice: "选择",
         option: "选项",
         setBackground: "设置背景 {value}",
-        missingAsset: "资源缺失",
+        missingAsset: "资产缺失",
         unassigned: "未指定",
         characterFallback: "角色",
         charOp: {
@@ -1094,6 +1124,10 @@ export const story = {
         duplicate: "复制行",
         disable: "禁用",
         enable: "启用",
+        bindSpeaker: {
+            one: "关联 {count} 行的说话人",
+            other: "关联 {count} 行的说话人",
+        },
         playFromHere: "从此行播放",
         openInspector: "打开检查器",
         delete: "删除",

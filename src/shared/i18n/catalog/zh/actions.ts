@@ -46,7 +46,7 @@ export const actions = {
         },
         close: {
             label: "关闭窗口",
-            tooltip: "关闭这个窗口",
+            tooltip: "关闭当前窗口",
         },
     },
     help: {

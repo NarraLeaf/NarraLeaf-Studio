@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import { useHostWindow } from "@/lib/components/layout";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
@@ -113,6 +114,9 @@ export function BlueprintAddNodeMenu({
     connectMode = false,
     connectSourceLabel,
 }: Props) {
+    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
+    // moved to unless it is told (`useDismissWhenHidden`).
+    useDismissWhenHidden(onClose, open);
     const { t } = useTranslation();
     // The menu is portalled into, positioned against and keyed off the window it is drawn in.
     const hostWindow = useHostWindow();

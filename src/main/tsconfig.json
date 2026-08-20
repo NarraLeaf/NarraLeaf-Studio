@@ -4,11 +4,18 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "outDir": "dist",
+    // Typecheck only. Nothing reads src/main/dist - the main process is bundled
+    // by project/build/build-main.js - so the old `outDir` + `declaration` pair
+    // only meant `yarn lint` wrote a second copy of the tree that no one opened.
+    // Dropping it also keeps this project out of rootDir inference, which
+    // `../shared/**/*` below cannot satisfy: with an output layout to compute,
+    // the compiler wants every input under one root, and these two live side by
+    // side. That is a hard error under the TypeScript 7 preview `yarn lint:oxc`
+    // type-checks with, and dead weight under the 5.x compiler `yarn lint` uses.
+    "noEmit": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "declaration": true,
     "paths": {
       "@/*": ["./*"],
       "@root/*": ["../../*"],
@@ -23,5 +30,5 @@
   "include": [
     "./**/*",
     "../shared/**/*"
-  ],
+  ]
 }

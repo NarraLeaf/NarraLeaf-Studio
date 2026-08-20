@@ -21,7 +21,10 @@ import { storySceneHistoryScope } from "@/lib/workspace/services/history/history
 import { isRowTextEditable } from "./storySceneReadOnly";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
+import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
+import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -30,6 +33,7 @@ import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./st
 import { writeStoryJumpLine } from "./storyJumpLine";
 import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
@@ -39,7 +43,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
-import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
+import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeaker, rebindSpeakersInBlocks } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
@@ -62,6 +66,7 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
+import { clickSelectsRow, isPlainRowPress, nextRowSelection, pressSelectsRow } from "./storyRowSelectionGesture";
 import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
 import {
     EMPTY_STORY_ROW_FILTER,
@@ -71,7 +76,9 @@ import {
     tallyStoryRows,
     type StoryRowFilter,
 } from "./storyRowFilter";
-import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
+import { cloneSerializedBlock, insertSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
+import { collectSubtreeBlocks } from "./storyForeignPaste";
+import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
@@ -82,6 +89,8 @@ import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeak
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
+import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
 import { projectStoryCommandLine } from "./storyCommandLine";
 import { noStoryRowCharacters } from "@/lib/story/storyRowProjection";
@@ -111,9 +120,37 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const uuidService = useMemo(() => (context && isInitialized ? context.services.get<UuidService>(Services.Uuid) : null), [context, isInitialized]);
     const characterService = useMemo(() => (context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null), [context, isInitialized]);
     const assetsService = useMemo(() => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null), [context, isInitialized]);
+    // Only for the ids: a row may name a set, and without this list every such row reads as one
+    // pointing at something the project no longer has.
+    const assetSetService = useMemo(() => (context && isInitialized ? context.services.get<AssetSetService>(Services.AssetSets) : null), [context, isInitialized]);
     // Per-project persistent store for the editor's view state (focus/selection/scroll). Available on
     // the first render - the workspace only mounts editors once services (incl. this one) are ready.
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
+    /** Reads the bytes of a file a pasted asset manifest granted this window access to. */
+    const fileSystemService = useMemo(() => (context && isInitialized ? context.services.get<FileSystemService>(Services.FileSystem) : null), [context, isInitialized]);
+    /** Holds the translations a copy carries with its rows, and takes them back on a paste. */
+    const localizationService = useMemo(() => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null), [context, isInitialized]);
+    /**
+     * This window's own project, as the clipboard describes it.
+     *
+     * The path is the identity a pasted payload is compared against - rows carrying another
+     * project's UUIDs are treated differently from rows coming home - and the name and identifier
+     * travel with a copy so the window it lands in can say where its rows came from.
+     */
+    const projectPath = useMemo(() => (context ? context.project.getConfig().projectPath : ""), [context]);
+    const projectIdentity = useMemo(() => {
+        if (!context || !isInitialized) {
+            return { name: "", identifier: "" };
+        }
+        try {
+            const config = context.services.get<ProjectService>(Services.Project).getProjectConfig();
+            return { name: config.name ?? "", identifier: config.identifier ?? "" };
+        } catch {
+            // Only the display half of a copy. A scene that cannot be edited because the manifest
+            // has not loaded would be a far worse trade than a clipboard payload with no name on it.
+            return { name: "", identifier: "" };
+        }
+    }, [context, isInitialized]);
     /** Owner of the persistent-variable declarations the story's `persistent` scope points at. */
     const blueprintService = useMemo(() => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null), [context, isInitialized]);
     /** What a puppet character's model says it contains - the source of every motion / expression / skin the editor offers. */
@@ -259,6 +296,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
     const audioTracks = useProjectAudioTracks();
     const appTags = useProjectAppTags();
+    /**
+     * Bumped when a file or an asset set is renamed, imported or deleted.
+     *
+     * The command context below reads the library through the service, and the library mutates its
+     * records in place - so without this the tables a row is spelled from are the ones that existed
+     * when the tab opened. The visible failure was a rename that only appeared when the row was
+     * hovered: the hover re-rendered the row, and the row's name lookup is live even though the
+     * table behind the candidate menu was not.
+     */
+    const assetLibraryRevision = useAssetLibraryRevision();
 
     /**
      * Re-seed the row draft whenever the open row changes, so it always describes the row that is
@@ -423,6 +470,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const tempSpeakers = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
     const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterRevision, characterService]);
+    /**
+     * The cast as a membership test, which is what tells a working `characterId` from one that names
+     * nothing in this project - the state rows carried in from another project arrive in.
+     */
+    const knownCharacterIds = useMemo(
+        () => new Set(characters.map(character => character.profile.getId())),
+        [characters],
+    );
 
     /**
      * The puppet characters, and whichever of their models have already described themselves.
@@ -469,6 +524,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const commandContext = useMemo(
         () => buildStoryCommandContext({
             assets: assetsService?.getAssets(),
+            assetSets: assetSetService?.listSets() ?? [],
             characters,
             document,
             sceneId,
@@ -486,7 +542,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             audioTracks,
             appTags,
         }),
-        [appTags, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
+        [appTags, assetLibraryRevision, assetSetService, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
     // Each dialogue speaker's accumulated appearance, so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
@@ -838,7 +894,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         storyService.replaceScene(storyId, sceneId, state.scene);
-        uiService?.editor.update(tabId, { title: state.scene.name });
+        syncEditorTabTitle(uiService, tabId, state.scene.name);
         setActiveBlockId(state.activeBlockId);
         setSelectedBlockIds(new Set(state.selectedBlockIds));
         setCollapsedBlockIds(new Set(state.collapsedBlockIds));
@@ -938,7 +994,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
         if (changed) {
             if (hasNameChange) {
-                uiService?.editor.update(tabId, { title: nextName });
+                syncEditorTabTitle(uiService, tabId, nextName);
             }
         }
         return changed;
@@ -2097,44 +2153,85 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
     }, [characterService, document, setDialogueSpeaker, uiService]);
 
+    /**
+     * The rows among `blockIds` that speak as ONE unresolved speaker, and which speaker that is.
+     *
+     * Narrowing to a single speaker is what keeps the repair from merging people. A selection may
+     * hold lines by several speakers none of whom resolve - a chapter pasted in from another
+     * project usually does - and binding all of them to one character would silently make them the
+     * same person. `anchorBlockId` is the row the menu was opened on: if it is itself broken its
+     * speaker decides, which is what makes the gesture read as "this speaker". Otherwise the rows
+     * have to agree among themselves, and a selection spanning two broken speakers offers nothing
+     * rather than guessing which one was meant.
+     */
+    const unresolvedSpeakerRowIds = useCallback((
+        blockIds: readonly StoryBlockId[],
+        anchorBlockId?: StoryBlockId | null,
+    ): StoryBlockId[] => {
+        if (!document || blockIds.length === 0) {
+            return [];
+        }
+        const rows = collectUnresolvedSpeakerRows(document, blockIds, knownCharacterIds);
+        return narrowToOneUnresolvedSpeaker(rows, anchorBlockId).map(row => row.blockId);
+    }, [document, knownCharacterIds]);
+
+    /**
+     * Bind the unresolved speakers on an explicit set of rows to a character that already exists.
+     *
+     * The counterpart to {@link createCharacterFromSpeaker}, and the scope is where they differ:
+     * creating a character is the author naming someone new, so every line already speaking as that
+     * name follows it. A repair is not - it reaches lines the author is looking at and no others,
+     * which after pasting a chapter in from another project is the difference between fixing that
+     * chapter and rewriting the ones around it.
+     */
+    const bindSpeakerForRows = useCallback((blockIds: readonly StoryBlockId[], characterId: string) => {
+        if (!document || !sceneId) {
+            return;
+        }
+        const edits = rebindSpeakersInBlocks(document, blockIds, characterId, knownCharacterIds)
+            .filter(edit => edit.sceneId === sceneId)
+            .map(edit => ({ blockId: edit.blockId, payload: edit.payload }));
+        updateBlockPayloads(edits);
+    }, [document, knownCharacterIds, sceneId, updateBlockPayloads]);
+
     const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent) => {
         // Bumped on every select gesture, including one that lands on the row already active. The right
         // rail follows the selection, and something else in the app (clicking an asset) may have taken
         // the rail since the last time this row was picked — without a revision, re-clicking it would
         // change no state at all and the rail would stay on the asset.
         setSelectionRevision(revision => revision + 1);
-        setActiveBlockId(blockId);
-        if (event?.shiftKey && activeBlockId) {
-            setSelectedBlockIds(selectRange(visibleRows, activeBlockId, blockId));
-            return;
-        }
-        if (event?.ctrlKey || event?.metaKey) {
+        // `activeBlockId` is this render's — the row that was active BEFORE this press, which is where
+        // a Shift range starts. Shift leaves the anchor where it is; every other press re-anchors on
+        // the row it landed on.
+        if (!(event?.shiftKey && activeBlockId)) {
             selectionAnchorRef.current = blockId;
-            setSelectedBlockIds(previous => {
-                const next = new Set(previous);
-                next.has(blockId) ? next.delete(blockId) : next.add(blockId);
-                return next.size > 0 ? next : new Set([blockId]);
-            });
-            return;
         }
-        selectionAnchorRef.current = blockId;
-        setSelectedBlockIds(new Set([blockId]));
+        setActiveBlockId(blockId);
+        setSelectedBlockIds(previous => nextRowSelection({ previous, rows: visibleRows, activeBlockId, blockId, event }));
     }, [activeBlockId, visibleRows]);
 
+    /**
+     * The `mousedown` half of a row's press. See {@link pressSelectsRow} for why the row needs two
+     * handlers and why only one of them may select.
+     */
     const beginDragSelection = useCallback((blockId: StoryBlockId, event: MouseEvent) => {
-        if (event.button !== 0 || isInteractiveTarget(event.target)) {
+        if (!pressSelectsRow(event)) {
             return;
         }
         // Pointing at a column states it: whatever vertical run was in flight is over.
         goalColumnRef.current = null;
         selectRow(blockId, event);
+        // A modified press has already said everything it means - toggle this row, extend the range to
+        // it - so it stops here rather than also arming a row-range drag, which would replace that
+        // answer with a range on the press's first stray mousemove. See {@link isPlainRowPress}.
+        if (!isPlainRowPress(event)) {
+            return;
+        }
         // Pressing on a row's own text starts a *text* selection, not a row-range drag: let the
         // browser select natively and read the author's intent off the mouseup (a plain click leaves
         // the row selected; a real selection opens the row for editing with that selection intact).
-        // A modified click is unambiguously a row-selection intent, so it skips this.
-        const plainPress = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
-        const textEl = plainPress
-            ? (event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-story-row-text]") : null)
+        const textEl = event.target instanceof HTMLElement
+            ? event.target.closest<HTMLElement>("[data-story-row-text]")
             : null;
         if (textEl) {
             textSelectRef.current = { blockId, textEl };
@@ -2145,6 +2242,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setDragSelectActive(true);
         startDragSelectAutoScroll();
     }, [selectRow, startDragSelectAutoScroll]);
+
+    /**
+     * The `click` half of the same press, and the only one that runs when {@link beginDragSelection}
+     * declined - a press that landed on a field or a button inside the row, which still has to leave
+     * the row selected. Asking the event rather than remembering what the mousedown did is deliberate:
+     * a press that ends outside the row produces no click at all, so a "handled" flag set on the way
+     * down would still be set on the way into the *next* gesture and would swallow it.
+     */
+    const selectRowFromClick = useCallback((blockId: StoryBlockId, event: MouseEvent) => {
+        if (!clickSelectsRow(event)) {
+            return;
+        }
+        selectRow(blockId, event);
+    }, [selectRow]);
 
     /** Editing the text moves the caret by intent, which ends any vertical run. See {@link goalColumnRef}. */
     const resetGoalColumn = useCallback(() => {
@@ -2198,11 +2309,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         storyService,
         uuidService,
         uiService,
+        assetsService,
+        fileSystemService,
+        localizationService,
         storyId,
         sceneId,
         scene,
         scenes: document?.scenes,
         characters,
+        knownCharacterIds,
+        projectPath,
+        projectName: projectIdentity.name,
+        projectIdentifier: projectIdentity.identifier,
         selectedBlockIds,
         activeBlockId,
         visibleRows,
@@ -2591,8 +2709,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         recordHistory();
         const target = getInsertionTargetAfter(scene, anchorId);
         const insertedIds: StoryBlockId[] = [];
+        // Duplicating mints fresh textIds exactly as a paste does, so the copies would arrive
+        // untranslated unless the units follow them. Collected before the clone, because the source
+        // ids are what the project's languages are keyed by.
+        const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
+        const textIdMap = new Map<string, string>();
         for (const rootId of orderedRoots) {
-            const cloned = cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate());
+            const cloned = cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate(), textIdMap);
             insertSerializedClone(storyService, storyId, sceneId, cloned, target);
             insertedIds.push(cloned.block.id);
         }
@@ -2602,7 +2725,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             selectionAnchorRef.current = insertedIds[0];
         }
         setEditorMode({ kind: "idle" });
-    }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
+        // After the rows are in, and not awaited: the duplicate is complete without it, and the
+        // translations land in documents of their own. Nothing here reports success - a duplicate
+        // that carried its languages is what the author already expected.
+        if (localizationService) {
+            void carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
+                .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
+        }
+    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
 
     /**
      * The block ids a row operation acts on: the selection (deduped to roots so a container carries its
@@ -2704,10 +2834,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
-        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection, selectRowFromClick,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
+        unresolvedSpeakerRowIds, bindSpeakerForRows,
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
         recordHistory, undoEdit, redoEdit,
