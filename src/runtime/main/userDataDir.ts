@@ -128,13 +128,14 @@ export function userDataPlatformOf(platform: NodeJS.Platform): UserDataPlatform 
 }
 
 /**
- * The folder holding the player's copy of the game.
+ * The folder holding the player's copy of the game: where a patch is looked for,
+ * and where the player's files go when the author keeps them beside the game.
  *
  * On Windows and Linux that is the folder holding the executable. On macOS the
  * executable is three levels inside an application bundle, and the folder that
  * answers to "where the player put this game" is the one holding the bundle -
- * not `Contents/`, which is sealed by the signature and is not a place anything
- * may write.
+ * not `Contents/`, which is sealed by the signature, is not a place anything may
+ * write, and is not somewhere a player would think to drop a file.
  */
 export function resolveGameRootDir(env: GameRootEnvironment): string {
     if (!env.packaged) {
