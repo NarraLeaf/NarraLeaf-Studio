@@ -18,6 +18,7 @@ const {
     buildBuiltInPlugins,
     sourceRoot: builtInPluginsSourceRoot,
 } = require('../build/builtin-plugins');
+const { buildRuntime } = require('../build/build-runtime');
 
 const forwardedElectronArgs = process.argv.slice(2);
 
@@ -187,23 +188,6 @@ function broadcastReload(target = 'all') {
         });
     }
 
-    function runNodeScript(args) {
-        return new Promise((resolve, reject) => {
-            const child = spawn(process.execPath, args, {
-                cwd: rootDir,
-                stdio: 'inherit',
-            });
-            child.on('close', code => {
-                if (code === 0) {
-                    resolve();
-                } else {
-                    reject(new Error(`node ${args.join(' ')} exited with code ${code}`));
-                }
-            });
-            child.on('error', reject);
-        });
-    }
-
     async function rebuildRuntimeForDev() {
         if (runtimeBuildRunning) {
             runtimeBuildQueued = true;
@@ -216,7 +200,13 @@ function broadcastReload(target = 'all') {
             // minified) regardless of this flag — build-runtime.js enforces that so
             // packs produced from a dev Studio session never ship dev React.
             // `--dev` here only turns on sourcemaps for readable runtime stacks.
-            await runNodeScript(['project/build/build-runtime.js', '--dev']);
+            //
+            // In process, not `node project/build/build-runtime.js`: the child paid
+            // ~2.5s of module loading every time, and its renderer bundle pulls the
+            // same styles.css through the same Tailwind config as the Studio apps
+            // being built alongside it — sharing this process shares that JIT
+            // context, which is the difference between a ~4s cold scan and ~0.3s.
+            await buildRuntime({ dev: true });
             if (!initialRuntimeBuilt) {
                 initialRuntimeBuilt = true;
                 console.log('[runtime] initial build complete.');
