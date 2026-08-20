@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VcsServerSession } from "@shared/types/vcs";
-import { ServerPickerDialog, ServerSection } from "./VersionRail";
+import { CommitForm, ServerPickerDialog, ServerSection } from "./VersionRail";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 
 /**
@@ -17,9 +17,13 @@ import type { VersionSurface } from "../../hooks/useVersionSurface";
  *
  * The rail section that reaches this dialog is pinned in the same file, for the same reason: the
  * two are one decision about how much weight a once-a-year act is given, and the drift is always
- * in the direction of giving it more. So the second suite below holds the shape - Send and Get a
- * press away, everything rare behind the menu, and the server line reading as a line rather than
- * as the button that covers the rail.
+ * in the direction of giving it more. So the section's own suite below holds the shape - Send and
+ * Get a press away, everything rare behind the menu, and the server line reading as a line rather
+ * than as the button that covers the rail.
+ *
+ * Between them are the two suites about the author name, one per place the rail asks for it. They
+ * are one rule read twice, and the rule is that nobody is asked a question the destination is about
+ * to answer for them.
  */
 
 vi.mock("@/lib/i18n", async importOriginal => ({
@@ -101,6 +105,27 @@ function section(overrides: Partial<VersionSurface> = {}) {
         ...overrides,
     } as unknown as VersionSurface;
     render(<ServerSection surface={surface} />);
+    return surface;
+}
+
+/** The commit form, for a project that could record a version right now. */
+function commitForm(overrides: Partial<VersionSurface> = {}) {
+    const surface = {
+        // Unanswered, which is the only state the author row is ever drawn in at all. What the
+        // cases below decide is whether it is drawn when it could be.
+        authorName: null,
+        busy: null,
+        frozen: null,
+        state: { kind: "current", head: "abc1234" },
+        // Null is "nobody has scanned", which leaves the form present and the button live.
+        status: null,
+        remote: `${ONE}/my-game`,
+        serverSession: null,
+        commit: vi.fn(() => Promise.resolve(true)),
+        setAuthorName: vi.fn(() => Promise.resolve(true)),
+        ...overrides,
+    } as unknown as VersionSurface;
+    render(<CommitForm surface={surface} />);
     return surface;
 }
 
@@ -240,6 +265,46 @@ describe("the author name in the server picker", () => {
 
         await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
         fireEvent.click(seam("picker-address").querySelector("button")!);
+
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
+    });
+});
+
+/**
+ * The same question in the commit form, which is where an author actually met it.
+ *
+ * The panel said "Signed in as Ada Lovelace" in the server section and, three lines lower, asked
+ * who to sign versions as - and the name typed there was never recorded, because
+ * `VcsManager.resolveIdentity` prefers the session stored for the project's own remote origin. The
+ * predicate is `serverSession`, which is what `getServerSession` answered for that same remote and
+ * therefore the same `storedServerSession` lookup rather than a second guess at it.
+ *
+ * The two rows below the divide are the ones that must not go with it: a server that signs nobody
+ * in, and no server at all, are exactly the cases this row exists for.
+ */
+describe("the author name in the commit form", () => {
+    it("is not asked while a session for this project's server stands", () => {
+        commitForm({ serverSession: session(ONE, "ada", "Blackwood Studio") });
+
+        // The form itself is still there; only the question that had already been answered is not.
+        expect(document.querySelector("[data-vcs-seam='commit-form']")).not.toBeNull();
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
+    });
+
+    it("is asked for a server that signs nobody in", () => {
+        commitForm({ remote: "lore://plain.example.lan:41337/my-game" });
+
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).not.toBeNull();
+    });
+
+    it("is asked for a project on no server at all, which is the case it exists for", () => {
+        commitForm({ remote: null });
+
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).not.toBeNull();
+    });
+
+    it("goes once the name has been answered, server or no server", () => {
+        commitForm({ remote: null, authorName: "Ada Blackwood" });
 
         expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
     });
