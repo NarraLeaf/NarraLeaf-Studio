@@ -2,6 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
+import type { WindowAppType, WindowProps } from "@shared/types/window";
 
 /**
  * The launcher's "add project" and "open project" flows.
@@ -17,8 +18,20 @@ import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
  * Each returns an error message to display, or null when it succeeded or the user cancelled.
  */
 
-export async function createProjectFromWizard(): Promise<string | null> {
-    const result = await getInterface().app.launchProjectWizard({});
+/**
+ * Raise the wizard, and open whatever comes out of it.
+ *
+ * The props say which question is already answered: none for the plain "Add project", a
+ * `remoteUrl` for a project chosen off a server, where the flow to run is the clone flow and
+ * the only thing left to ask is where the copy lands. There is deliberately no second clone
+ * path in the launcher - the destination is chosen through the native picker on the wizard's
+ * own page, and `storageManager` refuses a folder that was never picked, so a hand-rolled one
+ * would be one that cannot write anywhere.
+ */
+export async function createProjectFromWizard(
+    props: WindowProps[WindowAppType.ProjectWizard] = {},
+): Promise<string | null> {
+    const result = await getInterface().app.launchProjectWizard(props);
     if (!result.success) {
         return result.error ?? "";
     }

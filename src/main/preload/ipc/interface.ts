@@ -303,7 +303,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         },
         pickBackgroundImage: () => ipcClient.invoke(IPCEventType.appPickBackgroundImage, {}),
         readBackgroundImage: (file: string) => ipcClient.invoke(IPCEventType.appReadBackgroundImage, { file }),
-        launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
+        // The props go over. They used to be dropped here - the signature took them and the
+        // call sent `{}` - so `packagePath` reached the wizard only from a main-process call
+        // site, and any renderer trying to open the wizard on something got the first page.
+        launchProjectWizard: (props: WindowProps[WindowAppType.ProjectWizard]) =>
+            ipcClient.invoke(IPCEventType.projectWizardLaunch, props ?? {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
         promptServerTrust: (props: ServerTrustPromptProps) => ipcClient.invoke(IPCEventType.serverTrustPrompt, { props }),
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
