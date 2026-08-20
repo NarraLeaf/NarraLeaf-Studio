@@ -1,5 +1,6 @@
 import { dialog } from 'electron';
 import { App } from '@/app/app';
+import { decideWindowClosedTeardown } from '@/app/application/windowClosedTeardown';
 import { getMainTranslator } from '@/app/application/i18n';
 
 const app = App.create({});
@@ -118,19 +119,23 @@ app.whenReady().then(async () => {
     });
 
     app.windowManager.events.on("window-closed", (window) => {
-        // Lore takes an EXCLUSIVE repository lock for as long as a store handle is
-        // open, and a second process blocks (does not fail) trying to acquire it.
-        // Holding it past the project's lifetime would leave the `lore` CLI and any
-        // other tool hanging on a project the user already closed.
-        //
-        // Not while quitting, though. Windows close as part of the quit, AFTER the drain below
-        // has already released every session - so this would find nothing to do in the good case,
-        // and in the bad one (a session reopened in between) it would start Lore calls that
-        // nothing waits for, moments before Node destroys the environment they must report back
-        // into. That is not a leak, it is an abort: see VcsShuttingDownError.
         const projectPath = window.getProps()?.projectPath;
-        if (typeof projectPath === "string" && projectPath.length > 0 && !app.isQuitting()) {
-            void app.getVcsManager().closeProject(projectPath).catch((error) => {
+        const named = typeof projectPath === "string" && projectPath.length > 0 ? projectPath : null;
+        // Both rules, and the reasoning for each, live in `decideWindowClosedTeardown`.
+        const teardown = decideWindowClosedTeardown({
+            windowType: window.getWindowType(),
+            projectPath: named,
+            quitting: app.isQuitting(),
+            projectStillOpen: named !== null && app.hasLiveWindowForProject(named),
+        });
+
+        if (named && teardown.stopRuntimes) {
+            void app.stopProjectRuntimes(named).catch((error) => {
+                app.logger.warn("[Runtime] Failed to stop this project's runtimes on window close", error);
+            });
+        }
+        if (named && teardown.releaseVersionControl) {
+            void app.getVcsManager().closeProject(named).catch((error) => {
                 app.logger.warn("[Vcs] Failed to release session on window close", error);
             });
         }
@@ -184,11 +189,20 @@ app.whenReady().then(async () => {
         }
         quitFlush = 'running';
 
-        // Saves first, sessions second, and neither allowed to skip the other: a failed flush is
-        // still a quit that has to close its stores, and a failed close is still a quit.
+        // Saves first, then the runtimes, then the stores - and none of the three allowed to skip
+        // another: a failed flush is still a quit that has to close what it started, and a failed
+        // stop is still a quit.
+        //
+        // The runtimes are here rather than left to the windows closing because a preview and a
+        // test run are separate *processes*. Windows' job object happens to reap them with their
+        // parent; macOS and Linux reparent them, so quitting Studio left a game running with
+        // nothing left to stop it from.
         const teardown = (async () => {
             await app.flushAllWorkspacesPendingSaves().catch(error => {
                 app.logger.warn('Failed to flush pending saves before quit:', error);
+            });
+            await app.stopAllProjectRuntimes().catch(error => {
+                app.logger.warn('Failed to stop the running game processes before quit:', error);
             });
             await app.getVcsManager().dispose().catch(error => {
                 app.logger.warn('Failed to close version control before quit:', error);
