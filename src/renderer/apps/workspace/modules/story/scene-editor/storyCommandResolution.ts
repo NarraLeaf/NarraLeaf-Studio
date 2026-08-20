@@ -30,7 +30,7 @@ import type {
     StoryCommandTargetValue,
     StoryCommandValue,
 } from "./storyCommandValues";
-import { BGM_OBJECT_NAME } from "./storyCommandValues";
+import { assetChoices, BGM_OBJECT_NAME } from "./storyCommandValues";
 
 /**
  * Resolution: parsed args → values the payload can hold.
@@ -115,9 +115,7 @@ export function parseLiteral(raw: string): StoryLiteralValue {
     return raw;
 }
 
-function assetsOfType(context: StoryCommandContext, assetType: "image" | "audio" | "video"): readonly StoryCommandNamedRef[] {
-    return assetType === "image" ? context.images : assetType === "audio" ? context.audio : context.videos;
-}
+
 
 /** The character an owner param resolved to, whether it came through a `character` or a `target` slot. */
 function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
@@ -234,12 +232,12 @@ function resolveContent(
         return { value: { kind: "text", value } };
     }
     const assetType = target.objectKind === "video" ? "video" : "image";
-    const found = findByName(assetsOfType(context, assetType), value);
+    const found = findByName(assetChoices(context, assetType, type.allowSets), value);
     if (found === "ambiguous") {
         return { issue: { code: "ambiguousName", span, value } };
     }
     if (!found) {
-        return { issue: { code: "unknownAsset", span, value, assetType } };
+        return { issue: { code: "unknownAsset", span, value, assetType, ...(type.allowSets ? { allowSets: type.allowSets } : {}) } };
     }
     return { value: { kind: "asset", assetId: found.id } };
 }
@@ -257,7 +255,7 @@ function resolveAgainstType(
 ): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } | null {
     switch (type.kind) {
         case "asset": {
-            const found = findByName(assetsOfType(context, type.assetType), value);
+            const found = findByName(assetChoices(context, type.assetType, type.allowSets), value);
             if (found === "ambiguous") {
                 return { issue: { code: "ambiguousName", span, value } };
             }
@@ -578,7 +576,7 @@ function resolveParam(
 function issueForUnresolvable(type: StoryCommandParamType, value: string, span: StoryCommandSpan): StoryCommandResolutionIssue {
     switch (type.kind) {
         case "asset":
-            return { code: "unknownAsset", span, value, assetType: type.assetType };
+            return { code: "unknownAsset", span, value, assetType: type.assetType, ...(type.allowSets ? { allowSets: type.allowSets } : {}) };
         case "scene":
             return { code: "unknownScene", span, value };
         case "audioTrack":

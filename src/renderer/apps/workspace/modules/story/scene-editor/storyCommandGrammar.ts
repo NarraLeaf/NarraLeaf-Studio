@@ -70,7 +70,23 @@ export type StoryCommandEnumFreeform = {
 };
 
 export type StoryCommandParamType =
-    | { kind: "asset"; assetType: "image" | "audio" | "video" }
+    /**
+     * A file from one of the three libraries a line can name.
+     *
+     * `allowSets` opens the slot to the project's asset sets as well, and it is a statement about
+     * where the id ENDS UP, not a preference: assembly resolves a set only for the payload fields
+     * `assetIdSlots` lists (`assetId`, `voiceAssetId`, the two masks), so a set id written anywhere
+     * else reaches the build as an id nothing answers. Set it on a param whose `build` writes one of
+     * those fields, and nowhere else - `assetSetCommandParams.test.ts` builds each command and checks
+     * that claim against the materializer's own slot list.
+     *
+     * The same flag governs all three surfaces the name passes through, which is why it lives on the
+     * type rather than at each of them: what the completion menu offers, what the row's inline
+     * dropdown offers, and what a typed name resolves to. A slot that offered a set it could not
+     * resolve, or resolved one it never offered, would be a name the author can read on the row and
+     * not type back.
+     */
+    | { kind: "asset"; assetType: "image" | "audio" | "video"; allowSets?: true }
     /**
      * A character. `allowTemp` is the difference between a *speaker* and a *portrait*:
      *  - `/say Zoe …` - a dialogue row may carry a bare `speakerName`, so a name matching no character
@@ -195,7 +211,7 @@ export type StoryCommandParamType =
      * image asset, a video target a video asset, a text target free text. `dependsOn` names the
      * target param, exactly as {@link characterForm} does.
      */
-    | { kind: "content"; dependsOn: string }
+    | { kind: "content"; dependsOn: string; allowSets?: true }
     | { kind: "enum"; options: readonly StoryCommandEnumOption[]; freeform?: StoryCommandEnumFreeform }
     /** A bare word that means itself, e.g. the `click` in `/wait click`. Used inside unions. */
     | { kind: "keyword"; value: string }

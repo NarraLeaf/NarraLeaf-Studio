@@ -24,6 +24,9 @@ import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph"
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY } from "@shared/types/blueprint/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import type { WeatherSeedRef } from "@shared/weather/model";
+import { weatherClipAssetId, weatherSpecForStage } from "@shared/weather/stage";
 import type {
     NormalizedPluginManifestV2,
     PluginBuildConfigFieldContribution,
@@ -1532,3 +1535,144 @@ async function listFilesRecursively(root: string): Promise<string[]> {
     }
     return found;
 }
+
+/** A real UUID v4: the story reader refuses any id that is not one, exactly as the packer does. */
+const WEATHER_STORY_ID = "6f1b5c2e-4d3a-4a71-9c88-0b2e5a7d1f04";
+
+/** One story whose scene starts each named seed, written where the bundle assembler reads it. */
+async function writeWeatherStory(projectPath: string, seeds: readonly WeatherSeedRef[]): Promise<void> {
+    const blocks = seeds.map((seed, index) => ({
+        id: `vfx-${index}`,
+        parentId: null,
+        childrenIds: [],
+        kind: "nodeAction",
+        payload: { action: "vfx", operation: "create", objectName: `weather-${index}`, seed },
+    }));
+    const document = {
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        id: WEATHER_STORY_ID,
+        name: "Weather Story",
+        chapters: [{ id: "chapter-1", name: "Chapter 1", sceneIds: ["scene-1"] }],
+        entrySceneId: "scene-1",
+        scenes: {
+            "scene-1": {
+                id: "scene-1",
+                name: "Scene 1",
+                runtimeName: "scene_1",
+                rootBlockIds: blocks.map(block => block.id),
+                blocks: Object.fromEntries(blocks.map(block => [block.id, block])),
+            },
+        },
+    };
+    const storyDir = path.join(projectPath, "editor", "story", "stories", WEATHER_STORY_ID);
+    await fs.mkdir(storyDir, { recursive: true });
+    await fs.writeFile(
+        path.join(projectPath, "editor", "story", "index.json"),
+        JSON.stringify({ stories: [{ id: WEATHER_STORY_ID, name: "Weather Story" }] }),
+        "utf-8",
+    );
+    await fs.writeFile(path.join(storyDir, "storydoc.json"), JSON.stringify(document), "utf-8");
+}
+
+/**
+ * The clips a pack carries, and the ones it does not.
+ *
+ * A weather clip is the one asset whose id no shipped byte contains: the running game computes it
+ * from the seed and the stage size. Nothing downstream could notice it missing, which is why the two
+ * halves of that computation are pinned here against each other rather than each against a literal.
+ */
+describe("weather clips in the pack", () => {
+    beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-runtime-weather-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it("carries a produced clip under the id the running game asks for", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await writeWeatherStory(projectPath, [{ seed: "snow" }]);
+
+        const clipPath = path.join(tempDir, "snow.webm");
+        await fs.writeFile(clipPath, "webm bytes", "utf-8");
+        // The id the host will compute at play time, derived the same way the packer derives it:
+        // the fixture's only surface is 1280x720, so that is the stage this clip covers.
+        const expectedId = weatherClipAssetId(weatherSpecForStage(
+            { seed: "snow" },
+            { surfaces: [{ kind: "appSurface", designSize: { width: 1280, height: 720 } }] } as never,
+        ));
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47321),
+            weatherClips: [{ id: expectedId, path: clipPath }],
+        });
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        const entry = pack.assets.items[expectedId];
+        expect(entry).toMatchObject({ id: expectedId, type: "video", ext: "webm", mimeType: "video/webm" });
+        await expect(fs.readFile(path.join(result.appDir, entry.relativePath), "utf-8")).resolves.toBe("webm bytes");
+    });
+
+    it("leaves out a clip no story in the pack reaches", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await writeWeatherStory(projectPath, [{ seed: "snow" }]);
+
+        const clipPath = path.join(tempDir, "rain.webm");
+        await fs.writeFile(clipPath, "webm bytes", "utf-8");
+        const unreachedId = weatherClipAssetId(weatherSpecForStage({ seed: "rain" }, undefined));
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47321),
+            weatherClips: [{ id: unreachedId, path: clipPath }],
+        });
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[unreachedId]).toBeUndefined();
+        await expect(fs.readdir(path.join(result.appDir, "assets"))).resolves.not.toContain("rain.webm");
+    });
+    it("keeps the clip's manifest entry through a production build, where most fields are dropped", async () => {
+        // A shipped pack is compiled down to what the runtime needs. `relativePath` is how it finds
+        // the file at all, so a stripping pass that took the entry with it would leave a game that
+        // starts, plays, and never snows.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await writeWeatherStory(projectPath, [{ seed: "snow" }]);
+
+        const clipPath = path.join(tempDir, "snow.webm");
+        await fs.writeFile(clipPath, "webm bytes", "utf-8");
+        const expectedId = weatherClipAssetId(weatherSpecForStage(
+            { seed: "snow" },
+            { surfaces: [{ kind: "appSurface", designSize: { width: 1280, height: 720 } }] } as never,
+        ));
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            weatherClips: [{ id: expectedId, path: clipPath }],
+        });
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        const entry = pack.assets.items[expectedId];
+        expect(entry).toMatchObject({ id: expectedId, ext: "webm", mimeType: "video/webm" });
+        await expect(fs.readFile(path.join(result.appDir, entry.relativePath), "utf-8")).resolves.toBe("webm bytes");
+    });
+});

@@ -63,7 +63,7 @@ export const vfx = defineStoryCommand({
             // the same line does different things in two projects.
             type: [
                 { kind: "enum", options: WEATHER_SEED_IDS.map(value => ({ value })) },
-                { kind: "asset", assetType: "video" },
+                { kind: "asset", assetType: "video", allowSets: true },
             ],
             positional: true,
             core: true,

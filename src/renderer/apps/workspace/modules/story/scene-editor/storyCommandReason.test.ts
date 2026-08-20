@@ -68,7 +68,12 @@ describe("getCommandLineReason", () => {
     });
 
     it("distinguishes the ways a name can fail", () => {
-        expect(reasonFor("/bg nothere")).toBe(en.reason.unknownAsset);
+        // `/bg`'s image slot takes a set as well as a file, and says so: an author sent to look for
+        // an image row that was never going to be there is an author told the wrong thing.
+        expect(reasonFor("/bg nothere")).toBe(en.reason.unknownAssetOrSet);
+        // The rule image is the slot that does NOT take one - it writes into the transition ref,
+        // which assembly never resolves a set for - so its message stays the narrow one.
+        expect(reasonFor("/bg forest rule=nothere")).toBe(en.reason.unknownAsset);
         expect(reasonFor("/bg twin")).toBe(en.reason.ambiguousName);
         expect(reasonFor("/show Zoe")).toBe(en.reason.unknownTarget);
         expect(reasonFor("/face Zoe smile")).toBe(en.reason.unknownCharacter);

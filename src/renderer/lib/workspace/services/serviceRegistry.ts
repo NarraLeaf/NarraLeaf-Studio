@@ -48,6 +48,7 @@ import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
 import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
 import { MediaSupportService } from "./media/MediaSupportService";
 import { RecoveryService } from "./core/RecoveryService";
+import { WeatherPrebakeService } from "./weather/WeatherPrebakeService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -64,6 +65,7 @@ export class ServiceRegistry {
         [Services.Character]: CharacterService.getInstance(),
         [Services.PuppetDescription]: PuppetDescriptionService.getInstance(),
         [Services.MediaSupport]: MediaSupportService.getInstance(),
+        [Services.WeatherPrebake]: WeatherPrebakeService.getInstance(),
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),

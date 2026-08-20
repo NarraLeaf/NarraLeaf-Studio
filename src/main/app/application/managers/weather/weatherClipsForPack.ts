@@ -1,0 +1,99 @@
+import path from "path";
+import { Logger } from "@shared/utils/logger";
+import type { StoryDocument, StoryLibraryIndex } from "@shared/types/story";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import { Fs } from "@shared/utils/fs";
+import { isValidStoryId } from "@shared/utils/storyId";
+import { weatherBakeKey } from "@shared/weather/bakeKey";
+import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
+import type { WeatherBakeManager } from "./WeatherBakeManager";
+
+const logger = new Logger("WeatherBake");
+
+/**
+ * Produce every weather clip a project's stories ask for, so the pack can carry them.
+ *
+ * ## Why this runs before the compile rather than inside it
+ *
+ * The story compiler runs inside the shipped game. By the time a `/vfx snow` row is compiled there
+ * is no encoder to reach and no project to read - which is exactly why the clip has to be a file the
+ * package already holds, addressed by an id the game can compute for itself.
+ *
+ * So the work is split at the only seam that can carry it: this produces the clips and hands the
+ * packer a list; {@link weatherClipAssetId} is what makes the two ends agree on the name. Both sides
+ * derive it from the same spec, so neither can ship a file the other will not ask for.
+ *
+ * ## Why it reads the project rather than the assembled bundle
+ *
+ * The bundle is assembled inside the compile worker, and a bake needs the main process (it spawns an
+ * encoder). Reading the authored documents here answers the same question a row earlier: the clips a
+ * variant does not ship are simply never copied, which costs a bake nobody watches rather than a
+ * second pipeline for the same fact.
+ *
+ * Never throws. A clip that could not be produced is logged and left out, and the compile reports it
+ * as a story diagnostic on the row that wanted it - a scene that plays without weather rather than a
+ * build that refuses over an overlay.
+ */
+export async function bakeWeatherClipsForPack(
+    manager: WeatherBakeManager,
+    projectPath: string,
+): Promise<PackedWeatherClip[]> {
+    const uidoc = await readJson<UIDocument>(path.join(projectPath, "editor", "ui", "uidoc.json"));
+    const specs = collectWeatherSpecs(await readStories(projectPath), uidoc ?? undefined);
+    if (specs.length === 0) {
+        return [];
+    }
+
+    const outcome = await manager.ensure({ projectRoot: projectPath, specs, priority: "blocking" });
+    const clips: PackedWeatherClip[] = [];
+    for (const spec of specs) {
+        const key = weatherBakeKey(spec);
+        const clipPath = outcome.paths.get(key);
+        if (clipPath) {
+            clips.push({ id: weatherClipAssetId(spec), path: clipPath });
+        } else {
+            logger.warn(`Weather clip ${key} was not produced, so this build carries no clip for it: ${outcome.failures.get(key) ?? "unknown reason"}`);
+        }
+    }
+    return clips;
+}
+
+/**
+ * Every story the project holds, read off disk.
+ *
+ * The authored documents rather than a folded bundle, for the same reason the variant preflight
+ * reads them: a fold drops scenes, and a clip dropped here would be missing from a package that
+ * still reaches the row.
+ */
+async function readStories(projectPath: string): Promise<StoryDocument[]> {
+    const index = await readJson<StoryLibraryIndex>(path.join(projectPath, "editor", "story", "index.json"));
+    const entries = Array.isArray(index?.stories) ? index.stories : [];
+    const stories: StoryDocument[] = [];
+    const seen = new Set<string>();
+    for (const entry of entries) {
+        if (!isValidStoryId(entry.id) || seen.has(entry.id)) {
+            continue;
+        }
+        seen.add(entry.id);
+        const document = await readJson<StoryDocument>(
+            path.join(projectPath, "editor", "story", "stories", entry.id, "storydoc.json"),
+        );
+        if (document?.id === entry.id) {
+            stories.push(document);
+        }
+    }
+    return stories;
+}
+
+/** Null for anything that is not there or will not parse: a project with no stories asks for no clips. */
+async function readJson<T>(filePath: string): Promise<T | null> {
+    const result = await Fs.read(filePath, "utf-8");
+    if (!result.ok) {
+        return null;
+    }
+    try {
+        return JSON.parse(result.data) as T;
+    } catch {
+        return null;
+    }
+}

@@ -50,6 +50,7 @@ export const storyExpr = {
         badValue: "\"{value}\" はこのスロットに合わない",
         unterminatedQuote: "引用符が閉じていない",
         unknownAsset: "\"{value}\" という{assetType}がない",
+        unknownAssetOrSet: "\"{value}\" という{assetType}もアセットセットもない",
         unknownCharacter: "\"{value}\" というキャラクターがいない",
         unknownScene: "\"{value}\" というシーンがない",
         unknownAudioTrack: "\"{value}\" というオーディオトラックがない",
@@ -72,6 +73,6 @@ export const storyExpr = {
         unsupportedTargetLayer: "/{token} はレイヤーの \"{value}\" には効かない。レイヤーの前後は /layer z= で指定する",
         unsupportedOption: "\"{value}\" はここでは使えない。使える値は {allowed}",
         unsupportedParam: "{key}= はこの {kind} には効かない",
-        missingCore: "/{token} にはまだ{slot}が要る",
+        missingCore: "/{token} にはまだ{slot}が必要",
     },
 } satisfies LocaleNamespace<"storyExpr">;

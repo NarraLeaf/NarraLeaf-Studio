@@ -39,7 +39,9 @@ import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { useTitleBarMenu } from "../../components/ui/titleBarMenus";
-import { WorkspaceRunCommand } from "@shared/types/menu";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import { MenuShortcut } from "../../components/ui/MenuShortcut";
+import { WorkspaceMenuAction, WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
@@ -73,18 +75,22 @@ const RUN_MODE_META: Record<RunMode, {
     labelKey: TranslationKey;
     runKey: TranslationKey;
     stopKey: TranslationKey;
+    /** The catalog entry whose chord launches this mode, printed beside the row. */
+    catalogId: string;
 }> = {
     devMode: {
         icon: <Play className="h-4 w-4" />,
         labelKey: "actions.run.devMode",
         runKey: "actions.run.runDevMode",
         stopKey: "workspace.shell.stopDevMode",
+        catalogId: "run:dev-mode",
     },
     preview: {
         icon: <MonitorPlay className="h-4 w-4" />,
         labelKey: "actions.run.preview",
         runKey: "actions.run.runPreview",
         stopKey: "workspace.shell.stopPreview",
+        catalogId: "run:preview",
     },
 };
 
@@ -128,6 +134,7 @@ export function RunControl() {
         setOpen: setMenuOpen,
         toggle: toggleMenu,
     } = useTitleBarMenu("narraleaf-studio:run");
+    const shortcuts = useShortcutLabels();
     const [variantOpen, setVariantOpen] = useState(false);
     const [variants, setVariants] = useState<ProjectAppTag[]>([]);
     const [variantId, setVariantId] = useState<string | null>(null);
@@ -581,7 +588,7 @@ export function RunControl() {
     useKeybinding({
         id: "workspace-run-build",
         catalogId: "action:narraleaf-studio:build",
-        key: "mod+shift+b",
+        key: "f10",
         description: "Open the production build dialog",
         allowInEditable: true,
         when: () => !runStateRef.current.frozen,
@@ -717,7 +724,8 @@ export function RunControl() {
                                     )}
                                 >
                                     <span className="flex h-4 w-4 items-center justify-center">{optionMeta.icon}</span>
-                                    <span className="flex-1 text-left">{t(optionMeta.labelKey)}</span>
+                                    <span className="flex-1 whitespace-nowrap text-left">{t(optionMeta.labelKey)}</span>
+                                    <MenuShortcut of={shortcuts.forBinding(optionMeta.catalogId)} />
                                     <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
                                 </button>
                             );
@@ -743,7 +751,7 @@ export function RunControl() {
                                     <span className="flex h-4 w-4 items-center justify-center">
                                         <GitBranch className="h-4 w-4" />
                                     </span>
-                                    <span className="flex-1 text-left">{t("actions.run.runAs")}</span>
+                                    <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.runAs")}</span>
                                     <span className="text-fg-subtle">
                                         {selectedVariant?.name ?? RELEASE_APP_TAG.name}
                                     </span>
@@ -801,7 +809,8 @@ export function RunControl() {
                             <span className={cn("flex h-4 w-4 items-center justify-center", buildStatus === "error" && "text-danger")}>
                                 {building ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-4 w-4" />}
                             </span>
-                            <span className="flex-1 text-left">{t("actions.run.productionBuild")}</span>
+                            <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.productionBuild")}</span>
+                            <MenuShortcut of={shortcuts.forAction(WorkspaceMenuAction.Build)} />
                             <span className="w-3" />
                         </button>
 
@@ -832,7 +841,7 @@ export function RunControl() {
                             <span className="flex h-4 w-4 items-center justify-center">
                                 <FileDiff className="h-4 w-4" />
                             </span>
-                            <span className="flex-1 text-left">{t("actions.run.exportPatch")}</span>
+                            <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.exportPatch")}</span>
                             <span className="w-3" />
                         </button>
 
@@ -860,7 +869,8 @@ export function RunControl() {
                                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                     : <FlaskConical className="h-4 w-4" />}
                             </span>
-                            <span className="flex-1 text-left">{t("test.action.open")}</span>
+                            <span className="flex-1 whitespace-nowrap text-left">{t("test.action.open")}</span>
+                            <MenuShortcut of={shortcuts.forBinding(TEST_RUN_COMMAND_ID)} />
                             <span className="w-3" />
                         </button>
                     </div>

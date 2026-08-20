@@ -19,12 +19,13 @@ export type SearchJumpTarget =
     | { kind: "uiSurface"; surfaceId: string }
     | { kind: "asset"; assetId: string; assetType: string }
     /**
-     * An asset set — the row the assets panel draws for it, not a file.
+     * An asset set - a thing a reference can point at that is not a file.
      *
-     * Its own kind rather than an `asset` with a flag, because the two ids are told apart by asking
-     * the project and the answer differs per target: an asset opens a preview, a set has no bytes to
-     * preview and its address is where it sits in the library. A reference that names a set carries
-     * that id verbatim, so anything holding one of these is holding a set id already.
+     * Its own variant rather than an `asset` with a flag: the two are opened by different means (a
+     * file has a preview editor, a set is a row in the assets panel with an inspector), and folding
+     * them together would make every consumer of this vocabulary ask "which sort is it" before it
+     * could act. A story row naming a set used to produce the `asset` variant, which resolved to
+     * nothing in the library and made the jump a click that did nothing at all.
      */
     | { kind: "assetSet"; assetSetId: string }
     | {

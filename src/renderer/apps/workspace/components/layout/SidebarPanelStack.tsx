@@ -3,6 +3,7 @@ import type { PanelDefinition } from "../../registry/types";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { panelHelpTopic } from "../../modules/help/panelHelpTopics";
 import { useKeepAlivePanelIds } from "./useKeepAlivePanelIds";
+import { HostVisibility } from "@/lib/components/layout";
 
 interface SidebarPanelStackProps {
     /** All panels registered for this sidebar position. */
@@ -46,7 +47,10 @@ export function SidebarPanelStack({ positionPanels, activePanelId }: SidebarPane
                         data-help-topic={panelHelpTopic(panel.id)}
                     >
                         <WorkspacePanelErrorBoundary regionLabel={panel.title} isolationKey={panel.id}>
-                            <PanelComponent panelId={panel.id} payload={panel.payload} />
+                            {/* See `EditorGroup`: a hidden panel's portalled popups need telling. */}
+                            <HostVisibility visible={isActive}>
+                                <PanelComponent panelId={panel.id} payload={panel.payload} />
+                            </HostVisibility>
                         </WorkspacePanelErrorBoundary>
                     </div>
                 );

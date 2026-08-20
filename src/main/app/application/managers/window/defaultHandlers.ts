@@ -48,7 +48,7 @@ import {
     MediaConvertStartHandler,
     MediaProbeHandler,
 } from "./handlers/mediaAction";
-import { StudioTasksGetOverviewHandler } from "./handlers/studioTaskAction";
+import { StudioTasksGetOverviewHandler, StudioTasksPrebakeWeatherHandler } from "./handlers/studioTaskAction";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
@@ -235,6 +235,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new MediaConvertCancelHandler(),
         new MediaConvertGetStatusHandler(),
         new StudioTasksGetOverviewHandler(),
+        new StudioTasksPrebakeWeatherHandler(),
         new DevModeResolveWeatherClipHandler(),
         new WorkspaceCloseHandler(),
         new WorkspaceReturnToLauncherHandler(),

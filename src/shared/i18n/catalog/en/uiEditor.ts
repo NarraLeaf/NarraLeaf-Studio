@@ -169,7 +169,7 @@ export const uiEditor = {
         add: "Add to project",
         retry: "Retry",
         empty: "No templates available.",
-        emptyFiltered: "No templates match your search.",
+        emptyFiltered: "No templates match the search.",
         applied: "Added “{name}”.",
         slotTaken: "The {slot} slot already has a Game UI.",
         slotOccupied: "Slot in use",
