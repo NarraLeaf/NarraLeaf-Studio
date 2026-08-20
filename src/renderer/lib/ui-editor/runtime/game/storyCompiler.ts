@@ -39,7 +39,7 @@ import { weatherRefIdentity } from "@shared/weather/bakeKey";
 import type { WeatherSeedRef } from "@shared/weather/model";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
-import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
+import { resolvePoseEntry, resolveTagSelection } from "@shared/utils/characterVariant";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
 import {
     characterAvatarKeyFromTags,
@@ -5499,8 +5499,8 @@ async function resolveCharacterImageUrl(
         return null;
     }
     const appearance = ctx.characterSummaries.get(characterId)?.appearance;
-    const assetId = resolvePoseAssetId(appearance, pose);
-    return assetId ? resolveAsset(ctx, assetId, "image", blockId) : null;
+    const entry = resolvePoseEntry(appearance, pose);
+    return entry?.assetId ? resolveAsset(ctx, entry.assetId, "image", blockId, entry.assetVariants) : null;
 }
 
 /**
@@ -5526,7 +5526,9 @@ async function resolveCharacterLayeredSrc(
     for (const layer of appearance.layers) {
         if (layer.hidden) continue;
         if (!layer.axisId) {
-            const url = layer.assetId ? await resolveAsset(ctx, layer.assetId, "image", blockId) : null;
+            const url = layer.assetId
+                ? await resolveAsset(ctx, layer.assetId, "image", blockId, layer.assetVariants)
+                : null;
             if (url) {
                 layers.push(url);
             }
@@ -5537,7 +5539,9 @@ async function resolveCharacterLayeredSrc(
         const variants: Record<string, string | null> = {};
         for (const tag of axis.tags) {
             const assetId = layer.options?.[tag.id] ?? null;
-            variants[tag.id] = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
+            variants[tag.id] = assetId
+                ? await resolveAsset(ctx, assetId, "image", blockId, layer.assetVariants)
+                : null;
         }
         layers.push(variants);
     }
@@ -5588,7 +5592,9 @@ async function compileCharacterAvatars(
     const avatarTable = summary.appearance.kind === "puppet" ? undefined : summary.appearance.avatars;
     for (const key of Object.keys(avatarTable ?? {})) {
         const assetId = resolveCharacterAvatarAssetId(summary, key);
-        const url = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
+        const url = assetId
+            ? await resolveAsset(ctx, assetId, "image", blockId, avatarTable?.[key]?.assetVariants)
+            : null;
         if (url && assetId) {
             byKey.set(key, url);
             ctx.avatarAssetIdByUrl.set(url, assetId);
@@ -5597,7 +5603,9 @@ async function compileCharacterAvatars(
 
     if (summary.appearance.kind === "preset") {
         for (const pose of summary.appearance.poses) {
-            const url = pose.assetId ? await resolveAsset(ctx, pose.assetId, "image", blockId) : null;
+            const url = pose.assetId
+                ? await resolveAsset(ctx, pose.assetId, "image", blockId, pose.assetVariants)
+                : null;
             // Two poses sharing one sprite are indistinguishable at runtime - the engine reports a
             // src, not a pose. First wins; their avatars would have to picture the same thing anyway.
             if (url && !poseByUrl.has(url)) {
@@ -5608,7 +5616,7 @@ async function compileCharacterAvatars(
 
     const defaultAvatarAssetId = summary.defaultAvatarAssetId?.trim();
     const fallback = defaultAvatarAssetId
-        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId)
+        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId, summary.assetVariants)
         : null;
     if (fallback && defaultAvatarAssetId) {
         ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
@@ -5798,9 +5806,28 @@ function resolveVariantReference(input: {
     return assetId;
 }
 
-async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {
+/**
+ * `variants` is for a reference that is not a row: a character's pose, layer or avatar carries its
+ * own answer on the record that names the set, so the caller hands that map in rather than this
+ * looking in the row and scene maps, which have nothing to say about it.
+ */
+async function resolveAsset(
+    ctx: SceneCompileContext,
+    assetId: string,
+    assetType: StoryAssetKind,
+    blockId: string,
+    variants?: StoryAssetVariants,
+): Promise<string | null> {
     return resolveAssetUrlCached({
-        assetId: resolveSetReference(ctx, assetId, blockId),
+        assetId: variants
+            ? resolveVariantReference({
+                variants,
+                assetId,
+                blockId,
+                localization: ctx.localization,
+                diagnostics: ctx.diagnostics,
+            })
+            : resolveSetReference(ctx, assetId, blockId),
         assetType,
         blockId,
         resolveAssetUrl: ctx.resolveAssetUrl,

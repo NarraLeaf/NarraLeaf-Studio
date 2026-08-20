@@ -1,4 +1,3 @@
-import type { ShippedAssetSetTable } from "../build/assetSetTable";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
@@ -15,7 +14,7 @@ import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryAnimationAsset, StoryAnimationAssetId, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
+import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
 
 export type DevModeEntry =
     | {
@@ -151,6 +150,12 @@ export type DevModeCharacterSummary = {
      *    Studio has no standing to call a colour unreadable there.
      */
     color?: string;
+    /**
+     * What the character's OWN asset set fields resolve to, per locale - today `defaultAvatarAssetId`
+     * and nothing else. A pose, a layer and an avatar entry each carry their own; see
+     * `@shared/build/characterAssetSets` for why the answers are not gathered into one place.
+     */
+    assetVariants?: StoryAssetVariants;
 };
 
 /**
@@ -161,6 +166,8 @@ export type DevModeCharacterSummary = {
 export type CharacterAvatarSummaryEntry = {
     baked?: boolean;
     overrideAssetId?: string | null;
+    /** What this entry's own asset set resolves to, per locale. See `@shared/build/characterAssetSets`. */
+    assetVariants?: StoryAssetVariants;
 };
 
 /**
@@ -171,7 +178,13 @@ export type CharacterAvatarSummaryEntry = {
 export type CharacterAppearanceSummary =
     | {
           kind: "preset";
-          poses: { id: string; name: string; assetId: string | null }[];
+          poses: {
+              id: string;
+              name: string;
+              assetId: string | null;
+              /** What this pose's own asset set resolves to, per locale. */
+              assetVariants?: StoryAssetVariants;
+          }[];
           defaultPoseId: string | null;
           /** Dialog avatars keyed by pose id. */
           avatars?: Record<string, CharacterAvatarSummaryEntry>;
@@ -192,6 +205,11 @@ export type CharacterAppearanceSummary =
               assetId?: string | null;
               options?: Record<string, string | null>;
               hidden?: boolean;
+              /**
+               * What this layer's own asset sets resolve to, per locale - covering `assetId` and
+               * every entry of `options`, which are the same slot drawn for different tags.
+               */
+              assetVariants?: StoryAssetVariants;
           }[];
       }
     | {
@@ -341,16 +359,6 @@ export type DevModeBundle = {
      * predate the section, which every consumer reads as the engine's own values.
      */
     dialogue?: DialogueConfiguration;
-    /**
-     * What the asset sets named OUTSIDE the stories resolve to - characters, the UI document, the
-     * blueprints. Keyed by set id, then by locale.
-     *
-     * A story row carries its own answer, so nothing a story names appears here; see
-     * `@shared/build/assetSetTable` for why the two halves are shaped differently and why this one
-     * cannot simply be the project's set document. Absent means the shipped content names no set,
-     * which is every project that has not put one in a character or a widget.
-     */
-    assetSets?: ShippedAssetSetTable;
     /**
      * The author's own version for this build, copied from `.nlproj` `metadata.version`.
      *

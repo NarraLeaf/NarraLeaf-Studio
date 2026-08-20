@@ -7,7 +7,6 @@ import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { useWorkspace } from "@/apps/workspace/context";
-import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { FieldLayout } from "./FieldLayout";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
@@ -40,7 +39,7 @@ export function ImageFillField<TData extends UIInspectorData>({
     onSaving,
 }: ImageFillFieldProps<TData>) {
     const { t } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
+    const { context } = useWorkspace();
     const { frozen } = useFreezeGuard();
     const MODE_OPTIONS = useMemo<{ value: ImageFillMode; label: string }[]>(
         () => [
@@ -83,15 +82,6 @@ export function ImageFillField<TData extends UIInspectorData>({
     const { url, metadata, loading, error: assetResolveError } = useAssetObjectUrl(normalizedFill.assetId ?? null);
     const [isOpen, setIsOpen] = useState(false);
     const [selectorOpen, setSelectorOpen] = useState(false);
-    // A widget's picture can be answered by a set, for the reason a page's background can: it is one
-    // picture that may be drawn differently per language or per edition, and the package carries the
-    // answer because a widget prop has no row to write one into.
-    const assetSets = useAssetSetPickerSource({
-        context,
-        isInitialized,
-        assetType: AssetType.Image,
-        enabled: true,
-    });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const previewRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -430,9 +420,6 @@ export function ImageFillField<TData extends UIInspectorData>({
             <AssetSelector
                 visible={selectorOpen}
                 assetType={AssetType.Image}
-                {...(assetSets.virtualGroups
-                    ? { virtualGroups: assetSets.virtualGroups, resolveAssetPreviewUrl: assetSets.resolveAssetPreviewUrl }
-                    : {})}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={handleSelectImage}
                 selectedIds={normalizedFill.assetId ? [normalizedFill.assetId] : []}

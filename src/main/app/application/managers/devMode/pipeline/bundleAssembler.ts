@@ -63,10 +63,9 @@ import {
     type AssetSetMaterializationProblem,
 } from "@shared/build/assetSetMaterialization";
 import {
-    buildShippedAssetSetTable,
-    type AssetSetTableProblem,
-    type ShippedAssetSetTable,
-} from "@shared/build/assetSetTable";
+    attachCharacterAssetSetVariants,
+    type AssetSetRecordProblem,
+} from "@shared/build/characterAssetSets";
 import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
@@ -147,10 +146,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // The other half: the sets named by content that has no rows to write an answer into. Read after
     // the story pass so both are resolved against the same library and the same edition, and against
     // the story library this build actually ships - a character dropped with its chapter names no set.
-    const assetSets = await resolveShippedAssetSets(context, {
-        characters: resolvedStoryLibrary?.characters,
-        ui: { uidoc, uigraphs, localBlueprints, sharedBlueprints },
-    }, localization, variant.name);
+    await resolveCharacterAssetSets(context, resolvedStoryLibrary?.characters, localization, variant.name);
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
@@ -176,7 +172,6 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         },
         storyLibrary: resolvedStoryLibrary,
         localization,
-        ...(assetSets ? { assetSets } : {}),
         voice,
         audio,
         autoSave,
@@ -652,31 +647,27 @@ async function materializeAssetSets(
 }
 
 /**
- * Resolve the sets named by everything that is not a story, and refuse to package one that cannot be.
+ * Resolve the sets a character names, and refuse to package one that cannot be.
  *
  * The same rule as the story pass in every respect that matters - resolved against the same library
  * and the same edition, refused on a build, reported as a notice in Dev Mode - and different in the
- * one respect the content forces: there is no row to write the answer into, so the answers travel as
- * a table. See `@shared/build/assetSetTable`.
- *
- * A character or a widget naming a set is the whole reason this exists; a project that names none
- * gets no table and nothing changes for it.
+ * one the content forces: a character has no row to write the answer into, so the answer goes on the
+ * pose, the layer or the avatar entry that named the set. See `@shared/build/characterAssetSets`.
  */
-async function resolveShippedAssetSets(
+async function resolveCharacterAssetSets(
     context: DevModeBundleLoadContext,
-    payloads: { characters: unknown; ui: unknown },
+    characters: readonly DevModeCharacterSummary[] | undefined,
     localization: GameLocalizationBundle | undefined,
     variantName: string,
-): Promise<ShippedAssetSetTable | undefined> {
+): Promise<void> {
     const sets = await loadAssetSets(context.projectPath);
     if (sets.length === 0) {
-        return undefined;
+        return;
     }
-    const result = buildShippedAssetSetTable({
-        payloads: [
-            { slice: "characters", payload: payloads.characters },
-            { slice: "the interface", payload: payloads.ui },
-        ],
+    // In place: these records were built moments ago on their way into a package, and the editor's
+    // own copies live in another process.
+    const result = attachCharacterAssetSetVariants({
+        characters,
         sets,
         candidates: await loadAssetSetCandidates(context.projectPath),
         localization,
@@ -692,7 +683,6 @@ async function resolveShippedAssetSets(
     if (result.collapsedBuildAxis) {
         context.onAssetSetCollapse?.();
     }
-    return Object.keys(result.table).length > 0 ? result.table : undefined;
 }
 
 /**
@@ -701,7 +691,7 @@ async function resolveShippedAssetSets(
  * The set's name is what the author acts on either way; what changes is where to go and look, and
  * "in the interface" is as precise as a scan of the document can honestly be.
  */
-function describeShippedAssetSetProblem(problem: AssetSetTableProblem, variantName: string): string {
+function describeShippedAssetSetProblem(problem: AssetSetRecordProblem, variantName: string): string {
     const set = `Asset set "${problem.setName}", used in ${problem.slice}`;
     if (problem.kind === "ambiguous") {
         return `${set}, has more than one asset for ${problem.axisKey} ${problem.value}.`;

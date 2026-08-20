@@ -1,8 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
-import { useWorkspace } from "@/apps/workspace/context";
-import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { IconButton } from "@/lib/components/elements/Button";
 import { Select } from "@/lib/components/elements/Select";
 import { useTranslation } from "@/lib/i18n";
@@ -41,15 +39,6 @@ const FILL_MODE_LABEL_KEYS: Record<UISurfaceBackgroundFillMode, TranslationKey> 
 export function SurfaceBackgroundImageField({ data }: CustomFieldProps<SceneEditorContext>) {
     const { t } = useTranslation();
     const [selectorOpen, setSelectorOpen] = useState(false);
-    const workspace = useWorkspace();
-    // A page's own picture can be answered by a set - a title screen whose art carries words is the
-    // textbook case. The package carries the answer, since a surface has no row to write one into.
-    const assetSets = useAssetSetPickerSource({
-        context: workspace.context,
-        isInitialized: workspace.isInitialized,
-        assetType: AssetType.Image,
-        enabled: true,
-    });
     const anchorRef = useRef<HTMLButtonElement | null>(null);
     const background = getSurfaceBackgroundImage(data.surface);
     const { url } = useAssetObjectUrl(background?.assetId ?? null);
@@ -113,9 +102,6 @@ export function SurfaceBackgroundImageField({ data }: CustomFieldProps<SceneEdit
             <AssetSelector
                 visible={selectorOpen}
                 assetType={AssetType.Image}
-                {...(assetSets.virtualGroups
-                    ? { virtualGroups: assetSets.virtualGroups, resolveAssetPreviewUrl: assetSets.resolveAssetPreviewUrl }
-                    : {})}
                 selectedIds={background ? [background.assetId] : []}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={assets => {
