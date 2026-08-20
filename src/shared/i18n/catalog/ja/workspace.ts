@@ -22,7 +22,7 @@ export const workspace = {
             removeConfirmDetail: "翻訳はディスクに残り、この言語を追加し直すと復元される",
             openTable: "翻訳の表を開く",
             progress: "{total} 件中 {completed} 件が翻訳済み",
-            staleCount: "確認が要るもの {count} 件",
+            staleCount: "確認が必要なもの {count} 件",
             importSummary: "翻訳 {applied} 件を読み込んだ（変更なし {unchanged}、対応不明 {unknown}、空のため飛ばした {skippedEmpty}）",
         },
         settings: {
@@ -74,6 +74,8 @@ export const workspace = {
             reviewFilterUnreviewed: "未確認",
             charactersGroup: "キャラクター",
             characterSpeaker: "キャラクター",
+            scenesGroup: "シーン",
+            sceneSpeaker: "シーン",
             addKey: "追加",
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",
@@ -124,7 +126,7 @@ export const workspace = {
             exportPickup: "追加収録の台本を書き出す（古いものだけ）",
             importAudio: "音声を読み込む…",
             exportDone: "{path} に書き出した",
-            pickupEmpty: "録り直しが要る行はない",
+            pickupEmpty: "録り直しが必要な行はない",
             importSummary: "テイク {linked} 件を結びつけた（対応不明 {unmatched}、失敗 {failed}）",
             importFailed: "音声ファイルを読み込めなかった",
             importScript: "収録台本を読み込む…",
@@ -173,7 +175,7 @@ export const workspace = {
             statusApproved: "承認済み",
             statusOutdated: "古い",
             notePlaceholder: "メモ…",
-            dropHint: "音声を落とすと割り当てる",
+            dropHint: "音声をドロップすると割り当てる",
         },
     },
     // 復旧モード。プロジェクトが読み込めない、あるいは正しく読み込めないワークスペースを、
@@ -187,7 +189,7 @@ export const workspace = {
             state: "復旧モード：読み取り専用、プラグインは読み込んでいない",
             exit: "復旧モードを出る",
         },
-        intro: "検査を走らせると、その部分だけを読み込んで結果を報告する。読めたものは普段どおり見て回れる",
+        intro: "検査を走らせると、その部分だけを読み込んで結果を報告する。読み込めた部分は通常どおり閲覧できる",
         problems: {
             title: "見つかった問題",
             count: "{count}",
@@ -375,7 +377,6 @@ export const workspace = {
             categoryVersionControl: "バージョン管理",
             editor: {
                 closeTab: "タブを閉じる",
-                closeSelectedTabs: "選択中のタブを閉じる",
                 closeOthers: "ほかのタブを閉じる",
                 closeToRight: "右側のタブを閉じる",
                 closeAll: "すべてのタブを閉じる",
@@ -861,6 +862,8 @@ export const workspace = {
             // 設定の表と一覧の見出し（静的なカタログから来る）。
             categories: {
                 general: "一般",
+                run: "実行",
+                view: "表示",
                 story: "ストーリーエディタ",
                 uiEditor: "UI エディタ",
                 blueprint: "ブループリントエディタ",
@@ -875,6 +878,11 @@ export const workspace = {
                 cheatSheet: "キーボードショートカットを表示",
                 contextHelp: "フォーカスされているもののヘルプ",
                 reopenClosedTab: "閉じたタブを開き直す",
+                // 開発モード・プレビュー・テストのうち、実行中のものを止める一つのキー。
+                // 停止する三つのコマンドが同じ割り当てを共有する。
+                run: {
+                    stop: "実行を停止",
+                },
                 undo: "元に戻す",
                 redo: "やり直す",
                 quickSwitchNext: "次のエディタのタブへ",

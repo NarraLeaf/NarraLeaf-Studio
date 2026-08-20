@@ -72,10 +72,10 @@ export const help = {
                 + "Preview runs the game in its own window, in the form players receive it, without the "
                 + "debug panels.\n"
                 + "\n"
-                + "Build produces the files handed to players. Dev Mode and Preview take seconds; a build "
+                + "Build produces the files delivered to players. Dev Mode and Preview take seconds; a build "
                 + "takes minutes.\n"
                 + "\n"
-                + "- Run records the mode chosen last and starts it in one click.\n"
+                + "- Run starts the mode chosen last.\n"
                 + "- Preview and Build are unavailable while the project is frozen. Dev Mode still runs, and "
                 + "while an old version is open it runs that version.",
         },
@@ -92,7 +92,7 @@ export const help = {
             title: "Search",
             body:
                 "Search covers story text, scene and character names, assets, blueprint nodes and UI widgets. "
-                + "Every result states where it lives, and selecting one opens that place.\n"
+                + "Every result states where it is, and selecting one opens that place.\n"
                 + "\n"
                 + "- Name matches rank above matches inside a document.\n"
                 + "- The command palette finds actions and panels by name, not by content.",
@@ -107,14 +107,14 @@ export const help = {
                 + "changed once the project exists.\n"
                 + "- The target folder must be empty. A folder that does not exist yet is created.\n"
                 + "- A project copied from a server stays connected to it, and the local copy is editable.\n"
-                + "- The bundled template is a short story that already runs: three scenes, one choice, and the "
-                + "title, save, load, config and backlog screens.",
+                + "- The bundled template is a short story that runs as delivered: three scenes, one choice, "
+                + "and the title, save, load, config and backlog screens.",
         },
         undo: {
             title: "Undo and redo",
             body:
-                "Undo reverses the last change, in the editor that made it. The editor with focus handles it; "
-                + "with focus outside every editor, the workspace handles it.\n"
+                "Undo reverses the last change, in the editor that made it. The editor with focus performs it. "
+                + "With focus outside every editor, the workspace performs it.\n"
                 + "\n"
                 + "- Each editor keeps its own steps, so switching tabs does not merge them.\n"
                 + "- Undo and redo are also in the Edit menu.\n"
@@ -126,7 +126,7 @@ export const help = {
             title: "Studio settings",
             body:
                 "Settings belong to Studio on this machine, not to a project. Opening another project leaves "
-                + "them unchanged, and they do not travel with a project handed to someone else.\n"
+                + "them unchanged, and a project given to someone else does not carry them.\n"
                 + "\n"
                 + "- Language, theme, editor text and every shortcut are set here.\n"
                 + "- Reset returns one setting, or all of them, to its default value.\n"
@@ -153,7 +153,7 @@ export const help = {
                 + "working example.\n"
                 + "\n"
                 + "- The panel spells commands the way they are typed. With the editor in Chinese the Chinese "
-                + "spellings parse, and the English spellings keep working.\n"
+                + "spellings parse, and the English spellings remain valid.\n"
                 + "- A row with a required value missing cannot be committed.",
         },
         storyVariables: {
@@ -172,7 +172,7 @@ export const help = {
         storyFlow: {
             title: "Branches and routes",
             body:
-                "The flow view reads the scenes and draws where the story can go: which choice leads where, "
+                "The flow view reads the scenes and draws the paths the story can take: which choice leads where, "
                 + "which scenes are reachable only through a branch, and where a path ends.\n"
                 + "\n"
                 + "- A path that ends is not always an ending. It can be a branch with nothing written after it, "
@@ -224,7 +224,7 @@ export const help = {
                 + "- The library groups ready-made motions by purpose. Choosing one copies it into the project, "
                 + "and the copy can be edited.\n"
                 + "- A motion describes how something moves, not what moves. The row names the target.\n"
-                + "- The preview draws at the size the game draws, so its timing matches the timing at run time.",
+                + "- The preview is drawn at the size the game draws, so its timing matches playback.",
         },
         assets: {
             title: "Assets",
@@ -239,57 +239,56 @@ export const help = {
         assetSets: {
             title: "Asset sets",
             body:
-                "An asset set is one entry in the library that stands for a family of files differing by "
-                + "language, edition or any other property. A reference carries the set, and the game "
-                + "receives the file that matches.\n"
+                "An asset set is one library entry standing for several files that differ by language or by "
+                + "build variant. A story row names the set instead of a file, and the game uses the file "
+                + "that matches.\n"
                 + "\n"
-                + "Select two or more files of the same kind and choose New Set from Selection. The dialog "
-                + "splits the file names at a separator and asks what each part is:\n"
+                + "A set stays in the folder it was created in, and its files are listed inside it rather "
+                + "than beside the other files.\n"
                 + "\n"
-                + "- A part every file shares becomes a tag every member carries, such as char:alice.\n"
-                + "- A part the files differ on becomes an axis, such as mood or locale.\n"
-                + "- A part left unnamed is not used.\n"
-                + "\n"
-                + "The variant list shows every combination the set promises and the file that answers it. "
-                + "A combination with no file is marked, and the set can still be created.\n"
-                + "\n"
-                + "Creating the set writes those tags onto the files. A file imported later joins the set "
-                + "once it carries the same tags.\n"
-                + "\n"
-                + "In the properties panel, choosing a file for a combination writes that combination's "
-                + "tags onto it.",
+                + "- Select two or more files of one type and choose New Set from Selection. In a folder's "
+                + "menu, New Asset Set starts one from files chosen in the dialog.\n"
+                + "- The dialog asks what the set varies by, then which file each value uses.\n"
+                + "- Choosing a file for a value in the Variants list adds that file to the set.\n"
+                + "- Dissolve Set removes the set and leaves its files in the folder it stood in. "
+                + "Delete removes the set and the files in it. Both first list the places that reference the set.\n"
+                + "- Where a field accepts a set, the picker lists them under Asset sets. Character "
+                + "appearances and interface widgets accept a file.",
         },
         assetSetAxes: {
-            title: "Axes and when they resolve",
+            title: "What a set varies by",
             body:
-                "An axis is one tag category the members differ on. Each axis states when it is resolved:\n"
+                "A set varies by one of two things, chosen when it is created:\n"
                 + "\n"
-                + "- When built: the build picks one value, and the other variants are left out of the "
-                + "package.\n"
-                + "- While running: every value is in the package and the game picks between them. A "
-                + "language axis is resolved this way.\n"
+                + "- Language: every file is in the package, and the game uses the file for the language it "
+                + "is running in.\n"
+                + "- Variant: the build uses the file for the variant being built, and the other files are "
+                + "left out of the package.\n"
                 + "\n"
-                + "An axis whose values are all languages this project declares opens as While running.\n"
+                + "One value is the fallback, and it is the only value that requires a file. A value with no "
+                + "file of its own uses the fallback's file. A language that has a fallback language uses "
+                + "that language's file first.\n"
                 + "\n"
-                + "Axes are ordered, outermost first. An axis resolved when built cannot sit inside one "
-                + "resolved while running, and that arrangement is refused.\n"
+                + "To vary by both, make a second set under one value: select its files, right-click the "
+                + "value, and choose New Set from Selection, Here.\n"
                 + "\n"
-                + "A combination with no file is reported by the project check. A build stops when a "
-                + "combination it needs has no file.",
+                + "The project check reports a value with no file, and a value that more than one file "
+                + "matches. Under Build variants, each variant states which value it takes, and a build "
+                + "stops while the variant being built states none.",
         },
         mediaConversion: {
             title: "Converting unplayable files",
             body:
                 "Some audio and video files cannot play in a game. When one is imported, Studio offers to "
-                + "convert it and states what the conversion costs.\n"
+                + "convert it and states the effect of the conversion.\n"
                 + "\n"
                 + "- Converting writes a new file into the project. The source file is not modified.\n"
                 + "- Some files convert with picture and sound identical to the original.\n"
                 + "- Others must be re-encoded, which takes longer and loses some quality.\n"
                 + "- A file with no playable content is skipped and listed with the reason.\n"
                 + "\n"
-                + "Files already in the project are marked in the asset browser, and the mark converts them in "
-                + "place. The file keeps its name and every reference to it keeps working.\n"
+                + "Files already in the project are marked in the asset browser, and the mark starts the same "
+                + "conversion in place. The file keeps its name, and every reference to it remains valid.\n"
                 + "\n"
                 + "A build stops while any such file remains in the project, and lists them in the console.",
         },
@@ -318,7 +317,7 @@ export const help = {
         puppetRuntimes: {
             title: "Model runtimes",
             body:
-                "A model is drawn by a runtime, and Studio ships none. Each project installs the runtimes it "
+                "A model is drawn by a runtime, and Studio includes none. Each project installs the runtimes it "
                 + "needs, once each.\n"
                 + "\n"
                 + "- Studio does not download runtimes. A runtime comes from its vendor, and its terms "
@@ -340,10 +339,10 @@ export const help = {
         audioClips: {
             title: "Trimming and looping a clip",
             body:
-                "Opening an audio asset shows its waveform, where three marks can be set: the start, the point "
-                + "a repeat jumps back to, and the end.\n"
+                "Opening an audio asset shows its waveform, where three marks can be set: the start, the loop "
+                + "point and the end.\n"
                 + "\n"
-                + "- With a loop mark set, the opening plays once and the part after the mark repeats.\n"
+                + "- With a loop point set, the opening plays once and the part after it repeats.\n"
                 + "- The marks belong to the asset, so every row that plays it uses them.\n"
                 + "- Playback, movement, marking and zooming all have keyboard actions.",
         },
@@ -353,11 +352,11 @@ export const help = {
                 "A voice language holds one clip per spoken line. The panel lists the voice languages with how "
                 + "much of the story each covers, and opening one shows its table of lines.\n"
                 + "\n"
-                + "- Studio imports clips that already exist. It does not record.\n"
+                + "- Studio imports existing clips. It does not record.\n"
                 + "- A whole folder can be matched at once when the file names follow a pattern.\n"
-                + "- The lines to record can be exported as a spreadsheet file for whoever records them.\n"
+                + "- The lines to record can be exported as a spreadsheet file for the person recording them.\n"
                 + "- A line whose text changed after its clip was assigned is marked out of date.\n"
-                + "- Choice options are lines to record only where the panel turns them on.",
+                + "- Choice options become lines to record only when the panel includes them.",
         },
         localization: {
             title: "Languages",
@@ -369,8 +368,8 @@ export const help = {
                 + "- A language can be exported as CSV, XLIFF, PO or JSON, translated elsewhere, and imported "
                 + "back. The import reports how many lines it applied and how many it could not match.\n"
                 + "- Export and import are in the language row's menu.\n"
-                + "- A player who changes language during a game gets the game restarted, and comes back "
-                + "to the line they were on. Project settings offer two other answers: restart without "
+                + "- Changing language during a game restarts it and returns the player to the line they "
+                + "were on. Project settings offer two alternatives: restart without "
                 + "keeping the playthrough, or apply the next time the game is started.",
         },
         brand: {
@@ -380,10 +379,10 @@ export const help = {
                 + "follows it, so changing the color here changes every place that uses it.\n"
                 + "\n"
                 + "- The colors at the top belong to the project. The groups under them are the parts each "
-                + "control is painted with, and every part starts out following one of the colors above.\n"
+                + "control is painted with, and every part follows one of the colors above by default.\n"
                 + "- A part can be pointed at a different color, or given a color of its own.\n"
                 + "- Deleting a color does not rewrite the places that used it. Those places fall back to "
-                + "their own default color, and project check reports them.",
+                + "their own default color, and the project check reports them.",
         },
         uiSurfaces: {
             title: "Game screens",
@@ -413,7 +412,7 @@ export const help = {
                 "A blueprint defines what a screen does: what runs when a button is pressed, what runs when the "
                 + "screen opens. Every graph starts from an event.\n"
                 + "\n"
-                + "Nodes run along the wires between them. One kind of wire sets the order of execution, the "
+                + "Execution follows the wires between the nodes. One kind of wire sets the order of execution, the "
                 + "other carries values from one node into the next.\n"
                 + "\n"
                 + "- Right-click the canvas to add a node. It follows the cursor until it is placed.\n"
@@ -438,12 +437,12 @@ export const help = {
             body:
                 "The Fetch node makes an HTTP request while the game runs, for an online notice board or a "
                 + "leaderboard. It leaves by one of four paths: the request succeeded, the server answered with an "
-                + "error, the network failed, or it took too long.\n"
+                + "error, the network failed, or the request timed out.\n"
                 + "\n"
                 + "- Fetch produces a Response. Read Response Text or Read Response JSON turns it into a value.\n"
                 + "- A Response is only readable during the run that fetched it. To keep the data, read it and "
                 + "store it in a variable.\n"
-                + "- The network policy in project settings decides whether these nodes work at all. With no "
+                + "- The network policy in project settings decides whether these nodes run. With no "
                 + "network access, the project reports an error and the build is refused.\n"
                 + "- Only http and https addresses can be fetched.",
         },
@@ -455,7 +454,7 @@ export const help = {
                 + "formats the chosen platform cannot play.\n"
                 + "\n"
                 + "- Every finding states where it came from, and selecting it opens that place.\n"
-                + "- Running the checks modifies nothing. They only report.",
+                + "- Running the checks modifies nothing.",
         },
         tests: {
             title: "Tests",
@@ -469,7 +468,7 @@ export const help = {
                 + "- Starting a test closes this dialog. The output appears in the console, and the report "
                 + "opens when the run finishes.\n"
                 + "- A test reports passed, failed or skipped. Cancelled and errored mean the run did not finish, "
-                + "not that the game is wrong.\n"
+                + "not that the game failed the test.\n"
                 + "- The report retains the findings of the last run until the test runs again.",
         },
         recovery: {
@@ -479,21 +478,21 @@ export const help = {
                 + "plugins. Nothing is written in this mode.\n"
                 + "\n"
                 + "- The panel lists every failure, each with the error it reported.\n"
-                + "- The load checks read the project one part at a time and report the result. Whatever loads "
+                + "- The load checks read the project one part at a time and report the result. The parts that load "
                 + "can be browsed as usual.\n"
                 + "- With a version history in the project, a working version can be restored from here.\n"
-                + "- Leaving recovery mode reopens the project the normal way.",
+                + "- Leaving recovery mode reopens the project normally.",
         },
         dashboard: {
             title: "Project statistics",
             body:
                 "The dashboard counts what the project holds and what was added recently: scenes, lines, words, "
-                + "characters, assets and the days written on.\n"
+                + "characters, assets and the days with writing.\n"
                 + "\n"
                 + "- Words are counted from story text, so a day spent only on screens, assets or blueprints "
-                + "counts zero.\n"
-                + "- Counting starts the first time the project is opened in a Studio that records these numbers. "
-                + "There is no data before that.",
+                + "records no words.\n"
+                + "- Counting starts the first time the project is opened in a Studio version that records them. "
+                + "Work before that is not counted.",
         },
         versionControl: {
             // Not "Versions": that is the section heading it sits under, and the list read as a
@@ -504,7 +503,7 @@ export const help = {
                 + "version is created except by submitting one, apart from the checkpoint taken before a restore.\n"
                 + "\n"
                 + "- Submitting a version appends to the list. It never replaces or removes an existing version.\n"
-                + "- Changes are not detected automatically. Run a check when one is needed.",
+                + "- Changes are not detected automatically. Run a check to list them.",
         },
         versionChanges: {
             title: "Changes since the last version",
@@ -514,7 +513,7 @@ export const help = {
                 + "\n"
                 + "- Differences are computed when a check is run. The list states when it was last checked.\n"
                 + "- A row that changed is shown with both sides, before and after.\n"
-                + "- Viewing differences writes nothing. The project is left as it is.",
+                + "- Viewing differences writes nothing. The project is not modified.",
         },
         versionConflicts: {
             title: "Merge conflicts",
@@ -523,8 +522,8 @@ export const help = {
                 + "side to keep. The project stays frozen until every conflict has an answer.\n"
                 + "\n"
                 + "- Both sides are shown side by side, and one side is kept per item.\n"
-                + "- Everything that merged automatically is already in place. Only what could not be merged is "
-                + "asked about.\n"
+                + "- Everything that merged automatically is already in place. Only the parts that "
+                + "could not be merged require an answer.\n"
                 + "- Finishing the merge submits a version, and the result is stored in the history like any "
                 + "other.",
         },
@@ -536,7 +535,7 @@ export const help = {
                 + "\n"
                 + "- Send uploads submitted versions to the server.\n"
                 + "- Get downloads the versions on the server and merges them into the local project.\n"
-                + "- When both sides have new versions, get first and send afterwards.\n"
+                + "- When both sides have new versions, Get first and Send afterwards.\n"
                 + "- Checking the current state contacts the server.",
         },
         versionViewing: {
@@ -545,7 +544,7 @@ export const help = {
                 "Opening a version from the list shows the editors as they were at that point. The files in the "
                 + "project are not modified, and nothing is saved while a version is open.\n"
                 + "\n"
-                + "- Stop Viewing History returns the current work unchanged.\n"
+                + "- Stop Viewing History returns to the current work, unchanged.\n"
                 + "- Anything typed while a version is open is discarded on leaving.",
         },
         versionRestore: {
@@ -560,8 +559,8 @@ export const help = {
         freeze: {
             title: "Frozen projects",
             body:
-                "A frozen project is not written to. Editors still open and content can still be read, but "
-                + "changes are not saved to disk.\n"
+                "A frozen project is not written to. Editors open and content can be read, but changes are "
+                + "not saved to disk.\n"
                 + "\n"
                 + "- Studio freezes the project while an old version is open and while a merge is unfinished. It "
                 + "can also be frozen manually.\n"
@@ -570,7 +569,7 @@ export const help = {
         build: {
             title: "Builds",
             body:
-                "A build produces the files handed to players. Choose the target platforms and formats.\n"
+                "A build produces the files delivered to players. Choose the target platforms and formats.\n"
                 + "\n"
                 + "- Web, Android and iOS build on any machine. macOS builds only on a Mac.\n"
                 + "- An unsigned build runs, but the first launch shows a security prompt on Windows and macOS.\n"
@@ -652,17 +651,17 @@ export const help = {
             title: "Build variants",
             body:
                 "A variant is one edition of the project, such as a demo. Every project has the variant "
-                + "named main, and each variant added beside it starts out identical to main. The name "
+                + "named main, and each variant added beside it begins identical to main. The name "
                 + "main is the same in every language.\n"
                 + "\n"
-                + "- A variant stores only what it says differently. A field left empty shows the main "
+                + "- A variant stores only the values it changes. A field left empty shows the main "
                 + "value and follows it.\n"
-                + "- Restore removes what the variant said, so the field follows main again.\n"
+                + "- Restore removes the variant's own value, and the field follows main again.\n"
                 + "- A variant lists the links the game can open. A build opens the addresses its "
-                + "variant lists and no others, matched exactly, so a page one address away needs a "
+                + "variant lists and no others, matched exactly, so a page at a different address needs a "
                 + "line of its own.\n"
                 + "- Deleting a variant does not rewrite what pointed at it. Those places read main "
-                + "from then on, and the count beside Delete says how many there are.",
+                + "from then on, and the count beside Delete states how many.",
         },
         variantContent: {
             title: "Variant build contents",
@@ -709,17 +708,17 @@ export const help = {
             body:
                 "The network policy in project settings has three positions: no network access, allowlisted addresses only, and any address. The middle one narrows the project to the addresses it lists; every other request is refused, in the editor preview and in the built game.\n"
                 + "\n"
-                + "- A host on its own covers every path under it. Write https://api.example.com/v1/* to cover one part of a host.\n"
+                + "- A host written alone covers every path under it. Write https://api.example.com/v1/* to cover one part of a host.\n"
                 + "- * can replace the first host label, as in https://*.example.com/*.\n"
                 + "- The scheme, the host and the port must match exactly. https://example.com does not cover http://example.com.\n"
-                + "- Addresses a plugin declared are listed under the allowlist and are also reachable. They come from what was approved when the plugin was installed.\n"
+                + "- Addresses a plugin declared are listed under the allowlist and are also reachable. They are the addresses approved when the plugin was installed.\n"
                 + "- A Fetch node whose address is written out and not covered is reported by project checks, and the build is refused. An address a blueprint computes is refused while the game runs.\n"
                 + "- A program a plugin ships runs outside the game process. The allowlist does not cover it.",
         },
         assetProtection: {
             title: "Asset protection",
             body:
-                "With asset protection on, the images, audio, story text and plugin code inside a packaged game "
+                "With asset protection enabled, the images, audio, story text and plugin code inside a packaged game "
                 + "are encrypted, and so are the player's saves. Dev Mode is unaffected.\n"
                 + "\n"
                 + "- Web builds always ship without it.\n"
@@ -742,8 +741,8 @@ export const help = {
         plugins: {
             title: "Plugins",
             body:
-                "A plugin adds capabilities to Studio: story commands, blueprint nodes, widgets, tests, and "
-                + "whole panels.\n"
+                "A plugin adds capabilities to Studio: story commands, blueprint nodes, widgets, tests and "
+                + "panels.\n"
                 + "\n"
                 + "- A plugin declares what it needs, and that list is approved at install time.\n"
                 + "- What a plugin contributes appears in the same places as the built-in equivalents, marked "

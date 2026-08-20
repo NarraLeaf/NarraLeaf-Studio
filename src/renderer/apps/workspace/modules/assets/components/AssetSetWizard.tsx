@@ -37,6 +37,7 @@ import { ASSET_CATEGORY_TYPES, AssetCategory, AssetType } from "@/lib/workspace/
 import { AssetSelector } from "./AssetSelector";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { ASSET_SET_AXIS_KINDS, type AssetSet, type AssetSetAxisKind } from "@shared/types/assetSet";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import {
     planAssetSet,
     suggestAssetSetMembers,
@@ -116,6 +117,30 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
     const values = valuesByKind[kind];
 
     /**
+     * Which value the others fall back to - the one thing this dialog insists on.
+     *
+     * Defaults to the project's own answer: the language it is written in, or the edition it ships
+     * as. Held as an override so that switching kinds asks the project again rather than keeping a
+     * language code as an edition's fallback.
+     */
+    const [fallbackOverride, setFallback] = useState<string | null>(null);
+    const defaultFallback = useMemo(() => {
+        if (kind === "release") {
+            return values.find(entry => entry.value === RELEASE_APP_TAG.id)?.value ?? values[0]?.value ?? "";
+        }
+        try {
+            const source = context?.services.get<LocalizationService>(Services.Localization)
+                .getConfiguration().sourceLocale;
+            return values.find(entry => entry.value === source)?.value ?? values[0]?.value ?? "";
+        } catch {
+            return values[0]?.value ?? "";
+        }
+    }, [context, kind, values]);
+    const fallback = fallbackOverride && values.some(entry => entry.value === fallbackOverride)
+        ? fallbackOverride
+        : defaultFallback;
+
+    /**
      * Every file this dialog knows about: the marked ones, and the ones picked out of the library.
      *
      * Held here rather than read from the library on demand because the plan is computed from the
@@ -164,16 +189,24 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
     }, [context]);
 
     const plan = useMemo(
-        () => planAssetSet({ setId, kind, values, files, members, ...(parent ? { parent } : {}) }),
-        [files, kind, members, parent, setId, values],
+        () => planAssetSet({ setId, kind, values, files, members, fallback, ...(parent ? { parent } : {}) }),
+        [fallback, files, kind, members, parent, setId, values],
     );
 
     const filled = plan.members.size;
+    /**
+     * The set cannot be made without this one.
+     *
+     * Every other value may go without a file - that is what the fallback is for - but the value the
+     * others fall back to has to resolve to something, or the set answers nothing at all.
+     */
+    const fallbackFilled = Boolean(plan.members.get(plan.axis.fallback));
     const assetsById = useMemo(() => new Map(candidates.map(asset => [asset.id, asset])), [candidates]);
 
     const chooseKind = useCallback((next: AssetSetAxisKind) => {
         setKind(next);
         setOverride(null);
+        setFallback(null);
     }, []);
 
     // A different type is a different set of files, so nothing chosen against the old one survives.
@@ -270,9 +303,9 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
                     <button
                         type="button"
                         data-asset-set-wizard-create
-                        className={dialogFooterButtonClass({ variant: "primary", disabled: busy || filled === 0 })}
+                        className={dialogFooterButtonClass({ variant: "primary", disabled: busy || !fallbackFilled })}
                         onClick={() => { void create(); }}
-                        disabled={busy || filled === 0}
+                        disabled={busy || !fallbackFilled}
                     >
                         {t("common.create")}
                     </button>
@@ -325,6 +358,20 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
                     />
                 </div>
 
+                {values.length > 0 && (
+                    <div className="grid gap-1">
+                        <FieldLabel as="div">{t("assets.sets.inspector.fallback")}</FieldLabel>
+                        <Select
+                            size="sm"
+                            value={fallback}
+                            options={values.map(entry => ({ value: entry.value, label: entry.label }))}
+                            onChange={value => setFallback(String(value))}
+                            portalMenu
+                            ariaLabel={t("assets.sets.inspector.fallback")}
+                        />
+                    </div>
+                )}
+
                 <div className="space-y-1">
                     <FieldLabel as="div">{t("assets.sets.inspector.variants")}</FieldLabel>
                     {values.length === 0 ? (
@@ -341,7 +388,9 @@ export function AssetSetWizard({ assets, category, groupId, parent, onClose }: A
                                         data-asset-set-value={entry.value}
                                     >
                                         <FieldLabel as="span" className="mb-0 w-28 shrink-0 truncate">
-                                            {entry.label}
+                                            {entry.value === fallback
+                                                ? `${entry.label} · ${t("assets.sets.inspector.variantInherited")}`
+                                                : entry.label}
                                         </FieldLabel>
                                         <button
                                             type="button"

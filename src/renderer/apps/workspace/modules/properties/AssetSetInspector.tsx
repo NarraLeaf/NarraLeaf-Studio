@@ -40,6 +40,7 @@ import {
     isLegalNesting,
     parseAssetTag,
     resolveAssetSetContents,
+    resolveAssetSetFallbackAsset,
     type AssetSet,
     type AssetSetAxisKind,
     type AssetSetCandidate,
@@ -60,6 +61,8 @@ import { Services } from "@/lib/workspace/services/services";
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { AssetThumbnail } from "@/apps/workspace/modules/assets/components/AssetThumbnail";
+import { useAssetSetNaming } from "@/apps/workspace/modules/assets/state/useAssetSetNaming";
+import { readAssetSetAxis } from "@shared/types/assetSetLabels";
 
 /**
  * A text field that keeps what is typed and commits it when focus leaves.
@@ -185,6 +188,13 @@ export function AssetSetInspector({
     // the nesting rule is a statement about this set and the one it hangs under.
     const sets = useMemo(() => service.listSets(), [service, revision]);
     const contents = useMemo(() => resolveAssetSetContents(set, candidates, sets), [set, candidates, sets]);
+    const naming = useAssetSetNaming({ context, isInitialized: !!context });
+    // The set answers nothing at all while this is true, however many of the other values are
+    // tagged - so it is said here, next to the control that fixes it.
+    const fallbackMissing = useMemo(
+        () => set.axis.values.length > 0 && resolveAssetSetFallbackAsset(set, candidates) === null,
+        [candidates, set],
+    );
 
     /**
      * Write a new axis list, refusing an arrangement that has no build.
@@ -209,6 +219,11 @@ export function AssetSetInspector({
         setBlocked(false);
         service.setAxis(set.id, next);
     }, [service, set, sets]);
+
+    /** Which value everything else falls back to. The one thing a set has to be told. */
+    const patchFallback = useCallback((value: string) => {
+        service.setAxis(set.id, makeAssetSetAxis(set.axis.kind, set.axis.values, value));
+    }, [service, set]);
 
     /**
      * Make one file the answer to one coordinate, by writing that coordinate onto it.
@@ -255,6 +270,30 @@ export function AssetSetInspector({
                 )}
             </SectionCard>
 
+            {/* The fallback, which is the only thing this set requires. Every other value may go
+                without a file of its own; this one answers for them when they do. */}
+            <SectionCard title={t("assets.sets.inspector.fallback")} bodyClassName="space-y-1">
+                {set.axis.values.length === 0 ? (
+                    <p className="text-2xs text-fg-subtle">{t("assets.sets.inspector.noVariants")}</p>
+                ) : (
+                    <Select
+                        size="sm"
+                        fullWidth
+                        value={set.axis.fallback}
+                        options={set.axis.values.map(value => ({
+                            value,
+                            label: readAssetSetAxis(set.axis, value, naming).value,
+                        }))}
+                        onChange={value => patchFallback(String(value))}
+                        ariaLabel={t("assets.sets.inspector.fallback")}
+                        {...freeze.writes()}
+                    />
+                )}
+                {fallbackMissing && (
+                    <p className="text-2xs text-warning">{t("assets.sets.inspector.fallbackMissing")}</p>
+                )}
+            </SectionCard>
+
             {set.filter.length > 0 && (
                 <SectionCard title={t("assets.sets.inspector.filter")} bodyClassName="space-y-1">
                     <p className="text-2xs text-fg-subtle break-words">{set.filter.join(" · ")}</p>
@@ -266,9 +305,12 @@ export function AssetSetInspector({
                     <p className="text-2xs text-fg-subtle">{t("assets.sets.inspector.noVariants")}</p>
                 ) : (
                     contents.cells.map(cell => {
-                        const missing = cell.assetIds.length === 0;
                         const ambiguous = cell.assetIds.length > 1;
-                        const resolved = missing || ambiguous ? null : assetsById.get(cell.assetIds[0]) ?? null;
+                        // A value with no file of its own is not a hole while the fallback answers
+                        // it: the row shows that file, marked as inherited, because that is what the
+                        // game will draw.
+                        const missing = cell.assetId === null && !ambiguous;
+                        const resolved = ambiguous || !cell.assetId ? null : assetsById.get(cell.assetId) ?? null;
                         return (
                             <div
                                 key={cell.label}
@@ -283,6 +325,7 @@ export function AssetSetInspector({
                                         "flex min-w-0 shrink items-center gap-1.5 rounded-md px-1.5 py-0.5 text-2xs transition-colors",
                                         "hover:bg-edge-subtle disabled:cursor-not-allowed disabled:opacity-50",
                                         missing || ambiguous ? "text-warning" : "text-fg-subtle",
+                                        cell.inherited && "italic",
                                     )}
                                     {...freeze.writes(!assetsService)}
                                     onClick={event => {
@@ -298,8 +341,13 @@ export function AssetSetInspector({
                                             ? t("assets.sets.inspector.variantMissing")
                                             : ambiguous
                                                 ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
-                                                : resolved?.name ?? cell.assetIds[0]}
+                                                : resolved?.name ?? cell.assetId}
                                     </span>
+                                    {cell.inherited && (
+                                        <span className="shrink-0 text-2xs text-fg-subtle">
+                                            {t("assets.sets.inspector.variantInherited")}
+                                        </span>
+                                    )}
                                 </button>
                             </div>
                         );

@@ -461,6 +461,12 @@ function assetSetFinding(set: AssetSet, problem: AssetSetProblem): LintFinding {
                     outerAxis: problem.outerAxisKey,
                 },
             };
+        case "noFallback":
+            return {
+                ...base,
+                messageKey: "lint.rule.assetsGroupIncomplete.messageFallback",
+                messageParams: { set: assetSetLabel(set) },
+            };
         case "noAxes":
         case "emptyAxisValues":
         case "duplicateAxisValue":

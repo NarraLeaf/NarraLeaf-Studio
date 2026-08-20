@@ -111,12 +111,14 @@ export function planAssetSet(input: {
     values: readonly AssetSetPlanValue[];
     files: readonly AssetSetPlanFile[];
     members: ReadonlyMap<string, string>;
+    /** The value the others fall back to. The first one when the caller names none. */
+    fallback?: string;
     parent?: { set: AssetSet; value: string };
 }): AssetSetPlan {
     const filter = input.parent
         ? [...input.parent.set.filter, formatAssetTag(input.parent.set.axis.key, input.parent.value)]
         : [assetSetIdentityTag(input.setId)];
-    const axis = makeAssetSetAxis(input.kind, input.values.map(entry => entry.value));
+    const axis = makeAssetSetAxis(input.kind, input.values.map(entry => entry.value), input.fallback);
 
     const tagsByFile = new Map<string, string[]>();
     const members = new Map<string, string>();

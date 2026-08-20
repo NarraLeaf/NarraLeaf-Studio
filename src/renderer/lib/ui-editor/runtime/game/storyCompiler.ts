@@ -963,6 +963,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
         : undefined;
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
+    // Built here rather than beside the variable tables further down: a scene's own background and
+    // music are resolved while the scenes are created, and a set named there needs the same reader a
+    // row's set reference uses.
+    const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string; assetId: string }>();
     /**
@@ -988,6 +992,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         audioTracks,
         characters: characterSummaries,
         backgroundMusic: sceneBackgroundMusic,
+        localization,
     });
     const allScenes = scenesBuild.scenes;
 
@@ -1014,7 +1019,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const persistentDefaults = collectPersistentDefaults(persistentView);
     const persistentKeys = mergedPersistentStorageKeys(persistentView);
     pushPersistentNameCollisionDiagnostics(diagnostics, persistentView);
-    const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
     // Document order, so the Problems panel reads down the story instead of down a UUID sort.
     for (const scene of listScenesInDocumentOrder(input.document)) {
@@ -1225,7 +1229,13 @@ async function buildLaunchEntryScene(params: {
             diagnostics,
         })
         : snapshot.background?.color
-            ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+            ?? await resolveSceneInitialBackground({
+                scene,
+                resolveAssetUrl,
+                assetUrlCache,
+                diagnostics,
+                ...(params.localization ? { localization: params.localization } : {}),
+            });
     // A row-precise launch replaces the scene, so it has to carry the scene's own music too -
     // otherwise "play from here" is the one way to enter a scene silently.
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
@@ -1236,6 +1246,7 @@ async function buildLaunchEntryScene(params: {
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
+        ...(params.localization ? { localization: params.localization } : {}),
     });
     const launchScene = new Scene(
         scene.runtimeName || scene.name || scene.id,
@@ -1775,6 +1786,8 @@ async function compileSnapshotEffects(ctx: SceneCompileContext, element: any, ef
 
 async function createNlrScenes(input: {
     document: StoryDocument;
+    /** For the sets a scene's own two asset fields may name. Absent in a project with no languages. */
+    localization?: SceneLocalizationResolver;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
@@ -1886,6 +1899,7 @@ async function createNlrScenes(input: {
             resolveAssetUrl: input.resolveAssetUrl,
             assetUrlCache: input.assetUrlCache,
             diagnostics: input.diagnostics,
+            ...(input.localization ? { localization: input.localization } : {}),
         });
         const config: {
             background?: string;
@@ -1909,6 +1923,7 @@ async function createNlrScenes(input: {
             resolveAssetUrl: input.resolveAssetUrl,
             assetUrlCache: input.assetUrlCache,
             diagnostics: input.diagnostics,
+            ...(input.localization ? { localization: input.localization } : {}),
         });
         if (music) {
             config.backgroundMusic = music.sound;
@@ -1935,13 +1950,21 @@ async function resolveSceneInitialBackground(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** Present once the story has been assembled; a scene naming a set needs it to pick a member. */
+    localization?: SceneLocalizationResolver;
 }): Promise<string | null> {
     const assetId = input.scene.defaultBackgroundAssetId?.trim();
     if (!assetId) {
         return null;
     }
     return resolveAssetUrlCached({
-        assetId,
+        assetId: resolveVariantReference({
+            variants: input.scene.assetVariants,
+            assetId,
+            blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
+            localization: input.localization,
+            diagnostics: input.diagnostics,
+        }),
         assetType: "image",
         blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
         resolveAssetUrl: input.resolveAssetUrl,
@@ -1969,14 +1992,23 @@ async function resolveSceneBackgroundMusic(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** Present once the story has been assembled; a scene naming a set needs it to pick a member. */
+    localization?: SceneLocalizationResolver;
 }): Promise<{ sound: Sound; fadeMs: number; trackId: string; assetId: string } | null> {
     const bgm = input.scene.bgm;
     const assetId = bgm?.assetId?.trim();
     if (!bgm || !assetId) {
         return null;
     }
-    const url = await resolveAssetUrlCached({
+    const member = resolveVariantReference({
+        variants: input.scene.assetVariants,
         assetId,
+        blockId: SCENE_BACKGROUND_MUSIC_BLOCK_ID,
+        localization: input.localization,
+        diagnostics: input.diagnostics,
+    });
+    const url = await resolveAssetUrlCached({
+        assetId: member,
         assetType: "audio",
         blockId: SCENE_BACKGROUND_MUSIC_BLOCK_ID,
         resolveAssetUrl: input.resolveAssetUrl,
@@ -1996,11 +2028,13 @@ async function resolveSceneBackgroundMusic(input: {
             src: url,
             loop: playback.loop,
             volume: playback.volume,
-            ...audioClipRegionToSoundConfig(input.audioClips?.[assetId]),
+            // The member, not the set: a clip region is authored against a file, and a set id would
+            // find none - the scene would play the whole track where the author trimmed it.
+            ...audioClipRegionToSoundConfig(input.audioClips?.[member]),
         }),
         fadeMs: bgm.fadeMs ?? 0,
         trackId: track.id,
-        assetId,
+        assetId: member,
     };
 }
 
@@ -5055,10 +5089,48 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 from: Math.min(1, Math.max(0, numberProp(props, "from", 1))),
                 to: Math.min(1, Math.max(0, numberProp(props, "to", 0))),
             });
-        default:
-            diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports.`);
-            return undefined;
+        case "custom":
+            // The union's escape hatch: a transition that is nothing but its `props`, with no engine
+            // behind it to build. Nothing in Studio writes one and no script can name one, but a
+            // document is free to carry one, so it is routed here by hand rather than left to the
+            // `default` below. It has to be: it is a member of the union, so leaving it to `default`
+            // would narrow `kind` to `"custom"` there instead of `never`, and the exhaustiveness
+            // check below could not be written at all.
+            return reportUnplayableTransition(ctx, blockId, "custom");
+        default: {
+            // Exhaustiveness gate, and the reason this `default` is not just a runtime fallback.
+            // Every member of `StoryTransitionRef["kind"]` is either built above or routed by the
+            // `custom` case, so `kind` is `never` by the time it reaches here and this assignment
+            // fails to compile the moment a kind is added to the union without a branch. Adding a
+            // transition kind touches eleven places across the engine and Studio and this one had
+            // no compile-time guard at all; a forgotten branch used to reach an author as a console
+            // line nobody reads.
+            //
+            // The runtime path is still live, and is the only thing that reaches it: a `kind` the
+            // union does not contain - a document written by a newer Studio, or one carrying a kind
+            // that has since been retired. `unknownKind` holds that stored string.
+            const unknownKind: never = transition.kind;
+            return reportUnplayableTransition(ctx, blockId, unknownKind);
+        }
     }
+}
+
+/**
+ * Report a transition this build cannot play, and play the change as a cut.
+ *
+ * `error`, by the rule {@link diagnostic} states: the row names a transition, this compile can prove
+ * it holds none by that name, and the part of the row that name governs does not happen - the change
+ * still lands, but instantly, with nothing on stage saying why. That is the same shape as a Story
+ * Motion the project no longer holds, which is already an error. It is not a row left unfinished
+ * (the author picked something) and not state from outside this compile (the kind is right there in
+ * the document), so neither warning clause fits.
+ *
+ * `story/transition-unavailable` is the half of this that refuses a build; this half is what an author
+ * sees while writing.
+ */
+function reportUnplayableTransition(ctx: SceneCompileContext, blockId: string, kind: string): undefined {
+    diagnostic(ctx, "error", blockId, `Transition "${kind}" is not available; the change was played as a cut. Choose a transition on this row.`);
+    return undefined;
 }
 
 /** Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair. */
@@ -5676,12 +5748,37 @@ async function bindOffstageDefaultAvatars(params: {
  * of blank stage while the right one loaded.
  */
 function resolveSetReference(ctx: SceneCompileContext, assetId: string, blockId: string): string {
-    const variants = ctx.scene.blocks?.[blockId]?.assetVariants;
+    // The row's own map, and the scene's for the two fields that belong to no row (its opening
+    // background and its music). One lookup order, so a scene-level reference resolves by the same
+    // rule as a row's.
+    return resolveVariantReference({
+        variants: ctx.scene.blocks?.[blockId]?.assetVariants ?? ctx.scene.assetVariants,
+        assetId,
+        blockId,
+        localization: ctx.localization,
+        diagnostics: ctx.diagnostics,
+    });
+}
+
+/**
+ * The same reading for a scene's own fields, which have no row and therefore no context.
+ *
+ * Split out rather than duplicated: a second copy of "which member does this locale get" is a second
+ * place for the scene's background and its rows to disagree about what language they are in.
+ */
+function resolveVariantReference(input: {
+    variants: StoryAssetVariants | undefined;
+    assetId: string;
+    blockId: string;
+    localization: SceneLocalizationResolver | undefined;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): string {
+    const { variants, assetId, blockId, localization, diagnostics } = input;
     const map = variants?.[assetId];
     if (!map) {
         return assetId;
     }
-    const resolved = ctx.localization?.variant(variants, assetId);
+    const resolved = localization?.variant(variants, assetId);
     if (resolved) {
         return resolved;
     }
@@ -5691,7 +5788,7 @@ function resolveSetReference(ctx: SceneCompileContext, assetId: string, blockId:
     const [fallback] = Object.values(map);
     if (fallback) {
         pushDiagnostic(
-            ctx.diagnostics,
+            diagnostics,
             "warning",
             blockId,
             `Asset set ${assetId} was resolved without a language; the stage may show the wrong one.`,

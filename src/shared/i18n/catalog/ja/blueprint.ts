@@ -323,7 +323,7 @@ export const blueprint = {
         animationDelay: "アニメーションの遅延",
         variant: {
             connectElement: "バリアントを見るには Element の参照をつなぐ",
-            staticRequired: "バリアントの一覧には固定の Element が要る",
+            staticRequired: "バリアントの一覧には固定の Element が必要",
             noVariants: "対象にバリアントがない",
             unsupported: "対象はバリアントに対応していない",
             widgetUnavailable: "現在のウィジェットのバリアントを取得できない",

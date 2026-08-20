@@ -56,6 +56,8 @@ export const lint = {
             messageAmbiguous: "{set} has {count} files for {variant}",
             messageResidency: "{set} resolves {axis} while the game runs, inside {outerAxis}, which the build resolves",
             messageDeclaration: "{set} declares no variants to resolve",
+            /** The one thing a set requires. Without it nothing in the set resolves at all. */
+            messageFallback: "{set} does not say which variant the others fall back to",
         },
         portabilityAssetName: {
             title: "Unsafe file name",
@@ -161,6 +163,13 @@ export const lint = {
             title: "Duplicate stage object",
             description: "Two rows creating one stage name; the second reuses the first",
             message: "{object} is already created above, so this row acts on that one",
+        },
+        storyTransitionUnavailable: {
+            title: "Unavailable transition",
+            description: "A row naming a transition this version cannot play",
+            // The stored word is printed even though no picker offers it any more: it is the only
+            // handle the author has on a transition that is otherwise gone from every menu.
+            message: "The transition {transition} is not available, so this change plays as a cut",
         },
         blueprintReferenceMissing: {
             title: "Missing target",

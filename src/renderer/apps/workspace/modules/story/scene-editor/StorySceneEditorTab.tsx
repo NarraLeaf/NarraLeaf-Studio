@@ -1738,7 +1738,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         /** The row's block, by id, from whatever scene is current. */
         const blockOf = (blockId: StoryBlockId) => latest().editor.scene?.blocks[blockId] ?? null;
         return {
-            select: (blockId, event) => latest().editor.selectRow(blockId, event),
+            // The row's `click`, which selects only when its `mousedown` declined - see
+            // `storyRowSelectionGesture`. Wiring this to `selectRow` is what made Ctrl+click a no-op:
+            // the row would then be selected twice per press, and a toggle applied twice is nothing.
+            select: (blockId, event) => latest().editor.selectRowFromClick(blockId, event),
             contextMenu: (blockId, event) => latest().openRowContextMenu(event, blockId),
             mouseDown: (blockId, event) => latest().editor.beginDragSelection(blockId, event),
             mouseEnter: blockId => latest().editor.extendDragSelection(blockId),

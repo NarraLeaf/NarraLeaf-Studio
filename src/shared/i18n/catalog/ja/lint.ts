@@ -57,6 +57,7 @@ export const lint = {
             messageAmbiguous: "{set} の {variant} に {count} 個のファイルが対応している",
             messageResidency: "{set} の {axis} は実行時に解決されるが、ビルド時に解決される {outerAxis} の内側にある",
             messageDeclaration: "{set} は解決できるバリアントを宣言していない",
+            messageFallback: "{set} は既定のバリアントを指定していない",
         },
         portabilityAssetName: {
             title: "安全でないファイル名",
@@ -162,6 +163,12 @@ export const lint = {
             title: "ステージオブジェクトの重複",
             description: "同じステージ名を作成する行が 2 つあり、後の行は先の行のものを使う",
             message: "{object} は上で既に作成されているため、この行はそちらを操作する",
+        },
+        storyTransitionUnavailable: {
+            title: "利用できないトランジション",
+            description: "このバージョンでは再生できないトランジションを指定した行",
+            // 保存された語をそのまま出す。どのメニューにも残っていない以上、作者に残る手がかりはこれだけ。
+            message: "トランジション {transition} は利用できないため、この変化は切り替えで再生される",
         },
         blueprintReferenceMissing: {
             title: "参照先の欠落",

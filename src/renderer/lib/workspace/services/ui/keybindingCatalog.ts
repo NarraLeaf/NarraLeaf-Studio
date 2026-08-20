@@ -33,6 +33,7 @@ import {
     CopyPlus,
     Eraser,
     Flag,
+    FlaskConical,
     Group,
     History,
     IndentDecrease,
@@ -40,8 +41,13 @@ import {
     Keyboard,
     Locate,
     Maximize2,
+    MonitorPlay,
     MoveDown,
     MoveUp,
+    Package,
+    PanelBottom,
+    PanelLeft,
+    PanelRight,
     PanelRightClose,
     PenLine,
     Pencil,
@@ -52,11 +58,12 @@ import {
     Rows2,
     Scissors,
     Search,
+    Settings,
     SkipBack,
     SkipForward,
+    Square,
     SquareDashed,
     SquareDashedMousePointer,
-    SquareX,
     Trash2,
     Undo2,
     Ungroup,
@@ -107,6 +114,8 @@ export interface KeybindingCatalogEntry {
 
 const CATEGORY = {
     general: "workspace.shell.keybindings.categories.general" as TranslationKey,
+    run: "workspace.shell.keybindings.categories.run" as TranslationKey,
+    view: "workspace.shell.keybindings.categories.view" as TranslationKey,
     story: "workspace.shell.keybindings.categories.story" as TranslationKey,
     uiEditor: "workspace.shell.keybindings.categories.uiEditor" as TranslationKey,
     blueprint: "workspace.shell.keybindings.categories.blueprint" as TranslationKey,
@@ -134,6 +143,8 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // an author asks with the caret in the field.
     entry("workspace-context-help", "f1", "workspace.shell.keybindings.catalog.contextHelp", CATEGORY.general, CircleQuestionMark),
     entry("workspace-reopen-closed-tab", "mod+shift+t", "workspace.shell.keybindings.catalog.reopenClosedTab", CATEGORY.general, History),
+    // General rather than View: Settings is a window of its own, not part of this one's layout.
+    entry("workspace:open-settings", "mod+,", "workspace.shell.openSettings", CATEGORY.general, Settings),
     // Only fires outside an editor; inside one, that editor's own undo wins. See
     // `WorkspaceUndoKeybindings`.
     entry("workspace.undo", "mod+z", "workspace.shell.keybindings.catalog.undo", CATEGORY.general, Undo2),
@@ -142,10 +153,58 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("workspace-editor-quick-switch-previous", "ctrl+shift+tab", "workspace.shell.keybindings.catalog.quickSwitchPrevious", CATEGORY.general, ArrowLeft),
     entry("editor-split-right", "mod+\\", "workspace.shell.commandPalette.editor.splitRight", CATEGORY.general, Columns2),
     entry("editor-split-down", "mod+alt+\\", "workspace.shell.commandPalette.editor.splitDown", CATEGORY.general, Rows2),
-    // Registered per editor group (`editor-group-<id>-…`), hence the catalogIds — without them the
+    // Registered per editor group (`editor-group-<id>-…`), hence the catalogId — without it the
     // palette showed one untranslated row per group under its catch-all section.
-    entry("editor.close-active-tab", "mod+w", "workspace.shell.commandPalette.editor.closeTab", CATEGORY.general, X),
-    entry("editor.close-selected-tabs", "mod+w", "workspace.shell.commandPalette.editor.closeSelectedTabs", CATEGORY.general, SquareX),
+    //
+    // ONE entry for what EditorGroup registers twice. The two registrations are the same command at
+    // two scopes - the tab strip closes the multi-selection, the editor body closes the active tab -
+    // and the strip's handler falls back to exactly the body's when nothing is multi-selected. Two
+    // catalog rows made the settings table offer two ⌘W bindings to rebind separately and then flag
+    // them as conflicting with each other, which is a conflict that cannot happen: their `when`
+    // predicates are disjoint, so only ever one of them is live.
+    entry("editor.close-tab", "mod+w", "workspace.shell.commandPalette.editor.closeTab", CATEGORY.general, X),
+
+    // --- Run --------------------------------------------------------------
+    // The function-key row every IDE puts a project behind: F5 starts, Shift+F5 stops. Studio has
+    // two ways to start - Dev Mode and Preview - so they take F5 and F6, which is also where Godot
+    // puts its two run entries, and the row carries on through the test picker and the build. All
+    // of them are `allowInEditable`: an author presses F5 with the caret still in the line they
+    // just wrote, and a function key types nothing that could be lost.
+    //
+    // Each id here is the id of the palette command it runs, so the palette shows the chord on the
+    // row that already exists instead of listing the shortcut a second time (see
+    // `collectPaletteCommands`). `run:stop` is the exception - one chord for whichever of the three
+    // stop commands applies, which those commands point at through `keybindingId`.
+    entry("run:dev-mode", "f5", "actions.run.runDevMode", CATEGORY.run, Play),
+    entry("run:preview", "f6", "actions.run.runPreview", CATEGORY.run, MonitorPlay),
+    entry("run:test", "f7", "test.action.open", CATEGORY.run, FlaskConical),
+    entry("run:stop", "shift+f5", "workspace.shell.keybindings.catalog.run.stop", CATEGORY.run, Square),
+    // The build's chord hangs off the ACTION id, because Production Build is a registered action
+    // rather than a palette command (`buildAction`) and an action's shortcut is looked up - by the
+    // palette and by the override map alike - under `action:<id>`.
+    //
+    // F10 rather than VS Code's ⇧⌘B: the sidebar wanted that chord more (see the View block), and
+    // the function row reads better for it anyway - F5 runs, F6 previews, F7 tests, F10 builds, so
+    // everything that acts on the whole project sits on one row.
+    entry("action:narraleaf-studio:build", "f10", "actions.run.productionBuild", CATEGORY.run, Package),
+
+    // --- View ---------------------------------------------------------------
+    // The dock toggles and the two things an author reaches for without looking. `mod+j` is VS
+    // Code's panel chord exactly. The left bar is `mod+shift+b` rather than VS Code's `mod+b`,
+    // because Ctrl+B inside a story line is the rich-text editor's bold and taking it would mean an
+    // author reaching for the sidebar silently emboldens the sentence they are on - the Shift keeps
+    // the B that names a side bar while leaving bold where an author typing expects it.
+    //
+    // Each id is the id of the command it runs, so the palette shows the chord on the row that
+    // already exists (the panel entry is `panel:<panel id>`, which is how the palette names a
+    // panel-navigation command).
+    entry("narraleaf-studio:toggle-left-sidebar", "mod+shift+b", "menu.window.leftSidebar", CATEGORY.view, PanelLeft),
+    entry("narraleaf-studio:toggle-bottom-panel", "mod+j", "menu.window.bottomPanel", CATEGORY.view, PanelBottom),
+    entry("narraleaf-studio:toggle-right-sidebar", "mod+alt+r", "menu.window.rightSidebar", CATEGORY.view, PanelRight),
+    // Shows the panel and puts the caret in its query box, which is the whole gesture - `mod+f`
+    // already searches the scene in front of you, so `mod+shift+f` widening that to the project is
+    // the distinction VS Code draws with the same two chords.
+    entry("panel:narraleaf-studio:search", "mod+shift+f", "placeholders.moduleTitles.search", CATEGORY.view, Search),
 
     // --- Story scene editor (idle mode) ------------------------------------
     entry("story.find", "mod+f", "story.keybindings.find", CATEGORY.story, Search),

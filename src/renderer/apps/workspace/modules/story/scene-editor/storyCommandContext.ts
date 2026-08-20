@@ -31,6 +31,20 @@ function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommand
 }
 
 /**
+ * The library a set's members come from, in the three words a command param speaks.
+ *
+ * `null` for every other `AssetType` rather than a fourth word: a font or model set is a real set
+ * this list still has to carry (a row naming one must read as a name, not as a missing file), and it
+ * is simply not a thing any slot on a command line can be pointed at.
+ */
+function commandAssetType(type: string): "image" | "audio" | "video" | null {
+    return type === AssetType.Image ? "image"
+        : type === AssetType.Audio ? "audio"
+        : type === AssetType.Video ? "video"
+        : null;
+}
+
+/**
  * The build variants a row may name, release first.
  *
  * One thing happens here that the service cannot do: the release variant is added when the caller
@@ -274,6 +288,14 @@ export function valueBlueprintRefs(document: BlueprintDocument | null | undefine
 
 export function buildStoryCommandContext(input: {
     assets: AssetsMap | undefined;
+    /**
+     * The project's asset sets. Omitted where no project is open, which names none.
+     *
+     * `type` is the `AssetType` string off the set record. It is required rather than optional
+     * because the slots that offer sets are typed: without it an image slot would offer the
+     * project's audio sets, which is a name the author can pick and the line then refuses.
+     */
+    assetSets?: readonly { id: string; name: string; type: string }[];
     characters: readonly Character[];
     document: StoryDocument | null;
     sceneId: StorySceneId | null | undefined;
@@ -345,6 +367,11 @@ export function buildStoryCommandContext(input: {
         images: assetRefs(input.assets, AssetType.Image),
         audio: assetRefs(input.assets, AssetType.Audio),
         videos: assetRefs(input.assets, AssetType.Video),
+        assetSets: (input.assetSets ?? []).map(set => ({
+            id: set.id,
+            name: set.name,
+            assetType: commandAssetType(set.type),
+        })),
         characters,
         // Derived from the document, exactly as the speaker picker derives them, so a temp speaker
         // retires from the command line's candidates precisely when its last line does.

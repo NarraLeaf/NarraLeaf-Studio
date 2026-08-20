@@ -24,6 +24,7 @@ import { Services } from "../services";
 import { GlobalSettingsService } from "../GlobalSettingsService";
 import { getInterface } from "@/lib/app/bridge";
 import type { AppEventToken } from "@shared/types/app";
+import { syncEditorTabTitle } from "../ui/editorTabTitle";
 
 /**
  * UI Service
@@ -108,34 +109,20 @@ export class UIService extends Service<UIService> implements IUIService {
                     this.store.setSelection({ type: null, data: null });
                 }
 
-                // Helper to traverse editor layout and gather {tab, groupId}
-                const collectTabs = (
-                    layout: any,
-                    acc: Array<{ tab: any; groupId: string }>
-                ) => {
-                    if ("tabs" in layout) {
-                        // EditorGroup
-                        (layout.tabs as any[]).forEach((t) => acc.push({ tab: t, groupId: layout.id }));
-                    } else {
-                        collectTabs(layout.first, acc);
-                        collectTabs(layout.second, acc);
-                    }
-                };
-
-                const allTabs: Array<{ tab: any; groupId: string }> = [];
-                collectTabs(this.store.getEditorLayout(), allTabs);
-
-                allTabs.forEach(({ tab, groupId }) => {
-                    const related =
-                        tab.id === `image-preview:${asset.id}` ||
-                        (tab.payload && typeof tab.payload === "object" && "asset" in tab.payload && tab.payload.asset?.id === asset.id);
-                    if (related) {
-                        this.store.closeEditorTabInGroup(tab.id, groupId);
-                    }
-                });
+                for (const { tab, groupId } of this.collectAssetTabs(asset.id)) {
+                    this.store.closeEditorTabInGroup(tab.id, groupId);
+                }
             });
 
             const unsubUpdated = assetsService.getEvents().on("updated", (asset: Asset) => {
+                // A preview tab's title is a snapshot of the name it was opened under, so a rename
+                // has to be written back into the layout or the strip keeps the old one for the life
+                // of the tab. Only the title: the payload holds the very record that was just
+                // mutated, so its `name` is already the new one.
+                for (const { tab } of this.collectAssetTabs(asset.id)) {
+                    syncEditorTabTitle(this, tab.id, asset.name);
+                }
+
                 const selection = this.store.getSelection();
                 if (selection.type !== "asset" || !selection.data) {
                     return;
@@ -152,6 +139,37 @@ export class UIService extends Service<UIService> implements IUIService {
         } catch (err) {
             console.warn("UIService: failed to attach asset event listeners", err);
         }
+    }
+
+    /**
+     * Every open editor tab that is *showing* one asset, with the group holding it.
+     *
+     * Matched on the payload rather than on the tab id: the id is minted per editor kind
+     * (`…:image-preview-<id>`, `…:audio-preview-<id>`, the text editor's own), so an id pattern here
+     * is one that stops matching the day a seventh preview editor is added - which is exactly what
+     * had already happened to the `image-preview:<id>` test this replaced. That test had matched
+     * nothing since preview tab ids were namespaced.
+     */
+    private collectAssetTabs(assetId: string): Array<{ tab: { id: string; payload?: unknown }; groupId: string }> {
+        const found: Array<{ tab: { id: string; payload?: unknown }; groupId: string }> = [];
+        const visit = (layout: any): void => {
+            if (!layout) {
+                return;
+            }
+            if ("tabs" in layout) {
+                for (const tab of layout.tabs as Array<{ id: string; payload?: unknown }>) {
+                    const payload = tab.payload as { asset?: { id?: string } } | undefined;
+                    if (payload && typeof payload === "object" && payload.asset?.id === assetId) {
+                        found.push({ tab, groupId: layout.id });
+                    }
+                }
+                return;
+            }
+            visit(layout.first);
+            visit(layout.second);
+        };
+        visit(this.store.getEditorLayout());
+        return found;
     }
 
     /**

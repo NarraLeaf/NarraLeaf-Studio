@@ -9,6 +9,7 @@ const CONTEXT: StoryCommandContext = {
     images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "forest_night" }, { id: "i3", name: "city rain" }],
     audio: [{ id: "a1", name: "theme" }],
     videos: [],
+    assetSets: [],
     // Doll is drawn by a runtime the author supplied and her model has answered; Ghost is a puppet too
     // but nobody could ask hers (no runtime on this machine) - the pair is what the puppet arms need.
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Bob" }, { id: "c3", name: "Doll" }, { id: "c4", name: "Ghost" }],

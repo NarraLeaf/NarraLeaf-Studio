@@ -73,6 +73,8 @@ export const workspace = {
             reviewFilterUnreviewed: "Unreviewed",
             charactersGroup: "Characters",
             characterSpeaker: "Character",
+            scenesGroup: "Scenes",
+            sceneSpeaker: "Scene",
             addKey: "Add",
             keyNamePlaceholder: "Key (menu.start…)",
             keySourcePlaceholder: "Source text",
@@ -377,7 +379,6 @@ export const workspace = {
             categoryVersionControl: "Version Control",
             editor: {
                 closeTab: "Close Tab",
-                closeSelectedTabs: "Close Selected Tabs",
                 closeOthers: "Close Other Tabs",
                 closeToRight: "Close Tabs to the Right",
                 closeAll: "Close All Tabs",
@@ -493,7 +494,7 @@ export const workspace = {
         // "Storage" console channel carries. A failed write retries on a backoff that never gives
         // up, so the wording says "still trying" rather than "lost".
         save: {
-            failedTitle: "Couldn't save {file}",
+            failedTitle: "Could not save {file}",
             failedDetailTransient: "Still retrying in the background. {error}",
             failedDetailPermanent: "Retrying fails until this is fixed. {error}",
             retry: "Retry now",
@@ -502,7 +503,7 @@ export const workspace = {
             flushFailed: "could not flush {label}: {error}",
             // The read side: a document that is on disk but cannot be understood. The wording leads
             // with what did NOT happen, because the fear this raises is "has Studio eaten my work?".
-            unreadableTitle: "Couldn't read {file}",
+            unreadableTitle: "Could not read {file}",
             unreadableDetail: "{reason} The file is unchanged. Nothing was written over it.",
             unreadableDetailQuarantined: "{reason} The file is unchanged. A copy of it is at {path}.",
             consoleUnreadable: "read failed ({kind}): {path} · {reason}",
@@ -880,10 +881,10 @@ export const workspace = {
                     // "Access token" rather than "password", because it is not one and cannot
                     // be chosen, remembered or reset by the person pasting it.
                     tokenLabel: "Access token",
-                    tokenPlaceholder: "Paste the token you were given",
+                    tokenPlaceholder: "Paste the token",
                     // Where a token comes from, in one line, because there is nowhere else to
                     // learn it: nothing in Studio can issue one.
-                    hint: "The token is issued by whoever runs this server.",
+                    hint: "The token is issued by the server's administrator.",
                     /**
                      * Trusting the authority a server's certificate is issued from.
                      *
@@ -900,7 +901,7 @@ export const workspace = {
                         open: "Trust this server on this computer",
                         title: "Trust this server?",
                         vouched: "The pasted token names this authority, and this authority is answering at that address.",
-                        compare: "Check this fingerprint against the one provided by whoever runs the server, over a different channel.",
+                        compare: "Check this fingerprint against the one provided by the server's administrator, over a different channel.",
                         authorityLabel: "Issued by",
                         fingerprintLabel: "Fingerprint",
                         // The cost of being wrong, in one sentence, without softening it. The
@@ -925,7 +926,7 @@ export const workspace = {
                         ready: "This server is compatible with this copy of Studio.",
                         // Signed in, and the server will not hand over this project. A different
                         // failure from a refused token, and the remedy is a different person's.
-                        notPermitted: "Signed in, but this account does not have access to this project. Ask whoever runs the server for access.",
+                        notPermitted: "Signed in, but this account does not have access to this project. Ask the server's administrator for access.",
                         // The sign-in address answered and the server itself did not, which is
                         // two ports and usually two firewall rules.
                         dataPortSilent: "Signed in, but the server itself did not answer.",
@@ -941,7 +942,7 @@ export const workspace = {
                      */
                     problem: {
                         scheme: "A sign-in address has to start with https:// or ucs-auth://.",
-                        token: "That is not a token this server issued. Paste the whole token you were given.",
+                        token: "That is not a token this server issued. Paste the complete token.",
                         // Answered only after a token has been read and found to name no
                         // endpoint, which is what reveals the address field. Most tokens name
                         // one and nobody sees this.
@@ -956,8 +957,8 @@ export const workspace = {
                         // and nothing here offers to trust it.
                         mismatch:
                             "The server at that address is not the one this token is for. The token names "
-                            + "{expected}, and {found} answered. Do not trust it; ask whoever runs the "
-                            + "server what happened.",
+                            + "{expected}, and {found} answered. Do not trust it; ask the server's "
+                            + "administrator what happened.",
                         unreachable: "Nothing answered at that address ({detail}).",
                         refused: "The server would not accept that token ({detail}).",
                         unknown: "The sign-in did not finish ({detail}).",
@@ -1009,6 +1010,8 @@ export const workspace = {
             // Category headers in the settings table and cheat sheet (from the static catalog).
             categories: {
                 general: "General",
+                run: "Run",
+                view: "View",
                 story: "Story Editor",
                 uiEditor: "UI Editor",
                 blueprint: "Blueprint Editor",
@@ -1023,6 +1026,11 @@ export const workspace = {
                 cheatSheet: "Show Keyboard Shortcuts",
                 contextHelp: "Help for What Is Focused",
                 reopenClosedTab: "Reopen Closed Tab",
+                // One chord for whichever of Dev Mode, Preview and Test is holding the run slot,
+                // so the three commands that stop them share a single rebindable shortcut.
+                run: {
+                    stop: "Stop the Run",
+                },
                 undo: "Undo",
                 redo: "Redo",
                 quickSwitchNext: "Switch to Next Editor Tab",

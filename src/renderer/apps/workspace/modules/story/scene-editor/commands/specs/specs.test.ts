@@ -18,6 +18,7 @@ const CONTEXT: StoryCommandContext = {
     images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }, { id: "i3", name: "spiral" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
+    assetSets: [],
     // Alice is drawn by Studio; Doll is drawn by a runtime the author supplied, so she has no
     // authoring-time differentials at all - the two together are what the `/face` union has to serve.
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],

@@ -256,7 +256,7 @@ export const settings = {
         },
         reopenLastProject: {
             label: "起動時に前回のプロジェクトを開く",
-            description: "オフにすると、起動するたびにランチャーで止まる",
+            description: "ランチャーではなく、前回作業していたプロジェクトを開く",
         },
         dashboardOnOpen: {
             label: "既定でプロジェクトのダッシュボードを表示",

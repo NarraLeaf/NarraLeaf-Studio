@@ -57,6 +57,8 @@ import type { Translator, TranslationKey } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, ExternalLink, Image as ImageIcon, Mic, Palette, Play, RefreshCw, Square, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -502,19 +504,10 @@ export function ActionInspector(props: {
         [context, isInitialized],
     );
     /** Names, not ids: an asset id in the heading tells the author nothing about what they picked. */
-    const resolveAssetName = useCallback((assetId: string): string | null => {
-        const table = assetsService?.getAssets();
-        if (!table) {
-            return null;
-        }
-        for (const byId of Object.values(table)) {
-            const asset = (byId as Record<string, { name?: string }> | undefined)?.[assetId];
-            if (asset?.name) {
-                return asset.name;
-            }
-        }
-        return null;
-    }, [assetsService]);
+    const resolveAssetName = useCallback(
+        (assetId: string): string | null => resolveAssetDisplayName(context?.services, assetId),
+        [context],
+    );
     const resolveMotionName = useStoryMotionNames();
     const variableOptions = useStoryVariableOptions(props.document, props.sceneId);
     const subject = describeBlockSubject(
@@ -946,6 +939,7 @@ function ActionPayloadFields(props: {
                         assetType={AssetType.Image}
                         assetId={payload.assetId}
                         onChange={assetId => props.onChange({ ...payload, assetId })}
+                        allowAssetSets
                     />
                     <CheckboxField label={t("storyInspector.image.autoFit")} checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
                 </div>
@@ -1108,6 +1102,7 @@ function ActionPayloadFields(props: {
                     assetType={AssetType.Video}
                     assetId={payload.assetId}
                     onChange={assetId => props.onChange({ ...payload, assetId })}
+                    allowAssetSets
                 />
                 <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
                 {payload.operation === "seek" ? (
@@ -1319,6 +1314,7 @@ function AudioActionEditor(props: {
                         label={payload.operation === "setBgm" ? t("storyInspector.audio.bgmAsset") : t("storyInspector.audio.soundAsset")}
                         assetType={AssetType.Audio}
                         assetId={payload.assetId}
+                        allowAssetSets
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
                 ) : null}
@@ -1458,6 +1454,7 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                                 assetType={AssetType.Video}
                                 assetId={payload.assetId}
                                 onChange={assetId => props.onChange({ ...payload, assetId })}
+                                allowAssetSets
                             />
                         )}
                         {payload.seed ? null : (
@@ -2089,6 +2086,7 @@ function CharacterActionEditor(props: {
                         assetType={AssetType.Image}
                         assetId={payload.assetId}
                         onChange={assetId => onChange({ ...payload, assetId })}
+                        allowAssetSets
                     />
                 </div>
             </Disclosure>
@@ -2581,7 +2579,21 @@ function BackgroundActionEditor(props: {
     const selectedAsset = props.payload.assetId
         ? assetsService?.getAssets()[AssetType.Image]?.[props.payload.assetId] ?? null
         : null;
-    const imageAssetId = props.payload.assetId ?? null;
+    // A background is the field a set is most often wanted for - the same room in two languages, or
+    // an edition that ships different art - so the picker offers them here and the row stores the
+    // set's id. Assembly resolves it from the block's own `assetId`, which is where this writes.
+    const { virtualGroups, resolveAssetPreviewUrl, findSet } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
+    const selectedSet = props.payload.assetId && !selectedAsset ? findSet(props.payload.assetId) : null;
+    // What the set's fallback resolves to, because that is what the scene shows unless a variant
+    // says otherwise - and a picture is what tells an author they picked the right set.
+    const imageAssetId = selectedSet
+        ? selectedSet.contents.cells.find(cell => cell.value === selectedSet.set.axis.fallback)?.assetId ?? null
+        : props.payload.assetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(imageAssetId);
     const [mode, setMode] = useState<"image" | "color">(() => props.payload.assetId ? "image" : "color");
     const [selectorOpen, setSelectorOpen] = useState(false);
@@ -2642,7 +2654,9 @@ function BackgroundActionEditor(props: {
         alpha: 1,
     });
     const colorValue: ColorValue = { hex: parsedColorValue.hex, alpha: 1 };
-    const imageLabel = selectedAsset?.name ?? (props.payload.assetId ? t("storyInspector.background.missing") : t("storyInspector.background.none"));
+    const imageLabel = selectedAsset?.name
+        ?? selectedSet?.set.name
+        ?? (props.payload.assetId ? t("storyInspector.background.missing") : t("storyInspector.background.none"));
 
     return (
         <div className="grid grid-cols-1 gap-3">
@@ -2716,7 +2730,9 @@ function BackgroundActionEditor(props: {
                                 className="h-8 rounded-md border border-edge bg-fill-subtle px-3 text-xs text-fg hover:border-primary/40 hover:text-primary"
                                 onClick={() => setSelectorOpen(true)}
                             >
-                                {selectedAsset ? t("storyInspector.background.change") : t("storyInspector.background.select")}
+                                {selectedAsset || selectedSet
+                                    ? t("storyInspector.background.change")
+                                    : t("storyInspector.background.select")}
                             </button>
                             <button
                                 type="button"
@@ -2763,6 +2779,7 @@ function BackgroundActionEditor(props: {
                 anchorRef={imageButtonRef}
                 title={t("storyInspector.background.selectImageTitle")}
                 multiple={false}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </div>
     );

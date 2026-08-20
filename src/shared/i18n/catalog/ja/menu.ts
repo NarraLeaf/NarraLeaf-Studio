@@ -69,7 +69,7 @@ export const menu = {
         minimize: "最小化",
         zoom: "ズーム",
         front: "すべてを手前に移動",
-        leftSidebar: "サイドバーを表示",
+        leftSidebar: "左バーを表示",
         bottomPanel: "下部バーを表示",
         rightSidebar: "右バーを表示",
     },
