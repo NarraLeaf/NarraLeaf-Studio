@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MnemonicLabel, TitleBarMenus, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
 
@@ -61,10 +61,19 @@ function press(key: string, init: KeyboardEventInit = {}): boolean {
     return fireEvent.keyDown(document.body, { key, ...init });
 }
 
-/** An accelerator lands one task later, once every other listener has had the key. */
+/**
+ * An accelerator lands one task later, once every other listener has had the key.
+ *
+ * Inside `act` because waiting out that task is only half of it: the handler calls `setOpen` from
+ * a timer, so React still has to render before anything is on screen. Awaiting the timer alone
+ * leaves that render racing the assertion after it - green on an idle machine, and not on a busy
+ * one, which is where it was caught.
+ */
 async function pressAccelerator(key: string, init: KeyboardEventInit = {}): Promise<void> {
-    press(key, { altKey: true, code: `Key${key.toUpperCase()}`, cancelable: true, ...init });
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await act(async () => {
+        press(key, { altKey: true, code: `Key${key.toUpperCase()}`, cancelable: true, ...init });
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
 }
 
 afterEach(cleanup);
