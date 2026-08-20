@@ -523,6 +523,9 @@ describe("projectStoryCommandLine", () => {
             "/play clip",
             "/layer overlay z=10",
             "/vfx intro name=petals opacity=0.5",
+            // A weather seed: the word IS the source, so the line has to print it.
+            "/vfx snow",
+            "/vfx rain name=storm opacity=0.7",
             "/transform camera zoom=2",
             "/transform camera pan=left",
             "/transform camera rot=15 d=0.5",

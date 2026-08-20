@@ -1243,10 +1243,18 @@ function vfxSentence(
         return {
             commandId,
             args: [
-                positional("clip", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
-                    ...assetLink(lookups, payload.assetId),
-                }),
+                // A seeded overlay says its weather WORD in the slot a clip would name, because that
+                // is what the author typed and what the line has to take back: printed as a clip that
+                // is not there, the row read as an overlay with no source at all, and re-typing it
+                // produced exactly that. No picker on this branch - the source select in the
+                // inspector is what swaps a seed for a clip, and it clears the parameters of
+                // whichever it left behind, which a slot-level pick could not do.
+                payload.seed
+                    ? positional("clip", payload.seed.seed, { enum: true })
+                    : positional("clip", assetWord(lookups, payload.assetId), {
+                        ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                        ...assetLink(lookups, payload.assetId),
+                    }),
                 arg("name", name),
                 arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
             ],
