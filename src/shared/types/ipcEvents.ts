@@ -91,6 +91,7 @@ import type {
     VcsLocalRepository,
     VcsServerDescription,
     VcsServerProbe,
+    VcsPasswordSignInOutcome,
     VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
@@ -371,6 +372,7 @@ export enum IPCEventType {
     vcsGetServerProject = "vcs.getServerProject",
     vcsListServerProjectHistory = "vcs.listServerProjectHistory",
     vcsListServerMembers = "vcs.listServerMembers",
+    vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsCreateServerProject = "vcs.createServerProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
@@ -1406,6 +1408,21 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { remoteOrigin: string },
         response: VcsServerMembersOutcome;
+    };
+    /**
+     * Exchange a username and password for a token, on a server that offers it.
+     *
+     * **Goes to the network**, and it is the one call here that carries no token — this
+     * is where a token comes from. Takes the endpoint rather than a `remoteOrigin`,
+     * because it is asked before this installation has any record of that server.
+     *
+     * The password is used by the call and kept by nothing.
+     */
+    [IPCEventType.vcsSignInWithPassword]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { authUrl: string; username: string; password: string },
+        response: VcsPasswordSignInOutcome;
     };
     /**
      * Ask a server to make a project, and get back the one it made.

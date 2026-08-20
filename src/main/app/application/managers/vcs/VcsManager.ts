@@ -15,6 +15,7 @@ import type {
     VcsMergeResolveResult,
     VcsMergeSideChoice,
     VcsMergeState,
+    VcsPasswordSignInOutcome,
     VcsRepositoryInfo,
     VcsPushResult,
     VcsRestoreOptions,
@@ -73,6 +74,7 @@ import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from ".
 // address what it is has to work on a host that has no backend to sign anything in.
 import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
 import { listServerMembers } from "./serverMembers";
+import { signInWithPassword } from "./serverPassword";
 import {
     createServerProject,
     getServerProject,
@@ -1856,6 +1858,37 @@ export class VcsManager extends Manager {
         const credentials = this.serverCredentials(remoteOrigin);
         if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
         return listServerMembers(credentials);
+    }
+
+    /**
+     * Exchange a username and password for a token, on a server that offers it.
+     *
+     * **The one server call here that takes an address rather than a `remoteOrigin`**, and
+     * it has to: it is asked before this installation has signed in to anything, so there
+     * is no session to look the address up in. What comes back is the same token an
+     * operator would have minted, and the caller adds the server with it exactly as if it
+     * had been pasted.
+     *
+     * The password is handed to one request and kept by nothing - not by this class, not
+     * in the log, and not in whatever is passed back.
+     */
+    public async signInWithPassword(
+        authUrl: string,
+        username: string,
+        password: string,
+    ): Promise<VcsPasswordSignInOutcome> {
+        const outcome = await signInWithPassword({
+            authUrl,
+            username,
+            password,
+            userDataDir: this.app.getUserDataDir(),
+        });
+        this.app.logger.info(
+            "[Vcs] Password sign-in",
+            authUrl,
+            outcome.ok ? "accepted" : outcome.reason,
+        );
+        return outcome;
     }
 
     /**

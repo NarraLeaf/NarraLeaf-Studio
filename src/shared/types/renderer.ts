@@ -71,7 +71,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -889,6 +889,22 @@ export interface RendererPreloadedInterface {
          * address for the one member a reader opens, and not for the list.
          */
         listServerMembers(remoteOrigin: string): Promise<RequestStatus<VcsServerMembersOutcome>>;
+        /**
+         * Exchange a username and password for a token, where a server offers it.
+         *
+         * **Goes to the network, and carries no token** - this is where one comes from,
+         * so it names the endpoint rather than a server this installation already knows.
+         * Hand the token straight to {@link addServer}; it is the same kind an operator
+         * would have minted, so nothing after this point differs by how it arrived.
+         *
+         * A server says one thing about credentials however they were wrong, so the
+         * outcome says `refused` and nothing more precise. Do not keep the password.
+         */
+        signInWithPassword(
+            authUrl: string,
+            username: string,
+            password: string,
+        ): Promise<RequestStatus<VcsPasswordSignInOutcome>>;
         /** Ask a server to make a project. **Goes to the network, and writes there.** */
         createServerProject(
             remoteOrigin: string,
