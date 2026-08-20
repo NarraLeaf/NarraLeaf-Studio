@@ -194,6 +194,12 @@ export const story = {
         },
         bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
         scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+        translationsCarried: {
+            other: "已带上 {count} 条译文",
+        },
+        translationsDropped: {
+            other: "{count} 条译文所属的语言本工程没有",
+        },
     },
     // 粘贴到另一个工程里的行。行落位之后，只报一次结果。
     crossProject: {

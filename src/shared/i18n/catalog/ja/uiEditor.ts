@@ -162,6 +162,24 @@ export const uiEditor = {
             left: "左",
         },
     },
+    crossProject: {
+        pasted: {
+            one: "{count} 個の要素を貼り付けた",
+            other: "{count} 個の要素を貼り付けた",
+        },
+        pastedFrom: {
+            one: "{project} から {count} 個の要素を貼り付けた",
+            other: "{project} から {count} 個の要素を貼り付けた",
+        },
+        imported: {
+            one: "{count} 個のアセットを取り込んだ",
+            other: "{count} 個のアセットを取り込んだ",
+        },
+        unresolved: {
+            one: "{count} 件の参照が未解決",
+            other: "{count} 件の参照が未解決",
+        },
+    },
     templateStore: {
         open: "テンプレートから始める",
         title: "UI テンプレート",

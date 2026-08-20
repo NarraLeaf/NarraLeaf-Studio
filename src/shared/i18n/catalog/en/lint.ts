@@ -218,6 +218,16 @@ export const lint = {
             description: "A clickable widget nothing listens to",
             message: "Nothing runs when this is clicked",
         },
+        uiComponentMissing: {
+            title: "Missing component",
+            description: "An instance of a component the project does not have",
+            message: "This instance points at a component the project does not have",
+        },
+        uiFrameTargetMissing: {
+            title: "Missing embedded page",
+            description: "A Page widget embedding a page the project does not have",
+            message: "This Page widget embeds a page the project does not have",
+        },
         blueprintSaveFieldEmpty: {
             title: "Empty save field",
             description: "A Save Game node that will run with a declared save field left empty",

@@ -162,6 +162,30 @@ export const uiEditor = {
             left: "left",
         },
     },
+    /**
+     * A paste of elements copied in another project.
+     *
+     * Counts only: what came across, and what still needs the author. Each unresolved reference is
+     * named again by the project lint, where it can be jumped to.
+     */
+    crossProject: {
+        pasted: {
+            one: "{count} element pasted",
+            other: "{count} elements pasted",
+        },
+        pastedFrom: {
+            one: "{count} element pasted from {project}",
+            other: "{count} elements pasted from {project}",
+        },
+        imported: {
+            one: "{count} asset imported",
+            other: "{count} assets imported",
+        },
+        unresolved: {
+            one: "{count} reference unresolved",
+            other: "{count} references unresolved",
+        },
+    },
     templateStore: {
         open: "Start from a template",
         title: "UI templates",

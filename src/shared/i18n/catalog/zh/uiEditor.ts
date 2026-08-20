@@ -157,6 +157,24 @@ export const uiEditor = {
             left: "左",
         },
     },
+    crossProject: {
+        pasted: {
+            one: "已粘贴 {count} 个元素",
+            other: "已粘贴 {count} 个元素",
+        },
+        pastedFrom: {
+            one: "已从 {project} 粘贴 {count} 个元素",
+            other: "已从 {project} 粘贴 {count} 个元素",
+        },
+        imported: {
+            one: "已导入 {count} 项资产",
+            other: "已导入 {count} 项资产",
+        },
+        unresolved: {
+            one: "{count} 处引用未解析",
+            other: "{count} 处引用未解析",
+        },
+    },
     templateStore: {
         open: "从模板开始",
         title: "界面模板",

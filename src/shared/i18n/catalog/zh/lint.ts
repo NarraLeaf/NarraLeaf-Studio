@@ -209,6 +209,16 @@ export const lint = {
             description: "可点击的控件没有任何事件监听",
             message: "点击后不会执行任何内容",
         },
+        uiComponentMissing: {
+            title: "缺失的组件",
+            description: "引用了工程中不存在的组件的实例",
+            message: "该实例引用的组件在此工程中不存在",
+        },
+        uiFrameTargetMissing: {
+            title: "缺失的嵌入页面",
+            description: "页面控件嵌入了工程中不存在的页面",
+            message: "该页面控件嵌入的页面在此工程中不存在",
+        },
         blueprintSaveFieldEmpty: {
             title: "未填写的存档字段",
             description: "会执行的 Save Game 节点上，声明过的存档字段未填写",

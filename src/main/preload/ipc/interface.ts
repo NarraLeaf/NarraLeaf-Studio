@@ -21,6 +21,7 @@ import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult 
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "@shared/types/gameBuild";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type { StudioTaskOverview } from "@shared/types/studioTask";
+import type { StudioClipboardKind } from "@shared/types/studioClipboard";
 import type { WeatherBakeSpec } from "@shared/weather/model";
 import type {
     MacSigningIdentity,
@@ -773,6 +774,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             redeem: (token: string) =>
                 ipcClient.invoke(IPCEventType.assetTransferRedeem, { token }),
         },
+    },
+
+    clipboard: {
+        writeEditorSelection: (kind: StudioClipboardKind, payload: string) =>
+            ipcClient.invoke(IPCEventType.clipboardWriteEditorSelection, { kind, payload }),
+        readEditorSelection: (kind: StudioClipboardKind) =>
+            ipcClient.invoke(IPCEventType.clipboardReadEditorSelection, { kind }),
     },
 
     puppetRuntimes: {

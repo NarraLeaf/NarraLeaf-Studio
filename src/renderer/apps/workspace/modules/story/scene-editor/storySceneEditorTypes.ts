@@ -1,4 +1,5 @@
 import type { AssetTransferManifestEntry } from "@shared/types/assetTransfer";
+import type { LocaleCode, LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryRichRun } from "@shared/types/story";
 
 export type StoryBlockTarget = {
@@ -182,6 +183,21 @@ export type StoryClipboardAssets = {
 };
 
 /**
+ * What every language of the copying project said about the copied lines: locale code → the
+ * translation unit of each line, keyed by the `textId` it had over there.
+ *
+ * Whole units rather than target strings, `sourceHash` included, because a translation carries more
+ * than its text: a unit anchored to a source line that has since been rewritten reads as stale, and
+ * a paste that re-anchored it would quietly turn a translation known to be out of date into a
+ * current one. The rows arrive character for character, so what was true of the translation over
+ * there is true of it here.
+ *
+ * Only the copied lines, and only what is actually translated - a clipboard is not a place to put a
+ * project's translation library. See `storyTranslationTransfer` for how it is filled and read back.
+ */
+export type StoryClipboardTranslations = Record<LocaleCode, Record<string, LocalizationUnit>>;
+
+/**
  * Story rows on the system clipboard.
  *
  * The MIME type is custom, but the clipboard is the system's: a payload written in one workspace
@@ -209,4 +225,6 @@ export type StoryClipboardPayload = {
     characterNames?: Record<string, string>;
     /** Absent when the copied rows reference no importable file. See {@link StoryClipboardAssets}. */
     assets?: StoryClipboardAssets;
+    /** Absent when none of the copied lines is translated. See {@link StoryClipboardTranslations}. */
+    translations?: StoryClipboardTranslations;
 };

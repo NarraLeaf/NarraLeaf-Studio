@@ -4,12 +4,17 @@ import type { StoryBlock, StoryBlockId, StoryScene, StorySceneId } from "@shared
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { getInterface } from "@/lib/app/bridge";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { AssetCreateErrorCode, type Asset, type AssetsMap } from "@/lib/workspace/services/assets/types";
+import {
+    buildAssetTransferEntries,
+    createTransferredAssetPort,
+    findLibraryAsset,
+    readClipboardAssetGrant,
+} from "@/lib/workspace/services/assets/assetTransferImport";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
+import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { translate, translateN } from "@/lib/i18n";
 import {
@@ -33,8 +38,6 @@ import {
     isStoryPasteFromAnotherProject,
     listSerializedBlocks,
     treatForeignCharacterRefs,
-    type TransferredAssetGrant,
-    type TransferredAssetPort,
 } from "./storyForeignPaste";
 import { filterOutSelectedDescendants, getInsertionTargetAfter } from "./storySceneBlockUtils";
 import {
@@ -43,16 +46,26 @@ import {
     getPasteAnchorId,
     insertSerializedClone,
     isStoryClipboardPayload,
+    listBlockTextIds,
     parseDialogueLine,
     serializeBlockSubtree,
     STORY_ACTIONS_MIME,
 } from "./storySceneClipboard";
 import { hasShiftModifier, isTextInputActive } from "./storySceneDom";
+import {
+    collectClipboardTranslations,
+    createCarriedTranslationPort,
+    planCarriedTranslations,
+    readProjectLocales,
+    writeCarriedTranslations,
+    type CarriedTranslationPort,
+} from "./storyTranslationTransfer";
 import type {
     EditorMode,
     SerializedStoryBlock,
     StoryBlockTarget,
     StoryClipboardPayload,
+    StoryClipboardTranslations,
     VisibleStoryRow,
 } from "./storySceneEditorTypes";
 
@@ -86,6 +99,11 @@ export function useStorySceneClipboardHandlers(params: {
     assetsService: AssetsService | null;
     /** Reads the bytes of a file a redeemed transfer granted access to. */
     fileSystemService: FileSystemService | null;
+    /**
+     * The translations a copy carries and a paste writes back. Null until the workspace is ready,
+     * which costs a paste its translations and nothing else.
+     */
+    localizationService: LocalizationService | null;
     storyId: string | undefined;
     sceneId: string | undefined;
     scene: StoryScene | null;
@@ -180,16 +198,26 @@ export function useStorySceneClipboardHandlers(params: {
         }
     }, [params, pasteMayTakeFocus]);
 
-    /** Clone the payload's rows into the scene as one undo step. False when nothing could be written. */
-    const pasteBlocks = useCallback((roots: SerializedStoryBlock[], target: StoryBlockTarget): boolean => {
+    /**
+     * Clone the payload's rows into the scene as one undo step. Null when nothing could be written.
+     *
+     * The `textIds` it returns are the renaming the clone performed, old id → new id. Every pasted
+     * line gets a fresh one, so it is the only thing that can still tell which line over there
+     * became which line here - which is what the translations travelling with the rows are keyed by.
+     */
+    const pasteBlocks = useCallback((
+        roots: SerializedStoryBlock[],
+        target: StoryBlockTarget,
+    ): { textIds: Map<string, string> } | null => {
         const { storyService, uuidService, storyId, sceneId } = params;
         if (!storyService || !uuidService || !storyId || !sceneId) {
-            return false;
+            return null;
         }
         params.recordHistory();
         const insertedRoots: StoryBlockId[] = [];
+        const textIds = new Map<string, string>();
         for (const root of roots) {
-            const cloned = cloneSerializedBlock(root, () => uuidService.generate());
+            const cloned = cloneSerializedBlock(root, () => uuidService.generate(), textIds);
             insertSerializedClone(storyService, storyId, sceneId, cloned, target);
             insertedRoots.push(cloned.block.id);
         }
@@ -198,7 +226,7 @@ export function useStorySceneClipboardHandlers(params: {
             params.setSelectedBlockIds(new Set(insertedRoots));
             params.setEditorMode({ kind: "idle" });
         }
-        return insertedRoots.length > 0;
+        return insertedRoots.length > 0 ? { textIds } : null;
     }, [params, pasteMayTakeFocus]);
 
     /**
@@ -310,6 +338,9 @@ export function useStorySceneClipboardHandlers(params: {
         return filterOutSelectedDescendants(scene, ids);
     }, [params.scene, params.selectedBlockIds, params.activeBlockId]);
 
+    /** Whether a copy would take anything at all - the gate on the work done ahead of the gesture. */
+    const hasSelection = selectionRootIds.length > 0;
+
     /** The library ids those rows reference, in the order the rows name them. */
     const selectionAssetIds = useMemo(
         () => (params.scene ? collectStoryAssetIds(collectSubtreeBlocks(params.scene, selectionRootIds)) : []),
@@ -335,7 +366,7 @@ export function useStorySceneClipboardHandlers(params: {
         if (!assetsService || !assetOfferKey || assetOffersRef.current.has(assetOfferKey)) {
             return;
         }
-        const entries = buildTransferEntries(assetsService, selectionAssetIds);
+        const entries = buildAssetTransferEntries(assetsService, selectionAssetIds);
         if (entries.length === 0) {
             return;
         }
@@ -364,6 +395,67 @@ export function useStorySceneClipboardHandlers(params: {
     }, [assetOfferKey, params.assetsService]);
 
     /**
+     * Read this project's translations into memory ahead of a copy.
+     *
+     * For the reason the asset grants are minted ahead of the gesture: a `copy` event has to have
+     * written the clipboard by the time it returns, so nothing inside it can wait for a file to be
+     * read. These are the localization service's own documents, so a language the author already
+     * has open costs nothing here, and a project's translations are text.
+     *
+     * Only while there are rows a copy would take, so a scene left open with nothing selected reads
+     * nothing at all.
+     */
+    useEffect(() => {
+        const { localizationService } = params;
+        if (!localizationService || !hasSelection) {
+            return;
+        }
+        const load = () => {
+            for (const locale of readProjectLocales(localizationService)) {
+                if (!localizationService.getDocumentIfLoaded(locale)) {
+                    // A language whose file cannot be read is one this copy carries nothing for.
+                    void localizationService.loadDocument(locale).catch(() => undefined);
+                }
+            }
+        };
+        load();
+        return localizationService.onConfigChanged(load);
+    }, [params.localizationService, hasSelection]);
+
+    /**
+     * Write the translations that travelled with a paste, under the ids it has just minted.
+     *
+     * After the rows rather than before them, because the ids to write under are what pasting the
+     * rows produced. Not part of the paste's undo step, and it cannot be: the scene's history scope
+     * captures the scene document, and translations live in per-locale documents another service
+     * owns. Undoing a paste therefore leaves these behind as orphans - the same state deleting a
+     * translated row already produces, reported by `localization/orphan`.
+     */
+    const carryTranslations = useCallback(async (
+        payload: StoryClipboardPayload,
+        textIds: ReadonlyMap<string, string>,
+    ): Promise<{ written: number; droppedLocales: number; frozen: boolean }> => {
+        const { localizationService } = params;
+        const nothing = { written: 0, droppedLocales: 0, frozen: false };
+        if (!localizationService || !payload.translations) {
+            return nothing;
+        }
+        const plan = planCarriedTranslations(
+            payload.translations,
+            textIds,
+            new Set(readProjectLocales(localizationService)),
+        );
+        if (plan.carried === 0) {
+            return { ...nothing, droppedLocales: plan.droppedLocales };
+        }
+        const outcome = await writeCarriedTranslations(
+            createCarriedTranslationPort(localizationService, params.isFrozen),
+            plan,
+        );
+        return { ...outcome, droppedLocales: plan.droppedLocales };
+    }, [params]);
+
+    /**
      * A paste of rows written by another project.
      *
      * Asynchronous because the files those rows reference are imported first: the rows are pasted
@@ -387,14 +479,16 @@ export function useStorySceneClipboardHandlers(params: {
             ? createTransferredAssetPort(assetsService, fileSystemService, params.isFrozen)
             : null;
         const transfer = port
-            ? await importTransferredAssets(port, readClipboardAssets(payload.assets), collectStoryAssetIds(blocks))
+            ? await importTransferredAssets(port, readClipboardAssetGrant(payload.assets), collectStoryAssetIds(blocks))
             : { imported: 0, failed: 0, frozen: false };
         if (transfer.frozen || params.isFrozen()) {
             return;
         }
-        if (!pasteBlocks(treatment.roots, target)) {
+        const pasted = pasteBlocks(treatment.roots, target);
+        if (!pasted) {
             return;
         }
+        const translations = await carryTranslations(payload, pasted.textIds);
         // What this window can say still needs the author: a character id nothing here answers to,
         // and a file that did not come across. Every other kind of foreign id is kept verbatim and
         // reported per site by the project lint, which is the report that can jump to the row.
@@ -406,11 +500,34 @@ export function useStorySceneClipboardHandlers(params: {
                 project: readClipboardProjectName(payload.source?.name),
                 degradedSpeakers: treatment.degradedSpeakers,
                 imported: transfer.imported,
+                translations: translations.written,
+                droppedTranslations: translations.droppedLocales,
                 unresolved,
             }),
             unresolved > 0 ? "warning" : "info",
         );
-    }, [params, pasteBlocks]);
+    }, [carryTranslations, params, pasteBlocks]);
+
+    /**
+     * The translations of rows pasted back into the project they were copied from.
+     *
+     * Silent when it works, which is the ordinary case: the rows are where they were written and
+     * every language they carry is still here, so there is nothing an author needs telling. The one
+     * thing worth a word is a language removed between the copy and the paste - those translations
+     * have nowhere to go, and saying nothing would let the author believe they came across.
+     */
+    const pasteOwnTranslations = useCallback(async (
+        payload: StoryClipboardPayload,
+        textIds: ReadonlyMap<string, string>,
+    ) => {
+        const { droppedLocales } = await carryTranslations(payload, textIds);
+        if (droppedLocales > 0) {
+            params.uiService?.showNotification(
+                translateN("story.paste.translationsDropped", droppedLocales),
+                "info",
+            );
+        }
+    }, [carryTranslations, params]);
 
     /**
      * The five routes, from one clipboard payload.
@@ -436,7 +553,10 @@ export function useStorySceneClipboardHandlers(params: {
                     // Rows from this same project - or from a Studio that predates the source field,
                     // which can only be this machine - paste exactly as they always have.
                     if (!isStoryPasteFromAnotherProject(parsed, params.projectPath)) {
-                        pasteBlocks(parsed.roots, anchor.target);
+                        const pasted = pasteBlocks(parsed.roots, anchor.target);
+                        if (pasted) {
+                            void pasteOwnTranslations(parsed, pasted.textIds);
+                        }
                         return true;
                     }
                     void pasteForeignBlocks(parsed, anchor.target);
@@ -471,7 +591,7 @@ export function useStorySceneClipboardHandlers(params: {
             default:
                 return false;
         }
-    }, [params, pasteBlocks, pasteForeignBlocks, pasteSingleLine, pastePlain, resolveAnchor]);
+    }, [params, pasteBlocks, pasteForeignBlocks, pasteOwnTranslations, pasteSingleLine, pastePlain, resolveAnchor]);
 
     const copySelectionToClipboard = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
         if (isTextInputActive()) {
@@ -486,6 +606,7 @@ export function useStorySceneClipboardHandlers(params: {
             return;
         }
         const assets = assetOffersRef.current.get(assetOfferKey);
+        const translations = collectCopiedTranslations(params.localizationService, scene, roots);
         const payload: StoryClipboardPayload = {
             version: 2,
             kind: "narraleaf.story.actions",
@@ -499,6 +620,8 @@ export function useStorySceneClipboardHandlers(params: {
             // Absent rather than empty when there is no grant: the field means "these files can be
             // fetched", and an empty one would say that about nothing.
             ...(assets ? { assets } : {}),
+            // Absent for the same reason when none of the copied lines is translated.
+            ...(translations ? { translations } : {}),
         };
         event.preventDefault();
         event.clipboardData.setData(STORY_ACTIONS_MIME, JSON.stringify(payload));
@@ -576,129 +699,36 @@ function plainAnchorFor(block: StoryBlock | undefined): PlainPasteAnchor {
 }
 
 /**
- * The files behind a set of asset ids, described for an offer.
+ * The languages this project declares, its source language included.
  *
- * An id with no library record is skipped: it names an asset set, or a reference this project has
- * already lost, and either way there are no bytes to vouch for. A model bundle is skipped too - it
- * is a directory, and a redeemed grant reaches the path it names and nothing below it, so a model
- * travels as an unresolved reference (which the pasting project reports) rather than as a read that
- * finds half a character.
+ * The source language is in the list because its document may hold units too - nothing stops an
+ * author translating a line into the language it is written in - and a copy that skipped it would
+ * lose exactly those.
  */
-function buildTransferEntries(assetsService: AssetsService, assetIds: readonly string[]): AssetTransferEntry[] {
-    let library: AssetsMap;
-    let localPathOf: (assetId: string) => string;
-    try {
-        library = assetsService.getAssets();
-        const manager = assetsService.getLocalAssetsManager();
-        localPathOf = (assetId: string) => manager.getLocalAssetPath(assetId);
-    } catch {
-        // The library is not open yet. Copying rows does not wait for it.
-        return [];
-    }
-    const entries: AssetTransferEntry[] = [];
-    for (const assetId of assetIds) {
-        const asset = findLibraryAsset(library, assetId);
-        if (!asset || asset.type === AssetType.Model) {
-            continue;
-        }
-        entries.push({
-            assetId: asset.id,
-            // A record with no name would be refused, and one blank name refuses the whole manifest.
-            fileName: asset.name.trim() || asset.id,
-            type: asset.type,
-            sourcePath: localPathOf(asset.id),
-        });
-    }
-    return entries;
-}
-
 /**
- * The asset holding an id, whichever type it is filed under.
+ * What every language of this project says about the lines being copied.
  *
- * Every type is searched because the content path carries no type segment: one id names one file on
- * disk, so an id an audio asset occupies is not free for an image either.
+ * Read from the documents already in memory (see the preload effect): a `copy` event cannot wait
+ * for a file, so a language that has not been read by the time the gesture happens carries nothing
+ * rather than delaying it.
  */
-function findLibraryAsset(library: AssetsMap, assetId: string): Asset | null {
-    for (const type of Object.values(AssetType)) {
-        const asset = library[type]?.[assetId];
-        if (asset) {
-            return asset;
-        }
+function collectCopiedTranslations(
+    service: LocalizationService | null,
+    scene: StoryScene,
+    rootIds: readonly StoryBlockId[],
+): StoryClipboardTranslations | undefined {
+    if (!service) {
+        return undefined;
     }
-    return null;
-}
-
-/**
- * The workspace, as {@link importTransferredAssets} asks about it.
- *
- * Every method answers rather than throws: an import that raised would cost the author the rows,
- * and a paste is worth more than the file it could not bring with it.
- */
-function createTransferredAssetPort(
-    assetsService: AssetsService,
-    fileSystemService: FileSystemService,
-    isFrozen: () => boolean,
-): TransferredAssetPort {
-    return {
-        redeem: async (token: string) => {
-            try {
-                const status = await getInterface().assets.transfer.redeem(token);
-                return status.success && status.data.available ? status.data.entries : null;
-            } catch (error) {
-                console.warn("[storyClipboard] could not redeem the pasted asset manifest", error);
-                return null;
-            }
-        },
-        has: (assetId: string) => {
-            try {
-                return Boolean(findLibraryAsset(assetsService.getAssets(), assetId));
-            } catch {
-                return false;
-            }
-        },
-        read: async (sourcePath: string) => {
-            try {
-                const result = await fileSystemService.readRaw(sourcePath);
-                return result.ok ? result.data : null;
-            } catch {
-                return null;
-            }
-        },
-        create: async (entry, bytes) => {
-            const type = toAssetType(entry.type);
-            if (!type) {
-                return "failed";
-            }
-            try {
-                // No group: the file lands at the root of its section, the way a file created from
-                // a category header does. The group it sat in over there is another project's id
-                // and names nothing here.
-                const created = await assetsService.createLocalAssetFromBytes(
-                    type,
-                    entry.fileName,
-                    bytes,
-                    undefined,
-                    { id: entry.assetId },
-                );
-                if (created.success) {
-                    return "created";
-                }
-                // An id this library turns out to hold already is the outcome the reference wanted:
-                // it resolves. Nothing was written, and a second paste of the same clipboard lands
-                // here rather than duplicating the file.
-                return created.code === AssetCreateErrorCode.IdInUse ? "present" : "failed";
-            } catch (error) {
-                console.warn(`[storyClipboard] could not import "${entry.fileName}"`, error);
-                return "failed";
-            }
-        },
-        isFrozen,
-    };
-}
-
-/** The `AssetType` a manifest entry names, or null when this Studio has no such type. */
-function toAssetType(value: string): AssetType | null {
-    return (Object.values(AssetType) as string[]).includes(value) ? value as AssetType : null;
+    const textIds = listBlockTextIds(collectSubtreeBlocks(scene, rootIds));
+    if (textIds.length === 0) {
+        return undefined;
+    }
+    return collectClipboardTranslations(
+        textIds,
+        readProjectLocales(service),
+        locale => service.getDocumentIfLoaded(locale)?.units,
+    );
 }
 
 /**
@@ -743,31 +773,6 @@ function readClipboardCharacterNames(value: unknown): Record<string, string> {
 }
 
 /**
- * The asset manifest off a pasted payload, or undefined when it does not describe one.
- *
- * Rebuilt entry by entry, like the name map and for the same reason. Only the ids are ever acted
- * on: what a file is called and where it lives come from the main process at redeem time, which
- * verified both against the window that offered them - nothing on the clipboard addresses a file.
- */
-function readClipboardAssets(value: unknown): TransferredAssetGrant | undefined {
-    if (!value || typeof value !== "object") {
-        return undefined;
-    }
-    const { token, entries } = value as { token?: unknown; entries?: unknown };
-    if (typeof token !== "string" || !token || !Array.isArray(entries)) {
-        return undefined;
-    }
-    const declaredAssetIds: string[] = [];
-    for (const entry of entries) {
-        const assetId = (entry as { assetId?: unknown })?.assetId;
-        if (typeof assetId === "string" && assetId) {
-            declaredAssetIds.push(assetId);
-        }
-    }
-    return { token, declaredAssetIds };
-}
-
-/**
  * The source project's name, when it is one a notification can carry.
  *
  * A payload written by another process says what it likes about itself, so a name that is blank or
@@ -790,6 +795,8 @@ function describeForeignPaste(outcome: {
     project: string | null;
     degradedSpeakers: number;
     imported: number;
+    translations: number;
+    droppedTranslations: number;
     unresolved: number;
 }): string {
     const parts = [
@@ -802,6 +809,12 @@ function describeForeignPaste(outcome: {
     }
     if (outcome.imported > 0) {
         parts.push(translateN("story.crossProject.imported", outcome.imported));
+    }
+    if (outcome.translations > 0) {
+        parts.push(translateN("story.paste.translationsCarried", outcome.translations));
+    }
+    if (outcome.droppedTranslations > 0) {
+        parts.push(translateN("story.paste.translationsDropped", outcome.droppedTranslations));
     }
     if (outcome.unresolved > 0) {
         parts.push(translateN("story.crossProject.unresolved", outcome.unresolved));

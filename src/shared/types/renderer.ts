@@ -59,6 +59,7 @@ import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
 import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
+import type { StudioClipboardKind } from "./studioClipboard";
 import type {
     AvailableSpellcheckDictionary,
     InstalledSpellcheckDictionary,
@@ -1110,6 +1111,20 @@ export interface RendererPreloadedInterface {
             offer(entries: AssetTransferEntry[]): Promise<RequestStatus<AssetTransferOfferResult>>;
             redeem(token: string): Promise<RequestStatus<AssetTransferRedeemResult>>;
         };
+    };
+
+    /**
+     * The platform clipboard, for the editor selections that move between project windows.
+     *
+     * One project per window means one renderer process per window, so an editor's own clipboard
+     * cannot leave the window that filled it. These two put the selection where every window can
+     * reach it, under a private format name. `stored: false` and `payload: null` are ordinary
+     * answers - a payload main declined, or a clipboard holding something else - and neither is a
+     * failure. See `@shared/types/studioClipboard`.
+     */
+    clipboard: {
+        writeEditorSelection(kind: StudioClipboardKind, payload: string): Promise<RequestStatus<{ stored: boolean }>>;
+        readEditorSelection(kind: StudioClipboardKind): Promise<RequestStatus<{ payload: string | null }>>;
     };
 
     /**
