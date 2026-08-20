@@ -91,6 +91,7 @@ import type {
     VcsLocalRepository,
     VcsServerDescription,
     VcsServerProbe,
+    VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
@@ -367,6 +368,9 @@ export enum IPCEventType {
     vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
     vcsListServerProjects = "vcs.listServerProjects",
+    vcsGetServerProject = "vcs.getServerProject",
+    vcsListServerProjectHistory = "vcs.listServerProjectHistory",
+    vcsListServerMembers = "vcs.listServerMembers",
     vcsCreateServerProject = "vcs.createServerProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
@@ -1362,6 +1366,46 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { remoteOrigin: string },
         response: VcsServerProjectsOutcome;
+    };
+    /**
+     * What one server knows about one of its projects.
+     *
+     * **Goes to the network**, and only to a server that advertised `project-detail`.
+     * A `file` that is not readable is a complete answer rather than a failure, and the
+     * server's own explanation for it is deliberately not carried across: it is an
+     * English sentence about the server's internals, and Studio has its own line for
+     * this in every language it speaks.
+     */
+    [IPCEventType.vcsGetServerProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string },
+        response: VcsServerProjectDetailOutcome;
+    };
+    /**
+     * The latest revisions on one of a server's projects, newest first.
+     *
+     * **Goes to the network**, and only to a server that advertised `project-history`.
+     * An answer with no `revisions` field at all is the ordinary one for a project the
+     * server has not read, and it is not an empty history.
+     */
+    [IPCEventType.vcsListServerProjectHistory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string; limit?: number; before?: string },
+        response: VcsServerProjectHistoryOutcome;
+    };
+    /**
+     * Who has an account on one server.
+     *
+     * **Goes to the network**, and only to a server that advertised `members`. Takes no
+     * project, like the calls above it: a roster belongs to the server.
+     */
+    [IPCEventType.vcsListServerMembers]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: VcsServerMembersOutcome;
     };
     /**
      * Ask a server to make a project, and get back the one it made.

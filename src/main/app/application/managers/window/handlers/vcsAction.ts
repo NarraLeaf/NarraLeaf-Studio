@@ -16,6 +16,9 @@ import type {
     VcsAddServerOutcome,
     VcsLocalRepository,
     VcsServerProbe,
+    VcsServerMembersOutcome,
+    VcsServerProjectDetailOutcome,
+    VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome,
     VcsServerProjectsOutcome,
     VcsServerSession,
@@ -577,6 +580,66 @@ export class VcsListServerProjectsHandler extends IPCHandler<IPCEventType.vcsLis
     ): Promise<RequestStatus<VcsServerProjectsOutcome>> {
         return this.tryUse(async () =>
             window.app.getVcsManager().listServerProjects(remoteOrigin));
+    }
+}
+
+/**
+ * What one server knows about one project.
+ *
+ * Asked only of a server that advertised `project-detail`; a deployment that offers none
+ * has no such surface in front of it, so this is never reached to answer a 404.
+ */
+export class VcsGetServerProjectHandler extends IPCHandler<IPCEventType.vcsGetServerProject> {
+    readonly name = IPCEventType.vcsGetServerProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin, projectId }: IPCEvents[IPCEventType.vcsGetServerProject]["data"],
+    ): Promise<RequestStatus<VcsServerProjectDetailOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().getServerProject(remoteOrigin, projectId));
+    }
+}
+
+/** The latest revisions on one of a server's projects. Asked only where `project-history` is offered. */
+export class VcsListServerProjectHistoryHandler
+    extends IPCHandler<IPCEventType.vcsListServerProjectHistory> {
+    readonly name = IPCEventType.vcsListServerProjectHistory;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin, projectId, limit, before }:
+            IPCEvents[IPCEventType.vcsListServerProjectHistory]["data"],
+    ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>> {
+        return this.tryUse(async () => window.app.getVcsManager().listServerProjectHistory(
+            remoteOrigin,
+            projectId,
+            {
+                ...(limit === undefined ? {} : { limit }),
+                ...(before === undefined ? {} : { before }),
+            },
+        ));
+    }
+}
+
+/**
+ * Who has an account on one server.
+ *
+ * Takes no project, for the same reason listing its projects does not. Asked only of a
+ * server that advertised `members`.
+ */
+export class VcsListServerMembersHandler extends IPCHandler<IPCEventType.vcsListServerMembers> {
+    readonly name = IPCEventType.vcsListServerMembers;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin }: IPCEvents[IPCEventType.vcsListServerMembers]["data"],
+    ): Promise<RequestStatus<VcsServerMembersOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().listServerMembers(remoteOrigin));
     }
 }
 
