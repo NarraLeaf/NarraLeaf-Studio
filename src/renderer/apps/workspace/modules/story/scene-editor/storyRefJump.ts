@@ -24,7 +24,12 @@ import type { StoryCommandLineRef } from "./storyCommandLine";
 export type StoryRefJumpContext = {
     /** The story the row lives in — the one thing a `StoryCommandLineRef` never carries. */
     document: StoryDocument;
-    /** The scene the row lives in. Every `block` reference is scene-local by construction. */
+    /**
+     * The scene the row lives in - where a `block` reference lands unless it names its own.
+     *
+     * Only one kind of reference does: an ambience overlay is held at game level, so the row that
+     * declares it may be in any scene. Everything else is scene-local by construction.
+     */
     sceneId: StorySceneId;
     /**
      * Which library an asset id lives in.
@@ -64,7 +69,10 @@ export function storyRefJumpTarget(ref: StoryCommandLineRef, where: StoryRefJump
                 : null;
         }
         case "block":
-            return sceneBlockTarget(where, where.sceneId, ref.blockId);
+            // The ref's own scene when it names one - only an ambience overlay's does, because only
+            // that declaration can be outside the scene being read. Absent means this scene, which is
+            // what every other block link means and always did.
+            return sceneBlockTarget(where, (ref.sceneId as StorySceneId | undefined) ?? where.sceneId, ref.blockId);
         case "variable": {
             if (ref.target.scope !== "scene") {
                 // A project variable is authored in the variables panel, not in any row, so the panel

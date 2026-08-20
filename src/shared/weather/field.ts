@@ -13,8 +13,9 @@
  * phase is `k * phase` with **integer k** — an integer number of fall-lengths, an integer sway
  * harmonic, an integer tumble harmonic. At phase 1 every particle is therefore exactly where it was
  * at phase 0, so the last frame hands over to the first with nothing to interpolate. This is a
- * property of the construction, not a tuning: no parameter an author can move breaks it, which is
- * why the "speed" they see is the playback rate rather than a fall distance.
+ * property of the construction, not a tuning: no parameter an author can move breaks it. `fallSpeed`
+ * is the one that reaches into it, and it is admitted precisely because it is a WHOLE number of
+ * fall-lengths — it moves the field along the same grid the seam is built on rather than off it.
  *
  * ## Wind rotates the field, it does not shear it
  *
@@ -151,6 +152,10 @@ export function buildWeatherField(
 
     const count = Math.max(0, Math.round((params.density * fallSpan * vSpan) / 1_000_000));
     const spread = Math.max(1, Math.round(params.depthSpread));
+    // Whole fall-lengths, because the seam is built on that grid (see the header). Rounded here
+    // rather than trusted from the document: this arrives from a stored row an older or newer Studio
+    // may have written, and a fractional one would put a visible jump in every loop.
+    const baseFall = Math.max(1, Math.round(params.fallSpeed));
     const particles: Particle[] = [];
     for (let i = 0; i < count; i++) {
         // 0 = far, 1 = near. Drives size, brightness and fall rate together, which is what reads as
@@ -160,7 +165,11 @@ export function buildWeatherField(
         particles.push({
             u0: rnd() * fallSpan,
             v0: rnd() * vSpan,
-            fall: 1 + Math.round(depth * (spread - 1)),
+            // Speed times the depth ratio, rounded to a whole number of lengths. Multiplying rather
+            // than adding is what keeps `depthSpread` meaning the same thing at every speed: the near
+            // field stays `spread` times the far field instead of the ratio flattening as speed goes
+            // up. At `fallSpeed` 1 this is exactly the expression it replaced, to the bit.
+            fall: Math.max(1, Math.round(baseFall * (1 + depth * (spread - 1)))),
             swayAmp: params.sway * (0.4 + rnd() * 0.6),
             swayHarm: 1 + Math.floor(rnd() * 3),
             swayPhase: rnd(),

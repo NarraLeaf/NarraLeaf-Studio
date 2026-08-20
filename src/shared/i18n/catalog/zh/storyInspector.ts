@@ -212,6 +212,8 @@ export const storyInspector = {
         zIndex: "层级",
         loop: "循环",
         rate: "速度（1 = 正常）",
+        showOpacity: "不透明度（本次）",
+        showRate: "速度（本次）",
         fade: "淡入淡出（秒）",
     },
 
@@ -222,6 +224,7 @@ export const storyInspector = {
         sway: "飘摆",
         streak: "拖影",
         wind: "风向（度）",
+        fallSpeed: "落速",
         depthSpread: "景深差",
     },
 

@@ -486,10 +486,14 @@ describe("candidate marks", () => {
             { kind: "asset", assetType: "image" },
             { kind: "number", duration: true },
         ]);
+        // The two trailing numbers are the overlay knobs `/show` carries for an ambience target;
+        // they are offered on every `/show`, and refused with a reason on anything else.
         expect(marks("/show Alice smile |")).toEqual([
             { kind: "options", lead: "left" },
             { kind: "options", lead: "fade" },
             { kind: "number", duration: true },
+            { kind: "number" },
+            { kind: "number" },
         ]);
     });
 

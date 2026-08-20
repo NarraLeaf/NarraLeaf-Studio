@@ -1,7 +1,7 @@
 import { Wind } from "lucide-react";
 import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { WEATHER_SEED_IDS, type WeatherSeedId } from "@shared/weather/model";
-import { asDurationMs, asEnum, asNumber, asText, defineStoryCommand, secondsParam } from "../spec";
+import { asEnum, asNumber, asText, defineStoryCommand } from "../spec";
 import { deriveObjectName } from "../payloadHelpers";
 
 /**
@@ -15,9 +15,18 @@ import { deriveObjectName } from "../payloadHelpers";
  * placing it - fade it in or out, freeze it, change how fast it drifts - is an existing generic verb
  * (`/show` `/hide` `/pause` `/resume` `/rate`) that dispatches on the resolved target.
  *
- * The line places the clip and names it; blend mode, opacity, fit and z-index are the inspector's.
- * Blend mode in particular is not a preference but a property of the MATERIAL, which is why the
- * inspector's options name the material rather than the CSS keyword.
+ * **This row DECLARES the overlay; it does not show it.** It names the clip, names the overlay and
+ * settles how it composites, and the clip starts loading - `/show rain` is what puts it on screen.
+ * The two are separate because an overlay is one thing across the whole story: rain declared once is
+ * shown, hidden and shown again from anywhere, and every one of those rows points back here. It is
+ * also what makes the showing instant, since the clip is decoded by the time anything asks for it.
+ *
+ * A `/show` may carry an `opacity` and a `rate` of its own, which last for that showing alone. The
+ * ones on THIS row are the overlay's own: how strong the rain is, not how it reads in one moment.
+ *
+ * The line places the clip and names it; blend mode, fit and z-index are the inspector's. Blend mode
+ * in particular is not a preference but a property of the MATERIAL, which is why the inspector's
+ * options name the material rather than the CSS keyword.
  *
  * **There is no alpha-channel route.** WebKit decodes a WebM carrying alpha and then composites its
  * RGB plane opaquely, discarding the transparency - VP9 and VP8 alike, on iOS and on macOS Safari.
@@ -36,8 +45,6 @@ import { deriveObjectName } from "../payloadHelpers";
  * error while a Safari-engine target is selected.
  */
 
-const VFX_DEFAULT_FADE_MS = 600;
-
 /** The weather word this slot resolved to, or null when it named a clip of the author's own. */
 function seedOf(value: { kind: string } | undefined): WeatherSeedId | null {
     const word = asEnum(value as never);
@@ -50,8 +57,7 @@ export const vfx = defineStoryCommand({
     aliases: ["ambience"],
     category: "vfx",
     icon: Wind,
-    examples: ["/vfx intro", "/vfx intro name=petals opacity=0.5 d=0.8"],
-    quickParams: ["d"],
+    examples: ["/vfx intro", "/vfx intro name=petals opacity=0.5"],
     params: {
         clip: {
             aliases: ["src"],
@@ -72,7 +78,8 @@ export const vfx = defineStoryCommand({
         // The one visual knob worth typing inline: how strongly the overlay reads. Everything else
         // about how it composites is a material question the inspector asks properly.
         opacity: { hint: "opacity", type: { kind: "number", min: 0, max: 1 } },
-        d: secondsParam(),
+        // No `d=`: this row reveals nothing, so there is no fade for a duration to describe.
+        // The fade belongs to `/show` and `/hide`, which are the rows that change the picture.
     },
     // Same auto-name rule as `/image` and `/video`: `/vfx petals.webm` lands an overlay called
     // `petals`, and `/vfx snow` one called `snow`.
@@ -85,13 +92,11 @@ export const vfx = defineStoryCommand({
             // An ambience overlay that does not loop is a video, so the default is the one an author
             // reaching for `/vfx` means.
             loop: true,
-            durationMs: VFX_DEFAULT_FADE_MS,
             // One source or the other, never both: the payload documents them as mutually exclusive
             // because a row carrying two would leave the compiler's read order deciding the picture.
             ...(args.clip?.kind === "asset" ? { assetId: args.clip.assetId } : {}),
             ...(seedOf(args.clip) ? { seed: { seed: seedOf(args.clip)! } } : {}),
             ...(asNumber(args.opacity) !== undefined ? { opacity: asNumber(args.opacity) } : {}),
-            ...(asDurationMs(args.d) !== undefined ? { durationMs: asDurationMs(args.d) } : {}),
         };
         return { id: ctx.generateId(), parentId: null, childrenIds: [], kind: "action", payload };
     },

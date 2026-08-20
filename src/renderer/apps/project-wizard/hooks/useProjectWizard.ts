@@ -81,29 +81,43 @@ export function useProjectWizard() {
     const remote = useMemo(() => parseVcsRemoteUrl(projectData.remoteUrl), [projectData.remoteUrl]);
 
     /**
-     * Open on the package this window was handed, when it was handed one.
+     * Open on whatever this window was handed, when it was handed something.
      *
-     * Studio can be pointed at a `.nlspkg` from outside - a double-click in the file manager, a
-     * second launch handing one to the running instance - and there is exactly one thing to do
-     * with a package, so the wizard starts on the import page with it already chosen rather than
-     * asking a first-page question the author has answered by opening the file.
+     * Two things can arrive that way, and both mean the first page has already been answered:
      *
-     * The path arrives on the window's props, granted to this window by the main process before the
-     * window loaded; nothing here resolves it. Runs once - a window is handed a package when it is
-     * built or never, and re-running would drag an author who pressed Back straight forward again.
+     *  - a `.nlspkg` Studio was pointed at from outside - a double-click in the file manager, a
+     *    second launch handing one to the running instance - and there is exactly one thing to
+     *    do with a package, so the wizard starts on the import page with it chosen;
+     *  - a repository the author picked off a server's list in the launcher, or made there a
+     *    moment ago, which starts the clone flow on its source page with the address filled in.
+     *
+     * Both arrive on the window's props, set by the main process before the window loaded;
+     * nothing here resolves either. Runs once - a window is handed these when it is built or
+     * never, and re-running would drag an author who pressed Back straight forward again.
      */
     useEffect(() => {
         let alive = true;
         void (async () => {
             try {
                 const props = await getInterface().getWindowProps<WindowAppType.ProjectWizard>();
-                const packagePath = props.success ? props.data?.packagePath : undefined;
-                if (!alive || !packagePath) {
+                if (!alive || !props.success) {
                     return;
                 }
-                setFlow("import");
-                setCurrentStep("import");
-                setProjectData(prev => ({ ...prev, packagePath }));
+                const packagePath = props.data?.packagePath;
+                if (packagePath) {
+                    setFlow("import");
+                    setCurrentStep("import");
+                    setProjectData(prev => ({ ...prev, packagePath }));
+                    return;
+                }
+                const remoteUrl = props.data?.remoteUrl;
+                if (remoteUrl) {
+                    setFlow("clone");
+                    // The source page, not the last one: where the copy lands is still the
+                    // author's to choose, and it is chosen through the native picker there.
+                    setCurrentStep("source");
+                    setProjectData(prev => ({ ...prev, remoteUrl }));
+                }
             } catch {
                 // A wizard that cannot say how it was opened is still a wizard: it opens on its
                 // first page, which is where every other way in starts.

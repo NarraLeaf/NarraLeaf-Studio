@@ -159,6 +159,11 @@ export const lint = {
             // キャラクターは作成するものではなく登場させるものなので、変わるのは動詞だけ。
             messageCharacter: "{object} を登場させる行がないため、この行には操作する対象がない",
         },
+        storyDeclaredNeverShown: {
+            title: "表示されないステージオブジェクト",
+            description: "作成行が宣言した対象を表示する行がない",
+            message: "{object} はこの行で宣言され、表示する行がない",
+        },
         storyStageObjectDuplicate: {
             title: "ステージオブジェクトの重複",
             description: "同じステージ名を作成する行が 2 つあり、後の行は先の行のものを使う",

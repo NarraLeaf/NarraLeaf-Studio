@@ -73,7 +73,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -823,8 +823,25 @@ export interface RendererPreloadedInterface {
          *
          * **Goes to the network.** Pass empty strings for the two addresses: a token
          * carries both, and they are asked for only after this answers that it does not.
+         *
+         * `description` is what `probeServer` just answered. Passing it is how the server
+         * keeps its own name without this reaching the same address a second time.
          */
-        addServer(authUrl: string, remoteUrl: string, token: string): Promise<RequestStatus<VcsAddServerOutcome>>;
+        addServer(
+            authUrl: string,
+            remoteUrl: string,
+            token: string,
+            description?: VcsServerDescription,
+        ): Promise<RequestStatus<VcsAddServerOutcome>>;
+        /**
+         * Ask one server what it is now. **Goes to the network.**
+         *
+         * Records the name, version and capabilities it answers with, and nothing else:
+         * the account and the addresses are untouched, so this is not a sign-in. A server
+         * added before Studio kept any of that is what this exists for. One that does not
+         * answer leaves its record as it was.
+         */
+        refreshServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /** Take a server off this machine, token and record together. Local. */
         forgetServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /**
@@ -834,12 +851,80 @@ export interface RendererPreloadedInterface {
          * right when it was stored is wrong the moment somebody else pushes.
          */
         listServerProjects(remoteOrigin: string): Promise<RequestStatus<VcsServerProjectsOutcome>>;
+        /**
+         * What one server knows about one of its projects. **Goes to the network.**
+         *
+         * **Ask only a server whose session advertises `project-detail`.** A deployment
+         * that offers none has no such surface in front of it - the absence of a
+         * capability is a fact about the server, not something to put a sentence to.
+         *
+         * A `file` that is not readable is a complete answer: the server records a project
+         * when it is created and opens the file afterwards. The server's own explanation
+         * for that does not cross this boundary, so there is nothing here to print.
+         */
+        getServerProject(
+            remoteOrigin: string,
+            projectId: string,
+        ): Promise<RequestStatus<VcsServerProjectDetailOutcome>>;
+        /**
+         * The latest revisions on one of a server's projects, newest first.
+         * **Goes to the network**, and only where `project-history` is advertised.
+         *
+         * **An answer with no `revisions` is not an empty history.** The field is left out
+         * for a project the server has not read, which is the ordinary answer for one made
+         * a moment ago, and a surface that reads it as zero says so about work that has
+         * plenty.
+         */
+        listServerProjectHistory(
+            remoteOrigin: string,
+            projectId: string,
+            limit?: number,
+            before?: string,
+        ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>>;
+        /**
+         * Who has an account on one server. **Goes to the network**, and only where
+         * `members` is advertised.
+         *
+         * Every account carries the address recorded on its revisions. Within a server
+         * that is not a secret, but a list that prints all of them at once is a different
+         * thing from an address on one revision - so a surface showing this shows the
+         * address for the one member a reader opens, and not for the list.
+         */
+        listServerMembers(remoteOrigin: string): Promise<RequestStatus<VcsServerMembersOutcome>>;
+        /**
+         * Exchange a username and password for a token, where a server offers it.
+         *
+         * **Goes to the network, and carries no token** - this is where one comes from,
+         * so it names the endpoint rather than a server this installation already knows.
+         * Hand the token straight to {@link addServer}; it is the same kind an operator
+         * would have minted, so nothing after this point differs by how it arrived.
+         *
+         * A server says one thing about credentials however they were wrong, so the
+         * outcome says `refused` and nothing more precise. Do not keep the password.
+         */
+        signInWithPassword(
+            authUrl: string,
+            username: string,
+            password: string,
+        ): Promise<RequestStatus<VcsPasswordSignInOutcome>>;
         /** Ask a server to make a project. **Goes to the network, and writes there.** */
         createServerProject(
             remoteOrigin: string,
             name: string,
             description?: string,
         ): Promise<RequestStatus<VcsServerProjectOutcome>>;
+        /**
+         * Which repositories this machine already holds, by id. Local.
+         *
+         * The answer to "do I already have this one" for a project a server lists. Keyed on
+         * the repository id and never on the name, because two projects share a name and a
+         * folder gets renamed.
+         *
+         * **Reads `.lore/id` and `.lore/config.toml` as files; opens no repository.** Lore's
+         * lock is exclusive and blocking, so a sweep that opened stores would never return
+         * on the first project the author already has open.
+         */
+        listLocalRepositories(): Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>;
         /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.

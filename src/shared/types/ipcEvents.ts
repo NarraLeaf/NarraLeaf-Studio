@@ -90,7 +90,11 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsLocalRepository,
+    VcsServerDescription,
     VcsServerProbe,
+    VcsPasswordSignInOutcome,
+    VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
@@ -369,9 +373,15 @@ export enum IPCEventType {
     vcsProbeServer = "vcs.probeServer",
     vcsListServers = "vcs.listServers",
     vcsAddServer = "vcs.addServer",
+    vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
     vcsListServerProjects = "vcs.listServerProjects",
+    vcsGetServerProject = "vcs.getServerProject",
+    vcsListServerProjectHistory = "vcs.listServerProjectHistory",
+    vcsListServerMembers = "vcs.listServerMembers",
+    vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsCreateServerProject = "vcs.createServerProject",
+    vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
@@ -1367,6 +1377,61 @@ export type IPCVcsEvents = {
         response: VcsServerProjectsOutcome;
     };
     /**
+     * What one server knows about one of its projects.
+     *
+     * **Goes to the network**, and only to a server that advertised `project-detail`.
+     * A `file` that is not readable is a complete answer rather than a failure, and the
+     * server's own explanation for it is deliberately not carried across: it is an
+     * English sentence about the server's internals, and Studio has its own line for
+     * this in every language it speaks.
+     */
+    [IPCEventType.vcsGetServerProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string },
+        response: VcsServerProjectDetailOutcome;
+    };
+    /**
+     * The latest revisions on one of a server's projects, newest first.
+     *
+     * **Goes to the network**, and only to a server that advertised `project-history`.
+     * An answer with no `revisions` field at all is the ordinary one for a project the
+     * server has not read, and it is not an empty history.
+     */
+    [IPCEventType.vcsListServerProjectHistory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string; limit?: number; before?: string },
+        response: VcsServerProjectHistoryOutcome;
+    };
+    /**
+     * Who has an account on one server.
+     *
+     * **Goes to the network**, and only to a server that advertised `members`. Takes no
+     * project, like the calls above it: a roster belongs to the server.
+     */
+    [IPCEventType.vcsListServerMembers]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: VcsServerMembersOutcome;
+    };
+    /**
+     * Exchange a username and password for a token, on a server that offers it.
+     *
+     * **Goes to the network**, and it is the one call here that carries no token — this
+     * is where a token comes from. Takes the endpoint rather than a `remoteOrigin`,
+     * because it is asked before this installation has any record of that server.
+     *
+     * The password is used by the call and kept by nothing.
+     */
+    [IPCEventType.vcsSignInWithPassword]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { authUrl: string; username: string; password: string },
+        response: VcsPasswordSignInOutcome;
+    };
+    /**
      * Ask a server to make a project, and get back the one it made.
      *
      * The server records it and creates the repository together. Studio never asks
@@ -1385,12 +1450,48 @@ export type IPCVcsEvents = {
      * The token carries the address of the endpoint that issued it and of the server it is
      * good for, so pasting one is the whole of adding a server. `authUrl` and `remoteUrl`
      * are the corrections for a token that names neither, and are empty otherwise.
+     *
+     * `description` is what the probe a moment ago answered, passed on so that adding a
+     * server does not reach the same address twice for the same sentence.
      */
     [IPCEventType.vcsAddServer]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { authUrl: string; remoteUrl: string; token: string },
+        data: { authUrl: string; remoteUrl: string; token: string; description?: VcsServerDescription },
         response: VcsAddServerOutcome;
+    };
+    /**
+     * Ask one server what it is now, and record the answer.
+     *
+     * **Goes to the network.** A session records what its server said the day it was
+     * added, and a session added before Studio kept any of that has nothing to show but an
+     * address; this is what fills it in. Nothing about the sign-in changes, and a server
+     * that does not answer leaves its record as it was.
+     */
+    [IPCEventType.vcsRefreshServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: { servers: VcsServerSession[] };
+    };
+    /**
+     * Which repositories this machine already holds, by id.
+     *
+     * A server lists its projects by repository id, and the only useful question about one
+     * is whether the author already has it. Names cannot answer that - two projects share a
+     * name, and a folder gets renamed - so this reports the id of every remembered project
+     * together with the server it is configured against.
+     *
+     * **Reads `.lore/id` and `.lore/config.toml` as plain files and opens no repository.**
+     * Lore's lock is exclusive and blocking, so a sweep that opened stores would hang on the
+     * first project the author has open and take every later call with it. A project with
+     * nothing readable is reported without an id rather than dropped.
+     */
+    [IPCEventType.vcsListLocalRepositories]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { repositories: VcsLocalRepository[] };
     };
     /**
      * Take a server off this machine: the stored token and Studio's record of it.
@@ -1675,10 +1776,18 @@ export type IPCEditorEvents = {
 };
 
 export type IPCProjectWizardEvents = {
+    /**
+     * Raise the project wizard and wait for what comes out of it.
+     *
+     * The props are the window's, and they are what lets a caller open the wizard on a
+     * question already answered - a package chosen in the file manager, a repository picked
+     * off a server's list. Passing none opens it on its first page, which is what every
+     * plain "New project" does.
+     */
     [IPCEventType.projectWizardLaunch]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: WindowProps[WindowAppType.ProjectWizard],
         response: {
             created: boolean;
             projectPath: string;

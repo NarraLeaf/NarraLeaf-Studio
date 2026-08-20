@@ -159,6 +159,11 @@ export const lint = {
             // A character is not created, it walks on - so the remedy is the one word that changes.
             messageCharacter: "Nothing brings {object} on stage, so this row has nothing to act on",
         },
+        storyDeclaredNeverShown: {
+            title: "Unshown stage object",
+            description: "A create row declares an object no row shows",
+            message: "{object} is declared here and no row shows it",
+        },
         storyStageObjectDuplicate: {
             title: "Duplicate stage object",
             description: "Two rows creating one stage name; the second reuses the first",
