@@ -217,14 +217,18 @@ Function nlMeasure
   ${EndIf}
 FunctionEnd
 
-; Both languages live in the document; this only says which one. 2052 is zh-CN, the only
-; non-English language the installer is built with (nsis.installerLanguages).
+; The document carries all three of Studio's languages; this only says which to open with, and
+; the picker in the corner can change it afterwards. 2052 is zh-CN and 1041 is ja-JP, matching
+; nsis.installerLanguages - which governs what NSIS itself says, in the fallback wizard and in any
+; message box, and cannot be re-chosen at run time the way the document can.
 ;
 ; Backslashes are doubled on the way into a JavaScript string literal: left alone, "C:\Users"
 ; arrives as "C:Users" and the document shows a path that does not exist.
 Function nlPushInit
   ${If} $LANGUAGE == 2052
     StrCpy $R1 "zh"
+  ${ElseIf} $LANGUAGE == 1041
+    StrCpy $R1 "ja"
   ${Else}
     StrCpy $R1 "en"
   ${EndIf}
