@@ -86,10 +86,19 @@ export const launcher = {
         newProject: "New Project",
         loading: "Reading the project list",
         noProjects: "This server holds no projects.",
-        // One action per row, and only one: the project is either already on this disk or it
-        // is not. "Get" rather than "Clone" - the wizard behind it asks where the copy lands.
+        // The two views of one server, named on the tab strip that switches between them.
+        // The roster's own name is `people.title`, which is the same word in both places.
+        tabs: {
+            projects: "Projects",
+        },
+        // One act, and it is on the project's own page rather than on its row. "Get" rather
+        // than "Clone" - the wizard behind it asks where the copy lands.
         open: "Open",
         get: "Get",
+        // Said on the row of a project this machine already holds, as a word beside the
+        // description rather than as a mark of its own. It is the question the tab exists to
+        // answer, so it stays where the list can be scanned for it.
+        here: "On this machine",
         // Only ever drawn when the server named a time. A server that has not read the
         // repository says nothing about it, and nothing is what this reads back.
         lastVersion: "Last version {date}",

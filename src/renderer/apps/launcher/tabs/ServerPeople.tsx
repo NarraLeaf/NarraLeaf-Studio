@@ -31,8 +31,9 @@ import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
  * **It fills the region it is given and does its own scrolling.** It used to be a capped box
  * beneath the project list, which put two scrollers in three hundred pixels and charged
  * every reading of the projects for a list nobody had asked to see. It is now one of the
- * views the tab swaps between, and it carries no heading of its own: the control that
- * brought somebody here is still on screen above it, and lit.
+ * views the tab swaps between, and it carries no heading and no border of its own: the tab
+ * that brought somebody here is still on screen above it and lit, and the rule under that
+ * tab is the only line this screen draws.
  */
 export function ServerPeople({ remoteOrigin }: { remoteOrigin: string }) {
     const { t } = useTranslation();
@@ -70,7 +71,7 @@ export function ServerPeople({ remoteOrigin }: { remoteOrigin: string }) {
 
     return (
         <section className="flex min-h-0 flex-1 flex-col" data-server-people={remoteOrigin}>
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-edge">
+            <div className="min-h-0 flex-1 overflow-y-auto">
                 {members === null && problem === null && (
                     <p className="px-3 py-2 text-xs text-fg-subtle">
                         {t("launcher.servers.people.loading")}
@@ -148,8 +149,8 @@ function MemberRow({
             onClick={onToggle}
             data-server-member={member.username}
             className={cn(
-                "flex w-full items-start gap-3 border-t border-edge px-3 py-2 text-left",
-                "cursor-default transition-colors duration-150 first:border-t-0 hover:bg-fill",
+                "flex w-full items-start gap-3 rounded-md px-3 py-2 text-left",
+                "cursor-default transition-colors duration-150 hover:bg-fill",
             )}
         >
             <span
