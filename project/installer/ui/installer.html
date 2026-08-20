@@ -17,6 +17,7 @@
     --primary-hover: #55b6cf;
     --primary-active: #379ab5;
     --sunken: #0b0d12;
+    --overlay: #22242a;
     --fg: #eef1f5;
     --fg-muted: #9aa3ae;
     --fg-subtle: #6b7480;
@@ -64,14 +65,17 @@
   .fact { display: flex; align-items: flex-end; gap: 16px; }
   .fact .col { flex: 1; min-width: 0; }
   .fact .k { font-size: 11px; color: var(--fg-subtle); }
-  .fact .v { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-             direction: ltr; }
+  .fact .v { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .message { margin-top: 20px; color: var(--danger); line-height: 1.6; }
+  #note { margin-top: 22px; color: var(--fg-muted); line-height: 1.6; }
+  body[data-state="failed"] #note { color: var(--danger); }
 
   /* ---- controls ---------------------------------------------------------------------------- */
-  footer { flex: none; padding: 0 40px 24px; display: flex; justify-content: flex-end; gap: 8px; }
-  button { all: unset; font-family: inherit; font-size: 13px; }
+  footer { flex: none; padding: 0 40px 24px; display: flex; align-items: center; gap: 8px; }
+  footer .spacer { flex: 1; }
+  /* `all: unset` also resets box-sizing, and it wins over the `*` rule above on specificity -
+     so it has to be put back, or any button given a percentage width overflows by its padding. */
+  button { all: unset; box-sizing: border-box; font-family: inherit; font-size: 13px; }
   button:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
 
   .act { height: 32px; padding: 0 22px; border-radius: 6px;
@@ -86,15 +90,34 @@
   .link { color: var(--primary); font-size: 12px; padding: 4px 6px; border-radius: 4px; }
   .link:hover { background: rgb(64 168 196 / 0.14); }
 
+  /* ---- language ---------------------------------------------------------------------------- */
+  /* The endonyms come from src/shared/i18n/locales.ts (LOCALE_META.nativeName), which says they are
+     never translated - a language picker that names languages in a language you cannot read is no
+     use to the person who needs it. */
+  .lang { position: relative; }
+  .lang > button { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center;
+                   color: var(--fg-subtle); }
+  .lang > button:hover { color: var(--fg); background: var(--fill-subtle); }
+  .lang > button svg { width: 16px; height: 16px; }
+  .lang[data-open="1"] > button { color: var(--fg); background: var(--fill-subtle); }
+
+  .menu { position: absolute; bottom: 34px; left: 0; min-width: 132px; padding: 4px;
+          background: var(--overlay); border: 1px solid var(--fill); border-radius: 8px;
+          box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
+  .menu button { display: block; width: 100%; height: 28px; padding: 0 10px; border-radius: 4px;
+                 line-height: 28px; color: var(--fg-muted); }
+  .menu button:hover { color: var(--fg); background: var(--fill-subtle); }
+  .menu button[aria-checked="true"] { color: var(--fg); background: rgb(64 168 196 / 0.15); }
+
   /* ---- progress ---------------------------------------------------------------------------- */
   /* The console panel's bar (ConsolePanel.tsx): a 2px track on fill-subtle with a primary fill
-     running left to right. The number behind it is NSIS's own extraction progress, mirrored in by
-     the host, so it is real rather than a sweep. */
+     running left to right. It sits on the window's bottom edge and is always there, so the edge
+     does not move when the install starts. The number behind it is NSIS's own extraction progress,
+     mirrored in by the host, so it is real rather than a sweep. */
   #progress { flex: none; height: 2px; background: var(--fill-subtle); }
   #progress > i { display: block; height: 100%; width: 0; background: var(--primary);
                   border-bottom-left-radius: 8px;
                   transition: width .3s ease-out, background-color .3s ease-out; }
-  body[data-state="install"] #progress { visibility: hidden; }
   body[data-state="failed"] #progress > i { background: var(--danger); }
 
   [hidden] { display: none !important; }
@@ -126,10 +149,22 @@
       </div>
     </div>
 
-    <div class="message" id="message" hidden></div>
+    <div id="note" hidden></div>
   </main>
 
   <footer>
+    <div class="lang" id="lang" data-open="0">
+      <button id="lang-button" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+          <path d="M2 12h20"></path>
+        </svg>
+      </button>
+      <div class="menu" id="lang-menu" hidden></div>
+    </div>
+    <div class="spacer"></div>
     <button class="act ghost" id="secondary"></button>
     <button class="act primary" id="primary"></button>
   </footer>
@@ -140,22 +175,25 @@
 "use strict";
 (function () {
   /*
-   * Both languages live here rather than as NSIS LangStrings.
+   * All three languages live here rather than as NSIS LangStrings.
    *
    * LangString has to come after the language tables are loaded, and electron-builder inserts those
    * *after* every page - including the hooks this installer's pages are declared in - so a
-   * LangString written from installer.nsh will not compile. Keeping the text here also keeps
-   * non-ASCII out of the .nsh, where makensis decides the encoding from a BOM and gets Chinese
-   * wrong quietly if it is missing.
+   * LangString written from installer.nsh would not compile. Keeping the text here also keeps
+   * non-ASCII out of the .nsh, where makensis decides the encoding from a BOM and gets it wrong
+   * quietly when there is none. And it is what lets the picker below work at all: switching
+   * language is a re-render, with nothing to ask the host for.
    *
-   * Studio's installer ships English and Chinese; the host passes which one, chosen from $LANGUAGE.
+   * The three are Studio's own (src/shared/i18n/locales.ts, SUPPORTED_LOCALES).
    */
   var TEXT = {
     en: {
+      name: "English",
       install: "Install {app}",
       installing: "Installing",
       done: "Installed",
       failed: "Installation did not finish",
+      installedIn: "{app} is installed in {dir}",
       location: "Location",
       size: "Size",
       change: "Change",
@@ -165,10 +203,12 @@
       close: "Close"
     },
     zh: {
+      name: "中文",
       install: "安装 {app}",
       installing: "正在安装",
       done: "安装完成",
       failed: "安装未完成",
+      installedIn: "{app} 已安装在 {dir}",
       location: "位置",
       size: "占用",
       change: "更改",
@@ -176,15 +216,38 @@
       confirm: "安装",
       launch: "启动",
       close: "关闭"
+    },
+    ja: {
+      name: "日本語",
+      install: "{app} のインストール",
+      installing: "インストール中",
+      done: "インストール完了",
+      failed: "インストールは完了しませんでした",
+      installedIn: "{app} は {dir} にインストールされました",
+      location: "場所",
+      size: "サイズ",
+      change: "変更",
+      cancel: "キャンセル",
+      confirm: "インストール",
+      launch: "起動",
+      close: "閉じる"
     }
   };
+
+  var ORDER = ["en", "zh", "ja"];
 
   var send = function (command) { window.chrome.webview.postMessage(command); };
   var el = function (id) { return document.getElementById(id); };
 
+  var language = "en";
   var text = TEXT.en;
   var app = "";
+  var dir = "";
   var state = "install";
+
+  function fill(template) {
+    return (template || "").replace("{app}", app).replace("{dir}", dir);
+  }
 
   function apply() {
     document.body.setAttribute("data-state", state);
@@ -193,36 +256,91 @@
     var done = state === "done";
     var failed = state === "failed";
 
-    el("title").textContent = (text[state] || "").replace("{app}", app);
+    el("title").textContent = fill(text[state]);
     el("pct").hidden = !installing;
     el("browse").hidden = state !== "install";
     el("facts").hidden = done || failed;
-    el("message").hidden = !failed;
+
+    // The finish screen says where it went; nothing else needs saying, and the facts it replaces
+    // were the question, not the answer.
+    el("note").hidden = !done;
+    if (done) { el("note").textContent = fill(text.installedIn); }
+
+    el("k-location").textContent = text.location;
+    el("k-size").textContent = text.size;
+    el("browse").textContent = text.change;
 
     // The install screen offers the ordinary pair; during the install only cancelling is left;
     // afterwards the primary action is starting what was just installed.
     el("primary").hidden = installing || failed;
     el("primary").textContent = done ? text.launch : text.confirm;
     el("secondary").textContent = (done || failed) ? text.close : text.cancel;
+
+    buildMenu();
   }
+
+  // ---- language picker ------------------------------------------------------------------------
+
+  function buildMenu() {
+    var menu = el("lang-menu");
+    menu.textContent = "";
+    ORDER.forEach(function (code) {
+      var item = document.createElement("button");
+      item.textContent = TEXT[code].name;
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", code === language ? "true" : "false");
+      item.addEventListener("click", function () {
+        language = code;
+        text = TEXT[code];
+        closeMenu();
+        apply();
+      });
+      menu.appendChild(item);
+    });
+  }
+
+  function openMenu() {
+    el("lang").setAttribute("data-open", "1");
+    el("lang-button").setAttribute("aria-expanded", "true");
+    el("lang-menu").hidden = false;
+  }
+
+  function closeMenu() {
+    el("lang").setAttribute("data-open", "0");
+    el("lang-button").setAttribute("aria-expanded", "false");
+    el("lang-menu").hidden = true;
+  }
+
+  el("lang-button").addEventListener("click", function (event) {
+    event.stopPropagation();
+    if (el("lang-menu").hidden) { openMenu(); } else { closeMenu(); }
+  });
+  document.addEventListener("mousedown", function (event) {
+    if (!el("lang").contains(event.target)) { closeMenu(); }
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") { closeMenu(); }
+  });
 
   // ---- host -> page ---------------------------------------------------------------------------
 
-  window.nlInit = function (language, brand, product, dir, size) {
-    text = TEXT[language] || TEXT.en;
+  window.nlInit = function (initial, brand, product, directory, size) {
+    language = TEXT[initial] ? initial : "en";
+    text = TEXT[language];
     app = product;
+    dir = directory;
     el("brand").textContent = brand;
-    el("k-location").textContent = text.location;
-    el("k-size").textContent = text.size;
-    el("v-location").textContent = dir;
+    el("v-location").textContent = directory;
     el("v-size").textContent = size;
-    el("browse").textContent = text.change;
     apply();
   };
 
   window.nlState = function (next) { state = next; apply(); };
-  window.nlDir = function (dir) { el("v-location").textContent = dir; };
-  window.nlMessage = function (message) { el("message").textContent = message; };
+  window.nlDir = function (directory) {
+    dir = directory;
+    el("v-location").textContent = directory;
+  };
+  window.nlMessage = function (message) { el("note").textContent = message; };
 
   // Called by the host's progress mirror, up to ten times a second.
   window.nlProgress = function (fraction) {

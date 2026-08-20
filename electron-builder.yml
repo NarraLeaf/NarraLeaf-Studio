@@ -382,9 +382,13 @@ nsis:
   #
   # The document carries both languages and is told which to use (installer.nsh, nlPushInit).
   displayLanguageSelector: false
+  # Studio's three (src/shared/i18n/locales.ts). This list governs what *NSIS* says - the fallback
+  # wizard and any message box - and is fixed for a run; the installer's own document carries all
+  # three and can be re-pointed from the picker in its corner while it is open.
   installerLanguages:
     - en_US
     - zh_CN
+    - ja_JP
   # Resolved against directories.buildResources. Baked from the app icon by
   # `node project/build/prepare-installer-bitmaps.js`; see that script for why they are 2x.
   installerHeader: header.bmp
