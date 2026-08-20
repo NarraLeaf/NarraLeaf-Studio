@@ -287,3 +287,31 @@ const CATALOG_BY_ID = new Map(KEYBINDING_CATALOG.map(item => [item.id, item]));
 export function getKeybindingCatalogEntry(id: string): KeybindingCatalogEntry | undefined {
     return CATALOG_BY_ID.get(id);
 }
+
+/**
+ * The chord an author would actually press for a command, as every surface that shows one must read
+ * it: an override first, then the catalog's default, then whatever the registration carried inline.
+ *
+ * `bindingId` is the catalog id. An action's is `action:<action id>` - the id `UIStore` would file a
+ * `shortcut` under - which is what lets an action carry a rebindable default without declaring one
+ * (see `workspace-run-shortcuts`: a declared `shortcut` registers a second binding no catalog entry
+ * governs, so it can be neither rebound nor found in the settings table).
+ *
+ * Resolution only. Nothing here registers a key; the surfaces that call it are drawing a label.
+ */
+export function resolveShortcut(
+    bindingId: string,
+    overrides: Readonly<Record<string, string>>,
+    inline?: string,
+): string | undefined {
+    return overrides[bindingId] ?? getKeybindingCatalogEntry(bindingId)?.key ?? inline;
+}
+
+/** {@link resolveShortcut} for a registered action, which files its chord under `action:<id>`. */
+export function resolveActionShortcut(
+    actionId: string,
+    overrides: Readonly<Record<string, string>>,
+    inline?: string,
+): string | undefined {
+    return resolveShortcut(`action:${actionId}`, overrides, inline);
+}

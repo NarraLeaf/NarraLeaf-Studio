@@ -11,6 +11,7 @@ import { useTranslation } from "@/lib/i18n";
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { rememberInterpolationKind, type StoryVariableOption } from "./storyInterpolation";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 
 const MENU_Z = 80;
 
@@ -28,6 +29,9 @@ export function InterpolationPopover(props: {
     /** Commit the in-progress text edit — called before navigating to the blueprint editor. */
     onCommitTextEdit?: () => void;
 }) {
+    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
+    // whatever the author moved to; the caller's own dismissal is what puts it away.
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { context, isInitialized } = useWorkspace();
