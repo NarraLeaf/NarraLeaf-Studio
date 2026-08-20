@@ -44,6 +44,47 @@ ManifestDPIAware true
 !macroend
 
 ; ------------------------------------------------------------------------------------------------
+; Uninstall: take the file extensions with us.
+;
+; electron-builder's own APP_UNASSOCIATE (templates/nsis/include/FileAssociation.nsh) deletes the
+; ProgId and the OpenWithProgids value, but never the `.ext` key itself - so uninstalling leaves
+; `.nlproj` and `.nlspkg` registered, pointing at a ProgId that has just been deleted. Verified by
+; installing and silently uninstalling a real build.
+;
+; Only when the extension still opens with *this* installation. An extension is not ours to take
+; away: another application may have claimed it since, and deleting it unconditionally would break
+; whatever did. The test is the command the shell would actually run - if it starts with the
+; directory being removed, the association is about to be dead either way.
+;
+; This hook runs before unregisterFileAssociations does, which is what makes the lookup possible:
+; the ProgId still exists to be read.
+;
+; The two extensions are named here because nothing in the generated script carries the list.
+; Adding one to `fileAssociations` in electron-builder.yml means adding it here too.
+!macro nlDropExtension EXT
+  ReadRegStr $0 SHELL_CONTEXT "Software\Classes\${EXT}" ""
+  ${If} $0 != ""
+    ReadRegStr $1 SHELL_CONTEXT "Software\Classes\$0\shell\open\command" ""
+    ; The command is written with the executable either bare or quoted, depending on the version of
+    ; electron-builder; drop one leading quote so both shapes compare the same.
+    StrCpy $2 $1 1
+    ${If} $2 == '"'
+      StrCpy $1 $1 "" 1
+    ${EndIf}
+    StrLen $3 "$INSTDIR"
+    StrCpy $4 $1 $3
+    ${If} $4 == "$INSTDIR"
+      DeleteRegKey SHELL_CONTEXT "Software\Classes\${EXT}"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
+!macro customUnInstall
+  !insertmacro nlDropExtension ".nlproj"
+  !insertmacro nlDropExtension ".nlspkg"
+!macroend
+
+; ------------------------------------------------------------------------------------------------
 ; Install mode.
 ;
 ; The stock flow asks "who should this be installed for" on a Win32 page of its own. Studio installs
