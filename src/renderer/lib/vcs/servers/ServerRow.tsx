@@ -62,7 +62,11 @@ export function ServerRow({
         onChoose && !compact && (chosen
             ? "border border-primary bg-fill-subtle text-fg"
             : "border border-edge hover:bg-fill"),
-        onChoose && compact && (chosen ? "bg-fill text-fg" : "hover:bg-fill hover:text-fg"),
+        // Chosen fills with the accent rather than with the hover colour. A strip of these
+        // is the whole of the switcher on a screen with no room for a column of rows, and a
+        // chosen chip that looks exactly like the one under the pointer answers the question
+        // "which server am I reading" with whichever one the mouse is nearest.
+        onChoose && compact && (chosen ? "bg-primary/15 text-fg" : "hover:bg-fill hover:text-fg"),
         !onChoose && "hover:bg-fill-subtle",
         className,
     );

@@ -137,6 +137,31 @@ function rowText(id = REPOSITORY): string {
     return document.querySelector(`[data-server-project='${id}']`)?.textContent ?? "";
 }
 
+/**
+ * On screen, rather than merely in the document.
+ *
+ * The tab's three views share one region and the two that are not current are put away
+ * rather than taken down - the roster is read once and kept, the list keeps where it was
+ * scrolled to. So finding a node says nothing about whether anybody can see it.
+ */
+function visible(selector: string): boolean {
+    const node = document.querySelector<HTMLElement>(selector);
+    return node !== null && node.closest(".hidden") === null;
+}
+
+/**
+ * How many scrolling boxes a reader can see at once.
+ *
+ * The window is 800x500 and cannot be resized, so this is the number the layout lives or
+ * dies by: two of these inside 300 pixels is what made the old tab unreadable, and it is
+ * the thing that comes back first the next time something is added to this screen.
+ */
+function visibleScrollers(): number {
+    return [...document.querySelectorAll<HTMLElement>(".overflow-y-auto")]
+        .filter(node => node.closest(".hidden") === null)
+        .length;
+}
+
 describe("a project row", () => {
     it("says nothing about versions for a server that has not read the repository", async () => {
         // The shape a real server sends most often: recorded a moment ago, not yet read.
@@ -368,6 +393,111 @@ describe("what a server offers", () => {
         expect(bridge.launchWorkspace).toHaveBeenCalledWith({ projectPath: "D:/games/Moonlit" }, true);
         // Opening the project on this disk is not opening the panel about it.
         expect(bridge.getServerProject).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * The roster, which is reference material and is treated as such.
+ *
+ * It used to be a capped box under the project list, which cost every reading of the
+ * projects a list of colleagues nobody was reading - on this window, the difference
+ * between six project rows and two. It is now somewhere a reader goes, by a control that
+ * stays on screen and lit while they are there.
+ */
+describe("who else is on the server", () => {
+    const ROSTER = {
+        success: true,
+        data: { ok: true, members: [{
+            username: "ada",
+            displayName: "Ada Lovelace",
+            email: "ada@nomen.example",
+            operator: false,
+            disabled: false,
+            serviceAccount: false,
+        }] },
+    };
+
+    it("keeps the roster off the screen until it is asked for", async () => {
+        bridge.listServerMembers.mockResolvedValue(ROSTER);
+        open([project()], [], ["projects", "members"]);
+
+        // Read with the projects: a reader who presses the control would otherwise be
+        // paying for a second visit to the server to see what was already answered.
+        await waitFor(() => expect(bridge.listServerMembers).toHaveBeenCalledTimes(1));
+        expect(visible("[data-server-people]")).toBe(false);
+        expect(visible("[data-server-project]")).toBe(true);
+        expect(visibleScrollers()).toBe(1);
+
+        fireEvent.click(await find("[data-servers-action='people']"));
+
+        expect(visible("[data-server-people]")).toBe(true);
+        expect(visible("[data-server-project]")).toBe(false);
+        expect(visibleScrollers()).toBe(1);
+    });
+
+    it("comes back by the control that went there, to the project that was open", async () => {
+        bridge.listServerMembers.mockResolvedValue(ROSTER);
+        bridge.getServerProject.mockResolvedValue({
+            success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
+        });
+        open([project()], [], ["projects", "members", "project-detail"]);
+
+        fireEvent.click(await find("[data-project-action='select']"));
+        await waitFor(() => expect(document.querySelector("[data-project-unread]")).not.toBeNull());
+        expect(visibleScrollers()).toBe(1);
+
+        const people = () => document.querySelector("[data-servers-action='people']")!;
+        fireEvent.click(people());
+        expect(visible("[data-server-project-detail]")).toBe(false);
+
+        fireEvent.click(people());
+        expect(visible("[data-server-project-detail]")).toBe(true);
+        // Put away, not taken down: the project was not asked about a second time.
+        expect(bridge.getServerProject).toHaveBeenCalledTimes(1);
+    });
+
+    it("offers nothing to press where the server holds no roster", async () => {
+        open([project()], [], ["projects"]);
+
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalled());
+        expect(document.querySelector("[data-servers-action='people']")).toBeNull();
+    });
+});
+
+describe("which server is being read", () => {
+    it("draws no strip for a list of one, and still says which one it is", async () => {
+        open([project()]);
+
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ORIGIN));
+        // A column of servers costs 256 of the tab's 560 pixels, and with one server there
+        // is nothing in it to choose between.
+        expect(document.querySelector("[data-servers-strip]")).toBeNull();
+        // Still named, and still the element that stands for that one choice.
+        expect(document.body.textContent).toContain("Blackwood Studio");
+        expect(document.querySelectorAll("[data-server-choice]")).toHaveLength(1);
+    });
+
+    it("names the chosen server once when the strip is carrying them", async () => {
+        bridge.servers = [session(ORIGIN, "Blackwood"), session(OTHER, "Other")];
+        bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
+        render(<ServersTab />);
+
+        await waitFor(() => expect(document.querySelector("[data-servers-strip]")).not.toBeNull());
+        fireEvent.click(document.querySelector(`[data-server-choice='${ORIGIN}']`)!);
+
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalledWith(ORIGIN));
+        // The strip carries them; the row under it is the server being read, not a third
+        // copy of a choice already on screen.
+        expect(document.querySelectorAll("[data-server-choice]")).toHaveLength(2);
+    });
+
+    it("adds another server from the header, without leaving the tab", async () => {
+        open([project()]);
+
+        fireEvent.click(await find("[data-servers-action='manage']"));
+
+        await waitFor(() => expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull());
+        expect(bridge.launchSettings).not.toHaveBeenCalled();
     });
 });
 
