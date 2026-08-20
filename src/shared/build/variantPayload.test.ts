@@ -76,6 +76,31 @@ describe("restrictLocalizationToTextIds", () => {
     it("leaves the source text of named keys alone", () => {
         expect(restrictLocalizationToTextIds(bundle, new Set()).bundle.keys).toEqual({ k: "source" });
     });
+
+    /**
+     * A `scene:` unit belongs to a whole scene, so it is neither a row id nor scene-independent -
+     * the two cases this function used to have. Without its own branch every scene name in the
+     * project would be dropped from any build that drops any scene.
+     */
+    it("keeps a scene name whose scene ships and drops one whose scene does not", () => {
+        const withScenes: GameLocalizationBundle = {
+            ...bundle,
+            tables: { "zh-CN": { kept: "留下", "scene:alive": "走廊", "scene:gone": "屋顶" } },
+            scenes: { alive: "The corridor" },
+        };
+        const result = restrictLocalizationToTextIds(withScenes, new Set(["kept"]));
+        expect(result.bundle.tables["zh-CN"]).toEqual({ kept: "留下", "scene:alive": "走廊" });
+        expect(result.removedUnitCount).toBe(1);
+    });
+
+    it("keeps every scene name when nothing assembled a scene table to check against", () => {
+        const result = restrictLocalizationToTextIds(
+            { ...bundle, tables: { "zh-CN": { "scene:alive": "走廊" } } },
+            new Set(),
+        );
+        expect(result.bundle.tables["zh-CN"]).toEqual({ "scene:alive": "走廊" });
+        expect(result.removedUnitCount).toBe(0);
+    });
 });
 
 describe("restrictVoiceToTextIds", () => {

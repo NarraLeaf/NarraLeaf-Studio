@@ -34,6 +34,15 @@ export type StoryRefJumpContext = {
      * is well-formed, and left empty rather than guessed when it does not.
      */
     assetType?: (assetId: string) => string | null;
+    /**
+     * Whether an id the library does not hold names an asset SET.
+     *
+     * Asked second, and only when {@link assetType} came back empty - the same order
+     * `resolveAssetDisplayName` reads in, so a word leads to the thing it is printed as. Without it
+     * a row naming a set produced an `asset` target for an id no library answers, and the jump was
+     * an affordance the author could see, click, and watch do nothing.
+     */
+    isAssetSet?: (assetId: string) => boolean;
 };
 
 export function storyRefJumpTarget(ref: StoryCommandLineRef, where: StoryRefJumpContext): SearchJumpTarget | null {
@@ -41,8 +50,13 @@ export function storyRefJumpTarget(ref: StoryCommandLineRef, where: StoryRefJump
     switch (ref.kind) {
         case "character":
             return { kind: "character", characterId: ref.characterId };
-        case "asset":
-            return { kind: "asset", assetId: ref.assetId, assetType: where.assetType?.(ref.assetId) ?? "" };
+        case "asset": {
+            const assetType = where.assetType?.(ref.assetId) ?? "";
+            if (!assetType && where.isAssetSet?.(ref.assetId)) {
+                return { kind: "assetSet", assetSetId: ref.assetId };
+            }
+            return { kind: "asset", assetId: ref.assetId, assetType };
+        }
         case "scene": {
             const scene = document.scenes[ref.sceneId];
             return scene

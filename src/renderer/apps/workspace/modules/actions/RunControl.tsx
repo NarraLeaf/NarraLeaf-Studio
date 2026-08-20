@@ -588,7 +588,7 @@ export function RunControl() {
     useKeybinding({
         id: "workspace-run-build",
         catalogId: "action:narraleaf-studio:build",
-        key: "mod+shift+b",
+        key: "f10",
         description: "Open the production build dialog",
         allowInEditable: true,
         when: () => !runStateRef.current.frozen,

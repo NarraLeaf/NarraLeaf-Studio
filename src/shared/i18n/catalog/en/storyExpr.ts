@@ -49,6 +49,7 @@ export const storyExpr = {
         badValue: "\"{value}\" does not fit this slot.",
         unterminatedQuote: "A quote is never closed.",
         unknownAsset: "No {assetType} named \"{value}\".",
+        unknownAssetOrSet: "No {assetType} or asset set named \"{value}\".",
         unknownCharacter: "No character named \"{value}\".",
         unknownScene: "No scene named \"{value}\".",
         unknownAudioTrack: "No audio track named \"{value}\".",

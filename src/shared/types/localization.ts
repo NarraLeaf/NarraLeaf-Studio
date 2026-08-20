@@ -284,6 +284,29 @@ export function characterTranslationUnitId(characterId: string): string {
     return `char:${characterId}`;
 }
 
+/** Prefix of the scene-name unit space. Exported so id parsing has one spelling. */
+export const SCENE_UNIT_PREFIX = "scene:";
+
+/**
+ * Translation-unit id of a story scene's name.
+ *
+ * Keyed by scene id rather than by the name itself, for the reason `char:` is keyed by character id:
+ * the name is the thing being translated, so it is the one part of the row that is allowed to change
+ * without every translation of it becoming an orphan.
+ */
+export function sceneTranslationUnitId(sceneId: string): string {
+    return `${SCENE_UNIT_PREFIX}${sceneId}`;
+}
+
+/** The scene id inside a `scene:<id>` unit, or null when the string is not one. */
+export function parseSceneTranslationUnitId(unitId: string): string | null {
+    if (!unitId.startsWith(SCENE_UNIT_PREFIX)) {
+        return null;
+    }
+    const sceneId = unitId.slice(SCENE_UNIT_PREFIX.length);
+    return sceneId ? sceneId : null;
+}
+
 export type LocalizationKeyDefinition = {
     /** Source-language text (what renders when no translation applies). */
     sourceText: string;
@@ -338,6 +361,15 @@ export type GameLocalizationBundle = {
     tables: Record<LocaleCode, Record<string, string>>;
     /** Named-key source texts (key name → source-language text). */
     keys?: Record<string, string>;
+    /**
+     * Scene-name source texts (scene id → source-language name), for the scenes this build ships.
+     *
+     * The same job `keys` does for named keys: a translation table only holds the *target* side, so
+     * without this a `scene:` reference read while the game is in the source language has nothing to
+     * render but the id. Assembled from the story documents the bundle carries, so a scene a variant
+     * dropped is absent here too.
+     */
+    scenes?: Record<string, string>;
 };
 
 /**
@@ -346,7 +378,7 @@ export type GameLocalizationBundle = {
  * null when the source-language text should render instead.
  */
 export function resolveLocalizedUnitText(
-    bundle: GameLocalizationBundle,
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables">,
     locale: LocaleCode,
     unitId: string,
 ): string | null {
@@ -357,6 +389,45 @@ export function resolveLocalizedUnitText(
         }
     }
     return null;
+}
+
+/**
+ * A scene's name in the current language, or null when the bundle does not carry that scene.
+ *
+ * Falls back to the source-language name rather than to nothing: a project with no translation for
+ * this scene, and a player reading the game in its source language, are the same case here.
+ */
+export function resolveLocalizedSceneName(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables" | "scenes">,
+    locale: LocaleCode,
+    sceneId: string,
+): string | null {
+    const sourceName = bundle.scenes?.[sceneId];
+    if (sourceName === undefined) {
+        return null;
+    }
+    return resolveLocalizedUnitText(bundle, locale, sceneTranslationUnitId(sceneId)) ?? sourceName;
+}
+
+/**
+ * Render a string a game stored for later display - today, a save slot's metadata.
+ *
+ * A stored string may be a *reference* to something the project translates, and today the one such
+ * reference is `scene:<id>`. Everything else is returned verbatim, and that is the load-bearing half:
+ * every value written before scene references existed is a plain literal, and a player's save file is
+ * not something a Studio release gets to invalidate. So an unresolvable reference renders as the
+ * literal it already is rather than as a blank or an error.
+ */
+export function resolveLocalizedStoredText(
+    bundle: Pick<GameLocalizationBundle, "sourceLocale" | "locales" | "tables" | "scenes">,
+    locale: LocaleCode,
+    stored: string,
+): string {
+    const sceneId = parseSceneTranslationUnitId(stored);
+    if (sceneId === null) {
+        return stored;
+    }
+    return resolveLocalizedSceneName(bundle, locale, sceneId) ?? stored;
 }
 
 /**

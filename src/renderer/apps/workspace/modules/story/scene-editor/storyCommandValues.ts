@@ -29,6 +29,44 @@ export type StoryCommandNamedRef = { id: string; name: string };
 export type StoryCommandAppearanceRef = { id: string; name: string; axisId?: string };
 
 /**
+ * One asset set, with the library its members come from.
+ *
+ * `assetType` is not decoration: a set is typed, and an image slot that offered the project's audio
+ * sets would be offering a name it then refuses to resolve. `null` for the kinds a command line
+ * cannot address at all (fonts, models, data), which is how such a set stays *known* - so a row
+ * pointing at one still reads as a name rather than as a missing file - without ever being offered.
+ */
+export type StoryCommandAssetSetRef = StoryCommandNamedRef & {
+    assetType: "image" | "audio" | "video" | null;
+};
+
+/**
+ * What one asset slot may be pointed at: that library's files, plus the project's sets of the same
+ * type when the slot's param says a set is legal there.
+ *
+ * The one place that question is answered. Resolution, the completion menu and the row's inline
+ * dropdown all call it, because a slot that offers a name it cannot resolve - or resolves one it
+ * never offered - is a word the author can read on the row and not type back. That is exactly how
+ * asset sets behaved before this existed: the inspector wrote a set id, the row printed the set's
+ * name, and re-committing the same line reported "no image named …".
+ *
+ * Files first, so a file and a set sharing a name are still reported as ambiguous by
+ * `findByName` rather than silently resolved to one of them.
+ */
+export function assetChoices(
+    context: StoryCommandContext,
+    assetType: "image" | "audio" | "video",
+    allowSets: boolean | undefined,
+): readonly StoryCommandNamedRef[] {
+    const files = assetType === "image" ? context.images : assetType === "audio" ? context.audio : context.videos;
+    if (!allowSets) {
+        return files;
+    }
+    const sets = (context.assetSets ?? []).filter(set => set.assetType === assetType);
+    return sets.length === 0 ? files : [...files, ...sets];
+}
+
+/**
  * The three state channels a puppet character's backend answers to (NLR `PuppetState`).
  *
  * They are the three ideas every 2D character renderer has, which is why they are named here rather
@@ -131,12 +169,16 @@ export type StoryCommandContext = {
     /**
      * The project's asset sets, which a row may name where it would name a file.
      *
-     * Held apart from the three lists above rather than folded into them: those are what the command
-     * line offers to complete, and a set is only resolvable where assembly reads one - so this list
-     * answers "does this id still name something" without offering a set in fields that cannot use
-     * one.
+     * Held apart from the three lists above rather than folded into them, because whether a set is
+     * legal is a property of the SLOT, not of the library: the params that write a field assembly
+     * resolves a set for carry `allowSets` and read this list alongside their own; the rest never
+     * touch it. Folding sets into `images` would offer one in every slot that takes an image,
+     * including the ones that would ship the set id to the player unresolved.
+     *
+     * Every set is listed whatever its type, so this list also answers "does this id still name
+     * something" for the row diagnostic - see {@link StoryCommandAssetSetRef.assetType}.
      */
-    assetSets: readonly StoryCommandNamedRef[];
+    assetSets: readonly StoryCommandAssetSetRef[];
     characters: readonly StoryCommandNamedRef[];
     /**
      * Bare speaker names already used somewhere in this story. They back no character record, so they
@@ -378,7 +420,11 @@ export type StoryCommandValue =
 export type StoryCommandResolvedArgs = Readonly<Record<string, StoryCommandValue>>;
 
 export type StoryCommandResolutionIssue =
-    | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video" }
+    /**
+     * No file of that name. `allowSets` says the slot would also have taken an asset set, so the
+     * message can name both rather than send the author looking through the wrong library.
+     */
+    | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video"; allowSets?: true }
     | { code: "unknownCharacter"; span: StoryCommandSpan; value: string }
     | { code: "unknownScene"; span: StoryCommandSpan; value: string }
     /** `/bgm theme track=Ambience` with no `Ambience` track - it would silently land on Music instead. */

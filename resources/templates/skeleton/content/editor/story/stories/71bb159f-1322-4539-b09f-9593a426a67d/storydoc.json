@@ -21,7 +21,7 @@
   "scenes": {
     "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33": {
       "id": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33",
-      "name": "Corridor",
+      "name": "The corridor",
       "runtimeName": "corridor",
       "description": "",
       "rootBlockIds": [
@@ -211,7 +211,7 @@
               "scope": "persistent",
               "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
             },
-            "value": "The corridor"
+            "value": "scene:f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33"
           }
         }
       },
@@ -583,7 +583,7 @@
               "scope": "persistent",
               "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
             },
-            "value": "The clubroom"
+            "value": "scene:5143dcd8-bebc-4468-b4e2-00f6d5781af6"
           }
         }
       },
@@ -807,7 +807,7 @@
               "scope": "persistent",
               "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
             },
-            "value": "Last light"
+            "value": "scene:c083e0f3-8665-451a-800a-6d2cd5650d33"
           }
         },
         "6443d309-85a7-47b8-82e0-672754b6d6d0": {

@@ -1,14 +1,14 @@
 /**
  * `welcome` - the Welcome editor tab.
  *
- * The title and subtitle greet; they do not explain. The four-step "Getting Started" guide that used
+ * The title names the product and the subtitle names the three ways in. The four-step "Getting Started" guide that used
  * to sit under them was help text living in a surface (docs/help-system.md §1): those steps are the
  * `workspaceLayout`, `assets`, `storyScene` and `runModes` topics, which the tab links to instead of
  * restating.
  */
 export const welcome = {
-    title: "Nice to meet you",
-    subtitle: "Welcome to NarraLeaf Studio. Ready to begin?",
+    title: "Welcome to NarraLeaf Studio",
+    subtitle: "Start with a scene, the asset library, or the help browser.",
     quickActions: {
         newScene: {
             label: "New Scene",

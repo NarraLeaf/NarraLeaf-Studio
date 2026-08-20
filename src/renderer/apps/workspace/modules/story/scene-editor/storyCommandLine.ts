@@ -68,6 +68,7 @@ import {
     type StoryCommandEnumOption,
     type StoryCommandParam,
 } from "./storyCommandGrammar";
+import { assetChoices } from "./storyCommandValues";
 import type {
     StoryCommandContext,
     StoryCommandSpan,
@@ -635,16 +636,30 @@ function pickCharacter(
     };
 }
 
-/** An asset slot — the row's own library, by kind. Writes the id; the row goes on printing the name. */
+/**
+ * An asset slot — the row's own library, by kind. Writes the id; the row goes on printing the name.
+ *
+ * `allowSets` says the same thing the param's own `allowSets` says, and has to agree with it: this
+ * dropdown and the typed line write the SAME field, so a set the line resolves and this refuses to
+ * list is a value the author can type and not pick, while the reverse is one they can pick and not
+ * type back. `assetChoices` is the single answer both of them ask.
+ *
+ * The one slot that says no is the transition's rule image: it writes into the transition ref rather
+ * than into `payload.assetId`, so assembly never resolves a set for it.
+ */
 function pickAsset(
     payload: { assetId?: string },
     lookups: StoryCommandLineLookups,
     kind: "image" | "audio" | "video",
     apply: (assetId: string) => StoryBlock["payload"],
+    options?: { allowSets?: true },
 ): Pick<Arg, "choices" | "apply" | "editValue"> | null {
     const context = lookups.commandContext;
-    const assets = kind === "image" ? context?.images : kind === "audio" ? context?.audio : context?.videos;
-    if (!assets || assets.length === 0) {
+    if (!context) {
+        return null;
+    }
+    const assets = assetChoices(context, kind, options?.allowSets);
+    if (assets.length === 0) {
         return null;
     }
     return {
@@ -951,7 +966,7 @@ function audioSentence(
     const asset = assetWord(lookups, payload.assetId);
     const track = payload.audioTrackId && lookups.audioTrackName ? lookups.audioTrackName(payload.audioTrackId) : null;
     const fade = arg("fade", seconds(payload.fadeMs), { apply: next => ({ ...payload, fadeMs: msOf(next) }) });
-    const clip = { ...(pickAsset(payload, lookups, "audio", next => ({ ...payload, assetId: next })) ?? {}), ...assetLink(lookups, payload.assetId) };
+    const clip = { ...(pickAsset(payload, lookups, "audio", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}), ...assetLink(lookups, payload.assetId) };
     // The handle a control verb addresses: any sound already on stage, plus the reserved `bgm`.
     const handle = {
         ...(pickStageObject(lookups, "audio", name, next => retargetActionable(payload, lookups, "audio", next)) ?? {}),
@@ -1041,7 +1056,7 @@ function imageSentence(
         apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
     });
     const swapAsset = {
-        ...(pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined })) ?? {}),
+        ...(pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined }), { allowSets: true }) ?? {}),
         ...assetLink(lookups, payload.assetId),
     };
     const object = {
@@ -1166,7 +1181,7 @@ function videoSentence(
             commandId,
             args: [
                 positional("video", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next })) ?? {}),
+                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
                     ...assetLink(lookups, payload.assetId),
                 }),
                 arg("name", name),
@@ -1195,7 +1210,7 @@ function vfxSentence(
             commandId,
             args: [
                 positional("clip", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next })) ?? {}),
+                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
                     ...assetLink(lookups, payload.assetId),
                 }),
                 arg("name", name),
@@ -1436,7 +1451,7 @@ function actionSentence(
                 args: [
                     positional("image", assetWord(lookups, payload.assetId) ?? payload.color, {
                         // A colour background has no asset to pick from, so it keeps its text.
-                        ...(payload.assetId ? pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined })) ?? {} : {}),
+                        ...(payload.assetId ? pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined }), { allowSets: true }) ?? {} : {}),
                         ...assetLink(lookups, payload.assetId),
                     }),
                     arg("t", transitionWord(payload.transition?.kind, "scene"), {
