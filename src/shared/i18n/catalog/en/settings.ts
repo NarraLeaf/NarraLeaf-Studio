@@ -379,6 +379,15 @@ export const settings = {
         // A server with nothing to sign in to. Said rather than hidden, because the
         // absence of an entry afterwards is otherwise indistinguishable from a failure.
         noAccount: "{name} does not require authentication, so there is nothing to add.",
+        // The closing step. Facts about what was joined and nothing else: no
+        // congratulation, and no count for a server that would not give one.
+        joined: {
+            signedInAs: "Signed in as {name}",
+            projects: {
+                one: "{count} project",
+                other: "{count} projects",
+            },
+        },
         // What reaching an address came to, before anything has been added. Separate from
         // `problems`, which are refusals of a token by a server already reached.
         probe: {

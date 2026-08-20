@@ -338,6 +338,12 @@ export const settings = {
         tokenPlaceholder: "粘贴访问令牌",
         hint: "访问令牌由服务器管理员签发",
         noAccount: "{name} 不要求身份验证，无需添加",
+        joined: {
+            signedInAs: "已以 {name} 的身份登录",
+            projects: {
+                other: "{count} 个项目",
+            },
+        },
         probe: {
             unreachable: "该地址没有响应",
             notAServer: "该地址有响应，但它不是 NarraLeaf Team 服务器",
