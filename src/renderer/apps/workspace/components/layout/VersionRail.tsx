@@ -834,6 +834,11 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
  * Absent the moment it is answered. Changing it afterwards is Settings → Version control, which is
  * where a decision made once a year belongs - a permanent field in a 320px column would cost every
  * author width for a question they have already answered.
+ *
+ * **Absent, too, wherever something else is about to answer it.** A server this installation is
+ * signed in to records the name on that account instead (`VcsManager.resolveIdentity`), so the
+ * server dialog draws this only for a destination that has no session - which is why the caller
+ * decides whether to render it and this component does not read the remote itself.
  */
 function AuthorIdentity({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
@@ -1300,6 +1305,9 @@ function describeReach(reach: VcsServerReach): TranslationKey {
  * **Reached from "Change server" in the rail's overflow menu, and from nowhere else.** It
  * covers the rail with a question about where the work goes, which is decided about once
  * per project - so it is not a press away from Send.
+ *
+ * That same address field is the only place the author's name is asked for here (see the
+ * comment beside it): every other destination in this dialog answers that question itself.
  */
 export function ServerPickerDialog({ surface, isOpen, onClose }: {
     surface: VersionSurface;
@@ -1392,10 +1400,6 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
             )}
         >
             <div data-vcs-seam="server-picker" className="space-y-3 text-sm text-fg-muted">
-                {/* Asked here as well, and this is where it matters most: connecting a server
-                    means the history is about to be shared, and one signed by the tool tells a
-                    collaborator nothing. Absent the moment it is answered. */}
-                <AuthorIdentity surface={surface} />
                 {servers.length === 0 && <p>{t(`${key}.empty`)}</p>}
                 <div className="flex flex-col gap-1">
                     {servers.map(server => (
@@ -1460,22 +1464,36 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                     >
                         {t(`${key}.manual`)}
                     </button>
+                    {/* `space-y-2` rather than a margin on each child: the author row below is
+                        absent once the name is answered, and a top margin of its own would leave
+                        the gap behind it. */}
                     {choice === MANUAL_SERVER && (
-                        <Input
-                            size="sm"
-                            autoFocus
-                            value={address}
-                            onChange={event => setAddress(event.target.value)}
-                            onKeyDown={event => {
-                                if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    connect();
-                                }
-                            }}
-                            disabled={running}
-                            placeholder={t("workspace.shell.versionControl.server.addressPlaceholder")}
-                            className="mt-2"
-                        />
+                        <div className="mt-2 space-y-2">
+                            <Input
+                                size="sm"
+                                autoFocus
+                                value={address}
+                                onChange={event => setAddress(event.target.value)}
+                                onKeyDown={event => {
+                                    if (event.key === "Enter") {
+                                        event.preventDefault();
+                                        connect();
+                                    }
+                                }}
+                                disabled={running}
+                                placeholder={t("workspace.shell.versionControl.server.addressPlaceholder")}
+                            />
+                            {/* Here, and nowhere else in this dialog, because this is the only
+                                destination that will not answer the question itself. A server out
+                                of the list above has a session, and `VcsManager.resolveIdentity`
+                                prefers that session's account - keyed on this project's own remote
+                                origin - over anything typed into settings. Asking beside a chosen
+                                server is therefore asking for an answer that is about to be
+                                replaced by a better one, at the one moment it looks most relevant.
+                                A bare `loreserver` in front of nothing issues no token, has no
+                                account to prefer, and records whatever it is told. */}
+                            <AuthorIdentity surface={surface} />
+                        </div>
                     )}
                 </div>
 
