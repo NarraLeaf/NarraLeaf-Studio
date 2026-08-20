@@ -474,6 +474,7 @@ export function SettingsExplorer<T>({
                             value={displayValue}
                             presets={descriptor.options ?? []}
                             presetLabels={descriptor.optionLabels}
+                            presetStacks={descriptor.optionFontStacks}
                             onChange={(next) => handleEnumChange(entry, next)}
                             disabled={isSaving}
                             ariaLabel={descriptor.label}

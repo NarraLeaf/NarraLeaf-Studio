@@ -225,6 +225,7 @@ export function SettingsApp() {
                 ? Object.fromEntries(languageLocales.map((code) => [code, getLocaleMeta(code).nativeName]))
                 : optionLabels,
             optionColors: setting.optionColors,
+            optionFontStacks: setting.optionFontStacks,
             allowCustomColor: setting.allowCustomColor,
             onPreview: setting.onPreview,
             min: setting.min,

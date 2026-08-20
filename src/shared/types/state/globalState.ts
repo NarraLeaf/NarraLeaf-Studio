@@ -78,6 +78,15 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "ui.accentColor": string;
     /**
+     * Typeface for the Studio interface: one of the preset ids in
+     * `renderer/lib/settings/uiFontOptions`, or the name of a family installed on this computer.
+     * Nothing validates it against a list — a `global.json` carried to another machine may well
+     * name a font that is not there, which CSS resolves by falling through to the base stack.
+     * Applied by the renderer (lib/appearance) by overriding `--nl-ui-font`, which only Studio
+     * chrome reads; a shipped game and the Dev Mode stage keep the base stack.
+     */
+    "ui.fontFamily": string;
+    /**
      * Calm the Studio interface: no CSS transitions or animations (styles.css) and no
      * framer-motion transform/layout animations (the MotionConfig in lib/renderApp). Independent
      * of the OS-level `prefers-reduced-motion`, which is honored on its own — this is for wanting
@@ -362,6 +371,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
+    "ui.fontFamily": "Default",
     "ui.reduceMotion": false,
     // Named dropdowns, which is how the title bar has always drawn them; collapsing them is a
     // choice the author makes, not one an update makes for them.

@@ -31,6 +31,12 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
     /** Color only: the swatch each option value paints, as a CSS color. */
     optionColors?: Record<string, string>;
     /**
+     * Font only: the CSS `font-family` each preset id stands for, so the picker can draw a preset
+     * row in the face it names. Absent falls back to the story editor's stacks, which is what every
+     * Font row meant before there was a second one.
+     */
+    optionFontStacks?: Record<string, string>;
+    /**
      * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
      * instead of an option id. Off by default — a setting whose colors are a design decision
      * should not quietly accept any value.
@@ -86,6 +92,12 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     optionLabelKeys?: Record<string, TranslationKey>;
     /** Color only: the swatch each option value paints, as a CSS color. */
     optionColors?: Record<string, string>;
+    /**
+     * Font only: the CSS `font-family` each preset id stands for, so the picker can draw a preset
+     * row in the face it names. Absent falls back to the story editor's stacks, which is what every
+     * Font row meant before there was a second one.
+     */
+    optionFontStacks?: Record<string, string>;
     /**
      * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
      * instead of an option id. Off by default — a setting whose colors are a design decision
