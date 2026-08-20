@@ -39,6 +39,7 @@ import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { IconButton } from "@/lib/components/elements/Button";
+import { ServerRow, serverHost, useServers } from "@/lib/vcs/servers";
 import { getInterface } from "@/lib/app/bridge";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { useWorkspace } from "../../context";
@@ -1302,7 +1303,7 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const key = "workspace.shell.versionControl.server.picker";
-    const [servers, setServers] = useState<VcsServerSession[]>([]);
+    const { servers, reload } = useServers();
     const [choice, setChoice] = useState<string>(NO_SERVER);
     const [address, setAddress] = useState("");
     const [name, setName] = useState("");
@@ -1311,10 +1312,12 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
     useEffect(() => {
         if (!isOpen) return;
         let cancelled = false;
-        void getInterface().vcs.listServers().then(result => {
+        // Read again on every open rather than once: a server added in Settings since this
+        // window was built belongs in this list, and Settings is where the last row sends
+        // people. The answer is used here rather than read back off state, because what
+        // opens on which row is decided from the list that came back.
+        void reload().then(list => {
             if (cancelled) return;
-            const list = result.success ? result.data.servers : [];
-            setServers(list);
             // Seeded with the server this project already uses, so changing one is a choice
             // between named things rather than a retype. Falling back to nothing chosen
             // rather than to the first server: connecting somewhere nobody asked for is the
@@ -1330,7 +1333,7 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
         return () => {
             cancelled = true;
         };
-    }, [isOpen, surface.remote]);
+    }, [isOpen, reload, surface.remote]);
 
     /** The server chosen out of the list, as opposed to the address field or nothing yet. */
     const picked = choice === NO_SERVER || choice === MANUAL_SERVER ? null : choice;
@@ -1390,26 +1393,13 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                 {servers.length === 0 && <p>{t(`${key}.empty`)}</p>}
                 <div className="flex flex-col gap-1">
                     {servers.map(server => (
-                        <button
+                        <ServerRow
                             key={server.remoteOrigin}
-                            type="button"
-                            aria-pressed={choice === server.remoteOrigin}
-                            onClick={() => setChoice(server.remoteOrigin)}
+                            session={server}
+                            chosen={choice === server.remoteOrigin}
+                            onChoose={() => setChoice(server.remoteOrigin)}
                             data-server-choice={server.remoteOrigin}
-                            className={cn(
-                                "flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left transition-colors cursor-default",
-                                choice === server.remoteOrigin
-                                    ? "border-primary bg-fill-subtle text-fg"
-                                    : "border-edge hover:bg-fill",
-                            )}
-                        >
-                            <span className="min-w-0 flex-1 truncate text-sm">
-                                {serverHost(server.remoteOrigin)}
-                            </span>
-                            <span className="shrink-0 text-xs text-fg-subtle">
-                                {server.account.displayName}
-                            </span>
-                        </button>
+                        />
                     ))}
                     {/* The last row of the list, not a control beside it: adding a server and
                         choosing one are the same question asked a moment apart, and an author
@@ -1766,18 +1756,6 @@ function projectFolderName(context: { project: { getConfig(): { projectPath: str
     const projectPath = context?.project.getConfig().projectPath ?? "";
     const segments = projectPath.split(/[\\/]+/).filter(Boolean);
     return segments.length > 0 ? segments[segments.length - 1] : "";
-}
-
-/**
- * The part of a server address worth showing in a 320px column.
- *
- * The scheme is always `lore://` and says nothing; the host is what tells two servers apart. Falls
- * back to the whole string rather than to nothing when it does not parse - the author typed it, so
- * showing it back verbatim is more useful than showing a blank where their server should be.
- */
-function serverHost(url: string): string {
-    const match = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(url.trim());
-    return match ? match[1] : url.trim();
 }
 
 /**
