@@ -13,6 +13,22 @@ export interface AssetsIconViewToolbarCenter {
     onBack: () => void;
 }
 
+/**
+ * The set a jump asked this panel to put on screen.
+ *
+ * The panel opens the section, the folders and the enclosing sets itself, because those are its own
+ * state. What the views take from here is the last step, which only they can do: scrolling the row
+ * into view and marking it, and - for the grid, which walks into one level at a time rather than
+ * opening them in place - which sets to step into first.
+ */
+export interface AssetSetRevealState {
+    setId: string;
+    /** The sets the grid steps into before the target is a tile in it. Outermost first, target excluded. */
+    ancestorSetIds: readonly string[];
+    /** Bumped per request, so asking for the same set twice marks it twice. */
+    nonce: number;
+}
+
 interface AssetsPanelContextType {
     /**
      * Keyed by sidebar section. The assets inside still carry their own `type`; what a section, a
@@ -55,6 +71,13 @@ interface AssetsPanelContextType {
     /** Sets drawn open, listing one row per variant. Kept apart from folders: different ids, different rows. */
     expandedAssetSets: Set<string>;
     setExpandedAssetSets: React.Dispatch<React.SetStateAction<Set<string>>>;
+    /**
+     * Non-null while a jump is landing on a set's row. See {@link AssetSetRevealState}.
+     *
+     * Optional like the drag fields above: a surface that draws the library without a panel around it
+     * is never jumped into, and marking a row is the one thing it has nothing to say about.
+     */
+    assetSetReveal?: AssetSetRevealState | null;
     /** What lets a variant row name its axis in the project's words instead of in tags. */
     assetSetNaming: AssetSetAxisNaming;
 

@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { Checkbox } from "@/lib/components/elements";
 import { getInterface } from "@/lib/app/bridge";
 import { HelpTrigger } from "@/lib/help";
 import { listUnreadableMechanisms, type UnreadableMechanism } from "@/lib/build/releaseContent";
@@ -671,16 +672,14 @@ function MechanismField({
                 this one have to stay reachable. */}
             <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-edge bg-surface px-2 py-1.5">
                 {scenes.map(scene => (
-                    <label key={`${scene.storyId}:${scene.sceneId}`} className="flex cursor-pointer items-center gap-2">
-                        <input
-                            type="checkbox"
-                            className="rounded-sm"
-                            checked={ticked.has(`${scene.storyId}:${scene.sceneId}`)}
-                            disabled={disabled}
-                            onChange={() => toggle(scene)}
-                        />
+                    <Checkbox
+                        key={`${scene.storyId}:${scene.sceneId}`}
+                        checked={ticked.has(`${scene.storyId}:${scene.sceneId}`)}
+                        disabled={disabled}
+                        onCheckedChange={() => toggle(scene)}
+                    >
                         <span className="min-w-0 truncate text-2xs text-fg">{scene.label}</span>
-                    </label>
+                    </Checkbox>
                 ))}
             </div>
         </Field>

@@ -405,6 +405,11 @@ export const assets = {
          */
         inUseTitle: "{name} is still in use",
         inUseMessage: "The following places name it and will stop resolving:",
+        /**
+         * Asked once the author has said to delete it. The folder sentence is the wrong noun for
+         * a set: what goes with it is the files it holds, sub-sets included.
+         */
+        deleteConfirmMessage: "The files inside this set are deleted too.",
         /** The picker's own section for sets, which are not files and are not listed among them. */
         picker: {
             section: "Asset sets",

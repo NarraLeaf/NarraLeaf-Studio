@@ -4,6 +4,9 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useWorkspace } from "@/apps/workspace/context";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { getDefById, localizedCommandToken } from "./commands/registry";
 import type { EditorComponentProps } from "../../types";
@@ -188,6 +191,16 @@ function StorySceneOverviewBlock(props: {
     const selectButtonRef = useRef<HTMLButtonElement | null>(null);
     const backgroundAssetId = scene.defaultBackgroundAssetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(backgroundAssetId);
+    const workspace = useWorkspace();
+    // The same field the scene inspector edits, so it offers the same choices. It was the one
+    // surface of `defaultBackgroundAssetId` that did not, which read as the panel and the card
+    // disagreeing about what a scene background can be.
+    const assetSets = useAssetSetPickerSource({
+        context: workspace.context,
+        isInitialized: workspace.isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
 
     // Collapsed by default once the scene is set up; expanded on a freshly created scene (no default
     // background yet) so the author is prompted to name it and pick a backdrop. A manual toggle is
@@ -244,7 +257,14 @@ function StorySceneOverviewBlock(props: {
         onUpdateScene({ defaultBackgroundAssetId: null });
     }, [onUpdateScene]);
 
-    const backgroundLabel = backgroundAsset?.name ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
+    const backgroundLabel = backgroundAsset?.name
+        // A set has no record in the image library, so the "this picture is gone" phrase would be
+        // printed over one that resolves. Both kinds of id go through the one function that answers
+        // for both.
+        ?? (backgroundAssetId && workspace.context
+            ? resolveAssetDisplayName(workspace.context.services, backgroundAssetId)
+            : null)
+        ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
 
     return (
         <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-edge bg-fill-subtle">
@@ -408,6 +428,9 @@ function StorySceneOverviewBlock(props: {
                 anchorRef={selectButtonRef}
                 title={t("story.sceneEditor.selectDefaultBackground")}
                 multiple={false}
+                {...(assetSets.virtualGroups
+                    ? { virtualGroups: assetSets.virtualGroups, resolveAssetPreviewUrl: assetSets.resolveAssetPreviewUrl }
+                    : {})}
             />
         </div>
     );

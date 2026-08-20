@@ -183,14 +183,14 @@ export function createTextInputInspector(ctx: InspectorContext) {
                             }),
                             defineField<D, any>({
                                 id: "textInput.readOnly",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.textInput.readOnly"),
                                 getValue: (d: D) => getLiveTextInputProps(d).readOnly,
                                 setValue: (d: D, value: boolean) => patchTextInput(d, { readOnly: value }),
                             }),
                             defineField<D, any>({
                                 id: "textInput.disabled",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.textInput.disabled"),
                                 getValue: (d: D) => getLiveTextInputProps(d).disabled,
                                 setValue: (d: D, value: boolean) => patchTextInput(d, { disabled: value }),

@@ -379,6 +379,7 @@ export const assets = {
         unfinished: "バリアント未宣言",
         inUseTitle: "{name} はまだ使われている",
         inUseMessage: "次の箇所がこれを指定しており、解決できなくなる：",
+        deleteConfirmMessage: "このアセットセットの中のファイルもすべて削除される",
         picker: {
             section: "アセットセット",
         },

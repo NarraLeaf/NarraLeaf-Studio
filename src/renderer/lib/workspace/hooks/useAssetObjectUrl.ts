@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
@@ -11,6 +11,10 @@ import {
     resolveCharacterAvatarAssetUrl,
 } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import { resolveMountedAssetSetMember } from "@/lib/ui-editor/runtime/assetSetAssets";
+import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 
 interface AssetObjectUrlState {
     url: string | null;
@@ -32,7 +36,7 @@ export type AssetObjectUrlPool = AssetType | `${AssetType}`;
  * an author could see was wrong. The runtime shim ignores the argument entirely, because the
  * packaged game addresses assets by id alone.
  */
-export function useAssetObjectUrl(assetId?: string | null, assetType: AssetObjectUrlPool = AssetType.Image) {
+export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: AssetObjectUrlPool = AssetType.Image) {
     const workspaceValue = useOptionalWorkspace();
     const context: WorkspaceContext | null = workspaceValue?.context ?? null;
     const assetsService = context ? context.services.get<AssetsService>(Services.Assets) : null;
@@ -58,21 +62,63 @@ export function useAssetObjectUrl(assetId?: string | null, assetType: AssetObjec
      */
     const [contentGeneration, setContentGeneration] = useState(0);
 
+    /**
+     * A second key, and only for an id that names a SET.
+     *
+     * `contentGeneration` above watches one record, which is the right key for a file and no key at
+     * all for a set: a set has no record of its own, and what changes under it is which file answers
+     * - a tag written on some other file entirely. So a set is keyed on the library instead.
+     *
+     * Held at a constant for every ordinary id rather than always reading the revision: this effect
+     * refetches bytes when it re-runs, and there is one of these per picture on screen.
+     */
+    const libraryRevision = useAssetLibraryRevision();
+    const setRevision = useMemo(() => {
+        if (!context || !requestedAssetId) {
+            return 0;
+        }
+        try {
+            return context.services.get<AssetSetService>(Services.AssetSets).getSet(requestedAssetId)
+                ? libraryRevision
+                : 0;
+        } catch {
+            return 0;
+        }
+    }, [context, requestedAssetId, libraryRevision]);
+
     useEffect(() => {
-        if (!assetsService || !assetId) {
+        if (!assetsService || !requestedAssetId) {
             return;
         }
+        // Keyed on the id the caller asked for, not on the file it resolves to. A set's own id never
+        // has a record to be updated or deleted; what changes under it is which file answers, and the
+        // tag write that changes that raises `updated` on the file - so watching the caller's id
+        // would miss it. Watching every event is not an option either: this runs per widget.
         const bump = (asset: { id: string }) => {
-            if (asset.id === assetId) {
+            if (asset.id === requestedAssetId) {
                 setContentGeneration(generation => generation + 1);
             }
         };
         const events = assetsService.getEvents();
         const unsubs = [events.on("updated", bump), events.on("deleted", bump)];
         return () => unsubs.forEach(unsub => unsub());
-    }, [assetsService, assetId]);
+    }, [assetsService, requestedAssetId]);
 
     useEffect(() => {
+        /**
+         * The file this call is really about.
+         *
+         * A set id names a family of files, and every arm below wants the one it means here. A
+         * mounted game answers with the player's language - Dev Mode included, since it mounts the
+         * same runtime - and the editor answers with the language the author is writing in. An
+         * ordinary asset id gets null from both and is used untouched, which is every call but a
+         * handful.
+         */
+        const assetId = requestedAssetId
+            ? resolveMountedAssetSetMember(requestedAssetId)
+                ?? (context ? resolveEditorAssetSetMember(context, requestedAssetId) : null)
+                ?? requestedAssetId
+            : requestedAssetId;
         if (!assetId) {
             if (urlRef.current) {
                 URL.revokeObjectURL(urlRef.current);
@@ -278,7 +324,7 @@ export function useAssetObjectUrl(assetId?: string | null, assetType: AssetObjec
         return () => {
             cancelled = true;
         };
-    }, [assetId, assetType, assetsService, contentGeneration]);
+    }, [context, requestedAssetId, assetType, assetsService, contentGeneration, setRevision]);
 
     useEffect(() => {
         return () => {

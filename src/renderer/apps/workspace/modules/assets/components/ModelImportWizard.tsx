@@ -2,6 +2,7 @@ import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { Select } from "@/lib/components/elements/Select";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
+import { Checkbox } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { Services } from "@/lib/workspace/services/services";
@@ -294,13 +295,12 @@ export function ModelImportWizard(props: {
                                 const advisory = model.problems.filter(problem => !isBlockingModelProblem(problem));
                                 return (
                                     <div key={model.rootPath} className="rounded-md border border-edge bg-fill-subtle px-2.5 py-2">
-                                        <label className="flex cursor-pointer items-start gap-2">
-                                            <input
-                                                type="checkbox"
-                                                className="mt-0.5"
-                                                checked={checked.has(model.rootPath)}
-                                                onChange={() => toggle(model.rootPath)}
-                                            />
+                                        <Checkbox
+                                            className="items-start"
+                                            boxClassName="mt-0.5"
+                                            checked={checked.has(model.rootPath)}
+                                            onCheckedChange={() => toggle(model.rootPath)}
+                                        >
                                             <span className="min-w-0 flex-1">
                                                 <span className="flex items-center gap-1.5">
                                                     <span className="truncate text-xs font-medium text-fg">{model.name}</span>
@@ -321,7 +321,7 @@ export function ModelImportWizard(props: {
                                                     })}
                                                 </span>
                                             </span>
-                                        </label>
+                                        </Checkbox>
 
                                         {/* Only when the folder holds more than one model: otherwise the
                                             entry is not a decision and a select would imply it was. */}
