@@ -2,6 +2,7 @@ import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { Input } from "@/lib/components/elements/Input";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
+import { Checkbox } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
 import {
     installPrebuiltPuppetRuntime,
@@ -227,10 +228,9 @@ export function PuppetRuntimeInstaller(props: {
                             {t("characters.editor.runtime.docsLink", { product: runtime.productName })}
                         </button>
                     </div>
-                    <label className="flex items-center gap-2 pt-1 text-xs text-fg">
-                        <input type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} />
+                    <Checkbox className="pt-1 text-fg" checked={agreed} onCheckedChange={setAgreed}>
                         {t("characters.editor.runtime.licenseAgree")}
-                    </label>
+                    </Checkbox>
                 </div>
             );
         }

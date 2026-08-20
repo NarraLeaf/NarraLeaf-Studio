@@ -12,7 +12,7 @@ const ALL_FIELD_TYPES: FieldType[] = [
     "text",
     "textarea",
     "number",
-    "checkbox",
+    "toggle",
     "select",
     "tags",
     "custom",
