@@ -177,3 +177,7 @@ spike*.out
 # they go stale the moment it ships, and the screenshots alone ran to tens of
 # megabytes. Anything worth keeping belongs in docs/ proper or in the code.
 /docs/plans/
+
+# WebView2 SDK staged by project/build/prepare-installer-webview.js. Reproducible from the pinned
+# version and checksum in that script; the built plugin DLL beside it is what is committed.
+project/installer/webview2/.sdk/
