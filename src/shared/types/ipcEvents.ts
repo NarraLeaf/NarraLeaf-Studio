@@ -1708,10 +1708,18 @@ export type IPCEditorEvents = {
 };
 
 export type IPCProjectWizardEvents = {
+    /**
+     * Raise the project wizard and wait for what comes out of it.
+     *
+     * The props are the window's, and they are what lets a caller open the wizard on a
+     * question already answered - a package chosen in the file manager, a repository picked
+     * off a server's list. Passing none opens it on its first page, which is what every
+     * plain "New project" does.
+     */
     [IPCEventType.projectWizardLaunch]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: WindowProps[WindowAppType.ProjectWizard],
         response: {
             created: boolean;
             projectPath: string;
