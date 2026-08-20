@@ -1109,6 +1109,22 @@ export type VcsServerProjectDetailOutcome =
     | { ok: false; problem: VcsServerProjectsProblem };
 
 /**
+ * How taking a project off a server ended.
+ *
+ * **What it removes is the project, not the work.** The server stops listing it and
+ * stops answering for it; the repository keeps its store and every revision in it, so a
+ * project taken off by mistake is published again under the same repository id and comes
+ * back with its history. Nothing here destroys anything an author wrote, and nothing on
+ * this side is a way to ask for that.
+ *
+ * The success carries nothing because there is nothing to carry: what a reader wants
+ * afterwards is the list, which is fetched again rather than patched from here.
+ */
+export type VcsServerProjectDeleteOutcome =
+    | { ok: true }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
  * One revision on a server's copy of a project.
  *
  * Only the id is certain. A server that has read a repository has the rest, and one part

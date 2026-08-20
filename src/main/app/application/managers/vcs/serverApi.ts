@@ -78,7 +78,7 @@ function trustedCertificates(userDataDir: string): string[] | undefined {
 export function request(
     endpoint: ServerEndpoint,
     options: {
-        method: "GET" | "POST";
+        method: "GET" | "POST" | "DELETE";
         path: string;
         /**
          * Absent for the one route that is asked before there is anything to present:
@@ -206,13 +206,17 @@ export function textField(record: Record<string, unknown>, key: string): Record<
  * The four failures every caller has are handled once here - no endpoint, nothing
  * answered, a status that is not the expected one, a body that is not JSON - so what a
  * caller writes is the reading of a shape it understands.
+ *
+ * A route whose whole answer is its status answers with no document at all, and gets
+ * `value: undefined` rather than a complaint about a body that was never promised. A
+ * caller reading a field off that value still refuses, because there is no field there.
  */
 export async function askServer(options: {
     authUrl: string;
     token: string;
     userDataDir: string;
     path: string;
-    method?: "GET" | "POST";
+    method?: "GET" | "POST" | "DELETE";
     body?: string;
     /** The one status that counts as an answer. Anything else is read as a refusal. */
     expect?: number;
@@ -235,6 +239,10 @@ export async function askServer(options: {
     if (answer.status !== (options.expect ?? 200)) {
         return { ok: false, problem: problemFor(answer) };
     }
+    // 204 is the whole answer to a request whose result is that it worked, and there is
+    // nothing in it to parse - `JSON.parse("")` throws, which would report a success as
+    // a failure nobody could act on.
+    if (answer.body.trim() === "") return { ok: true, value: undefined };
 
     try {
         return { ok: true, value: JSON.parse(answer.body) as unknown };

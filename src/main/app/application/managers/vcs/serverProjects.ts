@@ -84,6 +84,10 @@ export type ServerProjectHistoryResult =
     | { ok: true; page: VcsServerProjectHistoryPage }
     | { ok: false; problem: ServerProjectsProblem };
 
+export type ServerProjectDeleteResult =
+    | { ok: true }
+    | { ok: false; problem: ServerProjectsProblem };
+
 /**
  * What the server has read off a project's repository, field by field.
  *
@@ -323,4 +327,36 @@ export async function createServerProject(options: {
         return { ok: false, problem: { kind: "wrong-repository" } };
     }
     return { ok: true, project };
+}
+
+/**
+ * Take one project off a server.
+ *
+ * **The server stops listing the project; the repository keeps everything in it.** The
+ * store, the branches and every revision stay where they are, which is why this is worth
+ * offering at all: the case it exists for is a publish that a server too old to
+ * understand a repository id turned into a stray empty project, and the way out of one is
+ * to remove the row and publish again under the same id. Nothing here asks any server to
+ * destroy work, and there is no argument to this that would.
+ *
+ * 204 and nothing else. A server that answers with a document has not done what this
+ * asked, and one that answers 404 - because somebody else removed the project first, or
+ * because it is too old to have this route - refuses in the coded terms every other call
+ * here refuses in.
+ */
+export async function deleteServerProject(options: {
+    authUrl: string;
+    token: string;
+    userDataDir: string;
+    projectId: string;
+}): Promise<ServerProjectDeleteResult> {
+    const { projectId, ...rest } = options;
+    const answer = await askServer({
+        ...rest,
+        path: `${PROJECTS_PATH}/${encodeURIComponent(projectId)}`,
+        method: "DELETE",
+        expect: 204,
+    });
+    if (!answer.ok) return answer;
+    return { ok: true };
 }
