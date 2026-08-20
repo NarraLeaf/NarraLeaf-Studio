@@ -78,6 +78,7 @@ import {
     TOOLTIP_DELAY_MIN_MS,
     TOOLTIP_DELAY_STEP_MS,
 } from "@/lib/settings/tooltipOptions";
+import { WINDOW_ICON_DEFAULT, WINDOW_ICON_IDS, WINDOW_ICON_KEY } from "@shared/constants/windowIcon";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -291,6 +292,39 @@ export const AppSettings: AppSettingDefinition[] = [
             auto: "settings.items.themeMode.options.auto",
             light: "settings.items.themeMode.options.light",
             dark: "settings.items.themeMode.options.dark",
+        },
+    },
+    {
+        // Applied by the main process (`BaseApp.refreshWindowIcons`), which is the only side that
+        // can call `BrowserWindow.setIcon`: writing this key re-icons every open window and the
+        // tray, so the change lands without a restart.
+        //
+        // What it deliberately does not reach is the desktop shortcut, the Start menu entry, and a
+        // pinned taskbar item - those carry resources compiled into the executable. The row's
+        // description says as much, because otherwise the first thing this setting looks like is
+        // one that did not work.
+        key: WINDOW_ICON_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Window icon",
+        labelKey: "settings.items.windowIcon.label",
+        description: "The icon on Studio's windows and taskbar buttons. Desktop and Start menu shortcuts keep the installed icon.",
+        descriptionKey: "settings.items.windowIcon.description",
+        defaultValue: WINDOW_ICON_DEFAULT,
+        options: [...WINDOW_ICON_IDS],
+        optionLabelKeys: {
+            default: "settings.items.windowIcon.options.default",
+            narra: "settings.items.windowIcon.options.narra",
+        },
+        availability: async () => {
+            // Static for the lifetime of the window, like the ⌘Q row above: macOS has no
+            // per-window icon to set, and a Linux window icon is the compositor's to honour or
+            // ignore, so Windows is the only platform where the choice takes effect.
+            const { isWindowsPlatform } = await import("@/lib/app/platform");
+            return isWindowsPlatform()
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.windowIcon.unsupportedPlatform" };
         },
     },
     {

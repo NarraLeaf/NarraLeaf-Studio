@@ -323,6 +323,8 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "変形",
+        loop: "ループ",
+        stopLoop: "ループ停止",
         bringToFront: "最前面へ",
         mask: "マスク",
         clearMask: "マスクを外す",

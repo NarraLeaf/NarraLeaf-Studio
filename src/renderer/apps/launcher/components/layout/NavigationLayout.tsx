@@ -6,7 +6,8 @@ import { WindowControlPolicy } from "@shared/types/window";
 
 export interface NavigationLayoutProps {
     title: string;
-    iconSrc: string;
+    /** See `TitleBarProps.iconSrc`: omit for the product mark, `""` for none. */
+    iconSrc?: string;
     navigation: React.ReactNode;
     children: React.ReactNode;
     navigationWidth?: string;

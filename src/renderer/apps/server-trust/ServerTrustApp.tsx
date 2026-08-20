@@ -115,7 +115,7 @@ export function ServerTrustApp() {
     return (
         <AppLayout
             title={t("serverTrust.window")}
-            iconSrc="/favicon.ico"
+           
             initialControlAbility={SERVER_TRUST_WINDOW_CONTROL_ABILITY}
             windowControlPolicy={WindowControlPolicy.None}
         >

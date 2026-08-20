@@ -527,6 +527,8 @@ export const story = {
         delay: "遅延秒数",
         repeat: "繰り返し回数",
         repeatDelay: "繰り返し間隔",
+        repeatType: "繰り返し方向",
+        stopLoop: "ループ停止",
         fromProps: "開始プロパティ",
         conceal: "退場",
     },
@@ -539,6 +541,10 @@ export const story = {
      * 綴りを落とすので、訳していない項目は必ずパーサが受け付ける語に落ちる。
      */
     enumValue: {
+        // 各回の再生方向（`repeatType=`）。
+        loop: "最初から",
+        reverse: "逆再生",
+        mirror: "往復",
         // 天候シード。`/vfx` のソース欄では予約語。
         snow: "雪",
         rain: "雨",

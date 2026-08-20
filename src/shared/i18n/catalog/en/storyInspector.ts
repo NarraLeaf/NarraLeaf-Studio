@@ -332,6 +332,8 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "Transform",
+        loop: "Loop",
+        stopLoop: "Stop loop",
         bringToFront: "Bring to front",
         mask: "Mask",
         clearMask: "Clear mask",

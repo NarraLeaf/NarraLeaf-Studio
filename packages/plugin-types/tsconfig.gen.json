@@ -11,17 +11,18 @@
     // specifiers no consumer outside this repo can resolve. Dropping the
     // typeRoot makes them ordinary source files, which the bundler inlines.
     //
-    // `./ambient` is a second typeRoot holding stand-ins for untyped packages that the walked
-    // declarations import (see ambient/howler/index.d.ts for the whole story). It has to arrive
-    // this way: the bundler takes only `compilerOptions` from this file, never its `include`, and
-    // it rebuilds its real program over the entry's *emitted* declarations - so an ambient file
-    // pulled in any other way is gone before it is needed. Automatic type inclusion survives both
-    // programs because it is an option.
+    // There used to be a second typeRoot here holding stand-ins for the untyped packages the
+    // walked declarations import. narraleaf-react 0.32.0 ships the types it references, so there
+    // is nothing left to stand in for. If a future engine release reaches for an untyped module
+    // again, note that a stand-in has to arrive through `typeRoots` + `types`: the bundler takes
+    // only `compilerOptions` from this file, never its `include`, and rebuilds its real program
+    // over the entry's *emitted* declarations, so anything pulled in another way is gone before
+    // it is needed.
     "extends": "../../src/renderer/tsconfig.json",
     "compilerOptions": {
         "baseUrl": "../../src/renderer",
-        "typeRoots": ["../../node_modules/@types", "./ambient"],
-        "types": ["node", "react", "react-dom", "howler"],
+        "typeRoots": ["../../node_modules/@types"],
+        "types": ["node", "react", "react-dom"],
         "noEmit": true,
         "declaration": false,
         "emitDeclarationOnly": false
