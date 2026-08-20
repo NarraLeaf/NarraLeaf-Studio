@@ -326,10 +326,13 @@ describe("normalizeProjectAssetSets", () => {
                 ],
             }],
         });
-        expect(document.sets.map(entry => entry.id)).toEqual(["a", "a:release", "a:demo"]);
+        // `a:main`, not `a:release`: the release edition's id was renamed, and an axis that promises
+        // edition ids is migrated on read, so the sub-set derived from that value is named after the
+        // edition it actually stands for.
+        expect(document.sets.map(entry => entry.id)).toEqual(["a", "a:main", "a:demo"]);
         expect(document.sets[0].axis).toMatchObject({ kind: "release", key: "release" });
         expect(document.sets[1]).toMatchObject({
-            filter: ["set:a", "release:release"],
+            filter: ["set:a", "release:main"],
             axis: { kind: "locale", key: "locale", residency: "runtime", values: ["en", "ja"] },
         });
         expect(childAssetSets(document.sets[0], "demo", document.sets).map(entry => entry.id)).toEqual(["a:demo"]);
