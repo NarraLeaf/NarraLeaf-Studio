@@ -1,3 +1,5 @@
+import { addElementState, canAddElementState } from "@/lib/ui-editor/widget-modules/shared/appearance/elementStates";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
@@ -251,6 +253,26 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
             },
         },
     );
+
+    if (menuSelection?.elementIds.length === 1) {
+        const stateElement = input.document.elements[menuSelection!.elementIds[0]];
+        if (canAddElementState(input.document, stateElement)) {
+            items.push({ separator: true, id: "sep-state" });
+            items.push({
+                id: "add-state",
+                label: translate("uiEditor.contextMenu.addState"),
+                onClick: () => {
+                    actions.hideMenu();
+                    addElementState(
+                        documentService,
+                        input.surfaceId,
+                        stateElement.id,
+                        UIEditorStateService.getInstance().getEnteredState()?.variantId ?? null,
+                    );
+                },
+            });
+        }
+    }
 
     if (menuSelection?.elementIds.length === 1) {
         const el = input.document.elements[menuSelection.elementIds[0]];

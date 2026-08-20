@@ -13,7 +13,7 @@ import { ProjectGamePage } from "./pages/ProjectGamePage";
 import { ProjectDesignSection } from "./sections/ProjectDesignSection";
 import { ProjectSettingsSection } from "./sections/ProjectSettingsSection";
 import { ProjectRuntimesSection } from "./sections/ProjectRuntimesSection";
-import { ProjectLintingSection } from "./sections/ProjectLintingSection";
+import { ProjectProjectPage } from "./pages/ProjectProjectPage";
 import type { HelpTopicId } from "@/lib/help";
 import type { ProjectSectionProps } from "./sections/types";
 
@@ -134,9 +134,10 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
                             {/* Brand is two parts of one subject and names them itself: the
                                 colours an author decides, and the slots that follow them. */}
                             {activeItem.id === "design" ? <ProjectDesignSection {...sectionProps} /> : null}
-                            {/* Project and Runtimes hold a single part each, so they carry no
-                                headings of their own - the sub-page header already named it. */}
-                            {activeItem.id === "project" ? <ProjectLintingSection {...sectionProps} /> : null}
+                            {/* Project holds two parts - the key the project is built under, and
+                                the check a build runs - so both name themselves. Runtimes still
+                                holds one and carries no heading of its own. */}
+                            {activeItem.id === "project" ? <ProjectProjectPage {...sectionProps} /> : null}
                             {activeItem.id === "runtimes" ? <ProjectRuntimesSection {...sectionProps} /> : null}
                             {activeItem.id === "settings" ? <ProjectSettingsSection {...sectionProps} /> : null}
                         </ProjectSubPage>

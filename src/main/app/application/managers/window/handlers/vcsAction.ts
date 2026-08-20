@@ -15,6 +15,8 @@ import type {
     VcsRevisionDiffResult,
     VcsAddServerOutcome,
     VcsServerProbe,
+    VcsServerProjectOutcome,
+    VcsServerProjectsOutcome,
     VcsServerSession,
     VcsSignInOutcome,
     VcsSignInProblem,
@@ -554,6 +556,39 @@ export class VcsListServersHandler extends IPCHandler<IPCEventType.vcsListServer
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
         return this.tryUse(async () => ({ servers: window.app.getVcsManager().listServers() }));
+    }
+}
+
+/**
+ * What one server holds.
+ *
+ * Takes no project, for the same reason listing servers does not: a project is
+ * chosen from this list, so there is not one yet.
+ */
+export class VcsListServerProjectsHandler extends IPCHandler<IPCEventType.vcsListServerProjects> {
+    readonly name = IPCEventType.vcsListServerProjects;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin }: IPCEvents[IPCEventType.vcsListServerProjects]["data"],
+    ): Promise<RequestStatus<VcsServerProjectsOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().listServerProjects(remoteOrigin));
+    }
+}
+
+/** Ask a server to make a project. */
+export class VcsCreateServerProjectHandler extends IPCHandler<IPCEventType.vcsCreateServerProject> {
+    readonly name = IPCEventType.vcsCreateServerProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin, name, description }: IPCEvents[IPCEventType.vcsCreateServerProject]["data"],
+    ): Promise<RequestStatus<VcsServerProjectOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().createServerProject(remoteOrigin, name, description));
     }
 }
 

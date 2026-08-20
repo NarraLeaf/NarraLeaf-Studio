@@ -1,8 +1,10 @@
 import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
+import { actionableSourceIdentity, displayableCreatorIdentity } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import { sceneLabelNames } from "@shared/types/story/labels";
+import { listSceneBlocksInDocumentOrder } from "@shared/types/story/order";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
@@ -12,7 +14,8 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { segmentPlainText } from "./storyFindReplace";
-import type { StoryCommandAppearanceRef, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjects, StoryCommandVariableEntry } from "./storyCommandResolution";
+import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry } from "./storyCommandResolution";
+import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 /**
@@ -25,6 +28,20 @@ import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
 function assetRefs(assets: AssetsMap | undefined, type: AssetType): StoryCommandNamedRef[] {
     return Object.values(assets?.[type] ?? {}).map(asset => ({ id: asset.id, name: asset.name }));
+}
+
+/**
+ * The library a set's members come from, in the three words a command param speaks.
+ *
+ * `null` for every other `AssetType` rather than a fourth word: a font or model set is a real set
+ * this list still has to carry (a row naming one must read as a name, not as a missing file), and it
+ * is simply not a thing any slot on a command line can be pointed at.
+ */
+function commandAssetType(type: string): "image" | "audio" | "video" | null {
+    return type === AssetType.Image ? "image"
+        : type === AssetType.Audio ? "audio"
+        : type === AssetType.Video ? "video"
+        : null;
 }
 
 /**
@@ -142,11 +159,86 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
             video.add(block.payload.objectName);
         } else if (block.payload.action === "audio" && block.payload.objectName) {
             audio.add(block.payload.objectName);
-        } else if (block.payload.action === "vfx" && block.payload.objectName) {
-            vfx.add(block.payload.objectName);
+        }
+    }
+
+    // Ambience overlays are the one stage object that is NOT scoped to a scene: the engine holds a
+    // `Vfx` at game level and scene exit does not take it away, so rain started three scenes ago is
+    // still falling here and this is the scene that has to be able to say `/hide rain`. Scanning
+    // only this scene's rows is what made that unsayable - the name resolved to nothing, so the
+    // author was told there was no such thing while it was visibly on screen.
+    for (const documentScene of Object.values(document?.scenes ?? {})) {
+        for (const block of Object.values(documentScene?.blocks ?? {})) {
+            if (block.kind === "action" && block.payload.action === "vfx" && block.payload.objectName) {
+                vfx.add(block.payload.objectName);
+            }
         }
     }
     return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio], vfx: [...vfx] };
+}
+
+/**
+ * Which row declares each of those objects - the id half {@link collectStageObjects} throws away
+ * when it flattens the scan to names.
+ *
+ * A separate walk rather than a widening of that one, because the two answer different questions and
+ * must keep doing so: the name list is everything a row may address (the engine materialises an
+ * object on first mention, so a `/show poster` with no create row ahead of it still belongs there),
+ * while an entry here means a row genuinely *defines* the object, which is the only thing a stable
+ * reference may bind to. Hence the strict identity functions, not the permissive ones.
+ */
+function collectStageObjectSources(scene: StoryScene | null): StoryCommandStageObjectSources {
+    if (!scene) {
+        return EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES;
+    }
+    const sources: Record<StoryCommandStageObjectKind, Record<string, string>> = {
+        image: {}, text: {}, layer: {}, video: {}, audio: {}, vfx: {},
+    };
+    for (const block of listSceneBlocksInDocumentOrder(scene)) {
+        const identity = displayableCreatorIdentity(block) ?? actionableSourceIdentity(block);
+        // `character` is the one declaring kind with no stage-object arm. It is not skipped - see
+        // `collectCharacterSources`, which indexes it by `characterId` because this table's key (the
+        // object's stage name) is not what a character target is matched on.
+        if (!identity || identity.kind === "character") {
+            continue;
+        }
+        const key = identity.name.trim().toLowerCase();
+        // First declaration wins, matching what the scene actually holds: a later row declaring a
+        // name already on stage addresses that object rather than replacing it.
+        if (key && !(key in sources[identity.kind])) {
+            sources[identity.kind][key] = block.id;
+        }
+    }
+    return sources;
+}
+
+/**
+ * Which row brings each character on stage, keyed by `characterId`.
+ *
+ * A walk of its own rather than an arm of {@link collectStageObjectSources}, because a character is
+ * not a stage object in the sense that scan means: it is addressed by a name the PROJECT owns, and
+ * the key it is registered under is derived from the entering row rather than typed on it. Both
+ * halves are recorded - the block id anchors the reference, the stage key is what a reference has to
+ * store as its fallback, and nothing downstream can recompute the second from the cast name.
+ */
+function collectCharacterSources(scene: StoryScene | null): StoryCommandCharacterSources {
+    if (!scene) {
+        return {};
+    }
+    const sources: Record<string, { blockId: string; name: string }> = {};
+    for (const block of listSceneBlocksInDocumentOrder(scene)) {
+        const identity = displayableCreatorIdentity(block);
+        if (!identity || identity.kind !== "character" || block.kind !== "action" || block.payload.action !== "character") {
+            continue;
+        }
+        const characterId = block.payload.characterId;
+        // First entrance wins, the rule `collectStageObjectSources` follows: a second `/show` of a
+        // character already on stage addresses that portrait rather than replacing it.
+        if (characterId && !(characterId in sources)) {
+            sources[characterId] = { blockId: block.id, name: identity.name };
+        }
+    }
+    return sources;
 }
 
 /**
@@ -196,6 +288,14 @@ export function valueBlueprintRefs(document: BlueprintDocument | null | undefine
 
 export function buildStoryCommandContext(input: {
     assets: AssetsMap | undefined;
+    /**
+     * The project's asset sets. Omitted where no project is open, which names none.
+     *
+     * `type` is the `AssetType` string off the set record. It is required rather than optional
+     * because the slots that offer sets are typed: without it an image slot would offer the
+     * project's audio sets, which is a name the author can pick and the line then refuses.
+     */
+    assetSets?: readonly { id: string; name: string; type: string }[];
     characters: readonly Character[];
     document: StoryDocument | null;
     sceneId: StorySceneId | null | undefined;
@@ -267,6 +367,11 @@ export function buildStoryCommandContext(input: {
         images: assetRefs(input.assets, AssetType.Image),
         audio: assetRefs(input.assets, AssetType.Audio),
         videos: assetRefs(input.assets, AssetType.Video),
+        assetSets: (input.assetSets ?? []).map(set => ({
+            id: set.id,
+            name: set.name,
+            assetType: commandAssetType(set.type),
+        })),
         characters,
         // Derived from the document, exactly as the speaker picker derives them, so a temp speaker
         // retires from the command line's candidates precisely when its last line does.
@@ -298,5 +403,7 @@ export function buildStoryCommandContext(input: {
                 .filter((entry): entry is readonly [string, StoryPuppetVocabulary] => entry[1] !== undefined),
         ),
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
+        stageObjectSources: collectStageObjectSources(input.scene),
+        characterSources: collectCharacterSources(input.scene),
     };
 }

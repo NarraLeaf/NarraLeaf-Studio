@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BlurDissolve, Control, Darkness, DevTools, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import { BlurDissolve, Control, Darkness, DevTools, Exposure, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
 import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryTransitionRef } from "@shared/types/story";
-import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import {
+    isPlayableStoryTransitionKind,
+    STORY_DOCUMENT_SCHEMA_VERSION,
+    STORY_TRANSITION_KINDS,
+    UNPLAYABLE_STORY_TRANSITION_KINDS,
+} from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
 import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
@@ -229,7 +234,7 @@ describe("compileStudioStoryToNlr", () => {
                     action: "character",
                     operation: "enter",
                     characterId: "char-alice",
-                    transform: { preset: "center", durationMs: 300, props: { zoom: 0.5, xoffset: 24, yoffset: -12 } },
+                    transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5, xoffset: 24, yoffset: -12 }, zoom: 0.5 }, durationMs: 300 },
                 },
             },
         };
@@ -288,6 +293,15 @@ describe("compileStudioStoryToNlr", () => {
             config: { repeat: 2, repeatDelayMs: 60 },
         };
         const blocks: Record<string, StoryBlock> = {
+            // The row that puts `hero` on stage. The three rows under it only address it, and a row
+            // that addresses a name no row declares is reported rather than conjuring a blank image.
+            create: {
+                id: "create",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" },
+            },
             show: {
                 id: "show",
                 kind: "action",
@@ -327,9 +341,10 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["show", "transform", "hide"]),
+            document: baseDocument(blocks, ["create", "show", "transform", "hide"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
         const byBlock = (blockId: string) => compiled.actionIdBindings
@@ -386,6 +401,13 @@ describe("compileStudioStoryToNlr", () => {
             },
         };
         const blocks: Record<string, StoryBlock> = {
+            create: {
+                id: "create",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" },
+            },
             show: {
                 id: "show",
                 kind: "action",
@@ -413,9 +435,10 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["show", "transform"]),
+            document: baseDocument(blocks, ["create", "show", "transform"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
         const byBlock = (blockId: string) => compiled.actionIdBindings
@@ -531,6 +554,15 @@ describe("compileStudioStoryToNlr", () => {
                     transform: { mode: "animation", animationId: animation.id },
                 },
             },
+            // A custom layer is the one displayable the engine will not conjure from a mention, so the
+            // transform row below needs the row that declares it.
+            layerCreate: {
+                id: "layerCreate",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "layer", operation: "create", objectName: "foreground" },
+            },
             layer: {
                 id: "layer",
                 kind: "action",
@@ -546,7 +578,7 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["text", "layer"]),
+            document: baseDocument(blocks, ["text", "layerCreate", "layer"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
         });
@@ -614,7 +646,7 @@ describe("compileStudioStoryToNlr", () => {
                     operation: "transform",
                     objectName: "",
                     target: { kind: "default", layer: "background" },
-                    transform: { mode: "preset", preset: "zoom", durationMs: 300, props: { zoom: 1.4 } },
+                    transform: { mode: "props", to: { zoom: 1.4 }, durationMs: 300 },
                 },
             },
         };
@@ -645,7 +677,7 @@ describe("compileStudioStoryToNlr", () => {
                     action: "displayable",
                     operation: "transform",
                     target: { builtin: "background", kind: "image", name: "Scene background" },
-                    transform: { mode: "preset", preset: "zoom", durationMs: 300, props: { zoom: 1.25 } },
+                    transform: { mode: "props", to: { zoom: 1.25 }, durationMs: 300 },
                 },
             },
             fgLayer: {
@@ -658,7 +690,7 @@ describe("compileStudioStoryToNlr", () => {
                     action: "displayable",
                     operation: "transform",
                     target: { builtin: "displayableLayer", kind: "layer", name: "Displayable layer" },
-                    transform: { mode: "preset", preset: "opacity", durationMs: 200, props: { opacity: 0.5 } },
+                    transform: { mode: "props", to: { opacity: 0.5 }, durationMs: 200 },
                 },
             },
         };
@@ -685,7 +717,7 @@ describe("compileStudioStoryToNlr", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "image", operation: "show", objectName: "hero" },
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" },
             },
             reveal: {
                 id: "reveal",
@@ -694,10 +726,9 @@ describe("compileStudioStoryToNlr", () => {
                 childrenIds: [],
                 payload: {
                     action: "displayable",
-                    operation: "circleReveal",
+                    operation: "transform",
                     target: { name: "hero", kind: "image" },
-                    durationMs: 600,
-                    effectProps: { from: 0, to: 150 },
+                    transform: { mode: "props", clipReveal: { kind: "circleReveal", fromRadius: 0, toRadius: 150 }, durationMs: 600 },
                 },
             },
             darken: {
@@ -707,10 +738,9 @@ describe("compileStudioStoryToNlr", () => {
                 childrenIds: [],
                 payload: {
                     action: "displayable",
-                    operation: "darken",
+                    operation: "transform",
                     target: { name: "hero", kind: "image" },
-                    darkness: 0.6,
-                    durationMs: 200,
+                    transform: { mode: "props", to: { filter: { brightness: 0.4 } }, durationMs: 200 },
                 },
             },
             wipe: {
@@ -720,9 +750,9 @@ describe("compileStudioStoryToNlr", () => {
                 childrenIds: [],
                 payload: {
                     action: "displayable",
-                    operation: "wipe",
+                    operation: "transform",
                     target: { name: "hero", kind: "image" },
-                    effectProps: { direction: "right", reverse: true },
+                    transform: { mode: "props", clipReveal: { kind: "wipe", direction: "right", reverse: true } },
                 },
             },
         };
@@ -730,6 +760,7 @@ describe("compileStudioStoryToNlr", () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["show", "reveal", "darken", "wipe"]),
             sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
         expect(compiled.diagnostics).toEqual([]);
@@ -747,20 +778,21 @@ describe("compileStudioStoryToNlr", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "image", operation: "show", objectName: "hero" },
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" },
             },
             mask: {
                 id: "mask",
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "displayable", operation: "mask", target: { name: "hero", kind: "image" } },
+                payload: { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" }, transform: { mode: "props", to: { maskAssetId: "" } } },
             },
         };
 
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument(blocks, ["show", "mask"]),
             sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
 
         expect(compiled.diagnostics).toEqual([
@@ -1343,9 +1375,10 @@ describe("compileStudioStoryToNlr", () => {
             document: baseDocument({ "flag-decl": persistentDecl, "set-declared": setDeclared, "set-ghost": setGhost }, ["flag-decl", "set-declared", "set-ghost"]),
             sceneId: "scene-1",
         });
-        // The undeclared reference is caught; the declared one passes validation and only trips the
-        // separate "needs host persistence" gate (no persistence bridge in this compile).
-        expect(compiled.diagnostics).toContainEqual({ level: "warning", blockId: "set-ghost", message: "Persistent variable not found; the assignment was skipped." });
+        // The undeclared reference is caught - as an ERROR, because whether a variable is declared is
+        // a fact about the document. The declared one passes validation and only trips the separate
+        // "needs host persistence" gate, which is a fact about the HOST and stays a warning.
+        expect(compiled.diagnostics).toContainEqual({ level: "error", blockId: "set-ghost", message: "Persistent variable not found; the assignment was skipped." });
         expect(compiled.diagnostics.find(d => d.blockId === "set-declared")?.message).toContain("require Dev Mode host persistence");
         expect(compiled.diagnostics.some(d => d.blockId === "set-declared" && d.message.includes("not found"))).toBe(false);
     });
@@ -1485,14 +1518,62 @@ describe("compileStudioStoryToNlr", () => {
         });
     });
 
-    it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
-        // Each new kind must be handled by createTransition; an unmapped kind
-        // falls through to a "not supported" diagnostic, which this guards against.
-        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "slide", "softIris", "blurDissolve", "throughColor", "darkness"];
-        for (const kind of kinds) {
+    it("builds every playable kind in the union, with nothing to report", async () => {
+        // Derived from the shared tuple rather than listed here, and that is the point: this is the
+        // half that keeps `UNPLAYABLE_STORY_TRANSITION_KINDS` honest. `createTransition`'s switch is
+        // exhaustive, so a kind added to the union must get a branch - but a branch that merely
+        // routes it to `reportUnplayableTransition` would satisfy the compiler while leaving the
+        // author with a cut. Then this fails, unless the tuple above it says so out loud.
+        const playable = STORY_TRANSITION_KINDS.filter(kind => kind !== "none" && isPlayableStoryTransitionKind(kind));
+        expect(playable.length).toBe(STORY_TRANSITION_KINDS.length - 1 - UNPLAYABLE_STORY_TRANSITION_KINDS.length);
+
+        for (const kind of playable) {
             const compiled = await compileBackgroundTransition(kind);
             expect(compiled.diagnostics, `kind=${kind}`).toEqual([]);
+            expect(findTransition(compiled), `kind=${kind}`).toBeInstanceOf(Transition);
         }
+    });
+
+    it("plays `none` as a cut and says nothing about it", async () => {
+        // `none` is the author asking for a cut, not a transition that went missing - it returns
+        // before the switch and must never reach the report the other two cases below do.
+        const compiled = await compileBackgroundTransition("none");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(findTransition(compiled)).toBeUndefined();
+    });
+
+    it("reports a kind outside the union as an error and plays the change as a cut", async () => {
+        // The bug this file's `default` branch used to hide. A stored `kind` is a string on disk, so
+        // a document written by a newer Studio - or one carrying a kind since retired - reaches the
+        // compiler with a word no build here can play. `as never` is how a test writes what only a
+        // document can: the union has no room for it, which is exactly the situation.
+        const compiled = await compileBackgroundTransition("maskFade" as never);
+
+        expect(compiled.diagnostics).toEqual([
+            {
+                level: "error",
+                blockId: "bg",
+                message: "Transition \"maskFade\" is not available; the change was played as a cut. Choose a transition on this row.",
+            },
+        ]);
+        expect(findTransition(compiled)).toBeUndefined();
+    });
+
+    it("reports `custom` the same way, though the union does contain it", async () => {
+        // The escape hatch nothing builds. It is a member of the union, so the exhaustiveness check
+        // cannot speak for it and it is routed by hand - but the author sees what they see either
+        // way, so it is the same verdict and the same sentence.
+        const compiled = await compileBackgroundTransition("custom");
+
+        expect(compiled.diagnostics).toEqual([
+            {
+                level: "error",
+                blockId: "bg",
+                message: "Transition \"custom\" is not available; the change was played as a cut. Choose a transition on this row.",
+            },
+        ]);
+        expect(findTransition(compiled)).toBeUndefined();
     });
 
     it("builds each whole-screen kind out of the engine's own transitions", async () => {
@@ -1507,6 +1588,7 @@ describe("compileStudioStoryToNlr", () => {
             blinds: Reveal,
             blurDissolve: BlurDissolve,
             throughColor: ThroughColor,
+            exposure: Exposure,
         };
         for (const [kind, ctor] of Object.entries(expected)) {
             const compiled = await compileBackgroundTransition(kind as StoryTransitionRef["kind"]);
@@ -1580,6 +1662,59 @@ describe("compileStudioStoryToNlr", () => {
         expect(darkness.to).toBe(0);
     });
 
+    it("passes exposure through in stops, with hold read as a percentage", async () => {
+        // `ev` is stops, not a multiplier — the engine raises 2 to it — and `hold` is stored as the
+        // percentage the inspector shows while the engine wants a fraction, the same split
+        // `throughColor` already uses. Getting either conversion wrong is invisible in the type.
+        const compiled = await compileBackgroundTransition("exposure", { ev: 3, lift: 0.06, hold: 40 });
+        const exposure = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(exposure).toBeInstanceOf(Exposure);
+        expect(exposure.ev).toBe(3);
+        expect(exposure.lift).toBe(0.06);
+        expect(exposure.hold).toBe(0.4);
+    });
+
+    it("clamps exposure's lift into the 0-1 its filter can express", async () => {
+        // Same failure as `darkness`: the lift lands inside a CSS `brightness()`, and one
+        // out-of-range value makes the browser drop the whole filter declaration — the transition
+        // goes silently inert rather than saturating. The stops are capped for a milder reason:
+        // past the point where every channel has clipped, more stops only lengthen the white.
+        const compiled = await compileBackgroundTransition("exposure", { ev: 40, lift: -1 });
+        const exposure = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(exposure.ev).toBe(12);
+        expect(exposure.lift).toBe(0);
+    });
+
+    it("defaults exposure to a burn that reaches the shadows", async () => {
+        // The defaults are the whole difference from a white plate, so they are pinned here rather
+        // than left to whatever the engine happens to default to: without a lift the shadows never
+        // whiten, and this is the surface that decides an author who set nothing still gets one.
+        // Built here rather than through the shared helper: that one always sets a props superset,
+        // so "the author set nothing" cannot be spelled through it.
+        const bg: StoryBlock = {
+            id: "bg",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "exposure", durationMs: 400 } },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ bg }, ["bg"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const exposure = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(exposure.ev).toBe(4.6);
+        expect(exposure.lift).toBe(0.04);
+        expect(exposure.hold).toBe(0);
+    });
+
     /** Compile a one-row scene whose `/bg` carries `kind`, with every custom transition's props set. */
     async function compileBackgroundTransition(kind: StoryTransitionRef["kind"], overrides: StoryTransitionRef["props"] = {}) {
         const bg: StoryBlock = {
@@ -1593,6 +1728,9 @@ describe("compileStudioStoryToNlr", () => {
                 transition: {
                     kind,
                     durationMs: 400,
+                    // `ruleReveal` is the one kind that reads an asset, and reports the row as
+                    // unfinished without one. Supplied for every kind because only that one looks.
+                    ruleAssetId: "asset-bg",
                     // Superset of every custom transition's params; each kind reads only its own.
                     props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%", ...overrides },
                 },
@@ -1841,7 +1979,7 @@ describe("compileStudioStoryToNlr localization", () => {
                     operation: "enter",
                     characterId: "char-alice",
                     assetId: "asset-alice",
-                    transform: { preset: "center", durationMs: 300 },
+                    transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5 } }, durationMs: 300 },
                 },
             },
             darken: {
@@ -1851,10 +1989,9 @@ describe("compileStudioStoryToNlr localization", () => {
                 childrenIds: [],
                 payload: {
                     action: "displayable",
-                    operation: "darken",
+                    operation: "transform",
                     target: { name: "Character", kind: "character", sourceBlockId: "enter" },
-                    darkness: 0.6,
-                    durationMs: 400,
+                    transform: { mode: "props", to: { filter: { brightness: 0.4 } }, durationMs: 400 },
                 },
             },
         };
@@ -2001,6 +2138,58 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(compiled.getVoicePlayback?.("text-say")).toEqual({ src: "nlr://asset-ja-say", busId: "voice" });
     });
 
+    /**
+     * The menu never speaks an option itself, so the id travels as sentence metadata - the one thing
+     * the choice slot surface can read back to hand a row's blueprint something to play.
+     */
+    it("stamps a voiced choice option with its unit id", async () => {
+        const option: StoryBlock = {
+            id: "option",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: [],
+            payload: { action: "choiceOption", text: { textId: "text-option", value: "Stay", role: "choiceText" } },
+        };
+        const plain: StoryBlock = {
+            id: "plain",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: [],
+            payload: { action: "choiceOption", text: { textId: "text-plain", value: "Go", role: "choiceText" } },
+        };
+        const choice: StoryBlock = {
+            id: "choice",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: ["option", "plain"],
+            payload: { action: "choice", prompt: { textId: "text-prompt", value: "Well?", role: "choicePrompt" } },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ choice, option, plain }, ["choice"]),
+            sceneId: "scene-1",
+            voice: {
+                voicedLocales: [{ code: "ja", displayName: "日本語" }],
+                tables: { ja: { "text-option": "asset-ja-option" } },
+                getVoiceLocale: () => "ja",
+            },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const menuElement = ((compiled.scene as any).actions as any[])
+            .flat(9)
+            .find(item => item?.choices);
+        const choices = menuElement.choices as any[];
+        expect(choices[0].prompt.getMetadata?.()).toEqual({ voiceId: "text-option" });
+        // The words survive the wrapper: a voiced option is the same shape as an unvoiced one, which
+        // the engine wraps itself, so nothing downstream can tell them apart by anything but the id.
+        expect(choices[0].prompt.text[0].text).toBe("Stay");
+        expect(choices[1].prompt.text[0].text).toBe("Go");
+        // An unvoiced option is left exactly as it was before any of this existed.
+        expect(choices[1].prompt.getMetadata?.() ?? null).toBeNull();
+        expect(compiled.getVoicePlayback?.("text-option")).toEqual({ src: "nlr://asset-ja-option", busId: "voice" });
+    });
+
     it("keeps the legacy per-line voiceAssetId as an inline fallback", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: dialogueBlock("say", "text-legacy", "hi", { voiceAssetId: "asset-voice" }) }, ["say"]),
@@ -2025,10 +2214,10 @@ describe("compileStudioStoryToNlr voice", () => {
             payload,
         });
         const blocks: Record<string, StoryBlock> = {
-            zoom: cameraBlock("zoom", { action: "camera", operation: "zoom", zoom: 0, durationMs: 800 }),
-            pan: cameraBlock("pan", { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 }, durationMs: 600 }),
-            rotate: cameraBlock("rotate", { action: "camera", operation: "rotate", rotation: 15, durationMs: 400 }),
-            dark: cameraBlock("dark", { action: "camera", operation: "darken", darkness: 2, durationMs: 500 }),
+            zoom: cameraBlock("zoom", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 0 }, durationMs: 800 } }),
+            pan: cameraBlock("pan", { action: "camera", operation: "transform", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 600 } }),
+            rotate: cameraBlock("rotate", { action: "camera", operation: "transform", transform: { mode: "props", to: { rotation: 15 }, durationMs: 400 } }),
+            dark: cameraBlock("dark", { action: "camera", operation: "transform", transform: { mode: "props", to: { filter: { brightness: -1 } }, durationMs: 500 } }),
             reset: cameraBlock("reset", { action: "camera", operation: "reset", durationMs: 600 }),
         };
         const compiled = await compileStudioStoryToNlr({
@@ -2083,7 +2272,7 @@ describe("compileStudioStoryToNlr voice", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: animation.id } },
+                payload: { action: "camera", operation: "transform", transform: { mode: "animation", animationId: animation.id } },
             },
             target: narrationBlock("target", "target-text", "After the push"),
         };
@@ -2122,7 +2311,7 @@ describe("compileStudioStoryToNlr voice", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "camera", operation: "motion" },
+                payload: { action: "camera", operation: "transform", transform: { mode: "animation" } },
             },
         };
         const compiled = await compileStudioStoryToNlr({
@@ -2143,12 +2332,15 @@ describe("compileStudioStoryToNlr voice", () => {
             id, kind: "action", parentId: null, childrenIds: [], payload,
         });
         const document = baseDocument({
-            zoom: cameraBlock("zoom", { action: "camera", operation: "zoom", zoom: 2 }),
-            dark: cameraBlock("dark", { action: "camera", operation: "darken", darkness: 0.6 }),
+            zoom: cameraBlock("zoom", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 2 } } }),
+            dark: cameraBlock("dark", { action: "camera", operation: "transform", transform: { mode: "props", to: { filter: { brightness: 0.4 } } } }),
             target: narrationBlock("target", "target-text", "Here"),
         }, ["zoom", "dark", "target"]);
         const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" });
-        expect(snapshot.camera).toEqual({ props: { zoom: 2 }, effects: { darkness: 0.6 } });
+        expect(snapshot.camera).toEqual({
+            props: { zoom: 2, filter: "brightness(0.4)" },
+            effects: { darkness: expect.closeTo(0.6, 10), filter: undefined },
+        });
 
         const compiled = await compileStudioStoryToNlr({
             document,
@@ -2251,6 +2443,62 @@ describe("compileStudioStoryToNlr voice", () => {
         // Every row addresses the SAME overlay - `create` is what registers the name.
         expect(actionOf("hide")?.callee).toBe(actionOf("create")?.callee);
         expect(actionOf("create")?.callee?.config).toMatchObject({ blendMode: "screen", opacity: 1, zIndex: 3, fit: "cover" });
+    });
+
+    it("composites a weather seed's clip with screen, whatever the row says", async () => {
+        const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: vfxBlock("create", {
+                action: "vfx", operation: "create", objectName: "snow",
+                seed: { seed: "snow" },
+                // An author cannot reach this on a seed row through the inspector, but a document
+                // written by an older Studio - or by hand - can carry it, and honouring it would put
+                // an opaque black rectangle over the stage.
+                blendMode: "normal",
+            }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            resolveWeatherClip: async ref => `nlr://weather/${ref.seed}`,
+        });
+
+        const create = compiled.actionIdBindings.find(binding => binding.blockId === "create")?.action as any;
+        expect(compiled.diagnostics).toEqual([]);
+        expect(create?.callee?.config).toMatchObject({ src: "nlr://weather/snow", blendMode: "screen" });
+    });
+
+    it("leaves out a weather overlay the host cannot produce, and says so", async () => {
+        const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: vfxBlock("create", { action: "vfx", operation: "create", objectName: "snow", seed: { seed: "snow" } }),
+        };
+        // A `Vfx` with no src throws inside the engine, so "no clip" has to mean "no overlay".
+        const noHost = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(noHost.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
+        expect(noHost.diagnostics).toEqual([
+            { level: "warning", blockId: "create", message: 'Ambience effect "snow" needs its weather produced, which this compile cannot do.' },
+        ]);
+
+        const failedBake = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            resolveWeatherClip: async () => null,
+        });
+        expect(failedBake.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
+        expect(failedBake.diagnostics).toEqual([
+            { level: "warning", blockId: "create", message: 'Weather for ambience effect "snow" could not be produced.' },
+        ]);
     });
 
     it("compiles the video transport operations, converting seek to seconds", async () => {
@@ -3208,6 +3456,109 @@ describe("story audio", () => {
         );
     });
 
+    /**
+     * What the play head can say about a clip.
+     *
+     * A host that follows what the player is hearing (a music EXTRA that collects itself) has only
+     * these two routes: an action binding for the rows that start a clip, and the per-scene table
+     * for music that starts with the mount and never reaches the play head at all. Neither is
+     * visible in the compiled story, so nothing else would catch them going missing.
+     */
+    describe("audio asset attribution", () => {
+        function audioBindings(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>) {
+            return compiled.actionIdBindings
+                .filter(binding => binding.audioAssetId)
+                .map(binding => [binding.blockId, binding.audioAssetId] as const);
+        }
+
+        it("names the asset a /bgm and a /sound row start", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    ...bgmRow("music", "asset-theme"),
+                    se: {
+                        id: "se",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "impact", assetId: "asset-hit" },
+                    },
+                }, ["music", "se"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(audioBindings(compiled)).toEqual([["music", "asset-theme"], ["se", "asset-hit"]]);
+        });
+
+        it("names nothing for the rows that only address a clip already playing", async () => {
+            // Stopping, re-levelling or seeking is not the player hearing something, and reporting
+            // it as a start would collect a track the player only turned down.
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    ...bgmRow("music", "asset-theme"),
+                    quieter: {
+                        id: "quieter",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3 },
+                    },
+                    off: {
+                        id: "off",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "stopSound", objectName: "bgm" },
+                    },
+                }, ["music", "quieter", "off"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(audioBindings(compiled)).toEqual([["music", "asset-theme"]]);
+        });
+
+        it("reads the asset back off the handle when a replay row names no file", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    first: {
+                        id: "first",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "piano", assetId: "asset-piano" },
+                    },
+                    again: {
+                        id: "again",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "piano" },
+                    },
+                }, ["first", "again"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(audioBindings(compiled)).toEqual([["first", "asset-piano"], ["again", "asset-piano"]]);
+        });
+
+        it("publishes the music each scene configures, which no action carries", async () => {
+            const document = baseDocument({ say: narrationBlock("say", "text-say", "Quiet.") }, ["say"]);
+            document.scenes["scene-1"].bgm = { assetId: "asset-theme" };
+
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.sceneBackgroundMusicAssetIds).toEqual({ "scene-1": "asset-theme" });
+            // Scene config, not a row: the play head has nothing to report for it.
+            expect(audioBindings(compiled)).toEqual([]);
+        });
+    });
+
     it("still warns when a control row addresses music no scene or row set", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({
@@ -3770,5 +4121,361 @@ describe("diagnostics carry their origin row", () => {
         expect(compiled.diagnostics).toEqual([
             { level: "error", blockId: "bad", message: "Invalid command, skipped: /show nobody" },
         ]);
+    });
+});
+
+/**
+ * Which object a row acts on, once a reference can name the row that declared it.
+ *
+ * Two halves, and the second is why the first was worth building. A reference resolves through the
+ * DECLARING row, so renaming that row carries every reference with it - which is the whole promise.
+ * And a reference that resolves to nothing is now reported: `getImage` / `getText` / `getLayer` were
+ * get-or-create, so `/show poster` with no `poster` anywhere built a blank Image, showed nothing and
+ * said nothing. The name-only binding every older document carries still works untouched, and still
+ * reports nothing on its own - the fault is the lookup coming up empty, never the fallback.
+ */
+describe("stage object references", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    function actionBlock(id: string, payload: StoryActionPayload): StoryBlock {
+        return { id, kind: "action", parentId: null, childrenIds: [], payload };
+    }
+
+    /** The rows a compile produced statements for - a row that reported instead produces none. */
+    function compiledRows(compiled: { actionIdBindings: { blockId: string }[] }): string[] {
+        return [...new Set(compiled.actionIdBindings.map(binding => binding.blockId))];
+    }
+
+    it("hits every kind of stage object a create row declares", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                image: actionBlock("image", { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" }),
+                swap: actionBlock("swap", {
+                    action: "image",
+                    operation: "setSource",
+                    objectName: "hero",
+                    target: { kind: "image", name: "hero", label: "hero", sourceBlockId: "image" },
+                    assetId: "asset-hero-night",
+                }),
+                text: actionBlock("text", { action: "text", operation: "create", objectName: "title", text: "Chapter One" }),
+                font: actionBlock("font", {
+                    action: "text",
+                    operation: "setFontSize",
+                    objectName: "title",
+                    target: { kind: "text", name: "title", label: "title", sourceBlockId: "text" },
+                    fontSize: 24,
+                }),
+                sound: actionBlock("sound", { action: "audio", operation: "playSound", objectName: "piano", assetId: "asset-piano" }),
+                vol: actionBlock("vol", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "piano",
+                    target: { name: "piano", label: "piano", sourceBlockId: "sound" },
+                    volume: 0.4,
+                }),
+            }, ["image", "swap", "text", "font", "sound", "vol"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["swap", "font", "vol"]));
+    });
+
+    it("follows a rename of the row that declares the object", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                // The create row has been renamed since the rows below were written: their own
+                // `objectName` still spells the old name, and the reference is what carries them over.
+                image: actionBlock("image", { action: "image", operation: "create", objectName: "protagonist", assetId: "asset-hero" }),
+                swap: actionBlock("swap", {
+                    action: "image",
+                    operation: "setSource",
+                    objectName: "hero",
+                    target: { kind: "image", name: "hero", label: "hero", sourceBlockId: "image" },
+                    assetId: "asset-hero-night",
+                }),
+                sound: actionBlock("sound", { action: "audio", operation: "playSound", objectName: "grand-piano", assetId: "asset-piano" }),
+                vol: actionBlock("vol", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "piano",
+                    target: { name: "piano", label: "piano", sourceBlockId: "sound" },
+                    volume: 0.4,
+                }),
+            }, ["image", "swap", "sound", "vol"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["swap", "vol"]));
+        // The rows landed on the renamed object rather than on one conjured from their stale name.
+        expect([...(compiled.sceneElements?.["scene-1"].images.keys() ?? [])]).toEqual(["protagonist"]);
+        expect([...(compiled.sceneElements?.["scene-1"].sounds.keys() ?? [])]).toEqual(["grand-piano"]);
+    });
+
+    it("reports a reference that resolves to nothing, and builds nothing in its place", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", {
+                    action: "image",
+                    operation: "show",
+                    objectName: "poster",
+                    target: { kind: "image", name: "poster", label: "poster", sourceBlockId: "deleted" },
+                }),
+                vol: actionBlock("vol", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "piano",
+                    target: { name: "piano", label: "piano", sourceBlockId: "deleted" },
+                    volume: 0.4,
+                }),
+                fade: actionBlock("fade", {
+                    action: "layer",
+                    operation: "hide",
+                    objectName: "foreground",
+                    target: { kind: "custom", name: "foreground", sourceBlockId: "deleted" },
+                }),
+            }, ["show", "vol", "fade"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "show", message: "Image \"poster\" is not on stage; an earlier row has to create it." },
+            { level: "error", blockId: "vol", message: "Sound \"piano\" is not playing; an earlier /sound row has to start it." },
+            { level: "error", blockId: "fade", message: "Layer \"foreground\" is not on stage; an earlier row has to create it." },
+        ]);
+        // The rows compiled to nothing at all: no statements, and no blank objects left on stage.
+        expect(compiledRows(compiled)).toEqual([]);
+        expect(compiled.sceneElements?.["scene-1"].images.size).toBe(0);
+        expect(compiled.sceneElements?.["scene-1"].layers.size).toBe(0);
+        expect(compiled.elementIdBindings).not.toContain("nl:image:scene-1:poster");
+    });
+
+    it("keeps a document written before references working, and says nothing about it", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                image: actionBlock("image", { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" }),
+                show: actionBlock("show", { action: "image", operation: "show", objectName: "hero" }),
+                text: actionBlock("text", { action: "text", operation: "create", objectName: "title", text: "Chapter One" }),
+                retitle: actionBlock("retitle", { action: "text", operation: "setText", objectName: "title", text: "Chapter Two" }),
+                sound: actionBlock("sound", { action: "audio", operation: "playSound", objectName: "piano", assetId: "asset-piano" }),
+                vol: actionBlock("vol", { action: "audio", operation: "setVolume", objectName: "piano", volume: 0.4 }),
+            }, ["image", "show", "text", "retitle", "sound", "vol"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["show", "retitle", "vol"]));
+    });
+
+    it("routes the music channel through its built-in reference without reporting it", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                bgm: actionBlock("bgm", { action: "audio", operation: "setBgm", assetId: "asset-theme" }),
+                quieter: actionBlock("quieter", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "bgm",
+                    target: { builtin: "bgm", name: "bgm", label: "Background music" },
+                    volume: 0.3,
+                }),
+            }, ["bgm", "quieter"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["quieter"]));
+    });
+
+    /**
+     * The music channel outlives the scene that starts it, so a control row this compile cannot
+     * account for is not the same fact as a named sound that was never started - it stays the warning
+     * it has always been rather than joining the errors above.
+     */
+    it("leaves music with no /bgm row on its own long-standing warning", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                quieter: actionBlock("quieter", {
+                    action: "audio",
+                    operation: "setVolume",
+                    objectName: "bgm",
+                    target: { builtin: "bgm", name: "bgm", label: "Background music" },
+                    volume: 0.3,
+                }),
+            }, ["quieter"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "warning", blockId: "quieter", message: "No background music is set before this row; /bgm has to run first." },
+        ]);
+    });
+
+    /**
+     * The character, which was the last kind still built by get-or-create - and the most common
+     * subject in a script.
+     *
+     * `/hide Alice` with no `/show Alice` above it conjured a portrait out of nothing and hid it: an
+     * asset load, a statement on the timeline, and no scene. Both element classes a character can be
+     * are covered here, because they live in different tables and only one lookup reads both.
+     */
+    describe("belonging to a character", () => {
+        const ALICE: DevModeCharacterSummary = {
+            id: "char-alice",
+            name: "Alice",
+            appearance: {
+                kind: "preset",
+                poses: [{ id: "pose-default", name: "default", assetId: "asset-alice" }],
+                defaultPoseId: "pose-default",
+            },
+        };
+
+        const DOLL: DevModeCharacterSummary = {
+            id: "char-doll",
+            name: "Doll",
+            appearance: {
+                kind: "puppet",
+                assetId: "asset-model",
+                backend: "some-runtime",
+                entry: null,
+                size: { width: 900, height: 1200 },
+                options: {},
+            },
+        };
+
+        type CharacterOperation = Extract<StoryActionPayload, { action: "character" }>["operation"];
+
+        const characterRow = (id: string, operation: CharacterOperation, characterId: string): StoryBlock =>
+            actionBlock(id, { action: "character", operation, characterId });
+
+        async function compile(blocks: Record<string, StoryBlock>, character: DevModeCharacterSummary) {
+            return compileStudioStoryToNlr({
+                document: baseDocument(blocks, Object.keys(blocks)),
+                sceneId: "scene-1",
+                characters: [character],
+                resolveAssetUrl,
+            });
+        }
+
+        it("acts on the portrait the entrance put on stage", async () => {
+            const compiled = await compile({
+                enter: characterRow("enter", "enter", "char-alice"),
+                // A `move` with no transform asks for no change and compiles to nothing, so this one
+                // carries the pose that makes it a statement worth looking for below.
+                move: actionBlock("move", {
+                    action: "character",
+                    operation: "move",
+                    characterId: "char-alice",
+                    transform: { to: { opacity: 1 }, durationMs: 100 },
+                }),
+                face: characterRow("face", "expression", "char-alice"),
+                exit: characterRow("exit", "exit", "char-alice"),
+            }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([]);
+            expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["move", "face", "exit"]));
+            // One portrait, the entrance's - not a fresh one per row.
+            expect([...(compiled.sceneElements?.["scene-1"].images.keys() ?? [])]).toEqual(["char-alice"]);
+        });
+
+        it("reports a row on a character nothing brought on, and leaves no portrait behind", async () => {
+            const compiled = await compile({ exit: characterRow("exit", "exit", "char-alice") }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([
+                { level: "error", blockId: "exit", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+            ]);
+            // The row that used to build a blank portrait and hide it now builds nothing at all.
+            expect(compiledRows(compiled)).toEqual([]);
+            expect(compiled.sceneElements?.["scene-1"].images.size).toBe(0);
+            expect(compiled.elementIdBindings).not.toContain("nl:image:scene-1:char-alice");
+        });
+
+        it("reports an expression on a character nothing brought on", async () => {
+            const compiled = await compile({ face: characterRow("face", "expression", "char-alice") }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([
+                { level: "error", blockId: "face", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+            ]);
+            expect(compiled.sceneElements?.["scene-1"].images.size).toBe(0);
+        });
+
+        /**
+         * The trap the split had to avoid: a puppet character is filed in `puppets`, not in `images`,
+         * so a lookup that read only the image table would report every row on an entered puppet.
+         */
+        it("finds an entered puppet character in the table it was filed under", async () => {
+            const compiled = await compile({
+                enter: characterRow("enter", "enter", "char-doll"),
+                face: characterRow("face", "expression", "char-doll"),
+                motion: characterRow("motion", "setMotion", "char-doll"),
+                exit: characterRow("exit", "exit", "char-doll"),
+            }, DOLL);
+
+            expect(compiled.diagnostics).toEqual([]);
+            expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["face", "motion", "exit"]));
+            expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(1);
+        });
+
+        /**
+         * Reaching INSIDE a puppet nothing entered is the same fault, one layer further in: it used to
+         * build the box, load the model and set a motion on an element that is never shown.
+         */
+        it("reports a state channel on a puppet character nothing brought on", async () => {
+            const compiled = await compile({ motion: characterRow("motion", "setMotion", "char-doll") }, DOLL);
+
+            expect(compiled.diagnostics).toEqual([
+                { level: "error", blockId: "motion", message: "Character \"Doll\" is not on stage; an earlier row has to bring it on stage." },
+            ]);
+            expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(0);
+        });
+
+        /**
+         * The one place a puppet is on stage with no `enter` row left to compile.
+         *
+         * A row-precise launch replays a stage snapshot, and the snapshot has no notion of a puppet -
+         * it files every character as an image record, so the replay pre-poses this character as a
+         * blank `Image` and the box itself is never restored. Reporting the rows that follow would
+         * make "play from this row" the one place a puppet character cannot be driven at all.
+         */
+        it("keeps driving a puppet character a row-precise launch pre-posed", async () => {
+            const blocks = {
+                enter: characterRow("enter", "enter", "char-doll"),
+                motion: characterRow("motion", "setMotion", "char-doll"),
+            };
+            const document = baseDocument(blocks, Object.keys(blocks));
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                characters: [DOLL],
+                resolveAssetUrl,
+                launch: {
+                    targetBlockId: "motion",
+                    snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "motion" }),
+                },
+            });
+
+            expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+            expect(compiledRows(compiled)).toContain("motion");
+            expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(1);
+        });
+
+        /**
+         * `setName` addresses the `Character` record, not the portrait - it is how "？？？" becomes a
+         * name mid-scene, and it is meant to work before anyone walks on.
+         */
+        it("says nothing about a speaker rename before the character is on stage", async () => {
+            const compiled = await compile({
+                rename: actionBlock("rename", { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" }),
+            }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([]);
+            expect(compiledRows(compiled)).toEqual(["rename"]);
+        });
     });
 });

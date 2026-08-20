@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ChevronDown, FolderOpen, History, Loader2, Plus, X } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
@@ -10,6 +10,7 @@ import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { useWorkspace } from "../../context";
 import { useOpenRecentProject, useRecentProjects } from "../../hooks/useRecentProjects";
+import { useTitleBarMenu } from "../ui/titleBarMenus";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import { focusedRevision, isVersionSurfaceVisible, shortRevision, versionFace } from "./versionRailModel";
 import { openVersionRail } from "./versionRailController";
@@ -26,8 +27,10 @@ import { openVersionRail } from "./versionRailController";
  *
  * One project, one window still holds: a project that is already open is focused rather than opened
  * twice (see the main-process `App.openProject`), so the list can never produce two windows over one
- * project's files. That is also why the answer here is a request rather than a promise - a project
- * that is already on screen is focused and this window is left alone, whichever button was pressed.
+ * project's files. **That is also why a project that already has a window is not asked about at
+ * all** - both answers would reach the same window, and the one that reads as a switch would close
+ * this project for a window that was already there. So the switcher asks main whether the project is
+ * open (`workspace.isProjectOpen`) and puts the question only when something is going to be opened.
  *
  * A new window steps down and to the right of this one rather than landing on top of it, because a
  * second window that covers the first is indistinguishable from having replaced it.
@@ -43,10 +46,13 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const recentProjects = useRecentProjects();
     const openRecentProject = useOpenRecentProject();
 
-    const [open, setOpen] = useState(false);
+    // Held in the title bar's bar of menus, so opening this one puts away whatever was open, and
+    // Escape closes it. It is NOT part of the chain the pointer and the arrow keys walk
+    // (`hotTrack`): this is the window's identity that happens to carry a menu, and crossing it on
+    // the way to the File menu is not a request to see the project list. See `../ui/titleBarMenus`.
+    const { ref: containerRef, open, toggle, close } = useTitleBarMenu("narraleaf-studio:project-switcher");
     // The project the author picked, held while the dialog asks which window it should open in.
     const [pending, setPending] = useState<PendingOpen | null>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
 
     const currentPath = context?.project.getConfig().projectPath ?? "";
     const currentName = context
@@ -62,60 +68,15 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const currentIdentity = normalizeProjectPath(currentPath);
     const others = recentProjects.filter(project => normalizeProjectPath(project.path) !== currentIdentity);
 
-    useEffect(() => {
-        if (!open) return;
-
-        const onPointerDown = (event: PointerEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-                setOpen(false);
-            }
-        };
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                setOpen(false);
-            }
-        };
-        window.addEventListener("pointerdown", onPointerDown, true);
-        window.addEventListener("keydown", onKeyDown);
-        return () => {
-            window.removeEventListener("pointerdown", onPointerDown, true);
-            window.removeEventListener("keydown", onKeyDown);
-        };
-    }, [open]);
-
-    const close = useCallback(() => setOpen(false), []);
-
-    const handleOpen = useCallback((project: RecentlyOpenedProject) => {
-        setOpen(false);
-        setPending({ source: "recent", projectPath: project.path, name: project.name });
-    }, []);
-
-    const handleOpenFolder = useCallback(() => {
-        setOpen(false);
-        void (async () => {
-            const result = await getInterface().selectFolder();
-            if (result.success && result.data?.path) {
-                // Same gesture as the rows above it - a project the author already has, reached by
-                // path instead of by history - so it asks the same question. The folder's own name
-                // is all there is to call it by: nothing has read the project's config yet.
-                setPending({
-                    source: "folder",
-                    projectPath: result.data.path,
-                    name: folderName(result.data.path),
-                });
-            }
-        })();
-    }, []);
-
     /**
-     * Carry out the choice the dialog collected.
+     * Carry out the choice the dialog collected, or the one there was no choice to make.
      *
      * The two sources reach the same main-process entry point (`App.openProject`) by different
      * calls, so the flag is passed on each rather than the paths being merged: `openRecent` is the
      * history's own call and records the visit, `launch` is the one that takes a path nothing has
      * seen before.
      */
-    const openPending = useCallback((target: PendingOpen, replaceCurrentWindow: boolean) => {
+    const openTarget = useCallback((target: PendingOpen, replaceCurrentWindow: boolean) => {
         setPending(null);
         if (target.source === "recent") {
             void openRecentProject(target.projectPath, { replaceCurrentWindow });
@@ -124,15 +85,59 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
         void getInterface().workspace.launch({ projectPath: target.projectPath }, replaceCurrentWindow);
     }, [openRecentProject]);
 
+    /**
+     * Ask where the project should open, unless it is open already - then just go there.
+     *
+     * A project with a window of its own is focused by either answer, so the dialog would be a
+     * question with one outcome, and "open in this window" would additionally close a project the
+     * author never said they were finished with. Main is the one asked, because it owns both the
+     * window list and what counts as the same path.
+     *
+     * A failed query falls through to the dialog: not knowing is a reason to ask, not a reason to
+     * decide.
+     */
+    const requestOpen = useCallback(async (target: PendingOpen) => {
+        const answer = await getInterface().workspace.isProjectOpen(target.projectPath);
+        if (answer.success && answer.data.open) {
+            openTarget(target, false);
+            return;
+        }
+        setPending(target);
+    }, [openTarget]);
+
+    const handleOpen = useCallback((project: RecentlyOpenedProject) => {
+        close();
+        void requestOpen({ source: "recent", projectPath: project.path, name: project.name });
+    }, [close, requestOpen]);
+
+    const handleOpenFolder = useCallback(() => {
+        close();
+        void (async () => {
+            const result = await getInterface().selectFolder();
+            if (result.success && result.data?.path) {
+                // Same gesture as the rows above it - a project the author already has, reached by
+                // path instead of by history - so it takes the same route, the already-open check
+                // included: a folder picked by hand can be a project that is on screen behind this
+                // window, and this one can be the window it is open in. The folder's own name is all
+                // there is to call it by: nothing has read the project's config yet.
+                void requestOpen({
+                    source: "folder",
+                    projectPath: result.data.path,
+                    name: folderName(result.data.path),
+                });
+            }
+        })();
+    }, [close, requestOpen]);
+
     const handleNewProject = useCallback(() => {
-        setOpen(false);
+        close();
         void (async () => {
             const result = await getInterface().app.launchProjectWizard({});
             if (result.success && result.data?.created) {
                 await getInterface().workspace.launch({ projectPath: result.data.projectPath });
             }
         })();
-    }, []);
+    }, [close]);
 
     return (
         <div className="relative" ref={containerRef}>
@@ -142,7 +147,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                 the window from saying the same thing in two places. */}
             <button
                 type="button"
-                onClick={() => setOpen(value => !value)}
+                onClick={toggle}
                 className={cn(
                     "h-8 max-w-56 px-2 rounded-md flex items-center gap-1.5 text-sm cursor-default transition-colors",
                     open ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
@@ -196,13 +201,13 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                 target={pending}
                 currentName={displayName}
                 onCancel={() => setPending(null)}
-                onChoose={openPending}
+                onChoose={openTarget}
             />
         </div>
     );
 }
 
-/** A project the author has picked, waiting on the answer to "which window". */
+/** A project the author has picked, on its way to being opened or to the "which window" dialog. */
 type PendingOpen = {
     projectPath: string;
     name: string;

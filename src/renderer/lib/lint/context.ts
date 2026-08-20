@@ -7,6 +7,7 @@ import type { VoiceDocument } from "@shared/types/voice";
 import type { GameBuildPlatform } from "@shared/types/gameBuild";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { MergedPersistentNameCollision } from "@shared/variables/mergedPersistentView";
+import type { AssetSet } from "@shared/types/assetSet";
 import type { AssetType } from "../workspace/services/assets/assetTypes";
 import type { AssetReference, ReferenceIndexResult } from "../workspace/services/references/referenceModel";
 import type { LintingConfiguration, NetworkConfiguration } from "../workspace/project/configuration";
@@ -40,6 +41,14 @@ export type LintAssetEntry = {
     ext?: string;
     hash?: string;
     meta: unknown;
+    /**
+     * The author's tags, verbatim.
+     *
+     * Here because an asset set names its members by tag rather than by id, so "does this set
+     * resolve" is a question about this field and nothing else. Every other rule reads the
+     * library for what a file *is*; this is the one place it is read for what a file *means*.
+     */
+    tags: readonly string[];
 };
 
 export type LintCharacterEntry = { id: string; name: string; assetIds: readonly string[] };
@@ -49,6 +58,18 @@ export type PersistentNameCollision = MergedPersistentNameCollision;
 
 export type LintImageProbe =
     | { ok: true; width: number; height: number }
+    | { ok: false; reason: string };
+
+/**
+ * Whether a video asset's bytes carry an alpha channel.
+ *
+ * Two arms rather than a bare boolean because **not knowing is never an answer here**. The probe
+ * needs ffprobe, which some hosts do not have, and a rule that read a failed probe as "no alpha"
+ * would go quiet on exactly the projects it exists to protect - silently, and only on the machines
+ * where nobody could tell.
+ */
+export type LintAlphaProbe =
+    | { ok: true; carriesAlpha: boolean }
     | { ok: false; reason: string };
 
 export type LintIo = {
@@ -65,6 +86,15 @@ export type LintIo = {
     /** null when the content file cannot be read at all. */
     readBytes(assetId: string): Promise<Uint8Array | null>;
     probeImage(assetId: string): Promise<LintImageProbe>;
+    /**
+     * Ask what is inside a video asset, and answer the one question a rule here has about it.
+     *
+     * Narrower than the probe it is built on, deliberately: the underlying report describes codecs,
+     * containers and durations, and every one of those already has an owner elsewhere (the media
+     * support gate, the import triage). Handing a rule the whole report would invite it to re-decide
+     * playability, which is the one thing this layer must not have two answers for.
+     */
+    probeVideoAlpha(assetId: string): Promise<LintAlphaProbe>;
 };
 
 export type LintLocalizationContext = {
@@ -76,6 +106,14 @@ export type LintLocalizationContext = {
 export type LintVoiceContext = {
     voicedLocales: readonly string[];
     documents: ReadonlyMap<string, VoiceDocument>;
+    /**
+     * Project setting: whether choice options are lines an actor records.
+     *
+     * Only `voice/missing` reads it - the rule that says a line *should* have a take. `voice/stale`
+     * and `voice/orphan` act on takes that exist, and a recording already made goes out of date or
+     * loses its line whether or not the project counts choices as script.
+     */
+    voiceChoices: boolean;
 };
 
 export type LintContext = {
@@ -111,6 +149,14 @@ export type LintContext = {
     blueprintDocument: BlueprintDocument | null;
     uiDocument: UIDocument | null;
     assets: readonly LintAssetEntry[];
+    /**
+     * The sets the project declares.
+     *
+     * Empty in a project that has declared none, which is an ordinary state and not an unread
+     * one - unlike {@link assetIndex}, nothing here can partially fail: the document either
+     * loaded or the service is holding an empty list and has already reported why.
+     */
+    assetSets: readonly AssetSet[];
     referencedAssetIds: ReadonlySet<string>;
     assetReferences: ReadonlyMap<string, readonly AssetReference[]>;
     /**

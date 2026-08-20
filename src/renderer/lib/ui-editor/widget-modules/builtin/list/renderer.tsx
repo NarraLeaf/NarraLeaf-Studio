@@ -14,6 +14,10 @@ import {
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
+import {
+    isPhysicallyHorizontalAxis,
+    verticalTypographyCss,
+} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { getListProps, resolveListItemContentAlignmentStyle, resolveListItemsBindingArray } from "./helpers";
 
@@ -394,12 +398,17 @@ export function ListRenderer(props: WidgetRendererProps) {
         ...effectStyle,
     };
 
+    // Which way the items actually run on screen. `repeatDirection` names the flex axis, and flex
+    // axes turn with the writing mode, so everything physical below reads this instead.
+    const repeatIsHorizontal = isPhysicallyHorizontalAxis(p.repeatDirection, p.writingMode);
+
     const viewportStyle: CSSProperties = {
         width: "100%",
         height: "100%",
         boxSizing: "border-box",
-        overflowX: p.repeatDirection === "horizontal" ? "auto" : "hidden",
-        overflowY: p.repeatDirection === "vertical" ? "auto" : "hidden",
+        ...verticalTypographyCss({ writingMode: p.writingMode, textOrientation: "mixed" }),
+        overflowX: repeatIsHorizontal ? "auto" : "hidden",
+        overflowY: repeatIsHorizontal ? "hidden" : "auto",
         scrollbarWidth: "none",
         paddingTop: p.contentPaddingTop + reserveTop,
         paddingRight: p.contentPaddingRight + reserveRight,
@@ -412,8 +421,9 @@ export function ListRenderer(props: WidgetRendererProps) {
         flexDirection: p.repeatDirection === "vertical" ? "column" : "row",
         gap: p.itemGap,
         alignItems: "stretch",
-        minWidth: p.repeatDirection === "vertical" ? "100%" : 0,
-        minHeight: p.repeatDirection === "horizontal" ? "100%" : 0,
+        // The cross axis is the one the items do not run along, so it is the one that fills.
+        minWidth: repeatIsHorizontal ? 0 : "100%",
+        minHeight: repeatIsHorizontal ? "100%" : 0,
     };
 
     const innerDir = p.templateDirection === "horizontal" ? "row" : "column";
@@ -665,7 +675,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                 return;
             }
 
-            const useHorizontal = p.repeatDirection === "horizontal";
+            const useHorizontal = isPhysicallyHorizontalAxis(p.repeatDirection, p.writingMode);
             const scrollable = useHorizontal
                 ? viewport.scrollWidth > viewport.clientWidth + 1
                 : viewport.scrollHeight > viewport.clientHeight + 1;
@@ -719,6 +729,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         [
             p.dragContentScroll,
             p.repeatDirection,
+            p.writingMode,
             scrollbarThumbElement?.id,
             scrollbarTrackElement?.id,
         ],

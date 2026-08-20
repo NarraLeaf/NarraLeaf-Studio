@@ -2,6 +2,10 @@ import {
     DEV_MODE_SAVE_TYPE_NORMAL,
     type DevModeSaveRecord,
 } from "@shared/types/devModeSave";
+import {
+    readSaveCompatibilityStamp,
+    type SaveCompatibilityStamp,
+} from "@shared/types/saveCompatibility";
 
 /**
  * Persisted shape of one game save. Shared by every runtime shell: the desktop
@@ -11,6 +15,21 @@ import {
 export type RuntimeSaveFileRecord = DevModeSaveRecord & {
     version: 1;
 };
+
+/**
+ * Read an untrusted playtime into a number of seconds, or nothing.
+ *
+ * Nothing is not zero: a record written before playtime was tracked has no reading at all, and a
+ * screen that showed those as "0:00" would be asserting the player never played rather than that
+ * nobody was counting. Negative and non-finite values are rejected for the same reason - a stored
+ * NaN says the writer was broken, not that the run was instantaneous.
+ */
+export function readSavePlaytimeSeconds(value: unknown): number | undefined {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        return undefined;
+    }
+    return value;
+}
 
 export function normalizeRuntimeSaveId(id: string): string {
     const safe = String(id ?? "").trim();
@@ -35,6 +54,8 @@ export function parseRuntimeSaveRecord(value: unknown): DevModeSaveRecord | null
     if (record.metadata.type !== DEV_MODE_SAVE_TYPE_NORMAL) {
         return null;
     }
+    const compatibility = readSaveCompatibilityStamp(record.metadata.compatibility);
+    const playtimeSeconds = readSavePlaytimeSeconds(record.metadata.playtimeSeconds);
     return {
         metadata: {
             id: normalizeRuntimeSaveId(record.metadata.id),
@@ -42,6 +63,11 @@ export function parseRuntimeSaveRecord(value: unknown): DevModeSaveRecord | null
             createdAt: typeof record.metadata.createdAt === "string" ? record.metadata.createdAt : "",
             updatedAt: typeof record.metadata.updatedAt === "string" ? record.metadata.updatedAt : "",
             ...(typeof record.metadata.capture === "string" && record.metadata.capture ? { capture: record.metadata.capture } : {}),
+            // Read rather than trusted: the record is untrusted input, and a half-written stamp has
+            // to arrive as no stamp so it classifies as "cannot be compared" rather than as a
+            // comparison against invented values.
+            ...(compatibility ? { compatibility } : {}),
+            ...(playtimeSeconds !== undefined ? { playtimeSeconds } : {}),
             user: normalizeRuntimeJsonValue(record.metadata.user),
         },
         savedGame: record.savedGame,
@@ -54,6 +80,16 @@ export function buildRuntimeSaveRecord(input: {
     savedGame: unknown;
     capture?: string;
     metadata?: unknown;
+    /**
+     * What produced this save. Absent leaves the record unstamped, which is what a shell with no
+     * bundle to read one from writes and what every record written before the stamp existed holds.
+     */
+    compatibility?: SaveCompatibilityStamp;
+    /**
+     * Seconds of play behind this save. Absent leaves the record without a reading, which is what
+     * every record written before playtime was tracked holds.
+     */
+    playtimeSeconds?: number;
     previous: DevModeSaveRecord | null;
     now: string;
 }): RuntimeSaveFileRecord {
@@ -65,6 +101,16 @@ export function buildRuntimeSaveRecord(input: {
             createdAt: input.previous?.metadata.createdAt ?? input.now,
             updatedAt: input.now,
             ...(typeof input.capture === "string" && input.capture ? { capture: input.capture } : {}),
+            // Taken fresh on every write, never carried over from `previous`: overwriting a slot
+            // replaces the playthrough in it, so the stamp has to describe the build that wrote
+            // what is there now.
+            ...(input.compatibility ? { compatibility: input.compatibility } : {}),
+            // Fresh on every write for the same reason as the stamp above: overwriting a slot
+            // replaces the playthrough in it, so carrying the old reading forward would report the
+            // time behind a playthrough that is no longer there.
+            ...(readSavePlaytimeSeconds(input.playtimeSeconds) !== undefined
+                ? { playtimeSeconds: input.playtimeSeconds }
+                : {}),
             user: normalizeRuntimeJsonValue(input.metadata),
         },
         savedGame: normalizeRuntimeJsonValue(input.savedGame),

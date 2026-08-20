@@ -20,7 +20,7 @@ export const documentDiff = {
         unread: "已改动，未查看内容",
     },
     /**
-     * 素材：不读内容，只读文件头。
+     * 资产：不读内容，只读文件头。
      *
      * 由 `vcs/diff/contentDiff.ts` 发出。每一行都是有条件的：把时长写在文件末尾的容器报不出时长，
      * 名称表落在前缀之外的字体报不出字族。
@@ -50,8 +50,9 @@ export const documentDiff = {
         root: "文档本身",
     },
     count: {
-        appTags: "变体",
-        assets: "素材",
+        appTags: "变体",
+        assetSets: "资产集",
+        assets: "资产",
         audioTracks: "音轨",
         brandColors: "配色",
         characterGroups: "角色分组",
@@ -207,9 +208,9 @@ export const documentDiff = {
         edgeRemoved: "删除连线",
     },
     assets: {
-        added: "新增素材",
-        removed: "删除素材",
-        changed: "素材改动",
+        added: "新增资产",
+        removed: "删除资产",
+        changed: "资产改动",
         renamed: "改名",
         content: "文件内容已替换",
         field: "{field} 改动",
@@ -296,7 +297,7 @@ export const documentDiff = {
         story: "故事",
         characters: "角色",
         interface: "界面",
-        assets: "素材",
+        assets: "资产",
         localization: "本地化",
         audio: "音频",
         settings: "项目",

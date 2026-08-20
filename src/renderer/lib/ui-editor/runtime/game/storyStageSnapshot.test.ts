@@ -67,7 +67,7 @@ describe("computeStoryStageSnapshot", () => {
                 action: "character",
                 operation: "enter",
                 characterId: "char-alice",
-                transform: { preset: "center", durationMs: 300, props: { zoom: 0.5, xoffset: 24 } },
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5, xoffset: 24 }, zoom: 0.5 }, durationMs: 300 },
             }),
             "target-1": say("target-1"),
             exit: block("exit", "action", { action: "character", operation: "exit", characterId: "char-alice" }),
@@ -143,35 +143,40 @@ describe("computeStoryStageSnapshot", () => {
         // shows the author a shot the real playthrough never had. Clamping mirrors the compiler,
         // because the pose is pre-posed straight onto the camera, bypassing compileCameraAction.
         const document = baseDocument({
-            zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 0 }),
-            pan: block("pan", "action", { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 } }),
-            rotate: block("rotate", "action", { action: "camera", operation: "rotate", rotation: 15 }),
-            dark: block("dark", "action", { action: "camera", operation: "darken", darkness: 2 }),
+            zoom: block("zoom", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 0 } } }),
+            pan: block("pan", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 } } } }),
+            rotate: block("rotate", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { rotation: 15 } } }),
+            dark: block("dark", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { filter: { brightness: -1 } } } }),
             target: say("target"),
         }, ["zoom", "pan", "rotate", "dark", "target"]);
         const result = snapshot(document, "target");
         expect(result.diagnostics).toEqual([]);
-        // zoom 0 → the 0.05 floor; darkness 2 → the 0-1 ceiling.
+        // zoom 0 → the 0.05 floor; a brightness below 0 → the darkness channel's 0-1 ceiling.
+        //
+        // The grade lands in BOTH halves, exactly as a displayable's does: `props` is what the
+        // pre-pose writes and `effects` is the residual pass that re-applies it through the engine's
+        // own `darken`, which runs second and wins. Two spellings of one value, not two values.
         expect(result.camera).toEqual({
             props: {
                 zoom: 0.05,
                 position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }),
                 rotation: 15,
+                filter: "brightness(0)",
             },
-            effects: { darkness: 1 },
+            effects: { darkness: 1, filter: undefined },
         });
     });
 
     it("lets the latest camera op on a channel win and drops the pose on reset", () => {
         const later = baseDocument({
-            first: block("first", "action", { action: "camera", operation: "zoom", zoom: 2 }),
-            second: block("second", "action", { action: "camera", operation: "zoom", zoom: 3 }),
+            first: block("first", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 2 } } }),
+            second: block("second", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 3 } } }),
             target: say("target"),
         }, ["first", "second", "target"]);
         expect(snapshot(later, "target").camera?.props.zoom).toBe(3);
 
         const reset = baseDocument({
-            zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 2 }),
+            zoom: block("zoom", "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 2 } } }),
             reset: block("reset", "action", { action: "camera", operation: "reset" }),
             target: say("target"),
         }, ["zoom", "reset", "target"]);
@@ -185,12 +190,12 @@ describe("computeStoryStageSnapshot", () => {
 
     it("merges successive transforms with position-aware semantics", () => {
         const document = baseDocument({
-            show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { preset: "left", durationMs: 200 } }),
+            show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 200 } }),
             move: block("move", "action", {
                 action: "displayable",
                 operation: "transform",
                 target: { name: "hero", kind: "image" },
-                transform: { preset: "custom", durationMs: 200, props: { yalign: 0.8 } },
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.8 } }, durationMs: 200 },
             }),
             target: say("target"),
         }, ["show", "move", "target"]);
@@ -324,9 +329,9 @@ describe("computeStoryStageSnapshot", () => {
     it("tracks residual effects and their clears", () => {
         const document = baseDocument({
             show: block("show", "action", { action: "image", operation: "show", objectName: "hero" }),
-            darken: block("darken", "action", { action: "displayable", operation: "darken", target: { name: "hero", kind: "image" }, darkness: 0.6 }),
-            clip: block("clip", "action", { action: "displayable", operation: "clip", target: { name: "hero", kind: "image" }, clipPath: "inset(10% 0)" }),
-            reveal: block("reveal", "action", { action: "displayable", operation: "circleReveal", target: { name: "hero", kind: "image" } }),
+            darken: block("darken", "action", { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" }, transform: { mode: "props", to: { filter: { brightness: 0.4 } } } }),
+            clip: block("clip", "action", { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" }, transform: { mode: "props", to: { clipPath: "inset(10% 0)" } } }),
+            reveal: block("reveal", "action", { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" }, transform: { mode: "props", clipReveal: { kind: "circleReveal" } } }),
             target: say("target"),
         }, ["show", "darken", "clip", "reveal", "target"]);
         const result = snapshot(document, "target");
@@ -342,7 +347,7 @@ describe("computeStoryStageSnapshot", () => {
                 action: "displayable",
                 operation: "transform",
                 target: { builtin: "background", kind: "image", name: "Scene background" },
-                transform: { preset: "zoom", durationMs: 300, props: { zoom: 1.25 } },
+                transform: { mode: "props", to: { zoom: 1.25 }, durationMs: 300 },
             }),
             target: say("target"),
         }, ["zoom", "target"]);
@@ -359,7 +364,7 @@ describe("computeStoryStageSnapshot", () => {
                 operation: "transform",
                 objectName: "fg",
                 target: { kind: "custom", sourceBlockId: "layer" },
-                transform: { preset: "custom", durationMs: 100, props: { yoffset: -20 } },
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5, yoffset: -20 } }, durationMs: 100 },
             }),
             nvl: block("nvl", "action", { action: "nvl" }, null, ["target"]),
             target: say("target", "nvl"),
@@ -396,13 +401,13 @@ describe("computeStoryStageSnapshot", () => {
                 operation: "enter",
                 characterId: "char-alice",
                 assetId: "asset-alice",
-                transform: { preset: "center" },
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5 } } },
             }),
             darken: block("darken", "action", {
                 action: "displayable",
-                operation: "darken",
+                operation: "transform",
                 target: { name: "Character", kind: "character", sourceBlockId: "enter" },
-                darkness: 0.6,
+                transform: { mode: "props", to: { filter: { brightness: 0.4 } } },
             }),
             target: say("target"),
         }, ["enter", "darken", "target"]);
@@ -419,12 +424,12 @@ describe("computeStoryStageSnapshot", () => {
         // Same divergence, non-character: an empty `objectName` keys on the compiler's "object"
         // fallback, not the display word "Image".
         const document = baseDocument({
-            create: block("create", "action", { action: "image", operation: "create", objectName: "", assetId: "asset-x", transform: { preset: "center" } }),
+            create: block("create", "action", { action: "image", operation: "create", objectName: "", assetId: "asset-x", transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5 } } } }),
             filter: block("filter", "action", {
                 action: "displayable",
-                operation: "filter",
+                operation: "transform",
                 target: { name: "Image", kind: "image", sourceBlockId: "create" },
-                filter: "blur(4px)",
+                transform: { mode: "props", to: { filter: { blur: 4 } } },
             }),
             target: say("target"),
         }, ["create", "filter", "target"]);
@@ -433,5 +438,49 @@ describe("computeStoryStageSnapshot", () => {
 
         expect(result.diagnostics).toEqual([]);
         expect(result.displayables[0].effects.filter).toEqual({ filter: "blur(4px)" });
+    });
+
+    it("moves a raised element to the end of the creation order, and leaves everything else alone", () => {
+        // `displayables` IS the stacking order: both the editor's scene preview and "play from this
+        // row" build elements straight down this array, so a `/front` that did not move the entry
+        // would produce a row that plays one way and previews another.
+        const document = baseDocument({
+            a: block("a", "action", { action: "image", operation: "show", objectName: "a" }),
+            b: block("b", "action", { action: "image", operation: "show", objectName: "b" }),
+            c: block("c", "action", { action: "image", operation: "show", objectName: "c" }),
+            raise: block("raise", "action", {
+                action: "displayable",
+                operation: "bringToFront",
+                target: { name: "b", kind: "image" },
+            }),
+            target: say("target"),
+        }, ["a", "b", "c", "raise", "target"]);
+
+        const result = snapshot(document, "target");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(result.displayables.map(entry => entry.objectName)).toEqual(["a", "c", "b"]);
+        // A raise states no pose and no visibility, so nothing else about the element may move.
+        const raised = result.displayables[2];
+        expect(raised.visible).toBe(true);
+        expect(raised.props.opacity).toBe(1);
+    });
+
+    it("raising the element that is already on top changes nothing", () => {
+        const document = baseDocument({
+            a: block("a", "action", { action: "image", operation: "show", objectName: "a" }),
+            b: block("b", "action", { action: "image", operation: "show", objectName: "b" }),
+            raise: block("raise", "action", {
+                action: "displayable",
+                operation: "bringToFront",
+                target: { name: "b", kind: "image" },
+            }),
+            target: say("target"),
+        }, ["a", "b", "raise", "target"]);
+
+        const result = snapshot(document, "target");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(result.displayables.map(entry => entry.objectName)).toEqual(["a", "b"]);
     });
 });

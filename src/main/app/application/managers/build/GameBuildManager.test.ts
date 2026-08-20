@@ -11,6 +11,7 @@ import {
     hasSigningIdentityForPlatform,
     isDesktopTarget,
     isMobileTarget,
+    packShipsNodeSidecar,
     resolveElectronDistDirForApp,
     signingSecretsResolved,
     toWorkerAndroidSigning,
@@ -121,6 +122,7 @@ describe("androidLacksPlayPackage", () => {
 describe("GameBuildManager.start fail-fast guards", () => {
     const makeManager = () => new GameBuildManager({
         logger: { error: () => undefined },
+        hasExperimentalCondition: () => false,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;
 
@@ -143,6 +145,7 @@ describe("GameBuildManager.start fail-fast guards", () => {
 describe("GameBuildManager.start while the workspace is frozen", () => {
     const makeManager = () => new GameBuildManager({
         logger: { error: () => undefined },
+        hasExperimentalCondition: () => false,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;
     const projectPath = path.join("/nonexistent", "frozen-project");
@@ -221,10 +224,70 @@ describe("gameFusesForPlatform", () => {
         expect(gameFusesForPlatform("linux", true).enableEmbeddedAsarIntegrityValidation).toBe(false);
     });
 
+    /*
+     * The experimental debuggable-build condition. Asar integrity hard-quits the app on any
+     * post-package mutation of the archive, which is exactly what an artifact made to be inspected
+     * cannot carry - and it is the one fuse the condition is allowed to move.
+     */
+    it("drops asar integrity for a debuggable build, signed or not", () => {
+        expect(gameFusesForPlatform("windows", true, false, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+        expect(gameFusesForPlatform("macos", true, false, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+    });
+
+    it("keeps every other fuse where it was for a debuggable build", () => {
+        for (const platform of ["windows", "macos", "linux"] as const) {
+            const debuggable = gameFusesForPlatform(platform, true, false, true);
+            expect(debuggable.runAsNode).toBe(false);
+            expect(debuggable.enableNodeOptionsEnvironmentVariable).toBe(false);
+            expect(debuggable.enableNodeCliInspectArguments).toBe(false);
+            expect(debuggable.onlyLoadAppFromAsar).toBe(true);
+            expect(debuggable.grantFileProtocolExtraPrivileges).toBe(false);
+        }
+    });
+
     it("only re-signs on macOS", () => {
         expect(gameFusesForPlatform("macos", false).resetAdHocDarwinSignature).toBe(true);
         expect(gameFusesForPlatform("windows", false).resetAdHocDarwinSignature).toBe(false);
         expect(gameFusesForPlatform("linux", false).resetAdHocDarwinSignature).toBe(false);
+    });
+
+    /*
+     * A `kind: "node"` sidecar starts by running the game's own binary as a Node interpreter, which
+     * the runAsNode fuse can refuse. Without this the feature is dead in every packaged build while
+     * working perfectly in preview, so the failure never appears until after shipping.
+     */
+    it("allows runAsNode only for a build that ships a node sidecar", () => {
+        for (const platform of ["windows", "macos", "linux"] as const) {
+            expect(gameFusesForPlatform(platform, false, true).runAsNode).toBe(true);
+            expect(gameFusesForPlatform(platform, false, false).runAsNode).toBe(false);
+            // Relaxing that one fuse must not quietly relax its neighbours.
+            const relaxed = gameFusesForPlatform(platform, false, true);
+            expect(relaxed.enableNodeOptionsEnvironmentVariable).toBe(false);
+            expect(relaxed.enableNodeCliInspectArguments).toBe(false);
+            expect(relaxed.onlyLoadAppFromAsar).toBe(true);
+        }
+    });
+});
+
+describe("packShipsNodeSidecar", () => {
+    const pack = (plugins: unknown[]) => ({ plugins } as unknown as Parameters<typeof packShipsNodeSidecar>[0]);
+
+    it("answers no for the shapes that mean this build has none", () => {
+        expect(packShipsNodeSidecar(null)).toBe(false);
+        expect(packShipsNodeSidecar(pack([]))).toBe(false);
+        // A plugin whose sidecars did not survive the platform filter, and one that declares none.
+        expect(packShipsNodeSidecar(pack([{ id: "a" }, { id: "b", sidecars: [] }]))).toBe(false);
+    });
+
+    it("answers no for executable sidecars, which do not need the fuse", () => {
+        expect(packShipsNodeSidecar(pack([{ id: "a", sidecars: [{ id: "s", kind: "executable" }] }]))).toBe(false);
+    });
+
+    it("answers yes when any plugin ships one", () => {
+        expect(packShipsNodeSidecar(pack([
+            { id: "a", sidecars: [{ id: "s", kind: "executable" }] },
+            { id: "b", sidecars: [{ id: "t", kind: "node" }] },
+        ]))).toBe(true);
     });
 });
 

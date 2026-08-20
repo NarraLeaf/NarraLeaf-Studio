@@ -39,10 +39,19 @@ export class WordList {
     private readonly lookup: Set<string>;
     /** Entries as written, grouped by length, with a signature per entry at the same index. */
     private readonly buckets: Map<number, { words: string[]; signatures: Uint32Array }>;
+    /** Length of the longest entry. Read by the segmenter, which has to know how far to look. */
+    private readonly longest: number;
 
     private constructor(lookup: Set<string>, buckets: Map<number, { words: string[]; signatures: Uint32Array }>) {
         this.lookup = lookup;
         this.buckets = buckets;
+        let longest = 0;
+        for (const length of buckets.keys()) {
+            if (length > longest) {
+                longest = length;
+            }
+        }
+        this.longest = longest;
     }
 
     /**
@@ -88,6 +97,18 @@ export class WordList {
     /** How many distinct words the language holds. */
     public get size(): number {
         return this.lookup.size;
+    }
+
+    /**
+     * The longest entry, in UTF-16 units.
+     *
+     * How far the segmenter of a script without spaces reaches for a word. Measured in UTF-16 units
+     * rather than characters, which over-estimates for anything outside the basic plane and is the
+     * safe direction: reaching too far costs lookups, reaching too short misses a word and reports
+     * the run it was part of.
+     */
+    public get maxWordLength(): number {
+        return this.longest;
     }
 
     public has(word: string): boolean {

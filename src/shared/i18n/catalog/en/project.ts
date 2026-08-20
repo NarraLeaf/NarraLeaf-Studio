@@ -20,7 +20,7 @@ export const project = {
         },
         project: {
             title: "Project",
-            description: "Project check rules and what stops a build",
+            description: "The distribution key, project check rules, and what stops a build",
         },
         runtimes: {
             title: "Runtimes",
@@ -40,6 +40,9 @@ export const project = {
         icons: "Icons",
         dependencies: "Dependencies",
         saving: "Saving",
+        olderSaves: "Older saves",
+        language: "Language",
+        dialogue: "Dialogue",
         playerDefaults: "Player defaults",
         audioTracks: "Audio tracks",
         // The two parts of the Brand sub-page. The colors an author decides, and the slots that
@@ -47,11 +50,22 @@ export const project = {
         // whose ids they name.
         brandColors: "Colors",
         brandControls: "Controls",
+        distribution: "Distribution key",
+        linting: "Project check",
         security: "Security",
         signing: "Signing",
         optimization: "Optimization",
         crash: "Crashes",
         mobile: "Mobile",
+    },
+    distribution: {
+        description: "Kept with the project and shared by everyone who builds it. A build accepts only patches made under the key it was built with.",
+        absent: "No key yet.",
+        rotatedAt: "Last replaced {date}.",
+        createAction: "Create",
+        replaceAction: "Replace",
+        replaceConfirm: "Replace the distribution key?",
+        replaceConfirmDetail: "Builds already released under the current key will not accept patches made after this.",
     },
     home: {
         untitledProject: "Untitled project",
@@ -77,16 +91,16 @@ export const project = {
         // line goes into the binary's file properties, this goes into a file players can open.
         copyrightTextLabel: "Copyright Notice",
         copyrightTextPlaceholder: "Fonts, music and assets used, and who they belong to…",
-        copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. Left empty, no file is shipped.",
-        descriptionPlaceholder: "Describe your project…",
+        copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. No file is shipped when this is empty.",
+        descriptionPlaceholder: "Describe the project…",
         required: "Required",
     },
     // Where a shipped game writes what belongs to the player. Stated, not offered: nothing on this
     // part is a setting, and it names no storefront, because which of them to hand this to is the
     // author's decision. The description says what the paths are, and stops there.
     userData: {
-        description: "Where a shipped game keeps the player's saves and progress. The folder is named "
-            + "after the identifier, so renaming the application leaves it where it is.",
+        description: "Where a shipped game keeps the player's saves and progress. Renaming the "
+            + "application does not move it.",
         copy: "Copy locations",
         copied: "Locations copied.",
         copyFailed: "Could not copy the locations.",
@@ -125,6 +139,12 @@ export const project = {
         // Heading for the scene lists, shown only where the project holds something that can start a
         // scene the build cannot read. Each list below it is labelled with that thing's own name.
         reachableTitle: "Scenes these can start",
+        /**
+         * Where this edition sits on each build-time asset axis. Only shown once the project's art
+         * varies by edition; the values are the axis's own, so there is nothing to type.
+         */
+        assetAxesTitle: "Art this edition uses",
+        assetAxisUnset: "Same as the main build",
         // The addresses a build of this variant may hand to the player's browser. Named for what the
         // list decides rather than for the mechanism, and stated as a group: a variant has its own
         // list or reads the project's.
@@ -178,12 +198,38 @@ export const project = {
     },
     game: {
         autoSaveTitle: "Automatic saving",
-        autoSaveDescription: "Save the playthrough on a timer, so a crash loses at most one interval.",
+        autoSaveDescription: "Saves the playthrough on a timer. A crash loses at most one interval.",
         autoSaveIntervalTitle: "Save every",
-        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story advanced.",
+        autoSaveIntervalDescription: "How often the playthrough is saved. Nothing is written unless the story advanced.",
         autoSaveIntervalUnit: "s",
         autoSaveSlotsTitle: "Autosaves kept",
         autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They are separate from the player's own save slots.",
+        // The two policies for a save written by another build. Worded around what the player gets,
+        // not around the comparison behind it: an author choosing here is deciding what happens to
+        // somebody's playthrough. A slot that is not restored is also not listed.
+        // Each row is named for the case it answers for, as a noun phrase. The condition itself is
+        // the description's job, and it is one clause.
+        saveCompatibleTitle: "Saves from another project version",
+        saveCompatibleDescription: "The story is unchanged and only the project version differs.",
+        saveIncompatibleTitle: "Saves from before a story change",
+        saveIncompatibleDescription: "The story was edited after the save was written.",
+        saveResume: "Restore progress",
+        saveDiscard: "Do not restore progress",
+        saveResumeScene: "Return to where it stopped",
+        saveForce: "Restore progress anyway",
+        // A language change during a game reaches further than the lines still to be shown, so
+        // the row is named for the moment rather than for the setting, and each answer says what
+        // the player gets rather than what the game does to get there.
+        languageInGameTitle: "Changing language during a game",
+        languageInGameDescription: "On a title screen the language changes immediately, whichever is set.",
+        languageResume: "Restart and continue where they were",
+        languageRestart: "Restart without keeping the playthrough",
+        languageNextLaunch: "Apply the next time the game is started",
+        // The author's own pacing value, on a page otherwise full of the player's. The row says
+        // what the player gets from it; that it is not theirs to change is the group it sits in.
+        autoForwardPauseTitle: "Pause length under auto forward",
+        autoForwardPauseDescription: "How long a pause that waits for a click holds a line while the player has auto forward on. Scaled by game speed.",
+        autoForwardPauseUnit: "ms",
     },
     // The Player defaults group: the value each player setting starts at. Every one of these is
     // still the player's to change while they play, and what they change is kept, so the wording
@@ -214,15 +260,19 @@ export const project = {
         },
         autoForward: {
             title: "Auto forward",
-            description: "Move on by itself once a line has finished displaying.",
+            description: "Advances once a line has finished displaying.",
+        },
+        autoForwardDelay: {
+            title: "Auto forward wait",
+            description: "How long auto forward waits at the end of a line. Scaled by game speed.",
         },
         showDialog: {
             title: "Show the dialogue box",
-            description: "When off, the game starts with the dialogue box hidden, in the state the player's hide-UI toggle produces.",
+            description: "When off, the game starts with the dialogue box hidden.",
         },
         skip: {
             title: "Allow skipping",
-            description: "Off disables the skip key outright.",
+            description: "When off, the skip key does nothing.",
         },
         skipReadText: {
             title: "Skip read text only",
@@ -238,7 +288,7 @@ export const project = {
         },
         globalVolume: {
             title: "Master volume",
-            description: "Everything the game plays.",
+            description: "Applies to all audio.",
         },
         bgmVolume: {
             title: "Music volume",
@@ -254,11 +304,11 @@ export const project = {
         },
         voiceEndMode: {
             title: "When a voiced line ends",
-            description: "What happens to the clip when its line ends. Two voice clips never play at once, whichever option is selected.",
+            description: "Two voice clips never play at once, whichever option is selected.",
             option: {
                 stop: "Stop the clip",
                 fade: "Fade the clip out",
-                none: "Let it play on",
+                none: "Continue playing",
             },
         },
         voiceFadeDuration: {
@@ -288,7 +338,7 @@ export const project = {
         volumeTitle: "Volume",
         volumeUnit: "%",
         loopTitle: "Loop by default",
-        loopDescription: "Clips played on this track repeat unless the action that plays them says otherwise.",
+        loopDescription: "Clips played on this track repeat unless the action that plays them specifies otherwise.",
         duplicate: "Duplicate",
         delete: "Delete",
         // Sits beside Delete inside an open bus: the count the confirmation is about to be about.
@@ -323,10 +373,10 @@ export const project = {
         // What the shipped game does when it stops working. The choice is who the build is for:
         // the author testing it, a player holding it, or a machine running it unattended.
         crashPolicyTitle: "When the game stops working",
-        crashPolicyDescription: "The failure is written to the game's log under all three.",
+        crashPolicyDescription: "The failure is written to the game's log in all three cases.",
         crashPolicy: {
             details: "Show the error",
-            log: "Say only that it stopped",
+            log: "Report only that it stopped",
             restart: "Restart the game",
         },
         networkPolicyTitle: "Network policy",
@@ -336,15 +386,15 @@ export const project = {
             any: "Any address",
         },
         networkPolicyDetail: {
-            off: "The game is confined to the app protocol. Every HTTP and HTTPS request is refused.",
+            off: "Every HTTP and HTTPS request is refused.",
             allowlist: "Only addresses on the allowlist below can be requested. Every other request is refused.",
             any: "The game can request any address over HTTP or HTTPS.",
         },
-        networkPolicyWebHint: "The Web export is served over HTTP and cannot enforce the off position. It does enforce the allowlist, through the page policy.",
+        networkPolicyWebHint: "The Web export is served over HTTP and cannot enforce No network access. The allowlist is enforced.",
         networkAllowlist: {
             title: "Network request allowlist",
             description: "One address or host pattern per row.",
-            matchHint: "A host on its own covers every path under it. * can replace the first host label (*.example.com) or end a path (/v1/*). The scheme, the host and the port must match exactly.",
+            matchHint: "A host written alone covers every path under it. * can replace the first host label (*.example.com) or end a path (/v1/*). The scheme, the host and the port must match exactly.",
             placeholder: "https://api.example.com/*",
             invalid: "Enter an http:// or https:// address. Use * as a leading host label or at the end of a path.",
             add: "Add address",
@@ -354,19 +404,19 @@ export const project = {
         },
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
-        encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
+        encryptAssetsWebHint: "Web builds always ship without asset protection.",
         // The whole Signing group in one line. Every signable platform gets a row, whether or not this
         // machine can build it: a certificate is obtained days before the build that uses it, and
         // preparing one is why this sits in the panel rather than in the build dialog.
         signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
         webLosslessImagesTitle: "Convert images to WebP",
         webLosslessImagesDescription: "Re-encode exported images as lossless WebP where that is smaller.",
-        webLosslessImagesHint: "Each conversion is compared with the original pixel by pixel and discarded unless it decodes identically. Android and iOS builds serve the same exported site, so this applies to them too.",
+        webLosslessImagesHint: "Converted images decode identically to the originals. Android and iOS builds serve the same exported site, so this applies to them too.",
         webPrecompressTitle: "Precompress text files",
         webPrecompressDescription: "Write Brotli and Gzip copies of the site's scripts, styles and story data.",
-        webPrecompressHint: "Only a server set up to serve precompressed files uses them. Every other host serves the originals and ignores these.",
+        webPrecompressHint: "Only a server set up to serve precompressed files uses them. Every other host serves the originals.",
         webLossyImagesTitle: "Recompress images",
-        webLossyImagesDescription: "Re-encode exported images as lossy WebP. Much smaller, and the lost detail cannot be recovered.",
+        webLossyImagesDescription: "Re-encode exported images as lossy WebP. The files are much smaller, and the lost detail cannot be recovered.",
         webLossyQualityTitle: "Image quality",
         webLossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
         webSharedWithMobileHint: "Android and iOS builds serve the same exported site, so this applies to them too.",
@@ -408,10 +458,10 @@ export const project = {
     dependencies: {
         rescan: "Rescan",
         scanning: "Scanning project…",
-        empty: "No plugin dependencies. This project uses only built-in Studio features.",
+        empty: "No plugin dependencies.",
         banner: {
-            blocked: "Some plugins are disabled here: their installed version is incompatible. Update or reinstall them.",
-            warnings: "Some dependencies need attention. A plugin is outdated or a soft dependency is unavailable.",
+            blocked: "Some plugins are disabled. Their installed version is incompatible. Update or reinstall them.",
+            warnings: "A plugin is outdated, or an optional dependency is unavailable.",
         },
         status: {
             ready: "Ready",

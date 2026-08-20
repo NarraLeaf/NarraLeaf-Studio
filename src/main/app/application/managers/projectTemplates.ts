@@ -23,6 +23,15 @@ import { PROJECT_TEMPLATE_CONTENT_DIR, PROJECT_TEMPLATE_MANIFEST } from "@shared
 /** `id` comes from the renderer, so it must not be able to name a directory elsewhere. */
 const SAFE_TEMPLATE_ID = /^[a-z0-9][a-z0-9._-]*$/;
 
+/** Where a project keeps its translations, relative to the project root. */
+const TEMPLATE_LOCALIZATION_DIR = ["editor", "localization"] as const;
+
+/** The key catalogue sits beside the translations and is not one of them. */
+const TEMPLATE_LOCALIZATION_KEYS_FILE = "keys.json";
+
+/** A filename only counts as a language if it reads as one; anything else is some other JSON. */
+const SAFE_LOCALE_CODE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
 /** Never copied out of a template, whatever the template ships. */
 function isExcludedFromScaffold(relativePath: string): boolean {
     const name = path.basename(relativePath).toLowerCase();
@@ -166,7 +175,7 @@ export async function scaffoldProjectFromTemplate(
     templatesDir: string,
     templateId: string,
     projectPath: string,
-): Promise<{ filesCopied: number }> {
+): Promise<{ filesCopied: number; locales: string[] }> {
     if (!SAFE_TEMPLATE_ID.test(templateId)) {
         throw new Error(`Unsafe project template id: ${templateId}`);
     }
@@ -182,7 +191,34 @@ export async function scaffoldProjectFromTemplate(
     if (!stat?.isDirectory()) {
         // A template with a manifest and no content is a metadata-only entry; it
         // produces the plain skeleton rather than failing the author's creation.
-        return { filesCopied: 0 };
+        return { filesCopied: 0, locales: [] };
     }
-    return { filesCopied: await copyTree(resolvedContent, projectPath) };
+    const filesCopied = await copyTree(resolvedContent, projectPath);
+    return { filesCopied, locales: await readScaffoldedLocales(resolvedContent) };
+}
+
+/**
+ * The locale codes a template's content actually ships a translation file for.
+ *
+ * The registry of a project's languages lives in its `.nlproj`, which is generated per project
+ * and never copied out of a template - so a template that ships `editor/localization/zh-CN.json`
+ * handed the author the file and no way to reach it: the localization panel listed the source
+ * language alone, and the translations were on disk, complete, addressed to nobody. Reporting the
+ * codes here is what lets the creator register them.
+ *
+ * Derived from the files rather than declared in the manifest, so the two cannot disagree: the
+ * languages a template offers ARE the ones it has translations for, and adding a language to a
+ * template is adding its file.
+ */
+async function readScaffoldedLocales(contentDir: string): Promise<string[]> {
+    const localizationDir = path.join(contentDir, ...TEMPLATE_LOCALIZATION_DIR);
+    const entries = await fs.readdir(localizationDir, { withFileTypes: true }).catch(() => null);
+    if (!entries) {
+        return [];
+    }
+    return entries
+        .filter(entry => entry.isFile() && entry.name.endsWith(".json") && entry.name !== TEMPLATE_LOCALIZATION_KEYS_FILE)
+        .map(entry => entry.name.slice(0, -".json".length))
+        .filter(code => SAFE_LOCALE_CODE.test(code))
+        .sort();
 }

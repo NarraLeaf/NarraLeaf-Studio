@@ -79,7 +79,7 @@ describe("compileStagePreviewToNlr", () => {
                 operation: "enter",
                 characterId: "char-alice",
                 assetId: "asset-alice",
-                transform: { preset: "left", durationMs: 300, props: { zoom: 0.8 } },
+                transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 }, zoom: 0.8 }, durationMs: 300 },
             }),
             target: say("target", "Hello."),
             after: say("after", "Beyond."),

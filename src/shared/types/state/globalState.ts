@@ -1,6 +1,7 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
+import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
@@ -71,6 +72,12 @@ export interface GlobalStateType extends Record<string, any> {
     "ui.runMode": "devMode" | "preview" | string;
     /** Studio UI zoom as a whole percentage; see @shared/constants/zoom. */
     "ui.zoomPercent": number;
+    /**
+     * Which built-in mark Studio's windows wear, as an id from `@shared/constants/windowIcon` -
+     * not a file name. Applied by the main process, which is the only side that can call
+     * `BrowserWindow.setIcon`; Windows and Linux only, since macOS has no per-window icon at all.
+     */
+    "ui.windowIcon": string;
     /**
      * Accent preset id from @shared/constants/accent — not a free color. Applied by the renderer
      * (lib/appearance) by overriding the `--nl-primary` channels, which every `*-primary` utility
@@ -200,8 +207,19 @@ export interface GlobalStateType extends Record<string, any> {
      * defaulting *this* feature to off was only possible under a key nobody has on disk.
      */
     "workspace.confirmBeforeClose": boolean;
-    /** Closing the last workspace reopens the launcher; when false, the app quits instead. */
-    "workspace.returnToLauncherOnClose": boolean;
+    /**
+     * Reopen the project the last session was in, instead of starting on the home screen.
+     *
+     * Read once per launch by `App.resolveSessionStartupProject`. `--project` and `--launcher`
+     * both override it; a project that no longer opens falls back to the home screen on its own,
+     * so this needs no "unless it is broken" clause.
+     *
+     * Off by default. A launch that puts the author straight back into a project is a launch that
+     * has decided for them which of their projects this session is about, and Studio opens one
+     * window per project - so the reopen can only ever restore one of however many were open. The
+     * home screen is where that choice is made, and it is one click from the project they left.
+     */
+    "workspace.reopenLastProject": boolean;
     /** How many projects the home screen and the native Open Recent submenu keep. */
     "workspace.recentProjectsLimit": number;
     /**
@@ -310,6 +328,19 @@ export interface GlobalStateType extends Record<string, any> {
      * than trusted on its own. See `VcsManager.getServerSession`.
      */
     "versionControl.serverSessions": VcsServerSession[];
+    /**
+     * The token this installation signs in to each server with, sealed.
+     *
+     * Keyed by the same `remoteOrigin` the sessions are, and holding
+     * `safeStorage` ciphertext rather than the token: Studio needs the token
+     * for the questions it asks a server directly - which projects are on it,
+     * and making another - and those happen long after the author pasted it.
+     * See `vcs/serverTokens.ts` for why it is kept at all, and what a machine
+     * that cannot seal does instead.
+     *
+     * **Never leaves the main process.** Nothing over IPC reads it.
+     */
+    "versionControl.serverTokens": Record<string, string>;
 }
 
 export type GlobalStateKeys = string;
@@ -331,6 +362,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
+    "ui.windowIcon": WINDOW_ICON_DEFAULT,
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
     "ui.reduceMotion": false,
     "ui.statusBar.visible": true,
@@ -353,7 +385,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.spellcheckLanguage": SPELLCHECK_LANGUAGE_DEFAULT,
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
-    "workspace.returnToLauncherOnClose": true,
+    "workspace.reopenLastProject": false,
     "workspace.recentProjectsLimit": 10,
     "dashboard.openOnWorkspaceOpen": true,
     "build.electronMirror": "",
@@ -366,6 +398,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
     "versionControl.serverSessions": [],
+    "versionControl.serverTokens": {},
 };
 
 /**
@@ -380,6 +413,11 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
  * `workspace.confirmOnClose` is the legacy spelling of `workspace.confirmBeforeClose`
  * and is on every profile that predates the rename.
  *
+ * `workspace.returnToLauncherOnClose` is the switch that used to make closing a workspace and
+ * returning to the home screen the same exit. Both are now available at once - the close box and
+ * File ▸ Back to Launcher - so nothing reads it, and every profile that predates the split is
+ * carrying it.
+ *
  * Swept off disk once, at startup, by `GlobalStateManager.sweepRetiredKeys`.
  */
 export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
@@ -389,6 +427,7 @@ export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
     "workspace.restoreLastWorkspace",
     "workspace.autoSave",
     "workspace.confirmOnClose",
+    "workspace.returnToLauncherOnClose",
     "sync.autoBackup",
     "sync.backupIntervalMinutes",
     "sync.backupPath",

@@ -12,6 +12,14 @@ export const settings = {
     persistFailed: "設定を保存できなかった",
     resetToDefault: "既定に戻す",
     customColor: "カスタムカラー…",
+    // ダウンロード元の選択（SettingValueType.Source）。住所が分かっている配布元を並べ、
+    // 最後に自分で指定するための欄を出す。
+    source: {
+        official: "公式の配布元",
+        noMirror: "ミラーを使わない",
+        chinaMirror: "中国のミラー",
+        customPlaceholder: "自分で指定するアドレス",
+    },
     // フォントの選択（SettingFontPicker）。プリセットと、この端末に入っているフォント。
     fontPicker: {
         searchPlaceholder: "フォントを検索…",
@@ -43,7 +51,7 @@ export const settings = {
         },
         workspace: {
             label: "ワークスペース",
-            description: "起動時の動き、ワークスペースの履歴、自動保存の補助",
+            description: "起動時の動作、ワークスペースの履歴、自動保存",
         },
         shortcuts: {
             label: "ショートカット",
@@ -89,6 +97,15 @@ export const settings = {
                 light: "ライト",
                 dark: "ダーク",
             },
+        },
+        windowIcon: {
+            label: "ウィンドウアイコン",
+            description: "Studio のウィンドウとタスクバーボタンに表示するアイコン。デスクトップとスタートメニューのショートカットはインストール時のアイコンのまま",
+            options: {
+                default: "NarraLeaf",
+                narra: "Narra",
+            },
+            unsupportedPlatform: "この項目はこのオペレーティングシステムでは使用できない",
         },
         accentColor: {
             label: "アクセントカラー",
@@ -178,7 +195,7 @@ export const settings = {
         spellcheckLanguage: {
             label: "スペルチェックの言語",
             description: "ストーリー本文のつづりの誤りに印を付ける。訳文は対象外",
-            noDictionary: "このプロジェクトの言語のスペル辞書が入っていないため、本文に印は付かない。プロジェクト辞書はこのプロジェクトの用語を保持し続ける",
+            noDictionary: "このプロジェクトの言語のスペル辞書がインストールされていません。",
             options: {
                 followProject: "プロジェクトの言語に従う",
                 off: "スペルチェックを行わない",
@@ -206,23 +223,23 @@ export const settings = {
         },
         electronMirror: {
             label: "Electron のダウンロードミラー",
-            description: "Electron を取ってくるミラー。空のままなら公式の配布元を使う",
+            description: "Electron を取ってくるミラー",
         },
         electronBuilderBinariesMirror: {
             label: "ビルド用の道具のミラー",
             description:
-                "ビルドがダウンロードするインストーラ関連の道具（NSIS、AppImage、コード署名の補助）のミラー。空のままなら公式の配布元を使う",
+                "ビルドがダウンロードするインストーラ関連の道具（NSIS、AppImage、コード署名の補助）のミラー",
         },
         downloadRewrites: {
             label: "ダウンロード先の書き換え",
         },
         pluginRegistryUrl: {
             label: "プラグインレジストリの URL",
-            description: "プラグインストアの参照先。空のままなら NarraLeaf の公式レジストリを使う",
+            description: "プラグインストアが索引を取ってくる先",
         },
         uiTemplateRegistryUrl: {
             label: "UI テンプレートレジストリの URL",
-            description: "テンプレートストアの参照先。空のままなら NarraLeaf の公式レジストリを使う",
+            description: "テンプレートストアが索引を取ってくる先",
         },
         checkpointInterval: {
             label: "自動チェックポイントの間隔",
@@ -246,9 +263,9 @@ export const settings = {
             label: "ワークスペースを閉じる前に確認",
             description: "ワークスペースのウィンドウを閉じるときに確認する",
         },
-        returnToLauncherOnClose: {
-            label: "ワークスペースを閉じたらホーム画面に戻る",
-            description: "オフにすると、ほかにウィンドウが無いとき NarraLeaf Studio を終了する",
+        reopenLastProject: {
+            label: "起動時に前回のプロジェクトを開く",
+            description: "ランチャーではなく、前回作業していたプロジェクトを開く",
         },
         dashboardOnOpen: {
             label: "既定でプロジェクトのダッシュボードを表示",
@@ -304,19 +321,18 @@ export const settings = {
     },
     // データのパネル自身の文言。
     dictionaries: {
-        loading: "キャッシュを読んでいる…",
-        remove: "取り除く",
-        browse: "辞書を見る",
-        refresh: "取り直す",
-        browsing: "一覧を取得している…",
+        loading: "読み込んでいます…",
+        remove: "削除",
+        browse: "利用可能な辞書を表示",
+        refresh: "再取得",
+        browsing: "読み込んでいます…",
         download: "ダウンロード",
-        downloading: "ダウンロード中…",
-        failed: "辞書の一覧を読めなかった。設定のネットワーク方針を確かめてからもう一度",
-        noDictionaryLanguages: "中国語と日本語にはスペル辞書がなく、今後も出ない：どちらも語を分けて書かないので、単語リストと照らし合わせるものがない。この二つで書かれたプロジェクトに印は付かない",
+        downloading: "ダウンロードしています…",
+        failed: "辞書の一覧を取得できませんでした。設定のネットワークポリシーを確認してください。",
         installed: {
-            title: "この機体にあるもの",
-            emptyTitle: "辞書はまだない",
-            emptyDescription: "一つダウンロードするまで、どのプロジェクトにも印は付かない",
+            title: "インストール済み",
+            emptyTitle: "辞書がインストールされていません",
+            emptyDescription: "辞書をダウンロードすると本文のスペルチェックが行えます。",
         },
         available: {
             title: "ダウンロードできるもの",

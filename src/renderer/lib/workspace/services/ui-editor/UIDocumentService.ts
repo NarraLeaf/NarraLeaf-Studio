@@ -111,6 +111,7 @@ import {
     MAIN_APP_SURFACE_ID,
 } from "@shared/constants/ui-editor";
 import { isListLikeWidgetType, type UIListElementExtra } from "@shared/types/ui-editor/list";
+import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import {
     UI_SWITCH_ELEMENT_TYPE,
@@ -446,11 +447,7 @@ function ensureElementSerializedAppearance(element: UIElement): boolean {
         element.props = props;
         return true;
     }
-    const isTextLike =
-        element.type === "nl.text" ||
-        element.type === DIALOG_SENTENCE_WIDGET_TYPE ||
-        element.type === NVL_TEXTS_WIDGET_TYPE;
-    if (isTextLike) {
+    if (isWidgetTypeOf(element.type, "nl.text")) {
         const props: TextWidgetProps = {
             ...cloneJson(defaultTextWidgetProps),
             ...(element.props ?? {}),
@@ -4587,9 +4584,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 itemKeyPath: "index",
                 itemGap: 16,
                 previewItems: [
-                    { text: translate("defaultDoc.choice.previewA"), index: 0, disabled: false },
-                    { text: translate("defaultDoc.choice.previewB"), index: 1, disabled: false },
-                    { text: translate("defaultDoc.choice.previewC"), index: 2, disabled: true },
+                    { text: translate("defaultDoc.choice.previewA"), index: 0, disabled: false, voiceId: "" },
+                    { text: translate("defaultDoc.choice.previewB"), index: 1, disabled: false, voiceId: "" },
+                    { text: translate("defaultDoc.choice.previewC"), index: 2, disabled: true, voiceId: "" },
                 ],
                 scrollbar: {
                     ...cloneJson(defaultListWidgetProps.scrollbar),

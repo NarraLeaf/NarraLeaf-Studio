@@ -12,6 +12,12 @@ const NO_STARTUP_PROJECT = {
     error: null,
 } as const;
 
+const NO_EXPERIMENTAL = {
+    requested: false,
+    conditions: [],
+    unknownConditionFlags: [],
+} as const;
+
 describe("parseMainCommandLine", () => {
     it("keeps CDP disabled by default", () => {
         expect(parseMainCommandLine(["electron", "dist/main/index.js"])).toEqual({
@@ -19,6 +25,7 @@ describe("parseMainCommandLine", () => {
             onboarding: false,
             skipOnboarding: false,
             project: NO_STARTUP_PROJECT,
+            launcher: false,
             cdp: {
                 enabled: false,
                 port: DEFAULT_CDP_PORT,
@@ -26,6 +33,8 @@ describe("parseMainCommandLine", () => {
                 error: null,
             },
             devReload: DEFAULT_DEV_RELOAD,
+            experimental: NO_EXPERIMENTAL,
+            openPaths: [],
         });
     });
 
@@ -35,6 +44,7 @@ describe("parseMainCommandLine", () => {
             onboarding: false,
             skipOnboarding: false,
             project: NO_STARTUP_PROJECT,
+            launcher: false,
             cdp: {
                 enabled: true,
                 port: DEFAULT_CDP_PORT,
@@ -42,6 +52,8 @@ describe("parseMainCommandLine", () => {
                 error: null,
             },
             devReload: DEFAULT_DEV_RELOAD,
+            experimental: NO_EXPERIMENTAL,
+            openPaths: [],
         });
     });
 
@@ -145,6 +157,28 @@ describe("parseMainCommandLine", () => {
         ).toBe(true);
     });
 
+    it("parses --launcher, and lets it stand alongside --project", () => {
+        expect(parseMainCommandLine(["electron", "dist/main/index.js"]).launcher).toBe(false);
+        expect(parseMainCommandLine(["electron", "dist/main/index.js", "--launcher"]).launcher).toBe(true);
+
+        // Both together is not a contradiction the parse has to settle: --project names a project
+        // and wins, which `App.resolveSessionStartupProject` decides. The parse only records what
+        // was typed - a flag silently dropped here would be invisible to the one place that can
+        // explain the precedence.
+        const both = parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--launcher", "--project=demo3"]);
+        expect(both.launcher).toBe(true);
+        expect(both.project.selector).toBe("demo3");
+    });
+
+    it("does not read --launcher as a --project value", () => {
+        // The same trap `--project --cdp` used to fall into: swallowing the next flag would take
+        // the escape hatch out of the parse in the one launch that typed it by mistake.
+        const options = parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--project", "--launcher"]);
+
+        expect(options.project.selector).toBeNull();
+        expect(options.launcher).toBe(true);
+    });
+
     it("parses inline and split --project values", () => {
         expect(parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--project=demo3"]).project).toEqual({
             selector: "demo3",
@@ -193,10 +227,86 @@ describe("parseMainCommandLine", () => {
         expect(options.project.selector).toBe("second");
     });
 
+    it("reads the experimental flag and its condition flags", () => {
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--dev", "--experimental", "--x-debuggable-build",
+        ]);
+
+        expect(options.experimental).toEqual({
+            requested: true,
+            conditions: ["debuggable-build"],
+            unknownConditionFlags: [],
+        });
+    });
+
+    it("parses condition flags without --experimental, which decides nothing on its own", () => {
+        // The mode is what honours them (BaseApp.getExperimentalState); parsing only reports what
+        // was on the command line.
+        const options = parseMainCommandLine(["electron", "dist/main/index.js", "--x-debuggable-build"]);
+
+        expect(options.experimental.requested).toBe(false);
+        expect(options.experimental.conditions).toEqual(["debuggable-build"]);
+    });
+
+    it("collects condition flags that name nothing instead of dropping them", () => {
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--experimental", "--x-no-such-condition",
+        ]);
+
+        expect(options.experimental.conditions).toEqual([]);
+        expect(options.experimental.unknownConditionFlags).toEqual(["--x-no-such-condition"]);
+    });
+
+    it("does not repeat a condition given twice", () => {
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--experimental", "--x-debuggable-build", "--x-debuggable-build",
+        ]);
+
+        expect(options.experimental.conditions).toEqual(["debuggable-build"]);
+    });
+
+    it("does not let the experimental flags disturb the ones parsed around them", () => {
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--dev", "--experimental", "--x-debuggable-build",
+            "--project", "demo3", "--cdp", "--cdp-port", "9333",
+        ]);
+
+        expect(options.project.selector).toBe("demo3");
+        expect(options.cdp.port).toBe(9333);
+        expect(options.cdp.error).toBeNull();
+    });
+
     it("allows development mode only for unpackaged --dev launches", () => {
         const options = parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--cdp"]);
 
         expect(isMainDevMode(options, false)).toBe(true);
         expect(isMainDevMode(options, true)).toBe(false);
+    });
+
+    it("collects the paths a packaged launch was given", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "D:\\games\\demo3\\Demo.nlproj"]);
+
+        expect(options.openPaths).toEqual(["D:\\games\\demo3\\Demo.nlproj"]);
+    });
+
+    it("does not mistake the development entry point for a path to open", () => {
+        const options = parseMainCommandLine(["electron", "dist/main/index.js", "--dev"]);
+
+        expect(options.openPaths).toEqual([]);
+    });
+
+    it("keeps a path given alongside the development entry point", () => {
+        const options = parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "D:\\games\\demo3"]);
+
+        expect(options.openPaths).toEqual(["D:\\games\\demo3"]);
+    });
+
+    it("does not take a flag's value for a path to open", () => {
+        // Both forms, because only the separated one can look positional.
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--project", "demo3", "--cdp-port", "9333", "--project=demo4",
+        ]);
+
+        expect(options.openPaths).toEqual([]);
     });
 });

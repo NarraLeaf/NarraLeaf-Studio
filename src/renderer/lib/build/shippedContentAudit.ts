@@ -57,6 +57,16 @@ export type ShippedContentAuditResult = {
 export type ShippedArtifactReader = {
     /** True when the entry is present with content. Throws only on an unexpected read failure. */
     entryExists(relativePath: string): Promise<boolean>;
+    /**
+     * Where this package keeps an asset's bytes, or null when it has no way to say.
+     *
+     * The two kinds of package answer differently, and the audit must ask rather than assume: a
+     * sealed store derives the name from the asset id (it ships no manifest to look in), while a
+     * loose one reads the path out of the manifest. Asking mirrors what the runtime does, which is
+     * the point of the audit - resolving by any other route would prove something the game does not
+     * do.
+     */
+    resolveEntryName(assetId: string): string | null;
 };
 
 /**
@@ -74,43 +84,79 @@ export async function collectStoryAssetDemands(pack: GameRuntimePackV1): Promise
     const demands: ShippedAssetDemand[] = [];
     const storyErrors: { story: string; message: string }[] = [];
     const library = pack.bundle.storyLibrary;
+    // One pass per language, but only for a package that actually resolves an asset set: a set is
+    // the one construct whose answer depends on the language the game is running in, so without one
+    // every pass would enumerate the same ids and the extra compiles would buy nothing. With one,
+    // a single pass would check whichever language it happened to run as and let the other ship
+    // with no picture behind its lines.
+    const locales = auditLocales(pack);
     for (const [storyId, document] of Object.entries(library?.documents ?? {})) {
         const startSceneId = pickCompileEntryScene(document);
         if (!startSceneId) {
             continue;
         }
         const storyName = library?.index.stories.find(story => story.id === storyId)?.name ?? storyId;
-        try {
-            await compileStudioStoryToNlr({
-                document,
-                sceneId: startSceneId,
-                characters: library?.characters,
-                animations: library?.animations,
-                blueprintDocument: pack.bundle.ui.localBlueprints,
-                persistentVariables: pack.bundle.ui.persistentVariables,
-                savedVariables: pack.bundle.ui.savedVariables,
-                localization: pack.bundle.localization,
-                voice: pack.bundle.voice,
-                audioClips: pack.bundle.audio?.clips,
-                audioTracks: pack.bundle.audio?.tracks,
-                resolveAssetUrl: (assetId: string) => {
-                    const trimmed = typeof assetId === "string" ? assetId.trim() : "";
-                    if (trimmed) {
-                        demands.push({ assetId: trimmed, origin: storyName });
-                    }
-                    // A URL rather than null: null makes the compiler note a diagnostic and carry on
-                    // with nothing, and this pass wants it to keep walking.
-                    return "audit://" + trimmed;
-                },
-            } as Parameters<typeof compileStudioStoryToNlr>[0]);
-        } catch (error) {
-            storyErrors.push({
-                story: storyName,
-                message: error instanceof Error ? error.message : String(error),
-            });
+        for (const locale of locales) {
+            try {
+                await compileStudioStoryToNlr({
+                    document,
+                    sceneId: startSceneId,
+                    characters: library?.characters,
+                    animations: library?.animations,
+                    blueprintDocument: pack.bundle.ui.localBlueprints,
+                    persistentVariables: pack.bundle.ui.persistentVariables,
+                    savedVariables: pack.bundle.ui.savedVariables,
+                    localization: pack.bundle.localization
+                        ? { ...pack.bundle.localization, getLocale: () => locale }
+                        : undefined,
+                    voice: pack.bundle.voice,
+                    audioClips: pack.bundle.audio?.clips,
+                    audioTracks: pack.bundle.audio?.tracks,
+                    resolveAssetUrl: (assetId: string) => {
+                        const trimmed = typeof assetId === "string" ? assetId.trim() : "";
+                        if (trimmed) {
+                            demands.push({ assetId: trimmed, origin: storyName });
+                        }
+                        // A URL rather than null: null makes the compiler note a diagnostic and carry on
+                        // with nothing, and this pass wants it to keep walking.
+                        return "audit://" + trimmed;
+                    },
+                } as Parameters<typeof compileStudioStoryToNlr>[0]);
+            } catch (error) {
+                storyErrors.push({
+                    story: storyName,
+                    message: error instanceof Error ? error.message : String(error),
+                });
+            }
         }
     }
     return { demands, storyErrors };
+}
+
+/**
+ * The languages this audit compiles as.
+ *
+ * The project's own list when any story resolves an asset set, and a single unnamed pass otherwise.
+ * The check is asked of the package rather than of the project on purpose: what has to be proven is
+ * that the bytes behind every language this *package* can be played in are in it.
+ */
+function auditLocales(pack: GameRuntimePackV1): string[] {
+    const documents = pack.bundle.storyLibrary?.documents ?? {};
+    const resolvesASet = Object.values(documents).some(document =>
+        Object.values(document.scenes ?? {}).some(scene =>
+            Object.values(scene.blocks ?? {}).some(block => block.assetVariants)));
+    if (!resolvesASet) {
+        return [""];
+    }
+    const localization = pack.bundle.localization;
+    const codes = new Set<string>();
+    if (localization?.sourceLocale) {
+        codes.add(localization.sourceLocale);
+    }
+    for (const entry of localization?.locales ?? []) {
+        codes.add(entry.code);
+    }
+    return codes.size > 0 ? [...codes] : [""];
 }
 
 /** The scene the audit compiles from; any scene enumerates the document, so this only has to exist. */
@@ -219,18 +265,18 @@ export async function auditShippedContent(input: {
             continue;
         }
         checked.add(demand.assetId);
-        const entry = pack.assets.items[demand.assetId];
-        if (!entry) {
+        const entryName = reader.resolveEntryName(demand.assetId);
+        if (!entryName) {
             failures.push({ assetId: demand.assetId, origin: demand.origin, reason: "missing" });
             continue;
         }
         try {
-            if (!await reader.entryExists(entry.relativePath)) {
+            if (!await reader.entryExists(entryName)) {
                 failures.push({
                     assetId: demand.assetId,
                     origin: demand.origin,
                     reason: "unreadable",
-                    detail: entry.relativePath,
+                    detail: entryName,
                 });
             }
         } catch (error) {

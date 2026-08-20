@@ -4,6 +4,7 @@ import type { StoryBlockId, StoryDocument, StoryLiteralValue, StoryScene, StoryS
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { useTranslation } from "@/lib/i18n";
 import { Select } from "@/lib/components/elements/Select";
+import { Switch } from "@/lib/components/elements";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { GameAppStoryRuntimeBridge } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
@@ -597,11 +598,11 @@ function VariableValueEditor(props: {
 
     if (valueType === "boolean") {
         return (
-            <input
-                type="checkbox"
+            <Switch
+                size="sm"
                 checked={value === true}
-                className={`h-3 w-3 rounded-sm border-edge-strong bg-surface-sunken ${live ? "" : "opacity-60"}`}
-                onChange={event => onCommit(event.target.checked)}
+                className={live ? undefined : "opacity-60"}
+                onCheckedChange={onCommit}
             />
         );
     }

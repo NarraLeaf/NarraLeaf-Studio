@@ -1,4 +1,5 @@
 import type { StoryExpression } from "./expression";
+import type { WeatherSeedRef } from "../../weather/model";
 
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive - v3 documents
@@ -106,7 +107,52 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // older Studio reads it as an ordinary group with no children and compiles nothing, which is not a
 // wrong answer, only an incomplete one. It rides along because the two shipped together and one
 // stamp cannot describe half a document.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 16 as const;
+// v17 brings back the `{action:"plugin"}` marker block - the row a plugin's story action inserts and
+// its own compile pass reads back. This is the second time the shape exists: v11 added it, the
+// feature was withdrawn, and the number stayed spent (see above). What is different now is the only
+// thing that was wrong then - there is a consumer. The shape is unchanged from v11's, deliberately,
+// so a project written during that window migrates by the stamp alone.
+// No migration step: no document written before this can contain the block, and a v11 one already
+// carries it in exactly this shape.
+// The bump is not optional, and the failure it prevents is the silent kind. A v16 Studio meets an
+// `action` it has never heard of, falls through `compileStoryAction`'s chain to the `/effect`
+// fallback, and emits an effect with an `undefined` name: the marker vanishes and every darken its
+// pass would have injected vanishes with it, in a scene that otherwise compiles and plays. Refusing
+// the document is the point.
+// v18 removes the two closed enums that stood between an author and the one thing the engine can
+// animate. `StoryTransformPreset` (20 values) and the `displayable` payload's `operation` (15) both
+// described a bag of props NarraLeaf-React already has one name for - `ImageTransformProps` - and
+// both described only a hand-picked slice of it: a row could be `scale` or `rotate` but never both,
+// could `darken` or `filter` but never dim and blur together, and could not reach `maskSize`,
+// `delay` or `repeat` at all, though the engine has always taken them.
+// Every preset becomes its prop expansion (`left` is a position, `darken` is a `brightness`, `flip` is
+// a negative `scaleX`), and every effect operation becomes the prop it set (`mask` a `maskAssetId`,
+// `clearFilter` a `filter: null`). The three clip-path presets - `circleReveal`, `circleClose`,
+// `wipe` - are the exception, and deliberately not forced into the bag: they synthesize a new
+// clip-path per frame rather than setting one, so they stay named generators under
+// `StoryTransformRef.clipReveal`. They never worked as presets anyway; every path needing settled
+// props reported `presetNotFoldable` and folded nothing.
+// The migration is total and mechanical - all 20 presets and all 12 collapsed operations have a
+// determinate expansion, none needs judgement - and it is the reason the bump is not optional in
+// EITHER direction. A v17 Studio meeting `operation: "transform"` with a `to.filter` record would
+// compile a transform with a prop it cannot read and drop the grade; a v18 Studio meeting
+// `operation: "mask"` has no branch for it at all. Refusing the document is the point.
+// v19 folds the stage camera into the same prop bag every other subject already writes, and removes
+// the scene's `screenEffect` layer. The camera's arm spelled its state as one operation plus that
+// operation's own field (`pan` + `position`, `zoom` + `zoom`, ...), so a camera row could state one
+// channel where a sprite states a bag: no row could pan and zoom together, and the eight filter
+// functions v18 opened up were reachable on every subject except the one whose whole job is grading
+// the stage. The arm is now `transform` + a {@link StoryTransformRef}, and the six operations have a
+// determinate expansion apiece (`darken` is the `brightness` the compiler already emitted for it,
+// `look` is the two fields it always carried, `motion` IS a ref). `reset` stays, because it is a
+// separate engine primitive rather than a bag of neutral values - see the arm's own note.
+// `screenEffect` goes with it: the eyelids and the vignette are now lens props on the camera's bag
+// (`shutter`, `vignette`, and the four that dress them), so they compose with a grade and a pan
+// instead of being a one-shot the scene played on a layer of its own.
+// The bump is not optional in either direction. A v18 Studio meeting `operation: "transform"` on the
+// camera arm has no branch for it and drops the row; a v19 Studio meeting `operation: "pan"` has
+// none for that. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 19 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -213,6 +259,18 @@ export type StoryScene = {
      * Per-scene and additive (no schema bump); the scene-variable rows shown re-bind per scene.
      */
     sceneSnapshots?: StorySceneSnapshot[];
+    /**
+     * What each asset set the SCENE itself names resolves to, per locale.
+     *
+     * The same thing `StoryBlock.assetVariants` is, one level up, and for the same two fields a scene
+     * owns rather than a row: its opening background and its music. **Never authored and never on
+     * disk under `editor/`** - written while a package is assembled and present only in the bundle a
+     * game runs from.
+     *
+     * A separate map rather than a row's, because these two fields belong to no row: the compiler
+     * resolves them while it is building the scene, before any block has run.
+     */
+    assetVariants?: StoryAssetVariants;
     meta?: StoryMeta;
 };
 
@@ -368,7 +426,58 @@ export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
      * it keeps its payload (unlike `note`). Absent means enabled; the three states are disjoint.
      */
     disabled?: boolean;
+    /**
+     * What each asset set this row names resolves to, per locale.
+     *
+     * **Never authored and never on disk under `editor/`.** It is written while a package is being
+     * assembled (`materializeStoryAssetSets`) and exists only in the bundle a game runs from, which
+     * is why editing a row cannot produce one and why version control never sees it.
+     *
+     * It sits on the row rather than in a project-wide table for two reasons, both in that module's
+     * own note: a table would enumerate every localized asset the project has, which is the one
+     * thing a protected pack refuses to disclose; and a map inside the row is inside the bytes the
+     * trimmer scans, so every locale's member is carried by the rule that is already there.
+     *
+     * Keyed by the set id the payload still names - the payload keeps the set id, so a row whose map
+     * is missing fails loudly at a resolver rather than quietly fetching one language's picture.
+     */
+    assetVariants?: StoryAssetVariants;
 };
+
+/**
+ * A materialised asset set reference: set id, then locale, then the asset that locale resolves to.
+ *
+ * Total over the project's locales by construction - see `materializeStoryAssetSets` - so reading it
+ * is a lookup and not a search.
+ */
+export type StoryAssetVariants = Record<string, Record<string, string>>;
+
+/**
+ * The asset a row's set reference resolves to for `locale`, or null when the row does not name a
+ * set at all.
+ *
+ * The one function every consumer goes through: the compiler on its way to a URL, and the shipped
+ * content check on its way to the bytes. Falling back to the source locale is defence rather than
+ * policy - materialization already filled every locale, so reaching that line means the pack and the
+ * project it was built from disagree, and one language's stage is a better answer than none.
+ */
+export function resolveStoryAssetVariant(
+    variants: StoryAssetVariants | undefined,
+    assetId: string,
+    locale: string | undefined,
+    sourceLocale?: string,
+): string | null {
+    const map = variants?.[assetId];
+    if (!map) {
+        return null;
+    }
+    const direct = locale ? map[locale] : undefined;
+    if (direct) {
+        return direct;
+    }
+    const source = sourceLocale ? map[sourceLocale] : undefined;
+    return source ?? null;
+}
 
 export type StoryNodeActionBlock = StoryBlockBase<"nodeAction", StoryNodeActionPayload>;
 export type StoryActionBlock = StoryBlockBase<"action", StoryActionPayload>;
@@ -537,6 +646,17 @@ export type StoryActionPayload =
               | "muteSound"
               | "seekSound";
           objectName?: string;
+          /**
+           * Which sound handle a control op addresses, bound to the `playSound` row that created it
+           * so the row follows a rename - or `{ builtin: "bgm" }` for the music channel, which is the
+           * one target with no block to bind to (see {@link StoryActionableBuiltin}).
+           *
+           * Additive beside `objectName`, on the same terms as the `image` arm's `target`. Note the
+           * legacy fallback is not simply `objectName`: a `playSound` row with no name keys on its
+           * `assetId`, so consumers must go through the shared stage-name rule rather than read the
+           * field directly.
+           */
+          target?: StoryActionableTargetRef;
           assetId?: string;
           /**
            * The project audio track this row plays on (`ProjectAudioTrack.id`) — the bus it lands on,
@@ -593,6 +713,16 @@ export type StoryActionPayload =
           action: "image";
           operation: "create" | "setSource" | "show" | "hide";
           objectName: string;
+          /**
+           * Which image a non-`create` op acts on, bound to the block that created it so the row
+           * follows a rename. `create` names a new image via {@link objectName}.
+           *
+           * Additive, and `objectName` keeps being written beside it: the stage key is what the
+           * NarraLang script view shows and the only identity a typed line can carry, so it stays the
+           * legacy fallback rather than being replaced. Absent - every document written before this -
+           * means "resolve by `objectName`", which is what every consumer did already.
+           */
+          target?: StoryDisplayableTargetRef;
           assetId?: string;
           color?: string;
           layer?: StoryLayerRef;
@@ -601,54 +731,44 @@ export type StoryActionPayload =
           transform?: StoryTransformRef;
       }
     | {
+          /**
+           * Everything you can do to a thing on the stage that is not creating it.
+           *
+           * Three verbs, where there were fifteen. `mask` / `clip` / `filter` / `backdrop` / `blend` /
+           * `darken` and their four `clear*` twins were never operations - they were single props of
+           * the one bag the engine interpolates, each with a verb of its own and its own payload field,
+           * which is why no row could ever dim AND blur, and why the inspector needed a different form
+           * per verb to edit one shape. v18 folds all twelve into `transform` + {@link StoryTransformProps}.
+           *
+           * `circleReveal` / `circleClose` / `wipe` are gone from here too, but not into the bag: they
+           * are clip-path GENERATORS, and they live on the transform ref as {@link StoryClipReveal}.
+           *
+           * Timing moved with them. It lives on the transform ref now - one home for one question -
+           * rather than on the payload for effects and on the ref for shows, which is the split the
+           * command line had to comment on because `/fx blur d=` and `/show d=` wrote different fields.
+           */
           action: "displayable";
-          operation:
-              | "show"
-              | "hide"
-              | "transform"
-              | "mask"
-              | "clearMask"
-              | "clip"
-              | "clearClip"
-              | "filter"
-              | "clearFilter"
-              | "backdrop"
-              | "blend"
-              | "darken"
-              | "circleReveal"
-              | "circleClose"
-              | "wipe";
+          /**
+           * `bringToFront` is the fourth, and it is not a transform: it moves the element to the top
+           * of the stacking order WITHIN its own layer, in one frame, with no state in between to
+           * interpolate - so it carries no `transform` and no duration. It is the only ordering
+           * control there is, deliberately: an absolute z on a displayable needs an editor to be
+           * usable, while "put this in front" says what it does on the line that writes it, and any
+           * arrangement is reachable by bringing each element forward back-to-front in turn.
+           *
+           * Additive: no document written before it carries the value, so no schema bump - the same
+           * rule `camera` and `vfx` came in under.
+           */
+          operation: "show" | "hide" | "transform" | "bringToFront";
           target: StoryDisplayableTargetRef;
           transform?: StoryTransformRef;
-          /** Image mask source (image asset) for the `mask` operation. */
-          maskAssetId?: string;
-          /** CSS clip-path for the `clip` operation. */
-          clipPath?: string;
-          /** CSS filter for the `filter` operation. */
-          filter?: string;
-          /**
-           * CSS backdrop-filter for the `backdrop` operation - the frosted-glass knob, a sibling of
-           * `filter` (its raw CSS twin), e.g. `blur(8px)`. Additive: no document before this carries it.
-           */
-          backdropFilter?: string;
-          /**
-           * mix-blend-mode for the `blend` operation. NLR's `blend()` takes the full CSS type, but only
-           * the six modes its `Vfx` overlay exposes are offered (`StoryVfxBlendMode`) - the same curated
-           * set, not the CSS catalogue. Additive.
-           */
-          mixBlendMode?: StoryVfxBlendMode;
-          /** Darkness 0..1 for the `darken` operation (image/character targets only). */
-          darkness?: number;
-          /** Shared effect timing. */
-          durationMs?: number;
-          easing?: string;
-          /** Effect-specific params, e.g. circle center/from/to or wipe direction/reverse. */
-          effectProps?: Record<string, StoryLiteralValue>;
       }
     | {
           action: "text";
           operation: "create" | "setText" | "show" | "hide" | "setFontSize" | "setFontColor";
           objectName: string;
+          /** Which text a non-`create` op acts on. Same rule as the `image` arm's `target`. */
+          target?: StoryDisplayableTargetRef;
           text?: string;
           fontSize?: number;
           fontColor?: string;
@@ -678,6 +798,8 @@ export type StoryActionPayload =
           action: "video";
           operation: "create" | "show" | "hide" | "play" | "pause" | "resume" | "stop" | "seek";
           objectName: string;
+          /** Which clip a non-`create` op addresses. Same rule as the `image` arm's `target`. */
+          target?: StoryActionableTargetRef;
           assetId?: string;
           muted?: boolean;
           /** `seek` — where to jump to, in milliseconds. The engine's `seek` takes seconds; the compiler converts. */
@@ -689,33 +811,42 @@ export type StoryActionPayload =
            * its own action kind here because an author does not file "move the camera" next to "move a
            * sprite".
            *
+           * **One prop bag, like every other subject.** v19 replaced the six operations with the same
+           * {@link StoryTransformRef} `/transform` writes, so a camera row states as many channels as it
+           * likes: pan and zoom in one move, a grade and a defocus together. `pan` was a position, `zoom`
+           * a zoom, `rotate` a rotation, `darken` the `brightness` the compiler already emitted for it,
+           * `look` the {@link StoryTransformProps.look} field, and `motion` was already a ref.
+           *
            * Two facts this payload cannot state but every consumer must respect: the camera is a
            * **story-level singleton** whose pose survives a scene change (and rides the save file), and
-           * `darken` drives the same CSS `filter` channel `Displayable.filter` does — it is stage
-           * brightness, not the scene's `screenEffect` vignette layer.
-           *
-           * Additive: no document written before this carries it, so no schema bump.
+           * its CSS `filter` channel grades the WHOLE stage — backgrounds, sprites and videos together,
+           * never the dialogue box.
            */
           action: "camera";
-          operation: "pan" | "zoom" | "rotate" | "darken" | "reset" | "motion";
-          /** `pan` — where the view centres. The command line fills the three placements; the inspector, any align. */
-          position?: StoryAlignPositionValue;
-          /** `zoom` — 1 is neutral. Clamped away from 0/negative at compile time. */
-          zoom?: number;
-          /** `rotate` — degrees. */
-          rotation?: number;
-          /** `darken` — 0 (normal) to 1 (black). Clamped at compile time; the engine does not clamp. */
-          darkness?: number;
           /**
-           * `motion` — a Story Motion driving the camera, i.e. a whole keyframed shot (a handheld
-           * shake, a slow push-in) instead of one settled pose. The engine's `Camera` is a
-           * `Displayable`, so it takes a `Transform` exactly like a sprite does; this is the same
-           * {@link StoryTransformRef} `/transform` carries, and it is read only in `animation` mode —
-           * the other five operations already *are* the presets a `preset` mode would offer.
+           * `transform` writes the bag; `reset` puts the camera back.
            *
-           * `durationMs`/`easing` are dead for this operation: the timing lives in the keyframes.
+           * **`reset` is not "a bag of neutral values", and that is why it survived the fold.** It
+           * compiles to the engine's own `camera.resetCamera()`, a separate primitive whose 0.29.0
+           * release fixed the sweep through the colour wheel on the way out of a grade: it drops the
+           * filter in a zero-duration sequence and eases only the pose. Writing neutral values into a
+           * ref instead would put the filter back in the same transform as the pose and walk the picture
+           * blue → cyan → green → olive again, which is the defect that fix exists for.
            */
-          motion?: StoryTransformRef;
+          operation: "transform" | "reset";
+          /**
+           * `transform` — where the camera ends up, in the same shape `/transform` hands a sprite.
+           *
+           * Read in both of the ref's modes: `props` for a settled pose, `animation` for a whole
+           * keyframed shot (what the `motion` operation was), whose timing lives in its own keyframes.
+           */
+          transform?: StoryTransformRef;
+          /**
+           * `reset` — how long the camera takes to get back, and on what curve.
+           *
+           * Only `reset` reads these: a `transform` row carries its timing inside the ref, and a second
+           * copy out here would be a number the compile does not read.
+           */
           durationMs?: number;
           easing?: string;
       }
@@ -732,11 +863,37 @@ export type StoryActionPayload =
           action: "vfx";
           operation: "create" | "show" | "hide" | "pause" | "resume" | "setRate";
           objectName: string;
+          /** Which overlay a non-`create` op addresses. Same rule as the `image` arm's `target`. */
+          target?: StoryActionableTargetRef;
           /** The looping clip — a video asset, the same pipeline `/video` uses. */
           assetId?: string;
           /**
-           * How the overlay composites. The choice IS the material route: `normal` for a true-alpha
-           * WebM, `screen` for glow rendered on black, `multiply` for shadow rendered on white.
+           * The overlay's clip, generated from a weather seed instead of imported.
+           *
+           * Mutually exclusive with {@link assetId}: an overlay has one source, and a row carrying
+           * both would leave whichever the compiler read last deciding what the player sees. The
+           * seed and its parameters are all that is stored — the clip they describe is a build
+           * product, produced when something needs to play one and never entering the asset library,
+           * because the library holds what the author brought.
+           *
+           * Additive: no document written before this carries one, so no schema bump.
+           */
+          seed?: WeatherSeedRef;
+          /**
+           * How the overlay composites. The choice IS the material route: `screen` for glow
+           * rendered on black, `multiply` for shadow rendered on white, `normal` for a clip that is
+           * opaque and meant to cover what is under it.
+           *
+           * **No option carries an alpha channel through.** WebKit decodes a WebM carrying alpha and
+           * composites its RGB plane opaquely, discarding the transparency - VP9 and VP8 alike, on
+           * iOS and on macOS Safari (measured 2026-08-18 against iOS 18.7 and Safari 26.3; Chromium
+           * honours the very same files). A transparent clip left on `normal` therefore looks
+           * correct on every Chromium target and is a full-screen opaque rectangle in the iOS shell
+           * and the web build. Transparency is expressed as an opaque clip on black plus `screen`.
+           *
+           * `portability/vfx-alpha` reports a row that has done it the other way, reading the alpha
+           * channel off the clip's own bytes. It is an error, so such a project does not build for
+           * a Safari-engine target until the row is changed.
            */
           blendMode?: StoryVfxBlendMode;
           opacity?: number;
@@ -758,19 +915,50 @@ export type StoryActionPayload =
           transition?: StoryTransformRef;
       }
     | {
-          action: "screenEffect";
-          effect: "blink" | "vignette";
-          durationMs?: number;
-          holdMs?: number;
-          color?: string;
-          opacity?: number;
-          easing?: string;
-      }
-    | {
           action: "blueprint";
           /** Owner blueprint id of the implicit Story Action Blueprint bound 1:1 to this action. */
           blueprintId: string;
+      }
+    | {
+          /**
+           * A marker a plugin's story action left behind, for that same plugin's compile pass to read.
+           *
+           * This is the one block kind whose meaning lives outside the document, and the exception is
+           * deliberate. Everything else a plugin contributes through `story.actions` is a standard
+           * block: the action is a *shortcut for typing*, and once typed the document owes the plugin
+           * nothing - uninstall it and the scene still plays. A marker cannot work that way, because
+           * what it asks for is not a thing that happens at one point in the scene but a rule about
+           * every line after it, and no fixed set of rows expresses that while the author keeps
+           * editing. So the row records the *request* and the plugin's pass answers it at compile
+           * time.
+           *
+           * The consequence is a real dependency, and it is declared rather than discovered:
+           * `ProjectDependencyService` scans these blocks and reports the plugin as required, so a
+           * project that would compile differently without it says so before the build, not after.
+           * A marker whose plugin is absent compiles to nothing and lints as a missing dependency -
+           * never to a guess about what it meant.
+           */
+          action: "plugin";
+          /** The plugin that owns this marker. The document hard-depends on it; see above. */
+          pluginId: string;
+          /** The plugin's story-action id, itself namespaced by `pluginId`. */
+          actionId: string;
+          /**
+           * What the author filled in on the row, for the owning pass to interpret. Studio never
+           * reads inside it - the keys are the plugin's vocabulary - so it is only constrained to be
+           * JSON, which is what makes the row survive a round trip through the project file.
+           */
+          params: Record<string, StoryPluginActionParamValue>;
       };
+
+/** A JSON-serializable parameter value carried by a `{action:"plugin"}` block. */
+export type StoryPluginActionParamValue =
+    | string
+    | number
+    | boolean
+    | null
+    | StoryPluginActionParamValue[]
+    | { [key: string]: StoryPluginActionParamValue };
 
 /** Mirrors NLR's `VfxBlendMode`; the compiler passes it straight through to the overlay's CSS. */
 export type StoryVfxBlendMode = "normal" | "screen" | "multiply" | "lighten" | "color-dodge" | "overlay";
@@ -965,6 +1153,19 @@ export type StoryDisplayableTargetRef = {
     kind?: StoryDisplayableTargetKind;
     name: string;
     /**
+     * The last-known AUTHOR-FACING name, for the case where the reference cannot be resolved.
+     *
+     * `name` above is the stage KEY, and the two are not interchangeable: a character with no stage
+     * name keys on its `characterId`, so `name` can be a UUID. While the reference resolves, the
+     * creator block supplies both halves and this field is not read; once it dangles, `name` is the
+     * only thing left to show - and showing a UUID is how a deleted creator block turns into a row
+     * the author cannot read. Same `name`/`label` split `displayableSourceIdentity` states.
+     *
+     * Additive: a reference written before this carries none, and falls back to `name` exactly as it
+     * always did.
+     */
+    label?: string;
+    /**
      * Stable identity of the displayable: the id of the action block that introduced it
      * (character enter / image / text / layer). Displayables can only be declared statically,
      * so this always points at a real creator block. When present it is the source of truth -
@@ -993,6 +1194,53 @@ export type StoryDisplayableTargetRef = {
 export type StoryLayerRef =
     | { kind: "default"; layer: "background" | "displayable" }
     | { kind: "custom"; sourceBlockId?: StoryBlockId; name?: string };
+
+/** The three stage objects that are `Actionable`s rather than Displayables, and so cannot use {@link StoryDisplayableTargetRef}. */
+export type StoryActionableKind = "video" | "vfx" | "audio";
+
+/**
+ * A stage singleton an `Actionable` row can address without any creator block of its own.
+ *
+ * Only the background-music channel qualifies: a scene declares its music on the scene record, and
+ * the reserved name `bgm` addresses that handle whether or not this scene holds a `/bgm` row - so a
+ * reference to it can never be bound to a block the way a named sound is. Same role `builtin` plays
+ * on {@link StoryDisplayableTargetRef}, for the same reason.
+ */
+export type StoryActionableBuiltin = "bgm";
+
+/**
+ * Reference to a video / vfx / sound handle, the `Actionable` counterpart of
+ * {@link StoryDisplayableTargetRef}: `sourceBlockId` is the identity, `name` the legacy fallback and
+ * last-known label, `builtin` the escape hatch for a singleton that has no creator block.
+ *
+ * A sibling type rather than a widening of {@link StoryDisplayableTargetRef}, because that type's
+ * `kind` is {@link StoryDisplayableTargetKind}, which deliberately excludes video and vfx so that "a
+ * vfx cannot be transformed" stays a fact of the type system. This ref carries no `kind` at all: the
+ * owning payload's `action` already states it, and a second answer to one question is how the two
+ * drift apart. {@link StoryLayerRef} omits it for exactly the same reason.
+ */
+export type StoryActionableTargetRef = {
+    /**
+     * The stage key as it stood when the row was written. Read only when `sourceBlockId` resolves to
+     * nothing - a document authored before stable ids, or a creator block since deleted.
+     */
+    name: string;
+    /**
+     * The last-known AUTHOR-FACING name, for the case where the reference cannot be resolved.
+     *
+     * Not a duplicate of `name`: an unnamed `playSound` row registers its handle under its `assetId`,
+     * so a sound's stage key can be an asset UUID. One field cannot be both the registry key that
+     * finds the handle and the word a person reads, which is why {@link StoryDisplayableTargetRef}
+     * carries the same pair.
+     *
+     * Additive: a reference written before this carries none, and falls back to `name`.
+     */
+    label?: string;
+    /** Id of the action block that created this handle (`video`/`vfx` create, `audio` playSound). */
+    sourceBlockId?: StoryBlockId;
+    /** When set it is the source of truth; `name`/`sourceBlockId` are display fallbacks only. */
+    builtin?: StoryActionableBuiltin;
+};
 
 /** Tag id per axis id. Partial selections are legal and mean "leave every other axis alone". */
 export type StoryCharacterTagSelection = Record<string, string>;
@@ -1028,59 +1276,329 @@ export type StoryConditionRef =
           expression: StoryExpression;
       };
 
-export type StoryTransformPreset =
-    | "none"
-    | "left"
-    | "center"
-    | "right"
-    | "custom"
-    | "fadeIn"
-    | "fadeOut"
-    | "slideLeft"
-    | "slideRight"
-    | "slideUp"
-    | "slideDown"
-    | "zoom"
-    | "scale"
-    | "rotate"
+/**
+ * The CSS filter functions Studio stores STRUCTURALLY, one number each.
+ *
+ * The set is not a taste: it is exactly the CSS `<filter-function>`s whose argument is a single
+ * scalar. `drop-shadow()` takes an offset/blur/spread/colour tuple and `url()` names a document
+ * fragment, so neither can be one number, neither can be interpolated key-by-key by
+ * {@link splitStoryTransformChange}, and both belong in `filterRaw` instead.
+ *
+ * Spelling: `hueRotate` here, `hue-rotate(…)` in the emitted CSS. Identifiers are camelCase the whole
+ * way down this file; the hyphen belongs to the stylesheet, not to the document.
+ */
+export type StoryFilterFunction =
+    | "grayscale"
+    | "sepia"
+    | "hueRotate"
+    | "invert"
+    | "saturate"
+    | "contrast"
+    | "brightness"
     | "opacity"
-    | "darken"
-    | "circleReveal"
-    | "circleClose"
-    | "wipe";
+    | "blur";
 
+/** A structured filter chain: a value per function, emitted in one fixed order. */
+export type StoryFilterProps = Partial<Record<StoryFilterFunction, number>>;
+
+/**
+ * **The bag.** One animation concept, one shape.
+ *
+ * NarraLeaf-React has exactly one animation primitive: interpolate a bag of props over a duration
+ * (`TransformDefinitions.ImageTransformProps = CommonDisplayableConfig & VisualEffectTransformProps`,
+ * with `TextTransformProps` adding `fontColor`). This type is that bag with Studio-side value types -
+ * an asset id where the engine takes a resolved URL, a structured record where CSS takes a string.
+ *
+ * `undefined` means "leave this channel as it stands", exactly as it does in the engine's
+ * `Partial<TransformProps>`. `null` - legal only on the discrete appearance channels - means "put this
+ * channel back to neutral", which is what the engine's `clearMask` / `clearClip` / `clearFilter` do.
+ * The two are genuinely different instructions and a single `undefined` could not spell both.
+ *
+ * ## Why `filter` is a record and not a string
+ *
+ * Two reasons, and the second is the load-bearing one.
+ *
+ * 1. **A string cannot be read back.** `"brightness(0.6) blur(2px)"` is the *output* of a dim and a
+ *    defocus; nothing in it says which control produced which term, so a value an author set through
+ *    one surface becomes unreachable from every other. The row could be shown but not edited, and a
+ *    command line could print it but never parse it back.
+ * 2. **It makes interpolability decidable.** Whether a filter change may be tweened depends on which
+ *    functions move and by how much, and `1e626400` measured what happens when that question is not
+ *    asked: easing the `moonlight` grade on or off walks the picture blue → cyan → green → olive,
+ *    because `hue-rotate` unwinds 185 degrees of the wheel while `grayscale` simultaneously lets the
+ *    source's own hues back in. The midpoint is a green face. A record lets
+ *    {@link splitStoryTransformChange} see the angle and cut instead; a string can only be diffed as
+ *    text, which answers the wrong question.
+ *
+ * `filterRaw` is the escape hatch for what the record cannot hold - `drop-shadow()`, a chain whose
+ * ORDER matters (the camera look library's recipes are ordered pipelines, and the record has no
+ * order), or anything Studio has not spelled out. It is mutually exclusive with `filter`: carrying
+ * both is a conflict, the way `/font` refuses a size and a colour in one row, because two writers of
+ * one CSS channel means whichever the emitter happens to read last wins silently.
+ */
+export type StoryTransformProps = {
+    // --- Geometry: `CommonDisplayableConfig`. Numeric, continuous, always interpolable. ---
+    position?: StoryAlignPositionValue;
+    zoom?: number;
+    /** Negative mirrors. NLR maps the pair onto `scale(zoom*scaleX, zoom*scaleY)`. */
+    scaleX?: number;
+    scaleY?: number;
+    /** Degrees. */
+    rotation?: number;
+    opacity?: number;
+
+    // --- Appearance: `VisualEffectTransformProps`. Discrete unless stated otherwise. ---
+    /**
+     * The mask image, as an ASSET ID rather than the `url(...)` the engine takes. The compiler resolves
+     * it through `Displayable.mask`, which also registers the source for preload - writing
+     * `maskImage` into a raw Transform would skip that and the first frame would show no mask.
+     */
+    maskAssetId?: string | null;
+    maskSize?: string | null;
+    maskPosition?: string | null;
+    maskRepeat?: string | null;
+    maskMode?: string | null;
+    clipPath?: string | null;
+    backdropFilter?: string | null;
+    mixBlendMode?: string | null;
+
+    // --- Text only: `TextTransformProps`. ---
+    fontColor?: string;
+
+    // --- Filter: structured, raw, or a named grade. Never more than one. ---
+    filter?: StoryFilterProps | null;
+    filterRaw?: string | null;
+    /**
+     * A colour grade from the camera look library, kept by NAME rather than as the chain it expands
+     * to.
+     *
+     * The third writer of the CSS `filter` channel, and mutually exclusive with the other two for the
+     * reason they are exclusive with each other: two writers of one channel means whichever the
+     * emitter reads last wins with no diagnostic anywhere.
+     *
+     * It is the name and not the CSS because the string is the *output*. A row storing
+     * `grayscale(1) sepia(1) hue-rotate(185deg) saturate(4) brightness(0.55)` cannot say which grade
+     * an author picked, so every surface that wants to re-open on the choice had to rebuild every
+     * recipe the library can produce and match the string back. Keeping the name deletes that index
+     * outright, and it is what lets a row read `Look memory` instead of a wall of filter terms.
+     *
+     * `null` clears the channel, exactly as `filter: null` does - the spelling `/reset` and
+     * `look=none` write is `filter: null`, so nothing produces this one, but the channel is nullable
+     * like every other appearance channel rather than being the one exception.
+     *
+     * The library lives in `lib/ui-editor/runtime/game/cameraLookPresets.ts` and cannot be imported
+     * from `@shared`, so the resolution is injected: see `foldStoryTransformLook`.
+     */
+    look?: StoryCameraLookRef | null;
+
+    // --- Lens: the camera's own glass. Camera only. ---
+    /**
+     * The shutter, 0 (open) to 1 (shut): two eyelids closing symmetrically over the whole stage.
+     *
+     * Rendered by the camera's own lens overlay, which is a SIBLING of the camera's transform node -
+     * so the shutter does not zoom or rotate with the shot. That is what makes it a camera prop rather
+     * than a full-screen object: an overlay standing on the stage would be graded, panned and scaled
+     * with everything else on it, and would cover the dialogue box.
+     *
+     * These six are refused on every other subject, because no other subject has a lens.
+     */
+    shutter?: number;
+    shutterColor?: string;
+    /** The vignette's strength, 0 (none) to 1: the frame darkening at its edges. */
+    vignette?: number;
+    vignetteColor?: string;
+    /**
+     * Where the vignette's mask starts and finishes fading, as CSS lengths (`"44%"`).
+     *
+     * Percentages, so the falloff means the same thing at every stage size. `inner` is the clear
+     * centre and `outer` the fully-dark edge, so an inner above the outer is not a wide vignette - it
+     * is a `radial-gradient` whose stops run backwards, which the browser drops whole, taking the mask
+     * and the effect with it. Ordered at compile time.
+     */
+    vignetteInner?: string;
+    vignetteOuter?: string;
+    /**
+     * A named lens gesture: the eyes blinking, the frame pulsing dark at its edges.
+     *
+     * A gesture is not a settled value, which is why it is a preset and not a number an author dials.
+     * A blink is in, hold, out - three timings and a colour - and asking an author to keyframe that by
+     * hand every time they want a character to blink is the shape this field exists to refuse. The
+     * library is `lib/ui-editor/runtime/game/cameraLensPresets.ts`; the fields beside `preset` override
+     * one number each and absent means "the preset's own".
+     */
+    lens?: StoryCameraLensRef | null;
+};
+
+/**
+ * A gesture from the camera lens library, with the numbers an author may take over.
+ *
+ * Every override is optional and absent means the preset's own value, which is what keeps a row that
+ * only names a gesture readable as the gesture: `lens=blink` is a blink, and the numbers only appear
+ * on a row where somebody changed one.
+ */
+export type StoryCameraLensRef = {
+    preset: string;
+    /** The move in, the pause at full, and the move out. Milliseconds. */
+    inMs?: number;
+    holdMs?: number;
+    outMs?: number;
+    easing?: string;
+    /** What the shutter or the vignette is drawn in. */
+    color?: string;
+    /** How far the gesture goes: 1 is fully shut, or the preset's nominal vignette strength. */
+    amount?: number;
+    /** The vignette's gradient stops, as percentages of the frame. */
+    inner?: number;
+    outer?: number;
+};
+
+/**
+ * A grade from the camera look library: which recipe, and how far up.
+ *
+ * `preset` is a `StoryCameraLookPresetId`, spelled as a plain string here because the library is a
+ * renderer module and this type is read by the main process too. A preset id no longer in the library
+ * is a diagnostic at compile time, never a silent substitution - a row asked for a specific look.
+ */
+export type StoryCameraLookRef = {
+    preset: string;
+    /** 0 is no grade, 1 the preset's nominal strength. Clamped to the library's range at compile time. */
+    intensity?: number;
+};
+
+/**
+ * The three clip-path animations that are NOT props, kept as named generators.
+ *
+ * `Displayable.circleReveal` / `circleClose` / `wipe` do not SET a clip-path, they synthesize a new
+ * one every frame from an interpolated radius or edge. The bag can hold one `clipPath` string, which
+ * is a state; a generator is not a state, and the two are not the same kind of thing. They were
+ * `StoryTransformPreset` values until now and never worked there - every path that needs a
+ * transform's props up front reported `presetNotFoldable` and folded nothing - which is the same fact
+ * from the other side.
+ *
+ * So they stay verbs. On `displayable` they keep their own `operation`; on a transform ref they live
+ * here, beside the bag rather than inside it.
+ */
+export type StoryClipReveal = {
+    kind: "circleReveal" | "circleClose" | "wipe";
+    /** `circleReveal` / `circleClose` - the centre, as a CSS position (`"50% 50%"`). */
+    center?: string;
+    /** `circleReveal` / `circleClose` - start and end radii. */
+    fromRadius?: number;
+    toRadius?: number;
+    /** `wipe` - which edge it travels from. */
+    direction?: "left" | "right" | "top" | "bottom";
+    reverse?: boolean;
+};
+
+/**
+ * What a row asks the stage to animate, and over how long.
+ *
+ * Two modes and no third. `props` states a destination bag (and optionally a start one) with one
+ * timing; `animation` names a Story Motion, a whole keyframed shot whose timing lives in its own
+ * keyframes. There is no longer a closed list of named looks between the author and the bag: v18
+ * expanded every `StoryTransformPreset` into the props it always stood for.
+ *
+ * `delayMs`, `repeat`, `repeatDelayMs` and `from` are new in v18 and were never a gap in the engine -
+ * `CommonTransformProps.delay` and `TransformConfig.repeat/repeatDelay` have always been there and
+ * Studio simply never passed them.
+ */
 export type StoryTransformRef = {
-    mode?: "preset" | "animation";
-    preset?: StoryTransformPreset;
+    /** Absent means `"props"`. Only a Story Motion has to say which it is. */
+    mode?: "props" | "animation";
+    /** Where the target ends up. */
+    to?: StoryTransformProps;
+    /**
+     * Where it starts, when the author says so rather than letting it start from wherever it stands.
+     * Also what makes a filter change decidable: {@link splitStoryTransformChange} can only compare
+     * two known endpoints, and an absent `from` is read as the neutral bag.
+     */
+    from?: StoryTransformProps;
     durationMs?: number;
     easing?: string;
-    props?: Record<string, StoryLiteralValue>;
+    delayMs?: number;
+    repeat?: number;
+    repeatDelayMs?: number;
+    /** A clip-path generator - see {@link StoryClipReveal}. Runs on this ref's own timing. */
+    clipReveal?: StoryClipReveal;
     animationId?: StoryAnimationAssetId;
 };
 
+/**
+ * Every transition kind a document may name, as a value rather than only a type.
+ *
+ * {@link StoryTransitionRef} derives its `kind` from this tuple, so the two cannot drift. The
+ * runtime copy exists because a stored `kind` is just a string on disk: a document written by a
+ * newer Studio, or one carrying a kind that has since been retired, holds a word no build here can
+ * play, and only a value can be asked whether it contains that word.
+ * {@link isPlayableStoryTransitionKind} is what asks, on behalf of `story/transition-unavailable`.
+ */
+export const STORY_TRANSITION_KINDS = [
+    "none",
+    "dissolve",
+    "fadeIn",
+    "maskCircle",
+    "maskWipe",
+    "softWipe",
+    "blinds",
+    "slide",
+    "softIris",
+    // 0.16.0 Mask-vocabulary additions (engine `Reveal` + `Mask.*`). Additive: existing documents
+    // never carry these, so no schema bump is needed.
+    "barnDoor",
+    "clock",
+    "fan",
+    "dots",
+    "blurDissolve",
+    // 0.28.0: engine `Exposure` — the frame burns out per channel instead of
+    // being covered. Additive, like the mask additions above.
+    "exposure",
+    // 0.30.0: engine `RuleReveal` — a greyscale picture decides the order the frame changes
+    // over. Additive as well; the picture it needs is {@link StoryTransitionRef.ruleAssetId}.
+    "ruleReveal",
+    "throughColor",
+    "darkness",
+    "custom",
+] as const;
+
+export type StoryTransitionKind = (typeof STORY_TRANSITION_KINDS)[number];
+
+/**
+ * Members of the union above that no build can actually play.
+ *
+ * Exactly one, and it stays one by construction: the story compiler's `createTransition` switch is
+ * exhaustive over {@link StoryTransitionKind}, so a kind added to the tuple without an engine behind
+ * it fails to compile there rather than reaching an author. `custom` is the standing exception - a
+ * transition that is nothing but its `props`. Nothing writes one, but the union has always allowed
+ * it, so documents may carry it and it is handled rather than removed.
+ */
+export const UNPLAYABLE_STORY_TRANSITION_KINDS = ["custom"] as const satisfies readonly StoryTransitionKind[];
+
+/**
+ * Whether a stored `kind` names a transition this build will actually play.
+ *
+ * `false` covers both ways a row can name one it will not get: a word outside the union entirely -
+ * a document written by a newer Studio, or one carrying a kind that has since been retired - and a
+ * member of the union with nothing behind it. The author sees the same thing either way, so the two
+ * are one question. `none` is playable: it is the author saying "cut", and it gets a cut.
+ */
+export function isPlayableStoryTransitionKind(kind: string): boolean {
+    return (STORY_TRANSITION_KINDS as readonly string[]).includes(kind)
+        && !(UNPLAYABLE_STORY_TRANSITION_KINDS as readonly string[]).includes(kind);
+}
+
 export type StoryTransitionRef = {
-    kind:
-        | "none"
-        | "dissolve"
-        | "fadeIn"
-        | "maskCircle"
-        | "maskWipe"
-        | "softWipe"
-        | "blinds"
-        | "slide"
-        | "softIris"
-        // 0.16.0 Mask-vocabulary additions (engine `Reveal` + `Mask.*`). Additive: existing documents
-        // never carry these, so no schema bump is needed.
-        | "barnDoor"
-        | "clock"
-        | "fan"
-        | "dots"
-        | "blurDissolve"
-        | "throughColor"
-        | "darkness"
-        | "custom";
+    kind: StoryTransitionKind;
     durationMs?: number;
     easing?: string;
+    /**
+     * `ruleReveal` — the greyscale picture that decides the order.
+     *
+     * A first-class field rather than an entry in {@link props} because it is an asset id, and the
+     * reference index only walks named asset fields: parked in `props` it would be invisible to
+     * "what uses this image", and the unreferenced-asset lint would tell the author to delete a
+     * picture their scene changes depend on.
+     */
+    ruleAssetId?: string;
     props?: Record<string, StoryLiteralValue>;
 };
 

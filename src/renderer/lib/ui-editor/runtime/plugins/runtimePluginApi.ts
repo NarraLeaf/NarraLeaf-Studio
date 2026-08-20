@@ -17,6 +17,23 @@ import type {
 } from "@shared/types/blueprint/externalLink";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { ElementRendererProps } from "../ElementRendererRegistry";
+import type { StoryCompilePass } from "../game/storyCompilePass";
+
+/**
+ * The compile-pass vocabulary, re-exported so a plugin author can NAME these types rather than
+ * digging them out of `Parameters<StoryCompilePass["scene"]>[0]`. This module is the public
+ * `narraleaf-studio/runtime` surface (the plugin-types build reads its exports), so a type that is
+ * only reachable through inference is, for an author, a type that does not exist.
+ */
+export type {
+    BlockInjection,
+    CompileBlockView,
+    EngineAction,
+    RuntimeFlag,
+    SceneCompileContext,
+    StageImage,
+    StoryCompilePass,
+} from "../game/storyCompilePass";
 
 export type RuntimePluginLogLevel = "info" | "warning" | "error";
 
@@ -109,12 +126,32 @@ export type RuntimePluginEventMap = {
      */
     sceneEnter: { sceneId: string | null };
     sceneExit: { sceneId: string | null };
-    /** One line of dialogue finished displaying. */
-    dialogueEnd: void;
+    /**
+     * One line of dialogue finished displaying.
+     *
+     * `textId` is the line's stable text id - the same key the translation table and the engine's
+     * `voiceId` use - or null for a line the host cannot name (a story compiled outside Studio, or
+     * a line the compile did not bind). It is the id to record against when a plugin keeps its own
+     * account of what the player has heard.
+     */
+    dialogueEnd: { textId: string | null };
     /** The player picked a choice. */
     choiceMade: { text: string };
     /** A character line was shown. */
     characterPrompt: { character: string | null; text: string };
+    /**
+     * The story started playing an audio asset: a `/bgm` or `/sound` row, or a scene whose
+     * configured background music begins as it mounts.
+     *
+     * Reports the clip the *story* began, not every sound the game makes: a clip a Page starts
+     * through `Play Sound` belongs to the interface rather than to the playthrough, and does not
+     * appear here.
+     *
+     * Like `sceneEnter` this follows execution rather than a first visit, so a replay, a rollback
+     * or a re-entered scene fires it again. Treat it as "this is playing now" and make what you do
+     * with it idempotent.
+     */
+    audioPlayed: { assetId: string };
     /** The action stack drained with a save context present. */
     gameEnd: void;
     beforeRestore: void;
@@ -256,6 +293,21 @@ export type RuntimePluginSidecars = {
 };
 
 /**
+ * `story` - take part in compiling the project's stories.
+ *
+ * The one namespace here that acts *before* the game runs rather than during it: a pass is called
+ * while each scene is compiled, and what it returns is part of the story the player then plays. See
+ * `storyCompilePass.ts` for the context a pass is handed and for why it is as small as it is.
+ */
+export type RuntimePluginStory = {
+    /**
+     * Register a pass. Idempotent by pass id, so a host that runs setup twice does not double every
+     * action the pass injects.
+     */
+    registerCompilePass(pass: StoryCompilePass): void;
+};
+
+/**
  * The game-side plugin surface.
  *
  * Everything below the always-present five is **capability-gated**: a domain the
@@ -318,6 +370,8 @@ export type RuntimePluginGame = {
     assets?: RuntimePluginAssets;
     /** Present with `"locale"`. */
     locale?: RuntimePluginLocale;
+    /** Present with `"story.compile"`. */
+    story?: RuntimePluginStory;
     /** Present when `contributes.sidecars` is non-empty. */
     sidecar?: RuntimePluginSidecars;
     /** Present when `contributes.externalLinks` is non-empty. */

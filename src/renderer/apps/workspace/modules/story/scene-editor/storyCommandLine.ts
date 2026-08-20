@@ -1,16 +1,22 @@
 import type {
+    StoryActionableTargetRef,
     StoryActionPayload,
     StoryBlock,
     StoryDeclarationPayload,
+    StoryDisplayableTargetRef,
+    StoryJumpPayload,
     StoryLiteralValue,
-    StoryTransformPreset,
     StoryTransformRef,
     StoryTransitionRef,
+    StoryVariableRef,
     StoryVariableValueType,
 } from "@shared/types/story";
 import {
+    actionableSubjectWord,
     declarationDefaultForType,
+    displayableSubjectWord,
     layerActionTargetRef,
+    listSceneLabels,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     storyVariableRefKey,
@@ -21,6 +27,8 @@ import { translate } from "@/lib/i18n";
 
 import {
     getStorySceneName,
+    resolveStorySceneName,
+    resolveStoryVariableName,
     storyCameraPanPlacement,
     storyCharacterName,
     variableRefShortLabel,
@@ -28,17 +36,29 @@ import {
 } from "@/lib/story/storyRowProjection";
 import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
+import { isNeutralStoryTransformProps } from "@shared/story/transformProps";
+import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { ACTION_TRIGGER } from "./commandTrigger";
+import { actionableTargetRef, audioTargetRef, displayableTargetRef } from "./commands/payloadHelpers";
 import { localizedEnumValue } from "./commands/localizedEnums";
 import { localizedParamKey } from "./commands/localizedParams";
 import { localizedUnit } from "./commands/localizedUnits";
 import { getDefById, localizedCommandToken, retiredCommandToken } from "./commands/registry";
 import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 import {
-    transformPresetFor,
+    patchTransformProp,
+    patchTransformTiming,
+    transformPropArgs,
+    transformTimingArgs,
+    type TransformPropArg,
+} from "./commands/transformVocabulary";
+import {
+    applyPlacementToTransform,
+    applyTransitionWordToTransform,
+    placementWordFor,
     transitionKindFor,
     transitionWordFor,
-    transitionWordForPreset,
+    transitionWordForTransform,
 } from "./commands/transitions";
 import {
     findParam,
@@ -48,7 +68,13 @@ import {
     type StoryCommandEnumOption,
     type StoryCommandParam,
 } from "./storyCommandGrammar";
-import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues";
+import { assetChoices } from "./storyCommandValues";
+import type {
+    StoryCommandContext,
+    StoryCommandSpan,
+    StoryCommandStageObjectKind,
+    StoryCommandTargetValue,
+} from "./storyCommandValues";
 
 /**
  * A committed row read back as the command line that would produce it.
@@ -91,7 +117,16 @@ import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues
  */
 export type StoryCommandLineControl =
     | { kind: "number"; min?: number; max?: number; integer?: boolean; unit: string; presets?: readonly number[] }
-    | { kind: "enum"; options: readonly StoryCommandEnumOption[] }
+    | {
+          kind: "enum";
+          options: readonly StoryCommandEnumOption[];
+          /**
+           * This slot also takes a drawn easing curve, so the popover offers the card as well as the
+           * words. Set from the grammar (`freeform` on the enum type), never per command - a slot
+           * that takes a curve on the line is the same slot that takes one in the inspector.
+           */
+          curve?: true;
+      }
     | { kind: "boolean" }
     | { kind: "color" }
     /** A closed list the grammar cannot hold — scenes, and anything else named per project. */
@@ -135,6 +170,55 @@ export type StoryCommandLineOrnament = {
     id: string;
 };
 
+/**
+ * What a pointing word on the line REFERS TO — the smallest fact the projection can state about it.
+ *
+ * Deliberately not a `SearchJumpTarget`, which is the workspace's deep-link vocabulary and the thing
+ * a surface eventually navigates with. That type's `storyBlock` and `storyScene` arms want a
+ * `storyId`, a `storyName` and a `sceneName`, and this layer has none of them: it is handed a scene
+ * and a table of scenes, never the story that owns them, and reaching for one would mean threading
+ * an id through `StoryRowLookups` purely so the projection could name a destination it never opens.
+ *
+ * So the projection states the reference and the React layer supplies the context — the same split
+ * `motionName`, `pluginActionLabel` and `projectVariableName` already live by. It also keeps this
+ * honest in the other direction: a link says what the word MEANS, and "and what opens it" stays one
+ * decision made in one place rather than per command.
+ *
+ * `block` is always a row of the SAME scene the projected row lives in. Every index it can come from
+ * is scene-scoped — the label scan, the stage-object declaration index, a layer's `sourceBlockId` —
+ * so the caller already knows the scene and does not have to be told.
+ */
+export type StoryCommandLineRef =
+    /** A cast member: the character editor, not the row they walk on in. */
+    | { kind: "character"; characterId: string }
+    | { kind: "asset"; assetId: string }
+    | { kind: "scene"; sceneId: string }
+    /**
+     * A variable, as the reference the row stores. Only the ref: a scene variable is declared by a
+     * row and a project one by the registry, and which surface each opens is the navigation layer's
+     * call rather than a fact about the line.
+     */
+    | { kind: "variable"; target: StoryVariableRef }
+    /** A row in this scene — the label a `/goto` lands on, or the row that declares a stage object. */
+    | { kind: "block"; blockId: string };
+
+/**
+ * One pointing word inside the line: where it sits, and what it points at.
+ *
+ * The third string beside {@link StoryCommandLineEdit} and {@link StoryCommandLineOrnament}, recorded
+ * by the same writer at the same moment for the same reason — only the code that put the word on the
+ * line knows which stretch of `source` it occupies.
+ *
+ * A link and an edit on one token are two INTENTIONS, not two spellings of one: `/show Narra` already
+ * opens a character picker on `Narra`, and pointing at who Narra is does not replace that. The two
+ * spans are therefore either identical (same arg) or disjoint (different args) — never overlapping by
+ * halves — which is what lets a renderer group by their union without a tie-break rule.
+ */
+export type StoryCommandLineLink = {
+    span: StoryCommandSpan;
+    ref: StoryCommandLineRef;
+};
+
 export type StoryCommandLineProjection = {
     /**
      * The line in CANONICAL form — a leading "/", whatever trigger the author's setting displays.
@@ -146,6 +230,8 @@ export type StoryCommandLineProjection = {
     edits: readonly StoryCommandLineEdit[];
     /** Every picture the line draws inside itself, by where it sits in {@link source}. */
     ornaments: readonly StoryCommandLineOrnament[];
+    /** Every word that names something else in the project, by where it sits in {@link source}. */
+    links: readonly StoryCommandLineLink[];
 };
 
 /** What the projection needs beyond the row itself — every lookup the prose projection already takes. */
@@ -210,6 +296,15 @@ type Arg = {
     presets?: readonly number[];
     /** A picture drawn immediately before this arg — see {@link StoryCommandLineOrnament}. */
     ornament?: Omit<StoryCommandLineOrnament, "at">;
+    /**
+     * What this arg's word points at, when it points at anything — see {@link StoryCommandLineLink}.
+     *
+     * Set only where the reference RESOLVED. A name that answers to nothing (a dangling reference, a
+     * freely typed speaker, a document whose declaring row was deleted) carries no link at all: the
+     * word still prints, it just is not a way through to something. One missing link costs a click;
+     * one wrong link opens the wrong thing, which is the failure worth being strict about.
+     */
+    link?: StoryCommandLineRef;
     /** The options of a {@link StoryCommandLineControl} "choice" — a list no param type can hold. */
     choices?: readonly { value: string; label: string }[];
     /**
@@ -337,7 +432,7 @@ function controlFor(param: StoryCommandParam | null, entry: Arg): StoryCommandLi
     }
     for (const type of paramTypes(param)) {
         if (type.kind === "enum") {
-            return { kind: "enum", options: type.options };
+            return { kind: "enum", options: type.options, ...(type.freeform ? { curve: true as const } : {}) };
         }
         if (type.kind === "number") {
             return {
@@ -363,6 +458,7 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
     let source = ACTION_TRIGGER + verb;
     const edits: StoryCommandLineEdit[] = [];
     const ornaments: StoryCommandLineOrnament[] = [];
+    const links: StoryCommandLineLink[] = [];
     for (const entry of args) {
         if (!entry) {
             continue;
@@ -385,8 +481,15 @@ function writeLine(def: StoryCommandDef | null, verb: string, args: readonly (Ar
         if (control && entry.apply) {
             edits.push({ span: { start, end: source.length }, control, value: entry.editValue ?? entry.value, apply: entry.apply });
         }
+        // The SAME span the edit above would take, taken from the same two offsets — which is what
+        // makes "identical or disjoint" a property of the writer rather than a hope about the callers.
+        // The unit rides inside it for the same reason it rides inside an edit: half a token is not a
+        // word, and a link stopping short of one would leave a dead tail beside it.
+        if (entry.link) {
+            links.push({ span: { start, end: source.length }, ref: entry.link });
+        }
     }
-    return { source, edits, ornaments };
+    return { source, edits, ornaments, links };
 }
 
 // ---------------------------------------------------------------------------
@@ -405,6 +508,11 @@ function patchTransform<P extends { transform?: StoryTransformRef }>(payload: P,
     return { ...payload, transform: { ...(payload.transform ?? {}), ...patch } };
 }
 
+/** Replace the whole ref, for the writers that state a look rather than one field of one. */
+function patchTransformRef<P extends { transform?: StoryTransformRef }>(payload: P, next: StoryTransformRef | undefined): P {
+    return { ...payload, transform: next };
+}
+
 function patchTransition<P extends { transition?: StoryTransitionRef }>(payload: P, patch: Partial<StoryTransitionRef>): P {
     // A duration with no kind still means "animate", so an edit implies the house default rather than
     // writing a ref with no kind — the same rule `withTransitionRef` follows on the way in.
@@ -414,6 +522,89 @@ function patchTransition<P extends { transition?: StoryTransitionRef }>(payload:
 /** Author-typed seconds → the milliseconds the document stores. */
 function msOf(next: string): number {
     return storySecondsToMs(Number(next));
+}
+
+// ---------------------------------------------------------------------------
+// What a word points at
+// ---------------------------------------------------------------------------
+
+/**
+ * The five resolvers below, and the one rule they share: **a link is only recorded when the reference
+ * resolved right now**, against the very lookups that produced the word being printed.
+ *
+ * That pairing is the whole safety property. The line already prints an unresolvable reference as
+ * something readable — the last name the author saw, a localised "unknown scene", the "this image is
+ * gone" phrase — and every one of those is a word that points at nothing. Deriving the link from the
+ * same lookup that decided the spelling is what stops a link ever being offered on one of them,
+ * without a second list of "which names are real" to keep in step.
+ */
+
+/** A row in the projected row's own scene, when the id still answers to one. */
+function blockLink(lookups: StoryCommandLineLookups, blockId: string | undefined): Pick<Arg, "link"> {
+    return blockId && lookups.scene?.blocks[blockId] ? { link: { kind: "block", blockId } } : {};
+}
+
+/** The character an id names, when the project still holds one — the same lookup the word came from. */
+function characterLink(lookups: StoryCommandLineLookups, characterId: string | undefined): Pick<Arg, "link"> {
+    return characterId && lookups.character(characterId) ? { link: { kind: "character", characterId } } : {};
+}
+
+/**
+ * The asset an id names, when the library still holds one.
+ *
+ * Gated on the lookup rather than on the id being set, because {@link assetWord} prints the "this
+ * image is gone" phrase for an id that resolves to nothing — a word, and emphatically not a way to
+ * open the file it is telling the author about.
+ */
+function assetLink(lookups: StoryCommandLineLookups, assetId: string | null | undefined): Pick<Arg, "link"> {
+    return typeof assetId === "string" && lookups.assetName?.(assetId) ? { link: { kind: "asset", assetId } } : {};
+}
+
+/**
+ * The row that DECLARES the stage object a subject addresses, when this scene still holds one.
+ *
+ * Two ways in, in the order the compiler itself resolves the object:
+ *
+ *  - the reference's own `sourceBlockId`, which is the stable anchor and follows renames;
+ *  - failing that, the object's NAME against the declaration index — the answer for a document
+ *    written before references existed, and for a reference whose anchor has gone dangling. Both
+ *    resolve by name at runtime, so the index is not a guess here; it is what the row addresses.
+ *
+ * A built-in gets nothing: `bgm`, the scene background and the two default layers are stage
+ * singletons the engine holds without any row declaring them, so there is no row to open.
+ */
+function stageObjectLink(
+    lookups: StoryCommandLineLookups,
+    kind: StoryCommandStageObjectKind,
+    ref: { builtin?: string; sourceBlockId?: string } | undefined,
+    name: string | undefined,
+): Pick<Arg, "link"> {
+    if (ref?.builtin) {
+        return {};
+    }
+    const bound = blockLink(lookups, ref?.sourceBlockId);
+    if (bound.link) {
+        return bound;
+    }
+    const key = name?.trim().toLowerCase();
+    return blockLink(lookups, key ? lookups.commandContext?.stageObjectSources?.[kind]?.[key] : undefined);
+}
+
+/**
+ * The `label` row a `/goto` lands on, when this scene declares one by that name.
+ *
+ * Matched EXACTLY, case included, and resolved through the same scan the compiler validates with -
+ * `Scene.constructLabels` keys a plain map on the declared string, so folding case here would offer
+ * a jump to a row the engine would not have taken. The first declaration wins, which is again the
+ * engine's rule: a duplicate name is reported as a duplicate, never resolved by position.
+ */
+function labelLink(lookups: StoryCommandLineLookups, targetLabel: string | undefined): Pick<Arg, "link"> {
+    const name = targetLabel?.trim();
+    if (!name) {
+        return {};
+    }
+    const found = listSceneLabels(lookups.scene).find(label => label.name === name);
+    return found ? { link: { kind: "block", blockId: found.blockId } } : {};
 }
 
 /**
@@ -445,16 +636,30 @@ function pickCharacter(
     };
 }
 
-/** An asset slot — the row's own library, by kind. Writes the id; the row goes on printing the name. */
+/**
+ * An asset slot — the row's own library, by kind. Writes the id; the row goes on printing the name.
+ *
+ * `allowSets` says the same thing the param's own `allowSets` says, and has to agree with it: this
+ * dropdown and the typed line write the SAME field, so a set the line resolves and this refuses to
+ * list is a value the author can type and not pick, while the reverse is one they can pick and not
+ * type back. `assetChoices` is the single answer both of them ask.
+ *
+ * The one slot that says no is the transition's rule image: it writes into the transition ref rather
+ * than into `payload.assetId`, so assembly never resolves a set for it.
+ */
 function pickAsset(
     payload: { assetId?: string },
     lookups: StoryCommandLineLookups,
     kind: "image" | "audio" | "video",
     apply: (assetId: string) => StoryBlock["payload"],
+    options?: { allowSets?: true },
 ): Pick<Arg, "choices" | "apply" | "editValue"> | null {
     const context = lookups.commandContext;
-    const assets = kind === "image" ? context?.images : kind === "audio" ? context?.audio : context?.videos;
-    if (!assets || assets.length === 0) {
+    if (!context) {
+        return null;
+    }
+    const assets = assetChoices(context, kind, options?.allowSets);
+    if (assets.length === 0) {
         return null;
     }
     return {
@@ -482,25 +687,100 @@ function pickStageObject(
     };
 }
 
-/** The three words `at=` spells. Everything else in the preset union is a reveal/conceal animation. */
-const PLACEMENTS: ReadonlySet<StoryTransformPreset> = new Set<StoryTransformPreset>(["left", "center", "right"]);
-
-function placementOf(transform: StoryTransformRef | undefined): string | undefined {
-    const preset = transform?.preset;
-    return preset && PLACEMENTS.has(preset) ? preset : undefined;
+/**
+ * The name a subject was re-pointed to, as the resolver would have handed it over had the author
+ * typed it: the object plus the row that declares it, when the scene holds one.
+ *
+ * The declaring row is what a reference anchors to, and a context built without a scene has no such
+ * index (`stageObjectSources` is optional for exactly that reason) - so the reference degrades to a
+ * name, which is what every document written before references carries anyway.
+ */
+function stageObjectChoice(
+    lookups: StoryCommandLineLookups,
+    kind: StoryCommandStageObjectKind,
+    name: string,
+): Extract<StoryCommandTargetValue, { type: "stageObject" }> {
+    const sourceBlockId = lookups.commandContext?.stageObjectSources?.[kind]?.[name.trim().toLowerCase()];
+    return { type: "stageObject", objectKind: kind, name, known: true, ...(sourceBlockId ? { sourceBlockId } : {}) };
 }
 
-/** A stage object's `t=` — the reveal/conceal preset, but never a placement (that slot is `at=`). */
+/**
+ * Re-pointing a subject from the row rewrites the REFERENCE, not only the name.
+ *
+ * It always had to: the reference is what the compiler resolves, so a patch leaving the old anchor in
+ * place moved the word on screen and nothing else. The row reading its subject off that reference is
+ * what makes the omission visible - the line would have gone on printing the object just replaced.
+ *
+ * Written through the same helpers a typed line builds its payload with, so a subject picked from a
+ * row is indistinguishable from one an author typed.
+ */
+function retargetDisplayable<P extends { objectName: string; target?: StoryDisplayableTargetRef }>(
+    payload: P,
+    lookups: StoryCommandLineLookups,
+    kind: Extract<StoryCommandStageObjectKind, "image" | "text" | "layer">,
+    name: string,
+): P {
+    return { ...payload, objectName: name, target: displayableTargetRef(stageObjectChoice(lookups, kind, name)) };
+}
+
+/**
+ * {@link retargetDisplayable} for the `Actionable` handles — a clip, an overlay, a sound.
+ *
+ * `bgm` is why this one dispatches rather than always calling `actionableTargetRef`: the reserved
+ * word names the built-in music channel, not a handle that happens to be called after it, and
+ * `audioTargetRef` is where that rule already lives.
+ */
+function retargetActionable<P extends { objectName?: string; target?: StoryActionableTargetRef }>(
+    payload: P,
+    lookups: StoryCommandLineLookups,
+    kind: Extract<StoryCommandStageObjectKind, "video" | "audio" | "vfx">,
+    name: string,
+): P {
+    const choice = stageObjectChoice(lookups, kind, name);
+    return {
+        ...payload,
+        objectName: name,
+        target: kind === "audio" ? audioTargetRef(choice) : actionableTargetRef(choice),
+    };
+}
+
+/** The `at=` word a row's position spells, or nothing when it is not one of the three placements. */
+function placementOf(transform: StoryTransformRef | undefined): string | undefined {
+    return placementWordFor(transform?.to?.position) ?? undefined;
+}
+
+/**
+ * A stage object's `t=` — the reveal/conceal word, but never a placement (that slot is `at=`).
+ *
+ * Reads the CHANNEL the bag states rather than a stored preset name, which is the whole point of v18:
+ * the row says what it does to the sprite and the word is derived from that, so a value set through
+ * the inspector reads back as the line an author would have typed for it.
+ */
 function revealWord(transform: StoryTransformRef | undefined, direction: "reveal" | "conceal" | "nvl"): string | undefined {
-    const preset = transform?.preset;
-    if (!preset || PLACEMENTS.has(preset)) {
-        return undefined;
-    }
-    return transitionWordForPreset(direction, preset) ?? preset;
+    return transitionWordForTransform(direction, transform) ?? undefined;
+}
+
+/**
+ * A whole-screen `rule=` — the picture a rule transition plays in the order of.
+ *
+ * Printed only when the row actually holds one, so every other transition's line is unchanged. The
+ * value is the asset's own name and it is pickable, which is what keeps the row the line that
+ * produced it rather than a description of it.
+ */
+function ruleArg(
+    payload: Extract<StoryActionPayload, { action: "setBackground" }> | StoryJumpPayload,
+    lookups: StoryCommandLineLookups,
+): Arg | null {
+    const ruleAssetId = payload.transition?.ruleAssetId;
+    return arg("rule", assetWord(lookups, ruleAssetId), {
+        ...(pickAsset({ ...(ruleAssetId ? { assetId: ruleAssetId } : {}) }, lookups, "image",
+            next => patchTransition(payload, { kind: "ruleReveal", ruleAssetId: next })) ?? {}),
+        ...assetLink(lookups, ruleAssetId),
+    });
 }
 
 /** A whole-screen or character `t=` — the stored kind, named by the word an author would type. */
-function transitionWord(kind: StoryTransitionRef["kind"] | undefined, context: "scene" | "character"): string | undefined {
+function transitionWord(kind: StoryTransitionRef["kind"] | undefined, context: "scene" | "character" | "expression"): string | undefined {
     if (kind === undefined) {
         return undefined;
     }
@@ -597,27 +877,45 @@ function characterSentence(
     const form = positional("form", appearanceWord(payload, lookups), appearance ?? {});
     // `/show` and `/hide` name their subject `target`, the rest `character` — one pick, two slots.
     // The face rides with the name in both: it is the row's picture of WHO, and a row that pictures
-    // its subject inline is a row whose plate is free to say what is being done to them.
+    // its subject inline is a row whose plate is free to say what is being done to them. The link is
+    // the third thing on that one word and a third intention again: not which character this row is
+    // about (the pick) nor what they look like (the face), but who they ARE — the cast member, which
+    // is a project record rather than anything in this scene.
     const who = {
         ...(pickCharacter(payload, lookups) ?? {}),
         ...(payload.characterId ? { ornament: { kind: "character" as const, id: payload.characterId } } : {}),
+        ...characterLink(lookups, payload.characterId),
     };
     // A character's entrance and exit are driven by the TRANSFORM's duration, not the transition's —
     // the same field `hide()` reads (see `getQuickParams`), so that is the one an edit must write.
     const duration = arg("d", seconds(payload.transform?.durationMs), {
         apply: next => patchTransform(payload, { durationMs: msOf(next) }),
     });
-    const placement = arg("at", placementOf(payload.transform), {
+    const placement = arg("pos", placementOf(payload.transform), {
         enum: true,
-        apply: next => patchTransform(payload, { preset: next as StoryTransformPreset }),
+        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
     });
-    // `t=` is the TRANSFORM's preset, the one the engine animates a character's entrance and exit
-    // with and the one the inspector's own 变换 → 预设 edits. The `transition` ref beside it is only
-    // read on `expression` (a portrait swap), so a row that showed it here was reporting a field
-    // nothing would play — and disagreeing with the inspector about the very same question.
-    const reveal = (direction: "reveal" | "conceal") => arg("t", revealWord(payload.transform, direction), {
+    // `in=` / `out=` are the TRANSFORM's preset, the one the engine animates a character's entrance
+    // and exit with and the one the inspector's own 变换 → 预设 edits. The `transition` ref beside it
+    // is only read on `expression` (a portrait swap), so a row that showed it here was reporting a
+    // field nothing would play — and disagreeing with the inspector about the very same question.
+    // The key says the direction because the verb already decided it (M2: it was `t=`, which read as
+    // the `t=` on `/bg` and named a different kind of thing entirely).
+    const reveal = (direction: "reveal" | "conceal") => arg(direction === "reveal" ? "in" : "out", revealWord(payload.transform, direction), {
         enum: true,
-        apply: next => patchTransform(payload, { preset: transformPresetFor(direction, next) }),
+        apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
+    });
+    // `/face` is the one character row the engine plays a `StoryTransitionRef` on - it swaps the
+    // image source, and `char(src, transition)` is what the compiler emits. So BOTH of these read and
+    // write `payload.transition`, never the transform: `duration` above is the transform's, the field
+    // an entrance and an exit animate through, and binding a swap's `d=` there would give the author
+    // a number that edits cleanly and changes nothing on stage.
+    const swapTransition = arg("t", transitionWord(payload.transition?.kind, "expression"), {
+        enum: true,
+        apply: next => patchTransition(payload, { kind: transitionKindFor("expression", next) ?? "fadeIn" }),
+    });
+    const swapDuration = arg("d", seconds(payload.transition?.durationMs), {
+        apply: next => patchTransition(payload, { durationMs: msOf(next) }),
     });
     switch (payload.operation) {
         case "enter":
@@ -628,9 +926,11 @@ function characterSentence(
         case "exit":
             return { commandId, args: [positional("target", name, who), reveal("conceal"), duration] };
         case "move":
-            return { commandId, args: [positional("character", name, who), placement, duration] };
+            // `/move` is retired: a move is a position, which is a prop of the one bag, so the row
+            // reads back as the row that writes one. `/transform` names its subject `target`.
+            return { commandId, args: [positional("target", name, who), placement, duration] };
         case "expression":
-            return { commandId, args: [positional("character", name, who), form] };
+            return { commandId, args: [positional("character", name, who), form, swapTransition, swapDuration] };
         case "setMotion":
         case "setSkin":
             // The two puppet-only channels: their value is the model's own string, never a project ref.
@@ -662,13 +962,16 @@ function audioSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
+    const name = actionableSubjectWord(lookups.scene, payload.target, "audio", payload.objectName) || undefined;
     const asset = assetWord(lookups, payload.assetId);
     const track = payload.audioTrackId && lookups.audioTrackName ? lookups.audioTrackName(payload.audioTrackId) : null;
     const fade = arg("fade", seconds(payload.fadeMs), { apply: next => ({ ...payload, fadeMs: msOf(next) }) });
-    const clip = pickAsset(payload, lookups, "audio", next => ({ ...payload, assetId: next })) ?? {};
+    const clip = { ...(pickAsset(payload, lookups, "audio", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}), ...assetLink(lookups, payload.assetId) };
     // The handle a control verb addresses: any sound already on stage, plus the reserved `bgm`.
-    const handle = pickStageObject(lookups, "audio", name, next => ({ ...payload, objectName: next })) ?? {};
+    const handle = {
+        ...(pickStageObject(lookups, "audio", name, next => retargetActionable(payload, lookups, "audio", next)) ?? {}),
+        ...stageObjectLink(lookups, "audio", payload.target, name),
+    };
     const tracks = lookups.commandContext?.audioTracks ?? [];
     const trackPick = tracks.length === 0
         ? {}
@@ -725,28 +1028,41 @@ function audioSentence(
     }
 }
 
+/**
+ * The subject comes from the REFERENCE, not from the row's own `objectName` — the rule
+ * `displayableSubjectWord` states, and the shape every stage-object sentence below shares. A row
+ * printing its stored copy of the name kept saying `poster` after the create row was renamed to `bg`,
+ * while the compiler had already followed the reference. A `create` row carries no reference and so
+ * prints the name it is defining, which is the same fallback an older document takes.
+ */
 function imageSentence(
     payload: Extract<StoryActionPayload, { action: "image" }>,
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
+    const name = displayableSubjectWord(lookups.scene, payload.target, payload.objectName) || undefined;
     const asset = assetWord(lookups, payload.assetId);
-    // `at=` and `t=` write the SAME field — a transform holds one preset — which is why the reader
+    // `pos=` and `in=` write the SAME field — a transform holds one preset — which is why the reader
     // prints whichever one the stored preset spells and never both.
-    const placement = arg("at", placementOf(payload.transform), {
+    const placement = arg("pos", placementOf(payload.transform), {
         enum: true,
-        apply: next => patchTransform(payload, { preset: next as StoryTransformPreset }),
+        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
     });
     const duration = arg("d", seconds(payload.transform?.durationMs), {
         apply: next => patchTransform(payload, { durationMs: msOf(next) }),
     });
-    const reveal = (direction: "reveal" | "conceal") => arg("t", revealWord(payload.transform, direction), {
+    const reveal = (direction: "reveal" | "conceal") => arg(direction === "reveal" ? "in" : "out", revealWord(payload.transform, direction), {
         enum: true,
-        apply: next => patchTransform(payload, { preset: transformPresetFor(direction, next) }),
+        apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
     });
-    const swapAsset = pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined })) ?? {};
-    const object = pickStageObject(lookups, "image", name, next => ({ ...payload, objectName: next })) ?? {};
+    const swapAsset = {
+        ...(pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined }), { allowSets: true }) ?? {}),
+        ...assetLink(lookups, payload.assetId),
+    };
+    const object = {
+        ...(pickStageObject(lookups, "image", name, next => retargetDisplayable(payload, lookups, "image", next)) ?? {}),
+        ...stageObjectLink(lookups, "image", payload.target, name),
+    };
     if (payload.operation === "create") {
         // The NAME here is the one later rows address, so it is not offered; the asset is.
         return {
@@ -768,8 +1084,11 @@ function textSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
-    const object = pickStageObject(lookups, "text", name, next => ({ ...payload, objectName: next })) ?? {};
+    const name = displayableSubjectWord(lookups.scene, payload.target, payload.objectName) || undefined;
+    const object = {
+        ...(pickStageObject(lookups, "text", name, next => retargetDisplayable(payload, lookups, "text", next)) ?? {}),
+        ...stageObjectLink(lookups, "text", payload.target, name),
+    };
     switch (payload.operation) {
         case "create":
             // `name=` before the greedy content: the one ordering rule the grammar imposes, and the
@@ -778,9 +1097,9 @@ function textSentence(
                 commandId,
                 args: [
                     arg("name", name),
-                    arg("at", placementOf(payload.transform), {
+                    arg("pos", placementOf(payload.transform), {
                         enum: true,
-                        apply: next => patchTransform(payload, { preset: next as StoryTransformPreset }),
+                        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
                     }),
                     positional("content", payload.text),
                 ],
@@ -804,9 +1123,9 @@ function textSentence(
                 commandId,
                 args: [
                     positional("target", name, object),
-                    arg("t", revealWord(payload.transform, direction), {
+                    arg(direction === "reveal" ? "in" : "out", revealWord(payload.transform, direction), {
                         enum: true,
-                        apply: next => patchTransform(payload, { preset: transformPresetFor(direction, next) }),
+                        apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
                     }),
                     arg("d", seconds(payload.transform?.durationMs), { apply: next => patchTransform(payload, { durationMs: msOf(next) }) }),
                 ],
@@ -820,24 +1139,31 @@ function layerSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
+    const resolved = payload.operation === "create"
+        ? null
+        : resolveStoryLayerRef(lookups.scene, layerActionTargetRef(payload.target, payload.objectName));
     const name = payload.operation === "create"
         ? payload.objectName?.trim() || undefined
-        : resolveStoryLayerRef(lookups.scene, layerActionTargetRef(payload.target, payload.objectName)).name || undefined;
+        : resolved?.name || undefined;
     if (payload.operation === "create" || payload.operation === "setZIndex") {
         return {
             commandId,
             args: [positional("name", name), arg("z", numberValue(payload.zIndex), { apply: next => ({ ...payload, zIndex: Number(next) }) })],
         };
     }
+    // The declaring `/layer` row, on the same terms as every other stage object: the ref's anchor
+    // first, then the name against the declaration index for a document written before anchors. A
+    // DEFAULT layer resolves to neither, and rightly — `backgroundLayer` is a reserved word for a
+    // layer the engine ships, so there is no row anywhere that made it.
+    const link = resolved?.kind === "custom"
+        ? stageObjectLink(lookups, "layer", { ...(resolved.sourceBlockId ? { sourceBlockId: resolved.sourceBlockId } : {}) }, name)
+        : {};
     // A layer reference stores a stable `sourceBlockId` binding that follows renames; re-pointing it
     // by name would drop that anchor, so a layer target is read here and re-bound in the inspector.
     if (payload.operation === "transform") {
-        return {
-            commandId,
-            args: [positional("target", name), arg("d", seconds(payload.transform?.durationMs), { apply: next => patchTransform(payload, { durationMs: msOf(next) }) })],
-        };
+        return { commandId, args: [positional("target", name, link), ...transformArgs(payload, lookups)] };
     }
-    return { commandId, args: [positional("target", name)] };
+    return { commandId, args: [positional("target", name, link)] };
 }
 
 function videoSentence(
@@ -845,13 +1171,19 @@ function videoSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
-    const object = pickStageObject(lookups, "video", name, next => ({ ...payload, objectName: next })) ?? {};
+    const name = actionableSubjectWord(lookups.scene, payload.target, "video", payload.objectName) || undefined;
+    const object = {
+        ...(pickStageObject(lookups, "video", name, next => retargetActionable(payload, lookups, "video", next)) ?? {}),
+        ...stageObjectLink(lookups, "video", payload.target, name),
+    };
     if (payload.operation === "create") {
         return {
             commandId,
             args: [
-                positional("video", assetWord(lookups, payload.assetId), pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next })) ?? {}),
+                positional("video", assetWord(lookups, payload.assetId), {
+                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                    ...assetLink(lookups, payload.assetId),
+                }),
                 arg("name", name),
                 arg("muted", booleanValue(payload.muted), { apply: next => ({ ...payload, muted: next === "true" }) }),
             ],
@@ -871,20 +1203,26 @@ function vfxSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const name = payload.objectName?.trim() || undefined;
+    const name = actionableSubjectWord(lookups.scene, payload.target, "vfx", payload.objectName) || undefined;
     const duration = arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) });
     if (payload.operation === "create") {
         return {
             commandId,
             args: [
-                positional("clip", assetWord(lookups, payload.assetId), pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next })) ?? {}),
+                positional("clip", assetWord(lookups, payload.assetId), {
+                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                    ...assetLink(lookups, payload.assetId),
+                }),
                 arg("name", name),
                 arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
                 duration,
             ],
         };
     }
-    const object = pickStageObject(lookups, "vfx", name, next => ({ ...payload, objectName: next })) ?? {};
+    const object = {
+        ...(pickStageObject(lookups, "vfx", name, next => retargetActionable(payload, lookups, "vfx", next)) ?? {}),
+        ...stageObjectLink(lookups, "vfx", payload.target, name),
+    };
     if (payload.operation === "setRate") {
         return {
             commandId,
@@ -896,46 +1234,70 @@ function vfxSentence(
     return { commandId, args: [positional("target", name, object), fades ? duration : null] };
 }
 
+/**
+ * A camera row, as the `/transform camera …` line that would produce it.
+ *
+ * The same sentence every other transform row has, and since v19 the same payload underneath: a
+ * subject, then the channels the bag states. There is nothing camera-shaped left here except which
+ * word names the subject and the fact that `reset` is its own verb.
+ */
 function cameraSentence(
     payload: Extract<StoryActionPayload, { action: "camera" }>,
+    lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence {
-    const amount = (): string | undefined => {
-        switch (payload.operation) {
-            case "pan": return storyCameraPanPlacement(payload.position) ?? undefined;
-            case "zoom": return numberValue(payload.zoom);
-            case "rotate": return numberValue(payload.rotation);
-            case "darken": return numberValue(payload.darkness);
-            // A bound Story Motion is a binding, not a word — the line names the operation and the
-            // motion's name rides the inspector, exactly as `/camera motion` is typed.
-            case "motion":
-            case "reset": return undefined;
-        }
-    };
-    // The knob writes whichever field this operation reads. `pan` takes a word and the other three a
-    // number, which is exactly the split the amount slot's own union already declares.
-    const applyAmount = (next: string): StoryBlock["payload"] => {
-        switch (payload.operation) {
-            case "pan": return { ...payload, position: getPresetPosition(next, {}) ?? payload.position };
-            case "zoom": return { ...payload, zoom: Number(next) };
-            case "rotate": return { ...payload, rotation: Number(next) };
-            case "darken": return { ...payload, darkness: Number(next) };
-            case "motion":
-            case "reset": return payload;
-        }
-    };
-    // The OPERATION itself stays fixed here: pan → zoom is not a tweak, it changes which field the row
-    // carries and what it means. That one belongs to the inspector, which can rebuild the knob with it.
-    return {
-        commandId,
-        args: [
-            positional("op", payload.operation, { enum: true }),
-            positional("amount", amount(), { enum: payload.operation === "pan", apply: applyAmount }),
-            payload.operation === "motion"
-                ? null
-                : arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
-        ],
-    };
+    const subject = positional("target", "camera");
+    if (payload.operation === "reset") {
+        // Its own command - `/reset camera` - and the one camera row whose word the whole vocabulary
+        // shares with every other subject. Its timing is on the payload, not in a ref, because there
+        // is no bag to hang one on.
+        return {
+            commandId,
+            args: [subject, arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) })],
+        };
+    }
+    if (payload.transform?.mode === "animation") {
+        // A Story Motion states its shot in a binding rather than in props, so the line says which
+        // mode the row is in and the shot's name rides the inspector.
+        return { commandId, args: [subject, arg("motion", "true")] };
+    }
+    return { commandId, args: [subject, ...transformArgs(payload, lookups)] };
+}
+
+/**
+ * The prop bag as line args, with each printed value wired back to the channel it came from./**
+ * The prop bag as line args, with each printed value wired back to the channel it came from.
+ *
+ * Shared by every row that carries a transform, which since M2 is every displayable row: the props
+ * and the timing are one vocabulary and one table (`commands/transformVocabulary.ts`), read forwards
+ * by the spec's `build` and backwards here. There is no per-command list of "which props this row can
+ * show" - a row shows what its bag states.
+ */
+function transformArgs<P extends StoryBlock["payload"] & { transform?: StoryTransformRef }>(
+    payload: P,
+    lookups: StoryCommandLineLookups,
+): Arg[] {
+    const transform = payload.transform;
+    const assetName = (assetId: string): string | undefined => assetWord(lookups, assetId);
+    const propArg = (entry: TransformPropArg): Arg => arg(entry.key, entry.value, {
+        ...(entry.enum ? { enum: true } : {}),
+        // `mask` prints the asset's name while the bag stores its id, so it has no writer here and is
+        // re-pointed from the inspector's picker instead. It is still the one prop on the bag that
+        // NAMES a project file, so it is the one prop that points at one.
+        ...(entry.key === "mask" ? assetLink(lookups, transform?.to?.maskAssetId) : {
+            apply: (next: string) => patchTransformRef(payload, { ...(transform ?? {}), to: patchTransformProp(transform?.to, entry.key, next) }),
+        }),
+    })!;
+    const timingArg = (entry: TransformPropArg): Arg => arg(entry.key, entry.value, {
+        ...(entry.enum ? { enum: true } : {}),
+        ...(entry.key === "from" ? {} : {
+            apply: (next: string) => patchTransformRef(payload, patchTransformTiming(transform, entry.key, next)),
+        }),
+    })!;
+    return [
+        ...transformPropArgs(transform?.to, assetName).map(propArg),
+        ...transformTimingArgs(transform).map(timingArg),
+    ];
 }
 
 function displayableSentence(
@@ -943,29 +1305,135 @@ function displayableSentence(
     lookups: StoryCommandLineLookups,
     commandId: string,
 ): Sentence | null {
-    const label = resolveDisplayableTargetRef(lookups.scene, payload.target).label || undefined;
+    const label = displayableTargetWord(lookups, payload.target);
+    // A displayable row whose subject is a CHARACTER wears that character's face, exactly as the
+    // character payload's rows do. The row is the same sentence about the same person, and M2 moved
+    // several of them onto this arm (`/move` became `/transform <who> pos=`) - a face that vanished
+    // on the way would have made the change look like a different kind of row.
+    const who = { ...displayableFace(lookups, payload.target, label), ...displayableLink(lookups, payload.target, label) };
+    // `/front hero`, whole. The subject is the only thing this row states: there is no bag to print
+    // and no `d=` to offer, so anything else here would be a token the line cannot carry back.
+    if (payload.operation === "bringToFront") {
+        return { commandId, args: [positional("target", label, who)] };
+    }
     if (payload.operation === "transform") {
-        return {
-            commandId,
-            args: [positional("target", label), arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) })],
-        };
+        // A Story Motion states its shot in a binding rather than in props, so the line says which
+        // mode the row is in and the motion's name rides the inspector - the same shape the retired
+        // `/camera motion` had.
+        if (payload.transform?.mode === "animation") {
+            return { commandId, args: [positional("target", label, who), arg("motion", "true")] };
+        }
+        // The whole neutral bag, and only the whole one, is a `/reset`. A partial clear prints as the
+        // `=none` that produced it (`/transform hero mask=none`), which is the same row and the
+        // spelling the vocabulary calls canonical.
+        if (isNeutralStoryTransformProps(payload.transform?.to)) {
+            return {
+                commandId: "reset",
+                args: [
+                    positional("target", label, who),
+                    arg("d", seconds(payload.transform?.durationMs), {
+                        apply: next => patchTransform(payload, { durationMs: msOf(next) }),
+                    }),
+                ],
+            };
+        }
+        return { commandId, args: [positional("target", label, who), ...transformArgs(payload, lookups)] };
     }
     const direction = payload.operation === "show" ? "reveal" : "conceal";
     return {
         commandId,
         args: [
-            positional("target", label),
-            arg("t", revealWord(payload.transform, direction), {
+            positional("target", label, who),
+            arg(direction === "reveal" ? "in" : "out", revealWord(payload.transform, direction), {
                 enum: true,
-                apply: next => patchTransform(payload, { preset: transformPresetFor(direction, next) }),
+                apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
             }),
-            // The transform's own duration is what a show/hide animates on; `durationMs` is the effect
-            // timing the inspector sets, and is only read here when there is no transform to read.
-            arg("d", seconds(payload.transform?.durationMs ?? payload.durationMs), {
+            arg("d", seconds(payload.transform?.durationMs), {
                 apply: next => patchTransform(payload, { durationMs: msOf(next) }),
             }),
         ],
     };
+}
+
+/**
+ * Which cast member a displayable row's subject is, when the subject is a character at all.
+ *
+ * Two ways in, the anchor first: a `sourceBlockId` still pointing at the row that walked them on
+ * carries the id outright, and only failing that is the printed word matched against the cast. The
+ * fallback is the older of the two and is a NAME match, so it is right exactly as often as the name
+ * is unique - which is why it is the fallback.
+ */
+function displayableCharacterId(
+    lookups: StoryCommandLineLookups,
+    target: Extract<StoryActionPayload, { action: "displayable" }>["target"],
+    label: string | undefined,
+): string | undefined {
+    const source = target.sourceBlockId ? lookups.scene?.blocks[target.sourceBlockId] : undefined;
+    if (source?.kind === "action" && source.payload.action === "character" && source.payload.characterId) {
+        return source.payload.characterId;
+    }
+    const needle = label?.trim().toLowerCase();
+    if (!needle) {
+        return undefined;
+    }
+    return (lookups.commandContext?.characters ?? [])
+        .find(entry => entry.name.trim().toLowerCase() === needle)?.id;
+}
+
+/** The face ornament for a displayable row addressing a character, or nothing for any other subject. */
+function displayableFace(
+    lookups: StoryCommandLineLookups,
+    target: Extract<StoryActionPayload, { action: "displayable" }>["target"],
+    label: string | undefined,
+): Pick<Arg, "ornament"> {
+    if (target.kind !== "character") {
+        return {};
+    }
+    const characterId = displayableCharacterId(lookups, target, label);
+    return characterId ? { ornament: { kind: "character", id: characterId } } : {};
+}
+
+/**
+ * What a displayable row's subject points at: the cast member, or the row that declares the object.
+ *
+ * The one arm that dispatches on the target's KIND, because this is the one subject slot that can
+ * hold either sort of thing - `/front hero` and `/front Alice` are the same sentence about two
+ * different kinds of subject, and they lead to two different places. A built-in leads nowhere: the
+ * scene background and the two default layers are singletons the engine holds without any row.
+ */
+function displayableLink(
+    lookups: StoryCommandLineLookups,
+    target: Extract<StoryActionPayload, { action: "displayable" }>["target"],
+    label: string | undefined,
+): Pick<Arg, "link"> {
+    if (target.builtin) {
+        return {};
+    }
+    if (target.kind === "character") {
+        return characterLink(lookups, displayableCharacterId(lookups, target, label));
+    }
+    // A reference written before `kind` existed can still carry an anchor, so the anchor is tried
+    // whatever the kind says; only the name fallback needs to know which index to look in.
+    const bound = blockLink(lookups, target.sourceBlockId);
+    return bound.link ? bound : target.kind ? stageObjectLink(lookups, target.kind, undefined, label) : {};
+}
+
+/**
+ * The word a displayable target is written as on a line.
+ *
+ * A built-in prints its RESERVED WORD, not its label: "Background layer" is two tokens and the target
+ * slot takes one, so a row printing the label would produce a line the parser splits in half. The
+ * reserved word is what the slot answers to and what the candidate menu offers, so it is the only
+ * spelling that round-trips.
+ */
+function displayableTargetWord(
+    lookups: StoryCommandLineLookups,
+    target: Extract<StoryActionPayload, { action: "displayable" }>["target"],
+): string | undefined {
+    if (target.builtin) {
+        return target.builtin;
+    }
+    return resolveDisplayableTargetRef(lookups.scene, target).label || undefined;
 }
 
 function actionSentence(
@@ -981,13 +1449,16 @@ function actionSentence(
             return {
                 commandId,
                 args: [
-                    positional("image", assetWord(lookups, payload.assetId) ?? payload.color,
+                    positional("image", assetWord(lookups, payload.assetId) ?? payload.color, {
                         // A colour background has no asset to pick from, so it keeps its text.
-                        payload.assetId ? pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined })) ?? {} : {}),
+                        ...(payload.assetId ? pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined }), { allowSets: true }) ?? {} : {}),
+                        ...assetLink(lookups, payload.assetId),
+                    }),
                     arg("t", transitionWord(payload.transition?.kind, "scene"), {
                         enum: true,
                         apply: next => patchTransition(payload, { kind: transitionKindFor("scene", next) ?? "dissolve" }),
                     }),
+                    ruleArg(payload, lookups),
                     arg("d", seconds(payload.transition?.durationMs), {
                         apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                     }),
@@ -1008,27 +1479,35 @@ function actionSentence(
         case "vfx":
             return vfxSentence(payload, lookups, commandId);
         case "camera":
-            return cameraSentence(payload, commandId);
+            return cameraSentence(payload, lookups, commandId);
         case "displayable":
-            // Only the three operations a verb owns; `mask`, `clip`, `filter` and the rest are reached
-            // through the inspector after `/fx` and have no line to read back.
-            return payload.operation === "show" || payload.operation === "hide" || payload.operation === "transform"
-                ? displayableSentence(payload, lookups, commandId)
-                : null;
+            // All three, and there is no fourth: v18 folded the twelve appearance operations into
+            // `transform` + a prop bag, and M2 gave every prop in that bag a spelling.
+            return displayableSentence(payload, lookups, commandId);
         case "setVariable": {
             const variables = lookups.commandContext?.variables ?? [];
             return {
                 commandId,
                 args: [
-                    positional("variable", variableRefShortLabel(payload.target, lookups), variables.length === 0 ? {} : {
-                        // Keyed by the ref's own key, since a variable is a scope plus an id rather
-                        // than a name — two scopes may hold the same word.
-                        choices: variables.map(entry => ({ value: storyVariableRefKey(entry.ref), label: entry.name })),
-                        editValue: storyVariableRefKey(payload.target),
-                        apply: next => {
-                            const found = variables.find(entry => storyVariableRefKey(entry.ref) === next);
-                            return found ? { ...payload, target: found.ref } : payload;
-                        },
+                    positional("variable", variableRefShortLabel(payload.target, lookups), {
+                        ...(variables.length === 0 ? {} : {
+                            // Keyed by the ref's own key, since a variable is a scope plus an id rather
+                            // than a name — two scopes may hold the same word.
+                            choices: variables.map(entry => ({ value: storyVariableRefKey(entry.ref), label: entry.name })),
+                            editValue: storyVariableRefKey(payload.target),
+                            apply: (next: string) => {
+                                const found = variables.find(entry => storyVariableRefKey(entry.ref) === next);
+                                return found ? { ...payload, target: found.ref } : payload;
+                            },
+                        }),
+                        // The ref, and only the ref: a scene variable is declared by a row in this
+                        // scene while a project one is declared in the registry, so where each opens
+                        // is a navigation decision rather than a fact the line can state. Gated on the
+                        // name having RESOLVED, since the alternative spelling is the localised
+                        // fallback word — a row saying "variable" points at nothing.
+                        ...(resolveStoryVariableName(payload.target, lookups) !== null
+                            ? { link: { kind: "variable" as const, target: payload.target } }
+                            : {}),
                     }),
                     positional("value", payload.expression?.source ?? String(payload.value)),
                 ],
@@ -1046,25 +1525,15 @@ function actionSentence(
                     })
                     : positional("seconds", "click")],
             };
-        case "screenEffect":
-            return {
-                commandId,
-                args: [
-                    arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
-                    arg("hold", seconds(payload.holdMs), { apply: next => ({ ...payload, holdMs: msOf(next) }) }),
-                    arg("color", payload.color, { apply: next => ({ ...payload, color: next }) }),
-                    arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
-                ],
-            };
         case "nvl":
             // NVL's `transition` is a transform ref (preset-based), not a `StoryTransitionRef` — the
             // one place the two shapes swap names, which is why it writes its own patch.
             return {
                 commandId,
                 args: [
-                    arg("t", revealWord(payload.transition, "nvl"), {
+                    arg("in", revealWord(payload.transition, "nvl"), {
                         enum: true,
-                        apply: next => ({ ...payload, transition: { ...payload.transition, preset: transformPresetFor("nvl", next) } }),
+                        apply: next => ({ ...payload, transition: applyTransitionWordToTransform(payload.transition, "nvl", next) }),
                     }),
                     arg("d", seconds(payload.transition?.durationMs), {
                         apply: next => ({ ...payload, transition: { ...payload.transition, durationMs: msOf(next) } }),
@@ -1074,6 +1543,14 @@ function actionSentence(
         case "blueprint":
             // `/blueprint` takes no arguments, so the line would say strictly less than the row's own
             // sentence (which names the bound blueprint). The prose stands.
+            return null;
+        case "plugin":
+            // Unreachable in practice - `storyVerbCommandId` has already returned null above, because
+            // a plugin's action is not in the command registry and cannot be: the registry is a closed
+            // union the parser, the manual and four derived tables all read, and a command that comes
+            // and goes with an install would put a hole in every one of them. The arm exists so this
+            // switch stays exhaustive, which is what makes the next payload added here a compile
+            // error rather than a row that silently renders as nothing.
             return null;
     }
 }
@@ -1093,11 +1570,17 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                     choices: Object.values(lookups.scenes ?? {}).map(scene => ({ value: scene.id, label: scene.name || scene.id })),
                     ...(payload.targetSceneId ? { editValue: payload.targetSceneId } : {}),
                     apply: next => ({ ...payload, targetSceneId: next }),
+                    // Off the same resolution the printed word came from, which is what keeps the
+                    // "unknown scene" and "no scene" phrases from ever being a way through.
+                    ...(payload.targetSceneId && resolveStorySceneName(lookups.scenes, payload.targetSceneId) !== null
+                        ? { link: { kind: "scene" as const, sceneId: payload.targetSceneId } }
+                        : {}),
                 }),
                 arg("t", transitionWord(payload.transition?.kind, "scene"), {
                     enum: true,
                     apply: next => patchTransition(payload, { kind: transitionKindFor("scene", next) ?? "dissolve" }),
                 }),
+                ruleArg(payload, lookups),
                 arg("d", seconds(payload.transition?.durationMs), {
                     apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                 }),
@@ -1113,10 +1596,13 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
             const labels = lookups.commandContext?.labels ?? [];
             return {
                 commandId: "goto",
-                args: [positional("target", payload.targetLabel, labels.length === 0 ? {} : {
-                    choices: choicesOf(labels),
-                    ...(payload.targetLabel ? { editValue: payload.targetLabel } : {}),
-                    apply: next => ({ ...payload, targetLabel: next }),
+                args: [positional("target", payload.targetLabel, {
+                    ...(labels.length === 0 ? {} : {
+                        choices: choicesOf(labels),
+                        ...(payload.targetLabel ? { editValue: payload.targetLabel } : {}),
+                        apply: (next: string) => ({ ...payload, targetLabel: next }),
+                    }),
+                    ...labelLink(lookups, payload.targetLabel),
                 })],
             };
         }

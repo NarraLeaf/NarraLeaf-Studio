@@ -5,6 +5,7 @@ import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu"
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import type {
     GameProgressExportRequest,
@@ -17,8 +18,10 @@ import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, W
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "@shared/types/gameBuild";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
+import type { StudioTaskOverview } from "@shared/types/studioTask";
+import type { WeatherBakeSpec } from "@shared/weather/model";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -26,7 +29,8 @@ import type {
     SigningInspectResult,
 } from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
-import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
+import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
@@ -36,7 +40,7 @@ import type { AssetExportEntry } from "@shared/types/assetExport";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -150,6 +154,7 @@ const privilegedBootstrapBridge: RendererPrivilegedBootstrapInterface = {
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getPlatform: () => ipcClient.invoke(IPCEventType.getPlatform, {}),
     getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
+    claimExperimentalNotice: () => ipcClient.invoke(IPCEventType.appClaimExperimentalNotice, {}),
     getWindowProps: <T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>> => ipcClient.invoke(IPCEventType.appWindowProps, {}) as Promise<RequestStatus<WindowProps[T]>>,
     terminate: async (err?: string) => ipcClient.send(IPCEventType.appTerminate, { err: err ?? null }),
     reportError: (report: RendererErrorReport) => ipcClient.send(IPCEventType.appReportRendererError, report),
@@ -216,6 +221,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
+    /** What long work Studio is doing. See `@shared/types/studioTask`. */
+    studioTasks: {
+        getOverview: () =>
+            ipcClient.invoke(IPCEventType.studioTasksGetOverview, {}) as Promise<RequestStatus<{ overview: StudioTaskOverview }>>,
+        prebakeWeather: (projectPath: string, specs: WeatherBakeSpec[]) =>
+            ipcClient.invoke(IPCEventType.studioTasksPrebakeWeather, { projectPath, specs }) as Promise<RequestStatus<Record<string, never>>>,
+    },
     mediaConvert: {
         start: (request: MediaConvertRequest) =>
             ipcClient.invoke(IPCEventType.mediaConvertStart, { request }) as Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>,
@@ -230,7 +242,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
         openRecent: (projectPath: string, replaceCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceOpenRecent, { projectPath, replaceCurrentWindow }),
+        isProjectOpen: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.workspaceIsProjectOpen, { projectPath }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
+        returnToLauncher: () => ipcClient.invoke(IPCEventType.workspaceReturnToLauncher, {}),
         exportProjectPackage: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),
         importProjectPackage: (packagePath: string, targetDir: string) =>
@@ -369,6 +384,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
         onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
+        resolveWeatherClip: (spec: WeatherBakeSpec) =>
+            ipcClient.invoke(IPCEventType.devModeResolveWeatherClip, { spec }) as Promise<RequestStatus<{ url: string }>>,
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
@@ -382,6 +399,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
                 savedGame: unknown,
                 capture?: string,
                 metadata?: unknown,
+                compatibility?: SaveCompatibilityStamp,
+                playtimeSeconds?: number,
             ) =>
                 ipcClient.invoke(IPCEventType.devModeSaveWrite, {
                     projectRef,
@@ -389,11 +408,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
                     savedGame,
                     capture,
                     metadata,
+                    compatibility,
+                    playtimeSeconds,
                 }) as Promise<RequestStatus<void>>,
             read: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveRead, { projectRef, id }) as Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>,
             listIds: (projectRef: DevModeSaveProjectRef) =>
                 ipcClient.invoke(IPCEventType.devModeSaveListIds, { projectRef }) as Promise<RequestStatus<{ ids: string[] }>>,
+            listHeaders: (projectRef: DevModeSaveProjectRef) =>
+                ipcClient.invoke(IPCEventType.devModeSaveListHeaders, { projectRef }) as Promise<RequestStatus<{ headers: DevModeSaveHeader[] }>>,
             readPreview: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveReadPreview, { projectRef, id }) as Promise<RequestStatus<{ capture: string | null }>>,
             delete: (projectRef: DevModeSaveProjectRef, id: string) =>
@@ -552,6 +575,12 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsAddServer, { authUrl, remoteUrl, token }) as Promise<RequestStatus<VcsAddServerOutcome>>,
         forgetServer: (remoteOrigin: string) =>
             ipcClient.invoke(IPCEventType.vcsForgetServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
+        /** Goes to the network. The list is asked for every time; nothing here caches it. */
+        listServerProjects: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.vcsListServerProjects, { remoteOrigin }) as Promise<RequestStatus<VcsServerProjectsOutcome>>,
+        /** Goes to the network, and writes on the server. */
+        createServerProject: (remoteOrigin: string, name: string, description?: string) =>
+            ipcClient.invoke(IPCEventType.vcsCreateServerProject, { remoteOrigin, name, description }) as Promise<RequestStatus<VcsServerProjectOutcome>>,
         push: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
         /** Writes the working tree: re-read every document once this resolves. */
@@ -573,6 +602,22 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildSelectOutputDir, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
         preflight: (projectPath: string, request: GameBuildRequest) =>
             ipcClient.invoke(IPCEventType.gameBuildPreflight, { projectPath, request }) as Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>,
+        exportPatch: (projectPath: string, entry: GameRuntimeLaunchEntry, request: GamePatchExportRequest) =>
+            ipcClient.invoke(IPCEventType.gameBuildExportPatch, { projectPath, entry, request }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
+        selectPatchFile: (defaultPath?: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildSelectPatchFile, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
+        selectPatchBaseline: (defaultPath?: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildSelectPatchBaseline, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
+    },
+
+    /**
+     * The project's distribution key. Minting is the only operation - nothing
+     * reads it back, because the project manifest already holds it and no screen
+     * ever shows it.
+     */
+    distribution: {
+        createKey: () =>
+            ipcClient.invoke(IPCEventType.distributionCreateKey, {}) as Promise<RequestStatus<{ key: string }>>,
     },
 
     /**
@@ -630,6 +675,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         fetch: (projectPath: string, request: BlueprintNetworkFetchRequest) =>
             ipcClient.invoke(IPCEventType.blueprintNetworkFetch, { projectPath, request }) as Promise<
                 RequestStatus<{ result: BlueprintNetworkFetchResult }>
+            >,
+    },
+
+    blueprintPointer: {
+        move: (request: BlueprintPointerMoveRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintPointerMove, { request }) as Promise<
+                RequestStatus<{ result: BlueprintPointerMoveResult }>
             >,
     },
 

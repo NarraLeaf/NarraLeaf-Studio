@@ -38,8 +38,8 @@ vi.mock("@/lib/workspace/hooks/useEditorFontFamily", () => ({
     useEditorFontFamily: () => ({ cssFamily: null, loading: false, error: null }),
 }));
 
-vi.mock("@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant", () => ({
-    useEditorAppearanceInspectorVariant: () => null,
+vi.mock("@/lib/ui-editor/hooks/useEnteredElementState", () => ({
+    useEnteredElementState: () => null,
 }));
 
 import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";
@@ -305,5 +305,50 @@ describe("TextRenderer inline text edit", () => {
         expect(canvas.container.querySelector("textarea")).toBeNull();
         expect(canvas.container.textContent).toContain("before");
         expect(document.elements.text.props?.text).toBe("before");
+    });
+});
+
+describe("TextRenderer vertical typography", () => {
+    function renderWithProps(props: Record<string, unknown>) {
+        const document = createDocument("第12話 Prologue");
+        Object.assign(document.elements.text.props!, props);
+        createServices(document);
+        return renderText(document, previewHostAdapter());
+    }
+
+    it("writes the mode on the shell as well as the paragraph", () => {
+        const { container } = renderWithProps({ writingMode: "vertical-rl" });
+        const paragraph = container.querySelector("p")!;
+        const shell = container.firstElementChild as HTMLElement;
+
+        // Both, because the shell is a flex box: its main axis has to turn with the text or the
+        // vertical-alignment control would still be pushing the columns down the page.
+        expect(shell.style.writingMode).toBe("vertical-rl");
+        expect(paragraph.style.writingMode).toBe("vertical-rl");
+        expect(paragraph.style.textOrientation).toBe("mixed");
+        expect(paragraph.style.height).toBe("100%");
+        expect(paragraph.style.width).toBe("");
+    });
+
+    it("leaves a horizontal box exactly as it was", () => {
+        const { container } = renderWithProps({});
+        const paragraph = container.querySelector("p")!;
+        expect(paragraph.style.width).toBe("100%");
+        expect(paragraph.style.textOrientation).toBe("");
+        expect(container.querySelectorAll("span")).toHaveLength(0);
+    });
+
+    it("sets a short number upright inside the column and leaves the long word to CSS", () => {
+        const { container } = renderWithProps({ writingMode: "vertical-rl" });
+        const combined = [...container.querySelectorAll("span")];
+        expect(combined.map(span => span.textContent)).toEqual(["12"]);
+        expect(combined[0]!.style.textCombineUpright).toBe("all");
+        expect(container.querySelector("p")!.textContent).toBe("第12話 Prologue");
+    });
+
+    it("keeps one text node when the author turns tate-chu-yoko off", () => {
+        const { container } = renderWithProps({ writingMode: "vertical-rl", tateChuYoko: false });
+        expect(container.querySelectorAll("span")).toHaveLength(0);
+        expect(container.querySelector("p")!.textContent).toBe("第12話 Prologue");
     });
 });

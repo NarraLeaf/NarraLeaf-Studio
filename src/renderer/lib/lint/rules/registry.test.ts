@@ -24,9 +24,11 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "assets/missing",
     "assets/unreadable",
     "assets/oversized",
+    "assets/group-incomplete",
     "portability/asset-name",
     "portability/case-collision",
     "portability/media-format",
+    "portability/vfx-alpha",
     "network/fetch-disallowed",
     "network/fetch-not-allowlisted",
     "story/invalid-command",
@@ -41,6 +43,9 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/app-tag-unknown",
     "story/cut-point-orphan",
     "story/cut-point-unreachable",
+    "story/stage-object-missing",
+    "story/stage-object-duplicate",
+    "story/transition-unavailable",
     "blueprint/reference-missing",
     "blueprint/unreachable-node",
     "blueprint/empty-event",
@@ -69,7 +74,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(41);
+        expect(LINT_RULES).toHaveLength(46);
     });
 
     it("gives every rule a unique id", () => {

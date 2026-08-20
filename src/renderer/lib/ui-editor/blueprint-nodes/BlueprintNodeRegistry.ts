@@ -22,6 +22,7 @@ import {
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
+import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 import {
     BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES,
@@ -168,7 +169,9 @@ function matchesBlueprintNodeScopeValue(
             return false;
         }
         const t = ctx.widgetElementType;
-        if (!t || !scope.widgetElementTypes.includes(t)) {
+        // A scope naming `nl.text` also covers the types that specialise it: a Dialog Sentence has
+        // a text widget's props, so the text nodes are the right ones for its private blueprint.
+        if (!t || !scope.widgetElementTypes.some(scopeType => isWidgetTypeOf(t, scopeType))) {
             return false;
         }
     }

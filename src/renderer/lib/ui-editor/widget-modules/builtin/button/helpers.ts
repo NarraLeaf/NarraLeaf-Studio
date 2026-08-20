@@ -29,6 +29,7 @@ export function buttonPropsToImageFillBaseline(p: ButtonWidgetProps): RectangleL
         backgroundImage: p.backgroundImage,
         backgroundFit: p.backgroundFit,
         imageFill: p.imageFill,
+        gradientFill: p.gradientFill,
         fillType: p.fillType,
         fillVisible: p.fillVisible,
         fillOpacity: p.fillOpacity,

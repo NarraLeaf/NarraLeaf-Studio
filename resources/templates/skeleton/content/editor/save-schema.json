@@ -1,0 +1,13 @@
+{
+  "fields": {
+    "99bfea66-9e2b-4f60-bcdb-a9252612d025": {
+      "defaultValue": "",
+      "id": "99bfea66-9e2b-4f60-bcdb-a9252612d025",
+      "name": "Place",
+      "order": 0,
+      "storageKey": "place",
+      "valueType": "string"
+    }
+  },
+  "schemaVersion": 1
+}

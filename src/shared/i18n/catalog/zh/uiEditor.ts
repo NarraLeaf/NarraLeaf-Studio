@@ -123,6 +123,7 @@ export const uiEditor = {
         addToComponentLibrary: "添加到组件库",
         addToGroup: "添加到分组",
         ungroup: "取消编组",
+        addState: "添加状态",
         arrange: {
             label: "排列",
             bringToFront: "置于顶层",
@@ -182,8 +183,8 @@ export const uiEditor = {
             other: "{count} 个界面",
         },
         assetsSkipped: {
-            one: "有 {count} 个资源导入失败",
-            other: "有 {count} 个资源导入失败",
+            one: "有 {count} 个资产导入失败",
+            other: "有 {count} 个资产导入失败",
         },
         componentsAdded: {
             one: "已向组件库添加 {count} 个组件",

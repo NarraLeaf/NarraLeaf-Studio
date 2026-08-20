@@ -48,8 +48,15 @@ export type WebImageCandidate = {
      * which is the second signal that it is one.
      */
     manifestKey: string;
-    /** The manifest's own asset type ("image", "audio", "model", ...). */
-    assetType: string;
+    /**
+     * The manifest's own asset type ("image", "audio", "model", ...), when the manifest states one.
+     *
+     * Optional because a shipped manifest is allowed to say nothing about its assets. An absent type
+     * is treated as a bundle member below - conservatively, since the cost of being wrong in that
+     * direction is a larger export, and the cost of being wrong the other way is a model bundle's
+     * entry file rewritten to WebP under a name its own manifest no longer points at.
+     */
+    assetType?: string;
     bytes: Uint8Array;
 };
 
@@ -65,7 +72,9 @@ export function planWebImageTranscode(
     candidate: WebImageCandidate,
     config: WebOptimizationConfiguration,
 ): WebImageTranscodePlan {
-    if (BUNDLE_ASSET_TYPES.has(candidate.assetType) || candidate.manifestKey.includes("/")) {
+    if (!candidate.assetType
+        || BUNDLE_ASSET_TYPES.has(candidate.assetType)
+        || candidate.manifestKey.includes("/")) {
         return { action: "skip", reason: "bundle-member" };
     }
     const format = readImageDimensions(candidate.bytes)?.format;

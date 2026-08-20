@@ -547,6 +547,20 @@ export const BLUEPRINT_NODE_TYPE_LITERAL_COLOR = "blueprint.data.colorLiteral" a
 export const BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D = "blueprint.data.vector2dLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_RECT = "blueprint.data.rectLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_JSON = "blueprint.data.jsonLiteral" as const;
+/**
+ * The four make/break nodes for the two structured geometry types.
+ *
+ * Until these existed a `Vector2D` or `Rect` output could only be carried around whole: nothing in
+ * the catalogue took one apart, so `Get Position` was unreadable and `Get Bounds` had to be widened
+ * into `json` and picked at with Get JSON Field. Breaking them is the ordinary thing an author does
+ * with a position, which is why it is a node rather than a documented trick.
+ */
+export const BLUEPRINT_NODE_TYPE_DATA_MAKE_VECTOR2D = "blueprint.data.makeVector2d" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_BREAK_VECTOR2D = "blueprint.data.breakVector2d" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_MAKE_RECT = "blueprint.data.makeRect" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_BREAK_RECT = "blueprint.data.breakRect" as const;
+/** The point equidistant from a rect's four edges - the thing "move to this button" needs. */
+export const BLUEPRINT_NODE_TYPE_DATA_RECT_CENTER = "blueprint.data.rectCenter" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_REF = "blueprint.element.ref" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE = "blueprint.element.continueEventBubble" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE = "blueprint.element.stopEventBubble" as const;
@@ -933,6 +947,12 @@ export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscre
  * is the boundary, so a computed address is as safe as a picked one, and one that is not declared
  * leaves by `Failed` wherever it came from.
  */
+/**
+ * Moving the player's real mouse cursor. Desktop only; a web export reports it unsupported and the
+ * build warns when one is exported holding these.
+ */
+export const BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO = "blueprint.app.movePointerTo" as const;
+export const BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT = "blueprint.app.movePointerToElement" as const;
 export const BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL = "blueprint.app.openExternal" as const;
 
 /** Inspector param holding the picked address; read only when the `url` pin is unwired. */
@@ -950,12 +970,26 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete"
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME = "blueprint.game.save.getTime" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE = "blueprint.game.save.getLine" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME = "blueprint.game.save.getPlaytime" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME = "blueprint.game.getPlaytime" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME = "blueprint.game.getTotalPlaytime" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE = "blueprint.game.autoSave.write" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST = "blueprint.game.autoSave.list" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST = "blueprint.game.autoSave.latest" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET = "blueprint.game.history.get" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE = "blueprint.game.history.restore" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST = "blueprint.game.history.undoLast" as const;
+/**
+ * The other half of the backlog: the lines the player has stepped back past.
+ *
+ * The backlog is a timeline with a play head on it. `history.get` returns everything up to the
+ * head, and these return what is ahead of it and move the head forward - so a backlog screen can
+ * offer stepping forward, not only back.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE = "blueprint.game.history.getFuture" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_REDO_NEXT = "blueprint.game.history.redoNext" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO = "blueprint.game.history.canUndo" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO = "blueprint.game.history.canRedo" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
 /** The speaking character's dialog avatar for the differential they are currently wearing. */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR = "blueprint.game.getSpeakerAvatar" as const;
@@ -1071,6 +1105,28 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT = "blueprint.game.getSk
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT = "blueprint.game.setSkipReadText" as const;
 
 /**
+ * "Skipping is running." The held skip key, as a value a graph can read and write.
+ *
+ * `Skip` next door advances one line and returns; this is the run itself, and setting it is the
+ * exact equivalent of holding the key down - the same guard, the same interval, the same stop at a
+ * line the player has not read (see `skipRunController`). It is what a quick menu's Skip button and
+ * a touch screen bind to, neither of which has a key to hold.
+ *
+ * Transient: it is not saved with the player's other settings, so no game ever starts skipping.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING = "blueprint.game.getSkipping" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIPPING = "blueprint.game.setSkipping" as const;
+
+/**
+ * How long auto-forward waits at the end of a line.
+ *
+ * A preference in Studio, `game.config` in the engine, and not the same control as `Game Speed` -
+ * that one scales the typing as well.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY = "blueprint.game.getAutoForwardDelay" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD_DELAY = "blueprint.game.setAutoForwardDelay" as const;
+
+/**
  * Per-track (per-bus) volume: the general form of the four fixed volume preferences above.
  *
  * Those four can only reach the three buses the engine seeds, so a project that adds `voice/alice`
@@ -1123,6 +1179,12 @@ export const BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE = "blueprint.voice.getLangua
 export const BLUEPRINT_NODE_TYPE_VOICE_SET_LANGUAGE = "blueprint.voice.setLanguage" as const;
 export const BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES = "blueprint.voice.getAvailableLanguages" as const;
 export const BLUEPRINT_NODE_TYPE_VOICE_PLAY = "blueprint.voice.play" as const;
+/**
+ * Speaks the choice option the surrounding list row stands for. Takes no id: the row already knows
+ * which line it is, and asking the author to route one would make the node unusable in the place it
+ * exists for.
+ */
+export const BLUEPRINT_NODE_TYPE_VOICE_PLAY_CHOICE = "blueprint.voice.playChoice" as const;
 
 /**
  * Reads one value the placement supplied to the component this blueprint belongs to.
@@ -1190,6 +1252,8 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_ALL_PROPERTIES = "blueprint.el
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION = "blueprint.element.displayable.getPosition" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE = "blueprint.element.displayable.getSize" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS = "blueprint.element.displayable.getBounds" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_MEASURED_RECT = "blueprint.element.displayable.getMeasuredRect" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_CENTER = "blueprint.element.displayable.getCenter" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION = "blueprint.element.displayable.getRotation" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY = "blueprint.element.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE = "blueprint.element.displayable.getVisible" as const;
@@ -1205,6 +1269,16 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION = "blueprint
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION = "blueprint.displayable.getPosition" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE = "blueprint.displayable.getSize" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS = "blueprint.displayable.getBounds" as const;
+/**
+ * The measured pair. `getBounds` reads the document and reports where the author put the widget;
+ * these two measure what is painted, so they account for a motion in flight, a variant that moved
+ * the widget, a text box grown to fit its words, and which row of a list an instance landed on.
+ * Both answer in the coordinates of the surface, never in device pixels - the author never sees
+ * the window, and a number that changed when the player resized it would be a second coordinate
+ * system nobody asked for.
+ */
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_MEASURED_RECT = "blueprint.displayable.getMeasuredRect" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER = "blueprint.displayable.getCenter" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION = "blueprint.displayable.getRotation" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY = "blueprint.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE = "blueprint.displayable.getVisible" as const;

@@ -150,13 +150,6 @@ export function DictionariesPanel() {
                 {failed && <p className="px-1 pt-2 text-xs text-danger">{t("settings.dictionaries.failed")}</p>}
             </SectionCard>
 
-            {/*
-             * Stated rather than left to be discovered. Chinese and Japanese do not separate words,
-             * so there is nothing a word list could be checked against and no dictionary will ever
-             * appear above for them. An author writing in either would otherwise read the empty list
-             * as a download that has not happened yet.
-             */}
-            <p className="text-xs leading-relaxed text-fg-subtle">{t("settings.dictionaries.noDictionaryLanguages")}</p>
         </div>
     );
 }

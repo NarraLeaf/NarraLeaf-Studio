@@ -28,7 +28,14 @@ import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import {
+    isVerticalWritingMode,
+    textBodyInlineSizeCss,
+    verticalTypographyCss,
+} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import { renderVerticalTextContent } from "@/lib/ui-editor/widget-modules/shared/text/VerticalText";
+import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import {
     resolveTextAppearanceTransitions,
     resolveTextVisualProps,
@@ -193,14 +200,14 @@ export function TextRenderer({
     }, [element, isEditing]);
 
     const flatProps = getTextProps(element);
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const runtimeState = useWidgetRuntimeElementState(element.id);
     const listScopedVariantId =
         typeof (element.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
             ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
             : null;
     const resolveCtx = {
-        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeState.variantOverrideId),
         signals: runtimeState.signals,
     };
     const p = resolveTextVisualProps(element, flatProps.appearance ?? undefined, resolveCtx);
@@ -223,10 +230,11 @@ export function TextRenderer({
     const useEffectShell = Boolean(effectTextStyle.filter) || Boolean(effectTextStyle.mixBlendMode);
 
     const textBodyStyle: CSSProperties = {
-        width: "100%",
+        ...textBodyInlineSizeCss(p.writingMode),
         margin: 0,
         padding: 4,
         boxSizing: "border-box",
+        ...verticalTypographyCss(p),
         fontSize: p.fontSize,
         fontWeight: p.fontWeight,
         fontStyle: p.fontStyle,
@@ -255,8 +263,9 @@ export function TextRenderer({
           }
         : {};
 
-    const tx = Number.isFinite(p.transformOffsetX) ? p.transformOffsetX : 0;
-    const ty = Number.isFinite(p.transformOffsetY) ? p.transformOffsetY : 0;
+    // Zero while a state is entered; the wrapper carries the offsets then.
+    const tx = enteredState || !Number.isFinite(p.transformOffsetX) ? 0 : p.transformOffsetX;
+    const ty = enteredState || !Number.isFinite(p.transformOffsetY) ? 0 : p.transformOffsetY;
     const ts = Number.isFinite(p.transformScale) && p.transformScale > 0 ? p.transformScale : 1;
     const tr = Number.isFinite(p.transformRotation) ? p.transformRotation : 0;
     const transformCss = `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`;
@@ -319,6 +328,9 @@ export function TextRenderer({
     const shellMotionActive = Object.keys(shellTransition).length > 0;
     const textMotionActive = Object.keys(textTransition).length > 0;
 
+    // The shell carries the writing mode so its own axes flip with it: `flex-direction: column`
+    // stacks along the block axis, which is the columns' direction once the text is vertical, and
+    // `textVerticalAlign` keeps meaning "where the block of text sits" in both modes.
     const outerStyle: CSSProperties = {
         width: "100%",
         height: "100%",
@@ -328,6 +340,7 @@ export function TextRenderer({
         flexDirection: "column",
         justifyContent: textVerticalAlignToJustifyContent(p.textVerticalAlign),
         alignItems: "stretch",
+        ...verticalTypographyCss(p),
     };
     const outerStaticStyle: CSSProperties = {
         ...outerStyle,
@@ -456,7 +469,11 @@ export function TextRenderer({
             background: "transparent",
             border: "none",
             outline: "none",
-            ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
+            ...(p.textWrapMode === "nowrap"
+                ? isVerticalWritingMode(p.writingMode)
+                    ? { overflowX: "hidden", overflowY: "auto" }
+                    : { overflowX: "auto", overflowY: "hidden" }
+                : {}),
             ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
         };
         const textarea = (
@@ -495,6 +512,7 @@ export function TextRenderer({
         );
     }
 
+    const textContent = renderVerticalTextContent(displayText, p);
     const textNode = textMotionActive ? (
         <motion.p
             style={{ ...textBodyStyle, flexShrink: 0 }}
@@ -502,10 +520,10 @@ export function TextRenderer({
             animate={textAnimate}
             transition={textTransition}
         >
-            {displayText}
+            {textContent}
         </motion.p>
     ) : (
-        <p style={{ ...textBodyStyle, flexShrink: 0 }}>{displayText}</p>
+        <p style={{ ...textBodyStyle, flexShrink: 0 }}>{textContent}</p>
     );
 
     const effectNode = useEffectShell ? (

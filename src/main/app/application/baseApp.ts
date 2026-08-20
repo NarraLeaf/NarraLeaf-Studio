@@ -20,6 +20,8 @@ import { StringKeyOf } from "@shared/utils/types";
 import path from "path";
 import { MenuManager } from "./managers/menuManager";
 import { TrayManager } from "./managers/trayManager";
+import { WINDOW_ICON_KEY, WindowIconEntry, resolveWindowIcon } from "@shared/constants/windowIcon";
+import type { AppWindow } from "./managers/window/appWindow";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
@@ -31,6 +33,14 @@ import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
 import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
+import {
+    EXPERIMENTAL_FLAG,
+    EXPERIMENTAL_OFF,
+    experimentalCondition,
+    hasExperimentalCondition,
+    type ExperimentalConditionId,
+    type ExperimentalState,
+} from "@shared/types/experimental";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
 import { installFileLogSink } from "./logging/fileLogSink";
@@ -89,6 +99,13 @@ export class BaseApp {
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
     private debugServer: StudioDebugServer | null = null;
+    /**
+     * Cleared by the first workspace window that asks for the experimental notice, so the warning
+     * appears once per launch rather than once per window. It lives here rather than in the
+     * renderer because a workspace window reloads on every rebuild in development, and a per-window
+     * latch would put the dialog back on screen each time.
+     */
+    private experimentalNoticePending = true;
 
     constructor(config: BaseAppConfig) {
         this.config = config;
@@ -126,6 +143,7 @@ export class BaseApp {
         this.configureCdp();
         this.setupUserDataDir();
         this.setupLogging();
+        this.reportExperimentalMode();
 
         this.globalState = new GlobalStateManager(this.getUserDataDir());
         // Before any window exists, so nothing has read a retired value and there is nothing to
@@ -261,6 +279,13 @@ export class BaseApp {
                 }
             }
         }
+
+        // Like the zoom above and unlike the theme: there is no single switch to flip. Each window
+        // carries its own icon and the tray carries a third, so the new mark has to be pushed to
+        // all of them.
+        if (key === WINDOW_ICON_KEY) {
+            this.refreshWindowIcons();
+        }
     }
 
     /**
@@ -369,16 +394,57 @@ export class BaseApp {
         return path.resolve(this.getResourcesDir(), p);
     }
 
+    /**
+     * The file the current icon preference resolves to, or null where there is nothing to set.
+     *
+     * macOS returns null because it has no per-window icon at all - `BrowserWindow.setIcon` does
+     * not exist there, and the Dock tile is application-wide (`configurePlatformAppIcon`).
+     */
     public getWindowIconPath(): string | null {
         if (process.platform === "darwin") {
             return null;
         }
 
-        if (process.platform === "win32") {
-            return this.resolveExistingResource("app-icon.ico", "app-icon.png");
+        // Windows prefers the .ico, whose several sizes let the taskbar pick one rather than
+        // downsample a single bitmap; everything else prefers the PNG. Each entry offers both, and
+        // the default mark is appended behind the chosen one - so an icon whose files never made
+        // it into the build leaves Studio wearing NarraLeaf's mark rather than Electron's.
+        const order = (entry: WindowIconEntry): string[] =>
+            process.platform === "win32" ? [entry.ico, entry.png] : [entry.png, entry.ico];
+        const chosen = resolveWindowIcon(this.globalState.get(WINDOW_ICON_KEY));
+        const candidates = [...new Set([...order(chosen), ...order(resolveWindowIcon(null))])];
+
+        return this.resolveExistingResource(...candidates);
+    }
+
+    /**
+     * Put the current icon on one window. Every window creation site calls this, because the icon
+     * is a property of the window rather than of the application on the platforms that have one.
+     */
+    public applyWindowIcon(window: AppWindow): void {
+        const iconPath = this.getWindowIconPath();
+        if (!iconPath) {
+            return;
         }
 
-        return this.resolveExistingResource("app-icon.png", "app-icon.ico");
+        window.setIcon(iconPath);
+    }
+
+    /**
+     * Re-apply the icon everywhere it is already showing.
+     *
+     * The open windows are the obvious half. The tray is the half that gets forgotten: it is built
+     * once at startup and holds its own copy of the image, so a window-only refresh leaves Studio
+     * wearing two different marks at once.
+     */
+    public refreshWindowIcons(): void {
+        for (const window of this.windowManager.getWindows()) {
+            if (!window.isClosed()) {
+                this.applyWindowIcon(window);
+            }
+        }
+
+        this.trayManager?.refreshIcon();
     }
 
     public getDockIconPath(): string | null {
@@ -552,6 +618,42 @@ export class BaseApp {
     }
 
     /**
+     * What experimental mode is doing this run.
+     *
+     * Unpackaged launches only, and deliberately not tied to `--dev`: the mode exists to exercise
+     * the product from a checkout, and one of its conditions changes what a *shipped* game build
+     * comes out as. A packaged Studio refuses it outright, which is what keeps a build made on an
+     * author's machine from ever being one of those.
+     */
+    public getExperimentalState(): ExperimentalState {
+        if (this.electronApp.isPackaged || !this.commandLine.experimental.requested) {
+            return EXPERIMENTAL_OFF;
+        }
+        return {
+            enabled: true,
+            conditions: [...this.commandLine.experimental.conditions],
+            unknownConditionFlags: [...this.commandLine.experimental.unknownConditionFlags],
+        };
+    }
+
+    /** Whether one experimental condition is active this run. */
+    public hasExperimentalCondition(id: ExperimentalConditionId): boolean {
+        return hasExperimentalCondition(this.getExperimentalState(), id);
+    }
+
+    /**
+     * Whether the caller is the one that has to show the experimental warning. True at most once
+     * per launch; every later caller is told no.
+     */
+    public claimExperimentalNotice(): boolean {
+        if (!this.getExperimentalState().enabled || !this.experimentalNoticePending) {
+            return false;
+        }
+        this.experimentalNoticePending = false;
+        return true;
+    }
+
+    /**
      * Whether this launch asked for first-run setup regardless of what the profile has been
      * through - `--onboarding`, which only development honors.
      *
@@ -590,6 +692,30 @@ export class BaseApp {
     /** What was wrong with `--project`, for the one place that reports it. Dev-gated as above. */
     public getStartupProjectError(): string | null {
         return this.isDevMode() ? this.commandLine.project.error : null;
+    }
+
+    /**
+     * Bare paths this launch was given, in the order they appeared.
+     *
+     * Not dev-gated: this is how a packaged Studio is reached by a file association, which is the
+     * one thing `--project` explicitly is not for. What any of them mean is decided against the
+     * disk by `resolveLaunchOpenRequest`, which recognises only a project config, a project folder
+     * and a package - so everything argv happens to carry is ignored rather than trusted.
+     */
+    public getLaunchOpenPaths(): readonly string[] {
+        return this.commandLine.openPaths;
+    }
+
+    /**
+     * Whether this launch asked to start on the home screen rather than back in the last project -
+     * `--launcher`.
+     *
+     * Not dev-gated, unlike everything else on this list. See {@link MainCommandLineOptions.launcher}:
+     * it is the way out of a project that will not open, and a packaged build is where that is
+     * least recoverable.
+     */
+    public wantsLauncherOnStartup(): boolean {
+        return this.commandLine.launcher;
     }
 
     public getAppEntry(type: WindowAppType): string {
@@ -701,6 +827,44 @@ export class BaseApp {
             const userDataPath = path.join(this.getDevTempDir(), "userData-dev");
             this.electronApp.setPath("userData", userDataPath);
             this.logger.info(`[App] Setting up dev userData path: ${userDataPath}`);
+        }
+    }
+
+    /**
+     * State what this launch unlocked, in the log the session leaves behind.
+     *
+     * Every branch says something, including the ones that changed nothing: a condition flag that
+     * was ignored - because the mode was never opened, or because the name is not one - otherwise
+     * looks exactly like a condition that is on and does not work.
+     */
+    private reportExperimentalMode(): void {
+        const experimental = this.commandLine.experimental;
+        if (!experimental.requested) {
+            if (experimental.conditions.length > 0 || experimental.unknownConditionFlags.length > 0) {
+                this.logger.warn(
+                    `[Experimental] Condition flags were given without ${EXPERIMENTAL_FLAG}; none of them apply.`,
+                );
+            }
+            return;
+        }
+
+        if (this.electronApp.isPackaged) {
+            this.logger.warn(
+                `[Experimental] Ignoring ${EXPERIMENTAL_FLAG}: it is available to a development launch only.`,
+            );
+            return;
+        }
+
+        this.logger.warn("[Experimental] Experimental mode is on. This launch is not a product build.");
+        for (const flag of experimental.unknownConditionFlags) {
+            this.logger.warn(`[Experimental] ${flag} names no condition and does nothing.`);
+        }
+        if (experimental.conditions.length === 0) {
+            this.logger.warn("[Experimental] No test condition is active.");
+            return;
+        }
+        for (const id of experimental.conditions) {
+            this.logger.warn(`[Experimental] ${id}: ${experimentalCondition(id).summary}`);
         }
     }
 
@@ -901,6 +1065,7 @@ export class BaseApp {
 
         return {
             version: pkg.data.version,
+            experimental: this.getExperimentalState(),
         };
     }
 

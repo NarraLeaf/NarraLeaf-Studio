@@ -88,7 +88,27 @@ describe("scaffoldProjectFromTemplate", () => {
     it("produces a plain project for a manifest-only template", async () => {
         await writeFile(path.join(templatesDir, "meta", "template.json"), JSON.stringify({ name: "Meta" }));
 
-        expect(await scaffoldProjectFromTemplate(templatesDir, "meta", projectDir)).toEqual({ filesCopied: 0 });
+        expect(await scaffoldProjectFromTemplate(templatesDir, "meta", projectDir)).toEqual({ filesCopied: 0, locales: [] });
+    });
+
+    it("reports the languages the template ships a translation for, and only those", async () => {
+        const localization = path.join(templatesDir, "spoken", "content", "editor", "localization");
+        await writeFile(path.join(localization, "zh-CN.json"), "{}");
+        await writeFile(path.join(localization, "ja.json"), "{}");
+        // The key catalogue lives beside the translations and is not one of them, and a file whose
+        // name does not read as a language belongs to something else entirely.
+        await writeFile(path.join(localization, "keys.json"), "{}");
+        await writeFile(path.join(localization, "notes.json"), "{}");
+
+        const result = await scaffoldProjectFromTemplate(templatesDir, "spoken", projectDir);
+
+        expect(result.locales).toEqual(["ja", "zh-CN"]);
+    });
+
+    it("reports no languages for a template that ships no translations", async () => {
+        await writeFile(path.join(templatesDir, "silent", "content", "editor", "story", "index.json"), "{}");
+
+        expect((await scaffoldProjectFromTemplate(templatesDir, "silent", projectDir)).locales).toEqual([]);
     });
 
     it("refuses an id that would read outside the templates directory", async () => {

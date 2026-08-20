@@ -18,7 +18,7 @@ export const workspace = {
             setSource: "Set as source language",
             removeLanguage: "Remove language",
             removeConfirm: "Remove {name}?",
-            removeConfirmDetail: "Translations stay on disk and come back if the language is added again.",
+            removeConfirmDetail: "Translations stay on disk and are restored if the language is added again.",
             openTable: "Open translation table",
             progress: "{completed}/{total} translated",
             staleCount: "{count} to review",
@@ -73,6 +73,8 @@ export const workspace = {
             reviewFilterUnreviewed: "Unreviewed",
             charactersGroup: "Characters",
             characterSpeaker: "Character",
+            scenesGroup: "Scenes",
+            sceneSpeaker: "Scene",
             addKey: "Add",
             keyNamePlaceholder: "Key (menu.start…)",
             keySourcePlaceholder: "Source text",
@@ -115,7 +117,7 @@ export const workspace = {
             confirm: "Confirm",
             removeLanguage: "Remove voice language",
             removeConfirm: "Remove {name}?",
-            removeConfirmDetail: "Voice assignments stay on disk and come back if the language is added again.",
+            removeConfirmDetail: "Voice assignments stay on disk and are restored if the language is added again.",
             openTable: "Open voice table",
             progress: "{covered}/{total} voiced",
             staleCount: "{count} outdated",
@@ -132,6 +134,7 @@ export const workspace = {
             namingTitle: "Recording filename pattern",
             namingHint: "Tokens: {tokens}. Imported audio is matched to lines by this name.",
             namingReset: "Reset to default",
+            choicesTitle: "Voice choice options",
         },
         table: {
             storyLabel: "Story",
@@ -149,6 +152,8 @@ export const workspace = {
             auditionFilterPending: "Pending",
             narrationSpeaker: "Narration",
             narrationGroup: "Narration",
+            choiceSpeaker: "Choice",
+            choiceGroup: "Choices",
             castPlaceholder: "Voice actor…",
             assign: "Assign audio",
             replace: "Replace audio",
@@ -249,8 +254,8 @@ export const workspace = {
             message: "This project did not load correctly",
             // Two wordings rather than "file(s)". The count is the first thing read and a bracketed
             // plural in a data-loss warning reads as a placeholder nobody finished.
-            detailOne: "A file could not be read, so part of the project is missing from this window. Common causes: an interrupted save, a sync or backup tool writing at the same time, a plugin. Editing now can write this incomplete state over the files that are still intact.",
-            detailMany: "{count} files could not be read, so part of the project is missing from this window. Common causes: an interrupted save, a sync or backup tool writing at the same time, a plugin. Editing now can write this incomplete state over the files that are still intact.",
+            detailOne: "A file could not be read, so part of the project is missing from this window. Editing now can write this incomplete state over the files that are still intact.",
+            detailMany: "{count} files could not be read, so part of the project is missing from this window. Editing now can write this incomplete state over the files that are still intact.",
             enter: "Open in recovery mode",
         },
         // Each key names what the workspace was doing, not what went wrong: the error itself is
@@ -374,7 +379,6 @@ export const workspace = {
             categoryVersionControl: "Version Control",
             editor: {
                 closeTab: "Close Tab",
-                closeSelectedTabs: "Close Selected Tabs",
                 closeOthers: "Close Other Tabs",
                 closeToRight: "Close Tabs to the Right",
                 closeAll: "Close All Tabs",
@@ -443,6 +447,16 @@ export const workspace = {
                 reloading: "Reloading…",
                 stopping: "Stopping…",
             },
+            /**
+             * What a long task is called while it runs.
+             *
+             * Names the author's own object and the work being done to it, never the machinery
+             * that does it. "Baking" is what the wait is; the encoder and the file format the
+             * clip ends up in are not the author's business and never appear here.
+             */
+            task: {
+                weatherBake: "Baking screen effect",
+            },
             openConsole: "Open the console",
             unsavedChanges: "Unsaved changes",
             saveNow: "Save now",
@@ -460,6 +474,7 @@ export const workspace = {
             // the cells themselves are icon-first and label their own state.
             entries: {
                 runStatus: "Run status",
+        studioTasks: "Background work",
                 unsavedChanges: "Unsaved changes",
                 wordCount: "Story stats",
                 shortcuts: "Keyboard shortcuts",
@@ -479,16 +494,16 @@ export const workspace = {
         // "Storage" console channel carries. A failed write retries on a backoff that never gives
         // up, so the wording says "still trying" rather than "lost".
         save: {
-            failedTitle: "Couldn't save {file}",
+            failedTitle: "Could not save {file}",
             failedDetailTransient: "Still retrying in the background. {error}",
-            failedDetailPermanent: "Retrying will not help until this is fixed. {error}",
+            failedDetailPermanent: "Retrying fails until this is fixed. {error}",
             retry: "Retry now",
             consoleFailed: "write failed ({code}, attempt {attempt}): {path} · {error}",
             consoleRecovered: "write succeeded: {path}",
             flushFailed: "could not flush {label}: {error}",
             // The read side: a document that is on disk but cannot be understood. The wording leads
             // with what did NOT happen, because the fear this raises is "has Studio eaten my work?".
-            unreadableTitle: "Couldn't read {file}",
+            unreadableTitle: "Could not read {file}",
             unreadableDetail: "{reason} The file is unchanged. Nothing was written over it.",
             unreadableDetailQuarantined: "{reason} The file is unchanged. A copy of it is at {path}.",
             consoleUnreadable: "read failed ({kind}): {path} · {reason}",
@@ -513,6 +528,7 @@ export const workspace = {
                 variables: "variable registry",
                 audioTracks: "audio tracks",
                 appTags: "build variants",
+                assetSets: "asset sets",
                 brand: "brand palette",
                 dictionary: "project dictionary",
                 saveSchema: "save fields",
@@ -549,16 +565,16 @@ export const workspace = {
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone
         // whose behaviour cannot be reached by a person cannot be accepted.
         revisionView: {
-            showPrevious: "Show the Previous Revision (Read-Only)",
+            showPrevious: "Show the Previous Version (Read-Only)",
             // Named for the mode it leaves, not the place it lands: see docs/help-system.md §4.
             leave: "Stop Viewing History",
-            loadingTitle: "Reading the previous revision…",
-            loadingDetail: "The first read of a revision may fetch it from the remote.",
-            shownTitle: "Showing revision {revision}",
+            loadingTitle: "Reading the previous version…",
+            loadingDetail: "The first read may fetch it from the server.",
+            shownTitle: "Showing version {revision}",
             shownDetail: "The editors are read-only. The files on disk are not modified.",
-            noneTitle: "There is no earlier revision",
-            noneDetail: "This project has only one revision.",
-            failedTitle: "Could not show that revision",
+            noneTitle: "There is no earlier version",
+            noneDetail: "This project has only one version.",
+            failedTitle: "Could not show that version",
         },
         // The version control surfaces: the rail down the far left, the version section inside the
         // project switcher's menu, and the status-bar cell. All three name a VERSION and never a change
@@ -852,7 +868,7 @@ export const workspace = {
                  * rather than whatever was typed into a preference on this machine.
                  */
                 signIn: {
-                    required: "This server requires you to sign in before a project can be pointed at it.",
+                    required: "This server requires sign-in before a project can be connected to it.",
                     // A quiet line, not a button: most servers ask nobody who they are, and
                     // this is a control they can ignore rather than one they must answer.
                     open: "Sign in to this server",
@@ -865,10 +881,10 @@ export const workspace = {
                     // "Access token" rather than "password", because it is not one and cannot
                     // be chosen, remembered or reset by the person pasting it.
                     tokenLabel: "Access token",
-                    tokenPlaceholder: "Paste the token you were given",
+                    tokenPlaceholder: "Paste the token",
                     // Where a token comes from, in one line, because there is nowhere else to
                     // learn it: nothing in Studio can issue one.
-                    hint: "Whoever runs this server issues the token and hands it to you.",
+                    hint: "The token is issued by the server's administrator.",
                     /**
                      * Trusting the authority a server's certificate is issued from.
                      *
@@ -884,15 +900,15 @@ export const workspace = {
                     trust: {
                         open: "Trust this server on this computer",
                         title: "Trust this server?",
-                        vouched: "The token you pasted names this authority, and this is the authority answering at that address.",
-                        compare: "Check this fingerprint against the one whoever runs the server gives you, over something other than this connection.",
+                        vouched: "The pasted token names this authority, and this authority is answering at that address.",
+                        compare: "Check this fingerprint against the one provided by the server's administrator, over a different channel.",
                         authorityLabel: "Issued by",
                         fingerprintLabel: "Fingerprint",
                         // The cost of being wrong, in one sentence, without softening it. The
                         // account rather than the computer is not a detail: it is what bounds
                         // the damage, and it is the reason the per-user store is used.
-                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will believe it. Only this account on this computer is affected.",
-                        manual: "This system has no per-account trust store, so Studio cannot do it. Run this, then sign in again:",
+                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will accept it. Only this account on this computer is affected.",
+                        manual: "This system has no per-account trust store. Run this, then sign in again:",
                         copy: "Copy the command",
                         confirm: "Trust it",
                         cancel: "Cancel",
@@ -907,10 +923,10 @@ export const workspace = {
                      * asks them for knowledge they have no way to have.
                      */
                     reach: {
-                        ready: "This server and this copy of Studio can work together.",
+                        ready: "This server is compatible with this copy of Studio.",
                         // Signed in, and the server will not hand over this project. A different
                         // failure from a refused token, and the remedy is a different person's.
-                        notPermitted: "Signed in, but this account has not been given this project. Ask whoever runs the server for access.",
+                        notPermitted: "Signed in, but this account does not have access to this project. Ask the server's administrator for access.",
                         // The sign-in address answered and the server itself did not, which is
                         // two ports and usually two firewall rules.
                         dataPortSilent: "Signed in, but the server itself did not answer.",
@@ -926,23 +942,23 @@ export const workspace = {
                      */
                     problem: {
                         scheme: "A sign-in address has to start with https:// or ucs-auth://.",
-                        token: "That is not a token this server issued. Paste the whole token you were given.",
+                        token: "That is not a token this server issued. Paste the complete token.",
                         // Answered only after a token has been read and found to name no
                         // endpoint, which is what reveals the address field. Most tokens name
                         // one and nobody sees this.
-                        address: "This token does not say where to sign in, so the address is needed too.",
+                        address: "This token carries no sign-in address. Enter the address as well.",
                         // The token named no authority, so there is a comparison left to make
                         // and it is a person's. Shown above the offer, not instead of it.
                         certificate:
-                            "This computer has not been told to trust the authority this server signs with. "
+                            "This computer does not trust the authority this server signs with. "
                             + "Its fingerprint is {fingerprint}.",
                         // The token named one authority and a different one answered. Not a
                         // step that was missed: this is what standing in the way looks like,
                         // and nothing here offers to trust it.
                         mismatch:
                             "The server at that address is not the one this token is for. The token names "
-                            + "{expected}, and {found} answered. Do not trust it; ask whoever runs the "
-                            + "server what happened.",
+                            + "{expected}, and {found} answered. Do not trust it; ask the server's "
+                            + "administrator what happened.",
                         unreachable: "Nothing answered at that address ({detail}).",
                         refused: "The server would not accept that token ({detail}).",
                         unknown: "The sign-in did not finish ({detail}).",
@@ -994,6 +1010,8 @@ export const workspace = {
             // Category headers in the settings table and cheat sheet (from the static catalog).
             categories: {
                 general: "General",
+                run: "Run",
+                view: "View",
                 story: "Story Editor",
                 uiEditor: "UI Editor",
                 blueprint: "Blueprint Editor",
@@ -1008,6 +1026,11 @@ export const workspace = {
                 cheatSheet: "Show Keyboard Shortcuts",
                 contextHelp: "Help for What Is Focused",
                 reopenClosedTab: "Reopen Closed Tab",
+                // One chord for whichever of Dev Mode, Preview and Test is holding the run slot,
+                // so the three commands that stop them share a single rebindable shortcut.
+                run: {
+                    stop: "Stop the Run",
+                },
                 undo: "Undo",
                 redo: "Redo",
                 quickSwitchNext: "Switch to Next Editor Tab",

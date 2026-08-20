@@ -49,7 +49,7 @@ function WorkspaceContent() {
             <StoryRowHighlightBridge />
             <DevModeStoryRowOpenBridge />
             <EditableTextContextMenu />
-            <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />
+            <WorkspaceLayout title="NarraLeaf Studio" />
         </>
     );
 }

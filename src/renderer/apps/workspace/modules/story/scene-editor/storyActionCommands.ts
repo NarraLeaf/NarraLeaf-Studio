@@ -3,6 +3,9 @@ import type { StoryBlock } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import type { StoryCommandGroupId } from "./storyCommandCategories";
 
+/** The pose a freshly created stage row opens on - the middle of the stage, nothing else stated. */
+const CENTER_STAGE = { xalign: 0.5, yalign: 0.5 } as const;
+
 /**
  * Block construction, and nothing else.
  *
@@ -69,8 +72,7 @@ export type ActionCommandId =
     | "videoHide"
     | "videoPlay"
     | "nvl"
-    | "screenBlink"
-    | "screenVignette"
+    | "cameraBlink"
     | "jump"
     | "waitDuration"
     | "waitClick"
@@ -144,11 +146,11 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "background":
             return { ...base, kind: "action", payload: { action: "setBackground" } };
         case "characterEnter":
-            return { ...base, kind: "action", payload: { action: "character", operation: "enter", transform: { preset: "center", durationMs: 300 } } };
+            return { ...base, kind: "action", payload: { action: "character", operation: "enter", transform: { to: { position: CENTER_STAGE }, durationMs: 300 } } };
         case "characterMove":
-            return { ...base, kind: "action", payload: { action: "character", operation: "move", transform: { preset: "center", durationMs: 300 } } };
+            return { ...base, kind: "action", payload: { action: "character", operation: "move", transform: { to: { position: CENTER_STAGE }, durationMs: 300 } } };
         case "characterExit":
-            return { ...base, kind: "action", payload: { action: "character", operation: "exit", transform: { preset: "fadeOut", durationMs: 250 } } };
+            return { ...base, kind: "action", payload: { action: "character", operation: "exit", transform: { to: { opacity: 0 }, durationMs: 250 } } };
         case "characterExpression":
             return { ...base, kind: "action", payload: { action: "character", operation: "expression" } };
         case "bgm":
@@ -183,29 +185,29 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "executeScript":
             return { ...base, kind: "action", payload: { action: "blueprint", blueprintId: "" } };
         case "imageCreate":
-            return { ...base, kind: "action", payload: { action: "image", operation: "create", objectName: "image", transform: { preset: "center" } } };
+            return { ...base, kind: "action", payload: { action: "image", operation: "create", objectName: "image", transform: { to: { position: CENTER_STAGE } } } };
         case "imageSetSource":
             return { ...base, kind: "action", payload: { action: "image", operation: "setSource", objectName: "image" } };
         case "imageShow":
-            return { ...base, kind: "action", payload: { action: "image", operation: "show", objectName: "image", transform: { preset: "fadeIn", durationMs: 250 } } };
+            return { ...base, kind: "action", payload: { action: "image", operation: "show", objectName: "image", transform: { to: { opacity: 1 }, durationMs: 250 } } };
         case "imageHide":
-            return { ...base, kind: "action", payload: { action: "image", operation: "hide", objectName: "image", transform: { preset: "fadeOut", durationMs: 250 } } };
+            return { ...base, kind: "action", payload: { action: "image", operation: "hide", objectName: "image", transform: { to: { opacity: 0 }, durationMs: 250 } } };
         case "displayableTransform":
-            return { ...base, kind: "action", payload: { action: "displayable", operation: "transform", target: { name: "image" }, transform: { preset: "center", durationMs: 300 } } };
+            return { ...base, kind: "action", payload: { action: "displayable", operation: "transform", target: { name: "image" }, transform: { to: { position: CENTER_STAGE }, durationMs: 300 } } };
         case "displayableShow":
-            return { ...base, kind: "action", payload: { action: "displayable", operation: "show", target: { name: "image" }, transform: { preset: "fadeIn", durationMs: 250 } } };
+            return { ...base, kind: "action", payload: { action: "displayable", operation: "show", target: { name: "image" }, transform: { to: { opacity: 1 }, durationMs: 250 } } };
         case "displayableHide":
-            return { ...base, kind: "action", payload: { action: "displayable", operation: "hide", target: { name: "image" }, transform: { preset: "fadeOut", durationMs: 250 } } };
+            return { ...base, kind: "action", payload: { action: "displayable", operation: "hide", target: { name: "image" }, transform: { to: { opacity: 0 }, durationMs: 250 } } };
         case "displayableEffect":
-            return { ...base, kind: "action", payload: { action: "displayable", operation: "circleReveal", target: { name: "image" }, durationMs: 600 } };
+            return { ...base, kind: "action", payload: { action: "displayable", operation: "transform", target: { name: "image" }, transform: { clipReveal: { kind: "circleReveal" }, durationMs: 600 } } };
         case "textCreate":
-            return { ...base, kind: "action", payload: { action: "text", operation: "create", objectName: "text", text: initialText || "Text", fontSize: 32, fontColor: "#ffffff", transform: { preset: "center" } } };
+            return { ...base, kind: "action", payload: { action: "text", operation: "create", objectName: "text", text: initialText || "Text", fontSize: 32, fontColor: "#ffffff", transform: { to: { position: CENTER_STAGE } } } };
         case "textSet":
             return { ...base, kind: "action", payload: { action: "text", operation: "setText", objectName: "text", text: initialText || "Text" } };
         case "textShow":
-            return { ...base, kind: "action", payload: { action: "text", operation: "show", objectName: "text", transform: { preset: "fadeIn", durationMs: 250 } } };
+            return { ...base, kind: "action", payload: { action: "text", operation: "show", objectName: "text", transform: { to: { opacity: 1 }, durationMs: 250 } } };
         case "textHide":
-            return { ...base, kind: "action", payload: { action: "text", operation: "hide", objectName: "text", transform: { preset: "fadeOut", durationMs: 250 } } };
+            return { ...base, kind: "action", payload: { action: "text", operation: "hide", objectName: "text", transform: { to: { opacity: 0 }, durationMs: 250 } } };
         case "textFont":
             return { ...base, kind: "action", payload: { action: "text", operation: "setFontSize", objectName: "text", fontSize: 32 } };
         case "layerCreate":
@@ -221,11 +223,11 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "videoPlay":
             return { ...base, kind: "action", payload: { action: "video", operation: "play", objectName: "video" } };
         case "nvl":
-            return { ...base, kind: "action", payload: { action: "nvl", transition: { preset: "fadeIn", durationMs: 250 } } };
-        case "screenBlink":
-            return { ...base, kind: "action", payload: { action: "screenEffect", effect: "blink", durationMs: 180, holdMs: 100, easing: "easeInOut", color: "#000000" } };
-        case "screenVignette":
-            return { ...base, kind: "action", payload: { action: "screenEffect", effect: "vignette", durationMs: 300, holdMs: 600, easing: "easeInOut", color: "#000000", opacity: 0.72 } };
+            return { ...base, kind: "action", payload: { action: "nvl", transition: { to: { opacity: 1 }, durationMs: 250 } } };
+        case "cameraBlink":
+            // The gesture seeds by NAME and carries no numbers: the library holds the timings, and a
+            // seed that restated them would be a second answer going stale the first time they moved.
+            return { ...base, kind: "action", payload: { action: "camera", operation: "transform", transform: { mode: "props", to: { lens: { preset: "blink" } } } } };
         case "jump":
             return { ...base, kind: "jump", payload: { targetSceneId: "" } };
         case "waitDuration":

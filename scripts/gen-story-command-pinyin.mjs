@@ -36,6 +36,9 @@ const PINYIN = {
     作: "zuo", 参: "can", 数: "shu", 皮: "pi", 肤: "fu", 改: "gai", 名: "ming", 氛: "fen",
     围: "wei", 进: "jin", 度: "du", 菜: "cai", 单: "dan", 直: "zhi", 到: "dao", 出: "chu",
     标: "biao", 签: "qian", 镜: "jing", 头: "tou",
+    // 「对白」、「截断」and「置顶」— the first two were still missing syllables, so this generator threw
+    // before it could reach any label at all.
+    白: "bai", 截: "jie", 断: "duan", 顶: "ding",
 };
 
 /**

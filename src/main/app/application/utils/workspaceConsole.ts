@@ -1,4 +1,3 @@
-import path from "path";
 import { App } from "@/app/app";
 import { AppWindow } from "../managers/window/appWindow";
 import { WindowAppType } from "@shared/types/window";
@@ -21,14 +20,15 @@ export function emitWorkspaceConsoleLog(app: App, projectPath: string, payload: 
     });
 }
 
+/**
+ * The workspace window a project is open in, if any.
+ *
+ * Delegates rather than comparing paths itself: `App.findWorkspaceForProject` is the lookup the
+ * one-project-one-window rule is built on, and a second opinion about what "the same project" is
+ * eventually disagrees with it. This used to compare `path.normalize`d paths, which agrees about
+ * separators and not about case - so on Windows a project reached under a differently-cased path
+ * silently had no console at all.
+ */
 export function findWorkspaceWindow(app: App, projectPath: string): AppWindow<WindowAppType.Workspace> | undefined {
-    return app.windowManager
-        .getWindows()
-        .find(
-            w =>
-                w.getWindowType() === WindowAppType.Workspace &&
-                !w.isDestroyed() &&
-                !w.isClosed() &&
-                path.normalize(w.getProps().projectPath) === path.normalize(projectPath),
-        ) as AppWindow<WindowAppType.Workspace> | undefined;
+    return app.findWorkspaceForProject(projectPath);
 }

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
+import { useKeybinding, useKeybindings } from "../../hooks";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
@@ -19,6 +20,7 @@ import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
+import { openPatchDialog } from "./PatchDialog";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import {
     getTestRunService,
@@ -34,7 +36,12 @@ import type { TestRunRecord } from "@/lib/testing/types";
 import type { DevModeStatus } from "@shared/types/devMode";
 import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
-import { WorkspaceRunCommand } from "@shared/types/menu";
+import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
+import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
+import { useTitleBarMenu } from "../../components/ui/titleBarMenus";
+import { useShortcutLabels } from "../../hooks/useShortcutLabels";
+import { MenuShortcut } from "../../components/ui/MenuShortcut";
+import { WorkspaceMenuAction, WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
@@ -56,24 +63,34 @@ const RUN_MODE_SETTINGS_KEY = "ui.runMode";
  */
 const RUN_VARIANT_SETTINGS_KEY = "ui.runVariantByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
+/**
+ * The catalog id the stop chord lives under, shared by the three commands that can be the thing it
+ * stops. Spelled out rather than derived so `keybindingCatalog.test.ts` - which reads source text,
+ * not a running app - can check that an entry for it exists.
+ */
+const RUN_STOP_CATALOG_ID = "run:stop";
 
 const RUN_MODE_META: Record<RunMode, {
     icon: React.ReactNode;
     labelKey: TranslationKey;
     runKey: TranslationKey;
     stopKey: TranslationKey;
+    /** The catalog entry whose chord launches this mode, printed beside the row. */
+    catalogId: string;
 }> = {
     devMode: {
         icon: <Play className="h-4 w-4" />,
         labelKey: "actions.run.devMode",
         runKey: "actions.run.runDevMode",
         stopKey: "workspace.shell.stopDevMode",
+        catalogId: "run:dev-mode",
     },
     preview: {
         icon: <MonitorPlay className="h-4 w-4" />,
         labelKey: "actions.run.preview",
         runKey: "actions.run.runPreview",
         stopKey: "workspace.shell.stopPreview",
+        catalogId: "run:preview",
     },
 };
 
@@ -107,10 +124,30 @@ export function RunControl() {
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
     const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
     const [activeRun, setActiveRun] = useState<TestRunRecord | null>(null);
-    const [menuOpen, setMenuOpen] = useState(false);
+    // Held in the title bar's bar of menus, so opening this one puts away whatever was open. It is
+    // NOT part of the chain the pointer walks (`hotTrack`): this is a button that runs the project
+    // and happens to carry a menu, and crossing it on the way elsewhere is not a request to see the
+    // run modes. See `../../components/ui/titleBarMenus`.
+    const {
+        ref: menuRef,
+        open: menuOpen,
+        setOpen: setMenuOpen,
+        toggle: toggleMenu,
+    } = useTitleBarMenu("narraleaf-studio:run");
+    const shortcuts = useShortcutLabels();
     const [variantOpen, setVariantOpen] = useState(false);
     const [variants, setVariants] = useState<ProjectAppTag[]>([]);
     const [variantId, setVariantId] = useState<string | null>(null);
+
+    // The variant list folds away with the menu that holds it. It has to be tied to the menu closing
+    // rather than to the gestures that close it: the bar puts this menu away too - when a sibling
+    // opens, or when a pointer lands elsewhere - and reopening onto a list left expanded would show
+    // a submenu nobody asked for.
+    useEffect(() => {
+        if (!menuOpen) {
+            setVariantOpen(false);
+        }
+    }, [menuOpen]);
 
     // The selected mode is a global UI habit; follow live changes so a second window stays in sync.
     useEffect(() => {
@@ -282,13 +319,43 @@ export function RunControl() {
     const buildBlocked = frozen;
 
     /** Start one mode. Shared with the palette's run commands so the flush-then-launch order is not copied. */
+    /**
+     * Refresh the plugin dependency table before a run.
+     *
+     * Which plugin runtime entries go into the pack is decided from that table (see
+     * `selectRuntimePluginsForPack`), and until now only a build, an export, or a visit to the
+     * Project panel ever refreshed it. So the first run after an author added the row that USES a
+     * plugin - a plugin blueprint node, a plugin story action - ran a game the plugin was not in,
+     * and the feature simply did not happen with nothing on screen to say why.
+     *
+     * Best-effort and awaited: a scan failure must not stop the author running their game, but a
+     * run that starts before the scan lands would pack the stale answer, which is the bug.
+     * Skipped on a frozen workspace, for the reason the export path documents - nobody asked for
+     * this write, and it is bookkeeping rather than the thing being run.
+     */
+    const refreshDependenciesForRun = async () => {
+        if (!context || getProjectWriteFreeze() !== null) {
+            return;
+        }
+        try {
+            await context.services
+                .get<ProjectDependencyService>(Services.ProjectDependency)
+                .rescanAndPersist();
+        } catch (error) {
+            console.warn("[run] plugin dependency rescan failed", error);
+        }
+    };
+
     const launchMode = (target: RunMode) => {
         if (!workspace || !context) {
             return;
         }
         if (target === "preview") {
-            void context.services.get<PreviewService>(Services.Preview)
-                .launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+            void (async () => {
+                await refreshDependenciesForRun();
+                await context.services.get<PreviewService>(Services.Preview)
+                    .launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+            })();
             return;
         }
         const dev = context.services.get<DevModeService>(Services.DevMode);
@@ -298,6 +365,7 @@ export function RunControl() {
             } catch (e) {
                 console.error("[DevMode] flush before launch failed", e);
             }
+            await refreshDependenciesForRun();
                 // No safeAreaId on purpose: the top bar runs the game the way a player gets it. The
             // orientation is project context rather than a design aid, and the Dev Mode window's
             // own safe-area picker needs it to resolve a device onto the right edge.
@@ -357,8 +425,14 @@ export function RunControl() {
         }
     };
 
-    const runStateRef = useRef({ devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest });
-    runStateRef.current = { devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest };
+    const openBuild = () => {
+        if (workspace) {
+            void openBuildDialog(workspace);
+        }
+    };
+
+    const runStateRef = useRef({ devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest, openBuild });
+    runStateRef.current = { devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest, openBuild };
 
     useEffect(() => {
         if (!context) {
@@ -389,6 +463,10 @@ export function RunControl() {
             },
             {
                 id: WorkspaceRunCommand.StopDevMode,
+                // All three stop rows show the one chord that stops whatever holds the run slot,
+                // and none of them owns it - the catalog has a single `run:stop` entry to rebind,
+                // rather than three that would read as conflicting with one another.
+                keybindingId: RUN_STOP_CATALOG_ID,
                 titleKey: "workspace.shell.stopDevMode",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 // Stopping is one act with one glyph, whatever is running - the same square the
@@ -399,6 +477,7 @@ export function RunControl() {
             },
             {
                 id: WorkspaceRunCommand.StopPreview,
+                keybindingId: RUN_STOP_CATALOG_ID,
                 titleKey: "workspace.shell.stopPreview",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 icon: <Square className="w-4 h-4" />,
@@ -420,6 +499,7 @@ export function RunControl() {
             },
             {
                 id: WorkspaceRunCommand.StopTest,
+                keybindingId: RUN_STOP_CATALOG_ID,
                 titleKey: "test.action.stop",
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 icon: <Square className="w-4 h-4" />,
@@ -431,6 +511,89 @@ export function RunControl() {
             // duplicate row that the freeze policy does not reach.
         ]);
     }, [context]);
+
+    /**
+     * The same launches, by key.
+     *
+     * Registered here rather than beside the shell's other shortcuts for the reason the commands
+     * above are: the launch sequence lives in this component, and a second copy of it would drift.
+     * Each id below composes with `catalogPrefix` into the id of the command it runs (`run:dev-mode`
+     * and friends), which is what keeps the palette to one row per command - the row shows the
+     * chord instead of the shortcut appearing under a second name.
+     *
+     * The `when` predicates mirror the commands' exactly, so a chord is dead in precisely the
+     * states its palette entry is missing: nothing starts while something else holds the run slot,
+     * Preview stays off while the workspace is frozen, and Stop is live only while there is
+     * something to stop.
+     *
+     * `allowInEditable` throughout: these are function keys, so there is no keystroke an author
+     * could lose to them, and the caret is in a story line for most of the working day - a run
+     * shortcut that only worked when it was not would be a run shortcut that never worked.
+     */
+    useKeybindings({
+        keybindings: [
+            {
+                id: "dev-mode",
+                key: "f5",
+                description: "Run the project in Dev Mode",
+                allowInEditable: true,
+                when: () => !runStateRef.current.devActive && !runStateRef.current.previewActive,
+                handler: () => runStateRef.current.launchMode("devMode"),
+            },
+            {
+                id: "preview",
+                key: "f6",
+                description: "Run the project in Preview",
+                allowInEditable: true,
+                when: () => !runStateRef.current.devActive
+                    && !runStateRef.current.previewActive
+                    && !runStateRef.current.frozen,
+                handler: () => runStateRef.current.launchMode("preview"),
+            },
+            {
+                id: "test",
+                key: "f7",
+                description: "Open the test picker",
+                allowInEditable: true,
+                when: () => !runStateRef.current.testActive,
+                handler: () => runStateRef.current.openTest(),
+            },
+            {
+                id: "stop",
+                key: "shift+f5",
+                description: "Stop whatever is running",
+                allowInEditable: true,
+                when: () => runStateRef.current.devActive
+                    || runStateRef.current.previewActive
+                    || runStateRef.current.testActive,
+                handler: () => runStateRef.current.runOrStop(),
+            },
+        ],
+        idPrefix: "workspace-run",
+        catalogPrefix: "run:",
+    });
+
+    /**
+     * Production Build's chord.
+     *
+     * Registered apart from the four above because Build is a toolbar ACTION, not a palette command,
+     * and an action's shortcut is read - by the palette and by the override map alike - under
+     * `action:<id>`. Binding it there rather than declaring `shortcut` on the action itself is
+     * deliberate: `shortcut` auto-registers a binding that no catalog entry governs, which would
+     * leave this chord unrebindable and absent from the shortcut settings.
+     *
+     * The freeze check is this binding's own, because the freeze policy that greys the button and
+     * drops the palette row never sees a keystroke.
+     */
+    useKeybinding({
+        id: "workspace-run-build",
+        catalogId: "action:narraleaf-studio:build",
+        key: "f10",
+        description: "Open the production build dialog",
+        allowInEditable: true,
+        when: () => !runStateRef.current.frozen,
+        handler: () => runStateRef.current.openBuild(),
+    });
 
     /**
      * The variant a run assembles as, or null for the whole game.
@@ -479,7 +642,7 @@ export function RunControl() {
             : t(meta.labelKey);
 
     return (
-        <div className="relative flex items-center">
+        <div className="relative flex items-center" ref={menuRef}>
             <div className={cn("flex h-8 items-stretch overflow-hidden rounded-md", running && "bg-danger text-white")}>
                 <button
                     type="button"
@@ -507,7 +670,7 @@ export function RunControl() {
                     inert instead, which is where the "no switching mid-run" rule actually belongs. */}
                 <button
                     type="button"
-                    onClick={() => setMenuOpen(open => !open)}
+                    onClick={toggleMenu}
                     data-tip={t("actions.run.menu")}
                     aria-label={t("actions.run.menu")}
                     aria-haspopup="menu"
@@ -523,12 +686,12 @@ export function RunControl() {
 
             {menuOpen && (
                 <>
+                    {/* Backdrop. The bar is what notices a pointer landing outside this menu; what
+                        this adds is that a click meant to put the menu away does not also press
+                        whatever it landed on. It reaches only the content below the title bar. */}
                     <div
                         className="nl-window-content-layer z-10"
-                        onClick={() => {
-                            setMenuOpen(false);
-                            setVariantOpen(false);
-                        }}
+                        onClick={() => setMenuOpen(false)}
                     />
                     <div
                         role="menu"
@@ -561,7 +724,8 @@ export function RunControl() {
                                     )}
                                 >
                                     <span className="flex h-4 w-4 items-center justify-center">{optionMeta.icon}</span>
-                                    <span className="flex-1 text-left">{t(optionMeta.labelKey)}</span>
+                                    <span className="flex-1 whitespace-nowrap text-left">{t(optionMeta.labelKey)}</span>
+                                    <MenuShortcut of={shortcuts.forBinding(optionMeta.catalogId)} />
                                     <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
                                 </button>
                             );
@@ -587,7 +751,7 @@ export function RunControl() {
                                     <span className="flex h-4 w-4 items-center justify-center">
                                         <GitBranch className="h-4 w-4" />
                                     </span>
-                                    <span className="flex-1 text-left">{t("actions.run.runAs")}</span>
+                                    <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.runAs")}</span>
                                     <span className="text-fg-subtle">
                                         {selectedVariant?.name ?? RELEASE_APP_TAG.name}
                                     </span>
@@ -645,7 +809,39 @@ export function RunControl() {
                             <span className={cn("flex h-4 w-4 items-center justify-center", buildStatus === "error" && "text-danger")}>
                                 {building ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-4 w-4" />}
                             </span>
-                            <span className="flex-1 text-left">{t("actions.run.productionBuild")}</span>
+                            <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.productionBuild")}</span>
+                            <MenuShortcut of={shortcuts.forAction(WorkspaceMenuAction.Build)} />
+                            <span className="w-3" />
+                        </button>
+
+                        {/* Export patch. Directly under Production Build because it is the same
+                            kind of thing - it produces a file rather than launching anything - and
+                            because it is only ever reached after a build: a patch is made for one.
+                            Gated by the same freeze, and for the same reason: it compiles the
+                            project. */}
+                        <button
+                            type="button"
+                            role="menuitem"
+                            aria-disabled={buildBlocked || undefined}
+                            disabled={buildBlocked}
+                            data-tip={buildBlocked ? frozenTitle : undefined}
+                            onClick={() => {
+                                setMenuOpen(false);
+                                if (workspace) {
+                                    void openPatchDialog(workspace);
+                                }
+                            }}
+                            className={cn(
+                                "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                buildBlocked
+                                    ? "cursor-not-allowed text-fg-subtle"
+                                    : "text-fg-muted hover:bg-fill hover:text-fg",
+                            )}
+                        >
+                            <span className="flex h-4 w-4 items-center justify-center">
+                                <FileDiff className="h-4 w-4" />
+                            </span>
+                            <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.exportPatch")}</span>
                             <span className="w-3" />
                         </button>
 
@@ -673,7 +869,8 @@ export function RunControl() {
                                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                     : <FlaskConical className="h-4 w-4" />}
                             </span>
-                            <span className="flex-1 text-left">{t("test.action.open")}</span>
+                            <span className="flex-1 whitespace-nowrap text-left">{t("test.action.open")}</span>
+                            <MenuShortcut of={shortcuts.forBinding(TEST_RUN_COMMAND_ID)} />
                             <span className="w-3" />
                         </button>
                     </div>

@@ -12,6 +12,7 @@ import {
     type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "../layout/hostVisibility";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "../../utils/cn";
 
@@ -53,6 +54,9 @@ export function EnhancedInput({
     const { t } = useTranslation();
     const [hasFocus, setHasFocus] = useState(false);
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+    // A dropdown portalled to the body survives the `display: none` that puts a kept-alive
+    // tab or panel away, so it has to be told when that happens (`useDismissWhenHidden`).
+    useDismissWhenHidden(() => setIsPopoverOpen(false), isPopoverOpen);
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
     const [popoverPosition, setPopoverPosition] = useState({ left: 0, top: 0, width: 220 });
     const containerRef = useRef<HTMLButtonElement | HTMLDivElement | null>(null);
@@ -260,6 +264,16 @@ export function EnhancedInput({
         inputClassName,
     );
     const hasDisplayText = displayValue.length > 0;
+    // The collapsed trigger stands in for the input, but the caller's `aria-label` rides on
+    // `rest` and so only ever reaches the input inside the popover — which does not exist until
+    // the popover is opened. Without this the trigger has no accessible name at all: assistive
+    // technology reads an unnamed button, and acceptance runs that locate controls by name
+    // (rather than by coordinates, which shift whenever a layout changes) cannot reach it.
+    // `placeholder` is the fallback because it is what the trigger already shows when empty;
+    // with neither, the button stays unnamed rather than being given an invented name.
+    // `aria-labelledby` is forwarded alongside for the same reason: it is a reference, so both
+    // the trigger and the popover input may point at the caller's one label element.
+    const triggerLabel = rest["aria-label"] ?? rest.placeholder;
 
     if (shouldUsePopover) {
         const popoverContent =
@@ -316,6 +330,8 @@ export function EnhancedInput({
                     onClick={isPopoverOpen ? closePopover : openPopover}
                     disabled={rest.disabled || rest.readOnly}
                     className={rootClassName}
+                    aria-label={triggerLabel}
+                    aria-labelledby={rest["aria-labelledby"]}
                     data-tip={hasDisplayText ? displayValue : rest.placeholder}
                 >
                     {leftIcon && (

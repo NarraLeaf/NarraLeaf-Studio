@@ -21,6 +21,12 @@ module.exports = {
         // does not exist, and the only way to see it is to look at the rendered page.
         './src/runtime/**/*.{ts,tsx}',
         './project/assets/**/*.ejs',
+        // Tests are a quarter of the bytes under those globs and contribute no
+        // markup the product ever renders, so scanning them only makes the JIT's
+        // cold pass slower - and a utility that exists in a test file alone is a
+        // utility nothing needs emitted. Negation is applied by fast-glob after
+        // the includes above, so this subtracts from all of them.
+        '!./src/**/*.test.{ts,tsx}',
     ],
     // Dark is the default and light is the prefers-color-scheme override (see
     // styles.css), which Electron resolves from the `ui.themeMode` setting via

@@ -21,6 +21,7 @@ const CONTEXT: StoryCommandContext = {
     images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
+    assetSets: [],
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
     tempSpeakers: [],
     scenes: [{ id: "s1", name: "Chapter 2" }],
@@ -58,7 +59,7 @@ const SCENE: StoryScene = {
             payload: { scope: "scene", name: "gold", valueType: "number", defaultValue: 10, storageKey: "var_gold" },
         },
     },
-    rootIds: ["var_gold"],
+    rootBlockIds: ["var_gold"],
 } as unknown as StoryScene;
 
 const LOOKUPS: StoryCommandLineLookups = {
@@ -75,20 +76,26 @@ const LOOKUPS: StoryCommandLineLookups = {
 let nextId = 0;
 const generateId = () => `id_${nextId++}`;
 
-/** Parse → resolve → build, the exact path Enter takes. Throws if the line would not commit. */
-function build(source: string): StoryBlock {
+/**
+ * Parse → resolve → build, the exact path Enter takes. Throws if the line would not commit.
+ *
+ * The context is a parameter so a describe with its own scene can build rows that resolve against
+ * IT — a reference is only as good as the declarations it was resolved against, and a row built
+ * against the fixture above would carry none of the anchors the one below is about.
+ */
+function build(source: string, context: StoryCommandContext = CONTEXT): StoryBlock {
     const line = parseCommandLine(source);
     if (line.kind !== "command" || !line.def) {
         throw new Error(`not a command: ${source}`);
     }
     expect(line.issues, source).toEqual([]);
-    const { args, issues } = resolveCommandLine(line, CONTEXT);
+    const { args, issues } = resolveCommandLine(line, context);
     expect(issues, source).toEqual([]);
     const spec = getCommandSpec(line.def.commandId);
     if (!spec?.build) {
         throw new Error(`no build on ${line.def.commandId}`);
     }
-    return spec.build(args, { generateId, context: CONTEXT });
+    return spec.build(args, { generateId, context });
 }
 
 /**
@@ -131,9 +138,9 @@ describe("projectStoryCommandLine", () => {
     it("writes the line the author typed, spelled out in full", () => {
         // The abbreviations an author may TYPE are not what the row reads back: the key is written in
         // whatever spelling the command language offers, and the seconds are the seconds.
-        expect(project("/hide Alice t=fade d=1")).toBe("/hide Alice t=fade d=1s");
+        expect(project("/hide Alice out=fade d=1")).toBe("/hide Alice out=fade d=1s");
         expect(project("/bg forest_day t=fade d=0.5")).toBe("/bg forest_day t=fade d=0.5s");
-        expect(project("/show Alice at=left d=0.3")).toBe("/show Alice at=left d=0.3s");
+        expect(project("/show Alice pos=left d=0.3")).toBe("/show Alice pos=left d=0.3s");
         expect(project("/wait 1.5")).toBe("/wait 1.5s");
         expect(project("/wait click")).toBe("/wait click");
     });
@@ -145,11 +152,11 @@ describe("projectStoryCommandLine", () => {
         // `转场=淡出` is the block's own transform preset — the field the engine plays and the field
         // the inspector's 变换 → 预设 edits, spelled with the inspector's own word so the two surfaces
         // read alike. `/hide`'s default block carries a fade-out.
-        expect(project("/hide Alice d=1")).toBe("/隐藏 Alice 转场=淡出 持续时间=1秒");
+        expect(project("/hide Alice d=1")).toBe("/隐藏 Alice 退场=淡出 持续时间=1秒");
         // Both spellings reach the same option: the word the row now shows, and the vocabulary's own
         // word an author may already have typed.
-        expect(build("/隐藏 Alice 转场=淡出").payload).toEqual(build("/hide Alice t=fade").payload);
-        expect(build("/隐藏 Alice 转场=淡变").payload).toEqual(build("/hide Alice t=fade").payload);
+        expect(build("/隐藏 Alice 退场=淡出").payload).toEqual(build("/hide Alice out=fade").payload);
+        expect(build("/隐藏 Alice 退场=淡变").payload).toEqual(build("/hide Alice out=fade").payload);
         // And the unit it prints is one the parser takes back — `持续时间=1秒` builds the same block
         // `d=1` did, which is the whole reason the unit is a vocabulary entry rather than a suffix
         // glued on at render time.
@@ -157,7 +164,7 @@ describe("projectStoryCommandLine", () => {
         // A whole-screen fade IS a crossfade, and the inspector's transition dropdown calls it 溶解 —
         // so the row does too. The unified word `淡变` still parses; it is just not what is shown.
         expect(project("/bg forest_day t=fade")).toBe("/背景 forest_day 转场=溶解");
-        expect(project("/camera zoom 2 d=0.4")).toBe("/镜头 缩放 2 持续时间=0.4秒");
+        expect(project("/transform camera zoom=2 d=0.4")).toBe("/变换 camera 缩放=2 持续时间=0.4秒");
     });
 
     it("keeps the canonical trigger — swapping in the author's is the view's job", () => {
@@ -175,21 +182,21 @@ describe("projectStoryCommandLine", () => {
         // `/face Alice smile` stores `pose: "t1"`. The row has to say `smile` — the word the author
         // typed — and an id must never reach it.
         expect(project("/face Alice smile")).toBe("/face Alice smile");
-        expect(project("/show Alice smile")).toBe("/show Alice smile at=center d=0.3s");
+        expect(project("/show Alice smile")).toBe("/show Alice smile pos=center d=0.3s");
         expect(projectStoryCommandLine(build("/face Alice smile"), { ...LOOKUPS, appearanceName: () => null })?.source).toBe("/face Alice");
     });
 
     it("never prints an id", () => {
         // A character row stores a characterId and a background row an assetId; both resolve to names,
         // and an unresolvable one falls back to a phrase rather than leaking the id.
-        expect(project("/show Alice")).toBe("/show Alice at=center d=0.3s");
+        expect(project("/show Alice")).toBe("/show Alice pos=center d=0.3s");
         expect(project("/bg night")).toBe("/bg night");
         const orphan = projectStoryCommandLine(build("/bg night"), { ...LOOKUPS, assetName: () => null });
         expect(orphan?.source).not.toContain("i2");
     });
 
     it("marks the editable values by where they sit", () => {
-        const line = projectStoryCommandLine(build("/hide Alice t=fade d=1"), LOOKUPS);
+        const line = projectStoryCommandLine(build("/hide Alice out=fade d=1"), LOOKUPS);
         expect(line).not.toBeNull();
         const at = (edit: { span: { start: number; end: number } }) => line!.source.slice(edit.span.start, edit.span.end);
         // The subject is one of them: which character this hides is as much a choice as how.
@@ -199,10 +206,10 @@ describe("projectStoryCommandLine", () => {
 
     it("marks the character's face onto the name, and onto nothing else", () => {
         const faces = (source: string) => projectStoryCommandLine(build(source), LOOKUPS)!.ornaments;
-        const line = projectStoryCommandLine(build("/show Alice smile at=left d=0.3"), LOOKUPS)!;
+        const line = projectStoryCommandLine(build("/show Alice smile pos=left d=0.3"), LOOKUPS)!;
         expect(line.ornaments).toEqual([{ at: line.source.indexOf("Alice"), kind: "character", id: "c1" }]);
         // Every character command, whichever slot it names its subject in (`target` vs `character`).
-        expect(faces("/move Alice at=right").map(mark => mark.id)).toEqual(["c1"]);
+        expect(faces("/transform Alice pos=right").map(mark => mark.id)).toEqual(["c1"]);
         expect(faces("/face Alice smile").map(mark => mark.id)).toEqual(["c1"]);
         // And nowhere else: a scene, an asset or a variable is not somebody.
         expect(faces("/bg night")).toEqual([]);
@@ -214,7 +221,7 @@ describe("projectStoryCommandLine", () => {
         // row goes on reading correctly without one. So the join is asserted directly, in the command
         // language too — a localized verb moves every offset on the line.
         i18nStore.setLocale("zh");
-        const line = projectStoryCommandLine(build("/show Alice at=left"), LOOKUPS)!;
+        const line = projectStoryCommandLine(build("/show Alice pos=left"), LOOKUPS)!;
         const parts = storyCommandLineParts(line.source, line.edits);
         const starts = parts.map(part => part.pieces[0]?.start);
         expect(line.source).toContain("显示");
@@ -247,10 +254,10 @@ describe("projectStoryCommandLine", () => {
         const line = projectStoryCommandLine(build("/hide Alice d=1"), LOOKUPS)!;
         const text = (hide: boolean) =>
             storyCommandLineParts(line.source, line.edits, hide).flatMap(part => part.pieces).map(piece => piece.text).join("");
-        expect(text(false)).toBe("/hide Alice t=fade d=1s");
+        expect(text(false)).toBe("/hide Alice out=fade d=1s");
         // The keys go; the spaces between the tokens, the unit and every value stay.
         expect(text(true)).toBe("/hide Alice fade 1s");
-        expect(line.source).toBe("/hide Alice t=fade d=1s");
+        expect(line.source).toBe("/hide Alice out=fade d=1s");
     });
 
     it("keeps every value clickable with the keys hidden", () => {
@@ -399,13 +406,13 @@ describe("projectStoryCommandLine", () => {
             return projectStoryCommandLine({ ...block, payload: edit.apply(next) } as StoryBlock, LOOKUPS)!.source;
         };
         // Enums: the word chosen is the word the row reads back.
-        expect(edited("/hide Alice t=fade d=1", "fade", "circle")).toBe("/hide Alice t=circle d=1s");
-        expect(edited("/show Alice at=left", "left", "right")).toBe("/show Alice at=right d=0.3s");
+        expect(edited("/hide Alice out=fade d=1", "fade", "circle")).toBe("/hide Alice out=circle d=1s");
+        expect(edited("/show Alice pos=left", "left", "right")).toBe("/show Alice pos=right d=0.3s");
         expect(edited("/bg forest_day t=fade", "fade", "blinds")).toBe("/bg forest_day t=blinds");
         // Numbers, in the seconds the line is written in — 2 seconds, not 2 milliseconds.
-        expect(edited("/hide Alice d=1", "1", "2.5")).toBe("/hide Alice t=fade d=2.5s");
+        expect(edited("/hide Alice d=1", "1", "2.5")).toBe("/hide Alice out=fade d=2.5s");
         expect(edited("/wait 1", "1", "3")).toBe("/wait 3s");
-        expect(edited("/camera zoom 2", "2", "1.5")).toBe("/camera zoom 1.5 d=0.6s");
+        expect(edited("/transform camera zoom=2", "2", "1.5")).toBe("/transform camera zoom=1.5 d=0.6s");
         // Flags and the rest of the vocabulary.
         expect(edited("/bgm theme loop", "true", "false")).toBe("/bgm theme loop=false");
         expect(edited("/bgm theme vol=0.6", "0.6", "0.2")).toBe("/bgm theme vol=0.2");
@@ -413,21 +420,35 @@ describe("projectStoryCommandLine", () => {
         // A closed list the grammar cannot hold: this character's own looks, written back by id.
         expect(edited("/face Alice smile", "t1", "t2")).toBe("/face Alice angry");
         // The SUBJECT too: which character, which asset, which object on stage.
-        expect(edited("/hide Alice", "c1", "c2")).toBe("/hide Doll t=fade d=0.25s");
+        expect(edited("/hide Alice", "c1", "c2")).toBe("/hide Doll out=fade d=0.25s");
         expect(edited("/bg forest_day", "i1", "i2")).toBe("/bg night");
         expect(edited("/vol music 0.5", "music", "bgm")).toBe("/vol bgm 0.5 fade=0.25s");
         expect(edited("/goto intro", "intro", "after refusal")).toBe("/goto 'after refusal'");
         // A look belongs to the character that had it, so swapping the character drops it.
         expect(edited("/face Alice smile", "c1", "c2")).toBe("/face Doll");
-        // A vignette's own defaults fill the three values before its opacity, so this one is asked
-        // for by a number none of them share.
-        expect(edited("/vignette opacity=0.45", "0.45", "0.9")).toBe("/vignette d=0.3s hold=0.6s color=#000000 opacity=0.9");
+        // The camera's house duration fills the slot the line left empty, so this one is asked for by
+        // a number none of the seeded values share.
+        expect(edited("/transform camera vignette=0.45", "0.45", "0.9")).toBe("/transform camera vignette=0.9 d=0.6s");
+    });
+
+    it("prints a drawn easing curve, and opens the curve editor on it", () => {
+        // A curve is stored in the same field a word is, so the row prints it as the same token —
+        // and the token's control says the slot takes a curve, which is what puts the card in the
+        // popover instead of a word list the value is not in.
+        const block = build("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2,1)");
+        const line = projectStoryCommandLine(block, LOOKUPS)!;
+        expect(line.source).toContain("ease=cubic-bezier(0.4,0,0.2,1)");
+        const edit = line.edits.find(entry => entry.value === "cubic-bezier(0.4,0,0.2,1)")!;
+        expect(edit.control.kind === "enum" && edit.control.curve).toBe(true);
+        // And it retypes: the row's value is a line the parser takes back unchanged.
+        expect(projectStoryCommandLine({ ...block, payload: edit.apply("easeOut") } as StoryBlock, LOOKUPS)!.source)
+            .toContain("ease=easeOut");
     });
 
     it("offers exactly the options the grammar declares, and no writer where nothing can be edited", () => {
         const controls = (source: string) => projectStoryCommandLine(build(source), LOOKUPS)!.edits.map(edit => edit.control);
-        const transition = controls("/hide Alice t=fade")[1];
-        // Not a hand-written list: `/hide`'s own `t=` option set, which is why a spec growing a word
+        const transition = controls("/hide Alice out=fade")[1];
+        // Not a hand-written list: `/hide`'s own `out=` option set, which is why a spec growing a word
         // grows this menu on the same day.
         expect(transition.kind === "enum" && transition.options.map(option => option.value)).toContain("circle");
         // The name a create row DEFINES is what later rows address, so it is never offered — only its
@@ -455,12 +476,12 @@ describe("projectStoryCommandLine", () => {
             "/bg forest_day",
             "/bg forest_day t=fade d=0.5",
             "/show Alice",
-            "/show Alice at=center d=0.4",
-            "/hide Alice t=fade d=1",
-            "/move Alice at=left d=0.4",
+            "/show Alice pos=center d=0.4",
+            "/hide Alice out=fade d=1",
+            "/transform Alice pos=left d=0.4",
             "/face Doll smile",
             "/face Alice smile",
-            "/show Alice smile at=left",
+            "/show Alice smile pos=left",
             "/motion Doll run",
             "/skin Doll winter",
             "/param Doll ParamAngleX 12",
@@ -475,9 +496,9 @@ describe("projectStoryCommandLine", () => {
             "/mute music",
             "/unmute music",
             "/seek clip 12",
-            "/image night name=sky at=center",
-            "/image night name=sky t=fade d=0.4",
-            "/text name=title at=center Chapter One",
+            "/image night name=sky pos=center",
+            "/image night name=sky in=fade d=0.4",
+            "/text name=title pos=center Chapter One",
             "/swap hero night",
             "/swap title A new title",
             "/font title 24",
@@ -486,14 +507,16 @@ describe("projectStoryCommandLine", () => {
             "/play clip",
             "/layer overlay z=10",
             "/vfx intro name=petals opacity=0.5 d=0.8",
-            "/camera zoom 2",
-            "/camera pan left",
-            "/camera rotate 15 d=0.5",
-            "/camera darken 0.4",
-            "/camera reset",
-            "/blink d=0.2 hold=0.1",
-            "/vignette d=0.5 opacity=0.6",
-            "/nvl t=fade d=0.4",
+            "/transform camera zoom=2",
+            "/transform camera pan=left",
+            "/transform camera rot=15 d=0.5",
+            "/transform camera bright=0.6",
+            "/transform camera look=moonlight",
+            "/reset camera",
+            "/transform camera lens=blink",
+            "/transform camera vignette=0.6 vignetteInner=30 vignetteOuter=70",
+            "/transform camera shutter=1 shutterColor=#000000",
+            "/nvl in=fade d=0.4",
             "/wait 1.5",
             "/wait click",
             "/set gold 100",
@@ -502,8 +525,21 @@ describe("projectStoryCommandLine", () => {
             "/label after refusal",
             "/cut Demo",
             "/transform hero d=0.5",
+            "/transform hero pos=left zoom=1.4 rot=8 opacity=0.6",
+            "/transform hero blur=4 gray=1 sat=1.6",
+            "/transform hero flip=on",
+            "/transform hero blend=screen backdrop=blur(4px)",
+            "/transform hero d=0.4 ease=easeInOut delay=0.2 repeat=2 repeatDelay=0.1",
+            "/transform hero opacity=1 from='opacity=0 zoom=1.2'",
+            "/transform backgroundLayer opacity=0.4",
+            "/reset hero",
+            "/reset hero d=0.5",
             "/hide petals d=0.5",
-            "/show title t=fade d=0.2",
+            "/show title in=fade d=0.2",
+            // The raise: the subject is the whole line, so the round trip is what catches a projection
+            // that quietly grew a `d=` the payload has nowhere to store.
+            "/front hero",
+            "/front Alice",
             // The declarations: every type, with and without a default, and the shapes that have to
             // survive the tokenizer — a spaced description, a bracketed json default, a string default
             // that reads as something else.
@@ -525,9 +561,9 @@ describe("projectStoryCommandLine", () => {
     it("round-trips in Chinese too — the localized line is a line the parser takes", () => {
         i18nStore.setLocale("zh");
         for (const source of [
-            "/hide Alice t=fade d=1",
+            "/hide Alice out=fade d=1",
             "/bg forest_day t=fade d=0.5",
-            "/camera pan left",
+            "/transform camera pan=left",
             "/bgm theme vol=0.6 loop",
             "/local hp 100 desc='生命值 上限'",
             "/local inv \"[1, 2]\" type=json",
@@ -536,5 +572,347 @@ describe("projectStoryCommandLine", () => {
             const line = projectStoryCommandLine(first, LOOKUPS);
             expect(comparable(build(line!.source)), `${source} → ${line!.source}`).toEqual(comparable(first));
         }
+    });
+});
+
+/**
+ * The line a row prints after its object was renamed somewhere else.
+ *
+ * A rename edits the DECLARING row only. Every row addressing the object keeps the name it was
+ * written with, beside a reference that follows - and the line used to print that stored name, so an
+ * author who renamed `poster` to `bg` read a scene full of rows still addressing `poster` while the
+ * compiler had already moved on. Its own describe because it needs a scene with declarations in it,
+ * which the fixture above deliberately does not have.
+ */
+describe("projectStoryCommandLine — after a rename", () => {
+    const DECLARED_SCENE = {
+        id: "s1",
+        name: "Chapter 2",
+        rootBlockIds: ["d_img", "d_snd"],
+        blocks: {
+            d_img: {
+                id: "d_img", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "image", operation: "create", objectName: "bg", assetId: "i1" },
+            },
+            d_snd: {
+                id: "d_snd", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "audio", operation: "playSound", objectName: "keys", assetId: "a1" },
+            },
+        },
+    } as unknown as StoryScene;
+
+    /** The context that scene produces: the names on stage, and which row declares each. */
+    const RENAMED_CONTEXT: StoryCommandContext = {
+        ...CONTEXT,
+        stageObjects: { ...CONTEXT.stageObjects, image: ["bg"], audio: ["keys"] },
+        stageObjectSources: { image: { bg: "d_img" }, text: {}, layer: {}, video: {}, audio: { keys: "d_snd" }, vfx: {} },
+    };
+
+    const RENAMED_LOOKUPS: StoryCommandLineLookups = {
+        ...LOOKUPS,
+        commandContext: RENAMED_CONTEXT,
+        scene: DECLARED_SCENE,
+        scenes: { s1: DECLARED_SCENE },
+    };
+
+    const row = (payload: StoryBlock["payload"]): StoryBlock =>
+        ({ id: "r", parentId: null, childrenIds: [], kind: "action", payload } as StoryBlock);
+
+    /** The stale pair a rename leaves behind: the old name stored, the reference still bound. */
+    const staleImage = row({
+        action: "image", operation: "show", objectName: "poster",
+        target: { kind: "image", name: "poster", label: "poster", sourceBlockId: "d_img" },
+    });
+    const staleSound = row({
+        action: "audio", operation: "stopSound", objectName: "piano",
+        target: { name: "piano", label: "piano", sourceBlockId: "d_snd" },
+    });
+
+    it("addresses the object by the name its declaring row carries now", () => {
+        expect(projectStoryCommandLine(staleImage, RENAMED_LOOKUPS)!.source).toBe("/show bg");
+        expect(projectStoryCommandLine(staleSound, RENAMED_LOOKUPS)!.source).toBe("/stop keys");
+    });
+
+    it("prints a spelling the line would take back, which is the whole invariant", () => {
+        // Not "it looks right": the name printed has to be one the resolver accepts and binds to the
+        // same declaring row, or the row would be showing a command the editor would refuse.
+        for (const block of [staleImage, staleSound]) {
+            const source = projectStoryCommandLine(block, RENAMED_LOOKUPS)!.source;
+            const line = parseCommandLine(source);
+            expect(line.kind, source).toBe("command");
+            const { args, issues } = resolveCommandLine(line as never, RENAMED_CONTEXT);
+            expect(issues, source).toEqual([]);
+            const rebuilt = getCommandSpec((line as { def: { commandId: string } }).def.commandId)!
+                .build!(args, { generateId, context: RENAMED_CONTEXT });
+            expect((rebuilt.payload as { target?: { sourceBlockId?: string } }).target?.sourceBlockId, source)
+                .toBe((block.payload as { target?: { sourceBlockId?: string } }).target!.sourceBlockId);
+        }
+    });
+
+    it("leaves a document written before references reading exactly as it did", () => {
+        expect(projectStoryCommandLine(row({ action: "image", operation: "show", objectName: "poster" }), RENAMED_LOOKUPS)!.source)
+            .toBe("/show poster");
+        expect(projectStoryCommandLine(row({ action: "audio", operation: "stopSound", objectName: "piano" }), RENAMED_LOOKUPS)!.source)
+            .toBe("/stop piano");
+    });
+
+    it("shows the last name an author saw once the declaring row is gone, never a key", () => {
+        const gone: StoryCommandLineLookups = { ...RENAMED_LOOKUPS, scene: { ...DECLARED_SCENE, blocks: {} } as StoryScene };
+        expect(projectStoryCommandLine(staleImage, gone)!.source).toBe("/show poster");
+        // An unnamed sound's registry key is its asset id, so `name` here is a UUID and only `label`
+        // is printable. This is the case that reference pair exists for.
+        const orphan = row({
+            action: "audio", operation: "stopSound", objectName: "piano",
+            target: { name: "a1", label: "piano", sourceBlockId: "gone" },
+        });
+        const source = projectStoryCommandLine(orphan, gone)!.source;
+        expect(source).toBe("/stop piano");
+        expect(source).not.toContain("a1");
+    });
+
+    it("re-points the reference too when a subject is picked from the row", () => {
+        // The other half of reading the reference: an inline edit that changed only `objectName` used
+        // to leave the anchor behind, so the line went on printing - and the compiler on acting on -
+        // the object just replaced.
+        const line = projectStoryCommandLine(staleImage, RENAMED_LOOKUPS)!;
+        const edit = line.edits.find(entry => entry.value === "bg");
+        expect(edit, "the subject is offered as a choice").toBeDefined();
+        expect(edit!.apply("hero")).toMatchObject({ objectName: "hero", target: { kind: "image", name: "hero", label: "hero" } });
+    });
+});
+
+/**
+ * What a word on the line POINTS AT — the third string the projection records beside its edits and
+ * its faces.
+ *
+ * Its own describe because the whole subject is references, and a reference needs a scene with
+ * declarations in it: the fixture at the top of this file deliberately has none, which is exactly the
+ * state in which nothing may link. Both halves are asserted here — that a resolvable name yields a
+ * link over the right stretch of the line, and that an unresolvable one yields none at all. The
+ * second is the one worth the words: the line already prints an unresolvable reference as something
+ * readable, so a link offered on one of those would look correct and open the wrong thing.
+ */
+describe("projectStoryCommandLine — what a word points at", () => {
+    /** A scene that DECLARES one of everything, so every kind of reference has something to resolve to. */
+    const LINK_SCENE = {
+        id: "s1",
+        name: "Chapter 2",
+        rootBlockIds: ["d_char", "d_img", "d_text", "d_layer", "d_video", "d_snd", "d_vfx", "l_intro", "var_gold"],
+        blocks: {
+            d_char: {
+                id: "d_char", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice" },
+            },
+            d_img: {
+                id: "d_img", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "image", operation: "create", objectName: "bg", assetId: "i1" },
+            },
+            d_text: {
+                id: "d_text", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "text", operation: "create", objectName: "title", text: { value: "Chapter One", textId: "t1" } },
+            },
+            d_layer: {
+                id: "d_layer", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "layer", operation: "create", objectName: "overlay", zIndex: 10 },
+            },
+            d_video: {
+                id: "d_video", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "video", operation: "create", objectName: "clip", assetId: "v1" },
+            },
+            d_snd: {
+                id: "d_snd", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "audio", operation: "playSound", objectName: "keys", assetId: "a1" },
+            },
+            d_vfx: {
+                id: "d_vfx", parentId: null, childrenIds: [], kind: "action",
+                payload: { action: "vfx", operation: "create", objectName: "petals", assetId: "v1" },
+            },
+            l_intro: {
+                id: "l_intro", parentId: null, childrenIds: [], kind: "control",
+                payload: { control: "label", name: "intro" },
+            },
+            var_gold: {
+                id: "var_gold", parentId: null, childrenIds: [], kind: "declaration",
+                payload: { scope: "scene", name: "gold", valueType: "number", defaultValue: 10, storageKey: "var_gold" },
+            },
+        },
+    } as unknown as StoryScene;
+
+    const LINK_CONTEXT: StoryCommandContext = {
+        ...CONTEXT,
+        stageObjects: {
+            image: ["bg"], text: ["title"], layer: ["overlay"],
+            video: ["clip"], audio: ["keys"], vfx: ["petals"],
+        },
+        stageObjectSources: {
+            image: { bg: "d_img" }, text: { title: "d_text" }, layer: { overlay: "d_layer" },
+            video: { clip: "d_video" }, audio: { keys: "d_snd" }, vfx: { petals: "d_vfx" },
+        },
+        characterSources: { c1: { blockId: "d_char", name: "Alice" } },
+    };
+
+    const LINK_LOOKUPS: StoryCommandLineLookups = {
+        ...LOOKUPS,
+        commandContext: LINK_CONTEXT,
+        scene: LINK_SCENE,
+        scenes: { s1: LINK_SCENE },
+    };
+
+    const row = (payload: StoryBlock["payload"]): StoryBlock =>
+        ({ id: "r", parentId: null, childrenIds: [], kind: "action", payload } as StoryBlock);
+
+    /** Every link on the row's line, as the word it covers and what that word means. */
+    function links(block: StoryBlock, lookups: StoryCommandLineLookups = LINK_LOOKUPS) {
+        const line = projectStoryCommandLine(block, lookups)!;
+        return line.links.map(link => ({ text: line.source.slice(link.span.start, link.span.end), ref: link.ref }));
+    }
+
+    /** The same, for a line the author could have typed against this scene. */
+    const typed = (source: string, lookups: StoryCommandLineLookups = LINK_LOOKUPS) =>
+        links(build(source, LINK_CONTEXT), lookups);
+
+    it("points a character's name at the cast member, not at the row they walk on in", () => {
+        // The row already offers a picker on this word. The link is the OTHER intention — who Alice
+        // is — and it lands on the same token without replacing the first.
+        expect(typed("/show Alice")).toContainEqual({ text: "Alice", ref: { kind: "character", characterId: "c1" } });
+        expect(typed("/face Alice smile")).toContainEqual({ text: "Alice", ref: { kind: "character", characterId: "c1" } });
+        // The `displayable` arm reaches the same answer from the other side: its target carries the
+        // entering row's id, and that row is what says which character it is.
+        expect(typed("/front Alice")).toEqual([{ text: "Alice", ref: { kind: "character", characterId: "c1" } }]);
+    });
+
+    it("points an asset's name at the asset, wherever the line names one", () => {
+        expect(typed("/bg forest_day")).toEqual([{ text: "forest_day", ref: { kind: "asset", assetId: "i1" } }]);
+        expect(typed("/bgm theme")).toContainEqual({ text: "theme", ref: { kind: "asset", assetId: "a1" } });
+        expect(typed("/video intro name=cutscene")).toContainEqual({ text: "intro", ref: { kind: "asset", assetId: "v1" } });
+        expect(typed("/vfx intro name=rain")).toContainEqual({ text: "intro", ref: { kind: "asset", assetId: "v1" } });
+        // The one prop on a transform bag that names a project file.
+        expect(typed("/transform bg mask=night")).toContainEqual({ text: "night", ref: { kind: "asset", assetId: "i2" } });
+        // And the picture a rule transition plays in the order of — an asset id like any other, in
+        // the one slot that reaches it through a transition rather than through the row's own field.
+        expect(typed("/bg forest_day rule=night")).toContainEqual({ text: "night", ref: { kind: "asset", assetId: "i2" } });
+    });
+
+    it("points a jump's scene name at that scene", () => {
+        expect(typed("/jump 'Chapter 2'")).toEqual([{ text: "'Chapter 2'", ref: { kind: "scene", sceneId: "s1" } }]);
+    });
+
+    it("points a /set at the variable's own reference, and no further", () => {
+        // The ref, not a destination: a scene variable is declared by a row and a project one by the
+        // registry, so where it opens is the navigation layer's decision.
+        expect(typed("/set gold 100")).toEqual([
+            { text: "gold", ref: { kind: "variable", target: { scope: "scene", variableId: "var_gold" } } },
+        ]);
+    });
+
+    it("points a /goto at the label row it lands on", () => {
+        expect(typed("/goto intro")).toEqual([{ text: "intro", ref: { kind: "block", blockId: "l_intro" } }]);
+    });
+
+    it("points a stage object's name at the row that declares it, in every kind", () => {
+        expect(typed("/hide bg")).toContainEqual({ text: "bg", ref: { kind: "block", blockId: "d_img" } });
+        expect(typed("/font title 24")).toContainEqual({ text: "title", ref: { kind: "block", blockId: "d_text" } });
+        expect(typed("/seek clip 12")).toContainEqual({ text: "clip", ref: { kind: "block", blockId: "d_video" } });
+        expect(typed("/stop keys")).toContainEqual({ text: "keys", ref: { kind: "block", blockId: "d_snd" } });
+        expect(typed("/hide petals")).toContainEqual({ text: "petals", ref: { kind: "block", blockId: "d_vfx" } });
+        // The layer, through both of its rows: the `layer` action the inspector writes, and the
+        // `displayable` one a `/transform` line builds.
+        expect(links(row({ action: "layer", operation: "show", objectName: "overlay", target: { kind: "custom", name: "overlay", sourceBlockId: "d_layer" } })))
+            .toEqual([{ text: "overlay", ref: { kind: "block", blockId: "d_layer" } }]);
+        expect(typed("/transform overlay opacity=0.4")).toContainEqual({ text: "overlay", ref: { kind: "block", blockId: "d_layer" } });
+    });
+
+    it("resolves an old document by name, since that is what the engine does with it", () => {
+        // No reference at all — every row written before anchors existed. The name still resolves,
+        // through the same declaration index the compiler matches on.
+        expect(links(row({ action: "image", operation: "show", objectName: "bg" })))
+            .toEqual([{ text: "bg", ref: { kind: "block", blockId: "d_img" } }]);
+        expect(links(row({ action: "audio", operation: "stopSound", objectName: "keys" })))
+            .toEqual([{ text: "keys", ref: { kind: "block", blockId: "d_snd" } }]);
+    });
+
+    it("gives no link at all when the name answers to nothing", () => {
+        // A name nothing declares: the row prints it, because it is the last word the author saw, and
+        // it leads nowhere.
+        expect(links(row({ action: "image", operation: "show", objectName: "poster" }))).toEqual([]);
+        // A dangling anchor beside a name nothing declares either — the pair a deleted create row
+        // leaves behind.
+        expect(links(row({
+            action: "image", operation: "show", objectName: "poster",
+            target: { kind: "image", name: "poster", label: "poster", sourceBlockId: "gone" },
+        }))).toEqual([]);
+        // An asset id the library no longer holds. The row says "this image is gone" in words; a link
+        // on those words would be a way through to nothing.
+        expect(links(build("/bg night", LINK_CONTEXT), { ...LINK_LOOKUPS, assetName: () => null })).toEqual([]);
+        // A `/set` on a variable nothing declares — the row prints the fallback word, which is not a
+        // name and not a destination.
+        expect(links(row({ action: "setVariable", target: { scope: "saved", variableId: "gone" }, value: 1 }))).toEqual([]);
+        // A jump whose scene was deleted.
+        expect(links({ id: "j", parentId: null, childrenIds: [], kind: "jump", payload: { targetSceneId: "s_gone" } } as unknown as StoryBlock))
+            .toEqual([]);
+    });
+
+    it("gives no link to a stage singleton, which no row declares", () => {
+        // `bgm` is the engine's music channel and the two default layers ship with every scene —
+        // reserved words, not names an author gave anything, so there is nothing to open.
+        expect(typed("/vol bgm 0.5")).toEqual([]);
+        expect(typed("/transform backgroundLayer opacity=0.4")).toEqual([]);
+    });
+
+    it("never points a create row at itself — a definition is not a reference", () => {
+        // The name a create row DEFINES is the row the reader is already looking at. Its asset is a
+        // reference and does link; its own name does not.
+        expect(typed("/image night name=sky")).toEqual([{ text: "night", ref: { kind: "asset", assetId: "i2" } }]);
+        expect(typed("/layer sky z=4")).toEqual([]);
+        expect(typed("/label chorus")).toEqual([]);
+    });
+
+    it("says nothing at all with no project in hand", () => {
+        // The projection is pure, and a surface with no scene and no context (the Dev Mode timeline,
+        // a clipboard preview) resolves nothing — which must read as "no links", never as a guess.
+        const bare: StoryCommandLineLookups = { character: () => null };
+        expect(projectStoryCommandLine(build("/hide bg", LINK_CONTEXT), bare)!.links).toEqual([]);
+    });
+
+    it("covers the whole token, and exactly the token an edit would cover", () => {
+        // The two spans come from the same two offsets of the same arg, which is the property the
+        // renderer's grouping rests on: identical or disjoint, never overlapping by halves.
+        const line = projectStoryCommandLine(build("/show Alice pos=left d=0.3", LINK_CONTEXT), LINK_LOOKUPS)!;
+        const link = line.links[0];
+        expect(line.source.slice(link.span.start, link.span.end)).toBe("Alice");
+        const edit = line.edits.find(entry => entry.value === "c1")!;
+        expect(edit.span).toEqual(link.span);
+        // And a link never lands on a value the line only prints: the placement and the duration are
+        // edits and nothing more.
+        expect(line.links).toHaveLength(1);
+    });
+
+    it("groups a token that is both an edit and a link into one part", () => {
+        // The failure this guards is the one the edit grouping already guards against, doubled: a run
+        // split in two would put the picker on one half of the word and the link on the other.
+        const line = projectStoryCommandLine(build("/show Alice pos=left", LINK_CONTEXT), LINK_LOOKUPS)!;
+        const parts = storyCommandLineParts(line.source, line.edits, false, line.links);
+        const both = parts.filter(part => part.edit && part.link);
+        expect(both.map(part => part.pieces.map(piece => piece.text).join(""))).toEqual(["Alice"]);
+        // Nothing is dropped by the wider grouping.
+        expect(parts.flatMap(part => part.pieces).map(piece => piece.text).join("")).toBe(line.source);
+    });
+
+    it("groups a token that is only a link, with no editor behind it", () => {
+        // `mask=` prints an asset's name and has no writer — it is re-pointed from the inspector — so
+        // this is a part the old grouping had no reason to collect at all.
+        const line = projectStoryCommandLine(build("/transform bg mask=night", LINK_CONTEXT), LINK_LOOKUPS)!;
+        const parts = storyCommandLineParts(line.source, line.edits, false, line.links);
+        const linkOnly = parts.filter(part => part.link && !part.edit);
+        expect(linkOnly.map(part => part.pieces.map(piece => piece.text).join(""))).toEqual(["bg", "night"]);
+        expect(parts.flatMap(part => part.pieces).map(piece => piece.text).join("")).toBe(line.source);
+    });
+
+    it("leaves the grouping exactly as it was when no links are passed", () => {
+        // Every existing caller passes at most three arguments. The fourth defaulting to none is what
+        // keeps the row rendering identical until a surface asks for the links.
+        const line = projectStoryCommandLine(build("/show Alice pos=left", LINK_CONTEXT), LINK_LOOKUPS)!;
+        expect(storyCommandLineParts(line.source, line.edits)).toEqual(storyCommandLineParts(line.source, line.edits, false, []));
+        expect(storyCommandLineParts(line.source, line.edits).some(part => part.link)).toBe(false);
     });
 });

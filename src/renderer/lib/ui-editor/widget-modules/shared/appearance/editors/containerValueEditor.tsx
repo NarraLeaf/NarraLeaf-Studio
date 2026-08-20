@@ -21,6 +21,8 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { isValidStrokeSideSpec, parseStrokeSideSpec } from "@/lib/ui-editor/widget-modules/shared/chrome/strokeSideSpec";
+import { GradientFillEditor } from "@/lib/ui-editor/widget-modules/shared/appearance/GradientFillEditor";
+import { normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
 
 export type ContainerValueEditorProps = {
     fieldKey: ContainerAppearancePropertyKey;
@@ -206,16 +208,31 @@ export function ContainerAppearanceValueEditor({
             return <ImageFillField field={fillField} data={inspectorData} onSaving={onSaving} />;
         }
         case "fillType": {
+            // The narrowing keeps an unreadable stored value off the Select, which would otherwise
+            // show a blank control; every kind the widget can actually paint has to be listed, or
+            // opening this row silently rewrites the fill to a colour.
             const v = String(value ?? "color");
+            const known = v === "image" || v === "gradient" ? v : "color";
             return (
                 <Select
-                    value={v === "image" ? "image" : "color"}
+                    value={known}
                     options={FILL_TYPE_OPTIONS}
                     fullWidth
                     onChange={next => onChange(String(next))}
                 />
             );
         }
+        case "gradientFill":
+            // The row hands the popover the stored gradient and nothing else: the default gradient
+            // stands in for an absent one inside the editor, so an untouched row is not written out
+            // as a gradient it never held.
+            return (
+                <GradientFillEditor
+                    value={normalizeGradientFill(value) ?? null}
+                    onChange={next => onChange(next)}
+                    draftResetKey={`${draftResetKey}-gf`}
+                />
+            );
         case "fillVisible": {
             const visible = Boolean(value);
             return (

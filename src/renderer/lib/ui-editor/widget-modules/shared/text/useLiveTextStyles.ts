@@ -2,7 +2,8 @@ import type { CSSProperties } from "react";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { resolveTextVisualProps } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { useWidgetRuntimeElementState } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
@@ -10,7 +11,13 @@ import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
+import {
+    isVerticalWritingMode,
+    textBodyInlineSizeCss,
+    verticalTypographyCss,
+} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
+import type { TextOrientation, TextWritingMode } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 
 export type NlrHexColor = `#${string}`;
 
@@ -23,6 +30,18 @@ export type LiveTextStyles = {
         fontWeight: CSSProperties["fontWeight"];
         fontWeightBold: CSSProperties["fontWeight"];
         fontFamily?: CSSProperties["fontFamily"];
+        /**
+         * The vertical settings go to the engine as props, not only as inherited CSS: the
+         * typewriter builds one element per word, and only it can keep a Latin word whole and set a
+         * short run upright. Style alone would turn the box and cut the words up inside it.
+         *
+         * Present only while the box is vertical. An engine older than the one that reads them
+         * passes anything it does not destructure to the container `div`, so a horizontal box -
+         * which is every box that has not asked for this - stays exactly as it was.
+         */
+        writingMode?: TextWritingMode;
+        textOrientation?: TextOrientation;
+        tateChuYoko?: boolean | number;
     };
 };
 
@@ -35,14 +54,14 @@ export function useLiveTextStyles({
     useAppearanceInspectorPreview,
 }: Pick<WidgetRendererProps, "element" | "useAppearanceInspectorPreview">): LiveTextStyles {
     const flatProps = getTextProps(element);
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const runtimeState = useWidgetRuntimeElementState(element.id);
     const listScopedVariantId =
         typeof (element.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
             ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
             : null;
     const p = resolveTextVisualProps(element, flatProps.appearance ?? undefined, {
-        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeState.variantOverrideId),
         signals: runtimeState.signals,
     });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
@@ -54,10 +73,11 @@ export function useLiveTextStyles({
     const opacity = Number.isFinite(p.transformOpacity) ? Math.max(0, Math.min(1, p.transformOpacity)) : 1;
     const useEffectShell = Boolean(effectTextStyle.filter) || Boolean(effectTextStyle.mixBlendMode);
     const baseTextStyle: CSSProperties = {
-        width: "100%",
+        ...textBodyInlineSizeCss(p.writingMode),
         margin: 0,
         padding: 4,
         boxSizing: "border-box",
+        ...verticalTypographyCss(p),
         fontStyle: p.fontStyle,
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,
@@ -80,6 +100,7 @@ export function useLiveTextStyles({
             flexDirection: "column",
             justifyContent: textVerticalAlignToJustifyContent(p.textVerticalAlign),
             alignItems: "stretch",
+            ...verticalTypographyCss(p),
             transform: `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`,
             opacity,
             ...(useEffectShell && effectTextStyle.filter ? { filter: effectTextStyle.filter } : {}),
@@ -91,6 +112,13 @@ export function useLiveTextStyles({
             fontSize: p.fontSize,
             fontWeight: p.fontWeight,
             fontWeightBold,
+            ...(isVerticalWritingMode(p.writingMode)
+                ? {
+                      writingMode: p.writingMode,
+                      textOrientation: p.textOrientation,
+                      tateChuYoko: p.tateChuYoko ? p.tateChuYokoMaxLength : false,
+                  }
+                : {}),
             ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
         },
     };

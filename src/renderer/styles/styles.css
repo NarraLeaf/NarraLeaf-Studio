@@ -817,6 +817,15 @@ input[type="radio"]:focus {
 }
 
 /*
+ * The element whose state the author entered. Dashed rather than solid so it reads apart from the
+ * selection ring it usually sits under, and drawn as an outline so it costs the element no layout.
+ */
+.ui-editor-node-entered {
+    outline: 1px dashed rgb(var(--nl-primary));
+    outline-offset: 2px;
+}
+
+/*
  * Container-responsive field grid used by the Story action property cards.
  *
  * Columns collapse based on the card's OWN width (auto-fit), not the window

@@ -16,7 +16,7 @@ import { remoteMediaRefusal } from "./RemoteAssetsManager";
  */
 
 function probed(report: ProbeReport): MediaProbeOutcome {
-    return { status: "probed", verdict: classifyMediaSupport(report), durationUs: 2_000_000 };
+    return { status: "probed", verdict: classifyMediaSupport(report), durationUs: 2_000_000, carriesAlpha: false };
 }
 
 function report(format: string, streams: ProbeReport["streams"]): ProbeReport {

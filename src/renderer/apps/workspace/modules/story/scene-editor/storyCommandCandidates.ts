@@ -1,12 +1,12 @@
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { STORY_EXPR_FUNCTIONS, STORY_VISITED_CALLS, type StoryVariableValueType, type StoryVisitedCall } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
-import { freeTargetKind, paramHintKey, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
+import { enumFreeformValue, freeTargetKind, paramHintKey, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams";
 import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
 import type { StoryCommandCursor } from "./storyCommandCursor";
-import { BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
+import { assetChoices, BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
 
 /**
  * What to offer at the caret.
@@ -35,6 +35,12 @@ export type StoryCandidateMark =
     | { kind: "character"; characterId?: string }
     /** The author's own text offered back — a temp speaker, an object made elsewhere. Backs nothing, so it can picture nothing. */
     | { kind: "freeName" }
+    /**
+     * A stage singleton named by its reserved word — the camera, the scene background, a built-in
+     * layer. Pictures nothing on purpose: there is no asset and no creator row behind it, and the
+     * glyph is the whole point of the mark (it is what says "this is not something you made").
+     */
+    | { kind: "reservedTarget" }
     /** A named look of one character: a pose id (preset) or a tag id on `axisId` (layered). */
     | { kind: "appearance"; characterId?: string; refId?: string; axisId?: string }
     | { kind: "puppetChannel"; channel: StoryPuppetChannel }
@@ -129,9 +135,7 @@ function nameCandidates(names: readonly string[], query: string, mark?: StoryCan
     return [...prefix, ...rest].map(name => ({ value: name, label: name, ...(mark ? { mark } : {}) }));
 }
 
-function assetsOfType(context: StoryCommandContext, assetType: "image" | "audio" | "video"): readonly StoryCommandNamedRef[] {
-    return assetType === "image" ? context.images : assetType === "audio" ? context.audio : context.videos;
-}
+
 
 /** The character an owner param resolved to, whether through a `character` or a `target` slot. */
 function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
@@ -166,6 +170,14 @@ function targetCandidates(
     context: StoryCommandContext,
 ): StoryCommandCandidate[] {
     const candidates: StoryCommandCandidate[] = [];
+    // The reserved words lead, the way `bgm` leads the audio list: they are the stage singletons an
+    // author cannot discover by looking at what they have created, so a slot that answers to them has
+    // to say so the moment the slot opens.
+    candidates.push(...refCandidates(
+        (type.reserved ?? []).map(name => ({ id: name, name })),
+        query,
+        () => ({ kind: "reservedTarget" }),
+    ));
     if (type.accepts.includes("character")) {
         candidates.push(...refCandidates(context.characters, query, entry => ({ kind: "character", characterId: entry.id })));
     }
@@ -201,10 +213,10 @@ function contentCandidates(
         return [];
     }
     if (target.objectKind === "image") {
-        return refCandidates(context.images, query, entry => ({ kind: "asset", assetType: "image", assetId: entry.id }));
+        return refCandidates(assetChoices(context, "image", type.allowSets), query, entry => ({ kind: "asset", assetType: "image", assetId: entry.id }));
     }
     if (target.objectKind === "video") {
-        return refCandidates(context.videos, query, entry => ({ kind: "asset", assetType: "video", assetId: entry.id }));
+        return refCandidates(assetChoices(context, "video", type.allowSets), query, entry => ({ kind: "asset", assetType: "video", assetId: entry.id }));
     }
     // Text content is whatever the author writes.
     return [];
@@ -220,7 +232,7 @@ function candidatesForType(
 ): StoryCommandCandidate[] {
     switch (type.kind) {
         case "asset":
-            return refCandidates(assetsOfType(context, type.assetType), query, entry => ({ kind: "asset", assetType: type.assetType, assetId: entry.id }));
+            return refCandidates(assetChoices(context, type.assetType, type.allowSets), query, entry => ({ kind: "asset", assetType: type.assetType, assetId: entry.id }));
         case "character": {
             const found = refCandidates(context.characters, query, entry => ({ kind: "character", characterId: entry.id }));
             if (!type.allowTemp) {
@@ -308,7 +320,14 @@ function candidatesForType(
             return targetCandidates(type, query, context);
         case "content":
             return contentCandidates(type, query, context, resolved);
-        case "enum":
+        case "enum": {
+            // A shape the word list cannot hold (a drawn easing curve) is offered back exactly as the
+            // speaker picker offers a typed name back: the menu must never say "no matches" about a
+            // value the line is about to take.
+            const drawn = enumFreeformValue(type, query);
+            const freeform = drawn === null
+                ? []
+                : [{ value: drawn, label: drawn, mark: { kind: "word" as const, value: drawn } }];
             // Completion inserts the word it is SHOWING — this locale's spelling when it has one that
             // parses, the canonical value otherwise. Storage is unaffected: resolution
             // normalizes either spelling to the canonical value, so what is banked never moves.
@@ -316,13 +335,17 @@ function candidatesForType(
             // The filter has to see the translated spelling too, or the list empties the moment the
             // author types the word they were just shown. `matchEnumOptionLocalized` covers the exact
             // hit; `containsFold` over the same spelling covers the partial one.
-            return type.options
-                .filter(option => !query || matchEnumOptionLocalized(type, query) === option || containsFold(option.value, query)
-                    || containsFold(localizedEnumValue(type, option), query)
-                    || (option.aliases ?? []).some(alias => containsFold(alias, query)))
-                // The mark is keyed on the CANONICAL value while the row shows this locale's word, so
-                // 向左滑动 and `slide-left` draw the same arrow.
-                .map(option => ({ value: localizedEnumValue(type, option), label: localizedEnumValue(type, option), detail: option.aliases?.[0], mark: { kind: "word" as const, value: option.value } }));
+            return [
+                ...freeform,
+                ...type.options
+                    .filter(option => !query || matchEnumOptionLocalized(type, query) === option || containsFold(option.value, query)
+                        || containsFold(localizedEnumValue(type, option), query)
+                        || (option.aliases ?? []).some(alias => containsFold(alias, query)))
+                    // The mark is keyed on the CANONICAL value while the row shows this locale's word, so
+                    // 向左滑动 and `slide-left` draw the same arrow.
+                    .map(option => ({ value: localizedEnumValue(type, option), label: localizedEnumValue(type, option), detail: option.aliases?.[0], mark: { kind: "word" as const, value: option.value } })),
+            ];
+        }
         case "keyword":
             return !query || startsWithFold(type.value, query) ? [{ value: type.value, label: type.value, mark: { kind: "word", value: type.value } }] : [];
         case "boolean":

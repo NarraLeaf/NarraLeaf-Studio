@@ -6,6 +6,8 @@ Displayable 节点默认读取当前元素。坐标和尺寸均使用当前 Surf
 
 透明度统一为 Displayable 的有效 `opacity`：Appearance Variant 中的 `transformOpacity` 会解析到同一个元素透明度，不再和内部 chrome/text 透明度叠乘；`nl.image` Variant 中相对 Default 实际改动过的 `fillOpacity` 也会解析到这套透明度，并且不会再写到内部 `<img>` 的 opacity。`nl.image` 的图片内容层 `imageFill` / crop / contain 模式来自 Default，不会被非 Default Variant 切换；需要改图片资源或裁剪时使用 Image 节点/图片控件。`Get Property` / `Set Property` / `Animate Property` 读写和动画的都是这同一套透明度。
 
+Displayable 节点覆盖插入面板提供的全部 16 种控件（含 `nl.video` / `nl.puppet` / `nl.textInput` 与四个舞台槽控件）。控件清单是 `@shared/types/ui-editor/displayableWidgets` 的 `UI_DISPLAYABLE_WIDGET_TYPES` 一份，Self 版的 `scope` 与 Element 版的 `magicElementTarget` 都读它；`displayableWidgets.test.ts` 对着插入面板配置比对，新增控件漏登记会红。
+
 Displayable Self 节点只在可显示控件自己的私有蓝图中出现，创建浮窗中归入 `Displayable` 分类，且没有 Element 输入；执行目标默认就是当前蓝图所属元素。
 
 Displayable Element 派生节点使用 `blueprint.element.displayable.*`，创建浮窗中归入 `Element` 分类。多数派生节点带顶部 generic `element` 输入，并且只有在当前图中已有任意 Same-Surface Element Literal、Element Flush 或 Element Click 时才会显示；同一节点类型只显示一项。若兼容来源唯一，放置时会自动连接对应的 `element` 输入；若有多个兼容来源，则保留 `element` 输入由作者手动选择/连接。`Stop Element Animation` 只接收 `AnimationToken`，不带 `element` 输入，因为 token 已经定位到具体动画。读取节点是 pure，可用于 Blueprint Value；写入/动画节点只用于 event/macro。
@@ -53,6 +55,32 @@ Element 派生版：`blueprint.element.displayable.setDisplay` - `Set Element Di
 - `x` / `y` / `offsetX` / `offsetY` / `width` / `height` / `rotation` / `opacity` 返回 number
 - `visible` 返回 boolean
 兼容说明：旧节点 `Get Position`、`Get Size`、`Get Bounds`、`Get Rotation`、`Get Opacity`、`Get Visible`、`Get Variant` 仍注册以支持旧蓝图，但在创建浮窗中隐藏。新图应使用 `Get Property`。
+
+`bounds` 的 `width` / `height` 恒为非负：作者把控件拖过自身原点时布局里存的是负尺寸，而 `position` 报的已经是折叠后的左上角，两者一起用才描述同一块区域。`Get Bounds` 与 `Get Property bounds` 的引脚类型是 `Rect`（不再是裸 `json`），旧图里接到 `json` 引脚的连线仍然有效。
+
+## Get Measured Rect
+
+`blueprint.displayable.getMeasuredRect` - 读取控件当前实际占据的矩形
+
+Element 派生版：`blueprint.element.displayable.getMeasuredRect` - `Get Element Measured Rect`。
+
+输出：
+- `rect` - Rect，当前 Surface 设计坐标系下的实测矩形；控件没有画出来时为 `null`
+
+与 `Get Bounds` 的区别是数据来源：`Get Bounds` 读文档（作者摆在哪里），本节点量 DOM（现在画在哪里），因此能反映进行中的位移动画、改变了位置的外观变体、按内容撑开的文本框，以及列表里具体那一行。换算走的是控件所在 Surface 的外壳（`[data-ui-surface-id]`），与鼠标事件 `x` / `y` 的分母是同一个，所以点击报的坐标和这里量的矩形说的是同一个位置。
+
+一个元素 id 可能同时画在屏幕上多处（列表每行、组件实例）。本节点取**第一个有面积的实例**；零面积的实例会跳过，因为把它当答案会把指针送到 Surface 左上角。
+
+## Get Center
+
+`blueprint.displayable.getCenter` - 读取控件当前实际中心点
+
+Element 派生版：`blueprint.element.displayable.getCenter` - `Get Element Center`。
+
+输出：
+- `center` - Vector2D，实测矩形的中心；控件没有画出来时为 `null`
+
+等价于 `Get Measured Rect` 接 `Rect Center`，为最常用的一步提供单节点写法。
 
 ## Set Property
 

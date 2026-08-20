@@ -102,6 +102,7 @@ const STORY_ROW_FACET_BY_BADGE: Record<StoryBlockBadgeId, StoryRowFacetId> = {
     variable: "data",
     declaration: "data",
     blueprint: "utils",
+    plugin: "utils",
     invalid: "invalid",
 };
 

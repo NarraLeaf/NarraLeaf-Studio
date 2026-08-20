@@ -56,6 +56,7 @@ export const motion = {
         emphasis: "Emphasis",
         idle: "Idle",
         reaction: "Reaction",
+        grade: "Colour grade",
         camera: "Camera",
     },
 
@@ -84,6 +85,9 @@ export const motion = {
         dizzy: "Dizzy",
         lookAround: "Look around",
         fallOver: "Fall over",
+        faintOut: "Faint out",
+        hangover: "Hangover",
+        flashback: "Flashback",
         cameraShake: "Shake",
         cameraImpact: "Impact",
         cameraPushIn: "Push in",

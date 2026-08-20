@@ -119,7 +119,11 @@ export async function optimizeWebExportImages(
             result.keptOriginal += 1;
             if (verificationWarnings < MAX_VERIFICATION_WARNINGS) {
                 verificationWarnings += 1;
-                input.log("warning", `"${entry.name}" did not survive a lossless round trip; it ships unchanged`);
+                // A shipped manifest carries no authoring name, so the id stands in for it.
+                input.log(
+                    "warning",
+                    `"${entry.name ?? manifestKey}" did not survive a lossless round trip; it ships unchanged`,
+                );
             }
             continue;
         }

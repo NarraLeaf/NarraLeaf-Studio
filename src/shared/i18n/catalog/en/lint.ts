@@ -47,6 +47,18 @@ export const lint = {
             // finding can be acted on without opening the settings page it came from.
             message: "{asset} is {size}, over the {limit} a build should carry",
         },
+        assetsGroupIncomplete: {
+            title: "Unfinished asset set",
+            description: "A set that does not resolve to exactly one file for every variant it declares",
+            // The variant is named as the tags it is made of, because writing those tags on a file
+            // is the fix. The file that would resolve is not named: it does not exist yet.
+            message: "{set} has no file for {variant}",
+            messageAmbiguous: "{set} has {count} files for {variant}",
+            messageResidency: "{set} resolves {axis} while the game runs, inside {outerAxis}, which the build resolves",
+            messageDeclaration: "{set} declares no variants to resolve",
+            /** The one thing a set requires. Without it nothing in the set resolves at all. */
+            messageFallback: "{set} does not say which variant the others fall back to",
+        },
         portabilityAssetName: {
             title: "Unsafe file name",
             description: "Characters or names some filesystems reject",
@@ -61,6 +73,11 @@ export const lint = {
             title: "Unplayable format",
             description: "A codec some selected build targets cannot play",
             message: "{asset} does not play on {platform}",
+        },
+        portabilityVfxAlpha: {
+            title: "Transparent overlay clip",
+            description: "An overlay clip whose transparency some selected build targets ignore",
+            message: "{asset} covers the stage on {platform}",
         },
         networkFetchNotAllowlisted: {
             title: "Address not on the allowlist",
@@ -84,7 +101,7 @@ export const lint = {
         },
         storyLabelDuplicate: {
             title: "Duplicate label",
-            description: "Two declarations of one label; the first wins",
+            description: "Two declarations of one label; only the first is reached",
             message: "{label} is already declared above, so this one is never reached",
         },
         storyLabelUnused: {
@@ -105,7 +122,7 @@ export const lint = {
         },
         storyDeadEnd: {
             title: "Dead end",
-            description: "A scene that leaves on some paths and runs off the end on another",
+            description: "A scene that leaves on some paths and reaches its end on another",
             message: "Play runs off the end of the scene here",
         },
         storyUnreachableScene: {
@@ -135,6 +152,25 @@ export const lint = {
             description: "A cut point in a scene nothing can get to",
             message: "Nothing can reach this scene, so this cut point never ends a build",
         },
+        storyStageObjectMissing: {
+            title: "Missing stage object",
+            description: "A row acting on an object no row in the scene creates",
+            message: "Nothing creates {object}, so this row has nothing to act on",
+            // A character is not created, it walks on - so the remedy is the one word that changes.
+            messageCharacter: "Nothing brings {object} on stage, so this row has nothing to act on",
+        },
+        storyStageObjectDuplicate: {
+            title: "Duplicate stage object",
+            description: "Two rows creating one stage name; the second reuses the first",
+            message: "{object} is already created above, so this row acts on that one",
+        },
+        storyTransitionUnavailable: {
+            title: "Unavailable transition",
+            description: "A row naming a transition this version cannot play",
+            // The stored word is printed even though no picker offers it any more: it is the only
+            // handle the author has on a transition that is otherwise gone from every menu.
+            message: "The transition {transition} is not available, so this change plays as a cut",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",
@@ -154,7 +190,7 @@ export const lint = {
             message: "Nothing reaches this node, so it never runs",
         },
         blueprintEmptyEvent: {
-            title: "Event that does nothing",
+            title: "Empty event",
             description: "An event layer with nothing wired to run",
             message: "This event runs nothing",
         },
@@ -249,7 +285,7 @@ export const lint = {
             // project, so the locator column beside it prints nothing, and {where} is the only thing
             // that tells one of these findings from the next.
             message: "{where} uses {color}, which the palette does not have",
-            messageChain: "{where} uses {color}, which links on to {missing} - a color the palette does not have",
+            messageChain: "{where} uses {color}, which links on to {missing}, a color the palette does not have",
             messageCycle: "{where} uses {color}, whose links lead back to themselves",
         },
     },
@@ -315,7 +351,7 @@ export const lint = {
         // Spelled out panel → page → row, because the gate is on by default: an author who never
         // opened this panel has no reason to know the setting exists, and "in the lint settings"
         // would leave them looking for it.
-        blockedHint: "Change this in Project → Linting → Check before building",
+        blockedHint: "Change this in Project ▸ Project ▸ Check before building",
         skipped: "Project check skipped",
     },
     settings: {

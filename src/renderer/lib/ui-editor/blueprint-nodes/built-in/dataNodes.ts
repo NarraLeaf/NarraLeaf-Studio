@@ -40,11 +40,17 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LITERAL_RECT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_DATA_BREAK_RECT,
+    BLUEPRINT_NODE_TYPE_DATA_BREAK_VECTOR2D,
+    BLUEPRINT_NODE_TYPE_DATA_MAKE_RECT,
+    BLUEPRINT_NODE_TYPE_DATA_MAKE_VECTOR2D,
+    BLUEPRINT_NODE_TYPE_DATA_RECT_CENTER,
     BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
 } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+    BLUEPRINT_VALUE_TYPE_RECT,
     BLUEPRINT_VALUE_TYPE_VECTOR2D,
 } from "@shared/types/blueprint/valueTypes";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
@@ -78,6 +84,23 @@ const stringIn = (id: string, label: string): BlueprintNodePinDef => ({
     valueType: "string",
     label,
     allowInlineLiteral: true,
+});
+
+const floatIn = (id: string, label: string): BlueprintNodePinDef => ({
+    id,
+    kind: "input",
+    semantic: "data",
+    valueType: "float",
+    label,
+    allowInlineLiteral: true,
+});
+
+const typedIn = (id: string, label: string, valueType: string): BlueprintNodePinDef => ({
+    id,
+    kind: "input",
+    semantic: "data",
+    valueType,
+    label,
 });
 
 const jsonIn = (id: string, label: string): BlueprintNodePinDef => ({
@@ -270,7 +293,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "Rect",
         keywords: ["literal", "rect", "rectangle", "bounds", "value", "const"],
         role: "dataLiteral",
-        pins: [out("value", "Rect", "json")],
+        pins: [out("value", "Rect", BLUEPRINT_VALUE_TYPE_RECT)],
         inspectorParams: [
             {
                 key: "value",
@@ -288,6 +311,59 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
                     ],
                 },
             },
+        ],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_MAKE_VECTOR2D,
+        displayName: "Make Vector2D",
+        keywords: ["vector", "vector2d", "point", "position", "make", "build", "compose", "x", "y"],
+        pins: [
+            floatIn("x", "X"),
+            floatIn("y", "Y"),
+            out("value", "Vector2D", BLUEPRINT_VALUE_TYPE_VECTOR2D),
+        ],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_BREAK_VECTOR2D,
+        displayName: "Break Vector2D",
+        keywords: ["vector", "vector2d", "point", "position", "break", "split", "x", "y"],
+        pins: [
+            typedIn("value", "Vector2D", BLUEPRINT_VALUE_TYPE_VECTOR2D),
+            out("x", "X", "float"),
+            out("y", "Y", "float"),
+        ],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_MAKE_RECT,
+        displayName: "Make Rect",
+        keywords: ["rect", "rectangle", "bounds", "make", "build", "compose", "x", "y", "width", "height"],
+        pins: [
+            floatIn("x", "X"),
+            floatIn("y", "Y"),
+            floatIn("width", "Width"),
+            floatIn("height", "Height"),
+            out("value", "Rect", BLUEPRINT_VALUE_TYPE_RECT),
+        ],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_BREAK_RECT,
+        displayName: "Break Rect",
+        keywords: ["rect", "rectangle", "bounds", "break", "split", "x", "y", "width", "height"],
+        pins: [
+            typedIn("value", "Rect", BLUEPRINT_VALUE_TYPE_RECT),
+            out("x", "X", "float"),
+            out("y", "Y", "float"),
+            out("width", "Width", "float"),
+            out("height", "Height", "float"),
+        ],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_RECT_CENTER,
+        displayName: "Rect Center",
+        keywords: ["rect", "rectangle", "bounds", "center", "middle", "centre", "point"],
+        pins: [
+            typedIn("value", "Rect", BLUEPRINT_VALUE_TYPE_RECT),
+            out("center", "Center", BLUEPRINT_VALUE_TYPE_VECTOR2D),
         ],
     }),
     dataNode({

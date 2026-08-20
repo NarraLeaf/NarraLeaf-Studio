@@ -1,6 +1,5 @@
 import {
     useCallback,
-    useEffect,
     useMemo,
     useRef,
     useState,
@@ -12,7 +11,7 @@ import {
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -63,17 +62,29 @@ export type GameUiSlotHostOptions = {
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
     writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
-    loadSaveInGame: (id: string) => Promise<void>;
+    /** Resolves false when the save was not applied; `Load Save` routes that to its `Failed` pin. */
+    loadSaveInGame: (id: string) => Promise<boolean>;
     deleteSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
     getSaveMetadata: (id: string) => Promise<unknown>;
     getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
     getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
+    getSavePlaytime: (id: string) => Promise<SaveRecordPlaytime | null>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    /** The running playthrough's playtime, in seconds. */
+    getPlaytime: () => number;
+    /** Seconds ever spent in this project, across every playthrough. */
+    getTotalPlaytime: () => number;
     writeAutoSaveInGame: () => Promise<void>;
     listAutoSaves: () => Promise<AutoSaveEntry[]>;
     getHistoryInGame: () => BlueprintGameHistoryEntry[];
+    /** The lines the player has stepped back past, nearest first. Empty unless they have. */
+    getFutureInGame: () => BlueprintGameHistoryEntry[];
     restoreHistoryInGame: (id?: string) => Promise<void>;
+    /** Step the play head forward one line, back over a line already read. */
+    redoHistoryInGame: () => Promise<void>;
+    canUndoHistoryInGame: () => boolean;
+    canRedoHistoryInGame: () => boolean;
     /**
      * Carrying a playthrough between two editions of one title, for the Export/Import Progress
      * nodes. Optional on the same terms as {@link soundTransport}: a host with no shell behind it
@@ -125,6 +136,18 @@ export type GameUiSlotHostOptions = {
     audioTracks?: readonly ProjectAudioTrack[];
     /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
     subscribeGamePreferences?: (listener: () => void) => () => void;
+    /**
+     * The player changed the language from inside the game. A slot surface is exactly where that
+     * happens — a language picker built into a dialogue-box quick menu — and `GameApp` owns what it
+     * costs (writing a save, restarting, returning to the playthrough), so the slot bridge only
+     * forwards the request rather than deciding anything.
+     *
+     * Optional for the same reason `getFullscreen` is: what it does is restart the application and
+     * come back to the save it just wrote, and the story preview has no application to restart. That
+     * host leaves it unset, and a `Set Language` node on a slot surface there reaches nothing —
+     * which is the truth about the capability, not a gap to fill with a partial imitation.
+     */
+    localeChangedInGame?: (code: string) => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -216,11 +239,18 @@ export function useStageSlotSurfaceRuntime(input: {
             onGetSaveMetadata: options.getSaveMetadata,
             onGetSaveTimes: options.getSaveTimes,
             onGetSaveLine: options.getSaveLine,
+            onGetSavePlaytime: options.getSavePlaytime,
+            onGetPlaytime: options.getPlaytime,
+            onGetTotalPlaytime: options.getTotalPlaytime,
             onGetSavePreview: options.getSavePreview,
             onWriteAutoSave: options.writeAutoSaveInGame,
             onListAutoSaves: options.listAutoSaves,
             onGetHistory: options.getHistoryInGame,
+            onGetFuture: options.getFutureInGame,
             onRestoreHistory: options.restoreHistoryInGame,
+            onRedoHistory: options.redoHistoryInGame,
+            onCanUndoHistory: options.canUndoHistoryInGame,
+            onCanRedoHistory: options.canRedoHistoryInGame,
             onExportProgress: options.exportProgressInGame,
             onImportProgress: options.importProgressInGame,
             onGetNametag: options.getCurrentNametag,
@@ -255,6 +285,7 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetTrackVolume: options.soundTransport?.setTrackVolume,
             audioTracks: options.audioTracks,
             onSubscribeGamePreferences: options.subscribeGamePreferences,
+            onLocaleChanged: options.localeChangedInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -306,9 +337,13 @@ export function useStageSlotSurfaceRuntime(input: {
         };
     }, [core, bundle, hostApi, runtimeScopeId, slotId, surface]);
 
-    useEffect(() => {
-        hostAdapterRef.current = hostAdapter;
-    }, [hostAdapter]);
+    // Assigned while rendering rather than from an effect: the ref is read by children (the dialog
+    // slot's state bridge flushes through it), and a child's effect runs before this component's
+    // does. Filled in from an effect, the very first flush after a mount found `null` and was
+    // dropped without a word - which is how a scene jump used to leave the previous speaker's
+    // avatar on the line that replaced it. Mirroring a memoized value is idempotent, so a repeated
+    // render writes the same adapter.
+    hostAdapterRef.current = hostAdapter;
 
     const flushElementIds = useMemo(
         () => collectSurfaceFlushElementIds({
@@ -402,7 +437,8 @@ export function StageSlotSurfaceBody(props: {
 
     return (
         <SurfaceLifecycleBoundary
-            core={subscriptionsReady ? core : null}
+            core={core}
+            ready={subscriptionsReady}
             blueprintDocument={bundle.ui.localBlueprints}
             persistentVariables={bundle.ui.persistentVariables}
             surface={surface}

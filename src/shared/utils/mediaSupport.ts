@@ -239,6 +239,13 @@ export type ProbeStream = {
     codec_name?: string;
     /** ffprobe's disposition bag. Only `attached_pic` is read; the rest is carried along untouched. */
     disposition?: Record<string, number | undefined>;
+    /**
+     * The demuxer's per-stream metadata. Only `alpha_mode` is read; see {@link probeCarriesAlpha}.
+     *
+     * Values are strings even when they are plainly numbers - this is ffprobe's metadata dictionary
+     * rather than one of its typed fields, so `alpha_mode` arrives as `"1"` and never as `1`.
+     */
+    tags?: Record<string, string | undefined>;
 };
 
 /** The subset of `ffprobe -show_format -show_streams` output this module reads. */
@@ -280,6 +287,32 @@ export function probeDurationUs(report: ProbeReport): number | null {
         return null;
     }
     return Math.round(seconds * 1_000_000);
+}
+
+/**
+ * Whether any video stream carries an **alpha channel**.
+ *
+ * Read off the Matroska `AlphaMode` element, which the demuxer surfaces as the stream tag
+ * `alpha_mode=1`. That is the only place the fact is recorded for the two codecs it can matter for:
+ * VP8 and VP9 both keep the alpha plane in a side stream the container points at, so the codec
+ * fields say nothing about it and `pix_fmt` stays `yuv420p` on a file that is largely transparent.
+ *
+ * **This is not a playability question and must not be folded into the verdict.** A WebM carrying
+ * alpha plays on every target this project ships to - measured 2026-08-18 against iOS 18.7 and
+ * macOS Safari 26.3, on this project's own VP9/Vorbis transcode target. What differs is what the
+ * player does with the alpha afterwards: Chromium composites it, WebKit discards it and paints the
+ * RGB plane opaquely. The answer therefore belongs to whoever decides how a clip composites, which
+ * is `portability/vfx-alpha` and the `blendMode` field that rule reads.
+ *
+ * Deliberately not read: `pix_fmt`. The codecs that keep alpha in-band (ProRes 4444, QuickTime PNG)
+ * do announce it there, but a file carrying one of those decodes on no target at all - it is
+ * already `codec-unsupported` by the tables above, and reporting it a second time under a
+ * compositing rule would point the author at the wrong repair.
+ */
+export function probeCarriesAlpha(report: ProbeReport): boolean {
+    return (report.streams ?? []).some(
+        stream => stream.codec_type === "video" && stream.tags?.alpha_mode === "1",
+    );
 }
 
 /**

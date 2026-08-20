@@ -2,7 +2,14 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RuntimePersistenceStore, RuntimeSaveStore, atomicWriteJson, normalizeRuntimeSaveId } from "./runtimeStorage";
+import {
+    ABANDONED_TEMP_FILE_AGE_MS,
+    RuntimePersistenceStore,
+    RuntimeSaveStore,
+    atomicWriteJson,
+    normalizeRuntimeSaveId,
+    sweepAbandonedTempFiles,
+} from "./runtimeStorage";
 
 let tempDir = "";
 
@@ -152,5 +159,46 @@ describe("runtime save and persistence storage", () => {
         expect(await store.getAll()).toEqual({
             profile: { name: "Ada", nested: ["ok"] },
         });
+    });
+});
+
+describe("sweepAbandonedTempFiles", () => {
+    beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-runtime-sweep-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it("removes what an interrupted write left behind and nothing else", async () => {
+        // A language change ends the process on purpose, so a write caught mid-rename is now a
+        // routine event rather than a crash artefact.
+        const abandoned = path.join(tempDir, "persistence.json.1234.1700000000000.tmp");
+        await fs.writeFile(abandoned, "{}", "utf-8");
+        const old = Date.now() - ABANDONED_TEMP_FILE_AGE_MS - 1000;
+        await fs.utimes(abandoned, new Date(old), new Date(old));
+        await fs.writeFile(path.join(tempDir, "persistence.json"), "{}", "utf-8");
+
+        const removed = await sweepAbandonedTempFiles(tempDir);
+
+        expect(removed).toEqual(["persistence.json.1234.1700000000000.tmp"]);
+        expect(await fs.readdir(tempDir)).toEqual(["persistence.json"]);
+    });
+
+    it("leaves a temp file another copy of the game is writing right now", async () => {
+        // Two instances of the same title can share a user data directory, and the other one's
+        // temp file is milliseconds old. Deleting it would take away the write it is in the
+        // middle of.
+        const inFlight = path.join(tempDir, "persistence.json.9999.1700000000001.tmp");
+        await fs.writeFile(inFlight, "{}", "utf-8");
+
+        expect(await sweepAbandonedTempFiles(tempDir)).toEqual([]);
+        expect(await fs.readdir(tempDir)).toEqual([path.basename(inFlight)]);
+    });
+
+    it("says nothing and does nothing when there is no such directory", async () => {
+        // A game whose saves directory does not exist yet still has to boot.
+        expect(await sweepAbandonedTempFiles(path.join(tempDir, "saves"))).toEqual([]);
     });
 });

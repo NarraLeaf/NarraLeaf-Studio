@@ -1,6 +1,7 @@
 import { FolderOpen } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Input, InputGroup } from "@/lib/components/elements";
+import { ServerProjectPicker } from "../components/ServerProjectPicker";
 import { DirectoryValidationResult, ProjectData, ValidationErrors } from "../types";
 
 interface SourceStepProps {
@@ -30,6 +31,11 @@ interface SourceStepProps {
  * readback is the only feedback available before the transfer starts - the backend has nothing to
  * say about an address until it is asked to use it - and it catches the mistake that actually
  * happens: a colleague's address pasted with the project name of a different project on the end.
+ *
+ * Above it, the projects on the servers this installation already has. **That list is the
+ * answer to the mistake rather than a warning about it**: an address chosen from what a
+ * server says it holds is one that cannot be mistyped, and typing one stays for the server
+ * nobody here has added yet.
  */
 export function SourceStep({
     projectData,
@@ -52,6 +58,8 @@ export function SourceStep({
     return (
         <div className="h-full overflow-y-auto p-5">
             <div className="max-w-xl space-y-4">
+                <ServerProjectPicker value={projectData.remoteUrl} onPick={updateRemoteUrl} />
+
                 <InputGroup
                     label={t("wizard.source.addressLabel")}
                     required

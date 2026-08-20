@@ -215,6 +215,8 @@ enum Services {
     PuppetDescription = "puppetDescription",
     /** Which media assets already in the project will not play, and what to convert them into */
     MediaSupport = "mediaSupport",
+    /** Speculative weather bakes: watches the story documents and warms the clip cache */
+    WeatherPrebake = "weatherPrebake",
     /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
     ProjectDependency = "projectDependency",
     /** Accumulated authoring activity (writing curve, active time, build history) */
@@ -225,6 +227,8 @@ enum Services {
     AudioTracks = "audioTracks",
     /** The build variants the project ships as, and what each one says differently from the project */
     AppTags = "appTags",
+    /** The asset sets the project declares: library entries standing for a family of files, by axis */
+    AssetSets = "assetSets",
     /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
     Brand = "brand",
     /** The words the project spells on purpose, and the session's spellchecker they are pushed into */
@@ -889,13 +893,28 @@ export type InteractionOverrideChange = {
     next: InteractionOverride | null;
 };
 
+/**
+ * The one element showing a state other than the one it rests in, and which state that is.
+ *
+ * Editor-only and never persisted: it says what the author is looking at this minute, and a stale
+ * one restored at startup would be a canvas that quietly disagrees with the document. `variantId`
+ * is null for the resting state, which is also what descendants carrying no variant of that id
+ * resolve to - so one value describes the whole subtree.
+ *
+ * `surfaceId` is what it is scoped to. Selection is deliberately not: clicking a widget's part on the
+ * canvas promotes the selection to the parent it drills from, so a rule that exits the state when the
+ * selection leaves the subtree exits it on the very click an author makes to grab the thing they are
+ * editing.
+ */
+export type UIEditorEnteredState = { surfaceId: string; elementId: string; variantId: string | null };
+
 interface UIEditorStateEvents {
     toolChanged: UITool;
     viewportChanged: ViewportTransform;
     selectionChanged: SelectionState;
     interactionOverrideChanged: InteractionOverrideChange;
-    /** Editor-only: appearance variant picker in the inspector (per element); drives canvas preview. */
-    appearanceInspectorVariantChanged: { elementId: string };
+    /** Editor-only: which element is showing one of its states, and which; drives canvas preview. */
+    enteredStateChanged: UIEditorEnteredState | null;
     /** Outline panel expand/collapse memory (persisted); payload unused. */
     outlineExpansionChanged: null;
     /** Outline panel chrome collapsed state (persisted). */
@@ -960,9 +979,9 @@ interface IUIEditorStateService extends IService {
     setUIElementSelection(selection: UIElementSelection): void;
     getDocument(): UIDocument;
     getSurface(surfaceId: string): UISurface | undefined;
-    /** Cached appearance variant id for inspector authoring (editing-area cache, not saved in UIDocument). */
-    getAppearanceInspectorVariant(elementId: string): string | null;
-    setAppearanceInspectorVariant(elementId: string, variantId: string): void;
+    /** The state being shown on the canvas right now, or null while every element rests. */
+    getEnteredState(): UIEditorEnteredState | null;
+    setEnteredState(next: UIEditorEnteredState | null): void;
     /** Whether compact Border panel "sides" row is expanded (per element, persisted with project settings). */
     getAppearanceBorderSidesExpanded(elementId: string): boolean;
     setAppearanceBorderSidesExpanded(elementId: string, expanded: boolean): void;
@@ -1073,7 +1092,8 @@ interface IStoryService extends IService {
     updateAnimationAsset(animationId: StoryAnimationAssetId, updater: (asset: StoryAnimationAsset) => StoryAnimationAsset): StoryAnimationAsset;
     deleteAnimationAsset(animationId: StoryAnimationAssetId): Promise<boolean>;
     onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void;
-    registerPluginAction(registration: StoryPluginActionRegistration): () => void;
+    registerPluginAction(registration: StoryPluginActionRegistration, ownerPluginId?: string): () => void;
+    getContributingPluginIds(): string[];
     unregisterPluginAction(actionId: string): boolean;
     getPluginAction(actionId: string): StoryPluginActionRegistration | undefined;
     listPluginActions(): StoryPluginActionRegistration[];

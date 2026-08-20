@@ -52,6 +52,7 @@ export const LINT_RULES_BY_CATEGORY: Readonly<Record<LintCategory, readonly Lint
 export { ASSETS_LINT_RULES } from "./assets";
 export { PORTABILITY_LINT_RULES } from "./portability";
 export { NETWORK_LINT_RULES, collectBlueprintNetworkNodes } from "./network";
+export { collectBlueprintPointerNodes } from "./pointer";
 export { STORY_LINT_RULES } from "./story";
 export { BLUEPRINT_LINT_RULES, UNCHECKED_OPTIONS_SOURCES } from "./blueprint";
 export { UI_LINT_RULES } from "./ui";

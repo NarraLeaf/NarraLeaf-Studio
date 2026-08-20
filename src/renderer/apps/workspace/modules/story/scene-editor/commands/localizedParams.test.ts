@@ -39,8 +39,8 @@ describe("findParamLocalized", () => {
     it("resolves a translated key to its canonical param", () => {
         i18nStore.setLocale("zh");
         const show = getCommandDef("show")!;
-        expect(findParamLocalized(show, "位置")?.name).toBe("at");
-        expect(findParamLocalized(show, "转场")?.name).toBe("t");
+        expect(findParamLocalized(show, "位置")?.name).toBe("pos");
+        expect(findParamLocalized(show, "显隐动画")?.name).toBe("in");
         expect(findParamLocalized(show, "持续时间")?.name).toBe("d");
     });
 
@@ -49,8 +49,8 @@ describe("findParamLocalized", () => {
         const show = getCommandDef("show")!;
         for (const locale of ["en", "zh"] as const) {
             i18nStore.setLocale(locale);
-            expect(findParamLocalized(show, "at")?.name).toBe("at");
-            expect(findParamLocalized(show, "pos")?.name).toBe("at");
+            expect(findParamLocalized(show, "at")?.name).toBe("pos");
+            expect(findParamLocalized(show, "pos")?.name).toBe("pos");
             expect(findParamLocalized(show, "d")?.name).toBe("d");
         }
     });
@@ -58,7 +58,7 @@ describe("findParamLocalized", () => {
     it("stops accepting a translated key once the interface language moves off it", () => {
         const show = getCommandDef("show")!;
         i18nStore.setLocale("zh");
-        expect(findParamLocalized(show, "位置")?.name).toBe("at");
+        expect(findParamLocalized(show, "位置")?.name).toBe("pos");
         i18nStore.setLocale("en");
         expect(findParamLocalized(show, "位置")).toBeNull();
     });
@@ -68,7 +68,7 @@ describe("findParamLocalized", () => {
         const show = getCommandDef("show")!;
         commandI18nStore.setPreference(true);
         i18nStore.setLocale("zh");
-        expect(findParamLocalized(show, "位置")?.name).toBe("at");
+        expect(findParamLocalized(show, "位置")?.name).toBe("pos");
     });
 
     it("stays English while translation is off, whatever the interface language", () => {
@@ -77,7 +77,7 @@ describe("findParamLocalized", () => {
         commandI18nStore.setPreference(false);
         i18nStore.setLocale("zh");
         expect(findParamLocalized(show, "位置")).toBeNull();
-        expect(findParamLocalized(show, "at")?.name).toBe("at");
+        expect(findParamLocalized(show, "at")?.name).toBe("pos");
     });
 });
 
@@ -85,8 +85,8 @@ describe("localized params in a parsed line", () => {
     it("parses a translated key exactly as the canonical one", () => {
         i18nStore.setLocale("zh");
         const localized = command("/show Anyo 位置=left");
-        const english = command("/show Anyo at=left");
-        expect(getArgValue(localized, "at")).toBe("left");
+        const english = command("/show Anyo pos=left");
+        expect(getArgValue(localized, "pos")).toBe("left");
         expect(localized.issues).toEqual([]);
         expect(localized.args.map(arg => [arg.param?.name, arg.value]))
             .toEqual(english.args.map(arg => [arg.param?.name, arg.value]));
@@ -144,11 +144,11 @@ describe("drop rules", () => {
     });
 
     it("drops a label that already spells one of the def's own English keys", () => {
-        // `story.paramHint.transition` is "Transition", which is already `t`'s alias — the English
-        // pass answers it, and the table must not carry a second, identical entry.
+        // `story.paramHint.transition` is "Transition", which is already `t`'s alias on `/bg` — the
+        // English pass answers it, and the table must not carry a second, identical entry.
         i18nStore.setLocale("en");
-        const show = getCommandDef("show")!;
-        expect(findParamLocalized(show, "transition")?.name).toBe("t");
+        const bg = getCommandDef("bg")!;
+        expect(findParamLocalized(bg, "transition")?.name).toBe("t");
     });
 
     it("never admits an untranslated key as a spelling", () => {
@@ -189,9 +189,9 @@ describe("localizedParamKey", () => {
         const show = getCommandDef("show")!;
         i18nStore.setLocale("en");
         // "Position" folds onto nothing new in English, so the key stays what it always was.
-        expect(localizedParamKey(show, show.params.find(p => p.name === "at")!)).toBe("at");
+        expect(localizedParamKey(show, show.params.find(p => p.name === "pos")!)).toBe("pos");
         i18nStore.setLocale("zh");
-        expect(localizedParamKey(show, show.params.find(p => p.name === "at")!)).toBe("位置");
+        expect(localizedParamKey(show, show.params.find(p => p.name === "pos")!)).toBe("位置");
         expect(localizedParamKey(show, show.params.find(p => p.name === "d")!)).toBe("持续时间");
     });
 });
@@ -200,7 +200,7 @@ describe("paramMatchesQuery", () => {
     it("matches the canonical name, the English alias, and the translated word", () => {
         i18nStore.setLocale("zh");
         const show = getCommandDef("show")!;
-        const at = show.params.find(param => param.name === "at")!;
+        const at = show.params.find(param => param.name === "pos")!;
         // An author who was just shown "位置" and types it has to keep seeing the row.
         expect(paramMatchesQuery(show, at, "位")).toBe(true);
         expect(paramMatchesQuery(show, at, "at")).toBe(true);

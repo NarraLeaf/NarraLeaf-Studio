@@ -14,10 +14,12 @@
  * files, morphological coverage) is not worth adding one for. Checking is therefore a set lookup and
  * suggesting is a bounded edit distance.
  *
- * **Languages that do not put spaces between words have no dictionary and never will.** Chinese and
- * Japanese have no spelling in the word-list sense, so {@link resolveSpellcheckLanguage} answers
- * `null` for them and nothing is ever marked. That is the correct outcome, not a failure, and the
- * settings row says so rather than showing a control that quietly does nothing.
+ * **Languages that do not put spaces between words are checked the same way, from the same files.**
+ * A Chinese or Japanese dictionary is a word list like any other; what changes is that the list is
+ * also what finds the word, since there are no spaces to find one by. The main process segments the
+ * text against the list and marks the runs that segment into no known word. A mistyped character
+ * that happens to spell another legitimate word is not marked, because telling those apart needs
+ * the surrounding sentence rather than a vocabulary.
  *
  * Comments in English per project convention.
  */

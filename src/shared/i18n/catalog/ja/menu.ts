@@ -42,6 +42,7 @@ export const menu = {
         noRecent: "最近のワークスペースなし",
         export: "プロジェクトを書き出す",
         close: "ワークスペースを閉じる",
+        returnToLauncher: "ランチャーに戻る",
     },
     edit: {
         title: "編集",
@@ -64,10 +65,11 @@ export const menu = {
     },
     window: {
         title: "ウインドウ",
+        close: "ウインドウを閉じる",
         minimize: "最小化",
         zoom: "ズーム",
         front: "すべてを手前に移動",
-        leftSidebar: "サイドバーを表示",
+        leftSidebar: "左バーを表示",
         bottomPanel: "下部バーを表示",
         rightSidebar: "右バーを表示",
     },

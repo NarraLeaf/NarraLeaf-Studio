@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
-import { motion, useAnimationControls, type MotionStyle, type TargetAndTransition } from "motion/react";
+import { animate, motion, useAnimationControls, useMotionValue, type MotionStyle, type TargetAndTransition } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import {
@@ -21,12 +21,21 @@ import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import type { UIStateMotionOffset } from "@shared/types/ui-editor/stateMotion";
+import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
+import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
+
+/** Shared so an element with no offsets keeps one object identity and never re-poses on it. */
+const ZERO_APPEARANCE_OFFSETS = { x: 0, y: 0 };
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import {
     type AppearanceResolveContext,
     resolveButtonCursor,
     resolveButtonVisualProps,
     resolveAppearanceDisplayableOpacity,
+    resolveAppearanceTransformOffsets,
+    resolveContainerAppearanceTransitions,
     resolveImageDisplayableOpacityKeys,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
@@ -152,14 +161,30 @@ export function EditorNodeWrapper({
     const animationControls = useAnimationControls();
     const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
+    // Only the element the state was entered on says so; the broadcast below carries the state
+    // itself, not where it came from.
+    const isEnteredHere = enteredState?.own === true && interactive;
+    const broadcastState = useMemo(
+        () => (enteredState ? { variantId: enteredState.variantId } : null),
+        [enteredState],
+    );
+    /**
+     * Which state this element is being shown in, as a value that changes only when the state does.
+     *
+     * The offsets below move for two different reasons and only one of them is a trip: the element
+     * changed state, or the author changed where it sits *in* the state they are already looking at.
+     * Empty outside the editor, where nothing is ever entered and every move of an offset is the
+     * widget changing state - which is the trip the player is meant to see.
+     */
+    const enteredStateKey = enteredState ? `v:${enteredState.variantId ?? ""}` : "";
     const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
     const listScopedVariantId =
         typeof (element.extra as { runtimeVariantOverrideId?: unknown } | undefined)?.runtimeVariantOverrideId === "string"
             ? String((element.extra as { runtimeVariantOverrideId?: unknown }).runtimeVariantOverrideId)
             : null;
     const appearanceResolveCtx = {
-        variantOverrideId: listScopedVariantId ?? runtimeElementState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeElementState.variantOverrideId),
         signals: runtimeElementState.signals,
     };
     const appearanceOpacity = resolveAppearanceDisplayableOpacity(
@@ -177,6 +202,54 @@ export function EditorNodeWrapper({
         const canDispatchClick = Boolean(interactive && blueprintRuntime && !interactionDisabled);
         return resolveButtonCursor(visual.cursor, interactionDisabled, canDispatchClick);
     })();
+    // While a state is entered, this node carries the offsets the element is drawn at, and the widget
+    // inside it draws at zero. The editor selects, measures and snaps to *this* node, so an offset
+    // living on a layer inside it leaves the selection frame and the handles behind at the position
+    // the element rests in - visibly detached from the element the author is dragging.
+    // What the parent widget hands down for the state it is in. It outranks the appearance path
+    // because it *is* the state's motion; the appearance offsets are the older shape, still read for
+    // documents written before state motions existed.
+    const handedMotionOffset = (element.extra as { stateMotionOffset?: UIStateMotionOffset } | undefined)
+        ?.stateMotionOffset;
+    const resolvedEnteredOffsets = handedMotionOffset
+        ? { x: handedMotionOffset.x, y: handedMotionOffset.y }
+        : enteredState
+          ? resolveAppearanceTransformOffsets(appearance, appearanceResolveCtx)
+          : ZERO_APPEARANCE_OFFSETS;
+    const enteredOffsetsInFlow = !isRoot && layoutMode === "flow";
+    const enteredOffsets = useMemo(
+        () => (enteredOffsetsInFlow ? resolvedEnteredOffsets : ZERO_APPEARANCE_OFFSETS),
+        // By value: a fresh object every render would restart the animation below on every render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [enteredOffsetsInFlow, resolvedEnteredOffsets.x, resolvedEnteredOffsets.y],
+    );
+    /** Carried by placement; a flow child has none of its own, so it keeps the transform channel. */
+    const placedEnteredOffsets = useMemo(
+        () => (enteredOffsetsInFlow ? ZERO_APPEARANCE_OFFSETS : resolvedEnteredOffsets),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [enteredOffsetsInFlow, resolvedEnteredOffsets.x, resolvedEnteredOffsets.y],
+    );
+    // How that offset moves is the author's own setting on the field, the same one the running game
+    // uses. Held in a ref rather than a dependency because resolving it allocates a context object
+    // every render, and a new identity would restart the animation mid-flight.
+    const enteredOffsetTransitionRef = useRef<Record<string, unknown> | null>(null);
+    enteredOffsetTransitionRef.current = (() => {
+        if (handedMotionOffset) {
+            return {
+                type: "tween",
+                duration: Math.max(0, handedMotionOffset.durationMs) / 1000,
+                ease: handedMotionOffset.easing,
+            };
+        }
+        if (!enteredState) {
+            return null;
+        }
+        const transition = firstTransitionForKeys(
+            resolveContainerAppearanceTransitions(appearance, appearanceResolveCtx),
+            ["transformOffsetX", "transformOffsetY"],
+        );
+        return transition ? toRuntimeMotionTransition(transition) : null;
+    })();
     const layoutOpacity = layout.opacity ?? 1;
     const effectiveOpacity = hasRuntimeOpacityOverride ? layoutOpacity : appearanceOpacity ?? layoutOpacity;
     const baseRotation = layout.rotation ?? 0;
@@ -187,13 +260,13 @@ export function EditorNodeWrapper({
     // untouched (and everything after they clear) resolves back to this pose.
     const basePose = useMemo(
         () => ({
-            x: displayableBaseTransform.offsetX,
-            y: displayableBaseTransform.offsetY,
+            x: displayableBaseTransform.offsetX + enteredOffsets.x,
+            y: displayableBaseTransform.offsetY + enteredOffsets.y,
             scale: displayableBaseTransform.scale,
             rotate: baseRotation,
             opacity: effectiveOpacity,
         }),
-        [baseRotation, displayableBaseTransform, effectiveOpacity],
+        [baseRotation, displayableBaseTransform, effectiveOpacity, enteredOffsets.x, enteredOffsets.y],
     );
 
     useEffect(() => {
@@ -474,6 +547,41 @@ export function EditorNodeWrapper({
         [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
     );
 
+    /** Where this node is placed, state offset included. Its own channel, so a gesture cannot take it. */
+    const placedLeft = enteredOffsetsInFlow ? 0 : layout.x + Math.min(0, layout.width) + placedEnteredOffsets.x;
+    const placedTop = enteredOffsetsInFlow ? 0 : layout.y + Math.min(0, layout.height) + placedEnteredOffsets.y;
+    // Placement moves through motion values so entering a state still plays the field's own
+    // transition here, the same one the running game uses.
+    const leftValue = useMotionValue(placedLeft);
+    const topValue = useMotionValue(placedTop);
+    const lastPlacedOffsetsRef = useRef(placedEnteredOffsets);
+    const lastPlacedStateKeyRef = useRef(enteredStateKey);
+    useEffect(() => {
+        const previous = lastPlacedOffsetsRef.current;
+        const previousStateKey = lastPlacedStateKeyRef.current;
+        const enteredMoved = previous.x !== placedEnteredOffsets.x || previous.y !== placedEnteredOffsets.y;
+        lastPlacedOffsetsRef.current = placedEnteredOffsets;
+        lastPlacedStateKeyRef.current = enteredStateKey;
+        const transition = enteredOffsetTransitionRef.current;
+        // Only a change of state is a trip. Moving the element *within* the state on screen - dragging
+        // it there, typing a number - is the author saying where it sits, not the element travelling:
+        // animating to it starts from where they just left, which reads as the element snapping back
+        // to its old spot for a frame and then sliding into place. It also leaves the selection frame
+        // measuring a position the element is only passing through.
+        const changedState = enteredStateKey === "" || previousStateKey !== enteredStateKey;
+        if (!enteredMoved || !changedState || !transition) {
+            leftValue.set(placedLeft);
+            topValue.set(placedTop);
+            return undefined;
+        }
+        const runLeft = animate(leftValue, placedLeft, transition);
+        const runTop = animate(topValue, placedTop, transition);
+        return () => {
+            runLeft.stop();
+            runTop.stop();
+        };
+    }, [enteredStateKey, leftValue, placedEnteredOffsets, placedLeft, placedTop, topValue]);
+
     const containerStyle = useMemo<CSSProperties>(() => {
         const { x, y, width, height } = layout;
         const normalizedWidth = Math.abs(width);
@@ -483,8 +591,12 @@ export function EditorNodeWrapper({
         const isFlow = !isRoot && layoutMode === "flow";
         const style: CSSProperties = {
             position: isRoot ? "relative" : isFlow ? "relative" : "absolute",
-            left: isFlow ? 0 : x + offsetX,
-            top: isFlow ? 0 : y + offsetY,
+            // The state's offset rides here rather than on the transform: a drag previews itself by
+            // writing `style.transform` on this very node, so a pose sharing that channel is wiped
+            // for the length of the gesture and snaps back when React re-renders. Placement is a
+            // channel the gesture never touches.
+            left: isFlow ? 0 : x + offsetX + placedEnteredOffsets.x,
+            top: isFlow ? 0 : y + offsetY + placedEnteredOffsets.y,
             width: normalizedWidth,
             height: normalizedHeight,
             opacity: motionControlsOpacity ? undefined : effectiveOpacity,
@@ -508,7 +620,51 @@ export function EditorNodeWrapper({
             style.cursor = wrapperCursor;
         }
         return style;
-    }, [effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, surfacePassive, wrapperCursor]);
+    }, [
+        effectiveOpacity,
+        layout,
+        isRoot,
+        layoutMode,
+        motionControlsOpacity,
+        placedEnteredOffsets.x,
+        placedEnteredOffsets.y,
+        styleOverrides,
+        surfacePassive,
+        wrapperCursor,
+    ]);
+
+    // The pose's own motion values, so entering a state can *move* the element instead of teleporting
+    // it: an author flipping between states is previewing the animation the player will see, and a
+    // plain style number would be written straight to the DOM. A blueprint animation owns the channel
+    // while it runs, so this stands aside for it.
+    const poseX = useMotionValue(displayableBaseTransform.offsetX + enteredOffsets.x);
+    const poseY = useMotionValue(displayableBaseTransform.offsetY + enteredOffsets.y);
+    const lastEnteredOffsetsRef = useRef(enteredOffsets);
+    const lastPoseStateKeyRef = useRef(enteredStateKey);
+    useEffect(() => {
+        const previous = lastEnteredOffsetsRef.current;
+        const previousStateKey = lastPoseStateKeyRef.current;
+        const enteredMoved = previous.x !== enteredOffsets.x || previous.y !== enteredOffsets.y;
+        lastEnteredOffsetsRef.current = enteredOffsets;
+        lastPoseStateKeyRef.current = enteredStateKey;
+        if (displayableMotion) {
+            return undefined;
+        }
+        const transition = enteredOffsetTransitionRef.current;
+        // Same rule as placement above: the trip is between states, never inside one.
+        const changedState = enteredStateKey === "" || previousStateKey !== enteredStateKey;
+        if (!enteredMoved || !changedState || !transition) {
+            poseX.set(basePose.x);
+            poseY.set(basePose.y);
+            return undefined;
+        }
+        const runX = animate(poseX, basePose.x, transition);
+        const runY = animate(poseY, basePose.y, transition);
+        return () => {
+            runX.stop();
+            runY.stop();
+        };
+    }, [basePose.x, basePose.y, displayableMotion, enteredOffsets, enteredStateKey, poseX, poseY]);
 
     // Once an element carries a pose (authored rotation, persistent offsets/scale, or any motion)
     // its transform must be owned by motion-managed style values: a raw `style.transform` string
@@ -520,17 +676,21 @@ export function EditorNodeWrapper({
         motionPoseLatchRef.current ||
         Boolean(displayableMotion) ||
         displayableBaseTransform !== DEFAULT_DISPLAYABLE_BASE_TRANSFORM ||
-        baseRotation !== 0;
+        baseRotation !== 0 ||
+        enteredOffsets.x !== 0 ||
+        enteredOffsets.y !== 0;
     motionPoseLatchRef.current = hasMotionPose;
     const motionStyle: MotionStyle = hasMotionPose
         ? {
               ...containerStyle,
-              x: basePose.x,
-              y: basePose.y,
+              left: leftValue,
+              top: topValue,
+              x: poseX,
+              y: poseY,
               scale: basePose.scale,
               rotate: basePose.rotate,
           }
-        : containerStyle;
+        : { ...containerStyle, left: leftValue, top: topValue };
 
     const motionAnimate = useMemo(() => {
         if (!displayableMotion) {
@@ -636,10 +796,11 @@ export function EditorNodeWrapper({
     }, [displayableMotion, isResetPhase, runtimeElementKey, widgetRuntimeStore]);
 
     return (
+        <EnteredStateProvider value={broadcastState}>
         <motion.div
             ref={containerRef}
             data-ui-element-id={interactive ? element.id : undefined}
-            className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""}`}
+            className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""} ${isEnteredHere ? "ui-editor-node-entered" : ""}`}
             style={motionStyle}
             initial={false}
             // Bind the controls unconditionally: the reset-to-base set() above must still reach
@@ -661,5 +822,6 @@ export function EditorNodeWrapper({
         >
             {children}
         </motion.div>
+        </EnteredStateProvider>
     );
 }

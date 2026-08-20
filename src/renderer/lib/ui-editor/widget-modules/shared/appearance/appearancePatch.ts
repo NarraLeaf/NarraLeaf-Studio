@@ -39,6 +39,25 @@ export function addVariant(model: AppearanceModel, variant: AppearanceVariant): 
     return next;
 }
 
+/**
+ * The variant with this id, cloned from the resting one when the element has never had one.
+ *
+ * Parts of a widget that declares states get their variants this way rather than when they are
+ * dropped in: an element reaches a widget through half a dozen paths - inserted, pasted, reparented,
+ * arriving inside a component - and only one of them is easy to hook. The first edit made in a state
+ * is the moment that state actually needs somewhere to go.
+ */
+export function ensureVariantExists(model: AppearanceModel, variantId: string, name: string): AppearanceModel {
+    if (model.variants.some(v => v.id === variantId)) {
+        return model;
+    }
+    const base = model.variants.find(v => v.id === model.defaultVariantId) ?? model.variants[0];
+    if (!base) {
+        return model;
+    }
+    return addVariant(model, { ...cloneVariant(base), id: variantId, name });
+}
+
 export function removeVariant(model: AppearanceModel, variantId: string): AppearanceModel {
     if (model.variants.length <= 1) {
         return model;

@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import type { StoryBlock } from "@shared/types/story";
+import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import { useCommandTranslation } from "@/lib/i18n";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { EasingCurveEditor } from "@/apps/workspace/components/ui/EasingCurveEditor";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { normalizeHex } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { cn } from "@/lib/utils/cn";
 import { localizedEnumValue } from "./commands/localizedEnums";
-import type { StoryCommandLineControl, StoryCommandLineEdit } from "./storyCommandLine";
+import type { StoryCommandLineControl, StoryCommandLineEdit, StoryCommandLineRef } from "./storyCommandLine";
+import { REF_TOKEN_ARMED_CLASS } from "./StoryLineRefToken";
+import { useStoryRefLink } from "./storyRefNavigation";
+import { isJumpModifierEvent } from "./useJumpModifier";
 
 /**
  * A value inside a committed command line, clickable.
@@ -28,15 +35,32 @@ const TOKEN_CLASS = "cursor-pointer rounded-md px-0.5 underline decoration-dotte
 
 export function StoryLineValueToken(props: {
     edit: StoryCommandLineEdit;
+    /**
+     * What this same word points at, when it points at anything.
+     *
+     * Most of the row's names are both: `/show Narra` opens a character picker on `Narra` AND says
+     * who Narra is. Two intentions on one token, so the gesture picks between them — modifier+click
+     * follows the reference, a plain click does what the token has always done. The reverse split
+     * (a second, adjacent control for the link) was never on the table: the word is one word.
+     */
+    target?: StoryCommandLineRef;
     /** The value as the line drew it — coloured spans, unit and all. */
     children: ReactNode;
     onApply: (payload: StoryBlock["payload"]) => void;
 }) {
     const { edit } = props;
     const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
+    const link = useStoryRefLink(props.target);
 
     const open = (event: ReactMouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
+        // Following the reference outranks editing the value, because the author had to hold a key to
+        // ask for it. A modifier press with nothing behind it falls through to the editor rather than
+        // doing nothing, which is the only reading that never loses a click.
+        if (link && isJumpModifierEvent(event)) {
+            link.open();
+            return;
+        }
         // A boolean flips in place — a popover for two states is friction, not affordance.
         if (edit.control.kind === "boolean") {
             props.onApply(edit.apply(edit.value === "true" ? "false" : "true"));
@@ -48,7 +72,14 @@ export function StoryLineValueToken(props: {
 
     return (
         <>
-            <button type="button" className={TOKEN_CLASS} onMouseDown={event => event.stopPropagation()} onClick={open}>
+            <button
+                type="button"
+                // The dotted quick-edit underline turns solid and takes the accent while the modifier
+                // is held, so a word that is both says which of the two a click is about to mean.
+                className={cn(TOKEN_CLASS, link?.armed && REF_TOKEN_ARMED_CLASS)}
+                onMouseDown={event => event.stopPropagation()}
+                onClick={open}
+            >
                 {props.children}
             </button>
             {anchor ? (
@@ -64,9 +95,14 @@ function ValuePopover(props: {
     onApply: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
 }) {
-    // Subscribed to, not called: the option words below resolve through the imperative
-    // `localizedEnumValue`, a snapshot with no way to tell React it went stale.
-    useCommandTranslation();
+    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
+    // moved to unless it is told (`useDismissWhenHidden`).
+    useDismissWhenHidden(props.onClose);
+    // Subscribed to, not called for the words below, which resolve through the imperative
+    // `localizedEnumValue` - a snapshot with no way to tell React it went stale. The one string this
+    // file names itself (the curve option) goes through the same translator, since it is offered
+    // beside those words rather than beneath them.
+    const { t: ct } = useCommandTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { edit } = props;
     const control = edit.control;
@@ -111,15 +147,32 @@ function ValuePopover(props: {
         >
             {control.kind === "number" ? <NumberControl control={control} value={edit.value} onCommit={apply} onPick={pick} /> : null}
             {control.kind === "enum" ? (
-                <div className="max-h-56 overflow-y-auto">
-                    {control.options.map(option => (
-                        <OptionRow
-                            key={option.value}
-                            label={localizedEnumValue({ kind: "enum", options: control.options }, option)}
-                            selected={option.value === edit.value}
-                            onClick={() => pick(option.value)}
-                        />
-                    ))}
+                <div className="grid gap-2">
+                    {/*
+                      * A slot that takes a drawn curve edits it here rather than sending the author to
+                      * the inspector for the one value the word list cannot say. `apply`, not `pick`:
+                      * the popover stays open through the drag, which is the gesture itself.
+                      */}
+                    {control.curve && isStoryBezierEasing(edit.value) ? (
+                        <EasingCurveEditor easing={edit.value} onChange={apply} />
+                    ) : null}
+                    <div className="max-h-56 overflow-y-auto">
+                        {control.options.map(option => (
+                            <OptionRow
+                                key={option.value}
+                                label={localizedEnumValue({ kind: "enum", options: control.options }, option)}
+                                selected={option.value === edit.value}
+                                onClick={() => pick(option.value)}
+                            />
+                        ))}
+                        {control.curve ? (
+                            <OptionRow
+                                label={ct("storyInspector.easing.custom")}
+                                selected={isStoryBezierEasing(edit.value)}
+                                onClick={() => apply(isStoryBezierEasing(edit.value) ? edit.value : STORY_DEFAULT_BEZIER_EASING)}
+                            />
+                        ) : null}
+                    </div>
                 </div>
             ) : null}
             {control.kind === "choice" ? (

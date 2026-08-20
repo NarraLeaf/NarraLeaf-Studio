@@ -13,7 +13,7 @@ import {
     fetchDictionaryIndex,
     resolveDictionaryRegistryUrl,
 } from "./dictionaryRegistryClient";
-import { extractWords } from "./tokenizer";
+import { containsSegmentedScript, extractWords, type SegmentationLexicon } from "./tokenizer";
 import { WordList } from "./wordList";
 
 /** How the manager reads the author's stored language choice. `App`'s global state, in production. */
@@ -48,6 +48,15 @@ type ProjectContext = {
     sourceLocale: string;
     /** Lower-cased, because that is the only form {@link SpellcheckManager.check} compares against. */
     words: Set<string>;
+    /**
+     * Length of the longest word in the set.
+     *
+     * Kept because the segmenter of a script without spaces has to reach at least this far to find
+     * one: a four-character name the author taught the project is only cut on if the segmenter
+     * looks four characters ahead, and a name it does not cut on stays marked however many times
+     * the author adds it.
+     */
+    maxWordLength: number;
 };
 
 /** How many languages stay parsed in memory at once. */
@@ -75,8 +84,16 @@ const MAX_RESIDENT_LANGUAGES = 3;
  * the list on load and after every edit, and {@link clear} takes it back when the project closes.
  *
  * **A language with no dictionary installed marks nothing.** That is the honest answer rather than
- * a failure: it is also the permanent answer for Chinese and Japanese, which have no spelling in
- * the word-list sense, and the settings row says so.
+ * a failure, and it is what the settings row states.
+ *
+ * **Chinese and Japanese are checked by segmentation.** Their dictionaries are word lists in the
+ * same format as every other, and the difference is where the word comes from: with no spaces to
+ * find one by, the vocabulary itself decides where a word ends, so {@link check} hands the tokenizer
+ * a lexicon and gets back both the words it cut and the runs it could not cut into any. What is
+ * caught is a run of characters that segments into no known word - a mistyped character, and the
+ * non-word left behind by it. What is not caught is a mistyped character that happens to spell
+ * another legitimate word, 的 for 地 among many others, which needs the surrounding sentence rather
+ * than a vocabulary.
  */
 export class SpellcheckManager {
     private readonly options: SpellcheckManagerOptions;
@@ -127,10 +144,14 @@ export class SpellcheckManager {
         owner: object,
         input: { sourceLocale: string; words: readonly string[] },
     ): Promise<SpellcheckStatus> {
-        this.projects.set(owner, {
-            sourceLocale: input.sourceLocale,
-            words: new Set(input.words.map(word => word.toLowerCase())),
-        });
+        const words = new Set(input.words.map(word => word.toLowerCase()));
+        let maxWordLength = 0;
+        for (const word of words) {
+            if (word.length > maxWordLength) {
+                maxWordLength = word.length;
+            }
+        }
+        this.projects.set(owner, { sourceLocale: input.sourceLocale, words, maxWordLength });
         this.status = await this.buildStatus(input.sourceLocale);
         return this.status;
     }
@@ -169,7 +190,7 @@ export class SpellcheckManager {
         }
         const project = this.projects.get(owner);
         const ranges: SpellcheckRange[] = [];
-        for (const candidate of extractWords(text)) {
+        for (const candidate of extractWords(text, this.lexiconFor(list, project))) {
             if (list.has(candidate.word)) {
                 continue;
             }
@@ -183,10 +204,18 @@ export class SpellcheckManager {
         return { ranges };
     }
 
-    /** Replacements for one word, nearest first. Never more than {@link SPELLCHECK_MAX_SUGGESTIONS}. */
+    /**
+     * Replacements for one word, nearest first. Never more than {@link SPELLCHECK_MAX_SUGGESTIONS}.
+     *
+     * Nothing is offered for Chinese or Japanese. What an author wants back for a mistyped Han
+     * character is the character that sounds like it or looks like it, and neither relation is in a
+     * word list - an edit distance over Han answers with entries that merely share a character,
+     * which reads as arbitrary rather than as a correction. An empty list is the honest answer and
+     * the popover already shows one.
+     */
     public async suggest(word: string, language: string): Promise<{ suggestions: string[] }> {
         const list = await this.wordListFor(language);
-        if (!list || !word) {
+        if (!list || !word || containsSegmentedScript(word)) {
             return { suggestions: [] };
         }
         return { suggestions: list.suggest(word, SPELLCHECK_MAX_SUGGESTIONS) };
@@ -251,6 +280,27 @@ export class SpellcheckManager {
 
     private registryUrl(): string {
         return resolveDictionaryRegistryUrl(this.options.readRegistryUrl?.());
+    }
+
+    /**
+     * The vocabulary the segmenter cuts on: the language's words and the project's own.
+     *
+     * The two are joined here rather than filtered one after the other, which is the difference
+     * between a taught name disappearing and a taught name being cut in half. In a script that
+     * separates its words the project's list is a filter - the checker finds `Brannoc`, then
+     * forgives it. In one that does not, the list is part of finding the word at all: with
+     * `艾莉丝` in it the segmenter cuts the name out whole, and without it the name is reported as
+     * whichever of its characters the language's own words failed to cover.
+     */
+    private lexiconFor(list: WordList, project: ProjectContext | undefined): SegmentationLexicon {
+        if (!project) {
+            return list;
+        }
+        const words = project.words;
+        return {
+            has: word => list.has(word) || words.has(word.toLowerCase()),
+            maxWordLength: Math.max(list.maxWordLength, project.maxWordLength),
+        };
     }
 
     private async buildStatus(sourceLocale: string): Promise<SpellcheckStatus> {

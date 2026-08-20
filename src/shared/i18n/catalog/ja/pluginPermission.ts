@@ -95,6 +95,7 @@ export const pluginPermission = {
             uiOverlay: "ゲームの上に重ねて描画する",
             assets: "パッケージ内アセットの URL を解決する",
             locale: "ゲームの言語を読み、それに合わせる",
+            storyCompile: "ストーリーのコンパイルに加わり、自分が書いていない行にも演出を足す",
         },
     },
     button: {

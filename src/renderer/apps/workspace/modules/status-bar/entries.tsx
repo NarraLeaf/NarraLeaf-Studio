@@ -17,6 +17,7 @@ import { openDashboardTab } from "../dashboard";
 import { NOTIFICATIONS_PANEL_ID } from "../notifications";
 import { StatusEntry } from "./StatusEntry";
 import { useActiveRunMode } from "./useActiveRunMode";
+import { useStudioTasks } from "./useStudioTasks";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
 import { openVersionRail } from "../../components/layout/versionRailController";
 import { versionFace } from "../../components/layout/versionRailModel";
@@ -65,6 +66,48 @@ export function RunStatusEntry() {
             <span className="font-medium">{t(active.labelKey)}</span>
             <span aria-hidden className="opacity-50">|</span>
             <span>{t(active.phaseKey)}</span>
+        </StatusEntry>
+    );
+}
+
+/**
+ * What Studio is doing on the author's behalf.
+ *
+ * It says WHAT, not how: the words name the thing being made - a weather effect - and never the
+ * encoder, the format or the file, because none of those are things the author asked for or should
+ * have to know about. A pause with no explanation reads as the app being slow; the same pause with a
+ * name reads as work.
+ *
+ * **It never washes the bar.** That colour means a run is going, and it is the only "something is
+ * running" signal the strip has. Work Studio does for itself is not a run, and borrowing the wash
+ * for it would make the one signal that does mean something ambiguous.
+ *
+ * Emphasis is reserved for work someone is actually waiting on. Studio also does some of this early,
+ * before anyone asks, and speculative work that shouted would be a strip that flickers while the
+ * author types.
+ */
+export function StudioTaskEntry() {
+    const { t } = useTranslation();
+    const overview = useStudioTasks();
+    const active = overview.active;
+
+    if (!active || (active.status !== "running" && active.status !== "queued")) {
+        return null;
+    }
+
+    const label = t(`workspace.shell.statusBar.task.${active.kind}` as TranslationKey);
+    // A percentage only where one was actually measured. A task that cannot count itself says its
+    // name and nothing else, which is the honest readout rather than a bar that moves on a guess.
+    const percent = active.progress && active.progress.total > 0
+        ? Math.min(100, Math.round((active.progress.done / active.progress.total) * 100))
+        : null;
+
+    return (
+        <StatusEntry emphasis={overview.blocking} tooltip={label}>
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>{label}</span>
+            {percent === null ? null : <span className="tabular-nums opacity-70">{percent}%</span>}
+            {overview.queued > 0 ? <span className="opacity-50">+{overview.queued}</span> : null}
         </StatusEntry>
     );
 }

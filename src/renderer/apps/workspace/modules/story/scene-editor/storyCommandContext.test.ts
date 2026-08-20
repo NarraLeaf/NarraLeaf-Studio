@@ -40,8 +40,8 @@ describe("buildStoryCommandContext - stage objects", () => {
         });
 
         // This is what makes `/show`, `/swap`, `/stop` a pick rather than a guess - image/text/layer
-        // via the shared displayable collector; video, audio and vfx are scanned off the scene, since
-        // none of the three is a Displayable and the shared collector does not know them.
+        // via the shared displayable collector; video, audio and vfx are scanned off the blocks,
+        // since none of the three is a Displayable and the shared collector does not know them.
         expect(context.stageObjects.image).toEqual(["hero"]);
         expect(context.stageObjects.text).toEqual(["title"]);
         expect(context.stageObjects.layer).toEqual(["fx"]);
@@ -50,9 +50,97 @@ describe("buildStoryCommandContext - stage objects", () => {
         expect(context.stageObjects.vfx).toEqual(["rain"]);
     });
 
+    it("offers an ambience overlay started in another scene", () => {
+        // A `Vfx` is held by the game, not by a scene: it keeps playing after the scene that
+        // started it ends, so the scene the author is standing in is the one that has to be able to
+        // stop it. Every other kind here stays scene-scoped, because every other kind does end.
+        const document = documentWith({ b1: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" } });
+        document.scenes["scene-2"] = {
+            id: "scene-2",
+            name: "Second",
+            runtimeName: "second",
+            rootBlockIds: ["c1"],
+            blocks: {
+                c1: {
+                    id: "c1", kind: "action", parentId: null, childrenIds: [],
+                    payload: { action: "vfx", operation: "create", objectName: "rain", assetId: "vid-9" },
+                },
+            },
+        };
+
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+        });
+
+        expect(context.stageObjects.vfx).toEqual(["rain"]);
+        // The scene-scoped kinds do not follow it across.
+        expect(context.stageObjects.image).toEqual(["hero"]);
+    });
+
     it("is empty, not undefined, when there is no scene", () => {
         const context = buildStoryCommandContext({ assets: undefined, characters: [], document: null, sceneId: null, scene: null });
         expect(context.stageObjects).toEqual({ image: [], text: [], layer: [], video: [], audio: [], vfx: [] });
+    });
+
+    it("names the row that declares each object, and only a row that declares one", () => {
+        const document = documentWith({
+            b1: { action: "image", operation: "show", objectName: "poster" },
+            b2: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" },
+            b3: { action: "video", operation: "create", objectName: "Clip", assetId: "vid-1" },
+            b4: { action: "audio", operation: "playSound", objectName: "music", assetId: "aud-1" },
+            b5: { action: "audio", operation: "setVolume", objectName: "ambience", volume: 0.5 },
+        });
+
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+        });
+
+        // `poster` and `ambience` are addressable - the engine materialises an object on first
+        // mention - but nothing declares them, so there is no row a reference could honestly bind to.
+        expect(context.stageObjectSources).toEqual({
+            image: { hero: "b2" },
+            text: {},
+            layer: {},
+            video: { clip: "b3" },
+            audio: { music: "b4" },
+            vfx: {},
+        });
+        expect(context.stageObjects.image).toEqual(["poster", "hero"]);
+    });
+
+    it("indexes characters by id, and carries the stage key their entrance derives", () => {
+        const document = documentWith({
+            b1: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice" },
+            // No stage name: the portrait is registered under the character id, and nothing but this
+            // table can say so - the cast name a line is matched on cannot be turned back into it.
+            b2: { action: "character", operation: "enter", characterId: "c2" },
+            // Not an entrance, so not a declaration: it addresses a portrait it did not create.
+            b3: { action: "character", operation: "expression", characterId: "c3", pose: "p1" },
+            b4: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice again" },
+        });
+
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+        });
+
+        // A separate table from `stageObjectSources`, keyed by an id the project owns rather than by
+        // a stage name - and first entrance wins, the same rule the stage-object scan follows.
+        expect(context.characterSources).toEqual({
+            c1: { blockId: "b1", name: "Alice" },
+            c2: { blockId: "b2", name: "c2" },
+        });
     });
 });
 

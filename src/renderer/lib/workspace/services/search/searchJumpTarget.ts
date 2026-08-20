@@ -18,6 +18,16 @@ export type SearchJumpTarget =
     | { kind: "character"; characterId: string }
     | { kind: "uiSurface"; surfaceId: string }
     | { kind: "asset"; assetId: string; assetType: string }
+    /**
+     * An asset set - a thing a reference can point at that is not a file.
+     *
+     * Its own variant rather than an `asset` with a flag: the two are opened by different means (a
+     * file has a preview editor, a set is a row in the assets panel with an inspector), and folding
+     * them together would make every consumer of this vocabulary ask "which sort is it" before it
+     * could act. A story row naming a set used to produce the `asset` variant, which resolved to
+     * nothing in the library and made the jump a click that did nothing at all.
+     */
+    | { kind: "assetSet"; assetSetId: string }
     | {
           kind: "blueprint";
           blueprintId: string;
@@ -27,4 +37,12 @@ export type SearchJumpTarget =
           focusFunctionId?: string;
           focusNodeId?: string;
       }
-    | { kind: "localizationKey"; keyName: string };
+    | { kind: "localizationKey"; keyName: string }
+    /**
+     * A project-level story variable — the panel that owns it, since no row declares one.
+     *
+     * Carries the identity even though the jump can only reveal the panel today, for the reason
+     * `localizationKey` carries its key: the target says what it points at, and the day the panel can
+     * be told which row to reveal, nothing that produces one of these has to change.
+     */
+    | { kind: "storyVariable"; scope: "saved" | "persistent"; variableId: string };

@@ -25,7 +25,7 @@ import type { RevisionId } from "@shared/types/vcs";
  */
 
 /** The operations main refuses while frozen, named as the author would name them. */
-export type WorkspaceFrozenOperation = "production build" | "preview";
+export type WorkspaceFrozenOperation = "production build" | "preview" | "patch export";
 
 /**
  * What a frozen workspace reported: why, and - when the why is a revision - which one.

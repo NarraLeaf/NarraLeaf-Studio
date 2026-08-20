@@ -10,6 +10,17 @@ export const settings = {
     persistFailed: "Failed to persist setting",
     resetToDefault: "Reset to default",
     customColor: "Custom color…",
+    // The download-source chooser (SettingValueType.Source): the sources Studio knows the address
+    // of, then the field for one it does not.
+    source: {
+        official: "Official source",
+        // The same empty stored value as `official`, worded for a build mirror: nothing is being
+        // chosen there, the download just goes to where the tool publishes.
+        noMirror: "No mirror",
+        chinaMirror: "Mirror in China",
+        // Placeholder of the last row, which is the field for an address Studio does not offer.
+        customPlaceholder: "Custom address",
+    },
     // The font chooser (SettingFontPicker): presets plus whatever is installed on this computer.
     fontPicker: {
         searchPlaceholder: "Search fonts…",
@@ -18,7 +29,7 @@ export const settings = {
         // Each row is set in its own face, so this is the specimen for a family whose NAME says
         // nothing about it — most CJK families are named in Latin.
         sample: "AaBb 字体",
-        noMatches: "No fonts match your search.",
+        noMatches: "No fonts match the search.",
         loading: "Reading the fonts installed on this computer…",
         unavailable: "This build cannot list installed fonts. The presets above still work.",
         denied: "Studio could not read the installed fonts. Bring this window to the front and reopen the list.",
@@ -41,7 +52,7 @@ export const settings = {
         },
         workspace: {
             label: "Workspace",
-            description: "Startup behavior, workspace history, and auto-save helpers.",
+            description: "Startup behavior, workspace history, and automatic saving.",
         },
         shortcuts: {
             label: "Shortcuts",
@@ -87,6 +98,15 @@ export const settings = {
                 light: "Light",
                 dark: "Dark",
             },
+        },
+        windowIcon: {
+            label: "Window icon",
+            description: "The icon on Studio's windows and taskbar buttons. Desktop and Start menu shortcuts keep the installed icon.",
+            options: {
+                default: "NarraLeaf",
+                narra: "Narra",
+            },
+            unsupportedPlatform: "Not available on this operating system.",
         },
         accentColor: {
             label: "Accent color",
@@ -178,10 +198,9 @@ export const settings = {
             description: "Marks misspellings in the story script. Translations are never checked.",
             /**
              * Shown in place of the description while no dictionary covers the project's own
-             * language. A statement of what is true, not an error - and for Chinese and Japanese a
-             * permanent one, since neither has spelling in the word-list sense.
+             * language. A statement of what is true, not an error.
              */
-            noDictionary: "No spelling dictionary is installed for this project's language, so nothing in the script is marked. The project dictionary still holds the project's own terms.",
+            noDictionary: "No spelling dictionary is installed for this project's language.",
             options: {
                 followProject: "Follow the project's language",
                 off: "Do not check spelling",
@@ -209,23 +228,23 @@ export const settings = {
         },
         electronMirror: {
             label: "Electron download mirror",
-            description: "Mirror for downloading Electron. Leave empty to use the official source.",
+            description: "Mirror for downloading Electron.",
         },
         electronBuilderBinariesMirror: {
             label: "Build tooling mirror",
             description:
-                "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers). Leave empty to use the official source.",
+                "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers).",
         },
         downloadRewrites: {
             label: "Download address rewrites",
         },
         pluginRegistryUrl: {
             label: "Plugin registry URL",
-            description: "Where the plugin store looks. Leave empty to use the official NarraLeaf registry.",
+            description: "Where the plugin store looks for its index.",
         },
         uiTemplateRegistryUrl: {
             label: "UI template registry URL",
-            description: "Where the template store looks. Leave empty to use the official NarraLeaf registry.",
+            description: "Where the template store looks for its index.",
         },
         checkpointInterval: {
             label: "Automatic checkpoint interval",
@@ -242,7 +261,7 @@ export const settings = {
             // Replaces the description above while the field is closed, so the row says why
             // rather than merely refusing to be typed in. Shown on both author fields.
             fromServer:
-                "Comes from the server this installation is signed in to. Sign out to record a name of your own again.",
+                "Comes from the server this installation is signed in to. Sign out to record a name entered here again.",
         },
         versionControlAuthorEmail: {
             label: "Author email",
@@ -250,11 +269,11 @@ export const settings = {
         },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
-            description: "Ask for confirmation when you close a workspace window.",
+            description: "Ask for confirmation when a workspace window is closed.",
         },
-        returnToLauncherOnClose: {
-            label: "Return to the home screen when closing a workspace",
-            description: "Turn this off to quit NarraLeaf Studio instead when no other window is open.",
+        reopenLastProject: {
+            label: "Reopen the last project on startup",
+            description: "Open the project the last session was in, instead of starting on the launcher.",
         },
         dashboardOnOpen: {
             label: "Show the project dashboard by default",
@@ -322,29 +341,23 @@ export const settings = {
      * a licence the author has been shown.
      */
     dictionaries: {
-        loading: "Reading the cache…",
+        loading: "Loading…",
         remove: "Remove",
         browse: "Browse dictionaries",
-        refresh: "Check again",
-        browsing: "Reading the list…",
+        refresh: "Refresh",
+        browsing: "Loading…",
         download: "Download",
         downloading: "Downloading…",
-        failed: "The dictionary list could not be read. Check the network policy in Settings, then try again.",
-        /**
-         * Stated outright, because an empty list reads as a download that has not happened yet.
-         * Neither language separates words, so there is nothing a word list could be checked
-         * against and no dictionary will ever appear for them.
-         */
-        noDictionaryLanguages: "Chinese and Japanese have no spelling dictionary, and will not get one: neither language separates words, so there is nothing for a word list to check. A project written in either is never marked.",
+        failed: "The dictionary list could not be retrieved. Check the network policy in Settings.",
         installed: {
-            title: "On this machine",
-            emptyTitle: "No dictionaries yet",
-            emptyDescription: "Nothing is marked in any project until one is downloaded.",
+            title: "Installed",
+            emptyTitle: "No dictionaries installed",
+            emptyDescription: "Download a dictionary to check spelling in the script.",
         },
         available: {
             title: "Available to download",
-            prompt: "The list of dictionaries lives online. Fetch it when you want it.",
-            none: "Everything on offer is already here.",
+            prompt: "The dictionary list has not been retrieved.",
+            none: "All available dictionaries are installed.",
         },
     },
     servers: {
@@ -374,17 +387,17 @@ export const settings = {
         // `problems`, which are refusals of a token by a server already reached.
         probe: {
             unreachable: "Nothing answered at that address.",
-            notAServer: "Something answered at that address, and it is not a NarraLeaf Team server.",
+            notAServer: "The server at that address is not a NarraLeaf Team server.",
             untrusted: "The server at that address was not trusted.",
             failed: "That address could not be checked.",
         },
         problems: {
             scheme: "A sign-in address has to start with https:// or ucs-auth://.",
-            token: "That is not a token this server would have issued.",
+            token: "That is not a token this server issued.",
             // Neither names a field any more: both addresses come from the server's own
             // answer, so there is nothing here for a reader to correct.
             address: "This token does not say where to sign in.",
-            server: "This token does not say which server it is for.",
+            server: "This token does not name a server.",
             certificate: "This machine does not trust the certificate presented at that address.",
             unreachable: "Nothing answered at that address.",
             refused: "The server refused this token. It may have expired or been revoked.",
@@ -414,15 +427,15 @@ export const settings = {
                 },
                 pluginIcons: {
                     label: "Plugin store thumbnails",
-                    description: "Downloaded again the next time you open the store.",
+                    description: "Downloaded again the next time the store is opened.",
                 },
                 uiTemplatePosters: {
                     label: "Template store posters",
-                    description: "Downloaded again the next time you open the store.",
+                    description: "Downloaded again the next time the store is opened.",
                 },
                 spellcheckDictionaries: {
                     label: "Spelling dictionaries",
-                    description: "Word lists downloaded for spellchecking. Your project's own terms are not here.",
+                    description: "Word lists downloaded for spellchecking. The project's own terms are not here.",
                 },
                 psdImports: {
                     label: "PSD import leftovers",
@@ -457,7 +470,7 @@ export const settings = {
         probeFailed: "The check could not be run.",
         rewrites: {
             hint: "Some downloads use an address that comes from a catalogue rather than from the settings above, such as a plugin's package file. A rule here replaces the beginning of those addresses.",
-            empty: "No rewrites. Downloads use the addresses they come with.",
+            empty: "No rewrites. Downloads use their original addresses.",
             add: "Add a rule",
             remove: "Remove this rule",
             enabled: "Use this rule",

@@ -39,6 +39,8 @@ export type DocumentKind =
     | "dictionary"
     /** What one save slot carries besides the engine's own record, at `editor/save-schema.json`. */
     | "save-schema"
+    /** The asset sets the project declares, at `editor/asset-sets.json`. */
+    | "asset-sets"
     | "localization"
     | "localization-keys"
     | "voice"

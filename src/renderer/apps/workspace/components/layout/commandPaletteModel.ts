@@ -4,7 +4,7 @@ import type { TranslationKey } from "@shared/i18n";
 import type { Workspace } from "@/lib/workspace/workspace";
 import type { FocusContext, Keybinding } from "@/lib/workspace/services/ui/types";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
-import { getKeybindingCatalogEntry } from "@/lib/workspace/services/ui/keybindingCatalog";
+import { getKeybindingCatalogEntry, resolveActionShortcut, resolveShortcut } from "@/lib/workspace/services/ui/keybindingCatalog";
 import type { ActionDefinition, ActionGroup, ActionMenuItem, PanelDefinition } from "../../registry/types";
 import {
     getActionGroupItems,
@@ -30,6 +30,16 @@ export interface CommandRegistration {
     categoryKey?: TranslationKey;
     /** Raw keybinding string for display only (e.g. "mod+shift+p"); formatted at render time. */
     keybinding?: string;
+    /**
+     * Catalog id whose chord this row displays, when it is not the command's own id.
+     *
+     * A command whose id IS a catalog id needs nothing here - the chord resolves from the catalog
+     * (and the user's rebind) automatically. This is for the case where several commands share one
+     * shortcut: Stop Dev Mode, Stop Preview and Stop Test all point at `run:stop`, because one
+     * chord stops whichever of them is running and the settings table should offer one row to
+     * rebind, not three that read as conflicting with each other.
+     */
+    keybindingId?: string;
     icon?: ReactNode;
     run: (workspace: Workspace) => void | Promise<void>;
     when?: (context: FocusContext) => boolean;
@@ -185,13 +195,22 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             const category = command.categoryKey
                 ? translate(command.categoryKey)
                 : command.category;
+            // The chord comes from the catalog whenever one names this command, so a command that
+            // has a shortcut shows it here rather than being listed twice - once as itself and once
+            // as the keybinding below. Overrides win, for the reason they win everywhere else: the
+            // palette must show the chord the author would actually press.
+            const effectiveBinding = resolveShortcut(
+                command.keybindingId ?? command.id,
+                keybindingOverrides,
+                command.keybinding,
+            );
             seenIds.add(command.id);
-            claimBinding(command.keybinding);
+            claimBinding(effectiveBinding);
             out.push({
                 id: command.id,
                 title,
                 category,
-                keybinding: command.keybinding,
+                keybinding: effectiveBinding,
                 icon: command.icon,
                 source: "registered",
                 run: () => command.run(workspace),
@@ -211,8 +230,14 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             return;
         }
         seenIds.add(action.id);
-        // Action shortcuts auto-register on the keybinding service as `action:<id>`.
-        const effectiveShortcut = keybindingOverrides[`action:${action.id}`] ?? action.shortcut;
+        // Action shortcuts auto-register on the keybinding service as `action:<id>`, so that is
+        // also the id an override and a catalog entry for one are keyed by. Reading the catalog
+        // here is what lets an action carry a *rebindable* default chord (Production Build's
+        // F10 is one) without declaring `shortcut`, which would register a second binding that
+        // no catalog entry governs.
+        const effectiveShortcut = action.shortcutId
+            ? resolveShortcut(action.shortcutId, keybindingOverrides, action.shortcut)
+            : resolveActionShortcut(action.id, keybindingOverrides, action.shortcut);
         claimBinding(effectiveShortcut);
         out.push({
             id: action.id,
@@ -274,10 +299,17 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             return;
         }
         seenIds.add(id);
+        // A panel-navigation command can carry a chord too (⇧⌘F reveals the search panel), and it
+        // is catalogued under this very id - so the same override → catalog resolution the other
+        // two sources use applies here, and claiming it keeps the binding from being listed again
+        // under its own name.
+        const panelBinding = keybindingOverrides[id] ?? getKeybindingCatalogEntry(id)?.key;
+        claimBinding(panelBinding);
         out.push({
             id,
             title,
             category: panelCategory,
+            keybinding: panelBinding,
             icon: panel.icon,
             source: "panel",
             run: () => {

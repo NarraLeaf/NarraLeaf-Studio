@@ -5,6 +5,8 @@
 
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_MEASURED_RECT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
@@ -22,6 +24,8 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_CENTER,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_MEASURED_RECT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
@@ -63,6 +67,7 @@ import {
 import {
     BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN,
     BLUEPRINT_VALUE_TYPE_ELEMENT,
+    BLUEPRINT_VALUE_TYPE_RECT,
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
     BLUEPRINT_VALUE_TYPE_VECTOR2D,
     blueprintElementValueType,
@@ -72,6 +77,7 @@ import {
     type BlueprintAnimationToken,
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
+import { UI_DISPLAYABLE_WIDGET_TYPES } from "@shared/types/ui-editor/displayableWidgets";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type {
     BlueprintTextProperties,
@@ -93,7 +99,7 @@ const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
 const TEXT_ELEMENT_TYPE = "nl.text";
 const EVENT_BUBBLE_STOPPED_LOCAL_KEY = "__eventBubbleStopped";
-const DISPLAYABLE_WIDGET_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button", "nl.slider", "nl.switch", "nl.list", "nl.frame"];
+const DISPLAYABLE_WIDGET_TYPES: readonly string[] = UI_DISPLAYABLE_WIDGET_TYPES;
 const APPEARANCE_VARIANT_WIDGET_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button"];
 const FONT_WEIGHT_VALUES = ["normal", "600", "bold"] as const;
 const TEXT_ALIGN_VALUES = ["left", "center", "right"] as const;
@@ -255,6 +261,7 @@ function displayableReadNode(input: {
     pins: BlueprintNodePinDef[];
     target: "self" | "element";
     hideInPalette?: boolean;
+    elementTypes?: readonly string[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
 }): BlueprintNodeDef {
     const elementTarget = input.target === "element";
@@ -266,12 +273,17 @@ function displayableReadNode(input: {
         graphKinds: [...READ_GRAPH_KINDS],
         hideInPalette: input.hideInPalette,
         isPure: true,
-        magicElementTarget: elementTarget ? { inputPinId: "element" } : undefined,
+        // The same list the executor checks. Left undeclared, the element picker offered every
+        // widget on the surface and the graph threw at run time for the ones Displayable does not
+        // cover - an editor that says yes and a runtime that says no about the same target.
+        magicElementTarget: elementTarget
+            ? { inputPinId: "element", elementTypes: input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES }
+            : undefined,
         pins: elementTarget ? [genericElementIn, ...input.pins] : input.pins,
         inspectorParams: input.inspectorParams,
         scope: elementTarget
             ? undefined
-            : { ownerKinds: ["widgetMain"], widgetElementTypes: DISPLAYABLE_WIDGET_TYPES },
+            : { ownerKinds: ["widgetMain"], widgetElementTypes: [...(input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES)] },
         execute: () => ({}),
     };
 }
@@ -325,7 +337,7 @@ function displayableWriteNode(input: {
         isPure: false,
         isLatent: true,
         magicElementTarget: elementTarget
-            ? { inputPinId: "element", elementTypes: input.elementTypes }
+            ? { inputPinId: "element", elementTypes: input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES }
             : undefined,
         pins: elementTarget ? [execIn, execNext, genericElementIn, ...(input.pins ?? [])] : [execIn, execNext, ...(input.pins ?? [])],
         inspectorParams: input.inspectorParams,
@@ -942,9 +954,23 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
         displayName: "Get Bounds",
         keywords: ["displayable", "bounds", "layout", "rect"],
-        pins: [out("bounds", "Bounds", "json")],
+        pins: [out("bounds", "Bounds", BLUEPRINT_VALUE_TYPE_RECT)],
         target: "self",
         hideInPalette: true,
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_MEASURED_RECT,
+        displayName: "Get Measured Rect",
+        keywords: ["displayable", "measured", "rect", "screen", "actual", "bounds", "layout"],
+        pins: [out("rect", "Rect", BLUEPRINT_VALUE_TYPE_RECT)],
+        target: "self",
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER,
+        displayName: "Get Center",
+        keywords: ["displayable", "center", "centre", "middle", "point", "measured"],
+        pins: [out("center", "Center", BLUEPRINT_VALUE_TYPE_VECTOR2D)],
+        target: "self",
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION,
@@ -1054,9 +1080,23 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
         displayName: "Get Element Bounds",
         keywords: ["element", "displayable", "bounds", "layout", "rect"],
-        pins: [out("bounds", "Bounds", "json")],
+        pins: [out("bounds", "Bounds", BLUEPRINT_VALUE_TYPE_RECT)],
         target: "element",
         hideInPalette: true,
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_MEASURED_RECT,
+        displayName: "Get Element Measured Rect",
+        keywords: ["element", "displayable", "measured", "rect", "screen", "actual", "bounds"],
+        pins: [out("rect", "Rect", BLUEPRINT_VALUE_TYPE_RECT)],
+        target: "element",
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_CENTER,
+        displayName: "Get Element Center",
+        keywords: ["element", "displayable", "center", "centre", "middle", "point", "measured"],
+        pins: [out("center", "Center", BLUEPRINT_VALUE_TYPE_VECTOR2D)],
+        target: "element",
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION,

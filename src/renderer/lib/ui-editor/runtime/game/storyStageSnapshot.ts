@@ -18,6 +18,7 @@ import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry
 import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
+import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
 import { translate } from "@/lib/i18n";
 import {
     getCharacterStageObjectName,
@@ -27,6 +28,7 @@ import {
     storyTransformRefFinalProps,
     type VisibilityTransformMode,
 } from "./storyTransformProps";
+import { resolveStoryCameraLook } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 
 /**
  * Studio-side stage-state computation: walk a scene's blocks in execution order up to (but not
@@ -62,7 +64,8 @@ export type StageSnapshotEffects = {
  * The stage camera's settled pose (`/camera` pan/zoom/rotate/darken), accumulated up to the target
  * row. `null` means the camera is at its neutral pose (nothing to pre-pose). Structurally a sibling
  * of {@link StageSnapshotDisplayable}: `props` are pre-posed like any displayable's transform, and
- * `effects.darkness` re-applies through the same channel `/camera darken` drives at runtime.
+ * `effects.darkness` / `effects.filter` re-apply through the same channel `/camera darken` and
+ * `/camera look` drive at runtime - one channel, so at most one of the two is ever set.
  *
  * Scope caveat: the camera is a story-level singleton whose pose persists across scenes, but this
  * snapshot is computed per scene, so only the launch scene's own `/camera` rows are reconstructed -
@@ -75,7 +78,10 @@ export type StageSnapshotCamera = {
      * state here, through the same `storyTransformRefFinalProps` a displayable's motion uses.
      */
     props: Record<string, unknown>;
-    /** Camera darkness (0-1), the only `/camera` effect; re-applied as `camera.darken(d, 0)`. */
+    /**
+     * The camera's residual grade: darkness (0-1) re-applied as `camera.darken(d, 0)`, or a `look`'s
+     * CSS filter re-applied as `camera.filter(f, {duration: 0})`. Never both - see above.
+     */
     effects: StageSnapshotEffects;
 };
 
@@ -475,7 +481,7 @@ class SnapshotWalker {
             case "blueprint":
                 this.diagnostic(block.id, translate("story.preview.diagnostics.storyActionSkipped"));
                 return;
-            // audio / wait / screenEffect / nvl: no settled visual state.
+            // audio / wait / nvl: no settled visual state.
             default:
                 return;
         }
@@ -501,7 +507,7 @@ class SnapshotWalker {
         record.autoFit = true;
         if (payload.operation === "exit") {
             record.visible = false;
-            record.props = mergeTransformProps(record.props, this.finalProps(payload.transform ?? { preset: "fadeOut", durationMs: 250 }, "hide", block.id));
+            record.props = mergeTransformProps(record.props, this.finalProps(payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, "hide", block.id));
             return;
         }
         if (payload.operation === "move") {
@@ -608,12 +614,17 @@ class SnapshotWalker {
     }
 
     /**
-     * Accumulate the stage camera's settled pose. Each op writes its own channel and the latest
-     * value wins (matching the runtime, where `/camera` transforms are absolute, not relative);
-     * `reset` returns the camera to neutral, which for a pre-pose means "nothing to apply".
+     * Accumulate the stage camera's settled pose - the same walk every displayable gets, because the
+     * camera states the same bag.
      *
-     * Values are clamped with the same idiom the compiler's `compileCameraAction` uses, because the
-     * pose is pre-posed directly onto the camera and never passes through that compile path.
+     * The latest value of a channel wins, matching the runtime where a camera transform is absolute
+     * and not relative; `reset` returns the camera to neutral, which for a pre-pose means "nothing to
+     * apply". A shot in animation mode settles like any other, through the same
+     * `storyTransformRefFinalProps` a displayable's does, so a launch placed after one opens on the
+     * frame the real playthrough would show.
+     *
+     * The zoom clamp mirrors the compiler's: the pose is pre-posed straight onto the camera and never
+     * passes through `compileCameraAction`.
      */
     private applyCamera(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "camera" }>): void {
         if (payload.operation === "reset") {
@@ -621,34 +632,17 @@ class SnapshotWalker {
             return;
         }
         const camera = this.camera ?? (this.camera = { props: {}, effects: {} });
-        switch (payload.operation) {
-            case "motion":
-                // A camera motion settles like any other transform, and this class already holds the
-                // animation assets - so the shot a `/camera motion` row leaves behind is reconstructed
-                // rather than dropped, and a row launch placed after it opens on the same frame the
-                // real playthrough would show.
-                camera.props = mergeTransformProps(camera.props, this.finalProps(payload.motion, "none", block.id));
-                return;
-            case "pan":
-                camera.props.position = getPresetPosition("custom", {
-                    xalign: payload.position?.xalign ?? 0.5,
-                    yalign: payload.position?.yalign ?? 0.5,
-                    ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
-                    ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
-                });
-                return;
-            case "zoom":
-                camera.props.zoom = Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1));
-                return;
-            case "rotate":
-                camera.props.rotation = finiteOr(payload.rotation, 0);
-                return;
-            case "darken":
-                camera.effects.darkness = Math.min(1, Math.max(0, finiteOr(payload.darkness, 0)));
-                return;
-            default:
-                return;
+        const props = this.finalProps(payload.transform, "none", block.id);
+        if (props.zoom !== undefined) {
+            props.zoom = Math.max(MIN_CAMERA_ZOOM, finiteOr(props.zoom as number, 1));
         }
+        camera.props = mergeTransformProps(camera.props, props);
+        // The appearance channels re-apply on the pre-posed camera rather than riding its props, for
+        // the reason every displayable's do: a grade is a `filter()` call and a mask needs a URL. This
+        // is also what makes the lens replay: `shutter` and `vignette` ARE settled camera state now,
+        // so a launch from a row after `shutter=1` has to open with the eyes shut. They ride `props`,
+        // which is exactly where the engine reads them from.
+        applyEffectProps(camera.effects, payload.transform);
     }
 
     private resolveLayerTargetProps(payload: Extract<StoryActionPayload, { action: "layer" }>): {
@@ -677,71 +671,60 @@ class SnapshotWalker {
             return;
         }
         const operation = payload.operation;
-        if (operation === "show" || operation === "hide" || operation === "transform") {
-            const visibility: VisibilityTransformMode = operation === "transform" ? "none" : operation;
-            const props = this.finalProps(payload.transform, visibility, block.id);
-            if (bucket.record) {
-                if (operation !== "transform") {
-                    bucket.record.visible = operation === "show";
-                }
-                bucket.record.props = mergeTransformProps(bucket.record.props, props);
-            } else if (bucket.background) {
-                this.backgroundProps = mergeTransformProps(this.backgroundProps, props);
-            } else if (bucket.builtinLayer) {
-                this.builtinLayerProps[bucket.builtinLayer] = mergeTransformProps(this.builtinLayerProps[bucket.builtinLayer], props);
+        // A raise is not a pose: it states no props and no visibility, only where the element sits in
+        // the creation order this snapshot hands out. `order` is what both consumers build elements
+        // from - the editor's scene preview and "play from this row" - so moving the key to the end
+        // here is the whole of what makes either of them show the stacking the row describes.
+        if (operation === "bringToFront") {
+            this.bringToFront(bucket.key);
+            return;
+        }
+        const visibility: VisibilityTransformMode = operation === "transform" ? "none" : operation;
+        const props = this.finalProps(payload.transform, visibility, block.id);
+        if (bucket.record) {
+            if (operation !== "transform") {
+                bucket.record.visible = operation === "show";
             }
-            return;
+            bucket.record.props = mergeTransformProps(bucket.record.props, props);
+        } else if (bucket.background) {
+            this.backgroundProps = mergeTransformProps(this.backgroundProps, props);
+        } else if (bucket.builtinLayer) {
+            this.builtinLayerProps[bucket.builtinLayer] = mergeTransformProps(this.builtinLayerProps[bucket.builtinLayer], props);
         }
+        // The appearance channels are re-applied on the pre-posed element rather than folded into its
+        // props, because the preview builds them a different way (a mask needs an asset URL, a clip a
+        // string the CSS engine reads directly). They used to arrive as twelve separate operations;
+        // since v18 they are prop entries in the same bag as the pose, so this reads them off it.
         const effects = bucket.record?.effects ?? (bucket.background ? this.backgroundEffects : null);
-        if (!effects) {
+        if (effects) {
+            applyEffectProps(effects, payload.transform);
+        }
+    }
+
+    /**
+     * Move one displayable to the end of the creation order - the top of its layer.
+     *
+     * The background and the two built-in layers are not in `order` at all (they are not elements this
+     * walk creates), so a raise addressed at one of them has no key and nothing to move. The command
+     * line cannot write that row - its target slot takes an image, a text or a character - so this is
+     * a payload the inspector or an import could produce, and doing nothing is the honest answer.
+     */
+    private bringToFront(key: string | undefined): void {
+        if (key === undefined) {
             return;
         }
-        switch (operation) {
-            case "mask":
-                if (payload.maskAssetId) {
-                    effects.mask = { assetId: payload.maskAssetId };
-                }
-                return;
-            case "clearMask":
-                effects.mask = "clear";
-                return;
-            case "clip":
-                if (payload.clipPath) {
-                    effects.clip = { clipPath: payload.clipPath };
-                }
-                return;
-            case "clearClip":
-                effects.clip = "clear";
-                return;
-            case "filter":
-                if (payload.filter) {
-                    effects.filter = { filter: payload.filter };
-                }
-                return;
-            case "clearFilter":
-                effects.filter = "clear";
-                return;
-            case "darken":
-                effects.darkness = Math.min(1, Math.max(0, payload.darkness ?? 0));
-                return;
-            case "circleReveal":
-                // Ends fully revealed.
-                effects.clip = "clear";
-                return;
-            case "circleClose":
-                effects.clip = { clipPath: "circle(0.0% at 50% 50%)" };
-                return;
-            case "wipe":
-                // A completed wipe leaves the element fully revealed.
-                effects.clip = "clear";
-                return;
-            default:
-                return;
+        const at = this.order.indexOf(key);
+        if (at === -1 || at === this.order.length - 1) {
+            return;
         }
+        this.order.splice(at, 1);
+        this.order.push(key);
     }
 
     private resolveDisplayableBucket(payload: Extract<StoryActionPayload, { action: "displayable" }>, blockId: string): {
         record?: StageSnapshotDisplayable;
+        /** The `order` entry behind `record`, so a raise can move it. Absent for the built-in buckets. */
+        key?: string;
         background?: boolean;
         builtinLayer?: "backgroundLayer" | "displayableLayer";
     } | null {
@@ -757,14 +740,15 @@ class SnapshotWalker {
         }
         const resolved = resolveDisplayableTargetRef(this.scene, target);
         const kind = resolved.kind === "character" || !resolved.kind ? "image" : resolved.kind;
-        const record = this.displayables.get(this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name));
+        const key = this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name);
+        const record = this.displayables.get(key);
         if (!record) {
             this.diagnostic(blockId, translate("story.preview.diagnostics.displayableNotFound", {
                 target: resolved.label || resolved.name || translate("story.preview.diagnostics.displayableUnnamed"),
             }));
             return null;
         }
-        return { record };
+        return { record, key };
     }
 
     private applySetVariable(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "setVariable" }>): void {
@@ -899,5 +883,52 @@ class SnapshotWalker {
 
     private diagnostic(blockId: string | undefined, message: string): void {
         this.diagnostics.push({ level: "warning", blockId, message });
+    }
+}
+
+/**
+ * Fold a transform's appearance props into the snapshot's residual-effect record.
+ *
+ * `null` is the clear - the neutral the engine's `clearMask` / `clearClip` / `clearFilter` put back -
+ * which is why each channel has a "clear" arm rather than simply being deleted: an element that was
+ * masked and then cleared is not an element that was never masked, and the preview has to re-run the
+ * clear over whatever the previous row left.
+ *
+ * A `clipReveal` settles the way it always did: a reveal and a wipe end fully shown, a close ends at
+ * radius zero.
+ */
+function applyEffectProps(effects: StageSnapshotEffects, transform: StoryTransformRef | undefined): void {
+    // Folded first, so a grade re-applies through the same `filter` channel a hand-written chain does
+    // - the preview has one CSS filter to give back, exactly as the stage has one.
+    const to = foldStoryTransformLook(transform?.to, resolveStoryCameraLook);
+    if (to) {
+        if (to.maskAssetId !== undefined) {
+            effects.mask = to.maskAssetId === null ? "clear" : { assetId: to.maskAssetId };
+        }
+        if (to.clipPath !== undefined) {
+            effects.clip = to.clipPath === null ? "clear" : { clipPath: to.clipPath };
+        }
+        if (to.filterRaw !== undefined) {
+            effects.filter = to.filterRaw === null ? "clear" : { filter: to.filterRaw };
+        } else if (to.filter === null) {
+            effects.filter = "clear";
+            effects.darkness = undefined;
+        } else if (to.filter !== undefined) {
+            // A lone `brightness` keeps its own slot, because that is the channel the preview re-applies
+            // a dim through - `Displayable.darken(d)` IS `filter("brightness(1 - d)")`, and the two must
+            // not both be set or the preview would compose what the engine replaces.
+            const keys = Object.keys(to.filter);
+            if (keys.length === 1 && keys[0] === "brightness") {
+                effects.darkness = Math.min(1, Math.max(0, 1 - (to.filter.brightness ?? 1)));
+                effects.filter = undefined;
+            } else {
+                effects.filter = { filter: composeStoryFilter(to.filter) };
+                effects.darkness = undefined;
+            }
+        }
+    }
+    const reveal = transform?.clipReveal;
+    if (reveal) {
+        effects.clip = reveal.kind === "circleClose" ? { clipPath: "circle(0.0% at 50% 50%)" } : "clear";
     }
 }

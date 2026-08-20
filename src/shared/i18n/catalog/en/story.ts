@@ -51,7 +51,7 @@ export const story = {
             roundtrip: "Round-trip",
             roundtripDetail: "Carries the scene's data, so the file can be imported back.",
             review: "Review",
-            reviewDetail: "Prose only, clean to read and to diff. Cannot be imported.",
+            reviewDetail: "Prose only. Cannot be imported.",
         },
         exported: "Exported to {path}",
         importTitle: "Import Script",
@@ -97,8 +97,92 @@ export const story = {
             shapeMismatchText: "A text line was rewritten as an action line; the text was kept and the edit dropped.",
             duplicateAnchor: "A line was copied; the copies were given new identities.",
             unknownRun: "A formatting marker names formatting this script does not carry.",
-            unplaceableLine: "A new line has nowhere to go here.",
+            unplaceableLine: "A new line cannot be placed here.",
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
+        },
+    },
+    // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
+    // script cannot say is reported rather than refused and the file is written either way. `reason`
+    // is keyed by the printer's own codes (see `narralangPrinter`), so a new code fails the parity
+    // test rather than reaching an author as a raw identifier.
+    narralang: {
+        exportScene: "Export as NarraLang…",
+        exportStory: "Export Story as NarraLang…",
+        sceneMissing: "This scene is no longer in the story.",
+        reportTitle: "Rows without a script form",
+        reportSummary: {
+            one: "{count} row has no script form. The file does not carry it in full.",
+            other: "{count} rows have no script form. The file does not carry them in full.",
+        },
+        unresolvedRefNamed: "This row points at {what} that no longer exists.",
+        detail: {
+            asset: "an asset",
+            character: "a character",
+            appearance: "an appearance",
+            motion: "a motion",
+            scene: "a scene",
+            variable: "a variable",
+            variant: "a build variant",
+            camera: "a camera position",
+            // Read back as well as printed: a script that names a stage object nothing created is a
+            // parse failure, and these are the two nouns that failure comes back with.
+            displayable: "something on stage",
+            layer: "a layer",
+        },
+        reason: {
+            blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
+            blueprintCondition: "A blueprint decides this condition.",
+            blueprintInterpolation: "A blueprint computes a value inside this text.",
+            inlineEvent: "The text carries an event that fires while it is being typed out.",
+            invalidRow: "This row's command could not be read, so it is written as it stands.",
+            customTransform: "This movement is set frame by frame, or carries properties the script does not name.",
+            customTransition: "This transition carries properties the script does not name.",
+            effectProps: "This effect carries properties the script does not name.",
+            unresolvedRef: "This row points at something that no longer exists.",
+            unknownPayload: "This row is of a kind the script does not cover.",
+        },
+        // Why a line of a script could not be read back into the scene. Keyed by the parser's own
+        // codes and fenced by `narralangIo.test.ts` the same way `reason` is, so a new code fails a
+        // test rather than reaching an author as a raw identifier. Separate from `reason` because
+        // they answer different questions - that one is "why can this row not be written down", this
+        // one is "why can this line not be read".
+        parse: {
+            unknownStatement: "This line starts with a keyword and does not read as that statement.",
+            unknownName: "This line names something the project does not have.",
+            unknownNameNamed: "This line names {what} the project does not have.",
+            ambiguousName: "Several things have this name, so it cannot be told which was meant.",
+            ambiguousNameNamed: "Several things have this name, so it cannot be told which {what} was meant.",
+            ambiguousStatement: "Several statements fit this line and cannot be told apart.",
+            badWord: "This statement does not accept this word here.",
+            missingValue: "This statement is missing a required value.",
+            conflictingValues: "This line sets the same thing twice, in two different ways.",
+            badIndent: "This line is indented by part of a level, or skips one.",
+            danglingBranch: "This branch has no condition above it.",
+            badTag: "This line carries a formatting tag that is unknown, or left open.",
+            badExpression: "This expression does not resolve.",
+        },
+        // The scene read and written as a script inside the editor. Editable for a scene the script
+        // can say in full; read-only for good for one it cannot - which is the whole job of `gate`:
+        // an author who is told "not yet" plans differently from one told "not ever".
+        view: {
+            open: "Read as a script",
+            close: "Back to rows",
+            readOnly: "This scene has rows with no script form, so it cannot be written here.",
+            gate: {
+                one: "{count} row has no script form, so this scene will not become editable here.",
+                other: "{count} rows have no script form, so this scene will not become editable here.",
+            },
+            // The one thing the marked lines cannot say for themselves: that nothing has been
+            // written. Stated, not instructed - the marks already say which lines and why.
+            unread: {
+                one: "{count} line cannot be read. The scene is unchanged.",
+                other: "{count} lines cannot be read. The scene is unchanged.",
+            },
+            // The header was read and not obeyed. A script cannot rename a scene: the name is what
+            // the outline and every jump address it by, and a rename arriving as a side effect of
+            // typing would have no undo the author could find. Saying nothing would be worse - they
+            // would believe it had worked.
+            renameElsewhere: "The scene name was not changed. Rename the scene in the outline.",
         },
     },
     // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and
@@ -207,7 +291,7 @@ export const story = {
             noDecisions: "No decisions",
             // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here but this is not an ending: it looped back to a visited scene, or an option has nothing written after it",
+            stopsHereTitle: "A path stops here without being an ending. It returned to a visited scene, or an option has nothing written after it",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
@@ -286,7 +370,7 @@ export const story = {
     },
     targetField: {
         label: "Target",
-        notOnStageTitle: "Not created earlier in this scene, pick an existing displayable",
+        notOnStageTitle: "Not created earlier in this scene. Pick an existing displayable",
         placeholder: "Select displayable…",
         search: "Search stage displayables",
         noMatch: "No match.",
@@ -300,7 +384,7 @@ export const story = {
     layerField: {
         label: "Layer",
         defaultName: "Displayable layer",
-        notOnStageTitle: "No layer with this name is declared earlier in this scene, pick an existing layer",
+        notOnStageTitle: "No layer with this name is declared earlier in this scene. Pick an existing layer",
         hint: "Layer",
         createNew: "Create new layer",
     },
@@ -411,9 +495,11 @@ export const story = {
         skin: "Skin",
         puppetParam: "Parameter",
         puppetParamValue: "Value",
+        ruleImage: "Rule image",
         imageAsset: "Image",
         imageOrColor: "Image or Color",
         videoAsset: "Video",
+        vfxSource: "Clip or weather",
         audioAsset: "Audio",
         objectName: "Name",
         content: "Content",
@@ -426,13 +512,16 @@ export const story = {
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
-        cameraOperation: "Pan / Zoom / Rotate / Darken / Motion / Reset",
-        cameraAmount: "Amount or Position",
+        cameraLookStrength: "Look Strength",
+
         // Modifiers
         duration: "Seconds",
         transition: "Transition",
         reveal: "Reveal",
         placement: "Position",
+        // Spelled as the two words rather than as a name for the slot, the way `cameraOperation` is:
+        // a two-value positional teaches itself faster than a label an author has to guess at.
+        mirrorState: "On / Off",
         waitFor: "Seconds or click",
         // Slots whose payload key already reads as its own name, so they carry no explicit `hint`
         // and fall back to it. Listed here so the coverage test can see them.
@@ -447,6 +536,46 @@ export const story = {
         opacity: "Opacity",
         size: "Font Size",
         z: "Z-Index",
+        // The prop vocabulary (`commands/transformVocabulary.ts`) — one key per channel of the bag.
+        zoom: "Zoom",
+        scale: "Scale",
+        scaleX: "Scale X",
+        scaleY: "Scale Y",
+        rotation: "Degrees",
+        // The filter sugar. Named after what the author is doing, not after the CSS function, which
+        // keeps its full name in the document where nothing is typing it.
+        filterBlur: "Blur px",
+        filterBrightness: "Brightness",
+        filterContrast: "Contrast",
+        filterGrayscale: "Grayscale",
+        filterSaturate: "Saturation",
+        filterSepia: "Sepia",
+        filterHue: "Hue Degrees",
+        filterInvert: "Invert",
+        filterCss: "CSS Filter",
+        cameraLook: "Look",
+        // The camera's lens. Named for what the player sees, not for the CSS: an author reaches for
+        // these while writing somebody closing their eyes.
+        cameraLens: "Lens Effect",
+        shutter: "Shutter",
+        shutterColor: "Shutter Color",
+        vignette: "Vignette",
+        vignetteColor: "Vignette Color",
+        vignetteInner: "Clear Center %",
+        vignetteOuter: "Dark Edge %",
+        maskImage: "Mask Image",
+        clipPath: "Clip Path",
+        backdropFilter: "Backdrop Filter",
+        blendMode: "Blend Mode",
+        storyMotion: "Story Motion",
+        // Timing.
+        easing: "Easing",
+        delay: "Delay Seconds",
+        repeat: "Repeat Times",
+        repeatDelay: "Repeat Gap",
+        fromProps: "Start Props",
+        // Direction, which is what `/show` and `/hide` each say instead of the old "transition".
+        conceal: "Conceal",
     },
 
     /**
@@ -460,8 +589,14 @@ export const story = {
      * that merely echoes a canonical value, so these entries change nothing on their own.
      */
     enumValue: {
+        // Weather seeds - reserved words in the `/vfx` source slot.
+        snow: "snow",
+        rain: "rain",
+        sakura: "sakura",
         // Transitions (`t=`), the unified word list from `commands/transitions.ts`.
         fade: "fade",
+        // The crossfade named outright, for the contexts where `fade` means something else.
+        dissolve: "dissolve",
         slide: "slide",
         "slide-left": "slide-left",
         "slide-right": "slide-right",
@@ -478,10 +613,16 @@ export const story = {
         dots: "dots",
         black: "black",
         darkness: "darkness",
+        exposure: "exposure",
+        rule: "rule",
         none: "none",
         // The transform presets `t=` reaches on a show/hide that the transition words did not name.
         scale: "scale",
         opacity: "opacity",
+        // Which way `/mirror` leaves a sprite facing. Absolute, never a change: a compiled transform
+        // cannot read the scale it would have to invert.
+        on: "on",
+        off: "off",
         // Placement (`at=`) and the camera's positional amount.
         left: "left",
         center: "center",
@@ -491,13 +632,57 @@ export const story = {
         zoom: "zoom",
         rotate: "rotate",
         darken: "darken",
+        look: "look",
         motion: "motion",
         reset: "reset",
+        // The grades `/camera look` names. Registered here as well as in the inspector because this
+        // namespace is what the command LINE prints and accepts: without them a row reads back in its
+        // canonical English id on every locale, which is what `darken` beside it does not do.
+        memory: "memory",
+        monologue: "monologue",
+        mono: "mono",
+        moonlight: "moonlight",
+        faint: "faint",
+        hangover: "hangover",
         // Variable types.
         boolean: "boolean",
         number: "number",
         string: "string",
         json: "json",
+        // CSS `mix-blend-mode`, spelled as CSS spells it: a blend mode is a property of the
+        // MATERIAL an author prepared elsewhere, so the word here has to be the word in that tool.
+        normal: "normal",
+        multiply: "multiply",
+        screen: "screen",
+        overlay: "overlay",
+        lighten: "lighten",
+        "color-dodge": "color-dodge",
+        "color-burn": "color-burn",
+        "hard-light": "hard-light",
+        "soft-light": "soft-light",
+        difference: "difference",
+        exclusion: "exclusion",
+        hue: "hue",
+        saturation: "saturation",
+        color: "color",
+        luminosity: "luminosity",
+        // Easing curves (`ease=`), the same eleven the property inspector offers.
+        linear: "linear",
+        easeIn: "easeIn",
+        easeOut: "easeOut",
+        easeInOut: "easeInOut",
+        circIn: "circIn",
+        circOut: "circOut",
+        circInOut: "circInOut",
+        backIn: "backIn",
+        backOut: "backOut",
+        backInOut: "backInOut",
+        anticipate: "anticipate",
+        // The camera lens gestures `lens=` names. Registered here for the reason the grades are:
+        // this namespace is what the command LINE prints and accepts.
+        blink: "blink",
+        slowBlink: "slowBlink",
+        vignettePulse: "vignettePulse",
     },
 
     /**
@@ -596,10 +781,10 @@ export const story = {
             characterOrName: "Character, or any name",
             characterForm: "One of that character's expressions",
             puppet: {
-                motion: "A motion its runtime knows (blank rests it)",
-                expression: "An expression its runtime knows (blank clears it)",
-                skin: "A skin its runtime knows (blank restores the default)",
-                param: "A numeric parameter of its model, by id",
+                motion: "A motion provided by the runtime (blank returns it to rest)",
+                expression: "An expression provided by the runtime (blank clears it)",
+                skin: "A skin provided by the runtime (blank restores the default)",
+                param: "A numeric parameter of the model, by id",
             },
             scene: "Scene",
             audioTrack: "Audio track",
@@ -672,7 +857,7 @@ export const story = {
         noCandidates: "No matches.",
         setBackground: "Set background",
         transform: "Transform",
-        invalidHint: "won't build",
+        invalidHint: "will not build",
         // On a cut point row, beside the line that names the variant it ends. The short half is what
         // the row shows; the title is the whole sentence.
         cutPoint: "not in other builds",
@@ -839,12 +1024,11 @@ export const story = {
      */
     command: {
         background: { label: "Background", detail: "Set the scene background image or color" },
-        jump: { label: "Jump", detail: "Go to another scene, unloading this one. Unlike /goto" },
+        jump: { label: "Jump", detail: "Go to another scene, unloading this one" },
         wait: { label: "Wait", detail: "Pause for seconds, or for a click" },
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },
         hide: { label: "Hide", detail: "Hide a character or a stage object" },
-        move: { label: "Move", detail: "Move a character to a position" },
         face: { label: "Face", detail: "Change a character's expression" },
         motion: { label: "Motion", detail: "Set the motion a runtime-drawn character plays" },
         param: { label: "Parameter", detail: "Set one numeric parameter of a runtime-drawn character's model" },
@@ -858,6 +1042,7 @@ export const story = {
         layer: { label: "Layer", detail: "Create a render layer" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video" },
+        front: { label: "Bring to Front", detail: "Draw a character or a stage object in front of the rest of its layer" },
         font: { label: "Font", detail: "Change a text's size or color" },
         bgm: { label: "BGM", detail: "Set the background music" },
         sound: { label: "Sound", detail: "Play a sound effect" },
@@ -873,10 +1058,10 @@ export const story = {
         inc: { label: "Increase", detail: "Add to a number variable" },
         dec: { label: "Decrease", detail: "Subtract from a number variable" },
         toggle: { label: "Toggle", detail: "Flip a true/false variable" },
-        reset: { label: "Reset", detail: "Restore a variable to its default" },
+        reset: { label: "Reset", detail: "Put something back the way it was: a variable to its default, or a stage object to its neutral look" },
         declareLocal: { label: "Local variable", detail: "Declare a scene variable" },
         if: { label: "If", detail: "Branch on a condition" },
-        menu: { label: "Menu", detail: "Let the player choose" },
+        menu: { label: "Menu", detail: "Present a set of options to the player" },
         repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times. For a condition instead, use /until" },
         // The detail carries the one thing the token cannot: `until` says when to STOP, so the group
         // runs while the condition is false. Named as a stop condition because that is what it is.
@@ -894,13 +1079,15 @@ export const story = {
         // line belongs to one build and to no other.
         cut: { label: "Cut point", detail: "End one build variant's story at this line. Other builds do not have this line" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
-        blink: { label: "Blink", detail: "Screen blink effect" },
-        vignette: { label: "Vignette", detail: "Screen vignette effect" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
-        camera: { label: "Camera", detail: "Pan, zoom, rotate or darken the stage camera. Kept across scenes" },
-        fx: { label: "Effect", detail: "Apply an effect to an object" },
-        transform: { label: "Transform", detail: "Move, scale or rotate an object" },
+        // The one writing verb: every channel of the prop bag, on every subject, including the
+        // camera (which is a reserved target name, not a command of its own).
+        transform: { label: "Transform", detail: "Move, scale, rotate, mask, filter or fade anything on stage \u2014 or the camera" },
+        // The detail says "mirror", not "flip", because the word the command is named after is the
+        // one thing it cannot explain: an author who is unsure what /flip does needs the other word.
+        // The token is `mirror` because `flip` is a live alias of `/toggle`; the label follows the
+        // token, since the word an author types and the word they read have to be the same one.
         note: { label: "Note", detail: "A Studio-only note" },
     },
     containerHeader: {
@@ -937,6 +1124,7 @@ export const story = {
         vfx: "Ambience",
         nvl: "NVL",
         blueprint: "Blueprint",
+        plugin: "Plugin",
         effect: "Effect",
         camera: "Camera",
         control: "Control",
@@ -993,12 +1181,16 @@ export const story = {
         vfx: "{operation} ambience {name}",
         nvl: "NVL block",
         blueprint: "Blueprint",
-        effect: "{effect} screen effect",
+        // A plugin marker row whose plugin is not loaded, so there is no registration to read a
+        // label out of. Deliberately generic: the only other thing the row holds is the plugin id,
+        // and an id is not a name.
+        pluginAction: "Plugin action",
+        // Four readings of one row, not one per channel: the channels the bag states are printed
+        // on the line beside this, and a grade or a shot names the BINDING because that is the
+        // content of the row.
         cameraOp: {
-            pan: "Pan",
-            zoom: "Zoom",
-            rotate: "Rotate",
-            darken: "Darken stage",
+            transform: "Camera",
+            look: "Grade",
             motion: "Motion",
             reset: "Reset camera",
         },

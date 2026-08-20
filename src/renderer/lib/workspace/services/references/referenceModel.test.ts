@@ -5,6 +5,7 @@ import {
     extractCharacterAssetReferences,
     extractStoryAnimationAssetReferences,
     extractStoryAssetReferences,
+    scanStoryAssetReferences,
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
     isLibraryAssetId,
@@ -75,6 +76,49 @@ describe("isLibraryAssetId", () => {
     });
 });
 
+describe("scanStoryAssetReferences: rows naming an asset set", () => {
+    const document = storyDoc({
+        b1: actionBlock("b1", { action: "setBackground", assetId: "set-1" }),
+        b2: actionBlock("b2", { action: "image", operation: "create", objectName: "cg", assetId: "img-1" }),
+    });
+    const expand = (assetId: string) => (assetId === "set-1" ? ["img-en", "img-ja"] : null);
+
+    it("indexes the members, so the set id is not a dangling reference", () => {
+        const byAsset = buildReferenceIndex(scanStoryAssetReferences(document, "Main Story", expand).references);
+        expect([...byAsset.keys()].sort()).toEqual(["img-1", "img-en", "img-ja"]);
+    });
+
+    it("reports the row against the set's own id as well", () => {
+        const { setReferences } = scanStoryAssetReferences(document, "Main Story", expand);
+        expect(setReferences.map(reference => [reference.assetId, reference.field]))
+            .toEqual([["set-1", "background.assetId"]]);
+        expect(setReferences[0].target).toMatchObject({ kind: "storyBlock", blockId: "b1", sceneId: "scene-1" });
+    });
+
+    it("reports a set that resolves to nothing, which is the one whose removal strands a row", () => {
+        const empty = (assetId: string) => (assetId === "set-1" ? [] : null);
+        const scan = scanStoryAssetReferences(document, "Main Story", empty);
+        expect(scan.setReferences.map(reference => reference.assetId)).toEqual(["set-1"]);
+        // Nothing in the index: the row uses no file, and claiming it uses `set-1` would report a
+        // library row that has never existed as missing.
+        expect([...buildReferenceIndex(scan.references).keys()]).toEqual(["img-1"]);
+    });
+
+    it("says nothing about sets when the project has none", () => {
+        expect(scanStoryAssetReferences(document, "Main Story").setReferences).toEqual([]);
+    });
+
+    it("reads a scene's own background the same way, since assembly resolves that field too", () => {
+        const sceneDocument = storyDoc({}, "set-1");
+        const scan = scanStoryAssetReferences(sceneDocument, "Main Story", expand);
+
+        expect([...buildReferenceIndex(scan.references).keys()].sort()).toEqual(["img-en", "img-ja"]);
+        expect(scan.setReferences.map(reference => [reference.assetId, reference.field]))
+            .toEqual([["set-1", "scene.defaultBackgroundAssetId"]]);
+        expect(scan.setReferences[0].target).toMatchObject({ kind: "storyScene", sceneId: "scene-1" });
+    });
+});
+
 describe("extractStoryAssetReferences", () => {
     it("covers image and video blocks, which the asset-lock walker misses", () => {
         const document = storyDoc({
@@ -93,7 +137,7 @@ describe("extractStoryAssetReferences", () => {
                 b1: actionBlock("b1", { action: "setBackground", assetId: "bg-1" }),
                 b2: actionBlock("b2", { action: "character", operation: "enter", assetId: "char-1" }),
                 b3: actionBlock("b3", { action: "audio", operation: "setBgm", assetId: "bgm-1" }),
-                b4: actionBlock("b4", { action: "displayable", operation: "mask", target: {}, maskAssetId: "mask-1" }),
+                b4: actionBlock("b4", { action: "displayable", operation: "transform", target: {}, transform: { to: { maskAssetId: "mask-1" } } }),
                 b5: {
                     id: "b5",
                     kind: "nodeAction",

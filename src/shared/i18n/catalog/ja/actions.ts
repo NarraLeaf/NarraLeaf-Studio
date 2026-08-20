@@ -18,6 +18,8 @@ export const actions = {
         switchMode: "実行モードを切り替え",
         menu: "実行とビルド",
         productionBuild: "製品ビルド…",
+        // 「製品ビルド」の隣。どちらも何かを起動するのではなくファイルを作る、同じ種類のもの。
+        exportPatch: "パッチを書き出す…",
         runAs: "実行するバリアント",
     },
     file: {
@@ -34,8 +36,13 @@ export const actions = {
             label: "プロジェクトを書き出す",
             tooltip: "現在のプロジェクトをパッケージとして書き出す",
         },
+        returnToLauncher: {
+            label: "ランチャーに戻る",
+            tooltip: "このプロジェクトを離れてランチャーに戻る",
+        },
         close: {
-            tooltip: "現在のワークスペースを閉じる",
+            label: "ウインドウを閉じる",
+            tooltip: "このウインドウを閉じる",
         },
     },
     help: {

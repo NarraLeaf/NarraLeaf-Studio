@@ -60,6 +60,26 @@ export function isAutoSaveId(id: string): boolean {
 }
 
 /**
+ * The reserved id the run is parked in while the game restarts for a language change.
+ *
+ * Its own id rather than a ring slot: the ring rotates, and the one save whose loss would mean
+ * losing the playthrough the player was in the middle of must not be the one an autosave tick
+ * overwrites between the write and the boot that reads it. See `localeRestart.ts`.
+ */
+export const LOCALE_RESTART_SAVE_ID = "@locale.restart";
+
+/**
+ * Whether a save id is Studio's bookkeeping rather than a slot the player chose.
+ *
+ * Asked wherever a listing is offered to a player: an author's save screen draws what this refuses,
+ * and nothing else. One predicate rather than a growing chain of comparisons at each call site,
+ * because a reserved id nobody remembered to filter shows up as a mystery slot in a shipped game.
+ */
+export function isReservedSaveId(id: string): boolean {
+    return isAutoSaveId(id) || id === LOCALE_RESTART_SAVE_ID;
+}
+
+/**
  * Slot index encoded in a reserved id, or null when the id is not a well-formed
  * ring member. Ids left behind by a larger ring (the author lowered `slots`)
  * parse fine; the caller decides whether they are still in range.
@@ -134,6 +154,25 @@ export type SaveRecordTimes = {
     savedAt: number;
     /** When this slot was first written, epoch milliseconds; 0 when the record carries no stamp. */
     createdAt: number;
+};
+
+/**
+ * How long the playthrough behind one save slot has been played, as `Get Save Playtime` publishes
+ * it.
+ *
+ * Its own reader rather than a field on {@link SaveRecordTimes}, matching how `Get Save Line` is
+ * also its own: one node answers one question about a slot, and a reading of "how long" does not
+ * belong under a type that means "when".
+ *
+ * `null` from a reader means no such slot. `recorded: false` means a real slot written before
+ * playtime was tracked - the distinction matters, because a screen that showed those as `0:00`
+ * would be claiming the player never played rather than that nobody was counting.
+ */
+export type SaveRecordPlaytime = {
+    /** Seconds of play behind the slot; 0 when nothing was recorded. */
+    seconds: number;
+    /** False when the slot carries no reading at all. */
+    recorded: boolean;
 };
 
 /**

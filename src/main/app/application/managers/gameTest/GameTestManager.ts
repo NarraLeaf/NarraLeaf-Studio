@@ -28,6 +28,7 @@ import {
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { currentDownloadRewrites } from "../downloadRewrites";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 /**
  * Game processes owned by a *test run*, not by the author's Run button.
@@ -329,6 +330,28 @@ export class GameTestManager {
         session.compileWorker?.kill();
         session.compileWorker = null;
         return this.enqueue(key, () => this.teardown(session));
+    }
+
+    /**
+     * Stop whatever this project has running, without having to know the session's id.
+     *
+     * The id is what a *test* stops by, and rightly: it is stopping the run it started, and must not
+     * end a later one that replaced it. Nothing else has an id to offer - the project's window
+     * closing is a fact about the project, not about a run - so this looks the session up and stops
+     * it by the same path.
+     */
+    public stopProject(projectPath: string): Promise<void> {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        if (!session) {
+            return Promise.resolve();
+        }
+        return this.stop(session.projectPath, session.id);
+    }
+
+    /** Stop every test's game process, whichever project it belongs to. See PreviewManager.stopAll. */
+    public async stopAll(): Promise<void> {
+        const sessions = [...this.sessions.values()];
+        await Promise.allSettled(sessions.map(session => this.stop(session.projectPath, session.id)));
     }
 
     private async launchNow(session: GameTestSession, request: GameTestLaunchRequest): Promise<void> {
@@ -754,8 +777,14 @@ export class GameTestManager {
     }
 
     /** The same key `workspaceFreeze` and the other per-project managers use. They have to agree. */
+    /**
+     * The key a project's session is filed under.
+     *
+     * `normalizeProjectPath` rather than `path.resolve` alone, so this agrees with the window layer
+     * about what "the same project" is - on Windows that is a case fold as well as a separator one.
+     */
     private projectKey(projectPath: string): string {
-        return path.resolve(projectPath);
+        return normalizeProjectPath(path.resolve(projectPath));
     }
 }
 

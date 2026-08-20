@@ -4,7 +4,7 @@ export const uiEditor = {
     surfaceKind: {
         page: "ページ",
         gameUi: "ゲーム UI",
-        pageDescription: "ページはタイトル、設定、セーブ、履歴、ギャラリーのような 1 画面まるごとのもの",
+        pageDescription: "ページはタイトル、設定、セーブ、履歴、ギャラリーのような 1 画面全体を占めるもの",
         gameUiDescription: "ゲーム UI はプレイ中に働くもの。ダイアログ、選択肢、HUD、ショートカット、通知など",
     },
     // ゲーム UI が取れる 5 つの舞台スロット。作成ダイアログ、サーフェス一覧、プロパティパネル、
@@ -124,6 +124,7 @@ export const uiEditor = {
         addToComponentLibrary: "コンポーネントライブラリに追加",
         addToGroup: "グループに追加",
         ungroup: "グループを解除",
+        addState: "状態を追加",
         arrange: {
             label: "重なり",
             bringToFront: "最前面へ",
@@ -186,7 +187,7 @@ export const uiEditor = {
             other: "{count} 画面",
         },
         assetsSkipped: {
-            other: "リソース {count} 件を読み込めなかった",
+            other: "アセット {count} 件を読み込めなかった",
         },
         componentsAdded: {
             other: "コンポーネント {count} 個をライブラリに追加した",

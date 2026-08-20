@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import type { DevModeSaveRecord } from "@shared/types/devModeSave";
+import { devModeSaveHeaderOf, type DevModeSaveHeader, type DevModeSaveRecord } from "@shared/types/devModeSave";
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import {
     buildRuntimeSaveRecord,
     normalizeRuntimeJsonValue,
@@ -44,7 +45,14 @@ export class RuntimeSaveStore {
 
     constructor(private readonly userDataDir: string) {}
 
-    public write(id: string, savedGame: unknown, capture?: string, metadata?: unknown): Promise<void> {
+    public write(
+        id: string,
+        savedGame: unknown,
+        capture?: string,
+        metadata?: unknown,
+        compatibility?: SaveCompatibilityStamp,
+        playtimeSeconds?: number,
+    ): Promise<void> {
         return this.track((async () => {
             const normalizedId = normalizeRuntimeSaveId(id);
             const previous = await this.loadRecord(normalizedId);
@@ -53,6 +61,8 @@ export class RuntimeSaveStore {
                 savedGame,
                 capture,
                 metadata,
+                compatibility,
+                playtimeSeconds,
                 previous,
                 now: new Date().toISOString(),
             });
@@ -110,6 +120,22 @@ export class RuntimeSaveStore {
             }
         }
         return [...ids];
+    }
+
+    /**
+     * Every slot's header. Built on {@link listIds} rather than beside it: the records it walks are
+     * already in memory afterwards, so this costs one map over what that call loaded.
+     */
+    public async listHeaders(): Promise<DevModeSaveHeader[]> {
+        const ids = await this.listIds();
+        const headers: DevModeSaveHeader[] = [];
+        for (const id of ids) {
+            const record = await this.loadRecord(id);
+            if (record) {
+                headers.push(devModeSaveHeaderOf(record));
+            }
+        }
+        return headers;
     }
 
     public async readPreview(id: string): Promise<string | null> {
@@ -346,6 +372,50 @@ export class RuntimePersistenceStore {
     private storePath(): string {
         return path.join(this.userDataDir, "persistence.json");
     }
+}
+
+/**
+ * Delete temp files abandoned by a process that did not live long enough to rename one.
+ *
+ * {@link atomicWriteJson} writes a sibling and renames it, so a write interrupted between those two
+ * steps leaves the sibling behind for good - nothing ever looks at it again, and nothing removes it.
+ * It used to take a crash to produce one. It no longer does: a language change now writes and then
+ * ends the process on purpose (see the renderer's `localeRestart`), and a late write from the
+ * window that is going away is caught mid-rename, so a player who changes language twice has two.
+ *
+ * Age is the test, and it has to be, because a second copy of the same game may be running right
+ * now and writing one of these. Its own temp file is milliseconds old; anything older than
+ * {@link ABANDONED_TEMP_FILE_AGE_MS} belongs to a process that is not coming back. Failures are
+ * swallowed by design - this is housekeeping, and a game that would not start because it could not
+ * tidy up would be a worse outcome than the litter.
+ */
+export const ABANDONED_TEMP_FILE_AGE_MS = 5 * 60_000;
+
+export async function sweepAbandonedTempFiles(
+    directory: string,
+    now: number = Date.now(),
+): Promise<string[]> {
+    let entries: string[];
+    try {
+        entries = await fs.readdir(directory);
+    } catch {
+        return [];
+    }
+    const removed: string[] = [];
+    await Promise.all(entries.filter(name => name.endsWith(".tmp")).map(async name => {
+        const full = path.join(directory, name);
+        try {
+            const stats = await fs.stat(full);
+            if (now - stats.mtimeMs < ABANDONED_TEMP_FILE_AGE_MS) {
+                return;
+            }
+            await fs.unlink(full);
+            removed.push(name);
+        } catch {
+            // Gone already, or held by something with an opinion about it. Either way, not ours.
+        }
+    }));
+    return removed;
 }
 
 /**

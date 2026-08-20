@@ -13,6 +13,8 @@ import { parsePluginStoreOwner } from "@shared/utils/pluginStorage";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectDependencyService, Services, WorkspaceContext } from "../services";
+import { StoryService } from "../story/StoryService";
+import type { StoryDocument } from "@shared/types/story";
 import { ProjectService } from "./ProjectService";
 import { FileSystemService } from "./FileSystem";
 import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogService";
@@ -149,8 +151,7 @@ export class ProjectDependencyService
         this.collectBlueprintNodeUsage(usage, authoritative);
         this.collectWidgetUsage(usage, authoritative);
         await this.collectStorageUsage(usage);
-        // Story-action usage is added once plugin story actions become a real,
-        // referenceable extension point (registration + story-doc reference model).
+        await this.collectStoryActionUsage(usage, authoritative);
 
         return buildDependencyTable({
             usage,
@@ -230,6 +231,54 @@ export class ProjectDependencyService
         collect(document.elements);
         for (const component of document.components ?? []) {
             collect(component.elements);
+        }
+    }
+
+    /**
+     * Hard dependencies from `{action:"plugin"}` marker rows.
+     *
+     * Hard, unlike storage, and the row itself says why: a marker's whole meaning is what its owner's
+     * compile pass does with it, so a project that authored one plays differently without the plugin
+     * rather than merely losing some editor convenience. The row carries `pluginId` directly, so this
+     * attributes from the document and not from what happens to be installed right now - a project
+     * whose plugin was uninstalled still reports the dependency, which is the case the table exists
+     * for.
+     *
+     * Every story is loaded, not just the open ones: an unopened story's rows are dependencies too. A
+     * story that fails to load is skipped rather than fatal - a dependency scan that refuses to
+     * finish would block the build over a document the build is about to refuse anyway, with a worse
+     * message.
+     */
+    private async collectStoryActionUsage(usage: DependencyUsageRecord[], authoritative: Set<string>): Promise<void> {
+        let story: StoryService;
+        try {
+            story = this.getContext().services.get<StoryService>(Services.Story);
+        } catch {
+            return;
+        }
+        for (const pluginId of story.getContributingPluginIds()) {
+            authoritative.add(pluginId);
+        }
+
+        for (const entry of story.listStories()) {
+            let document: StoryDocument;
+            try {
+                document = await story.loadStory(entry.id);
+            } catch {
+                continue;
+            }
+            for (const scene of Object.values(document.scenes)) {
+                for (const block of Object.values(scene.blocks)) {
+                    if (block.kind === "action" && block.payload.action === "plugin") {
+                        usage.push({
+                            pluginId: block.payload.pluginId,
+                            kind: "storyAction",
+                            id: block.payload.actionId,
+                            hard: true,
+                        });
+                    }
+                }
+            }
         }
     }
 

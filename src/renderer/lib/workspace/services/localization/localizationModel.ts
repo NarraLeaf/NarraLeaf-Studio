@@ -14,7 +14,7 @@ import type {
 } from "@shared/types/story";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { LocalizationDocument, LocalizationKeysDocument, LocalizationUnit } from "@shared/types/localization";
-import { characterTranslationUnitId, localizationKeyUnitId } from "@shared/types/localization";
+import { characterTranslationUnitId, localizationKeyUnitId, sceneTranslationUnitId } from "@shared/types/localization";
 import type { TranslationExchangeRow } from "@shared/utils/localizationExchange";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
@@ -69,6 +69,16 @@ export function listScenesInNarrativeOrder(document: StoryDocument): StoryScene[
 
 type TranslatableSegment = {
     segment: StoryTextSegment;
+    /**
+     * What kind of row this is, read off the block payload rather than off `segment.role`.
+     *
+     * The role is authored data, and a document written by a template or migrated from an older
+     * schema can carry one that disagrees with the action it sits on - real projects hold
+     * `role: "choiceOption"` on option segments, which is not even a member of the declared union.
+     * Every consumer of this row means "what kind of row is this", and only the payload answers it.
+     * The lint's segment walk derives its `kind` the same way, for the same reason.
+     */
+    role: StoryTextSegment["role"];
     characterId?: string;
 };
 
@@ -79,16 +89,16 @@ function getTranslatableSegment(block: StoryBlock): TranslatableSegment | null {
     }
     const payload = block.payload;
     if (payload.action === "narration") {
-        return { segment: payload.text };
+        return { segment: payload.text, role: "narration" };
     }
     if (payload.action === "dialogue") {
-        return { segment: payload.text, characterId: payload.characterId };
+        return { segment: payload.text, role: "dialogue", characterId: payload.characterId };
     }
     if (payload.action === "choice") {
-        return payload.prompt ? { segment: payload.prompt } : null;
+        return payload.prompt ? { segment: payload.prompt, role: "choicePrompt" } : null;
     }
     if (payload.action === "choiceOption") {
-        return { segment: payload.text };
+        return { segment: payload.text, role: "choiceText" };
     }
     return null;
 }
@@ -116,7 +126,7 @@ export function extractStoryTranslationRows(document: StoryDocument): StoryTrans
                         sceneId: scene.id,
                         sceneName: scene.name,
                         blockId: block.id,
-                        role: translatable.segment.role,
+                        role: translatable.role,
                         ...(translatable.characterId ? { characterId: translatable.characterId } : {}),
                         sourceText,
                         interpolationCount: countSegmentInterpolations(translatable.segment),
@@ -132,6 +142,33 @@ export function extractStoryTranslationRows(document: StoryDocument): StoryTrans
         }
     }
     return rows;
+}
+
+/** One scene name as a translation row (unit id `scene:<id>`). */
+export type SceneTranslationRow = {
+    unitId: string;
+    sceneId: string;
+    storyId: string;
+    /** The scene's source-language name - what a save slot or a chapter list shows the player. */
+    sourceText: string;
+};
+
+/**
+ * Scene names as translation rows, in narrative order.
+ *
+ * Narrative order rather than alphabetical, for the reason the story lines are in it: a translator
+ * naming the places of a script reads them in the order the script visits them. Scenes with a blank
+ * name are skipped - there is nothing to translate, and nothing renders it.
+ */
+export function extractSceneTranslationRows(document: StoryDocument): SceneTranslationRow[] {
+    return listScenesInNarrativeOrder(document)
+        .filter(scene => scene.name.trim().length > 0)
+        .map(scene => ({
+            unitId: sceneTranslationUnitId(scene.id),
+            sceneId: scene.id,
+            storyId: document.id,
+            sourceText: scene.name,
+        }));
 }
 
 /** One localizable UI widget text (implicit unit `ui:<elementId>.<prop>`). */

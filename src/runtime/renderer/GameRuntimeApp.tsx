@@ -21,6 +21,8 @@ import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
+import type { WeatherBakeSpec } from "@shared/weather/model";
+import { weatherClipAssetId } from "@shared/weather/stage";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
@@ -418,6 +420,18 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * The Move Mouse family's request. Backed by every shell, and answered differently by each: the
+     * desktop preload forwards it to the main process, the web bridge declines because a page
+     * cannot position the pointer. Declining is a result the node branches on, not an error.
+     */
+    const movePointer = useCallback<NonNullable<GameAppHost["movePointer"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "unsupported", error: "Runtime bridge unavailable" };
+        }
+        return bridge.pointer.move(request);
+    }, [bridge]);
+
+    /**
      * The Open Link node's request. Handed to the shell, which decides it: the desktop bridge
      * forwards it to the main process, the web bridge checks it in the page. Neither reads anything
      * this side supplied except the address.
@@ -470,12 +484,25 @@ export function GameRuntimeApp() {
         [bridge, pack],
     );
 
+    /**
+     * The clip a weather seed describes, which a shipped game finds rather than makes.
+     *
+     * There is no encoder here and there never will be: the build produced this file and put it in
+     * the pack under an id derived from the same spec, so the lookup is an ordinary asset read. A
+     * spec the pack does not list resolves to whatever the shell says about a missing asset, and the
+     * compile leaves that overlay out with a diagnostic rather than starting a `Vfx` with no source.
+     */
+    const resolveWeatherClip = useCallback(
+        (spec: WeatherBakeSpec) => resolveStoryAssetUrl(weatherClipAssetId(spec)),
+        [resolveStoryAssetUrl],
+    );
+
     const saveStore = useMemo<GameAppSaveStore>(() => ({
-        write: async (id, savedGame, capture, metadata) => {
+        write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) => {
             if (!bridge) {
                 throw new Error("Save Game: runtime bridge is not available");
             }
-            await bridge.save.write(id, savedGame, capture, metadata);
+            await bridge.save.write(id, savedGame, capture, metadata, compatibility, playtimeSeconds);
         },
         read: async id => {
             if (!bridge) {
@@ -502,10 +529,25 @@ export function GameRuntimeApp() {
             }
             return bridge.save.listIds();
         },
+        listHeaders: async () => {
+            if (!bridge) {
+                return [];
+            }
+            return bridge.save.listHeaders();
+        },
     }), [bridge]);
 
     const quitApplication = useCallback(async (): Promise<void> => {
         await bridge?.close();
+    }, [bridge]);
+
+    /**
+     * Relaunch the game process. The shell's own restart, not the story's: it is asked for when
+     * something the running build cannot revise has changed under it (see `localeRestart`), and
+     * everything the player is meant to keep across it has already been written to disk.
+     */
+    const restartApplication = useCallback(async (): Promise<void> => {
+        await bridge?.restart();
     }, [bridge]);
 
     const getFullscreen = useCallback(async (): Promise<boolean> => {
@@ -560,14 +602,17 @@ export function GameRuntimeApp() {
             disposeMessage: "Preview runtime disposed",
             log,
             resolveStoryAssetUrl,
+            resolveWeatherClip,
             saveStore,
             quitApplication,
+            restartApplication,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
             subscribeCloseRequested,
             listPuppetBackendModules,
             networkFetch,
+            movePointer,
             openExternal,
             exportProgress,
             importProgress,
@@ -575,6 +620,7 @@ export function GameRuntimeApp() {
     }, [
         entrySurfaceId,
         networkFetch,
+        movePointer,
         openExternal,
         exportProgress,
         importProgress,
@@ -585,7 +631,9 @@ export function GameRuntimeApp() {
         pack,
         persistenceAdapter,
         quitApplication,
+        restartApplication,
         resolveStoryAssetUrl,
+        resolveWeatherClip,
         runtimeReady,
         setFullscreen,
         subscribeFullscreenChanged,

@@ -47,6 +47,8 @@ export const HELP_TOPIC_IDS = [
     "sceneSnapshot",
     "storyMotion",
     "assets",
+    "assetSets",
+    "assetSetAxes",
     "mediaConversion",
     "characters",
     "appearances",
@@ -73,6 +75,10 @@ export const HELP_TOPIC_IDS = [
     "versionServer",
     "freeze",
     "build",
+    "olderSaves",
+    "saveSameStory",
+    "saveStoryChanged",
+    "patches",
     "buildVariant",
     "appTags",
     "variantContent",
@@ -118,6 +124,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "runModes",
         section: "start",
+        shortcuts: ["run:dev-mode", "run:preview", "run:stop"],
         related: ["tests", "build", "freeze", "sceneSnapshot"],
     },
     {
@@ -193,7 +200,17 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "assets",
         section: "content",
         shortcuts: ["assets.rename", "assets.copy", "assets.paste"],
-        related: ["characters", "audio", "lint"],
+        related: ["assetSets", "characters", "audio", "lint"],
+    },
+    {
+        id: "assetSets",
+        section: "content",
+        related: ["assetSetAxes", "assets", "localization"],
+    },
+    {
+        id: "assetSetAxes",
+        section: "content",
+        related: ["assetSets", "appTags", "variantContent"],
     },
     {
         id: "mediaConversion",
@@ -287,7 +304,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "tests",
         section: "quality",
-        related: ["lint", "runModes"],
+        related: ["lint", "runModes", "build"],
     },
     {
         id: "dashboard",
@@ -341,7 +358,34 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "build",
         section: "ship",
-        related: ["icons", "signing", "assetProtection", "lint"],
+        related: ["patches", "icons", "signing", "assetProtection"],
+        learnMore: DOCS_URL,
+    },
+    // What a build does with the saves players already have. Three topics rather than one, because
+    // the parent answers which of the three cases an author is looking at and the two children
+    // answer what each setting produces - a single topic would need a heading between them.
+    {
+        id: "olderSaves",
+        section: "ship",
+        related: ["saveSameStory", "saveStoryChanged", "patches"],
+    },
+    {
+        id: "saveSameStory",
+        section: "ship",
+        related: ["olderSaves", "saveStoryChanged"],
+    },
+    {
+        id: "saveStoryChanged",
+        section: "ship",
+        related: ["olderSaves", "saveSameStory", "patches"],
+    },
+    // The other thing an author ships, and the reason it is a topic of its own rather than a note
+    // under `build`: a patch reaches a game that is already installed, so what it can carry and
+    // what it cannot is a different question from how a build is made.
+    {
+        id: "patches",
+        section: "ship",
+        related: ["build", "appTags", "assetProtection", "lint"],
         learnMore: DOCS_URL,
     },
     // The build dialog's first page. Separate from `appTags`, which answers what a variant is and

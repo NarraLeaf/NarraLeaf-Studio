@@ -17,8 +17,12 @@ class RuntimeUIEditorStateService {
         return null;
     }
 
-    public getAppearanceInspectorVariant(): null {
+    public getEnteredState(): null {
         return null;
+    }
+
+    public setEnteredState(): void {
+        /* Preview runtime never enters a state: it shows what the game resolves. */
     }
 
     public on(): Unsubscribe {

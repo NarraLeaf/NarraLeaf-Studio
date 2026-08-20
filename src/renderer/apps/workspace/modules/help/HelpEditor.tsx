@@ -9,6 +9,8 @@ import type { EditorComponentProps } from "../types";
 
 export interface HelpEditorPayload {
     topicId?: HelpTopicId;
+    /** Set by `openHelpTab`, and only meaningful next to `topicId`. Not carried into a session. */
+    request?: number;
 }
 
 /**
@@ -39,6 +41,7 @@ export function HelpEditor({ payload }: EditorComponentProps<HelpEditorPayload>)
         <div className="h-full w-full bg-surface">
             <HelpBrowser
                 initialTopic={payload?.topicId}
+                topicRequest={payload?.request}
                 resources={HELP_RESOURCES}
                 resolveShortcut={resolveShortcut}
             />

@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "narraleaf.gallery",
   "name": "Gallery",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Author the EXTRA screens - CG gallery, scene recollection, music appreciation and voice extras - and drive them from blueprint graphs.",
   "publisher": "NarraLeaf Studio",
   "entries": {

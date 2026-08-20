@@ -1,3 +1,4 @@
+import { applyPlacementToTransform } from "./commands/transitions";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type {
     StoryBlock,
@@ -29,6 +30,7 @@ import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./st
 import { writeStoryJumpLine } from "./storyJumpLine";
 import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
@@ -61,6 +63,7 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
+import { clickSelectsRow, isPlainRowPress, nextRowSelection, pressSelectsRow } from "./storyRowSelectionGesture";
 import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
 import {
     EMPTY_STORY_ROW_FILTER,
@@ -81,6 +84,8 @@ import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeak
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
+import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
 import { projectStoryCommandLine } from "./storyCommandLine";
 import { noStoryRowCharacters } from "@/lib/story/storyRowProjection";
@@ -110,6 +115,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const uuidService = useMemo(() => (context && isInitialized ? context.services.get<UuidService>(Services.Uuid) : null), [context, isInitialized]);
     const characterService = useMemo(() => (context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null), [context, isInitialized]);
     const assetsService = useMemo(() => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null), [context, isInitialized]);
+    // Only for the ids: a row may name a set, and without this list every such row reads as one
+    // pointing at something the project no longer has.
+    const assetSetService = useMemo(() => (context && isInitialized ? context.services.get<AssetSetService>(Services.AssetSets) : null), [context, isInitialized]);
     // Per-project persistent store for the editor's view state (focus/selection/scroll). Available on
     // the first render - the workspace only mounts editors once services (incl. this one) are ready.
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
@@ -258,6 +266,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
     const audioTracks = useProjectAudioTracks();
     const appTags = useProjectAppTags();
+    /**
+     * Bumped when a file or an asset set is renamed, imported or deleted.
+     *
+     * The command context below reads the library through the service, and the library mutates its
+     * records in place - so without this the tables a row is spelled from are the ones that existed
+     * when the tab opened. The visible failure was a rename that only appeared when the row was
+     * hovered: the hover re-rendered the row, and the row's name lookup is live even though the
+     * table behind the candidate menu was not.
+     */
+    const assetLibraryRevision = useAssetLibraryRevision();
 
     /**
      * Re-seed the row draft whenever the open row changes, so it always describes the row that is
@@ -468,6 +486,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const commandContext = useMemo(
         () => buildStoryCommandContext({
             assets: assetsService?.getAssets(),
+            assetSets: assetSetService?.listSets() ?? [],
             characters,
             document,
             sceneId,
@@ -485,7 +504,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             audioTracks,
             appTags,
         }),
-        [appTags, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
+        [appTags, assetLibraryRevision, assetSetService, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
     // Each dialogue speaker's accumulated appearance, so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
@@ -837,7 +856,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         storyService.replaceScene(storyId, sceneId, state.scene);
-        uiService?.editor.update(tabId, { title: state.scene.name });
+        syncEditorTabTitle(uiService, tabId, state.scene.name);
         setActiveBlockId(state.activeBlockId);
         setSelectedBlockIds(new Set(state.selectedBlockIds));
         setCollapsedBlockIds(new Set(state.collapsedBlockIds));
@@ -937,7 +956,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
         if (changed) {
             if (hasNameChange) {
-                uiService?.editor.update(tabId, { title: nextName });
+                syncEditorTabTitle(uiService, tabId, nextName);
             }
         }
         return changed;
@@ -2062,14 +2081,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // Rewrite the enter/move in place; updateBlockPayloadFor no-ops when the placement is unchanged.
             updateBlockPayloadFor(source.id, {
                 ...source.payload,
-                transform: { ...(source.payload.transform ?? {}), preset: position },
+                transform: applyPlacementToTransform(source.payload.transform, position) ?? source.payload.transform,
             });
             return;
         }
         const move = createBlockForCommand("characterMove", () => uuidService.generate());
         if (move.kind === "action" && move.payload.action === "character") {
             move.payload.characterId = characterId;
-            move.payload.transform = { ...(move.payload.transform ?? {}), preset: position };
+            move.payload.transform = applyPlacementToTransform(move.payload.transform, position);
         }
         insertBlock(move, null, false, { target: { parentId: head.parentId, beforeBlockId: head.id } });
     }, [insertBlock, scene, sceneId, storyId, storyService, updateBlockPayloadFor, uuidService]);
@@ -2102,38 +2121,38 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // the rail since the last time this row was picked — without a revision, re-clicking it would
         // change no state at all and the rail would stay on the asset.
         setSelectionRevision(revision => revision + 1);
-        setActiveBlockId(blockId);
-        if (event?.shiftKey && activeBlockId) {
-            setSelectedBlockIds(selectRange(visibleRows, activeBlockId, blockId));
-            return;
-        }
-        if (event?.ctrlKey || event?.metaKey) {
+        // `activeBlockId` is this render's — the row that was active BEFORE this press, which is where
+        // a Shift range starts. Shift leaves the anchor where it is; every other press re-anchors on
+        // the row it landed on.
+        if (!(event?.shiftKey && activeBlockId)) {
             selectionAnchorRef.current = blockId;
-            setSelectedBlockIds(previous => {
-                const next = new Set(previous);
-                next.has(blockId) ? next.delete(blockId) : next.add(blockId);
-                return next.size > 0 ? next : new Set([blockId]);
-            });
-            return;
         }
-        selectionAnchorRef.current = blockId;
-        setSelectedBlockIds(new Set([blockId]));
+        setActiveBlockId(blockId);
+        setSelectedBlockIds(previous => nextRowSelection({ previous, rows: visibleRows, activeBlockId, blockId, event }));
     }, [activeBlockId, visibleRows]);
 
+    /**
+     * The `mousedown` half of a row's press. See {@link pressSelectsRow} for why the row needs two
+     * handlers and why only one of them may select.
+     */
     const beginDragSelection = useCallback((blockId: StoryBlockId, event: MouseEvent) => {
-        if (event.button !== 0 || isInteractiveTarget(event.target)) {
+        if (!pressSelectsRow(event)) {
             return;
         }
         // Pointing at a column states it: whatever vertical run was in flight is over.
         goalColumnRef.current = null;
         selectRow(blockId, event);
+        // A modified press has already said everything it means - toggle this row, extend the range to
+        // it - so it stops here rather than also arming a row-range drag, which would replace that
+        // answer with a range on the press's first stray mousemove. See {@link isPlainRowPress}.
+        if (!isPlainRowPress(event)) {
+            return;
+        }
         // Pressing on a row's own text starts a *text* selection, not a row-range drag: let the
         // browser select natively and read the author's intent off the mouseup (a plain click leaves
         // the row selected; a real selection opens the row for editing with that selection intact).
-        // A modified click is unambiguously a row-selection intent, so it skips this.
-        const plainPress = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
-        const textEl = plainPress
-            ? (event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-story-row-text]") : null)
+        const textEl = event.target instanceof HTMLElement
+            ? event.target.closest<HTMLElement>("[data-story-row-text]")
             : null;
         if (textEl) {
             textSelectRef.current = { blockId, textEl };
@@ -2144,6 +2163,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setDragSelectActive(true);
         startDragSelectAutoScroll();
     }, [selectRow, startDragSelectAutoScroll]);
+
+    /**
+     * The `click` half of the same press, and the only one that runs when {@link beginDragSelection}
+     * declined - a press that landed on a field or a button inside the row, which still has to leave
+     * the row selected. Asking the event rather than remembering what the mousedown did is deliberate:
+     * a press that ends outside the row produces no click at all, so a "handled" flag set on the way
+     * down would still be set on the way into the *next* gesture and would swallow it.
+     */
+    const selectRowFromClick = useCallback((blockId: StoryBlockId, event: MouseEvent) => {
+        if (!clickSelectsRow(event)) {
+            return;
+        }
+        selectRow(blockId, event);
+    }, [selectRow]);
 
     /** Editing the text moves the caret by intent, which ends any vertical run. See {@link goalColumnRef}. */
     const resetGoalColumn = useCallback(() => {
@@ -2703,7 +2736,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
-        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection, selectRowFromClick,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,

@@ -5,6 +5,7 @@ import type { ColorValue, CustomFieldProps } from "@/apps/workspace/modules/prop
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -78,12 +79,15 @@ function AssetRow({
     const [selectorOpen, setSelectorOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
 
+    // The library edits its records in place, so a rename or a delete moves nothing else this memo
+    // keys on - without the revision the field keeps the name the file had when it was picked.
+    const assetLibraryRevision = useAssetLibraryRevision();
     const assetName = useMemo(() => {
         if (!assetId || !assetsService) {
             return null;
         }
         return assetsService.getAssets()[assetType]?.[assetId]?.name ?? null;
-    }, [assetId, assetsService, assetType]);
+    }, [assetId, assetLibraryRevision, assetsService, assetType]);
 
     /**
      * An id with no library record is a broken reference, not an empty slot - saying "None" there
@@ -265,7 +269,7 @@ export function createVideoInspector(ctx: InspectorContext) {
                         fields: [
                             defineField<D, any>({
                                 id: "video.autoplay",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.video.autoplay"),
                                 helpText: t("widgets.video.autoplayHint"),
                                 getValue: (d: D) => getLiveVideoProps(d).autoplay,
@@ -273,14 +277,14 @@ export function createVideoInspector(ctx: InspectorContext) {
                             }),
                             defineField<D, any>({
                                 id: "video.loop",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.video.loop"),
                                 getValue: (d: D) => getLiveVideoProps(d).loop,
                                 setValue: (d: D, value: boolean) => patchVideo(d, { loop: value }),
                             }),
                             defineField<D, any>({
                                 id: "video.muted",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.video.muted"),
                                 getValue: (d: D) => getLiveVideoProps(d).muted,
                                 setValue: (d: D, value: boolean) => patchVideo(d, { muted: value }),
@@ -315,7 +319,7 @@ export function createVideoInspector(ctx: InspectorContext) {
                             }),
                             defineField<D, any>({
                                 id: "video.controls",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.video.controls"),
                                 helpText: t("widgets.video.controlsHint"),
                                 getValue: (d: D) => getLiveVideoProps(d).controls,

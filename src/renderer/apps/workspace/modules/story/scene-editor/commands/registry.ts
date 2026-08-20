@@ -8,8 +8,7 @@ import { OBJECT_COMMANDS } from "./specs/objects";
 import { SOUND_COMMANDS } from "./specs/sound";
 import { VARIABLE_COMMANDS } from "./specs/variables";
 import { LOGIC_COMMANDS } from "./specs/logic";
-import { EFFECT_COMMANDS } from "./specs/effects";
-import { CAMERA_COMMANDS } from "./specs/camera";
+import { TRANSFORM_COMMANDS } from "./specs/transform";
 import { VFX_COMMANDS } from "./specs/vfx";
 import { MISC_COMMANDS } from "./specs/misc";
 
@@ -32,8 +31,7 @@ const ALL_SPECS: readonly AnyStoryCommandSpec[] = [
     ...SOUND_COMMANDS,
     ...VARIABLE_COMMANDS,
     ...LOGIC_COMMANDS,
-    ...EFFECT_COMMANDS,
-    ...CAMERA_COMMANDS,
+    ...TRANSFORM_COMMANDS,
     ...VFX_COMMANDS,
     ...MISC_COMMANDS,
 ] as readonly AnyStoryCommandSpec[];
@@ -83,6 +81,36 @@ const RETIRED_COMMAND_TOKENS: ReadonlyMap<string, readonly [string, ...string[]]
     ["code", ["code", "script"]],
     ["declareVar", ["save", "var", "savedvar"]],
     ["declarePersis", ["global", "persis", "persistent"]],
+    // M2's six, plus the token that briefly replaced two of them. Every one spelled "object type ×
+    // operation" - the taxonomy this language has been deleting command by command - and every one is
+    // now `/transform` or `/reset` saying the same thing with a prop rather than a token:
+    //
+    //   /fx hero            → /transform hero <prop=…>   (an effect was one prop of the one bag)
+    //   /mirror hero        → /transform hero flip=on
+    //   /move Alice at=left → /transform Alice pos=left
+    //   /camera zoom 2      → /transform camera zoom=2   (`camera` is a reserved TARGET now)
+    //   /blink d=0.2        → /transform camera lens=blink
+    //   /vignette hold=0.6  → /transform camera lens=vignettePulse
+    //   /screen blink       → /transform camera lens=blink
+    //
+    // Burned rather than reused, for the reason spelled out above: a token is what a stored line
+    // RE-PARSES as, and script files and `invalid` rows keep the author's source text verbatim. The
+    // sharpest case in this set is `/move`: handing that word to anything else would silently
+    // reinterpret every `/move Alice at=left` sitting in an exported script, as whatever the new
+    // command means, with no diagnostic anywhere. `/camera` is the same fact from the other side -
+    // the word is now a target NAME, and a line beginning `/camera` must keep failing to resolve
+    // rather than one day meaning "transform the thing called camera".
+    //
+    // None of them left rows behind that need a spelling: their payloads are `displayable` and
+    // `camera`, and `storyVerbVocabulary.ts` names the live command that owns each one. So these
+    // entries burn words and answer nothing, exactly as `/code` does.
+    ["fx", ["fx", "effect"]],
+    ["mirror", ["mirror"]],
+    ["move", ["move"]],
+    ["camera", ["camera", "cam"]],
+    ["blink", ["blink"]],
+    ["vignette", ["vignette", "vig"]],
+    ["screen", ["screen", "screenfx"]],
 ]);
 
 const RESERVED_TOKENS: ReadonlySet<string> = new Set([...RETIRED_COMMAND_TOKENS.values()].flat());

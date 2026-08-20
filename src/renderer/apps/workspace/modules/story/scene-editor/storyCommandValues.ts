@@ -5,6 +5,7 @@ import type {
     StoryVariableRef,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { BGM_STAGE_OBJECT_NAME } from "@shared/types/story";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
 
 /**
@@ -28,6 +29,44 @@ export type StoryCommandNamedRef = { id: string; name: string };
 export type StoryCommandAppearanceRef = { id: string; name: string; axisId?: string };
 
 /**
+ * One asset set, with the library its members come from.
+ *
+ * `assetType` is not decoration: a set is typed, and an image slot that offered the project's audio
+ * sets would be offering a name it then refuses to resolve. `null` for the kinds a command line
+ * cannot address at all (fonts, models, data), which is how such a set stays *known* - so a row
+ * pointing at one still reads as a name rather than as a missing file - without ever being offered.
+ */
+export type StoryCommandAssetSetRef = StoryCommandNamedRef & {
+    assetType: "image" | "audio" | "video" | null;
+};
+
+/**
+ * What one asset slot may be pointed at: that library's files, plus the project's sets of the same
+ * type when the slot's param says a set is legal there.
+ *
+ * The one place that question is answered. Resolution, the completion menu and the row's inline
+ * dropdown all call it, because a slot that offers a name it cannot resolve - or resolves one it
+ * never offered - is a word the author can read on the row and not type back. That is exactly how
+ * asset sets behaved before this existed: the inspector wrote a set id, the row printed the set's
+ * name, and re-committing the same line reported "no image named …".
+ *
+ * Files first, so a file and a set sharing a name are still reported as ambiguous by
+ * `findByName` rather than silently resolved to one of them.
+ */
+export function assetChoices(
+    context: StoryCommandContext,
+    assetType: "image" | "audio" | "video",
+    allowSets: boolean | undefined,
+): readonly StoryCommandNamedRef[] {
+    const files = assetType === "image" ? context.images : assetType === "audio" ? context.audio : context.videos;
+    if (!allowSets) {
+        return files;
+    }
+    const sets = (context.assetSets ?? []).filter(set => set.assetType === assetType);
+    return sets.length === 0 ? files : [...files, ...sets];
+}
+
+/**
  * The three state channels a puppet character's backend answers to (NLR `PuppetState`).
  *
  * They are the three ideas every 2D character renderer has, which is why they are named here rather
@@ -49,24 +88,97 @@ export type StoryCommandStageObjectKind = "image" | "text" | "layer" | "video" |
 /** What a generic verb's target may be: a character, or a stage object of some kind. */
 export type StoryCommandTargetKind = "character" | StoryCommandStageObjectKind;
 
+/**
+ * The stage singletons a target slot may name by a RESERVED WORD rather than by a name on stage.
+ *
+ * All three are Displayables the engine addresses without a creator block - `story.camera`, and the
+ * two layers every `Scene` ships with - so there is nothing in the scene for a name lookup to find
+ * and nothing an author could rename. A word is the only handle they can have, which is why they are
+ * reserved here rather than seeded into `stageObjects`: a name in that list is one the author chose,
+ * and one of these can never be.
+ *
+ * `background` (the scene's background image) rides along for the same reason the two layers do - it
+ * is the third entry in `StoryDisplayableBuiltin`, it is a Displayable, and the property inspector's
+ * target field has always offered all three. Leaving it out would have made the command line reach a
+ * strict subset of what the inspector reaches, which is the split this milestone exists to close.
+ */
+export type StoryReservedTargetName = "camera" | "background" | "backgroundLayer" | "displayableLayer";
+
+/** Every reserved word, in the order a candidate list offers them. */
+export const STORY_RESERVED_TARGETS: readonly StoryReservedTargetName[] = [
+    "camera",
+    "background",
+    "backgroundLayer",
+    "displayableLayer",
+];
+
 /** The object names on stage, per kind - the candidate source for target params. */
 export type StoryCommandStageObjects = Readonly<Record<StoryCommandStageObjectKind, readonly string[]>>;
+
+/**
+ * Declaring block per stage object: kind, then the object's name lower-cased and trimmed - the same
+ * key a target arg is matched on - to the id of the row that brought it into existence.
+ *
+ * An index over the same scan {@link StoryCommandStageObjects} comes from, not a second source of
+ * truth: it never adds a name to what the command line offers, it only says which row defines one.
+ * An entry appears only for a genuine declaration (`create` / `playSound` / character `enter`), so a
+ * name that exists purely because some row mentions it stays id-less rather than anchoring to a row
+ * that does not define it.
+ */
+export type StoryCommandStageObjectSources =
+    Readonly<Record<StoryCommandStageObjectKind, Readonly<Record<string, string>>>>;
 
 export const EMPTY_STORY_COMMAND_STAGE_OBJECTS: StoryCommandStageObjects = {
     image: [], text: [], layer: [], video: [], audio: [], vfx: [],
 };
+
+export const EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES: StoryCommandStageObjectSources = {
+    image: {}, text: {}, layer: {}, video: {}, audio: {}, vfx: {},
+};
+
+/**
+ * The row that brings a character on stage, by `characterId`.
+ *
+ * The character half of {@link StoryCommandStageObjectSources}, and a table of its own rather than a
+ * seventh bucket of that one - widening its key to {@link StoryCommandTargetKind} would type-check
+ * and still be wrong twice over:
+ *
+ *  - **The key would be the wrong string.** That table is keyed by the object's stage name, because
+ *    that is what a target arg is matched on. A character is matched on the CAST name, which the
+ *    scene never states - only the project does - so a character bucket keyed like its siblings
+ *    could not be looked up from the name the author typed.
+ *  - **The value would be too small.** A stage object's key is the name itself, so the id alone is
+ *    enough there. A character's key is DERIVED - `characterStageObjectName`: the entering row's
+ *    stage name, falling back to the character id - so it has to be carried, since no caller can
+ *    recompute it from the cast name.
+ */
+export type StoryCommandCharacterSources =
+    Readonly<Record<string, { blockId: string; name: string }>>;
 
 /**
  * The reserved audio-object name addressing the background-music channel. The sound
  * control family defaults its omitted target to this, and the compiler routes it to the BGM handle
  * rather than a named `Sound`.
  */
-export const BGM_OBJECT_NAME = "bgm";
+export const BGM_OBJECT_NAME = BGM_STAGE_OBJECT_NAME;
 
 export type StoryCommandContext = {
     images: readonly StoryCommandNamedRef[];
     audio: readonly StoryCommandNamedRef[];
     videos: readonly StoryCommandNamedRef[];
+    /**
+     * The project's asset sets, which a row may name where it would name a file.
+     *
+     * Held apart from the three lists above rather than folded into them, because whether a set is
+     * legal is a property of the SLOT, not of the library: the params that write a field assembly
+     * resolves a set for carry `allowSets` and read this list alongside their own; the rest never
+     * touch it. Folding sets into `images` would offer one in every slot that takes an image,
+     * including the ones that would ship the set id to the player unresolved.
+     *
+     * Every set is listed whatever its type, so this list also answers "does this id still name
+     * something" for the row diagnostic - see {@link StoryCommandAssetSetRef.assetType}.
+     */
+    assetSets: readonly StoryCommandAssetSetRef[];
     characters: readonly StoryCommandNamedRef[];
     /**
      * Bare speaker names already used somewhere in this story. They back no character record, so they
@@ -145,6 +257,16 @@ export type StoryCommandContext = {
     puppetByCharacterId: Readonly<Record<string, StoryPuppetVocabulary>>;
     /** Named objects on stage in the current scene, per kind. */
     stageObjects: StoryCommandStageObjects;
+    /**
+     * Which row declares each of those objects, when one does.
+     *
+     * Optional because a context can legitimately be built without a scene to scan - a test, or a
+     * surface mounted before the project finished opening. Absent means "no ids known", and every
+     * consumer must degrade to resolving by name alone, which is what all of them did before.
+     */
+    stageObjectSources?: StoryCommandStageObjectSources;
+    /** Which row brings each character on stage. Optional on the same terms as `stageObjectSources`. */
+    characterSources?: StoryCommandCharacterSources;
 };
 
 /**
@@ -171,7 +293,7 @@ export type StoryPuppetParamSpec = {
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
-    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], choiceOptions: [], valueBlueprints: [],
+    images: [], audio: [], videos: [], assetSets: [], characters: [], tempSpeakers: [], scenes: [], choiceOptions: [], valueBlueprints: [],
     audioTracks: [], labels: [], appTags: [], variables: [], appearanceByCharacterId: {},
     puppetCharacterIds: [],
     puppetByCharacterId: {},
@@ -200,13 +322,47 @@ export function puppetChannelNames(
 
 /** The resolved subject of a generic verb - what `/show poster` dispatches its block type on. */
 export type StoryCommandTargetValue =
-    | { type: "character"; characterId: string; name: string }
+    | {
+          type: "character";
+          characterId: string;
+          /**
+           * The CAST name - what the author typed and what every surface prints. Not the stage key:
+           * a character has no name field of its own on stage, so the key its portrait is registered
+           * under is the entering row's stage name, or the character id when that row named none.
+           */
+          name: string;
+          /**
+           * The stage key the entering row registers this character under, when the scene holds one.
+           *
+           * Carried beside `name` rather than replacing it because the two answer different
+           * questions and both are needed at once: a payload's reference must store the key or the
+           * lookup misses, and a diagnostic must print the cast name or it prints a UUID.
+           */
+          stageName?: string;
+          /** Id of the row that brings the character on stage - the anchor a reference binds to. */
+          sourceBlockId?: string;
+      }
+    /**
+     * A stage singleton named by its reserved word. Carries no `known` flag: a reserved word either
+     * IS one of the four or was never resolved as one, so there is no free-name case to record.
+     */
+    | { type: "reserved"; name: StoryReservedTargetName }
     | {
           type: "stageObject";
           objectKind: StoryCommandStageObjectKind;
           name: string;
           /** False for a free-typed name matching nothing on stage - legal only where one kind is possible. */
           known: boolean;
+          /**
+           * The row that declares this object, when the scene holds one - the stable identity a
+           * payload's target ref binds to, so the row survives a rename of the object.
+           *
+           * Absent whenever there is nothing honest to point at: a free-typed name (`known: false`),
+           * an object that exists only because some row mentions it, the reserved `bgm` channel
+           * (which has no declaring row at all - it is referenced as a built-in), and any context
+           * built without a scene to scan.
+           */
+          sourceBlockId?: string;
       };
 
 export type StoryCommandValue =
@@ -264,7 +420,11 @@ export type StoryCommandValue =
 export type StoryCommandResolvedArgs = Readonly<Record<string, StoryCommandValue>>;
 
 export type StoryCommandResolutionIssue =
-    | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video" }
+    /**
+     * No file of that name. `allowSets` says the slot would also have taken an asset set, so the
+     * message can name both rather than send the author looking through the wrong library.
+     */
+    | { code: "unknownAsset"; span: StoryCommandSpan; value: string; assetType: "image" | "audio" | "video"; allowSets?: true }
     | { code: "unknownCharacter"; span: StoryCommandSpan; value: string }
     | { code: "unknownScene"; span: StoryCommandSpan; value: string }
     /** `/bgm theme track=Ambience` with no `Ambience` track - it would silently land on Music instead. */
@@ -279,10 +439,35 @@ export type StoryCommandResolutionIssue =
     | { code: "notPuppetCharacter"; span: StoryCommandSpan; value: string }
     /** A generic verb's subject matching neither a character nor anything on stage. */
     | { code: "unknownTarget"; span: StoryCommandSpan; value: string }
+    /**
+     * The name resolved, and to the wrong KIND of thing: `/transform petals` on an ambience overlay.
+     *
+     * Its own code rather than `unknownTarget`, because the two send an author to opposite places.
+     * "I cannot find it" says check the spelling; this says the spelling was right and the verb is
+     * wrong - a `Vfx` and a `Video` are engine `Actionable`s with no transform pipeline at all, so
+     * no amount of retyping makes a transform reach one. The slot RESOLVES these kinds precisely so
+     * it can say that, which is why they sit in `refuses` rather than being left out of `accepts`.
+     *
+     * Several verbs raise it (`/transform`, `/reset`, `/front`) and they refuse different kinds, so
+     * `kind` is the whole payload the message has to work from - see the reason renderer, which picks
+     * the advice by it and quotes the verb from the line rather than naming one here.
+     */
+    | { code: "unsupportedTarget"; span: StoryCommandSpan; value: string; kind: StoryCommandTargetKind }
     /** Two things share this name, so the line does not say which one. */
     | { code: "ambiguousName"; span: StoryCommandSpan; value: string }
     /** Two args a one-op-per-block command cannot honour together. */
     | { code: "conflictingParams"; span: StoryCommandSpan; keys: readonly string[] }
+    /**
+     * A key the command declares, filled against a target that has no such channel: `opacity=` on the
+     * camera, `color=` on an image.
+     *
+     * The key is offered by the command because the command reaches several kinds of subject and the
+     * grammar cannot see which one a line resolved to - the same shape `/show t=` has, where the union
+     * of every context's words parses and the spec rejects the ones this target cannot honour. Naming
+     * the kind is what makes the report actionable: the author does not have to guess whether the key
+     * is wrong or the target is.
+     */
+    | { code: "unsupportedParam"; span: StoryCommandSpan; key: string; kind: string }
     /**
      * `/repeat 3 until="hp <= 0"` - a count AND a stop condition. Its own code rather than
      * `conflictingParams` because the fix is the opposite one: those two args split into two lines,

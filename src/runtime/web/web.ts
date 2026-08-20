@@ -56,6 +56,22 @@ function encodeRelativePath(relativePath: string): string {
 
 function assetUrl(assetId: string): string {
     const id = String(assetId ?? "");
+    /*
+     * A model bundle mounts from `{id}/` on the desktop shell, where the main process reads the
+     * entry path out of the payload and serves it. A static host cannot do that - there is no
+     * process to ask, and `{id}/` is a directory rather than a file - so the web shell expands the
+     * mount to the entry file itself, which its manifest still carries.
+     *
+     * Nothing is given away by that: a web export is unprotected by construction. Its files sit on
+     * the host under these very names, so the entry path is readable with a directory listing
+     * whatever this function returns.
+     */
+    if (id.endsWith("/")) {
+        const bundle = loadedPack?.assets.items[id.slice(0, -1)];
+        if (bundle) {
+            return `./${encodeRelativePath(bundle.relativePath)}?v=${encodeURIComponent(assetVersion())}`;
+        }
+    }
     const entry = loadedPack?.assets.items[id];
     if (!entry) {
         // readPack() resolves before the renderer asks for any asset, so this
@@ -105,6 +121,12 @@ const bridge: GameRuntimePreloadBridge = {
         window.close();
         console.info("[GameRuntime] Quit requested; close the tab to exit the game.");
     },
+    restart: async () => {
+        // The whole point of a restart is that nothing survives it, and a reload is exactly that
+        // for a page: scripts, module state and every decoded asset go, while the stores this
+        // shell keeps its saves and persistence in (see `webStorage`) are the browser's and stay.
+        window.location.reload();
+    },
     getFullscreen: async () => document.fullscreenElement != null,
     setFullscreen: async (fullscreen: boolean) => {
         // Browsers gate requestFullscreen behind a user gesture; a rejected
@@ -141,10 +163,11 @@ const bridge: GameRuntimePreloadBridge = {
     // crash screen could send anyone to.
     logPath: null,
     save: {
-        write: async (id, savedGame, capture, metadata) =>
-            (await getStorage()).writeSave(id, savedGame, capture, metadata),
+        write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
+            (await getStorage()).writeSave(id, savedGame, capture, metadata, compatibility, playtimeSeconds),
         read: async id => (await getStorage()).readSave(id),
         listIds: async () => (await getStorage()).listSaveIds(),
+        listHeaders: async () => (await getStorage()).listSaveHeaders(),
         readPreview: async id => (await getStorage()).readSavePreview(id),
         delete: async id => (await getStorage()).deleteSave(id),
     },
@@ -203,6 +226,21 @@ const bridge: GameRuntimePreloadBridge = {
      * That is reported as a failure rather than a refusal: the address is declared, the browser
      * simply did not open it.
      */
+    /**
+     * Moving the player's cursor, which a page cannot do.
+     *
+     * Declining rather than approximating. A browser has no way to position the system pointer, and
+     * the nearest thing a page could do - draw its own cursor and hide the real one - is a different
+     * feature that would silently replace the one the author asked for. The build console warns
+     * about this when a project holding these nodes is exported for the web, so it is known before
+     * a player finds it.
+     */
+    pointer: {
+        move: async () => ({
+            outcome: "unsupported",
+            error: "A web build cannot move the system cursor.",
+        }),
+    },
     externalLink: {
         open: async request => {
             const decision = resolveCoreExternalLink(request);

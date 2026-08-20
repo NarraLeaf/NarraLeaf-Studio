@@ -55,6 +55,8 @@ export const storyInspector = {
         fromAngle: "From angle °",
         rows: "Rows",
         cols: "Columns",
+        rule: "Rule image",
+        inverted: "From the bright end",
         stagger: "Stagger",
         shape: "Shape",
         pattern: "Pattern",
@@ -95,9 +97,11 @@ export const storyInspector = {
         rotate: "Rotate",
         opacity: "Opacity",
         darken: "Darken",
+        flip: "Flip",
         circleReveal: "Circle reveal",
         circleClose: "Circle close",
         slideReveal: "Slide reveal",
+        custom: "Custom",
     },
 
     easing: {
@@ -113,6 +117,7 @@ export const storyInspector = {
         backOut: "Back out",
         backInOut: "Back in/out",
         anticipate: "Anticipate",
+        custom: "Custom curve",
     },
 
     transition: {
@@ -131,6 +136,10 @@ export const storyInspector = {
         slide: "Push",
         throughColor: "Through color",
         darkness: "Darkness",
+        exposure: "Exposure",
+        ruleReveal: "Rule image",
+        exposureEv: "Exposure (EV)",
+        exposureLift: "Shadow lift 0-1",
         startX: "Start X",
         startY: "Start Y",
         blurPx: "Blur px",
@@ -155,6 +164,8 @@ export const storyInspector = {
         slide: "The new image slides in from one edge as the old one slides out.",
         darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
         throughColor: "Covers the frame with a color, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
+        exposure: "Burns the frame out to white, highlights first and shadows last, then settles back down onto the new one; at lift 0 black never whitens.",
+        ruleReveal: "Changes the frame over in the order a greyscale picture dictates: dark areas first, bright areas last.",
     },
 
     wipeDirection: {
@@ -200,7 +211,7 @@ export const storyInspector = {
     // Named by the material each mode is FOR, not by the CSS keyword: the choice is a production fact
     // about the clip, and the keyword alone only helps someone who already knows the answer.
     vfxBlend: {
-        normal: "Normal (transparent alpha WebM)",
+        normal: "Normal (opaque clip)",
         screen: "Screen (glow on black)",
         multiply: "Multiply (shadow on white)",
         lighten: "Lighten",
@@ -216,6 +227,8 @@ export const storyInspector = {
 
     vfx: {
         name: "Effect name",
+        source: "Source",
+        sourceClip: "Clip",
         clip: "Looping clip",
         blendMode: "Blend",
         opacity: "Opacity (0-1)",
@@ -226,37 +239,100 @@ export const storyInspector = {
         fade: "Fade (s)",
     },
 
+    weather: {
+        density: "Amount",
+        sizeNear: "Near size",
+        sizeFar: "Far size",
+        sway: "Drift",
+        streak: "Streak",
+        wind: "Wind (deg)",
+        depthSpread: "Depth spread",
+    },
+
     cameraOperation: {
-        zoom: "Zoom",
-        pan: "Pan",
-        rotate: "Rotate",
-        // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
-        darken: "Darken stage",
-        motion: "Camera motion",
         reset: "Reset camera",
     },
 
-    // The picker labels: short enough that six fit side by side. The full names above stay as each
-    // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
-    cameraOperationShort: {
-        zoom: "Zoom",
-        pan: "Pan",
-        rotate: "Rotate",
-        darken: "Darken",
-        motion: "Motion",
-        reset: "Reset",
+    // Said where the mode is chosen, because it is the one camera row whose effect the viewfinder
+    // cannot draw: it puts the whole instrument back, pose and grade and lens together.
+    cameraResetHint: "Restores pose, grade and lens.",
+
+    // The looks themselves. Named for the moment they are for, not for what they do to the pixels:
+    // an author reaches for these while writing a flashback, not while thinking about saturation.
+    cameraLook: {
+        memory: "Memory",
+        monologue: "Inner monologue",
+        mono: "Monochrome",
+        moonlight: "Moonlight",
+        faint: "Losing consciousness",
+        hangover: "Hangover",
     },
 
-    camera: {
-        zoom: "Zoom (1 = neutral)",
-        rotation: "Rotation °",
-        darkness: "Stage darkness (0-1)",
-        xalign: "X align (0-1)",
-        yalign: "Y align (0-1)",
+    // The lens gestures. Named for the moment, like the grades above.
+    cameraLens: {
+        blink: "Blink",
+        slowBlink: "Slow blink",
+        vignettePulse: "Vignette pulse",
     },
 
+    cameraLookHint: {
+        channel: "A look added later overrides stage darkness. Reset camera clears it.",
+        monologue: "Desaturates and dims the whole stage. For darkened edges, add a vignette.",
+        hangover: "The stage sways twice before the look settles. The row waits for the sway, and the duration sets its tempo.",
+    },
+
+    /**
+     * The transform channel list - the words that are not already a command param.
+     *
+     * Every channel names itself with `story.paramHint.*`, so only what the line has no word for
+     * lands here: the clip-path generators, the restore entry's frame, and the list's own controls.
+     */
+    transformChannel: {
+        reveal: "Reveal",
+        search: "Search effects",
+        noMatch: "No effect matches",
+        inherit: "Inherit",
+        maskSettings: "Mask settings",
+        maskSize: "Size",
+        maskPosition: "Position",
+        maskRepeat: "Repeat",
+        maskMode: "Mode",
+        clipShape: {
+            inset: "Rectangle",
+            circle: "Circle",
+            ellipse: "Ellipse",
+            raw: "Custom path",
+        },
+        clipParam: {
+            top: "Top %",
+            right: "Right %",
+            bottom: "Bottom %",
+            left: "Left %",
+            radius: "Radius %",
+            radiusX: "Radius X %",
+            radiusY: "Radius Y %",
+            x: "Centre X %",
+            y: "Centre Y %",
+        },
+        restore: "Restore {channel}",
+        restored: "Restored",
+        add: "Add",
+        remove: "Remove",
+        xAlign: "X",
+        yAlign: "Y",
+    },
+    transformChannelGroup: {
+        geometry: "Position and scale",
+        filter: "Filter",
+        look: "Look",
+        lens: "Lens",
+        composite: "Compositing",
+        text: "Text",
+        timing: "Timing",
+    },
     displayableOperation: {
         transform: "Transform",
+        bringToFront: "Bring to front",
         mask: "Mask",
         clearMask: "Clear mask",
         clip: "Clip path",
@@ -278,12 +354,12 @@ export const storyInspector = {
         clearClip: "Removes the current clip-path.",
         filter: "Applies a CSS filter (e.g. blur(4px) grayscale(1)).",
         clearFilter: "Removes the current filter.",
-        backdrop: "Frosts what shows through via CSS backdrop-filter (e.g. blur(8px)).",
+        backdrop: "Frosts what shows through. Takes a filter value, such as blur(8px).",
         blend: "Blends with what is behind via mix-blend-mode.",
         darken: "Fades a darkness overlay 0..1 (image / character targets only).",
         circleReveal: "Circular reveal via an animated mask.",
         circleClose: "Circular close via an animated mask.",
-        wipe: "Hard-edged directional reveal via an animated clip-path (no feather).",
+        wipe: "Hard-edged directional reveal, with no feather.",
     },
 
     textOperation: {
@@ -316,11 +392,6 @@ export const storyInspector = {
         setRate: "Set rate",
         muteSound: "Mute / unmute",
         seekSound: "Seek",
-    },
-
-    screenEffectOption: {
-        blink: "Blink",
-        vignette: "Vignette",
     },
 
     waitMode: {

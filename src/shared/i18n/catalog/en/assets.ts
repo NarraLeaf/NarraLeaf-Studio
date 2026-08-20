@@ -344,7 +344,7 @@ export const assets = {
             manifestUnreadable: "{path} could not be read.",
             atlasMissing: "No atlas beside the skeleton; {path} was expected.",
             atlasEmpty: "{path} names no image.",
-            nestedModel: "Holds another model, {path}, which this folder would bring along.",
+            nestedModel: "Holds another model, {path}, which would be copied with it.",
         },
         /** How a missing file is named. Lower-case: these are read mid-sentence. */
         role: {
@@ -365,6 +365,104 @@ export const assets = {
         unreadable: "That folder could not be read.",
         /** Refused rather than truncated: a partial listing would report present files as missing. */
         tooManyFiles: "That folder holds {count} files, too many to check. Select the folder the models are in.",
+    },
+    /**
+     * Asset sets: one library entry standing for a family of files indexed by axes.
+     *
+     * Called a "set" and never a "group", because a group in this panel is already a folder. The
+     * words here name what an author does with one - declare its axes, see which variants resolve -
+     * and never how the build reads it.
+     */
+    sets: {
+        /** What a set's row calls itself in a rename dialog. */
+        itemType: "set",
+        /**
+         * The two axes a project can name for itself, used on a variant row in place of the tag
+         * category. Everything else prints the category the author wrote.
+         */
+        axisWord: {
+            language: "Language",
+            variant: "Variant",
+        },
+        /** The two things a set may vary by. There are no others until Studio adds one. */
+        axisKind: {
+            locale: "Language",
+            release: "Variant",
+        },
+        /** Every variant resolves. The only sentence a finished set shows. */
+        variantCount: {
+            one: "{count} variant",
+            other: "{count} variants",
+        },
+        /** Some do not. The two numbers are the whole message; no word for "incomplete" is needed. */
+        variantsResolved: "{resolved} of {total} variants",
+        /** The set does not describe any variants yet, so there is nothing to count. */
+        unfinished: "No variants declared",
+        /**
+         * Asked before a set stops existing, either way it goes. The rows below name the set itself,
+         * so they break whether or not the files survive - which is why this is separate from the
+         * library's own "these assets are still in use".
+         */
+        inUseTitle: "{name} is still in use",
+        inUseMessage: "The following places name it and will stop resolving:",
+        /**
+         * Asked once the author has said to delete it. The folder sentence is the wrong noun for
+         * a set: what goes with it is the files it holds, sub-sets included.
+         */
+        deleteConfirmMessage: "The files inside this set are deleted too.",
+        /** The picker's own section for sets, which are not files and are not listed among them. */
+        picker: {
+            section: "Asset sets",
+        },
+        menu: {
+            create: "New Set from Selection",
+            createSub: "New Set from Selection, Here",
+            /** Beside New Folder: a set is made in a place, and its files are chosen in the dialog. */
+            createHere: "New Asset Set",
+            /** The row is dropped and the files stay in the library, filed where the set was. */
+            dissolve: "Dissolve Set",
+        },
+        create: {
+            title: "New asset set",
+            subTitle: "New set under this variant",
+            /** Neither list has anything to vary along yet. */
+            no: {
+                locale: "This project declares one language.",
+                release: "This project has no variants.",
+            },
+            /** Which kind of file the members are, where the section stands for more than one. */
+            type: "File type",
+            axis: "Varies by",
+        },
+        /** The inspector: what the set varies by, which value the rest fall back to, and what resolves. */
+        inspector: {
+            axes: "Varies by",
+            /** The tags every member carries, which is what keeps a set from meaning the whole library. */
+            filter: "Members carry",
+            /** Why a change of what a set varies by was refused. States the rule, not the reasoning. */
+            residencyBlocked: "A set that varies by variant cannot sit under one that varies by language.",
+            /** The one thing a set requires: which value the others take when they have no file. */
+            fallback: "Falls back to",
+            /** Said next to the control that fixes it: nothing in the set resolves without this. */
+            fallbackMissing: "This variant has no file, so nothing in this set resolves.",
+            variants: "Variants",
+            /** This value has no file of its own and is showing the fallback's. */
+            variantInherited: "fallback",
+            /** One cell of the matrix with nothing in it, and no fallback to answer it either. */
+            variantMissing: "No file",
+            /** One cell more than one file answers to. */
+            variantAmbiguous: "{count} files",
+            /** Shown instead of the matrix when the project declares nothing to vary by. */
+            noVariants: "This project has nothing for the set to vary by.",
+        },
+        history: {
+            edit: "Edit asset sets",
+            add: "Add set {name}",
+            rename: "Rename set {name}",
+            delete: "Delete set {name}",
+            dissolve: "Dissolve set {name}",
+            move: "Move set {name}",
+        },
     },
     menu: {
         newGroup: "New Group",
@@ -512,7 +610,7 @@ export const assets = {
     },
     fontPreview: {
         sampleText: "The quick brown fox jumps over the lazy dog - 敏捷的棕色狐狸跳过懒狗 0123456789",
-        typePlaceholder: "Type to preview your own text…",
+        typePlaceholder: "Type to preview text…",
     },
     jsonPreview: {
         invalid: "This file is not valid JSON. Showing the raw content.",

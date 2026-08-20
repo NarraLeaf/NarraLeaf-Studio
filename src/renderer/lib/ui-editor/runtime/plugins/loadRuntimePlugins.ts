@@ -16,6 +16,7 @@ import * as ReactJsxDevRuntime from "react/jsx-dev-runtime";
 import type { RuntimePluginDescriptor } from "@shared/types/plugins";
 import type { PluginRuntimeCapability } from "@shared/types/pluginPermissions";
 import { behaviorNodeRegistry } from "../../behavior-graph/BehaviorNodeRegistry";
+import { registerStoryCompilePass } from "../game/storyCompilePass";
 import type { ElementRendererRegistry } from "../ElementRendererRegistry";
 import {
     defineRuntimePlugin,
@@ -488,6 +489,32 @@ function buildCapabilityDomains(
                 onChange: listener => backend.onChange(listener),
             };
         }
+    }
+
+    if (declared.has("story.compile")) {
+        // No host backend to check, unlike every domain above: the pass registry is a module
+        // singleton in this same bundle (a game environment loads its plugins once and never
+        // unloads them), and the compiler reads it directly. So the capability is the only gate,
+        // and there is no environment in which it is declared but unavailable.
+        domains.story = {
+            registerCompilePass: pass => {
+                const passId = typeof pass?.id === "string" ? pass.id.trim() : "";
+                if (!passId) {
+                    throw new Error("Story compile pass requires an id");
+                }
+                if (passId !== pluginId && !passId.startsWith(`${pluginId}.`)) {
+                    // The same ownership rule every contributed identifier follows. It matters more
+                    // here than elsewhere: pass ids are the registry's idempotency key, so an
+                    // unprefixed one lets a plugin silently suppress another plugin's pass by
+                    // registering first under the same name.
+                    throw new Error(`Story compile pass id must be prefixed with the plugin id: ${passId}`);
+                }
+                if (typeof pass.scene !== "function") {
+                    throw new Error(`Story compile pass requires a scene(ctx) function: ${passId}`);
+                }
+                registerStoryCompilePass({ id: passId, scene: ctx => pass.scene(ctx) }, pluginId);
+            },
+        };
     }
 
     // No capability string for external links either, and for the same reason as sidecars:

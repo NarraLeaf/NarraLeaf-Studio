@@ -5,6 +5,7 @@ import {
     X,
     Archive,
     Home,
+    LogOut,
     Info,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
@@ -69,6 +70,7 @@ export const fileActionGroup: ModuleActionGroup = {
     label: "File",
     labelKey: "actions.file.label",
     order: 10,
+    mnemonic: "F",
     // The macOS File menu is built natively so it can carry Cmd+N/Cmd+O; mirroring this group
     // would leave the menu bar with two File menus.
     menuSlot: "none",
@@ -163,16 +165,35 @@ export const fileActionGroup: ModuleActionGroup = {
         },
         Separator,
         {
+            // Leaving the project, which is not the same as closing the window - the launcher is up
+            // before this window goes, and the app is not quitting. The window's own close box is
+            // the other one; see `WorkspaceExitIntent` in the main process for why they are two
+            // gestures rather than one gesture and a preference.
+            id: "narraleaf-studio:file-return-to-launcher",
+            label: "Back to Launcher",
+            labelKey: "actions.file.returnToLauncher.label",
+            icon: <LogOut className="w-4 h-4" />,
+            tooltip: "Leave this project and go back to the launcher",
+            tooltipKey: "actions.file.returnToLauncher.tooltip",
+            onClick: () => {
+                void getInterface().workspace.returnToLauncher();
+            },
+            order: 3,
+        },
+        {
+            // Named for the window rather than for the workspace now that leaving the project has
+            // its own entry directly above: two rows both called "close" would read as the same
+            // thing done twice.
             id: "narraleaf-studio:file-close-workspace",
-            label: "Close",
-            labelKey: "common.close",
+            label: "Close Window",
+            labelKey: "actions.file.close.label",
             icon: <X className="w-4 h-4" />,
-            tooltip: "Close the current workspace",
+            tooltip: "Close this window",
             tooltipKey: "actions.file.close.tooltip",
             onClick: () => {
                 getInterface().workspace.close();
             },
-            order: 3,
+            order: 4,
         },
     ],
 };
@@ -182,6 +203,7 @@ export const helpActionGroup: ModuleActionGroup = {
     label: "Help",
     labelKey: "actions.help.label",
     order: 30,
+    mnemonic: "H",
     // Built natively as the standard macOS Help menu (see fileActionGroup).
     menuSlot: "none",
     actions: [

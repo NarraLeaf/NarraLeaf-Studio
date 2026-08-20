@@ -1,3 +1,5 @@
+import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
+
 /**
  * Widget types that use shared appearance (variants + conditional rows).
  * Blueprint policy: only explicit variant switching is allowed for these types;
@@ -7,8 +9,14 @@ export const UI_APPEARANCE_CAPABLE_ELEMENT_TYPES = ["nl.container", "nl.button",
 
 export type UIAppearanceCapableElementType = (typeof UI_APPEARANCE_CAPABLE_ELEMENT_TYPES)[number];
 
-const SET = new Set<string>(UI_APPEARANCE_CAPABLE_ELEMENT_TYPES);
-
+/**
+ * Specialisations answer yes as well.
+ *
+ * A Dialog Sentence carries a text appearance model - its inspector authors variants on it - so
+ * `setVariant` rejecting it by type was the one thing standing between a game UI author and the
+ * variant they had already written. The `widgetProp` merge this also turns off for them was already
+ * dead: the appearance resolver overlays the variant's rows over the flat props it merged into.
+ */
 export function isAppearanceCapableElementType(type: string): type is UIAppearanceCapableElementType {
-    return SET.has(type);
+    return UI_APPEARANCE_CAPABLE_ELEMENT_TYPES.some(capable => isWidgetTypeOf(type, capable));
 }

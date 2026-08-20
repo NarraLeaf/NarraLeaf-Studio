@@ -204,22 +204,26 @@ export class MenuManager {
         }
     }
 
+    /**
+     * Cmd+, - through the same reveal-or-focus path every other opener uses.
+     *
+     * It used to launch unconditionally, so a second Cmd+, produced a second Settings window while
+     * the in-app opener next to it correctly reused the first. `revealSettings` is the only thing
+     * that knows whether one is already open.
+     *
+     * The focused window is passed only so Settings comes up on the display the author is working
+     * on; a Cmd+, with nothing focused still opens it.
+     */
     private openPreferencesForFocusedWindow(): void {
-        const appWindow = this.getFocusedAppWindow();
+        // Same target rule as the rest of this menu (`openRecentProject`): whatever is focused, or
+        // what was focused last while the app is in the background. App is reached through it for
+        // the reason given there - this class holds the narrower BaseApp.
+        const appWindow = this.getMenuTargetWindow();
         if (!appWindow) {
             return;
         }
 
-        void appWindow.getApp().launchSettings(appWindow, {}, {
-            parent: appWindow.win,
-            minWidth: 800,
-            minHeight: 500,
-            width: 1200,
-            height: 800,
-            center: true,
-            x: undefined,
-            y: undefined,
-        }).catch((error) => {
+        void appWindow.getApp().revealSettings({}, appWindow).catch((error) => {
             this.app.logger.error("Failed to open preferences:", error);
         });
     }
@@ -351,10 +355,10 @@ export class MenuManager {
                     },
                     { type: "separator" },
                     {
-                        label: t("menu.file.close"),
+                        label: t("menu.file.returnToLauncher"),
                         accelerator: "Cmd+Shift+W",
                         click: () => {
-                            this.sendActionToFocusedWindow(WorkspaceMenuAction.CloseWorkspace);
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.ReturnToLauncher);
                         },
                     },
                 ],
@@ -368,6 +372,11 @@ export class MenuManager {
                 role: "windowMenu",
                 label: t("menu.window.title"),
                 submenu: [
+                    // Closing the window lives here rather than in File, where it used to sit next
+                    // to a Back to Launcher that reads almost the same. This is the standard macOS
+                    // home for it, and the split makes each one say what it does: File leaves the
+                    // project, Window closes the window.
+                    { role: "close", label: t("menu.window.close"), accelerator: "Cmd+W" },
                     { role: "minimize", label: t("menu.window.minimize") },
                     { role: "zoom", label: t("menu.window.zoom") },
                     ...this.buildSlottedItems(windowGroups.flatMap(group => group.items)),

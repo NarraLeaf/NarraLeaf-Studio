@@ -35,7 +35,7 @@ export type SwitchPartGeometry = {
     trackW: number;
     trackH: number;
     thumbSize: number;
-    /** Distance the thumb travels between off and on, i.e. the `on` variant's `transformOffsetX`. */
+    /** Distance the thumb travels between off and on, i.e. the switch's `on` state motion. */
     travel: number;
 };
 
@@ -92,15 +92,24 @@ function switchPartFlatProps(kind: UISwitchChildSlot): ContainerWidgetProps {
     };
 }
 
-/**
- * The one animatable key each part's `on` variant differs by: the track changes colour, the thumb
- * slides. Both are in `CONTAINER_ANIMATABLE_KEYS`, which is what buys the transition for free.
- */
+/** The one animatable key each part's `on` variant differs by. */
 function switchOnVariantKey(kind: UISwitchChildSlot): ContainerAppearancePropertyKey {
     return kind === "track" ? "backgroundColor" : "transformOffsetX";
 }
 
-function switchOnVariantProps(kind: UISwitchChildSlot, base: ContainerWidgetProps, travel: number): ContainerWidgetProps {
+/**
+ * How a part is drawn while the switch is on.
+ *
+ * The thumb's travel is its own `on` variant, not something the switch layers over it: a part is
+ * shown in its host's states, and where it sits in one of them is as much a property of that state
+ * as the track's colour is. That is what lets an author drag the thumb to where they want it while
+ * looking at the on state, and what makes the trip animate on the field's own transition.
+ */
+function switchOnVariantProps(
+    kind: UISwitchChildSlot,
+    base: ContainerWidgetProps,
+    travel: number,
+): ContainerWidgetProps {
     return kind === "track"
         ? { ...base, backgroundColor: SWITCH_TRACK_ON_COLOR }
         : { ...base, transformOffsetX: travel };
@@ -115,6 +124,19 @@ function withGroupTransition(group: AppearancePropertyGroup): AppearanceProperty
 }
 
 /**
+ * The same transition on both variants, which is the shape the inspector writes: a transition belongs
+ * to the field, not to one of the states it moves between. On the `on` variant alone it would take
+ * the thumb one way and let it snap back.
+ */
+function withAnimatedKeyTransition(variant: AppearanceVariant, animatedKey: ContainerAppearancePropertyKey): AppearanceVariant {
+    return {
+        ...variant,
+        propertyGroups: variant.propertyGroups.map(group =>
+            group.key === animatedKey ? withGroupTransition(group) : group),
+    };
+}
+
+/**
  * Off look plus the fixed `on` variant the renderer flips to.
  *
  * The `on` variant is built by seeding a second full appearance model from the on-state flat props
@@ -122,7 +144,7 @@ function withGroupTransition(group: AppearancePropertyGroup): AppearanceProperty
  * whole baseline, so a variant missing keys would resolve to holes, and
  * `ensureContainerAppearanceHasAllKeys` only ever fills missing *keys*, never a missing *variant*.
  */
-export function createSwitchPartProps(kind: UISwitchChildSlot, travel: number): Record<string, unknown> {
+export function createSwitchPartProps(kind: UISwitchChildSlot, travel = 0): Record<string, unknown> {
     const props = switchPartFlatProps(kind);
     const appearance = createInitialContainerAppearance(props);
     const animatedKey = switchOnVariantKey(kind);
@@ -131,49 +153,15 @@ export function createSwitchPartProps(kind: UISwitchChildSlot, travel: number): 
     const onVariant: AppearanceVariant = {
         id: UI_SWITCH_ON_VARIANT_ID,
         name: translate("widgets.defaults.switch.onVariant"),
-        propertyGroups: onGroups.map(group => (group.key === animatedKey ? withGroupTransition(group) : group)),
+        propertyGroups: onGroups,
     };
+    const withTransition = (variant: AppearanceVariant) => withAnimatedKeyTransition(variant, animatedKey);
     const model: AppearanceModel = {
         ...appearance,
-        variants: [...appearance.variants, onVariant],
+        variants: [...appearance.variants.map(withTransition), withTransition(onVariant)],
     };
     return {
         ...props,
         appearance: model,
     };
-}
-
-/**
- * Rewrites the thumb's `on` travel in place. Returns `null` when the element carries no usable
- * `on` variant, so the caller can leave the document untouched instead of inventing one.
- */
-export function setSwitchOnVariantTravel(appearance: unknown, travel: number): AppearanceModel | null {
-    const model = appearance as AppearanceModel | null | undefined;
-    if (!model || !Array.isArray(model.variants)) {
-        return null;
-    }
-    const onVariant = model.variants.find(variant => variant.id === UI_SWITCH_ON_VARIANT_ID);
-    if (!onVariant) {
-        return null;
-    }
-    let changed = false;
-    const variants = model.variants.map(variant => {
-        if (variant.id !== UI_SWITCH_ON_VARIANT_ID) {
-            return variant;
-        }
-        return {
-            ...variant,
-            propertyGroups: variant.propertyGroups.map(group => {
-                if (group.key !== "transformOffsetX") {
-                    return group;
-                }
-                changed = true;
-                const rows = group.rows.length > 0
-                    ? group.rows.map((row, index) => (index === 0 ? { ...row, value: travel } : row))
-                    : [{ conditions: null, value: travel }];
-                return { key: group.key, rows, transition: group.transition } as AppearancePropertyGroup;
-            }),
-        };
-    });
-    return changed ? { ...model, variants } : null;
 }

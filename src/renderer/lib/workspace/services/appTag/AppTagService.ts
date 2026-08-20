@@ -19,9 +19,11 @@ import {
     resolveAppTagEndingSurface,
     resolveAppTagIdentity,
     resolveAppTagPluginConfigValue,
+    resolveAppTagAssetAxes,
     resolveAppTagReachableScenes,
     uniqueAppTagName,
     variantStorablePluginConfig,
+    type AppTagAssetAxes,
     type AppTagBaseIdentity,
     type AppTagDeclaredScene,
     type AppTagIdentity,
@@ -731,6 +733,65 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     }
 
     /**
+     * Where `id` sits on every build-time asset axis: the project's positions with this variant's
+     * replacing them key by key.
+     */
+    public resolveAssetAxes(id: string | null | undefined): AppTagAssetAxes {
+        return resolveAppTagAssetAxes(this.resolveTag(id), this.getDocument().assetAxes);
+    }
+
+    /** Only the positions this variant states itself. A copy; empty for the release tag. */
+    public getVariantAssetAxes(id: string | null | undefined): AppTagAssetAxes {
+        return { ...(this.resolveTag(id).assetAxes ?? {}) };
+    }
+
+    /**
+     * State where `id` sits on one axis.
+     *
+     * The release tag writes the project's record - it stores nothing of its own - which is also
+     * where an axis's default position belongs: the full product is the edition whose art an author
+     * thinks of as "the art", and every narrower edition states only where it differs.
+     *
+     * A blank value clears rather than stores, because on this record absence already means "take
+     * the inherited position" and a stored blank would be a second spelling of it.
+     */
+    public setAssetAxis(id: string | null | undefined, axisKey: string, value: string): boolean {
+        return this.writeAssetAxis(id, axisKey, value.trim() || null);
+    }
+
+    /**
+     * Stop stating a position, restoring whatever the project says.
+     *
+     * A delete, not a write of the inherited value: storing it would freeze it, and a later change
+     * to the project's default would quietly not reach this variant.
+     */
+    public clearAssetAxis(id: string | null | undefined, axisKey: string): boolean {
+        return this.writeAssetAxis(id, axisKey, null);
+    }
+
+    private writeAssetAxis(id: string | null | undefined, axisKey: string, value: string | null): boolean {
+        const key = axisKey.trim();
+        if (!key) {
+            return false;
+        }
+        const trimmedId = typeof id === "string" ? id.trim() : "";
+        const onProject = !trimmedId || isBuiltinAppTagId(trimmedId);
+        if (!onProject && !this.getTag(trimmedId)) {
+            return false;
+        }
+        this.applyDocumentMutation(document => {
+            if (onProject) {
+                document.assetAxes = writeAxisPosition(document.assetAxes ?? {}, key, value);
+                return;
+            }
+            document.tags = document.tags.map(tag => (tag.id === trimmedId
+                ? { ...tag, assetAxes: writeAxisPosition(tag.assetAxes ?? {}, key, value) }
+                : tag));
+        });
+        return true;
+    }
+
+    /**
      * Delete a variant. Refuses the release tag - it is what every unresolvable reference falls back
      * to, and a project with no variant to build is not a state the rest of Studio can read.
      *
@@ -789,6 +850,16 @@ function writePluginValue(
 }
 
 /** `declared` with one mechanism's list set, or removed when `scenes` is null. Copied, never mutated. */
+function writeAxisPosition(axes: AppTagAssetAxes, axisKey: string, value: string | null): AppTagAssetAxes {
+    const next = { ...axes };
+    if (value === null) {
+        delete next[axisKey];
+        return next;
+    }
+    next[axisKey] = value;
+    return next;
+}
+
 function writeDeclaration(
     declared: AppTagReachableScenes,
     mechanismKey: string,

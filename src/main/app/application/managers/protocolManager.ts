@@ -1,10 +1,12 @@
 import { protocol } from "electron";
 import { FileSystemHandler, FileSystemHashHandler } from "./protocol/fileSystemHandler";
 import { PluginApiHandler, PluginEntryHandler } from "./protocol/pluginHandler";
-import { ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol/types";
+import { APP_SCHEME_PRIVILEGES, ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol/types";
 import { App } from "@/app/app";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import path from "path";
+import { pathToFileURL } from "url";
+import { resolveWindowIcon } from "@shared/constants/windowIcon";
 import { BaseApp } from "../baseApp";
 
 export class ProtocolManager implements IProtocolManager {
@@ -89,7 +91,7 @@ export class ProtocolManager implements IProtocolManager {
         // Public assets handler
         const publicHandler = new FileSystemHandler(
             AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            APP_SCHEME_PRIVILEGES,
             () => this.app.getPublicDir(),
             AppHost.Public
         );
@@ -105,10 +107,38 @@ export class ProtocolManager implements IProtocolManager {
         });
         this.registerHandler(publicHandler);
 
+        // The product icon, addressed by id: `app://app-icon/<id>`.
+        //
+        // Its own host rather than a rule on the public assets above, because it serves out of
+        // `resources/` and answers from a registry rather than from a directory listing: the rule
+        // never joins the requested path onto a base dir, so the only files reachable through this
+        // route are the ones `WINDOW_ICONS` declares. An id nobody declares resolves to the
+        // shipped mark, which is why a stale preference shows the leaf and not a broken image.
+        const appIconHandler = new FileSystemHandler(
+            AppProtocol,
+            APP_SCHEME_PRIVILEGES,
+            () => this.app.getResourcesDir(),
+            AppHost.AppIcon
+        );
+        appIconHandler.addRule({
+            include: (requested) => {
+                const url = new URL(requested);
+                return url.protocol === AppProtocol + ":" && url.hostname === AppHost.AppIcon;
+            },
+            handler: (requested) => {
+                const id = decodeURIComponent(new URL(requested).pathname.replace(/^\/+/, ""));
+                return {
+                    path: pathToFileURL(this.app.resolveResource(resolveWindowIcon(id).ico)).toString(),
+                    noCache: false,
+                };
+            }
+        });
+        this.registerHandler(appIconHandler);
+
         // Window assets handler
         const windowsHandler = new FileSystemHandler(
             AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            APP_SCHEME_PRIVILEGES,
             () => path.resolve(this.app.getDistDir(), "windows"),
             AppHost.Windows,
             this.app.isDevMode()
@@ -128,14 +158,14 @@ export class ProtocolManager implements IProtocolManager {
         // File system hash handler for app://fs/{hash} requests
         const fsHashHandler = new FileSystemHashHandler(
             AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            APP_SCHEME_PRIVILEGES,
             this.app.storageManager
         );
         this.registerHandler(fsHashHandler);
 
         const pluginEntryHandler = new PluginEntryHandler(
             AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            APP_SCHEME_PRIVILEGES,
             this.app.pluginManager
         );
         this.registerHandler(pluginEntryHandler);

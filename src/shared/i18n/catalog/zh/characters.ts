@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const characters = {
     errors: {
-        assetLoad: "加载素材失败",
+        assetLoad: "加载资产失败",
     },
     panel: {
         searchPlaceholder: "搜索角色…",
@@ -24,7 +24,7 @@ export const characters = {
         namePlaceholder: "输入角色名称",
         groupNamePlaceholder: "输入分组名称",
         deleteCharacterConfirm: "删除角色“{name}”？",
-        deleteCharacterDetail: "提到这个角色的台词会失去指向，直到它被恢复",
+        deleteCharacterDetail: "提到该角色的台词会失去指向，直到它被恢复",
         deleteGroupConfirm: "删除分组“{name}”？",
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
     },
@@ -156,7 +156,7 @@ export const characters = {
         snapshots: "快照",
         combinations: {
             title: "组合",
-            name: "给这个组合起名",
+            name: "为该组合命名",
             missing: "这里没有图：{list}",
         },
         psd: {
@@ -199,7 +199,7 @@ export const characters = {
             combinationNoArt: "{name} 什么都画不出来",
             snapshotStale: "{name} 保存时用到的标签已不存在",
             poseNoImage: "{name} 没有图",
-            noPoses: "这个角色没有任何姿态，什么都画不出来",
+            noPoses: "该角色没有任何姿态，无法绘制",
             defaultPoseMissing: "默认姿态已被删除，改用 {name}",
             duplicatePose: "有两个姿态叫 {name}",
         },
@@ -225,7 +225,7 @@ export const characters = {
         voiceTrack: "语音总线",
         voiceTrackMissing: "总线已不存在",
         // 仅当语音总线下还没有任何可选项时出现，也就是选择框帮不上忙、必须先去建一条总线的那一刻
-        voiceTrackEmpty: "在「工程 → 音频」的语音下新建一条总线，即可为该角色单独控制音量",
+        voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条总线，即可为该角色单独控制音量",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",
@@ -243,7 +243,7 @@ export const characters = {
         addTag: "添加标签",
         error: {
             workspaceNotReady: "工作区尚未就绪",
-            selectImageAsset: "请选择一个图片素材",
+            selectImageAsset: "请选择一个图片资产",
             deleteThumbnailFailed: "删除缩略图失败",
             saveThumbnailFailed: "保存缩略图失败",
             unknown: "未知错误",

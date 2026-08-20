@@ -11,7 +11,7 @@ export type FieldType =
     | "text"
     | "textarea"
     | "number"
-    | "checkbox"
+    | "toggle"
     | "select"
     | "tags"
     | "custom"
@@ -100,10 +100,11 @@ export interface NumberFieldDefinition<TData = any> extends BaseFieldDefinition<
 }
 
 /**
- * Checkbox field definition
+ * Boolean field definition. Drawn as a switch, so the name says switch: a checkbox in Studio means
+ * membership of a set, not a setting (see `lib/components/elements/Checkbox`).
  */
-export interface CheckboxFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "checkbox";
+export interface ToggleFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "toggle";
     getValue: (data: TData) => boolean;
     setValue: (data: TData, value: boolean) => void | Promise<void>;
 }
@@ -265,6 +266,24 @@ export interface InputGroupFieldDefinition<TData = any> extends BaseFieldDefinit
     inputs: InputGroupItem<TData>[];
     gap?: number;
     wrap?: boolean;
+    /**
+     * Rendered after the inputs, on the same row.
+     *
+     * For a control that belongs to the group as a whole rather than to one of its values - how a
+     * position moves between states sits beside X and Y, not inside either of them.
+     */
+    trailing?: (context: InputGroupTrailingContext<TData>) => ReactNode;
+}
+
+export interface InputGroupTrailingContext<TData = any> extends InlineRowItemContext<TData> {
+    /**
+     * Whether this panel may be written right now. **Honour it.**
+     *
+     * `inputGroup` is one of the field types the framework does not clamp from outside, because its
+     * own renderer threads the flag into each input - see `fieldReadOnlyStrategy`. Arbitrary JSX put
+     * here is outside that, so a control that ignores this stays writable in a frozen project.
+     */
+    readOnly: boolean;
 }
 
 export interface InlineRowItemContext<TData = any> {
@@ -387,7 +406,7 @@ export type FieldDefinition<TData = any> =
     | TextFieldDefinition<TData>
     | TextareaFieldDefinition<TData>
     | NumberFieldDefinition<TData>
-    | CheckboxFieldDefinition<TData>
+    | ToggleFieldDefinition<TData>
     | SelectFieldDefinition<TData>
     | TagsFieldDefinition<TData>
     | InfoFieldDefinition<TData>

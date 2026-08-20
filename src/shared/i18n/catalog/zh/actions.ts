@@ -22,6 +22,8 @@ export const actions = {
         menu: "运行与构建",
         // 正式构建：折进下拉框，给版本控制控件腾出位置。
         productionBuild: "正式构建…",
+        // 和「正式构建」并列，因为它们是同一类事：产出一个文件而不是把什么跑起来。
+        exportPatch: "导出补丁…",
         runAs: "运行为",
     },
     file: {
@@ -38,8 +40,13 @@ export const actions = {
             label: "导出项目",
             tooltip: "将当前项目导出为分发包",
         },
+        returnToLauncher: {
+            label: "返回启动器",
+            tooltip: "离开当前项目，回到启动器",
+        },
         close: {
-            tooltip: "关闭当前工作区",
+            label: "关闭窗口",
+            tooltip: "关闭当前窗口",
         },
     },
     help: {

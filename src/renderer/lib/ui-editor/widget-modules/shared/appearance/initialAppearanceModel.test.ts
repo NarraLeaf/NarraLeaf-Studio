@@ -10,6 +10,7 @@ import {
     createInitialContainerAppearance,
     createInitialImageAppearance,
     createInitialTextAppearance,
+    ensureContainerAppearanceHasAllKeys,
     isUsableAppearanceModel,
 } from "./initialAppearanceModel";
 
@@ -49,5 +50,45 @@ describe("initial appearance models", () => {
             expect(model.variants[0]?.id, kind).toBe(model.defaultVariantId);
             expect(model.variants[0]?.propertyGroups.length, kind).toBeGreaterThan(0);
         }
+    });
+});
+
+/**
+ * A key absent from the seed is not a type error anywhere - the model is a list of groups, not a
+ * record - so the only thing standing between "gradientFill is registered" and "the row never
+ * appears and a variant can never hold one" is a test that asks for it by name.
+ */
+describe("gradient fill is a seeded appearance key", () => {
+    function groupKeys(model: { variants: { propertyGroups: { key: string }[] }[] }): string[] {
+        return model.variants[0]?.propertyGroups.map(group => group.key) ?? [];
+    }
+
+    it("seeds a gradientFill group on every chrome-bearing widget", () => {
+        const { container, button, image } = createAll();
+        for (const [kind, model] of Object.entries({ container, button, image })) {
+            expect(groupKeys(model), kind).toContain("gradientFill");
+        }
+    });
+
+    it("seeds it as absent rather than as a gradient nobody authored", () => {
+        const { container, button, image } = createAll();
+        for (const [kind, model] of Object.entries({ container, button, image })) {
+            const group = model.variants[0]?.propertyGroups.find(g => g.key === "gradientFill");
+            expect(group?.rows[0]?.value, kind).toBeNull();
+        }
+    });
+
+    it("appends it to a model saved before gradients existed", () => {
+        const flat = getContainerProps(bare as never);
+        const before = createInitialContainerAppearance(flat);
+        const withoutGradient = {
+            ...before,
+            variants: before.variants.map(variant => ({
+                ...variant,
+                propertyGroups: variant.propertyGroups.filter(group => group.key !== "gradientFill"),
+            })),
+        };
+
+        expect(groupKeys(ensureContainerAppearanceHasAllKeys(withoutGradient, flat))).toContain("gradientFill");
     });
 });

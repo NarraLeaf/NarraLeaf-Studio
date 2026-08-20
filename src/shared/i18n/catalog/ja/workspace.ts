@@ -19,10 +19,10 @@ export const workspace = {
             setSource: "原文の言語にする",
             removeLanguage: "言語を取り除く",
             removeConfirm: "{name} を取り除くか",
-            removeConfirmDetail: "翻訳はディスクに残り、この言語を足し直すと戻ってくる",
+            removeConfirmDetail: "翻訳はディスクに残り、この言語を追加し直すと復元される",
             openTable: "翻訳の表を開く",
             progress: "{total} 件中 {completed} 件が翻訳済み",
-            staleCount: "確認が要るもの {count} 件",
+            staleCount: "確認が必要なもの {count} 件",
             importSummary: "翻訳 {applied} 件を読み込んだ（変更なし {unchanged}、対応不明 {unknown}、空のため飛ばした {skippedEmpty}）",
         },
         settings: {
@@ -74,6 +74,8 @@ export const workspace = {
             reviewFilterUnreviewed: "未確認",
             charactersGroup: "キャラクター",
             characterSpeaker: "キャラクター",
+            scenesGroup: "シーン",
+            sceneSpeaker: "シーン",
             addKey: "追加",
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",
@@ -116,7 +118,7 @@ export const workspace = {
             confirm: "確定",
             removeLanguage: "ボイスの言語を取り除く",
             removeConfirm: "{name} を取り除くか",
-            removeConfirmDetail: "ボイスの割り当てはディスクに残り、この言語を足し直すと戻ってくる",
+            removeConfirmDetail: "ボイスの割り当てはディスクに残り、この言語を追加し直すと復元される",
             openTable: "ボイスの表を開く",
             progress: "{total} 行中 {covered} 行に収録済み",
             staleCount: "古いもの {count} 件",
@@ -124,7 +126,7 @@ export const workspace = {
             exportPickup: "追加収録の台本を書き出す（古いものだけ）",
             importAudio: "音声を読み込む…",
             exportDone: "{path} に書き出した",
-            pickupEmpty: "録り直しが要る行はない",
+            pickupEmpty: "録り直しが必要な行はない",
             importSummary: "テイク {linked} 件を結びつけた（対応不明 {unmatched}、失敗 {failed}）",
             importFailed: "音声ファイルを読み込めなかった",
             importScript: "収録台本を読み込む…",
@@ -133,6 +135,7 @@ export const workspace = {
             namingTitle: "収録ファイル名のパターン",
             namingHint: "使える語：{tokens}。読み込んだ音声はこの名前で行と対応づける",
             namingReset: "既定に戻す",
+            choicesTitle: "選択肢にボイスを付ける",
         },
         table: {
             storyLabel: "ストーリー",
@@ -150,6 +153,8 @@ export const workspace = {
             auditionFilterPending: "未処理",
             narrationSpeaker: "地の文",
             narrationGroup: "地の文",
+            choiceSpeaker: "選択肢",
+            choiceGroup: "選択肢",
             castPlaceholder: "声の担当…",
             assign: "音声を割り当てる",
             replace: "音声を差し替える",
@@ -170,7 +175,7 @@ export const workspace = {
             statusApproved: "承認済み",
             statusOutdated: "古い",
             notePlaceholder: "メモ…",
-            dropHint: "音声を落とすと割り当てる",
+            dropHint: "音声をドロップすると割り当てる",
         },
     },
     // 復旧モード。プロジェクトが読み込めない、あるいは正しく読み込めないワークスペースを、
@@ -184,7 +189,7 @@ export const workspace = {
             state: "復旧モード：読み取り専用、プラグインは読み込んでいない",
             exit: "復旧モードを出る",
         },
-        intro: "検査を走らせると、その部分だけを読み込んで結果を報告する。読めたものは普段どおり見て回れる",
+        intro: "検査を走らせると、その部分だけを読み込んで結果を報告する。読み込めた部分は通常どおり閲覧できる",
         problems: {
             title: "見つかった問題",
             count: "{count}",
@@ -248,8 +253,8 @@ export const workspace = {
             message: "このプロジェクトは正しく読み込めなかった",
             // 「ファイル（複数可）」とは書かず 2 通り用意する。件数は最初に読まれるもので、
             // データ喪失の警告の中の括弧つきの複数形は、書きかけの穴埋めに読める。
-            detailOne: "ファイルを 1 つ読めなかったので、このウィンドウにはプロジェクトの一部が欠けている。よくある原因は、保存の中断、同期やバックアップの道具による同時書き込み、プラグイン。いま編集すると、この欠けた状態を無事なファイルの上に書いてしまうことがある",
-            detailMany: "{count} 個のファイルを読めなかったので、このウィンドウにはプロジェクトの一部が欠けている。よくある原因は、保存の中断、同期やバックアップの道具による同時書き込み、プラグイン。いま編集すると、この欠けた状態を無事なファイルの上に書いてしまうことがある",
+            detailOne: "ファイルを 1 つ読めなかったので、このウィンドウにはプロジェクトの一部が欠けている。いま編集すると、この欠けた状態を無事なファイルの上に書いてしまうことがある",
+            detailMany: "{count} 個のファイルを読めなかったので、このウィンドウにはプロジェクトの一部が欠けている。いま編集すると、この欠けた状態を無事なファイルの上に書いてしまうことがある",
             enter: "復旧モードで開く",
         },
         // 各キーは、何がおかしかったかではなく、ワークスペースが何をしていたかを言う。
@@ -372,7 +377,6 @@ export const workspace = {
             categoryVersionControl: "バージョン管理",
             editor: {
                 closeTab: "タブを閉じる",
-                closeSelectedTabs: "選択中のタブを閉じる",
                 closeOthers: "ほかのタブを閉じる",
                 closeToRight: "右側のタブを閉じる",
                 closeAll: "すべてのタブを閉じる",
@@ -441,6 +445,16 @@ export const workspace = {
                 reloading: "読み込み直している…",
                 stopping: "停止している…",
             },
+            /**
+             * What a long task is called while it runs.
+             *
+             * Names the author's own object and the work being done to it, never the machinery
+             * that does it. "Baking" is what the wait is; the encoder and the file format the
+             * clip ends up in are not the author's business and never appear here.
+             */
+            task: {
+                weatherBake: "画面エフェクトを焼き込み中",
+            },
             openConsole: "コンソールを開く",
             unsavedChanges: "未保存の変更",
             saveNow: "いま保存",
@@ -458,6 +472,7 @@ export const workspace = {
             // セル自身はアイコンが主で、自分の状態を自分で示す。
             entries: {
                 runStatus: "実行状態",
+        studioTasks: "バックグラウンド処理",
                 unsavedChanges: "未保存の変更",
                 wordCount: "ストーリーの統計",
                 shortcuts: "キーボードショートカット",
@@ -511,6 +526,7 @@ export const workspace = {
                 variables: "変数の登録",
                 audioTracks: "オーディオトラック",
                 appTags: "ビルドバリアント",
+                assetSets: "アセットセット",
                 brand: "ブランドの配色",
                 dictionary: "プロジェクト辞書",
                 saveSchema: "セーブ項目",
@@ -544,16 +560,16 @@ export const workspace = {
         },
         // 実際のエディタで履歴を見る。バージョンのレールができるまでの道。
         revisionView: {
-            showPrevious: "前のリビジョンを表示（読み取り専用）",
+            showPrevious: "前のバージョンを表示（読み取り専用）",
             // 着く場所ではなく、出るモードで名付ける。docs/help-system.md §4 を参照。
             leave: "履歴の閲覧をやめる",
-            loadingTitle: "前のリビジョンを読んでいる…",
-            loadingDetail: "リビジョンを初めて読むときは、リモートから取ってくることがある",
-            shownTitle: "リビジョン {revision} を表示している",
+            loadingTitle: "前のバージョンを読んでいる…",
+            loadingDetail: "初回の読み込みではサーバーから取得することがある",
+            shownTitle: "バージョン {revision} を表示している",
             shownDetail: "エディタは読み取り専用。ディスク上のファイルは変わらない",
-            noneTitle: "これより前のリビジョンはない",
-            noneDetail: "このプロジェクトにはリビジョンが 1 つしかない",
-            failedTitle: "そのリビジョンを表示できなかった",
+            noneTitle: "これより前のバージョンはない",
+            noneDetail: "このプロジェクトにはバージョンが 1 つしかない",
+            failedTitle: "そのバージョンを表示できなかった",
         },
         // バージョン管理の各画面。左端のレール、プロジェクト切り替えのメニューの中のバージョンの節、
         // そしてステータスバーのセル。3 つとも *バージョン* を名指しし、変更の件数は決して言わない。
@@ -768,16 +784,16 @@ export const workspace = {
                     addressPlaceholder: "https://studio.example.lan:41402",
                     tokenLabel: "アクセストークン",
                     tokenPlaceholder: "受け取ったトークンを貼り付けてください",
-                    hint: "トークンはサーバーの管理者が発行して渡します。",
+                    hint: "トークンはサーバーの管理者が発行する。",
                     trust: {
                         open: "このコンピューターでこのサーバーを信頼する",
                         title: "このサーバーを信頼しますか",
-                        vouched: "貼り付けたトークンはこの認証局を指しており、そのアドレスで応答しているのもこの認証局です。",
-                        compare: "この接続とは別の手段で、サーバーの管理者から伝えられた指紋と照合してください。",
+                        vouched: "貼り付けたトークンが指す認証局が、そのアドレスで応答している。",
+                        compare: "この接続とは別の手段で、サーバーの管理者から提示された指紋と照合する。",
                         authorityLabel: "発行元",
                         fingerprintLabel: "指紋",
-                        meaning: "この認証局の鍵を持つものは、どのアドレスに対しても証明書を発行でき、このアカウントはそれを信じます。影響を受けるのはこのコンピューターのこのアカウントだけです。",
-                        manual: "このシステムにはアカウントごとの信頼ストアがないため、Studio では実行できません。次を実行してから、もう一度サインインしてください。",
+                        meaning: "この認証局の鍵を持つものは、どのアドレスに対しても証明書を発行でき、このアカウントはそれを受け入れる。影響を受けるのはこのコンピューターのこのアカウントに限られる。",
+                        manual: "このシステムにはアカウントごとの信頼ストアがない。次を実行してから、もう一度サインインする。",
                         copy: "コマンドをコピー",
                         confirm: "信頼する",
                         cancel: "キャンセル",
@@ -785,7 +801,7 @@ export const workspace = {
                     submit: "サインイン",
                     cancel: "キャンセル",
                     reach: {
-                        ready: "このサーバーとこの Studio は一緒に動作できます。",
+                        ready: "このサーバーはこの Studio と互換性がある。",
                         notPermitted: "サインインしましたが、このアカウントにはこのプロジェクトが割り当てられていません。サーバーの管理者に権限を依頼してください。",
                         dataPortSilent: "サインインしましたが、サーバー本体が応答しませんでした。",
                     },
@@ -794,7 +810,7 @@ export const workspace = {
                         token: "これはこのサーバーが発行したトークンではありません。受け取ったトークン全体を貼り付けてください。",
                         address: "このトークンにはサインイン先が書かれていないため、アドレスも必要です。",
                         certificate:
-                            "このコンピューターは、このサーバーが署名に使う認証局を信頼するよう設定されていません。"
+                            "このコンピューターは、このサーバーが署名に使う認証局を信頼していない。"
                             + "その指紋は {fingerprint} です。",
                         mismatch:
                             "そのアドレスのサーバーは、このトークンの相手ではありません。トークンは {expected} を指していますが、"
@@ -846,6 +862,8 @@ export const workspace = {
             // 設定の表と一覧の見出し（静的なカタログから来る）。
             categories: {
                 general: "一般",
+                run: "実行",
+                view: "表示",
                 story: "ストーリーエディタ",
                 uiEditor: "UI エディタ",
                 blueprint: "ブループリントエディタ",
@@ -860,6 +878,11 @@ export const workspace = {
                 cheatSheet: "キーボードショートカットを表示",
                 contextHelp: "フォーカスされているもののヘルプ",
                 reopenClosedTab: "閉じたタブを開き直す",
+                // 開発モード・プレビュー・テストのうち、実行中のものを止める一つのキー。
+                // 停止する三つのコマンドが同じ割り当てを共有する。
+                run: {
+                    stop: "実行を停止",
+                },
                 undo: "元に戻す",
                 redo: "やり直す",
                 quickSwitchNext: "次のエディタのタブへ",

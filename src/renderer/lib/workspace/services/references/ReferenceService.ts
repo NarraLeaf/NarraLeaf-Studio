@@ -7,12 +7,17 @@ import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogService";
 import { VoiceService } from "../voice/VoiceService";
 import { CharacterService } from "../core/CharacterService";
+import { AssetsService } from "../core/AssetsService";
+import { AssetSetService } from "../assets/AssetSetService";
+import { resolveAssetSetContents, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import {
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
     extractStoryAnimationAssetReferences,
-    extractStoryAssetReferences,
+    scanStoryAssetReferences,
+    splitAssetSetReferences,
+    type AssetSetExpander,
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
     type AssetReference,
@@ -63,11 +68,30 @@ const CHARACTER_SLICE_LOCATION = "Characters";
  */
 export class ReferenceService extends Service<ReferenceService> {
     private storyReferences = new Map<string, AssetReference[]>();
+    /**
+     * Story sites that named an asset set, by story id.
+     *
+     * Held beside the index rather than in it, for the reason `StoryAssetReferenceScan` gives: the
+     * index is keyed by asset id, and a set is not an asset. {@link findAssetSetReferences} is the
+     * only reader - what a set is worth to a build is decided by the members it resolves to, and
+     * those the index already covers.
+     */
+    private storySetReferences = new Map<string, AssetReference[]>();
     private storyAnimationReferences = new Map<string, AssetReference[]>();
     private voiceReferences = new Map<string, AssetReference[]>();
     private blueprintReferences: AssetReference[] = [];
     private uiReferences: AssetReference[] = [];
     private characterReferences: AssetReference[] = [];
+    /**
+     * Character sites that named a set.
+     *
+     * The same bargain {@link storySetReferences} makes, for the one row-less slice a set is usable
+     * in: the index is keyed by asset id and a set is not an asset, so the set id stays out of it and
+     * the site is recorded here instead. Keyed by slice because a slice replaces its own half on
+     * every rebuild - and because the interface and the blueprints will want the same thing the day
+     * their references can name a set.
+     */
+    private sliceSetReferences = new Map<string, AssetReference[]>();
 
     /**
      * Coverage gaps keyed the same way the reference slices are, so a rebuild replaces the gaps its
@@ -136,6 +160,43 @@ export class ReferenceService extends Service<ReferenceService> {
     /** Whether anything references `assetId`. Cheaper than {@link getReferences} for guards. */
     public isReferenced(assetId: string): boolean {
         return this.getIndex().has(assetId);
+    }
+
+    /**
+     * The rows naming these sets, keyed by set id, with the index brought up to date first.
+     *
+     * What a command that removes a set has to ask. Deleting or dissolving one leaves every row that
+     * named it pointing at an id the project no longer has - the reference index cannot say so,
+     * because it reads a set reference as a reference to the files it resolves to, and those files
+     * may well survive.
+     */
+    public async findAssetSetReferences(setIds: readonly string[]): Promise<Map<string, AssetReference[]>> {
+        const wanted = new Set(setIds);
+        const result = new Map<string, AssetReference[]>();
+        if (wanted.size === 0) {
+            return result;
+        }
+        try {
+            await this.ensureReady();
+            await this.flushPendingRebuilds();
+        } catch {
+            // An index that could not be brought up to date answers with what it has. The caller
+            // warns about what it found; it never reads an empty answer as "nothing points here".
+        }
+        for (const slice of [...this.storySetReferences.values(), ...this.sliceSetReferences.values()]) {
+            for (const reference of slice) {
+                if (!wanted.has(reference.assetId)) {
+                    continue;
+                }
+                const existing = result.get(reference.assetId);
+                if (existing) {
+                    existing.push(reference);
+                } else {
+                    result.set(reference.assetId, [reference]);
+                }
+            }
+        }
+        return result;
     }
 
     /** Bulk lookup for multi-select delete guards — one index pass instead of one per asset. */
@@ -207,6 +268,7 @@ export class ReferenceService extends Service<ReferenceService> {
         }
         this.rebuildTimers.clear();
         this.storyReferences.clear();
+        this.storySetReferences.clear();
         this.storyAnimationReferences.clear();
         this.voiceReferences.clear();
         this.blueprintReferences = [];
@@ -222,6 +284,46 @@ export class ReferenceService extends Service<ReferenceService> {
      * Replace one slice's gaps. Always called on a rebuild, with an empty list when the slice read
      * cleanly, so a gap can never outlive the problem that produced it.
      */
+    /**
+     * How a story reference to an asset set is read: as a reference to every asset it can resolve to.
+     *
+     * Built per scan rather than held, because it reads two things that change under it - the sets
+     * the project declares and the tags on the library - and a stale copy would report an asset as
+     * unused the moment its tag was corrected.
+     */
+    private assetSetExpander(): AssetSetExpander | undefined {
+        let sets: AssetSet[];
+        try {
+            sets = this.getContext().services.get<AssetSetService>(Services.AssetSets).listSets();
+        } catch {
+            return undefined;
+        }
+        if (sets.length === 0) {
+            return undefined;
+        }
+        const setsById = new Map(sets.map(set => [set.id, set]));
+        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
+        const candidates: AssetSetCandidate[] = [];
+        for (const bucket of Object.values(assetsService.getAssets())) {
+            for (const asset of Object.values(bucket ?? {})) {
+                candidates.push({ id: asset.id, type: asset.type, tags: asset.tags });
+            }
+        }
+        return assetId => {
+            const set = setsById.get(assetId);
+            if (!set) {
+                return null;
+            }
+            const members = new Set<string>();
+            for (const cell of resolveAssetSetContents(set, candidates).cells) {
+                for (const memberId of cell.assetIds) {
+                    members.add(memberId);
+                }
+            }
+            return [...members];
+        };
+    }
+
     private setSliceGaps(key: string, gaps: readonly ReferenceIndexGap[]): void {
         if (gaps.length === 0) {
             this.sliceGaps.delete(key);
@@ -280,7 +382,9 @@ export class ReferenceService extends Service<ReferenceService> {
             storyService.listStories().map(async entry => {
                 try {
                     const document = await storyService.loadStory(entry.id);
-                    this.storyReferences.set(entry.id, extractStoryAssetReferences(document, entry.name));
+                    const scan = scanStoryAssetReferences(document, entry.name, this.assetSetExpander());
+                    this.storyReferences.set(entry.id, scan.references);
+                    this.storySetReferences.set(entry.id, scan.setReferences);
                     this.setSliceGaps(`story:${entry.id}`, []);
                 } catch (error) {
                     console.warn(`[ReferenceService] Failed to scan story ${entry.id}:`, error);
@@ -363,7 +467,65 @@ export class ReferenceService extends Service<ReferenceService> {
                     this.emitChanged();
                 });
             }),
+            ...this.subscribeToAssetSetResolution(),
         );
+    }
+
+    /**
+     * Re-read everything that reads a set when what an asset set resolves to changes.
+     *
+     * A slice that can name a set is not a function of its own document alone: the reference is
+     * indexed as a use of the files that set currently resolves to, and that reading depends on two
+     * things this service does not own - the set declarations, and the tags on the library. Without
+     * this, a set that has just been dissolved leaves the index still claiming the field uses the
+     * files it used to resolve to, so the project check reports no error over a field that names an
+     * id nothing has.
+     *
+     * Two slices, not one: a set is nameable by a character as well as by a row. A slice left out of
+     * this is the one whose stale answer survives a rescan.
+     *
+     * Every feed lands on one key per slice, so a burst of tag writes (an import, a wizard) costs
+     * one rescan each rather than one per file.
+     */
+    private subscribeToAssetSetResolution(): Array<() => void> {
+        const ctx = this.getContext();
+        let assetSetService: AssetSetService;
+        let assetsService: AssetsService;
+        try {
+            assetSetService = ctx.services.get<AssetSetService>(Services.AssetSets);
+            assetsService = ctx.services.get<AssetsService>(Services.Assets);
+        } catch {
+            // A workspace without these services has no sets to resolve, so there is nothing here
+            // that could go stale.
+            return [];
+        }
+        const rescan = () => {
+            this.scheduleRebuild("story-library", () => this.resyncStoryLibrary());
+            // Announces for itself, the way its own document subscription does: `resyncStoryLibrary`
+            // above emits at the end of its own run, and a rebuild nobody is told about leaves the
+            // grouped view cached against the answers it just replaced.
+            this.scheduleRebuild("character", () => {
+                this.rebuildCharacterSlice();
+                this.emitChanged();
+            });
+        };
+        // Only the tags matter here, and only while the project declares a set. A project with none
+        // reads every id literally, so no asset edit can change the index.
+        const rescanIfSetsExist = () => {
+            if (assetSetService.listSets().length > 0) {
+                rescan();
+            }
+        };
+        return [
+            assetSetService.onSetsChanged(rescan),
+            assetsService.getEvents().on("updated", rescanIfSetsExist),
+            // Deletion counts for exactly the reason a tag edit does: a set resolves to the tagged
+            // files that exist right now, so removing one changes what every row naming that set is
+            // indexed as using. Leaving it out made the index go on claiming a use of a file the
+            // project no longer has - the same stale claim the doc above is about, reached by the
+            // one door that was not watched.
+            assetsService.getEvents().on("deleted", rescanIfSetsExist),
+        ];
     }
 
     private scheduleRebuild(key: string, action: () => void | Promise<void>): void {
@@ -407,10 +569,13 @@ export class ReferenceService extends Service<ReferenceService> {
         try {
             const document = storyService.getStoryDocument(storyId);
             const name = storyService.listStories().find(entry => entry.id === storyId)?.name ?? storyId;
-            this.storyReferences.set(storyId, extractStoryAssetReferences(document, name));
+            const scan = scanStoryAssetReferences(document, name, this.assetSetExpander());
+            this.storyReferences.set(storyId, scan.references);
+            this.storySetReferences.set(storyId, scan.setReferences);
             this.setSliceGaps(`story:${storyId}`, []);
         } catch (error) {
             this.storyReferences.delete(storyId);
+            this.storySetReferences.delete(storyId);
             /**
              * Two different failures arrive here and they must not be treated alike.
              *
@@ -440,6 +605,7 @@ export class ReferenceService extends Service<ReferenceService> {
         for (const storyId of [...this.storyReferences.keys()]) {
             if (!liveIds.has(storyId)) {
                 this.storyReferences.delete(storyId);
+                this.storySetReferences.delete(storyId);
                 // A story that is gone contributes no references and no gap; leaving its gap behind
                 // would keep the index incomplete over a document nobody can open any more.
                 this.setSliceGaps(`story:${storyId}`, []);
@@ -448,7 +614,9 @@ export class ReferenceService extends Service<ReferenceService> {
         for (const entry of entries) {
             try {
                 const document = await storyService.loadStory(entry.id);
-                this.storyReferences.set(entry.id, extractStoryAssetReferences(document, entry.name));
+                const scan = scanStoryAssetReferences(document, entry.name, this.assetSetExpander());
+                this.storyReferences.set(entry.id, scan.references);
+                this.storySetReferences.set(entry.id, scan.setReferences);
                 this.setSliceGaps(`story:${entry.id}`, []);
             } catch (error) {
                 console.warn(`[ReferenceService] Failed to scan story ${entry.id}:`, error);
@@ -560,11 +728,17 @@ export class ReferenceService extends Service<ReferenceService> {
                     appearanceAssets,
                 };
             });
-            this.characterReferences = extractCharacterAssetReferences(characters);
+            const split = splitAssetSetReferences(
+                extractCharacterAssetReferences(characters),
+                this.assetSetExpander(),
+            );
+            this.characterReferences = split.references;
+            this.sliceSetReferences.set("character", split.setReferences);
             this.setSliceGaps("character", []);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan characters:", error);
             this.characterReferences = [];
+            this.sliceSetReferences.set("character", []);
             this.setSliceGaps("character", [{ reason: "sliceFailed", slice: "character", location: CHARACTER_SLICE_LOCATION }]);
         }
     }

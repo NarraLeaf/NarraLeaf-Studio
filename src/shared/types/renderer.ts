@@ -3,6 +3,7 @@ import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type {
     GameProgressExportRequest,
@@ -10,6 +11,8 @@ import type {
     GameProgressImportResult,
 } from "./gameProgress";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
+import type { StudioTaskOverview } from "./studioTask";
+import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
@@ -22,7 +25,7 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -31,7 +34,8 @@ import type {
 } from "./signing";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { ServerTrustPromptProps } from "./serverTrust";
-import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
     PluginPermissionDecision,
@@ -67,7 +71,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -118,6 +122,11 @@ export interface RendererPreloadedInterface {
     // Basic Information
     getPlatform(): Promise<RequestStatus<PlatformInfo>>;
     getAppInfo(): Promise<RequestStatus<AppInfo>>;
+    /**
+     * Claim the once-per-launch experimental warning. Answers true to the first workspace window
+     * that asks and false to everything after it.
+     */
+    claimExperimentalNotice(): Promise<RequestStatus<{ show: boolean }>>;
     getWindowProps<T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>>;
     terminate(err?: string): Promise<void>;
     /**
@@ -224,6 +233,17 @@ export interface RendererPreloadedInterface {
      * id that means nothing here answers `idle`, which is also what a job answers once it has aged
      * out of the main process's memory.
      */
+    /**
+     * What long work Studio is doing right now, in one value.
+     *
+     * Polled, like every other long task: the work outlives any single render, and a window that was
+     * reloading while something ran has to be able to find out what it is.
+     */
+    studioTasks: {
+        getOverview(): Promise<RequestStatus<{ overview: StudioTaskOverview }>>;
+        /** Speculative: have these clips ready before a run asks for them. Resolves on submission. */
+        prebakeWeather(projectPath: string, specs: WeatherBakeSpec[]): Promise<RequestStatus<Record<string, never>>>;
+    };
     mediaConvert: {
         start(request: MediaConvertRequest): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
         cancel(jobId: string): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
@@ -237,7 +257,18 @@ export interface RendererPreloadedInterface {
          * "switch in this window" rather than opening alongside.
          */
         openRecent(projectPath: string, replaceCurrentWindow?: boolean): Promise<RequestStatus<void>>;
+        /**
+         * Whether this project already has a window. Opening it would focus that window rather than
+         * open anything, so a surface that asks the author which window to use asks this first and
+         * skips the question when the answer is yes.
+         */
+        isProjectOpen(projectPath: string): Promise<RequestStatus<{ open: boolean }>>;
         close(): Promise<RequestStatus<void>>;
+        /**
+         * Leave the project and go back to the home screen. Unlike {@link close}, the launcher is
+         * always what comes next - this window is not being closed so much as stepped out of.
+         */
+        returnToLauncher(): Promise<RequestStatus<void>>;
         getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
         exportProjectPackage(projectPath: string): Promise<RequestStatus<{
             canceled: boolean;
@@ -483,6 +514,8 @@ export interface RendererPreloadedInterface {
         /** Workspace side of {@link openStoryRowInWorkspace}. */
         onStoryRowOpen(handler: (payload: DevModeStoryRowOpenRequest) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
+        /** Produce the clip a weather seed describes, and grant this window a URL for it. */
+        resolveWeatherClip(spec: WeatherBakeSpec): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
@@ -494,12 +527,15 @@ export interface RendererPreloadedInterface {
                 savedGame: unknown,
                 capture?: string,
                 metadata?: unknown,
+                compatibility?: SaveCompatibilityStamp,
+                playtimeSeconds?: number,
             ): Promise<RequestStatus<void>>;
             read(
                 projectRef: DevModeSaveProjectRef,
                 id: string,
             ): Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>;
             listIds(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<{ ids: string[] }>>;
+            listHeaders(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<{ headers: DevModeSaveHeader[] }>>;
             readPreview(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ capture: string | null }>>;
             delete(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ deleted: boolean }>>;
         };
@@ -790,6 +826,19 @@ export interface RendererPreloadedInterface {
         /** Take a server off this machine, token and record together. Local. */
         forgetServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /**
+         * What one server holds. **Goes to the network.**
+         *
+         * Answered afresh every time rather than from anything kept here: a list that was
+         * right when it was stored is wrong the moment somebody else pushes.
+         */
+        listServerProjects(remoteOrigin: string): Promise<RequestStatus<VcsServerProjectsOutcome>>;
+        /** Ask a server to make a project. **Goes to the network, and writes there.** */
+        createServerProject(
+            remoteOrigin: string,
+            name: string,
+            description?: string,
+        ): Promise<RequestStatus<VcsServerProjectOutcome>>;
+        /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.
          *
@@ -825,6 +874,20 @@ export interface RendererPreloadedInterface {
         selectOutputDir(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
         /** Run the build's checks without building; advisory, `start` re-checks. */
         preflight(projectPath: string, request: GameBuildRequest): Promise<RequestStatus<{ findings: BuildPreflightFinding[] }>>;
+        /**
+         * Produce a patch for a build of this project. Reports through the same
+         * snapshot `getStatus` polls and the same console `start` writes to,
+         * because it is the same session - the two cannot run at once.
+         */
+        exportPatch(
+            projectPath: string,
+            entry: GameRuntimeLaunchEntry,
+            request: GamePatchExportRequest,
+        ): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
+        /** Where to write a patch; null when the author closes the dialog. */
+        selectPatchFile(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
+        /** The build a patch is measured against - a package file, not a folder. */
+        selectPatchBaseline(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
     };
 
     /**
@@ -836,6 +899,22 @@ export interface RendererPreloadedInterface {
      * No call returns a password. `import` is the one direction a secret
      * travels - up, once, straight into the OS keyring.
      */
+    /**
+     * The project's distribution key: the one value that ties a shipped build to
+     * the project that made it, so an add-on produced later can be read by that
+     * build and recognised as coming from the same place.
+     *
+     * Minting is the only operation. Nothing reads it back — it lives in the
+     * project manifest, travels with the project, and is never shown.
+     */
+    distribution: {
+        /**
+         * Mint a key. Replacing an existing one is the caller's decision and its
+         * consequence: builds already shipped under the old key stop accepting
+         * add-ons made after the replacement.
+         */
+        createKey(): Promise<RequestStatus<{ key: string }>>;
+    };
     signing: {
         /** Redacted credentials: metadata only. */
         list(): Promise<RequestStatus<{ credentials: SigningCredential[] }>>;
@@ -901,6 +980,17 @@ export interface RendererPreloadedInterface {
             projectPath: string,
             request: BlueprintNetworkFetchRequest,
         ): Promise<RequestStatus<{ result: BlueprintNetworkFetchResult }>>;
+    };
+
+    blueprintPointer: {
+        /**
+         * One Move Mouse node request, performed by the main process for a Dev Mode preview.
+         *
+         * The point is in CSS pixels from the top-left of the web contents. The window it belongs
+         * to is the one that sent it - the renderer never names a window, and could not usefully:
+         * the only position it can speak about is a position inside itself.
+         */
+        move(request: BlueprintPointerMoveRequest): Promise<RequestStatus<{ result: BlueprintPointerMoveResult }>>;
     };
 
     blueprintExternalLink: {
@@ -982,7 +1072,7 @@ export interface RendererPreloadedInterface {
     /** Project templates bundled with this build (resources/templates). */
     projectTemplates: {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
-        scaffold(templateId: string, projectPath: string): Promise<RequestStatus<{ filesCopied: number }>>;
+        scaffold(templateId: string, projectPath: string): Promise<RequestStatus<{ filesCopied: number; locales: string[] }>>;
     };
 
     assets: {

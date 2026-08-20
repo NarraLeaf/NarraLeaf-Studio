@@ -84,6 +84,7 @@ const RUNTIME_CAPABILITY_KEYS: Record<PluginRuntimeCapability, TranslationKey> =
     "ui.overlay": "pluginPermission.permissions.runtimeCapability.uiOverlay",
     "assets": "pluginPermission.permissions.runtimeCapability.assets",
     "locale": "pluginPermission.permissions.runtimeCapability.locale",
+    "story.compile": "pluginPermission.permissions.runtimeCapability.storyCompile",
 };
 
 /**

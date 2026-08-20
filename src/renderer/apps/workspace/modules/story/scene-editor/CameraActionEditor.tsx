@@ -1,62 +1,51 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { Moon, Move, RotateCw, Spline, Undo2, ZoomIn } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StorySceneId, StoryTransformRef } from "@shared/types/story";
+import { foldStoryTransformLook, storyTransformPropsToNlr } from "@shared/story/transformProps";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
+import { resolveStoryCameraLook } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { Services } from "@/lib/workspace/services/services";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
-import { Slider } from "@/lib/components/elements";
-import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { MotionField } from "../../story-motion";
 import { resolveStoryMotionStageSize } from "../../story-motion/StoryMotionEditorTab";
-import { FIELD_LABEL_CLASS, FieldGrid, SecondsField, SelectField, Section, easingOptions } from "./inspectorFieldKit";
+import { TransformChannelEditor } from "./TransformChannelEditor";
+import { SampleStage } from "@/lib/story/previewSubject";
+import { EasingField, FieldGrid, SecondsField, SegToggle, Section } from "./inspectorFieldKit";
 
 type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;
-type CameraOperation = CameraActionPayload["operation"];
 
 /** Mirrors the compiler's floor - the inspector must not be able to store a shot the compile then rewrites. */
 const MIN_CAMERA_ZOOM = 0.05;
 
-/** Slider ranges. Wider than any usable shot, so the slider never becomes the reason a value is out of reach. */
-const ZOOM_RANGE = { min: 0.25, max: 4, step: 0.05 };
-const ROTATION_RANGE = { min: -180, max: 180, step: 1 };
-const DARKNESS_RANGE = { min: 0, max: 1, step: 0.01 };
-const ALIGN_RANGE = { min: 0, max: 1, step: 0.01 };
-
-const OPERATION_ICONS: Record<CameraOperation, typeof ZoomIn> = {
-    zoom: ZoomIn,
-    pan: Move,
-    rotate: RotateCw,
-    darken: Moon,
-    motion: Spline,
-    reset: Undo2,
-};
-
-const OPERATION_ORDER: readonly CameraOperation[] = ["zoom", "pan", "rotate", "darken", "motion", "reset"];
-
 /** The three placements the command line offers, resolved through the one table that owns the mapping. */
 const PAN_PLACEMENTS = ["left", "center", "right"] as const;
 
+/** Which of the three things a camera row can be. `reset` is a different engine call, not a bag. */
+type CameraMode = "pose" | "motion" | "reset";
+
+function modeOf(payload: CameraActionPayload): CameraMode {
+    if (payload.operation === "reset") {
+        return "reset";
+    }
+    return payload.transform?.mode === "animation" ? "motion" : "pose";
+}
+
 /**
- * The camera's knobs.
+ * The camera's panel.
  *
- * What the *shape* of this editor has to carry, because a paragraph of explanation is not the house
- * style:
- *  - the section title says the pose is story-wide, so an author does not expect a scene change to
- *    put the camera back;
- *  - `darken` is labelled as STAGE brightness, which is what tells it apart from `/vignette`'s
- *    in-scene mask layer — and the viewfinder dims the stage rect while leaving the dialogue bar lit,
- *    which is the same statement in a picture;
- *  - `reset` and `motion` sit in the same six-way operation picker as the four poses, because the
- *    camera is one instrument and these are its knobs — not six unrelated commands;
- *  - every pose has a **viewfinder**: `zoom 1.4` and `xalign 0.3` are numbers nobody can picture, and
- *    the frame is the thing the author is actually choosing.
+ * **It is the transform panel, plus a viewfinder.** There used to be a six-way operation picker here,
+ * because the payload spelled its state as one operation plus that operation's own field - so the
+ * panel had to ask which one the row was, and every other channel disappeared behind the answer. v19
+ * gave the camera the same prop bag every other subject writes, so the question no longer has to be
+ * asked: the channel list below states as many channels as the row does, and it is the same list a
+ * `/transform hero` row opens.
  *
- * Each operation shows only its own value: a `zoom` row carrying a stale `rotation` field would be
- * offering to edit a number the compile never reads. The viewfinder obeys the same rule — it draws the
- * active channel over a neutral pose, so what it shows is exactly what this row will do.
+ * What stays camera-shaped is the viewfinder. `zoom 1.4` and `xalign 0.3` are numbers nobody can
+ * picture, and the frame is the thing the author is actually choosing - so the widget draws the stage
+ * rect the way the engine will, and the dialogue bar sits OUTSIDE it because the camera never moves
+ * that. Dragging inside it writes the position channel.
  */
 export function CameraActionEditor(props: {
     payload: CameraActionPayload;
@@ -69,8 +58,9 @@ export function CameraActionEditor(props: {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const payload = props.payload;
-    const operation = payload.operation;
     const onChange = props.onChange;
+    const mode = modeOf(payload);
+    const transform: StoryTransformRef = payload.transform ?? { mode: "props" };
 
     const projectService = useMemo(
         () => context && isInitialized ? context.services.get<ProjectService>(Services.Project) : null,
@@ -78,160 +68,119 @@ export function CameraActionEditor(props: {
     );
     const stageSize = useMemo(() => resolveStoryMotionStageSize(projectService), [projectService]);
 
-    const setOperation = useCallback((next: CameraOperation) => {
-        // Switching into `motion` seeds the ref in animation mode so the field opens on the motion
-        // picker; the other channels are left alone, since the compile only reads the active one and
-        // an author toggling between knobs should not lose the number they just set.
-        onChange(next === "motion" && !payload.motion
-            ? { ...payload, operation: next, motion: { mode: "animation" } }
-            : { ...payload, operation: next });
-    }, [onChange, payload]);
-
-    const setPan = useCallback((next: { xalign?: number; yalign?: number }) => {
+    const setMode = useCallback((next: CameraMode) => {
+        if (next === "reset") {
+            // The pose is dropped rather than kept aside: `reset` states no bag, and a ref parked on a
+            // payload nothing reads would come back the next time somebody switched modes and quietly
+            // re-apply a shot the author had abandoned.
+            onChange({ action: "camera", operation: "reset", ...(payload.durationMs !== undefined ? { durationMs: payload.durationMs } : {}) });
+            return;
+        }
         onChange({
-            ...payload,
-            position: {
-                ...payload.position,
-                ...(next.xalign === undefined ? {} : { xalign: clampAlign(next.xalign) }),
-                ...(next.yalign === undefined ? {} : { yalign: clampAlign(next.yalign) }),
-            },
+            action: "camera",
+            operation: "transform",
+            transform: next === "motion"
+                ? { ...transform, mode: "animation" }
+                : { ...transform, mode: "props", animationId: undefined },
         });
-    }, [onChange, payload]);
+    }, [onChange, payload.durationMs, transform]);
+
+    const setTransform = useCallback((next: StoryTransformRef | undefined) => {
+        onChange({ action: "camera", operation: "transform", transform: next ?? { mode: "props" } });
+    }, [onChange]);
+
+    const setPan = useCallback((next: { xalign: number; yalign: number }) => {
+        const to = transform.to ?? {};
+        setTransform({
+            ...transform,
+            mode: "props",
+            to: { ...to, position: { ...to.position, xalign: clampAlign(next.xalign), yalign: clampAlign(next.yalign) } },
+        });
+    }, [setTransform, transform]);
 
     return (
-        <Section title={t("storyInspector.section.camera")}>
-            <div className="grid grid-cols-1 gap-2">
-                {/* Six knobs of one instrument, all visible at once. The short label is what fits; the
-                    full name (which is where `Darken stage` says *stage*) is the tooltip, and the
-                    viewfinder below says the same thing in a picture. */}
-                <div className="grid grid-cols-3 gap-1">
-                    {OPERATION_ORDER.map(option => {
-                        const Icon = OPERATION_ICONS[option];
-                        const selected = operation === option;
-                        return (
-                            <button
-                                key={option}
-                                type="button"
-                                data-tip={t(`storyInspector.cameraOperation.${option}`)}
-                                className={[
-                                    "flex h-8 min-w-0 items-center justify-center gap-1 rounded-md border px-1 text-2xs transition-colors",
-                                    selected
-                                        ? "border-primary/50 bg-primary/15 text-primary"
-                                        : "border-edge bg-surface text-fg-muted hover:text-fg",
-                                ].join(" ")}
-                                onClick={() => setOperation(option)}
-                            >
-                                <Icon className="h-3.5 w-3.5 shrink-0" />
-                                <span className="truncate">{t(`storyInspector.cameraOperationShort.${option}`)}</span>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {operation === "motion" ? (
-                    <MotionField
-                        value={payload.motion}
-                        targetKind="camera"
-                        motionLabel={t("storyInspector.motionTarget.camera")}
-                        actionContext={{
-                            storyId: props.storyId,
-                            sceneId: props.sceneId,
-                            blockId: props.blockId,
-                            storyName: props.storyName,
-                        }}
-                        onChange={(motion: StoryTransformRef | undefined) => onChange({ ...payload, motion })}
-                    />
-                ) : (
-                    <>
-                        <CameraViewfinder
-                            payload={payload}
-                            stageSize={stageSize}
-                            onPan={operation === "pan" ? setPan : undefined}
+        <Section
+            title={t("storyInspector.section.camera")}
+            right={
+                <SegToggle
+                    value={mode}
+                    options={[
+                        { value: "pose", label: t("storyInspector.transform.presetMode") },
+                        { value: "motion", label: t("storyInspector.transform.motionMode") },
+                        { value: "reset", label: t("storyInspector.cameraOperation.reset") },
+                    ]}
+                    onChange={next => setMode(next as CameraMode)}
+                />
+            }
+        >
+            {mode === "motion" ? (
+                <MotionField
+                    value={payload.transform}
+                    targetKind="camera"
+                    motionLabel={t("storyInspector.motionTarget.camera")}
+                    actionContext={{
+                        storyId: props.storyId,
+                        sceneId: props.sceneId,
+                        blockId: props.blockId,
+                        storyName: props.storyName,
+                    }}
+                    onChange={setTransform}
+                />
+            ) : mode === "reset" ? (
+                <div className="grid grid-cols-1 gap-2">
+                    <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraResetHint")}</p>
+                    <FieldGrid cols={2}>
+                        <SecondsField
+                            label={t("storyInspector.field.duration")}
+                            value={payload.durationMs}
+                            onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
                         />
-                        {operation === "zoom" ? (
-                            <SliderRow
-                                label={t("storyInspector.camera.zoom")}
-                                range={ZOOM_RANGE}
-                                value={payload.zoom ?? 1}
-                                neutral={1}
-                                onChange={zoom => onChange({ ...payload, zoom: Math.max(MIN_CAMERA_ZOOM, zoom) })}
-                            />
-                        ) : null}
-                        {operation === "rotate" ? (
-                            <SliderRow
-                                label={t("storyInspector.camera.rotation")}
-                                range={ROTATION_RANGE}
-                                value={payload.rotation ?? 0}
-                                neutral={0}
-                                onChange={rotation => onChange({ ...payload, rotation })}
-                            />
-                        ) : null}
-                        {operation === "darken" ? (
-                            <SliderRow
-                                label={t("storyInspector.camera.darkness")}
-                                range={DARKNESS_RANGE}
-                                value={payload.darkness ?? 0}
-                                neutral={0}
-                                onChange={darkness => onChange({ ...payload, darkness: clampAlign(darkness) })}
-                            />
-                        ) : null}
-                        {operation === "pan" ? (
-                            <div className="grid grid-cols-1 gap-2">
-                                <div className="flex gap-1">
-                                    {PAN_PLACEMENTS.map(placement => {
-                                        const xalign = getPresetPosition(placement, {})?.xalign ?? 0.5;
-                                        const active = (payload.position?.xalign ?? 0.5) === xalign;
-                                        return (
-                                            <button
-                                                key={placement}
-                                                type="button"
-                                                className={[
-                                                    "h-7 flex-1 rounded-md border text-2xs transition-colors",
-                                                    active
-                                                        ? "border-primary/50 bg-primary/15 text-primary"
-                                                        : "border-edge bg-surface text-fg-muted hover:text-fg",
-                                                ].join(" ")}
-                                                onClick={() => setPan({ xalign, yalign: 0.5 })}
-                                            >
-                                                {t(`story.position.${placement}`)}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                <FieldGrid cols={2}>
-                                    <SliderRow
-                                        label={t("storyInspector.camera.xalign")}
-                                        range={ALIGN_RANGE}
-                                        value={payload.position?.xalign ?? 0.5}
-                                        neutral={0.5}
-                                        onChange={xalign => setPan({ xalign })}
-                                    />
-                                    <SliderRow
-                                        label={t("storyInspector.camera.yalign")}
-                                        range={ALIGN_RANGE}
-                                        value={payload.position?.yalign ?? 0.5}
-                                        neutral={0.5}
-                                        onChange={yalign => setPan({ yalign })}
-                                    />
-                                </FieldGrid>
-                            </div>
-                        ) : null}
-                        <FieldGrid cols={2}>
-                            <SecondsField
-                                label={t("storyInspector.field.duration")}
-                                value={payload.durationMs}
-                                onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
-                            />
-                            <SelectField
-                                label={t("storyInspector.field.easing")}
-                                options={easingOptions(t)}
-                                value={payload.easing ?? ""}
-                                onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
-                            />
-                        </FieldGrid>
-                    </>
-                )}
-            </div>
+                        <EasingField
+                            t={t}
+                            value={payload.easing}
+                            onChange={easing => onChange({ ...payload, easing })}
+                        />
+                    </FieldGrid>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-2">
+                    <CameraViewfinder transform={transform} stageSize={stageSize} onPan={setPan} />
+                    <div className="flex gap-1">
+                        {PAN_PLACEMENTS.map(placement => {
+                            const xalign = getPresetPosition(placement, {})?.xalign ?? 0.5;
+                            const active = transform.to?.position !== undefined && (transform.to.position.xalign ?? 0.5) === xalign;
+                            return (
+                                <button
+                                    key={placement}
+                                    type="button"
+                                    className={[
+                                        "h-7 flex-1 rounded-md border text-2xs transition-colors",
+                                        active
+                                            ? "border-primary/50 bg-primary/15 text-primary"
+                                            : "border-edge bg-surface text-fg-muted hover:text-fg",
+                                    ].join(" ")}
+                                    onClick={() => setPan({ xalign, yalign: transform.to?.position?.yalign ?? 0.5 })}
+                                >
+                                    {t(`story.position.${placement}`)}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <FieldGrid cols={2}>
+                        <SecondsField
+                            label={t("storyInspector.field.duration")}
+                            value={transform.durationMs}
+                            onChange={durationMs => setTransform({ ...transform, durationMs })}
+                        />
+                        <EasingField
+                            t={t}
+                            value={transform.easing}
+                            onChange={easing => setTransform({ ...transform, easing })}
+                        />
+                    </FieldGrid>
+                    <TransformChannelEditor value={payload.transform} targetKind="camera" onChange={setTransform} />
+                </div>
+            )}
         </Section>
     );
 }
@@ -239,37 +188,43 @@ export function CameraActionEditor(props: {
 /**
  * The shot, drawn.
  *
- * The stage is a rectangle that the camera moves and scales as one unit — exactly what the engine
+ * The stage is a rectangle that the camera moves and scales as one unit - exactly what the engine
  * does, since `Camera` is a `Displayable` and `camera.pan` is an alias of `Displayable.pos`. So the
- * widget is a fixed viewport with the stage rect inside it, using the same align→CSS mapping as the
- * Story Motion preview (`left: xalign%`, `bottom: yalign%`, centred by a −50%/+50% translate). One
+ * widget is a fixed viewport with the stage rect inside it, using the same align->CSS mapping as the
+ * Story Motion preview (`left: xalign%`, `bottom: yalign%`, centred by a -50%/+50% translate). One
  * mental model across both surfaces; and dragging behaves the way the runtime will.
  *
- * The dialogue bar is drawn OUTSIDE the stage rect because the camera never moves it. That is the
- * difference between `/camera darken` and `/vignette`, said in a picture instead of a sentence.
+ * **Every stated channel is drawn at once**, which it could not be before v19: a row states a bag
+ * now, so a combined pose is what the row does rather than a composite of things it does not.
+ *
+ * The dialogue bar is drawn OUTSIDE the stage rect because the camera never moves it. That is what
+ * tells a stage grade apart from a full-screen overlay, said in a picture instead of a sentence.
  */
 function CameraViewfinder(props: {
-    payload: CameraActionPayload;
+    transform: StoryTransformRef;
     stageSize: { width: number; height: number };
-    /** Provided only for `pan`; without it the widget is a read-only preview of the active channel. */
-    onPan?: (next: { xalign: number; yalign: number }) => void;
+    onPan: (next: { xalign: number; yalign: number }) => void;
 }) {
-    const { t } = useTranslation();
     const boxRef = useRef<HTMLDivElement | null>(null);
-    const payload = props.payload;
-    const operation = payload.operation;
-
-    // Only the active channel is drawn — see the comment on this component for why a combined pose
-    // would lie about what the row does.
-    const zoom = operation === "zoom" ? Math.max(MIN_CAMERA_ZOOM, payload.zoom ?? 1) : 1;
-    const rotation = operation === "rotate" ? payload.rotation ?? 0 : 0;
-    const darkness = operation === "darken" ? clampAlign(payload.darkness ?? 0) : 0;
-    const xalign = operation === "pan" ? clampAlign(payload.position?.xalign ?? 0.5) : 0.5;
-    const yalign = operation === "pan" ? clampAlign(payload.position?.yalign ?? 0.5) : 0.5;
+    const to = props.transform.mode === "animation" ? undefined : props.transform.to;
+    // Through the same fold the compile uses, so a grade previews as the CSS that will play - which
+    // also makes this the check on a hand-written chain: CSS the browser cannot parse is dropped
+    // whole, and shows here as a stage that did not change.
+    const nlr = storyTransformPropsToNlr(foldStoryTransformLook(to, resolveStoryCameraLook));
+    const zoom = Math.max(MIN_CAMERA_ZOOM, typeof nlr.zoom === "number" ? nlr.zoom : 1);
+    const rotation = typeof nlr.rotation === "number" ? nlr.rotation : 0;
+    const filter = typeof nlr.filter === "string" ? nlr.filter : undefined;
+    const xalign = clampAlign(to?.position?.xalign ?? 0.5);
+    const yalign = clampAlign(to?.position?.yalign ?? 0.5);
+    // The lens sits OUTSIDE the camera's transform in the engine - its overlay is a sibling of the
+    // transform node - so the shutter and the vignette are drawn over the viewport, not over the
+    // stage rect. That is the whole reason they are camera props instead of a stage object.
+    const shutter = clampAlign(typeof to?.shutter === "number" ? to.shutter : 0);
+    const vignette = clampAlign(typeof to?.vignette === "number" ? to.vignette : 0);
 
     const dragTo = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         const box = boxRef.current;
-        if (!box || !props.onPan) {
+        if (!box) {
             return;
         }
         const rect = box.getBoundingClientRect();
@@ -286,87 +241,51 @@ function CameraViewfinder(props: {
     return (
         <div
             ref={boxRef}
-            className={[
-                "relative w-full overflow-hidden rounded-md border border-edge bg-[#15171b]",
-                props.onPan ? "cursor-crosshair" : "",
-            ].join(" ")}
+            className="relative w-full cursor-crosshair overflow-hidden rounded-md border border-edge bg-[#15171b]"
             style={{ aspectRatio: `${props.stageSize.width} / ${props.stageSize.height}` }}
-            onPointerDown={props.onPan ? event => {
+            onPointerDown={event => {
                 event.currentTarget.setPointerCapture(event.pointerId);
                 dragTo(event);
-            } : undefined}
-            onPointerMove={props.onPan ? event => {
+            }}
+            onPointerMove={event => {
                 if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                     dragTo(event);
                 }
-            } : undefined}
+            }}
         >
             <div
-                className="pointer-events-none absolute h-full w-full border border-primary/40 bg-[linear-gradient(180deg,#2b3550_0%,#3d4a63_58%,#4b4136_58%,#3a3229_100%)]"
+                className="pointer-events-none absolute h-full w-full border border-primary/40"
                 style={{
                     left: `${xalign * 100}%`,
                     bottom: `${yalign * 100}%`,
                     transform: `translate(-50%, 50%) rotate(${rotation}deg) scale(${zoom})`,
-                    filter: darkness > 0 ? `brightness(${1 - darkness})` : undefined,
+                    filter,
                 }}
             >
-                <div className="absolute bottom-[8%] left-1/2 h-[38%] w-[12%] -translate-x-1/2 rounded-t-full bg-white/25" />
+                <SampleStage />
             </div>
+            {vignette > 0 ? (
+                <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                        background: `radial-gradient(ellipse at center, transparent ${to?.vignetteInner ?? "44%"}, ${to?.vignetteColor ?? "#000"} ${to?.vignetteOuter ?? "78%"})`,
+                        opacity: vignette,
+                    }}
+                />
+            ) : null}
+            {shutter > 0 ? (
+                <>
+                    <div className="pointer-events-none absolute inset-x-0 top-0" style={{ height: `${shutter * 50}%`, background: to?.shutterColor ?? "#000" }} />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${shutter * 50}%`, background: to?.shutterColor ?? "#000" }} />
+                </>
+            ) : null}
             {/* Fixed by the camera, so fixed here. */}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/5 border-t border-white/15 bg-black/45" />
-            <div className="pointer-events-none absolute left-1.5 top-1.5 rounded-md bg-black/45 px-1 py-0.5 text-2xs text-white/70">
-                {t(`storyInspector.cameraOperationShort.${operation}`)}
-            </div>
         </div>
     );
 }
 
-/**
- * A slider and its exact value, side by side: the slider is for feel, the box is for a value you can
- * name. No third formatted readout — every one of these fields carries its unit in its own label
- * ("Zoom (1 = neutral)", "Rotation °", "X align (0-1)"), so a trailing `×1.8` beside a box already
- * reading `1.8` was the same number printed twice.
- */
-function SliderRow(props: {
-    label: string;
-    range: { min: number; max: number; step: number };
-    value: number;
-    /** What an emptied box means — the channel's neutral, never a guess from the range. */
-    neutral: number;
-    onChange: (value: number) => void;
-}) {
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <div className="flex items-center gap-2">
-                <Slider
-                    className="min-w-0 flex-1"
-                    min={props.range.min}
-                    max={props.range.max}
-                    step={props.range.step}
-                    value={props.value}
-                    onValueChange={props.onChange}
-                />
-                <div className="w-16 shrink-0">
-                    <NumericDraftEnhancedInput
-                        committedDisplay={String(round(props.value, 2))}
-                        onFiniteNumber={props.onChange}
-                        onEmpty={() => props.onChange(props.neutral)}
-                        type="text"
-                        inputMode="decimal"
-                    />
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/** An align is a 0–1 fraction of the stage; outside that the camera is aimed off the world. */
+/** An align is a 0-1 fraction of the stage; outside that the camera is aimed off the world. */
 function clampAlign(value: number): number {
     return Math.min(1, Math.max(0, value));
-}
-
-function round(value: number, digits: number): number {
-    const factor = 10 ** digits;
-    return Math.round(value * factor) / factor;
 }

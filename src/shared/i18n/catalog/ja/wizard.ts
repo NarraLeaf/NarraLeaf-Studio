@@ -121,8 +121,17 @@ export const wizard = {
         addressHint: "このアドレスはプロジェクトを用意した人から渡される",
         // 「無効」とは言わず、足りないものを名指しする。ここで捕まえる間違いは、ほぼ必ず
         // サーバーまでは書けていて末尾のプロジェクト名が抜けているもの。
-        addressInvalid: "プロジェクトのアドレスは末尾にプロジェクト名が要る。例：lore://studio.example.lan:41337/my-game",
+        addressInvalid: "プロジェクトのアドレスは末尾にプロジェクト名が必要。例：lore://studio.example.lan:41337/my-game",
         parsedServer: "サーバー",
+        onServerLabel: "サーバー上のプロジェクト",
+        onServerHint: "選んでください。未追加のサーバーは下にアドレスを入力します。",
+        onServerEmpty: "このサーバーにはまだプロジェクトがありません。",
+        onServerLoading: "サーバーに問い合わせています…",
+        onServerNoToken: "Studio はこのサーバーに問い合わせられません。トークンで追加し直してください。",
+        onServerRefused: "このサーバーは保存済みのトークンを受け付けませんでした。新しいトークンで追加し直してください。",
+        onServerUnreachable: "このサーバーは応答しませんでした。",
+        onServerUnknown: "このサーバーの応答を Studio は読み取れませんでした。",
+        onServerMadeBy: "{name} が作成",
         parsedName: "サーバー上のプロジェクト",
         // 選ぶ前に言う。空かどうかの確認はメインプロセスで走るので、そこで断られると
         // 作者がフォルダを決めた後になる。

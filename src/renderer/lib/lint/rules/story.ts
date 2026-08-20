@@ -8,16 +8,21 @@ import {
 import { isBuiltinAppTagId } from "@shared/types/appTag";
 import {
     collectAppTagComparisonNames,
+    danglingStageObjectRefs,
     duplicateSceneLabels,
+    duplicateStageObjectDeclarations,
+    isPlayableStoryTransitionKind,
     listSceneBlocksInDocumentOrder,
     listSceneLabels,
     listScenesInDocumentOrder,
     sceneLabelNames,
+    type StageObjectReference,
     type StoryBlock,
     type StoryBlockId,
     type StoryExpr,
     type StoryScene,
 } from "@shared/types/story";
+import type { TranslationKey } from "@shared/i18n/catalog";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintContext, LintStoryEntry } from "../context";
@@ -43,10 +48,16 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
  *    click-to-jump is the existing `jumpToSearchTarget()` and not new navigation code.
  */
 
-type SceneCursor = { entry: LintStoryEntry; scene: StoryScene };
+export type SceneCursor = { entry: LintStoryEntry; scene: StoryScene };
 
-/** Every scene of every story, in authoring order. */
-function* eachScene(ctx: LintContext): Generator<SceneCursor> {
+/**
+ * Every scene of every story, in authoring order.
+ *
+ * Exported because `portability/vfx-alpha` walks rows too, and the three traversal facts above are
+ * the sort of thing a second copy gets subtly wrong - a rule that forgot `skipSubtree` would report
+ * rows the runtime never reaches.
+ */
+export function* eachScene(ctx: LintContext): Generator<SceneCursor> {
     for (const entry of ctx.stories) {
         for (const scene of listScenesInDocumentOrder(entry.document)) {
             if (scene) {
@@ -57,7 +68,7 @@ function* eachScene(ctx: LintContext): Generator<SceneCursor> {
 }
 
 /** The blocks the runtime will actually see: a disabled row takes its whole subtree with it. */
-function liveBlocks(scene: StoryScene): StoryBlock[] {
+export function liveBlocks(scene: StoryScene): StoryBlock[] {
     return listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
 }
 
@@ -90,7 +101,7 @@ function gotoTarget(block: StoryBlock): string | null {
     return block.kind === "control" && block.payload.control === "goto" ? block.payload.targetLabel.trim() : null;
 }
 
-function storyLocation(entry: LintStoryEntry, scene: StoryScene, blockId?: StoryBlockId): LintLocation {
+export function storyLocation(entry: LintStoryEntry, scene: StoryScene, blockId?: StoryBlockId): LintLocation {
     return {
         kind: "story",
         storyId: entry.id,
@@ -105,7 +116,7 @@ function sceneTarget(entry: LintStoryEntry, scene: StoryScene): SearchJumpTarget
     return { kind: "storyScene", storyId: entry.id, sceneId: scene.id, storyName: entry.name, sceneName: scene.name };
 }
 
-function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: StoryBlockId): SearchJumpTarget {
+export function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: StoryBlockId): SearchJumpTarget {
     return {
         kind: "storyBlock",
         storyId: entry.id,
@@ -114,6 +125,42 @@ function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: StoryBlo
         storyName: entry.name,
         sceneName: scene.name,
     };
+}
+
+/**
+ * The word to print for a stage object the scene never creates.
+ *
+ * The reference's LABEL, never its key: an unnamed sound keys on its asset id, and a UUID in a
+ * report is a word nobody can search a project for.
+ *
+ * A character is the one kind whose label is not in the document either. It has no stage name until
+ * an author types one, so it keys on its `characterId` and its label falls back to a placeholder -
+ * while the name an author would recognise sits in the project's character list. Resolving it is the
+ * only reason this rule reads anything outside the story, and it matters here more than anywhere:
+ * a character is the most common subject in a script, and this rule stops a build.
+ */
+function stageObjectLabel(ctx: LintContext, reference: StageObjectReference): string {
+    if (reference.subject === "character") {
+        const name = ctx.characters.find(character => character.id === reference.name)?.name.trim();
+        if (name) {
+            return name;
+        }
+    }
+    return reference.label;
+}
+
+/**
+ * The sentence for a missing stage object, picked by what the row acts on.
+ *
+ * One shape, one varying clause, the way `blueprint/reference-missing` already names each kind it
+ * can resolve. Half of what a report is for is the remedy, and a character has a different one:
+ * nothing creates a character, an author brings it on stage. The story compiler states the same two
+ * remedies on `reportMissingStageObject`, so a preview and a build give one answer.
+ */
+function stageObjectMessageKey(reference: StageObjectReference): TranslationKey {
+    return reference.subject === "character"
+        ? "lint.rule.storyStageObjectMissing.messageCharacter"
+        : "lint.rule.storyStageObjectMissing.message";
 }
 
 /**
@@ -658,7 +705,145 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * A row acting on a stage object no row in its scene creates.
+         *
+         * `error`, and the only lint rule whose verdict is computed somewhere else on purpose. The
+         * story compiler asks the same question of the same row while building a preview and reports
+         * the same miss - but a compile diagnostic reaches the Story console and stops nothing, and
+         * an image that never appears is exactly the kind of thing that ships. So the judgement lives
+         * in `@shared/types/story/stageObjects` and both callers read it: this rule is the half that
+         * refuses a build, `reportMissingStageObject` is the half an author sees while writing.
+         *
+         * Anything that reading can settle differently is settled the quiet way. The scene is read
+         * whole, so a `/show` written above its `create` row is not a finding here even though the
+         * compiler's in-order walk reports it; the reserved music channel is exempt, because a
+         * `/bgm` in an earlier scene is still playing in this one and no single scene can see that.
+         */
+        id: "story/stage-object-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyStageObjectMissing",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const reference of danglingStageObjectRefs(scene)) {
+                    findings.push({
+                        ruleId: "story/stage-object-missing",
+                        messageKey: stageObjectMessageKey(reference),
+                        messageParams: { object: stageObjectLabel(ctx, reference) },
+                        location: storyLocation(entry, scene, reference.blockId),
+                        target: blockTarget(entry, scene, reference.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * Two rows creating one stage name.
+         *
+         * `warning`, and deliberately not an error. The object exists and the engine's behaviour is
+         * settled - the constructors are get-or-create, so the second row hands back the first row's
+         * object and its own asset or text goes nowhere. What cannot be settled is the intent: an
+         * author writing two rows may have meant two objects and misspelled the second name, or may
+         * have meant to re-dress the first. `diagnostic()` in the story compiler states the rule this
+         * follows - error is for what a reading can PROVE the document does not contain, warning for
+         * what it cannot settle by itself - and which of two intents was meant is not provable.
+         */
+        id: "story/stage-object-duplicate",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyStageObjectDuplicate",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                // The first declaration stands, so the scan anchors the later rows - the same
+                // anchoring `story/label-duplicate` uses, and for the same reason.
+                for (const duplicate of duplicateStageObjectDeclarations(scene)) {
+                    findings.push({
+                        ruleId: "story/stage-object-duplicate",
+                        messageKey: "lint.rule.storyStageObjectDuplicate.message",
+                        messageParams: { object: duplicate.label },
+                        location: storyLocation(entry, scene, duplicate.blockId),
+                        target: blockTarget(entry, scene, duplicate.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A row naming a transition this build will not play.
+         *
+         * `error`, and the same arrangement as `story/stage-object-missing`, for the same reason:
+         * the story compiler reaches the same verdict on the same row while building a preview, but
+         * a compile diagnostic reaches the Story console and stops nothing. A change that lands as a
+         * cut instead of the transition the author chose looks deliberate on screen and says nothing
+         * about itself, which is exactly the kind of thing that ships.
+         *
+         * The two halves reach that verdict by different roads and still cannot disagree.
+         * `createTransition` decides by its `switch`, which TypeScript holds exhaustive over the
+         * union; this rule decides by `isPlayableStoryTransitionKind`, which reads the tuple that
+         * union is derived from. A kind added to one is a compile error in the other.
+         *
+         * What reaches it is a stored `kind` this build has no engine for: a document written by a
+         * newer Studio, one carrying a kind that has since been retired, or the `custom` escape
+         * hatch, which the union has always allowed and nothing has ever built. No Studio surface
+         * can produce one - the inspector offers only kinds it knows and the script language cannot
+         * name one at all - so a clean project never sees this rule, and a project that does see it
+         * has a row whose transition is genuinely gone.
+         */
+        id: "story/transition-unavailable",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyTransitionUnavailable",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    const kind = transitionKindNamedByBlock(block);
+                    if (kind === null || isPlayableStoryTransitionKind(kind)) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/transition-unavailable",
+                        messageKey: "lint.rule.storyTransitionUnavailable.message",
+                        messageParams: { transition: kind },
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
 ];
+
+/**
+ * The transition kind a row names, or `null` for a row that names none.
+ *
+ * Read off `payload.transition` by name, unlike {@link appTagNamesNamedByBlock} below, which walks
+ * its payload structurally. `kind` is one of the most reused words in this schema - a layer
+ * reference, a displayable target and the row itself each carry one - so a structural scan for
+ * `kind` would report layers as transitions. Every payload that holds a `StoryTransitionRef` calls
+ * the field `transition` (`setBackground`, `character`, `displayable`, and a jump's), so the field
+ * name is the precise test and the structural one is the loose one.
+ *
+ * The `kind` must be a string, not merely present: the NVL panel's `transition` is a transform ref,
+ * which has no `kind` at all, and is not this rule's business.
+ */
+function transitionKindNamedByBlock(block: StoryBlock): string | null {
+    const transition = (block.payload as { transition?: unknown }).transition;
+    if (!transition || typeof transition !== "object") {
+        return null;
+    }
+    const kind = (transition as { kind?: unknown }).kind;
+    return typeof kind === "string" ? kind : null;
+}
 
 /**
  * Every variant name one row compares `AppTag` against.

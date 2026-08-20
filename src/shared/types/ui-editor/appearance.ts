@@ -1,3 +1,4 @@
+import type { GradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 /**
@@ -21,6 +22,7 @@ export type AppearanceRowValue =
     | boolean
     | null
     | ImageFill
+    | GradientFill
     | Record<string, unknown>;
 
 /**
@@ -71,6 +73,7 @@ export type ContainerAppearancePropertyKey =
     | "backgroundImage"
     | "backgroundFit"
     | "imageFill"
+    | "gradientFill"
     | "fillType"
     | "fillVisible"
     | "fillOpacity"
@@ -121,6 +124,7 @@ export type ButtonAppearancePropertyKey =
     | "fillOpacity"
     | "fillVisible"
     | "imageFill"
+    | "gradientFill"
     | "backgroundImage"
     | "backgroundFit"
     | "borderRadius"

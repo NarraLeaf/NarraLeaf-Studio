@@ -124,6 +124,7 @@ export const uiEditor = {
         addToComponentLibrary: "Add to Component Library",
         addToGroup: "Add to group",
         ungroup: "Ungroup",
+        addState: "Add state",
         arrange: {
             label: "Arrange",
             bringToFront: "Bring to front",
@@ -168,7 +169,7 @@ export const uiEditor = {
         add: "Add to project",
         retry: "Retry",
         empty: "No templates available.",
-        emptyFiltered: "No templates match your search.",
+        emptyFiltered: "No templates match the search.",
         applied: "Added “{name}”.",
         slotTaken: "The {slot} slot already has a Game UI.",
         slotOccupied: "Slot in use",
@@ -187,8 +188,8 @@ export const uiEditor = {
             other: "{count} screens",
         },
         assetsSkipped: {
-            one: "{count} resource could not be imported.",
-            other: "{count} resources could not be imported.",
+            one: "{count} asset could not be imported.",
+            other: "{count} assets could not be imported.",
         },
         componentsAdded: {
             one: "{count} component was added to the library.",

@@ -33,7 +33,7 @@ export const test = {
     picker: {
         title: "テストを実行",
         start: "開始",
-        empty: "登録されているテストがない",
+        empty: "登録されているテストはない",
     },
     status: {
         running: "実行中",
@@ -62,7 +62,7 @@ export const test = {
     },
     // 選択画面の行が灰色になっている理由。実行できないのは異常ではなく普通の状態。
     reason: {
-        frozen: "ワークスペースが凍結している間は使えない",
+        frozen: "ワークスペースの凍結中は実行できない",
         alreadyRunning: "別の実行が進行中",
     },
     console: {
@@ -81,7 +81,7 @@ export const test = {
     builtin: {
         projectDiagnostics: {
             title: "プロジェクト診断",
-            description: "プロジェクトの検査ルールすべてを 1 回の検査として実行",
+            description: "プロジェクトの検査ルールすべてを 1 つのテストとして実行",
             summary: {
                 passed: "問題なし",
                 failed: "エラー {errors} 件、警告 {warnings} 件",

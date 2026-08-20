@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 /**
  * `lint` 日本語。プロジェクトの検査。ルールの名前と本文、レポートタブ、コンソールのチャンネル、
- * そして「プロジェクト → 検査」の設定。
+ * そして「プロジェクト ▸ プロジェクト」の設定。
  *
  * この名前空間が守る決まりが 2 つあり、どちらも別のテストが見張っている。
  *
@@ -10,6 +10,10 @@ import type { LocaleNamespace } from "../types";
  *    （`lint.rule.<slug>`）。登録済みのルールでどれかが欠けていると `registry.test.ts` が落ちる。
  *    ルールの変種の本文は `message` の隣に `message<Variant>` として並べる。
  *  - `title` は短い名詞句、`description` は 1 節で、ヒントのポップオーバーにしか出ない。
+ *
+ * 語調：`title` は文にしない（「ラベルがない」ではなく「ラベルの欠落」）。本文は今の状態だけを
+ * 述べ、作者に語りかけない。動詞は書き言葉を採る（到達できない／実行されない／欠落）。
+ * 話し言葉（たどり着けない・押しても動かない・行き止まり・宙に浮いた）は使わない。
  *
  * **本文は見つかった場所を名乗らない。** 本文を出す画面はどれも場所を隣に出す。レポートタブは
  * 専用の列で、ビルドのコンソールは `nonRedundantLintLocation` を通して。
@@ -19,35 +23,46 @@ export const lint = {
         assetsUnused: {
             title: "使われていないアセット",
             description: "プロジェクトのどこからも参照されていないアセット",
-            message: "{asset} はどこからも使われていない",
+            message: "{asset} はどこからも参照されていない",
             // 参照の索引がプロジェクト全体を覆えていないとき、一覧の代わりに出す 3 つ。
             // 場所を名指すことが要点で、「索引が不完全」とだけ言っても作者には見に行く先が無い。
             messageIndexUnresolved: "使われていないアセットを一覧にできない：{location} が指すアセットを特定できない",
-            messageIndexUnreadable: "使われていないアセットを一覧にできない：{location} を読めなかった",
-            messageIndexNotBuilt: "使われていないアセットを一覧にできない：プロジェクトを調べられなかった",
+            messageIndexUnreadable: "使われていないアセットを一覧にできない：{location} を読み込めない",
+            messageIndexNotBuilt: "使われていないアセットを一覧にできない：プロジェクトを走査できない",
         },
         assetsMissing: {
-            title: "アセットが見つからない",
-            description: "ライブラリにもう無いアセットを指す参照",
+            title: "アセットの欠落",
+            description: "ライブラリに存在しないアセットを指す参照",
             message: "{location} が存在しないアセットを参照している",
         },
         assetsUnreadable: {
-            title: "読めないアセット",
-            description: "ファイルを読めないか、デコードできない",
+            title: "読み込めないアセット",
+            description: "ファイルを読み込めない、またはデコードできない",
             message: "{asset} をデコードできない",
-            messageMissingBytes: "{asset} をディスクから読めない",
+            messageMissingBytes: "{asset} をディスクから読み込めない",
         },
         assetsOversized: {
-            title: "大きすぎるファイル",
-            description: "ビルドが運ぶファイルのうち、このプロジェクトが決めた大きさを超えるもの",
+            title: "サイズ超過のファイル",
+            description: "ビルドに含まれるファイルのうち、このプロジェクトが定めた上限を超えるもの",
             // 数字を 2 つとも文に入れる。このファイルが何 MB で、プロジェクトが何と言ったか。
             // 出どころの設定ページを開かなくても、この所見だけで手を打てるようにする。
-            message: "{asset} は {size} で、ビルドが運ぶべき {limit} を超えている",
+            message: "{asset} は {size} で、ビルドに含められる上限 {limit} を超えている",
+        },
+        assetsGroupIncomplete: {
+            title: "未完成のアセットセット",
+            description: "宣言したバリアントのいずれかが、ちょうど 1 つのファイルに解決しないセット",
+            // バリアントは構成するタグの形で示す。そのタグをファイルに書くことが対処だから。
+            // 解決するはずのファイル名は書かない。そのファイルはまだ存在しない。
+            message: "{set} の {variant} に対応するファイルがない",
+            messageAmbiguous: "{set} の {variant} に {count} 個のファイルが対応している",
+            messageResidency: "{set} の {axis} は実行時に解決されるが、ビルド時に解決される {outerAxis} の内側にある",
+            messageDeclaration: "{set} は解決できるバリアントを宣言していない",
+            messageFallback: "{set} は既定のバリアントを指定していない",
         },
         portabilityAssetName: {
             title: "安全でないファイル名",
             description: "一部のファイルシステムが受け付けない文字や名前",
-            message: "{asset} は書き出せないプラットフォームがある",
+            message: "{asset} は一部のプラットフォームで書き出せない",
         },
         portabilityCaseCollision: {
             title: "大文字小文字の衝突",
@@ -59,15 +74,20 @@ export const lint = {
             description: "選んだビルド対象の一部が再生できないコーデック",
             message: "{asset} は {platform} で再生できない",
         },
+        portabilityVfxAlpha: {
+            title: "透過を含むオーバーレイ素材",
+            description: "選んだビルド対象の一部が透過を保持しないオーバーレイ素材",
+            message: "{asset} は {platform} でステージを覆う",
+        },
         networkFetchNotAllowlisted: {
             title: "許可一覧にないアドレス",
             description: "このプロジェクトが許可していないアドレスを指す Fetch ノード",
             message: "{url} はこのプロジェクトのネットワーク要求許可一覧にない",
         },
         networkFetchDisallowed: {
-            title: "ネットワークを使えないのにネットワークノードがある",
+            title: "ネットワーク許可のないネットワークノード",
             description: "ネットワークポリシーが「使わない」のプロジェクトにあるネットワークノード",
-            message: "{blueprint} はネットワーク要求を行うが、このプロジェクトはそれを許可していない",
+            message: "{blueprint} はネットワーク要求を行うが、このプロジェクトのネットワークポリシーが許可していない",
         },
         storyInvalidCommand: {
             title: "無効なコマンド",
@@ -75,109 +95,127 @@ export const lint = {
             message: "この行はコンパイルできない",
         },
         storyGotoMissing: {
-            title: "ラベルがない",
+            title: "ラベルの欠落",
             description: "シーンが宣言していないラベルを指す goto",
-            message: "{label} へ飛ぶが、このシーンはそれを宣言していない",
+            message: "ジャンプ先の {label} はこのシーンで宣言されていない",
         },
         storyLabelDuplicate: {
             title: "ラベルの重複",
-            description: "同じラベルの宣言が 2 つあり、先に書いたほうが勝つ",
-            message: "{label} は上ですでに宣言されているので、こちらには決して来ない",
+            description: "同じラベルの宣言が 2 つあり、到達するのは先に書いたほうだけ",
+            message: "{label} は上で既に宣言されているため、この宣言には到達しない",
         },
         storyLabelUnused: {
             title: "使われていないラベル",
-            description: "どこからも飛んでこないラベル",
-            message: "{label} へはどこからも飛んでこない",
+            description: "どこからもジャンプされないラベル",
+            message: "{label} へジャンプする箇所がない",
         },
         storyJumpMissing: {
-            title: "シーンがない",
-            description: "プロジェクトに無いシーンを指す jump",
-            message: "ストーリーにもう無いシーンへ飛んでいる",
+            title: "シーンの欠落",
+            description: "プロジェクトに存在しないシーンを指す jump",
+            message: "ジャンプ先のシーンはストーリーに存在しない",
         },
         storyEmptyChoice: {
             title: "空の選択",
-            description: "プレイヤーが選べるものがない選択",
+            description: "プレイヤーが選べる選択肢のない選択",
             message: "この選択に選択肢がない",
-            messageEmptyOption: "この選択肢に文がない",
+            messageEmptyOption: "この選択肢にテキストがない",
         },
         storyDeadEnd: {
-            title: "行き止まり",
-            description: "ある道では出ていくのに、別の道では末尾を越えて落ちるシーン",
-            message: "ここでシーンの末尾を越えて進んでしまう",
+            title: "子ノードなし",
+            description: "一部の経路はシーンから出ていくが、末尾の行に子ノードがない経路が残っているシーン",
+            message: "この行に子ノードがなく、ここでシーンの末尾を越える",
         },
         storyUnreachableScene: {
-            title: "到達しないシーン",
-            description: "開始からはたどり着けないシーン",
-            message: "このシーンにはどこからも到達しない",
+            title: "到達できないシーン",
+            description: "開始地点から到達できないシーン",
+            message: "このシーンへ到達する経路がない",
         },
         storyEmptyScene: {
             title: "空のシーン",
-            description: "中身のないシーン",
+            description: "内容のないシーン",
             message: "このシーンに行がない",
         },
         storyAppTagUnknown: {
-            title: "知らないビルドバリアント",
-            description: "プロジェクトに無いバリアントと比べている行",
-            message: "\"{name}\" という名前のビルドバリアントはないので、この行はどのビルドにも入らない",
+            title: "不明なビルドバリアント",
+            description: "プロジェクトに存在しないバリアントと比べている行",
+            message: "「{name}」という名前のビルドバリアントはないため、この行はどのビルドにも入らない",
         },
         storyCutPointOrphan: {
-            title: "バリアントの無いカットポイント",
+            title: "ビルドバリアントのないカットポイント",
             description: "ビルドバリアントが 1 つも無いまま書かれたカットポイント",
             // 行は間違いというより効かない状態なので、作者がしたことではなく、今それが何をするかを言う。
             // 打つ手はどちらも完全な答えなので、両方とも文に入れる。
-            message: "このプロジェクトにはビルドバリアントが無いので、このカットポイントは何も終わらせない。バリアントを足すか、この行を消す",
+            message: "このプロジェクトにはビルドバリアントがないため、このカットポイントは何も終わらせない。バリアントを追加するか、この行を削除する",
         },
         storyCutPointUnreachable: {
-            title: "届かないカットポイント",
-            description: "どこからもたどり着けないシーンにあるカットポイント",
-            message: "このシーンにはどこからも到達しないので、このカットポイントはどのビルドも終わらせない",
+            title: "到達できないカットポイント",
+            description: "到達できないシーンにあるカットポイント",
+            message: "このシーンへ到達する経路がないため、このカットポイントはどのビルドも終わらせない",
+        },
+        storyStageObjectMissing: {
+            title: "存在しないステージオブジェクト",
+            description: "シーン内のどの行も作成していないオブジェクトを操作する行",
+            message: "{object} を作成する行がないため、この行には操作する対象がない",
+            // キャラクターは作成するものではなく登場させるものなので、変わるのは動詞だけ。
+            messageCharacter: "{object} を登場させる行がないため、この行には操作する対象がない",
+        },
+        storyStageObjectDuplicate: {
+            title: "ステージオブジェクトの重複",
+            description: "同じステージ名を作成する行が 2 つあり、後の行は先の行のものを使う",
+            message: "{object} は上で既に作成されているため、この行はそちらを操作する",
+        },
+        storyTransitionUnavailable: {
+            title: "利用できないトランジション",
+            description: "このバージョンでは再生できないトランジションを指定した行",
+            // 保存された語をそのまま出す。どのメニューにも残っていない以上、作者に残る手がかりはこれだけ。
+            message: "トランジション {transition} は利用できないため、この変化は切り替えで再生される",
         },
         blueprintReferenceMissing: {
-            title: "行き先が無い",
-            description: "プロジェクトにもう無いものを名指すノード",
+            title: "参照先の欠落",
+            description: "プロジェクトに存在しない対象を指すノード",
             // 総称の受け皿。解決できた種別にはそれぞれ専用の文が下にある。作者が手を打てない語が
-            // まさに「何か」だから。
-            message: "プロジェクトにもう無いものを名指している",
-            messageSurface: "もう存在しないページを開く",
-            messageStory: "もう存在しないストーリーを開始する",
-            messageScene: "もう存在しないシーンを名指している",
-            messageChoice: "もう存在しない選択肢を名指している",
-            messageCharacter: "もう存在しないキャラクターを名指している",
-            messageTextKey: "プロジェクトが宣言していないテキストキーを名指している",
+            // まさに「対象」だから。
+            message: "指している対象がプロジェクトに存在しない",
+            messageSurface: "開く対象のページが存在しない",
+            messageStory: "開始する対象のストーリーが存在しない",
+            messageScene: "指しているシーンが存在しない",
+            messageChoice: "指している選択肢が存在しない",
+            messageCharacter: "指しているキャラクターが存在しない",
+            messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
         },
         blueprintUnreachableNode: {
-            title: "到達しないノード",
-            description: "そのグラフのどの入口からもたどり着けないノード",
-            message: "このノードにはどこからも到達しないので、実行されない",
+            title: "到達できないノード",
+            description: "グラフのどの入口からも到達できないノード",
+            message: "このノードへ到達する経路がなく、実行されない",
         },
         blueprintEmptyEvent: {
-            title: "何もしないイベント",
-            description: "実行するものが何もつながっていないイベントレイヤー",
+            title: "空のイベント",
+            description: "実行する内容が接続されていないイベントレイヤー",
             message: "このイベントは何も実行しない",
         },
         uiUnlocalizedText: {
             title: "ローカライズされていないテキスト",
-            description: "第二の言語がある工程で、ウィジェットに直接書かれた文",
-            message: "{text} はローカライズキーにつながっていない",
+            description: "第二の言語があるプロジェクトで、ウィジェットに直接書かれたテキスト",
+            message: "{text} はローカライズキーに紐づけられていない",
         },
         uiPageUnreachable: {
-            title: "たどり着けないページ",
-            description: "どこからも開かれず、埋め込まれてもいない、開始ページでもないページ",
-            message: "このページを開くものがどこにもない",
+            title: "到達できないページ",
+            description: "どこからも開かれず、埋め込まれてもおらず、開始ページでもないページ",
+            message: "このページを開く箇所がない",
         },
         uiEmptyBehavior: {
-            title: "処理のないボタン",
-            description: "押せるのに、聞いているものが何もないウィジェット",
-            message: "押しても何も動かない",
+            title: "動作の割り当てがないボタン",
+            description: "クリックできるが、動作が何も割り当てられていないウィジェット",
+            message: "クリックしても何も実行されない",
         },
         blueprintSaveFieldEmpty: {
-            title: "セーブ項目が空",
-            description: "実行される Save Game ノードで、宣言済みのセーブ項目が空のまま",
-            message: "{field} が空なので、このセーブには既定値が書き込まれる",
+            title: "未入力のセーブ項目",
+            description: "実行される Save Game ノードで、宣言済みのセーブ項目が未入力",
+            message: "{field} が未入力のため、このセーブには既定値が書き込まれる",
         },
         variablesUndeclared: {
             title: "宣言のない変数",
-            description: "宣言せずに使っている変数",
+            description: "宣言されないまま使われている変数",
             message: "{variable} は使われているが宣言されていない",
         },
         variablesUnused: {
@@ -188,14 +226,14 @@ export const lint = {
         variablesNameCollision: {
             title: "変数名の衝突",
             description: "同じ名前が 2 か所で宣言されている",
-            message: "{variable} が永続変数として二度宣言されている",
+            message: "{variable} が永続変数として 2 回宣言されている",
         },
         variablesRandomOutsideAssignment: {
             title: "代入の外にある乱数",
-            description: "値を残さず引き直されてしまう場所にある乱数",
-            message: "{fn}() はこの条件を判定するたびに引き直されるので、確かめるたびに分岐が変わりうる。/set で一度だけ引き、その変数を判定する",
-            messageChoiceOption: "{fn}() はメニューを描くたびに引き直されるので、この選択肢がちらつく。/set で一度だけ引き、その変数を判定する",
-            messageInterpolation: "{fn}() はこの行を描くたびに引き直されるので、描き直すたびに値が変わる。/set で一度だけ引き、その変数を表示する",
+            description: "値が残らず引き直される位置にある乱数",
+            message: "{fn}() はこの条件を判定するたびに引き直されるため、判定のたびに分岐が変わりうる。/set で一度だけ引き、その変数を判定する",
+            messageChoiceOption: "{fn}() はメニューを描くたびに引き直されるため、この選択肢がちらつく。/set で一度だけ引き、その変数を判定する",
+            messageInterpolation: "{fn}() はこの行を描くたびに引き直されるため、描き直すたびに値が変わる。/set で一度だけ引き、その変数を表示する",
         },
         textOverlong: {
             title: "長すぎる行",
@@ -204,11 +242,11 @@ export const lint = {
         },
         textEmpty: {
             title: "空の行",
-            description: "文のないダイアログ行",
-            message: "この行に文がない",
+            description: "テキストのないダイアログ行",
+            message: "この行にテキストがない",
         },
         localizationMissing: {
-            title: "翻訳がない",
+            title: "翻訳の欠落",
             description: "対象の言語に翻訳のない行",
             message: "{locale} の翻訳がない",
         },
@@ -218,12 +256,12 @@ export const lint = {
             message: "{locale} の翻訳が原文より古い",
         },
         localizationOrphan: {
-            title: "宙に浮いた翻訳",
-            description: "対応する行がもう無い翻訳",
+            title: "対応する行のない翻訳",
+            description: "対応する行が存在しない翻訳",
             message: "対応する行のない {locale} の翻訳が {count} 件ある",
         },
         voiceMissing: {
-            title: "ボイスがない",
+            title: "ボイスの欠落",
             description: "ボイスを収録する言語で録音のない行",
             message: "{locale} の録音がない",
         },
@@ -233,8 +271,8 @@ export const lint = {
             message: "{locale} の録音が行より古い",
         },
         voiceOrphan: {
-            title: "宙に浮いたボイス",
-            description: "対応する行がもう無い録音",
+            title: "対応する行のない録音",
+            description: "対応する行が存在しない録音",
             message: "対応する行のない {locale} の録音が {count} 件ある",
         },
         brandBrokenLink: {
@@ -244,7 +282,7 @@ export const lint = {
             // 隣の位置の列には何も出ないので、{where} だけが 1 つ 1 つを見分ける手がかりになる。
             message: "{where} が使っている {color} は配色に無い",
             messageChain: "{where} が使っている {color} は {missing} へつながっているが、その色は配色に無い",
-            messageCycle: "{where} が使っている {color} は、リンクが自分自身に戻ってきている",
+            messageCycle: "{where} が使っている {color} は、リンクが自分自身に戻っている",
         },
     },
     message: {
@@ -275,7 +313,7 @@ export const lint = {
     report: {
         title: "問題",
         empty: "問題は見つからなかった",
-        running: "検査している…",
+        running: "検査中…",
         summary: "エラー {errors} 件、警告 {warnings} 件、情報 {infos} 件",
         filtered: "{total} 件中 {shown} 件",
         rerun: "もう一度実行",
@@ -305,16 +343,16 @@ export const lint = {
         blocked: "問題 {count} 件のためビルドを中止した",
         // パネル → ページ → 項目まで書く。この関門は既定で有効なので、このパネルを開いたことのない
         // 作者はその設定の存在を知らない。「検査の設定で」とだけ書くと探し回ることになる。
-        blockedHint: "これは「プロジェクト → 検査 → ビルド前に検査」で変えられる",
-        skipped: "プロジェクトの検査を省いた",
+        blockedHint: "「プロジェクト ▸ プロジェクト ▸ ビルド前に検査」で変更できる",
+        skipped: "プロジェクトの検査を省略した",
     },
     settings: {
         runOnBuild: "ビルド前に検査",
-        runOnBuildHint: "製品ビルドの一部としてプロジェクトの検査を走らせる",
+        runOnBuildHint: "製品ビルドの一部としてプロジェクトの検査を実行する",
         failBuildOn: "ビルドを止める条件",
         failBuildOnError: "エラー",
         failBuildOnWarning: "警告とエラー",
-        optionMaxChars: "最大の幅",
+        optionMaxChars: "最大幅",
         optionCountMode: "数え方",
         // 短いのは必然。サイドバーのパネルでルールの下に入れ子で並ぶセレクトの選択肢なので、
         // 一文の長さのラベルは省略されて何も残らない。単位は桁で、問いは全角文字を何桁と数えるか。

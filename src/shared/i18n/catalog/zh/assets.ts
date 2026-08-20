@@ -1,10 +1,10 @@
 import type { LocaleNamespace } from "../types";
 
 export const assets = {
-    loading: "正在加载素材…",
-    loadError: "加载素材失败",
-    searchPlaceholder: "搜索素材…",
-    searchTooltip: "搜索素材",
+    loading: "正在加载资产…",
+    loadError: "加载资产失败",
+    searchPlaceholder: "搜索资产…",
+    searchTooltip: "搜索资产",
     closeSearch: "关闭搜索",
     clearSearch: "清除搜索",
     backToParent: "返回上级分组",
@@ -18,11 +18,11 @@ export const assets = {
         deleteGroup: "删除文件夹 {name}",
     },
     delete: {
-        inUseTitle: "这些素材仍在被使用",
-        inUseMessage: "删除后，以下位置将失去素材来源：",
+        inUseTitle: "这些资产仍在被使用",
+        inUseMessage: "删除后，以下位置将失去资产来源：",
         moreReferences: "…另有 {count} 处",
-        unverifiedTitle: "无法检查这些素材的使用情况",
-        unverifiedMessage: "无法确定这些素材是否仍在使用。仍要删除吗？",
+        unverifiedTitle: "无法检查这些资产的使用情况",
+        unverifiedMessage: "无法确定这些资产是否仍在使用。仍要删除吗？",
         confirmTitle: {
             one: "删除 {count} 项？",
             other: "删除 {count} 项？",
@@ -45,8 +45,8 @@ export const assets = {
     replace: {
         confirmTitle: "替换 {name} 的文件内容？",
         confirmAction: "替换",
-        failedTitle: "替换素材内容失败",
-        remoteUnsupported: "远程素材没有可替换的本地文件",
+        failedTitle: "替换资产内容失败",
+        remoteUnsupported: "远程资产没有可替换的本地文件",
     },
     types: {
         image: "图片",
@@ -71,11 +71,11 @@ export const assets = {
         other: "{count} 项",
     },
     overview: {
-        loading: "正在读取资源库…",
-        failed: "无法读取资源库",
+        loading: "正在读取资产库…",
+        failed: "无法读取资产库",
         retry: "重试",
         section: {
-            library: "资源库",
+            library: "资产库",
             packaging: "打包",
             byCategory: "按类别",
             largest: "体积最大",
@@ -114,19 +114,19 @@ export const assets = {
         format: "格式",
     },
     actions: {
-        copyTooltip: "复制选中的素材或分组",
-        cutTooltip: "剪切选中的素材或分组",
-        pasteTooltip: "粘贴素材或分组",
-        deleteTooltip: "删除选中的素材或分组",
+        copyTooltip: "复制选中的资产或分组",
+        cutTooltip: "剪切选中的资产或分组",
+        pasteTooltip: "粘贴资产或分组",
+        deleteTooltip: "删除选中的资产或分组",
     },
     list: {
-        emptyFiltered: "没有符合当前筛选的素材",
+        emptyFiltered: "没有符合当前筛选的资产",
     },
     iconView: {
         updating: "正在更新…",
         assetCount: {
-            one: "{count} 个素材",
-            other: "{count} 个素材",
+            one: "{count} 个资产",
+            other: "{count} 个资产",
         },
         tagCount: {
             one: "+{count} 个标签",
@@ -135,9 +135,9 @@ export const assets = {
     },
     import: {
         unableTitle: "无法导入",
-        failedTitle: "导入素材失败",
-        someFailedTitle: "部分素材导入失败",
-        moveFailedTitle: "移动已导入素材失败",
+        failedTitle: "导入资产失败",
+        someFailedTitle: "部分资产导入失败",
+        moveFailedTitle: "移动已导入资产失败",
         fileAccessFailed: "文件访问授权失败",
         filePathParsingFailed: "文件路径解析失败",
         noMatchingFiles: "拖入的文件夹中没有可导入的文件",
@@ -147,11 +147,11 @@ export const assets = {
             other: "{count} 个文件失败",
         },
         retry: "重试",
-        remoteTitle: "导入远程素材",
+        remoteTitle: "导入远程资产",
         remoteDescription: "粘贴直链；文件会立即下载并随工程保存",
         remoteInvalidUrl: "请输入有效的 URL",
         remoteUnsupportedScheme: "只能导入 http 与 https 链接",
-        remoteFailedTitle: "导入远程素材失败",
+        remoteFailedTitle: "导入远程资产失败",
     },
     mediaConvert: {
         title: "部分文件需要转换",
@@ -258,11 +258,76 @@ export const assets = {
         unreadable: "无法读取该文件夹",
         tooManyFiles: "该文件夹包含 {count} 个文件，数量过多，无法逐个核对；请选择模型所在的那一层目录",
     },
+    /**
+     * 资产集：库里的一个条目，代表按轴索引的一族文件。
+     *
+     * 叫「资产集」不叫「分组」，因为这个面板里的分组已经是文件夹。这里的词说的是作者拿它做什么
+     * （声明轴、看哪些变体有对应文件），不说构建怎么读它。
+     */
+    sets: {
+        itemType: "资产集",
+        axisWord: {
+            language: "语言",
+            variant: "变体",
+        },
+        axisKind: {
+            locale: "语言",
+            release: "变体",
+        },
+        variantCount: {
+            one: "{count} 个变体",
+            other: "{count} 个变体",
+        },
+        variantsResolved: "{total} 个变体中的 {resolved} 个",
+        unfinished: "尚未声明变体",
+        inUseTitle: "{name} 还在被引用",
+        inUseMessage: "以下位置指向它，之后将无法解析：",
+        deleteConfirmMessage: "该资产集内的全部文件也会一并删除",
+        picker: {
+            section: "资产集",
+        },
+        menu: {
+            create: "用所选文件新建资产集",
+            createSub: "用所选文件在此新建资产集",
+            createHere: "新建资产集",
+            dissolve: "解散资产集",
+        },
+        create: {
+            title: "新建资产集",
+            subTitle: "在该变体下新建资产集",
+            no: {
+                locale: "本工程只声明了一种语言。",
+                release: "本工程没有变体。",
+            },
+            type: "文件类型",
+            axis: "按什么变化",
+        },
+        inspector: {
+            axes: "按什么变化",
+            filter: "成员共同带有",
+            residencyBlocked: "按变体变化的资产集不能位于按语言变化的资产集之下。",
+            fallback: "兜底变体",
+            fallbackMissing: "该变体没有文件，整个资产集都无法解析。",
+            variants: "变体",
+            variantInherited: "兜底",
+            variantMissing: "无文件",
+            variantAmbiguous: "{count} 个文件",
+            noVariants: "本工程没有可供该资产集变化的取值。",
+        },
+        history: {
+            edit: "编辑资产集",
+            add: "新建资产集 {name}",
+            rename: "重命名资产集 {name}",
+            delete: "删除资产集 {name}",
+            dissolve: "解散资产集 {name}",
+            move: "移动资产集 {name}",
+        },
+    },
     menu: {
         newGroup: "新建分组",
         newSubGroup: "新建子分组",
         newTextFile: "新建文本文件",
-        importAssets: "导入素材…",
+        importAssets: "导入资产…",
         replaceContent: "替换文件…",
         copyCount: {
             one: "复制 {count} 项",
@@ -295,7 +360,7 @@ export const assets = {
     selector: {
         selectType: "选择{type}",
         importFromDisk: "从磁盘导入",
-        noAssets: "没有符合当前筛选的素材",
+        noAssets: "没有符合当前筛选的资产",
         selectedCount: "已选 {count} 项",
         choose: "选择",
     },
@@ -336,7 +401,7 @@ export const assets = {
             one: "{count} 声道",
             other: "{count} 声道",
         },
-        // 预览的播放与视图控件。这里没有任何操作会改动音频文件--只有标记会写回素材记录。
+        // 预览的播放与视图控件。这里没有任何操作会改动音频文件--只有标记会写回资产记录。
         editor: {
             toStart: "回到开头",
             loop: "循环",
@@ -385,18 +450,18 @@ export const assets = {
         resetView: "重置视图",
     },
     shortcuts: {
-        copy: "复制选中的素材",
-        cut: "剪切选中的素材",
-        paste: "粘贴素材",
-        rename: "重命名选中的素材或分组",
+        copy: "复制选中的资产",
+        cut: "剪切选中的资产",
+        paste: "粘贴资产",
+        rename: "重命名选中的资产或分组",
     },
     lockReason: {
-        character: "素材正被某个角色使用",
-        scene: "素材正被某个场景使用",
-        editor: "素材正被编辑器使用",
+        character: "资产正被某个角色使用",
+        scene: "资产正被某个场景使用",
+        editor: "资产正被编辑器使用",
     },
     previewEditor: {
-        loadFailed: "素材加载失败",
+        loadFailed: "资产加载失败",
     },
     fontPreview: {
         sampleText: "The quick brown fox jumps over the lazy dog - 敏捷的棕色狐狸跳过懒狗 0123456789",

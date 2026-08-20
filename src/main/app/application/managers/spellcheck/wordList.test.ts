@@ -172,9 +172,11 @@ describe("extractWords", () => {
         expect(extractWords("mail alise@exampel.com please").map(entry => entry.word)).toEqual(["mail", "please"]);
     });
 
-    it("reads scripts that are not Latin without inventing word boundaries", () => {
-        // Japanese runs together, so the whole run is one token. That is harmless: nothing marks it
-        // because no dictionary is ever installed for a language with no spelling.
-        expect(extractWords("こんにちは").map(entry => entry.word)).toEqual(["こんにちは"]);
+    it("invents no word boundaries in a script that has none of its own", () => {
+        // Chinese and Japanese are cut against the lexicon, and there is none here. Answering with
+        // the run would be answering that a whole line is one word - see `tokenizer.test.ts` for
+        // what the same calls return once a vocabulary is to hand.
+        expect(extractWords("こんにちは")).toEqual([]);
+        expect(extractWords("今天天气很好")).toEqual([]);
     });
 });

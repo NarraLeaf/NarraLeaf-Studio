@@ -213,6 +213,9 @@ export function openTestDialog(workspace: Workspace): void {
         title: translate("test.picker.title"),
         width: 560,
         closable: true,
+        // What starting one of these does - the window, the console, the report that opens
+        // afterwards - happens after the dialog is gone, so no control here can state it.
+        helpTopic: "tests",
         content: (
             <TestPickerContent
                 tests={testRun.listTests()}

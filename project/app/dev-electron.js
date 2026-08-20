@@ -18,6 +18,7 @@ const {
     buildBuiltInPlugins,
     sourceRoot: builtInPluginsSourceRoot,
 } = require('../build/builtin-plugins');
+const { buildRuntime } = require('../build/build-runtime');
 
 const forwardedElectronArgs = process.argv.slice(2);
 
@@ -187,23 +188,6 @@ function broadcastReload(target = 'all') {
         });
     }
 
-    function runNodeScript(args) {
-        return new Promise((resolve, reject) => {
-            const child = spawn(process.execPath, args, {
-                cwd: rootDir,
-                stdio: 'inherit',
-            });
-            child.on('close', code => {
-                if (code === 0) {
-                    resolve();
-                } else {
-                    reject(new Error(`node ${args.join(' ')} exited with code ${code}`));
-                }
-            });
-            child.on('error', reject);
-        });
-    }
-
     async function rebuildRuntimeForDev() {
         if (runtimeBuildRunning) {
             runtimeBuildQueued = true;
@@ -216,7 +200,13 @@ function broadcastReload(target = 'all') {
             // minified) regardless of this flag — build-runtime.js enforces that so
             // packs produced from a dev Studio session never ship dev React.
             // `--dev` here only turns on sourcemaps for readable runtime stacks.
-            await runNodeScript(['project/build/build-runtime.js', '--dev']);
+            //
+            // In process, not `node project/build/build-runtime.js`: the child paid
+            // ~2.5s of module loading every time, and its renderer bundle pulls the
+            // same styles.css through the same Tailwind config as the Studio apps
+            // being built alongside it — sharing this process shares that JIT
+            // context, which is the difference between a ~4s cold scan and ~0.3s.
+            await buildRuntime({ dev: true });
             if (!initialRuntimeBuilt) {
                 initialRuntimeBuilt = true;
                 console.log('[runtime] initial build complete.');
@@ -363,6 +353,30 @@ function broadcastReload(target = 'all') {
         console.log('[compileWorker] built.');
     });
 
+    /**
+     * The shipped-content audit, which the compile worker loads by path.
+     *
+     * Built here as well as in build-main.js because the worker requires it at runtime and a dev
+     * instance had no copy at all: every build that narrows what it ships - a variant build, and now
+     * a release build whose asset set collapsed a build axis - died on "Cannot find module
+     * contentAudit.js" before it wrote anything. Bundled against the RENDERER tsconfig, like its
+     * production twin: it runs the story compiler, which resolves "@/" the renderer's way.
+     */
+    const buildContentAudit = () => watchBuild({
+        entryPoints: [path.join(rootDir, 'src', 'renderer', 'lib', 'build', 'contentAuditEntry.ts')],
+        outfile: path.join(distDir, 'main', 'contentAudit.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        sourcemap: true,
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'renderer', 'tsconfig.json'),
+    }, () => {
+        // No Electron restart: the compile worker requires it fresh on every audit.
+        console.log('[contentAudit] built.');
+    });
+
     /** Build & watch preload script */
     const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
     const buildPreloadScript = async () => {
@@ -466,6 +480,7 @@ function broadcastReload(target = 'all') {
         buildGameBuildWorker(),
         buildPsdImportWorker(),
         buildArtifactCompileWorker(),
+        buildContentAudit(),
         buildPreloadScript(),
         buildRenderers(),
         buildInitialBuiltInPlugins(),

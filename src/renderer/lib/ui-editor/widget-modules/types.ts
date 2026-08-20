@@ -204,6 +204,14 @@ export interface UIWidgetModule {
     /** Unique type identifier (e.g. "nl.container") */
     readonly type: string;
 
+    /**
+     * Widget type this module specialises, set by `extendWidgetModule`.
+     *
+     * Mirrors the entry in `WIDGET_TYPE_PARENTS`, which is the shared table the capability lookups
+     * (effect kinds, logic API, appearance backfill) read - `shared` cannot see a renderer module.
+     */
+    readonly extends?: string;
+
     /** Shared logic capability schema for editor, runtime, and blueprint tooling. */
     readonly logicApi?: WidgetLogicApi;
 
@@ -224,6 +232,17 @@ export interface UIWidgetModule {
      * The service applies the returned parent patch and child list in the same UIDocument mutation.
      */
     createDefaultChildElements?(context: DefaultChildElementContext): DefaultChildElementResult;
+
+    /**
+     * The states this widget can be shown in, when they belong to the widget rather than to an
+     * appearance model.
+     *
+     * A switch is on or off whatever its parts look like, and it carries no appearance of its own, so
+     * there are no variants for the state bar to list. Declaring them here puts the bar on the widget
+     * itself; entering one broadcasts that variant id to the subtree, which is where the parts that
+     * do carry variants pick it up. `id: null` is the state the widget rests in.
+     */
+    listEditorStates?(element: UIElement): { id: string | null; name: string }[];
 
     /**
      * Renders the element on the editor canvas.

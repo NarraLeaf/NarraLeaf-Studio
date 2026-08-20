@@ -3,7 +3,7 @@ import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents"
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
-import { WindowControlAbility } from "@shared/types/window";
+import { WindowAppType, WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, dialog, shell } from "electron";
 import type { Dirent } from "fs";
 import { promises as fs } from "fs";
@@ -50,19 +50,67 @@ export class AppInfoHandler extends IPCHandler<IPCEventType.appInfo> {
     }
 }
 
+/**
+ * Hand the experimental warning to the first workspace window that asks for it.
+ *
+ * Workspace only: the warning names what the mode does to a project, and the launcher and the
+ * settings window are neither the place for it nor the surface an author is looking at when they
+ * start working.
+ */
+export class AppClaimExperimentalNoticeHandler extends IPCHandler<IPCEventType.appClaimExperimentalNotice> {
+    readonly name = IPCEventType.appClaimExperimentalNotice;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.success({ show: false });
+        }
+        return this.success({ show: window.app.claimExperimentalNotice() });
+    }
+}
+
+/**
+ * A renderer reporting that it cannot go on - its own crash screen failed to render, or the app
+ * component threw before there was anything on screen at all.
+ *
+ * **One window's failure ends that window, not the session.** This used to call `crash()`, which
+ * is a hard `exit(1)`: every other open project went away without its pending saves being written,
+ * because a plugin threw while a *different* window was starting up. The windows that are working
+ * have nothing to do with the one that is not, and the author is usually looking at one of them.
+ *
+ * The exception is the failure with nothing behind it. When this is the only window, closing it
+ * would leave a Studio with no surface and no explanation, so the old behaviour stands: `crash()`
+ * says what happened in a native box and offers to relaunch. That is also the case where nothing
+ * is lost by ending the process, since there is no other work open.
+ *
+ * Either way the reason is written to `main.log` first, which is the copy that outlives the window.
+ */
 export class AppTerminateHandler extends IPCHandler<IPCEventType.appTerminate> {
     readonly name = IPCEventType.appTerminate;
     readonly type = IPCMessageType.message;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appTerminate]["data"]) {
-        if (data.err) {
-            const timestamp = new Date().toISOString();
-            window.app.logger.error(`The App is terminating due to an error: ${data.err}`);
-            window.app.logger.error(`App Crashed at ${timestamp}`);
-            window.app.crash(data.err);
-        } else {
+        if (!data.err) {
             window.app.quit();
+            return this.success(void 0 as never);
         }
+
+        const timestamp = new Date().toISOString();
+        window.app.logger.error(`A ${window.getWindowType()} window reported a fatal error at ${timestamp}: ${data.err}`);
+
+        const others = window.app.windowManager.getWindows()
+            .filter(candidate => candidate !== window && !candidate.isClosed());
+        if (others.length === 0) {
+            window.app.crash(data.err);
+            return this.success(void 0 as never);
+        }
+
+        window.app.logger.warn(
+            `[App] Closing the failed ${window.getWindowType()} window; ${others.length} other window(s) stay open.`,
+        );
+        // forceClose, because the guard on a workspace would ask the renderer to confirm and flush -
+        // and this renderer is the one that just said it cannot run.
+        window.forceClose();
         return this.success(void 0 as never);
     }
 }

@@ -5,7 +5,8 @@ import { parseStageSize, stageOrientation } from "@shared/types/stageSize";
 import { DEFAULT_MOBILE_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "@/lib/workspace/project/configuration";
 import type { ProjectAppConfiguration } from "@/lib/workspace/project/configuration";
 import { ProjectData } from "../types";
-import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
+import { encodeProjectConfig, getProjectConfigFileName, type ProjectConfigData } from "@shared/utils/nlproj";
+
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { BaseFileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService";
@@ -123,7 +124,8 @@ export class ProjectService {
             // first revision is the project the author received rather than an empty
             // one that grew its content in a second commit.
             if (projectData.contentTemplateId) {
-                await this.applyProjectTemplate(basePath, projectData.contentTemplateId);
+                const templateLocales = await this.applyProjectTemplate(basePath, projectData.contentTemplateId);
+                await this.registerTemplateLocales(projectConfigPath, projectConfig, templateLocales);
             }
 
             // LAST, and only after every file above is on disk: the first revision is a snapshot of
@@ -154,11 +156,62 @@ export class ProjectService {
      * the recovery is to delete the directory and start again. Better to say it now,
      * while the wizard is still open and the message can name what went wrong.
      */
-    private static async applyProjectTemplate(projectPath: string, templateId: string): Promise<void> {
+    private static async applyProjectTemplate(projectPath: string, templateId: string): Promise<string[]> {
         const result = await getInterface().projectTemplates.scaffold(templateId, projectPath);
         if (!result.success) {
             throw new Error(result.error || translate("wizard.validation.templateFailed"));
         }
+        return result.data?.locales ?? [];
+    }
+
+    /**
+     * Register the languages the template shipped translations for.
+     *
+     * A template's `content/` is copied verbatim, but the list of a project's languages is not in
+     * there - it lives in the `.nlproj`, which is generated per project and which a template is
+     * never allowed to carry. So a template that ships `editor/localization/zh-CN.json` used to
+     * hand the author a complete translation and no way to reach it: the localization panel showed
+     * the source language alone, and the game had no second language to play in. The files were on
+     * disk the whole time.
+     *
+     * This is a second write of a file written moments ago rather than a reordering of the
+     * creation, because the config has to exist before the template lands (it is what makes the
+     * directory a project) and the languages are only knowable after. Nothing reads the file in
+     * between.
+     *
+     * Only when the project already has a source language: locales without one is a half-configured
+     * state that no panel would know how to show, and the wizard always sets one when the author
+     * picked a script language.
+     */
+    private static async registerTemplateLocales(
+        configPath: string,
+        config: ProjectConfigData,
+        codes: string[],
+    ): Promise<void> {
+        const app = config.app as ProjectAppConfiguration | undefined;
+        const existing = app?.localization;
+        if (!existing || !isValidLocaleCode(existing.sourceLocale)) {
+            return;
+        }
+        const known = new Set(existing.locales.map(entry => entry.code));
+        const added = codes.filter(code => isValidLocaleCode(code) && !known.has(code));
+        if (!added.length) {
+            return;
+        }
+        const next: ProjectConfigData = {
+            ...config,
+            app: {
+                ...app,
+                localization: {
+                    sourceLocale: existing.sourceLocale,
+                    locales: [
+                        ...existing.locales,
+                        ...added.map(code => ({ code, displayName: localeAutonym(code) })),
+                    ],
+                },
+            },
+        };
+        throwException(await BaseFileSystemService.writeRaw(configPath, encodeProjectConfig(next)));
     }
 
     /**

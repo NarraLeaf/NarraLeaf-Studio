@@ -1,4 +1,5 @@
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
+import type { GradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 /** How children of `nl.container` participate in layout inside the editor surface. */
@@ -31,7 +32,7 @@ export type ContainerStackJustifyContent =
 /** Single-axis scroll: content scrolls along one axis; the other axis clips. */
 export type ContainerScrollAxis = "x" | "y";
 
-export type ContainerFillType = "color" | "image";
+export type ContainerFillType = "color" | "image" | "gradient";
 
 export type ContainerStrokeAlign = "none" | "center" | "inside" | "outside";
 
@@ -71,6 +72,8 @@ export type ContainerWidgetProps = {
     backgroundImage: string;
     backgroundFit: string;
     imageFill?: ImageFill | null;
+    /** Sibling of `imageFill`, selected by `fillType: "gradient"`. */
+    gradientFill?: GradientFill | null;
     fillType: ContainerFillType;
     fillVisible: boolean;
     fillOpacity: number;
@@ -124,6 +127,7 @@ export const defaultContainerWidgetProps: ContainerWidgetProps = {
     backgroundImage: "",
     backgroundFit: "cover",
     imageFill: undefined,
+    gradientFill: undefined,
     fillType: "color",
     fillVisible: true,
     fillOpacity: 1,

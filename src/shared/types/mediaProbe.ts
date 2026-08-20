@@ -32,6 +32,15 @@ export type MediaProbeOutcome =
          * `null` must be passed on as `null`: see `probeDurationUs`.
          */
         durationUs: number | null;
+        /**
+         * Whether a video stream carries an alpha channel.
+         *
+         * Beside the verdict rather than inside it for the same reason `durationUs` is: it says
+         * nothing about whether the file plays. A WebM carrying alpha plays everywhere; what the
+         * two Safari-engine targets do not do is composite the alpha. Read
+         * `probeCarriesAlpha` for what the fact is read off and who acts on it.
+         */
+        carriesAlpha: boolean;
     }
     /**
      * No ffprobe on this host. Distinct from a failure on purpose: nothing is wrong with the

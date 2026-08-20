@@ -92,6 +92,13 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
                         </div>
                     );
                 })}
+                {field.trailing ? (
+                    // Bottom-aligned: the inputs carry a label above them, and a control that belongs
+                    // to the whole group has none, so stretching it would leave it a row too tall.
+                    <div className="flex shrink-0 items-end">
+                        {field.trailing({ data, onSaving, readOnly: Boolean(field.readOnly || field.disabled) })}
+                    </div>
+                ) : null}
             </div>
         </FieldLayout>
     );

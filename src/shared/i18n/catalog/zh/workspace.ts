@@ -70,6 +70,8 @@ export const workspace = {
             reviewFilterUnreviewed: "未校对",
             charactersGroup: "角色",
             characterSpeaker: "角色",
+            scenesGroup: "场景",
+            sceneSpeaker: "场景",
             addKey: "添加",
             keyNamePlaceholder: "键名（menu.start…）",
             keySourcePlaceholder: "源语言文案",
@@ -90,7 +92,7 @@ export const workspace = {
             reviewAllClear: "没有待校对的条目",
             staleHint: "翻译之后原文有改动；重新保存该译文即可标记为最新",
             placeholderHint: "请保留 {n} 占位符，它们用于渲染内联数值",
-            emptyStory: "这个故事没有可翻译的文本",
+            emptyStory: "该故事没有可翻译的文本",
             emptyFilter: "没有符合当前筛选的条目",
             noStories: "请先创建故事；故事中的台词会显示在这里供翻译",
             statusUntranslated: "未翻译",
@@ -129,6 +131,7 @@ export const workspace = {
             namingTitle: "录音文件名规则",
             namingHint: "可用占位符：{tokens}；导入的音频按此名称与台词匹配",
             namingReset: "恢复默认",
+            choicesTitle: "为选项配音",
         },
         table: {
             storyLabel: "故事",
@@ -146,6 +149,8 @@ export const workspace = {
             auditionFilterPending: "待审听",
             narrationSpeaker: "旁白",
             narrationGroup: "旁白",
+            choiceSpeaker: "选项",
+            choiceGroup: "选项",
             castPlaceholder: "配音演员…",
             assign: "指派音频",
             replace: "替换音频",
@@ -218,7 +223,7 @@ export const workspace = {
             loading: "正在检查版本控制",
             unavailable: "版本控制不可用：{reason}",
             notARepository: "该工程从未启用过版本控制",
-            noService: "版本控制服务在这个窗口没有启动",
+            noService: "版本控制服务未在本窗口启动",
             disabledHint: "该工程没有可供恢复的版本历史",
             head: "当前位于版本 {version}，分支 {branch}",
             emptyHistory: "还没有提交过任何版本",
@@ -237,8 +242,8 @@ export const workspace = {
         },
         offer: {
             message: "该工程未能正常加载",
-            detailOne: "有一个文件无法读取，本窗口中缺少工程的一部分内容；常见原因：保存被中断、同步或备份工具同时写入、插件干扰；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
-            detailMany: "有 {count} 个文件无法读取，本窗口中缺少工程的一部分内容；常见原因：保存被中断、同步或备份工具同时写入、插件干扰；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
+            detailOne: "有一个文件无法读取，本窗口中缺少工程的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
+            detailMany: "有 {count} 个文件无法读取，本窗口中缺少工程的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
             enter: "以恢复模式打开",
         },
         operations: {
@@ -356,7 +361,6 @@ export const workspace = {
             categoryVersionControl: "版本控制",
             editor: {
                 closeTab: "关闭标签页",
-                closeSelectedTabs: "关闭选中的标签页",
                 closeOthers: "关闭其他标签页",
                 closeToRight: "关闭右侧标签页",
                 closeAll: "关闭全部标签页",
@@ -397,13 +401,13 @@ export const workspace = {
         // 快速打开（mod+p）：可打开实体的模糊选择器。
         quickOpen: {
             title: "快速打开",
-            placeholder: "跳转到场景、角色、界面、素材、蓝图…",
+            placeholder: "跳转到场景、角色、界面、资产、蓝图…",
             empty: "没有匹配项",
             kinds: {
                 scene: "场景",
                 character: "角色",
                 uiSurface: "界面",
-                asset: "素材",
+                asset: "资产",
                 blueprint: "蓝图",
             },
         },
@@ -424,6 +428,16 @@ export const workspace = {
                 reloading: "重载中…",
                 stopping: "停止中…",
             },
+            /**
+             * What a long task is called while it runs.
+             *
+             * Names the author's own object and the work being done to it, never the machinery
+             * that does it. "Baking" is what the wait is; the encoder and the file format the
+             * clip ends up in are not the author's business and never appear here.
+             */
+            task: {
+                weatherBake: "烘焙屏幕效果",
+            },
             openConsole: "打开控制台",
             unsavedChanges: "未保存的更改",
             saveNow: "立即保存",
@@ -440,6 +454,7 @@ export const workspace = {
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
                 runStatus: "运行状态",
+        studioTasks: "后台工作",
                 unsavedChanges: "未保存的更改",
                 wordCount: "故事统计",
                 shortcuts: "快捷键速查",
@@ -487,6 +502,7 @@ export const workspace = {
                 variables: "变量注册表",
                 audioTracks: "音频轨道",
                 appTags: "变体",
+                assetSets: "资产集",
                 brand: "配色方案",
                 dictionary: "工程词典",
                 saveSchema: "存档字段",
@@ -524,7 +540,7 @@ export const workspace = {
             // 按它「离开的模式」命名，而不是按它「去到的地方」命名，见 docs/help-system.md §4。
             leave: "退出历史查看",
             loadingTitle: "正在读取上一个版本…",
-            loadingDetail: "首次读取某个版本可能需要从远端取回",
+            loadingDetail: "首次读取可能需要从服务器取回",
             shownTitle: "正在查看版本 {revision}",
             shownDetail: "编辑器为只读，磁盘上的文件不会被改动",
             noneTitle: "没有更早的版本",
@@ -557,7 +573,7 @@ export const workspace = {
             //
             // 动作自己说出自己是什么，而不是写「恢复」：确认框会把这句话放在按钮上，而一句
             // 「确定」摆在一段讲覆盖文件的话旁边，正是一个人按错东西的方式。
-            restore: "恢复到这个版本",
+            restore: "恢复到该版本",
             // 明说是哪个版本，免得这个框被当成在问另一个——作者是从一列版本里点进来的。
             // `{version}` 是 `#12`，若进入时没带标签则是短哈希。
             restoreConfirm: "恢复到版本 {version}？",
@@ -568,7 +584,7 @@ export const workspace = {
             restoreConfirmDetail: "项目文件会被替换为该版本的内容；当前状态会先记录为一个检查点，不会删除任何版本",
             // 很慢：一次检查点、重写每一个受版本控制的文件、再提交一个版本，然后跟「回到当前
             // 版本」一样整体重读一遍。
-            restoring: "正在恢复到这个版本…",
+            restoring: "正在恢复到该版本…",
             // 恢复唯一一种「失败时文件已经换过了」的失败：重写已经做完，只有提交它的那一次没成。
             // 先说他的项目现在是什么样，再说错误——因为作者本来会得出的结论「失败了所以什么都没
             // 发生」正好与事实相反，然后他就在一个悄悄退回上周的项目上继续干活。`{action}` 是
@@ -586,7 +602,7 @@ export const workspace = {
             // 只有一行：启用会往作者的项目目录里写东西并对它取独占锁，所以在他按下之前先说清做什么。
             // 用「保存」而不是「记录」：这句说的是将来会有的历史，不是那个动作——而在一个已经写着
             // 「提交版本」的按钮下面留着最后一处「记录」，读起来就是同一件事有两个名字。
-            enableHint: "在这个项目的目录里保存版本历史",
+            enableHint: "在本项目的目录中保存版本历史",
             enabling: "正在设置版本控制…",
             // 仓库已经存在、里面还没有版本——与上面的 `notVersioned`（压根没启用）是两回事。
             noHistory: "还没有版本",
@@ -598,7 +614,7 @@ export const workspace = {
             loadMoreHistory: "显示更早的版本",
             // 配了远端的项目首次读取某个版本会走网络，所以这是真的在等，不是礼貌性的转圈。
             loadingRevision: "正在打开该版本…",
-            showVersion: "在编辑器里显示这个版本",
+            showVersion: "在编辑器中显示该版本",
             // 有一个以上父级的版本。标记而不是展开：轨道是线性列表，而不加标记的合并会让这个
             // 线性列表说假话。
             merge: "合并",
@@ -617,7 +633,7 @@ export const workspace = {
             authorSave: "保存",
             // 绝不是瞬时的：管线要先把这个窗口没保存的东西落完，再暂存整个工程，然后等后端把它的
             // store 写到磁盘上。
-            committing: "正在提交这个版本…",
+            committing: "正在提交该版本…",
             // 「还没人看过」，这和「干净」不是一回事——而这个区别很重要，因为「看」就是一次扫描，
             // 这个界面绝不自己发起。
             nothingToCommit: "自上个版本以来没有变更",
@@ -658,8 +674,8 @@ export const workspace = {
             today: "今天",
             yesterday: "昨天",
             compareBase: {
-                set: "让其他版本与这个版本比较",
-                clear: "不再与这个版本比较",
+                set: "让其他版本与该版本比较",
+                clear: "不再与该版本比较",
                 current: "正在与 {version} 比较",
                 compare: "与 {version} 比较",
             },
@@ -730,24 +746,24 @@ export const workspace = {
                 syncing: "正在从服务器获取版本…",
                 syncedNothing: "已是最新",
                 signIn: {
-                    required: "这台服务器要求先登录，然后才能把项目指向它。",
+                    required: "连接项目前需要先登录该服务器。",
                     open: "登录此服务器",
                     signedInAs: "已登录为 {name}",
                     signOut: "退出登录",
                     addressLabel: "登录地址",
                     addressPlaceholder: "https://studio.example.lan:41402",
                     tokenLabel: "访问令牌",
-                    tokenPlaceholder: "粘贴你拿到的令牌",
-                    hint: "令牌由服务器的管理者签发并交给你。",
+                    tokenPlaceholder: "粘贴令牌",
+                    hint: "令牌由服务器的管理者签发。",
                     trust: {
                         open: "在这台电脑上信任该服务器",
                         title: "信任该服务器？",
-                        vouched: "你粘贴的令牌点名了这个证书发放机构，在那个地址上应答的也正是它。",
-                        compare: "请通过这条连接以外的途径，与服务器管理者给你的指纹核对。",
+                        vouched: "粘贴的令牌指向该证书颁发机构，在该地址上应答的正是它。",
+                        compare: "请通过该连接以外的途径，与服务器管理员提供的指纹核对。",
                         authorityLabel: "颁发者",
                         fingerprintLabel: "指纹",
-                        meaning: "持有该机构密钥的任何一方，都能为任意地址签发证书，而这个账户都会相信。受影响的只有这台电脑上的这个账户。",
-                        manual: "这个系统没有按账户的信任库，Studio 无法代劳。请运行下面这条命令，然后重新登录：",
+                        meaning: "持有该机构密钥的任何一方，都能为任意地址签发证书，而本账户会接受它。受影响的只有本机上的该账户。",
+                        manual: "该系统没有按账户的信任库。请运行以下命令，然后重新登录：",
                         copy: "复制命令",
                         confirm: "信任",
                         cancel: "取消",
@@ -756,18 +772,18 @@ export const workspace = {
                     cancel: "取消",
                     reach: {
                         ready: "此服务器与这份 Studio 可以协同工作。",
-                        notPermitted: "已登录，但该账号尚未获得此项目的访问权。请向服务器的管理者申请。",
+                        notPermitted: "已登录，但该账号尚未获得此项目的访问权。请向服务器管理员申请。",
                         dataPortSilent: "已登录，但服务器本身没有响应。",
                     },
                     problem: {
                         scheme: "登录地址必须以 https:// 或 ucs-auth:// 开头。",
-                        token: "这不是此服务器签发的令牌。请粘贴你拿到的完整令牌。",
-                        address: "这个令牌没有写明去哪里登录，所以还需要地址。",
+                        token: "该令牌不是此服务器签发的。请粘贴完整的令牌。",
+                        address: "该令牌未写明登录地址，因此仍需填写地址。",
                         certificate:
-                            "这台电脑尚未被告知信任此服务器所用的证书颁发机构。它的指纹是 {fingerprint}。",
+                            "这台电脑不信任此服务器所用的证书颁发机构。它的指纹是 {fingerprint}。",
                         mismatch:
-                            "那个地址上的服务器不是这个令牌对应的那一台。令牌点名的是 {expected}，"
-                            + "应答的却是 {found}。不要信任它，请向服务器的管理者核实。",
+                            "该地址上的服务器不是此令牌对应的服务器。令牌指向 {expected}，"
+                            + "应答的是 {found}。请勿信任，并向服务器管理员核实。",
                         unreachable: "该地址没有任何响应（{detail}）。",
                         refused: "服务器不接受该令牌（{detail}）。",
                         unknown: "登录未能完成（{detail}）。",
@@ -815,11 +831,13 @@ export const workspace = {
             // 设置表与速查表的分类标题（来自静态目录）。
             categories: {
                 general: "通用",
+                run: "运行",
+                view: "视图",
                 story: "故事编辑器",
                 uiEditor: "UI 编辑器",
                 blueprint: "蓝图编辑器",
                 storyMotion: "故事动效",
-                assets: "素材",
+                assets: "资产",
                 other: "其他",
             },
             // 此前没有自带 i18n key 的目录条目标签。
@@ -829,6 +847,11 @@ export const workspace = {
                 cheatSheet: "显示快捷键速查",
                 contextHelp: "当前位置的帮助",
                 reopenClosedTab: "重新打开关闭的标签",
+                // 一个键位对应开发模式、预览、测试里当前占着运行位的那一个,
+                // 所以停止它们的三条命令共用同一条可重绑的快捷键。
+                run: {
+                    stop: "停止运行",
+                },
                 undo: "撤销",
                 redo: "重做",
                 quickSwitchNext: "切换到下一个编辑器标签",
@@ -881,7 +904,7 @@ export const workspace = {
             // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
             titleBarPlaceholder: "在 {name} 中搜索",
             building: "正在建立搜索索引…",
-            idle: "可搜索场景、角色、剧情文本、资源与蓝图",
+            idle: "可搜索场景、角色、剧情文本、资产与蓝图",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
             // 与场景查找栏共用的三个匹配开关，同一条查询在两处含义一致。
@@ -904,7 +927,7 @@ export const workspace = {
                 character: "角色",
                 uiSurface: "UI 界面",
                 blueprint: "蓝图",
-                asset: "素材",
+                asset: "资产",
                 storyText: "剧情文本",
                 variable: "变量",
                 uiTextKey: "UI 文本 Key",

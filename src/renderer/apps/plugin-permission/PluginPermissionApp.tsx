@@ -228,7 +228,7 @@ export function PluginPermissionApp() {
     return (
         <AppLayout
             title={t("pluginPermission.title")}
-            iconSrc="/favicon.ico"
+           
             initialControlAbility={PLUGIN_PERMISSION_WINDOW_CONTROL_ABILITY}
             windowControlPolicy={WindowControlPolicy.None}
         >

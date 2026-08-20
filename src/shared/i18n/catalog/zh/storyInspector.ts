@@ -49,6 +49,8 @@ export const storyInspector = {
         fromAngle: "起始角度 °",
         rows: "行数",
         cols: "列数",
+        rule: "规则图",
+        inverted: "从亮部开始",
         stagger: "错位",
         shape: "形状",
         pattern: "样式",
@@ -86,9 +88,11 @@ export const storyInspector = {
         rotate: "旋转",
         opacity: "不透明度",
         darken: "变暗",
+        flip: "水平翻转",
         circleReveal: "圆形展开",
         circleClose: "圆形收拢",
         slideReveal: "滑动揭示",
+        custom: "自定义",
     },
     easing: {
         default: "默认",
@@ -103,6 +107,7 @@ export const storyInspector = {
         backOut: "回弹缓出",
         backInOut: "回弹缓入缓出",
         anticipate: "预备",
+        custom: "自定义曲线",
     },
     transition: {
         dissolve: "溶解",
@@ -120,6 +125,10 @@ export const storyInspector = {
         slide: "推移",
         throughColor: "过色",
         darkness: "压暗",
+        exposure: "曝光",
+        ruleReveal: "规则图",
+        exposureEv: "曝光量（EV）",
+        exposureLift: "暗部提亮 0-1",
         startX: "起始 X",
         startY: "起始 Y",
         blurPx: "模糊（像素）",
@@ -143,6 +152,8 @@ export const storyInspector = {
         slide: "新图片从一侧滑入，同时旧图片向外滑出",
         darkness: "在起始暗度上换图，再把亮度动到结束暗度；1 → 0 是从黑场中浮现，0 → 1 是渐暗至黑",
         throughColor: "用纯色盖住画面，停留片刻再显露新图片；淡入黑／白、光圈至黑场、闪白（停留 0）都用它",
+        exposure: "画面按曝光烧到白，高光先到、暗部最后，再从白里落回新画面；暗部提亮为 0 时黑色不会变白",
+        ruleReveal: "按一张灰度图指定的顺序换画面：暗的地方先换，亮的地方最后换",
     },
     wipeDirection: {
         left: "左",
@@ -178,7 +189,7 @@ export const storyInspector = {
         setRate: "设置速度",
     },
     vfxBlend: {
-        normal: "正常（透明 alpha WebM）",
+        normal: "正常（不透明素材）",
         screen: "滤色（黑底辉光素材）",
         multiply: "正片叠底（白底阴影素材）",
         lighten: "变亮",
@@ -192,6 +203,8 @@ export const storyInspector = {
     },
     vfx: {
         name: "特效名称",
+        source: "来源",
+        sourceClip: "素材",
         clip: "循环素材",
         blendMode: "混合模式",
         opacity: "不透明度（0-1）",
@@ -202,34 +215,89 @@ export const storyInspector = {
         fade: "淡入淡出（秒）",
     },
 
+    weather: {
+        density: "数量",
+        sizeNear: "近景大小",
+        sizeFar: "远景大小",
+        sway: "飘摆",
+        streak: "拖影",
+        wind: "风向（度）",
+        depthSpread: "景深差",
+    },
+
     cameraOperation: {
-        zoom: "推拉",
-        pan: "平移",
-        rotate: "旋转",
-        darken: "压暗舞台",
-        motion: "运镜动作",
         reset: "复位镜头",
     },
 
-    cameraOperationShort: {
-        zoom: "推拉",
-        pan: "平移",
-        rotate: "旋转",
-        darken: "压暗",
-        motion: "运镜",
-        reset: "复位",
+    cameraResetHint: "复位机位、色调与镜头效果。",
+
+    cameraLook: {
+        memory: "回忆",
+        monologue: "心理独白",
+        mono: "单色",
+        moonlight: "月光",
+        faint: "意识模糊",
+        hangover: "宿醉",
     },
 
-    camera: {
-        zoom: "缩放（1 为原始）",
-        rotation: "旋转角度 °",
-        darkness: "舞台压暗（0-1）",
-        xalign: "X 对齐（0-1）",
-        yalign: "Y 对齐（0-1）",
+    cameraLens: {
+        blink: "眨眼",
+        slowBlink: "慢眨眼",
+        vignettePulse: "暗角脉冲",
     },
 
+    cameraLookHint: {
+        channel: "后添加的色调会覆盖舞台压暗。复位镜头会清除色调。",
+        monologue: "只降低整个舞台的饱和度与亮度。要压暗四周，请另加一行暗角。",
+        hangover: "画面会先摇晃两次，再落到最终色调。这一行会等摇晃结束，时长决定摇晃的快慢。",
+    },
+
+    transformChannel: {
+        reveal: "揭示",
+        search: "搜索效果",
+        noMatch: "没有匹配的效果",
+        inherit: "继承",
+        maskSettings: "遮罩设置",
+        maskSize: "尺寸",
+        maskPosition: "位置",
+        maskRepeat: "重复",
+        maskMode: "模式",
+        clipShape: {
+            inset: "矩形",
+            circle: "圆形",
+            ellipse: "椭圆",
+            raw: "自定义路径",
+        },
+        clipParam: {
+            top: "上 %",
+            right: "右 %",
+            bottom: "下 %",
+            left: "左 %",
+            radius: "半径 %",
+            radiusX: "横向半径 %",
+            radiusY: "纵向半径 %",
+            x: "中心 X %",
+            y: "中心 Y %",
+        },
+        restore: "还原{channel}",
+        restored: "已还原",
+        add: "添加",
+        remove: "移除",
+        xAlign: "X",
+        yAlign: "Y",
+    },
+    transformChannelGroup: {
+        geometry: "位置与缩放",
+        filter: "滤镜",
+        look: "色调",
+        lens: "镜头",
+        composite: "合成",
+        text: "文字",
+        timing: "时序",
+    },
     displayableOperation: {
         transform: "变换",
+        bringToFront: "置顶",
         mask: "遮罩",
         clearMask: "清除遮罩",
         clip: "裁剪路径",
@@ -244,7 +312,7 @@ export const storyInspector = {
         wipe: "滑动揭示",
     },
     displayableEffectHint: {
-        mask: "将图像素材用作 CSS 遮罩",
+        mask: "将图像资产用作 CSS 遮罩",
         clearMask: "移除当前遮罩",
         clip: "应用 CSS 裁剪（clip-path）",
         clearClip: "移除当前裁剪路径",
@@ -284,10 +352,6 @@ export const storyInspector = {
         muteSound: "静音／取消静音",
         seekSound: "跳转位置",
     },
-    screenEffectOption: {
-        blink: "闪烁",
-        vignette: "暗角",
-    },
     waitMode: {
         duration: "时长",
         click: "点击",
@@ -326,8 +390,8 @@ export const storyInspector = {
         track: "音轨",
         trackDefault: "默认（{name}）",
         soundName: "音效名称",
-        bgmAsset: "背景音乐资源",
-        soundAsset: "音效资源",
+        bgmAsset: "背景音乐资产",
+        soundAsset: "音效资产",
         fade: "淡入淡出（秒）",
         seekTime: "跳转到（秒）",
         volume: "音量",
@@ -336,7 +400,7 @@ export const storyInspector = {
     },
     image: {
         imageName: "图片名称",
-        imageAsset: "图片资源",
+        imageAsset: "图片资产",
         autoFit: "自动适配",
     },
     text: {
@@ -351,7 +415,7 @@ export const storyInspector = {
     },
     video: {
         videoName: "视频名称",
-        videoAsset: "视频资源",
+        videoAsset: "视频资产",
         seekTime: "跳到",
     },
     nvl: {
@@ -377,9 +441,9 @@ export const storyInspector = {
         notPuppetHint: "该角色由 Studio 绘制，没有可设置的运行时状态",
     },
     asset: {
-        missing: "资源缺失",
-        none: "无资源",
-        clear: "清除资源",
+        missing: "资产缺失",
+        none: "无资产",
+        clear: "清除资产",
         selectTitle: "选择{label}",
     },
     displayableEffect: {
@@ -407,7 +471,7 @@ export const storyInspector = {
         change: "更换",
         select: "选择",
         clearImage: "清除图片",
-        assetError: "无法解析图片资源：{error}",
+        assetError: "无法解析图片资产：{error}",
         selectImageTitle: "选择背景图片",
     },
     control: {

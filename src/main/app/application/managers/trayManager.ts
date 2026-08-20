@@ -97,6 +97,32 @@ export class TrayManager {
     }
 
     /**
+     * Follow a change of the window-icon preference.
+     *
+     * A no-op without a tray: the preference is stored whether or not this platform grew one, and
+     * `initialize` reads the same value at the next launch anyway.
+     */
+    public refreshIcon(): void {
+        if (!this.tray) {
+            return;
+        }
+
+        const iconPath = this.app.getWindowIconPath();
+        if (!iconPath) {
+            return;
+        }
+
+        try {
+            const image = nativeImage.createFromPath(iconPath);
+            this.tray.setImage(image.isEmpty() ? iconPath : image);
+        } catch (error) {
+            // Same reasoning as a tray that could not be created: a stale icon is not worth
+            // failing anything over, but it should be explicable from the log.
+            this.app.logger.warn("[Tray] Failed to update the status-bar icon:", error);
+        }
+    }
+
+    /**
      * Rebuild the context menu against the current language and updater state.
      *
      * Called on every language change and whenever the update state moves, so the row that

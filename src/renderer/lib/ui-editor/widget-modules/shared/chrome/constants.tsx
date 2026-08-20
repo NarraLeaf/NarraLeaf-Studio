@@ -81,9 +81,13 @@ export const BORDER_STYLE_OPTIONS: { value: string; labelKey: TranslationKey; ic
   { value: "none", labelKey: "widgetAppearance.border.styleNone", icon: <StrokeStyleIcon style="none" /> },
 ];
 
+// The order is the order a fill grew: a colour, then an image, then a gradient. Every consumer of
+// this list narrows the chosen string back to `RectangleLikeProps["fillType"]`, so a fourth entry
+// here is only half the work - see `coerceFillType` in `rectangleHelpers.ts`.
 export const FILL_TYPE_OPTIONS: { value: string; labelKey: TranslationKey }[] = [
   { value: "color", labelKey: "widgetAppearance.fillType.color" },
   { value: "image", labelKey: "widgetAppearance.fillType.image" },
+  { value: "gradient", labelKey: "widgetAppearance.fillType.gradient" },
 ];
 
 export const STROKE_ALIGN_OPTIONS: { value: string; labelKey: TranslationKey }[] = [

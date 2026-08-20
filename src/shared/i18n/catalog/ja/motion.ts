@@ -57,6 +57,7 @@ export const motion = {
         emphasis: "強調",
         idle: "待機",
         reaction: "反応",
+        grade: "色調",
         camera: "カメラ",
     },
 
@@ -85,6 +86,9 @@ export const motion = {
         dizzy: "ふらつく",
         lookAround: "見回す",
         fallOver: "倒れる",
+        faintOut: "気を失う",
+        hangover: "二日酔い",
+        flashback: "回想",
         cameraShake: "振動",
         cameraImpact: "衝撃",
         cameraPushIn: "寄る",

@@ -6,6 +6,7 @@ import { ImageFillField } from "@/apps/workspace/modules/properties/framework/fi
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
+import { Switch } from "@/lib/components/elements";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { buttonPropsToImageFillBaseline, getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { FILL_TYPE_OPTIONS, controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -13,6 +14,8 @@ import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome
 import type { ButtonAppearancePropertyKey } from "@shared/types/ui-editor/appearance";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import { ButtonCursorSelect } from "./ButtonCursorSelect";
+import { GradientFillEditor } from "@/lib/ui-editor/widget-modules/shared/appearance/GradientFillEditor";
+import { normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
 
 export type ButtonValueEditorProps = {
     fieldKey: ButtonAppearancePropertyKey;
@@ -49,16 +52,31 @@ export function ButtonAppearanceValueEditor({
             );
         }
         case "fillType": {
+            // The narrowing keeps an unreadable stored value off the Select, which would otherwise
+            // show a blank control; every kind the widget can actually paint has to be listed, or
+            // opening this row silently rewrites the fill to a colour.
             const v = String(value ?? "color");
+            const known = v === "image" || v === "gradient" ? v : "color";
             return (
                 <Select
-                    value={v === "image" ? "image" : "color"}
+                    value={known}
                     options={FILL_TYPE_OPTIONS}
                     fullWidth
                     onChange={next => onChange(String(next))}
                 />
             );
         }
+        case "gradientFill":
+            // The row hands the popover the stored gradient and nothing else: the default gradient
+            // stands in for an absent one inside the editor, so an untouched row is not written out
+            // as a gradient it never held.
+            return (
+                <GradientFillEditor
+                    value={normalizeGradientFill(value) ?? null}
+                    onChange={next => onChange(next)}
+                    draftResetKey={`${draftResetKey}-gf`}
+                />
+            );
         case "fillVisible": {
             const visible = Boolean(value);
             return (
@@ -196,15 +214,15 @@ export function ButtonAppearanceValueEditor({
         case "clipContent": {
             const b = Boolean(value);
             return (
-                <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer">
-                    <input
-                        type="checkbox"
+                <div className="flex items-center gap-2 text-xs text-fg-muted">
+                    <Switch
+                        size="sm"
                         checked={b}
-                        onChange={e => onChange(e.target.checked)}
-                        className="rounded-sm border-edge-strong"
+                        onCheckedChange={onChange}
+                        aria-label={t("widgetAppearance.spacing.clip")}
                     />
                     {t("widgetAppearance.spacing.clip")}
-                </label>
+                </div>
             );
         }
         case "cursor":

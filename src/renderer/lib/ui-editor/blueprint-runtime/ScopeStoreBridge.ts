@@ -43,9 +43,60 @@ export class ScopeStoreBridge {
         return this.persistenceValues.get(key);
     }
 
-    public persistenceSet(key: string, value: unknown): void {
-        this.persistenceValues.set(key, value);
+    /**
+     * Write a persistent value: into the map now, into the store as soon as it will take it.
+     *
+     * There used to be two setters here, one word apart, and only one of them reached the store.
+     * The same confusion shipped three times — story-written persistent variables that no blueprint
+     * could see, a playtime total that never survived a relaunch, and a read-text record that made
+     * skip-read-text skip nothing on every playthrough after the first. Each read back perfectly
+     * within the session that wrote it, which is why none of them was caught by a test and two took
+     * driving the real app to find.
+     *
+     * They are one method now, and the order below is what makes that possible. The map is updated
+     * **synchronously, before anything is awaited**, so a caller whose very next line reads the
+     * value still sees it; the durable write follows. That ordering is the whole reason call sites
+     * used to write twice, and removing the reason is what removes the mistake.
+     *
+     * Returns the durable half, so a caller that must know it landed can await it. Most do not: the
+     * value is already readable, and a failed disk write is not something a story can act on.
+     */
+    public persistenceSet(key: string, value: unknown): Promise<void> {
+        this.applyPersistenceLocally(key, value);
+        return this.writePersistenceThrough(key, value);
+    }
+
+    /**
+     * Write a persistent value into this session only, never to the store.
+     *
+     * Named to be uncomfortable, because it almost never is what you want: the reason to put a
+     * value in the persistence scope at all is that it should outlive the window. Reach for it only
+     * when the value is re-derived on every boot from something outside the store, and say which
+     * something in a comment at the call site.
+     */
+    public persistenceSetSessionOnly(key: string, value: unknown): void {
+        this.applyPersistenceLocally(key, value);
+    }
+
+    private applyPersistenceLocally(key: string, value: unknown): void {
+        if (value === undefined) {
+            this.persistenceValues.delete(key);
+        } else {
+            this.persistenceValues.set(key, value);
+        }
         this.notifyPersistence();
+    }
+
+    private async writePersistenceThrough(key: string, value: unknown): Promise<void> {
+        const adapter = this.persistenceAdapter;
+        if (!adapter) {
+            return;
+        }
+        if (value === undefined && adapter.removeValue) {
+            await adapter.removeValue(key);
+            return;
+        }
+        await adapter.setValue(key, value);
     }
 
     public setPersistenceAdapter(adapter: BlueprintPersistentStoreAdapter | null): void {
@@ -93,23 +144,6 @@ export class ScopeStoreBridge {
             this.notifyPersistence();
         }
         return value;
-    }
-
-    public async persistenceSetAsync(key: string, value: unknown): Promise<void> {
-        const adapter = this.persistenceAdapter;
-        if (adapter) {
-            if (value === undefined && adapter.removeValue) {
-                await adapter.removeValue(key);
-            } else {
-                await adapter.setValue(key, value);
-            }
-        }
-        if (value === undefined) {
-            this.persistenceValues.delete(key);
-        } else {
-            this.persistenceValues.set(key, value);
-        }
-        this.notifyPersistence();
     }
 
     public getGlobalSnapshot(): ReadonlyMap<string, unknown> {

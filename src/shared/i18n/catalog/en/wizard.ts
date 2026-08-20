@@ -120,11 +120,22 @@ export const wizard = {
     // already recorded on the server.
     source: {
         addressLabel: "Project address",
-        addressHint: "This address comes from whoever set up the project.",
+        addressHint: "This address comes from the person who set up the project.",
         // Names what is missing rather than saying "invalid": the mistake this catches is almost
         // always an address with the server but not the project name on the end.
         addressInvalid: "A project address needs the project's name on the end, like lore://studio.example.lan:41337/my-game",
         parsedServer: "Server",
+        // Choosing beats typing: the address is on the server already, and an author who
+        // types one is an author who can mistype one.
+        onServerLabel: "Projects on connected servers",
+        onServerHint: "Choose one, or type an address below for a server that has not been added.",
+        onServerEmpty: "This server holds no projects yet.",
+        onServerLoading: "Asking the server...",
+        onServerNoToken: "Studio cannot ask this server what it holds. Add it again with its token.",
+        onServerRefused: "This server would not accept the stored token. Add it again with a new one.",
+        onServerUnreachable: "This server did not answer.",
+        onServerUnknown: "This server answered with something Studio could not read.",
+        onServerMadeBy: "made by {name}",
         parsedName: "Project on the server",
         // Said before they choose, not after: the emptiness check runs in the main process and a
         // refusal there is a refusal after the author has already committed to the folder.

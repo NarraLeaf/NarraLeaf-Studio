@@ -213,7 +213,7 @@ export const assets = {
      * そして品質が落ちるという 1 行は、脚注ではなく群の見出しに置く。ボタンより先に読まれる場所だから。
      */
     mediaConvert: {
-        title: "変換が要るファイルがある",
+        title: "変換が必要なファイルがある",
         /** 一覧のどれも変換できないとき、変換を持ちかけるのは嘘になる。 */
         titleRefusedOnly: "読み込めないファイルがある",
         intro: "変換すると、新しいファイルがプロジェクトに書き込まれる。元のファイルは変わらない",
@@ -353,6 +353,72 @@ export const assets = {
         unreadable: "そのフォルダを読めなかった",
         /** 途中で打ち切らず断る。中途半端な一覧は、あるファイルを「無い」と報告してしまう。 */
         tooManyFiles: "そのフォルダには {count} 個のファイルがあり、多すぎて調べられない。モデルが入っているフォルダを選ぶ",
+    },
+    /**
+     * アセットセット：軸で索引される一群のファイルを表す、ライブラリ上の 1 つの項目。
+     *
+     * 「グループ」ではなく「セット」と呼ぶ。このパネルのグループはすでにフォルダーを指すため。
+     * ここの語は作者がこれに対して行うこと（軸の宣言、どのバリアントが解決するかの確認）を言い、
+     * ビルドがどう読むかは言わない。
+     */
+    sets: {
+        itemType: "セット",
+        axisWord: {
+            language: "言語",
+            variant: "バリアント",
+        },
+        axisKind: {
+            locale: "言語",
+            release: "バリアント",
+        },
+        variantCount: {
+            one: "バリアント {count} 件",
+            other: "バリアント {count} 件",
+        },
+        variantsResolved: "バリアント {total} 件中 {resolved} 件",
+        unfinished: "バリアント未宣言",
+        inUseTitle: "{name} はまだ使われている",
+        inUseMessage: "次の箇所がこれを指定しており、解決できなくなる：",
+        deleteConfirmMessage: "このアセットセットの中のファイルもすべて削除される",
+        picker: {
+            section: "アセットセット",
+        },
+        menu: {
+            create: "選択したファイルからセットを作成",
+            createSub: "選択したファイルからここにセットを作成",
+            createHere: "アセットセットを新規作成",
+            dissolve: "セットを解除",
+        },
+        create: {
+            title: "アセットセットの新規作成",
+            subTitle: "このバリアントの下にセットを作成",
+            no: {
+                locale: "このプロジェクトの言語は 1 つ。",
+                release: "このプロジェクトにバリアントはない。",
+            },
+            type: "ファイルの種類",
+            axis: "変化の軸",
+        },
+        inspector: {
+            axes: "変化の軸",
+            filter: "メンバー共通のタグ",
+            residencyBlocked: "バリアントによって変わるセットは、言語によって変わるセットの下に置けない。",
+            fallback: "既定のバリアント",
+            fallbackMissing: "このバリアントにファイルがないため、セット全体が解決できない。",
+            variants: "バリアント",
+            variantInherited: "既定",
+            variantMissing: "ファイルなし",
+            variantAmbiguous: "ファイル {count} 件",
+            noVariants: "このプロジェクトには、このセットが変わる対象がない。",
+        },
+        history: {
+            edit: "アセットセットの編集",
+            add: "セット {name} を追加",
+            rename: "セット {name} の名前を変更",
+            delete: "セット {name} を削除",
+            dissolve: "セット {name} を解除",
+            move: "セット {name} を移動",
+        },
     },
     menu: {
         newGroup: "新規グループ",

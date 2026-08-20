@@ -2,6 +2,7 @@ import type { TranslationKey } from "@shared/i18n";
 import { isBuiltinAppTagId } from "@shared/types/appTag";
 import type {
     StoryActionPayload,
+    StoryAlignPositionValue,
     StoryBlock,
     StoryBlockId,
     StoryConditionRef,
@@ -14,7 +15,9 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import {
+    actionableSubjectWord,
     describeDeclaration,
+    displayableSubjectWord,
     layerActionTargetRef,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
@@ -23,6 +26,7 @@ import {
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
 import { translate, translateCommand } from "@/lib/i18n";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
+import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { getQuickParams, quickParamText, type QuickParam } from "./storyQuickParamsModel";
 import { storyVerbLabelKey } from "./storyVerbVocabulary";
 // Two pure tables that happen to live under the story editor: the command taxonomy (the colour unit)
@@ -93,6 +97,16 @@ export type StoryRowLookups = {
      * only other thing the payload holds is an id.
      */
     appearanceName?: (characterId: string, refId: string) => string | null;
+    /**
+     * The label a plugin gave the story action behind a `{action:"plugin"}` row, or `null` when the
+     * plugin that owns it is not loaded.
+     *
+     * Same split as the three above, and for a sharper reason: the label lives in a *registration*
+     * rather than in the document, so it exists only while the plugin is installed and enabled. Omit
+     * the lookup - as the Dev Mode timeline does, having no plugin host to ask - and the row names
+     * itself generically rather than printing `pluginId`, which is an identifier and not a name.
+     */
+    pluginActionLabel?: (pluginId: string, actionId: string) => string | null;
     /** The scene the block belongs to — variable, layer and displayable refs resolve against it. */
     scene?: StoryScene;
     /** Every scene in the document: jump targets and cross-scene variable names. */
@@ -223,11 +237,34 @@ function segmentHasValue(segment: StoryTextSegment): boolean {
 
 // --- Names --------------------------------------------------------------------------------------
 
+/**
+ * The scene's own name, or `null` when the id answers to no scene.
+ *
+ * Split from {@link getStorySceneName} because the two callers want opposite things from a miss. A
+ * row wants a readable, localised "unknown scene"; a projection that must not contain a locale
+ * (`lib/story/narralang`) wants to KNOW it missed, so it can report the row instead of writing a
+ * word that would differ between two authors' exports of the same document.
+ */
+export function resolveStorySceneName(scenes: Record<StorySceneId, StoryScene> | undefined, sceneId: string | undefined): string | null {
+    if (!sceneId) {
+        return null;
+    }
+    return scenes?.[sceneId]?.name || null;
+}
+
 export function getStorySceneName(scenes: Record<StorySceneId, StoryScene> | undefined, sceneId: string | undefined): string {
     if (!sceneId) {
         return translate("story.describe.sceneUnassigned");
     }
-    return scenes?.[sceneId]?.name || translate("story.describe.sceneUnknown");
+    return resolveStorySceneName(scenes, sceneId) ?? translate("story.describe.sceneUnknown");
+}
+
+/** The character's own name, or `null` when there is no id or the id answers to nothing. */
+export function resolveStoryCharacterName(lookups: StoryRowLookups, characterId: string | undefined): string | null {
+    if (!characterId) {
+        return null;
+    }
+    return lookups.character(characterId)?.name ?? null;
 }
 
 /** The name a row prints for a character id — including the two "there is no name" cases. */
@@ -362,7 +399,7 @@ export type StoryBlockBadgeId =
     | "narration" | "dialogue" | "choice" | "choiceOption"
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
-    | "blueprint" | "camera" | "effect"
+    | "blueprint" | "camera" | "effect" | "plugin"
     | "label" | "goto" | "break" | "cut" | "control" | "jump" | "invalid" | "declaration" | "note";
 
 export type StoryBlockBadge = {
@@ -413,8 +450,12 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // Its own badge, not "Effect": `/camera darken` dims the whole stage and outlives the scene,
         // while `/vignette` is a mask layer inside it. The row has to say which one it is at a glance.
         if (block.payload.action === "camera") return badge("camera", "story.badge.camera", "camera");
-        // A screen effect is a property of the scene it happens in (§4.1), so it wears the scene hue;
-        // the Sparkles badge is what still tells a `/blink` row apart from a `/bg` row at a glance.
+        // Its own badge, in the same "utils" unit a blueprint call wears: both are rows that hand the
+        // line to something outside the scene's own vocabulary. It needs to be tellable apart at a
+        // glance precisely because it is the one row whose behaviour is not in the document.
+        if (block.payload.action === "plugin") return badge("plugin", "story.badge.plugin", "utils");
+        // Defensive rather than reachable: the arms above are exhaustive over the union, and a
+        // document from a newer schema can still carry an action this build has no badge for.
         return badge("effect", "story.badge.effect", "scene");
     }
     if (block.kind === "control") {
@@ -475,6 +516,22 @@ export function storyRowBarColor(block: StoryBlock): string | null {
  * to understand, which fails the first principle.
  */
 export function variableRefShortLabel(ref: StoryVariableRef, lookups: StoryVariableNameLookups): string {
+    const name = resolveStoryVariableName(ref, lookups);
+    if (name !== null) {
+        return name;
+    }
+    return ref.scope === "persistent"
+        ? translate("story.describe.persistent")
+        : translate("story.describe.variableFallback");
+}
+
+/**
+ * The variable's declared name, or `null` when nothing declares it.
+ *
+ * Same split, and same reason, as {@link resolveStorySceneName}: this is the resolution, and
+ * {@link variableRefShortLabel} is the resolution plus a localised word for a miss.
+ */
+export function resolveStoryVariableName(ref: StoryVariableRef, lookups: StoryVariableNameLookups): string | null {
     if (ref.scope === "persistent") {
         for (const candidate of Object.values(lookups.scenes ?? {})) {
             for (const block of Object.values(candidate.blocks)) {
@@ -485,8 +542,7 @@ export function variableRefShortLabel(ref: StoryVariableRef, lookups: StoryVaria
         }
         // The registry, which since the declaration migration is where persistent variables actually
         // live - a row printing the word "persistent" at its author is the failure this exists to stop.
-        return lookups.projectVariableName?.("persistent", ref.variableId)
-            ?? translate("story.describe.persistent");
+        return lookups.projectVariableName?.("persistent", ref.variableId) ?? null;
     }
     const inScene = lookups.scene?.blocks[ref.variableId];
     if (inScene?.kind === "declaration") {
@@ -500,8 +556,7 @@ export function variableRefShortLabel(ref: StoryVariableRef, lookups: StoryVaria
     }
     // Same story-rows-then-registry order the command line and the compiler resolve a saved name in,
     // so one variable cannot be two things depending on which surface is asking.
-    return (ref.scope === "saved" ? lookups.projectVariableName?.("saved", ref.variableId) : null)
-        ?? translate("story.describe.variableFallback");
+    return (ref.scope === "saved" ? lookups.projectVariableName?.("saved", ref.variableId) : null) ?? null;
 }
 
 /**
@@ -597,11 +652,11 @@ const CAMERA_PAN_PLACEMENTS: Record<number, StagePlacement> = (["left", "center"
 /**
  * The `at=` word a stored camera position lands on, or `null` when it sits somewhere no word names.
  *
- * Exported because two readings of the same row need it — this module's prose summary and the
- * command-line projection that reads the row back as `/camera pan left`. A second copy of the table
- * would be a second answer to "which side is this".
+ * Exported because several readings of the same row need it — this module's prose summary, the
+ * command-line projection and the script export. A second copy of the table would be a second answer
+ * to "which side is this".
  */
-export function storyCameraPanPlacement(position: Extract<StoryActionPayload, { action: "camera" }>["position"]): StagePlacement | null {
+export function storyCameraPanPlacement(position: StoryAlignPositionValue | undefined): StagePlacement | null {
     const xalign = position?.xalign ?? 0.5;
     const yalign = position?.yalign ?? 0.5;
     if (yalign !== 0.5 || position?.xoffset || position?.yoffset) {
@@ -611,40 +666,39 @@ export function storyCameraPanPlacement(position: Extract<StoryActionPayload, { 
 }
 
 /**
- * How a camera row reads: the operation plus the one value it carries. The verb is NOT repeated from
- * the badge, but the knob is named ("Zoom ×1.5", not "×1.5"), because five operations share one badge.
+ * How a camera row reads.
+ *
+ * Three answers, because a camera row is three things: a reset, a whole keyframed shot, or a pose.
+ * The shot and the grade name themselves, because the BINDING is the content of the row - several
+ * `motion` rows in a scene would otherwise all read "Motion", and several grades all read "Color
+ * grade". A plain pose does not, because the channels it states are already printed on the line
+ * beside it.
  */
 function describeCamera(
     payload: Extract<StoryActionPayload, { action: "camera" }>,
     motionName?: StoryRowLookups["motionName"],
 ): string {
-    const operation = translate(`story.describe.cameraOp.${payload.operation}` as TranslationKey);
-    if (payload.operation === "motion") {
-        // The bound motion IS the content of this row; several `/camera motion` rows in a scene are
-        // otherwise all just "Motion".
-        const animationId = payload.motion?.animationId;
+    if (payload.operation === "reset") {
+        return translate("story.describe.cameraOp.reset");
+    }
+    if (payload.transform?.mode === "animation") {
+        const operation = translate("story.describe.cameraOp.motion");
+        const animationId = payload.transform.animationId;
         const name = animationId ? motionName?.(animationId) : undefined;
         return name ? `${operation} ${name}` : operation;
     }
-    if (payload.operation === "zoom") {
-        return `${operation} ×${payload.zoom ?? 1}`;
+    const look = payload.transform?.to?.look;
+    if (look) {
+        const preset = getStoryCameraLookPreset(look.preset);
+        return preset
+            ? `${translate("story.describe.cameraOp.look")} ${translate(`storyInspector.cameraLook.${preset.id}` as TranslationKey)}`
+            : translate("story.describe.cameraOp.look");
     }
-    if (payload.operation === "rotate") {
-        return `${operation} ${payload.rotation ?? 0}°`;
-    }
-    if (payload.operation === "darken") {
-        return `${operation} ${Math.round(Math.min(1, Math.max(0, payload.darkness ?? 0)) * 100)}%`;
-    }
-    if (payload.operation === "pan") {
-        const xalign = payload.position?.xalign ?? 0.5;
-        const yalign = payload.position?.yalign ?? 0.5;
-        const placement = storyCameraPanPlacement(payload.position);
-        return `${operation} ${placement ? translate(`story.position.${placement}`) : `${Math.round(xalign * 100)}% · ${Math.round(yalign * 100)}%`}`;
-    }
-    return operation;
+    return translate("story.describe.cameraOp.transform");
 }
 
 /**
+ * The base sentence of a block — the verb's object and modifiers, without the quick-param tokens./**
  * The base sentence of a block — the verb's object and modifiers, without the quick-param tokens.
  *
  * Asset ids resolve to names when {@link StoryRowLookups.assetName} is supplied. Without it a row can
@@ -719,25 +773,36 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
                 ? lookups.assetName(payload.assetId) ?? translate("story.describe.missingAsset")
                 : null;
             // `{operation}` used to interpolate the raw enum, so a Chinese author read "setBgm piano".
-            return `${verbWord(payload, payload.operation)} ${payload.objectName || named || payload.assetId || translate("story.describe.unassigned")}`;
+            // The handle comes from the reference, so a control row follows a rename of the
+            // `playSound` row that created it; a `setBgm` / `playSound` row carries none and names
+            // itself, which is the same fallback the asset name and the id behind it continue.
+            const handle = actionableSubjectWord(scene, payload.target, "audio", payload.objectName);
+            return `${verbWord(payload, payload.operation)} ${handle || named || payload.assetId || translate("story.describe.unassigned")}`;
         }
         if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, lookups));
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
-        if (payload.action === "image") return translate("story.describe.image", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
+        // The stage-object rows all read their subject off the reference rather than off their own
+        // `objectName` - see `displayableSubjectWord` for why, and for what a row with no reference
+        // (a `create` row, an older document) falls back to.
+        if (payload.action === "image") return translate("story.describe.image", { operation: verbWord(payload, payload.operation), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
-        if (payload.action === "text") return translate("story.describe.text", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "text") return translate("story.describe.text", { operation: verbWord(payload, payload.operation), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "layer") {
             const layerName = payload.operation === "create"
                 ? (payload.objectName || translate("story.describe.unnamed"))
                 : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || translate("story.describe.unnamed"));
             return translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
         }
-        if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "video", payload.objectName) || translate("story.describe.unnamed") });
+        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload, lookups.motionName);
-        return translate("story.describe.effect", { effect: payload.effect });
+        if (payload.action === "plugin") {
+            return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId)
+                ?? translate("story.describe.pluginAction");
+        }
+        return translate("story.badge.effect");
     }
     if (block.kind === "control") {
         if (block.payload.control === "condition") return translate("story.describe.condition");

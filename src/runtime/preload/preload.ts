@@ -181,6 +181,7 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
         ipcRenderer.send(GAME_RUNTIME_TEST_SIGNAL_CHANNEL, signal);
     },
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
+    restart: () => ipcRenderer.invoke("runtime:restart") as Promise<void>,
     getFullscreen: () => ipcRenderer.invoke("runtime:fullscreen:get") as Promise<boolean>,
     setFullscreen: (fullscreen: boolean) =>
         ipcRenderer.invoke("runtime:fullscreen:set", fullscreen) as Promise<void>,
@@ -203,10 +204,18 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     crashPolicy,
     logPath: readGameRuntimeLogPathArg(process.argv),
     save: {
-        write: (id, savedGame, capture, metadata) =>
-            ipcRenderer.invoke("runtime:save:write", { id, savedGame, capture, metadata }) as Promise<void>,
+        write: (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
+            ipcRenderer.invoke("runtime:save:write", {
+                id,
+                savedGame,
+                capture,
+                metadata,
+                compatibility,
+                playtimeSeconds,
+            }) as Promise<void>,
         read: id => ipcRenderer.invoke("runtime:save:read", id),
         listIds: () => ipcRenderer.invoke("runtime:save:listIds"),
+        listHeaders: () => ipcRenderer.invoke("runtime:save:listHeaders"),
         readPreview: id => ipcRenderer.invoke("runtime:save:readPreview", id),
         delete: id => ipcRenderer.invoke("runtime:save:delete", id),
     },
@@ -225,6 +234,11 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
         open: request => ipcRenderer.invoke("runtime:external:open", request),
         openForPlugin: (pluginId, request) =>
             ipcRenderer.invoke("runtime:external:openForPlugin", pluginId, request),
+    },
+    // Forwarded because only the main process knows where the window is on the desktop and what the
+    // display's scale factor is. This side sends a point in the page and nothing else.
+    pointer: {
+        move: request => ipcRenderer.invoke("runtime:pointer:move", request),
     },
     // Forwarded for the reason the addresses above are: the process that owns the filesystem is the
     // one that decides which file this is, from the pack's own key. Nothing on this side names it.

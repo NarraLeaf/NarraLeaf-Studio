@@ -8,6 +8,14 @@ import React, { createContext, useContext } from "react";
 export const StatusBarRunningContext = createContext(false);
 
 /**
+ * True while Studio runs in experimental mode, i.e. the whole status bar is painted in the warning
+ * colour for the life of the session. Cells read this to take warning ink over that wash. Provided
+ * by {@link StatusBar}, and it wins over the running wash - the mode has to stay legible while a
+ * run is in flight, which is exactly when a test condition is being exercised.
+ */
+export const StatusBarExperimentalContext = createContext(false);
+
+/**
  * The registry id of the entry being rendered, supplied by {@link StatusBar} so that the cell can
  * label itself.
  *
@@ -56,6 +64,7 @@ export function StatusEntry({
     dataAttributes?: Record<string, string>;
 }) {
     const running = useContext(StatusBarRunningContext);
+    const experimental = useContext(StatusBarExperimentalContext);
     const entryId = useContext(StatusBarEntryIdContext);
     const attributes = { "data-status-bar-entry-id": entryId, ...dataAttributes };
     // The tint change eases over 300ms to match the whole-bar transition in StatusBar, so the ink
@@ -64,9 +73,13 @@ export function StatusEntry({
         ? `${emphasis ? "text-on-primary" : "text-on-primary/85"} ${
             onClick ? "cursor-default hover:bg-on-primary/15 hover:text-on-primary" : ""
         }`
-        : `${toneOverride ?? (emphasis ? "text-fg-muted" : "text-fg-subtle")} ${
-            onClick ? "cursor-default hover:bg-fill hover:text-fg" : ""
-        }`;
+        : experimental
+            ? `${toneOverride ?? (emphasis ? "text-warning" : "text-warning/85")} ${
+                onClick ? "cursor-default hover:bg-warning/20 hover:text-warning" : ""
+            }`
+            : `${toneOverride ?? (emphasis ? "text-fg-muted" : "text-fg-subtle")} ${
+                onClick ? "cursor-default hover:bg-fill hover:text-fg" : ""
+            }`;
     const className = `flex h-full items-center gap-1.5 px-2 text-2xs transition-colors duration-300 ${tone}`;
     if (!onClick) {
         return (

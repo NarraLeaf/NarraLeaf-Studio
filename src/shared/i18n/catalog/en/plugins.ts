@@ -52,7 +52,7 @@ export const plugins = {
         update: "Update",
         needsStudio: "Needs Studio {range}",
         emptyList: "No plugins available in the registry.",
-        offline: "Couldn't reach the plugin registry.",
+        offline: "Could not reach the plugin registry.",
         retry: "Try again",
     },
     task: {
@@ -92,7 +92,7 @@ export const plugins = {
             runtimeOnly: "Game runtime only",
             runtimeOnlyHint: "This plugin only extends the running game. It contributes nothing to the editor.",
             suppressed: "Off for this project",
-            suppressedHint: "The installed version is incompatible with the one this project was authored against. Update it, or update the project's dependency table from Project → Dependencies.",
+            suppressedHint: "The installed version is incompatible with the one this project was authored against. Update it, or update the project's dependency table from Project ▸ App.",
             failed: "Failed to load",
         },
         // Warned once at load, naming the plugins this project's dependency table turned away.

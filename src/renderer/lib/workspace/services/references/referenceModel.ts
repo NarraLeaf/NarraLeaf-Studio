@@ -246,8 +246,103 @@ export function buildReferenceIndex(references: readonly AssetReference[]): Map<
  * Superset of `StoryService.collectDocumentAssetLocks` — that walker omits `image.assetId` and
  * `video.assetId`, so an image or video used only from a story block currently reports as unused.
  */
-export function extractStoryAssetReferences(document: StoryDocument, storyName: string): AssetReference[] {
+/**
+ * Expands an asset set id to the assets it can resolve to, or null for an ordinary asset.
+ *
+ * Supplied by `ReferenceService`, which has the project's sets and its library; the model stays a
+ * pure function of a document and this.
+ */
+export type AssetSetExpander = (assetId: string) => readonly string[] | null;
+
+/**
+ * What a reference to `assetId` actually uses.
+ *
+ * A set id names no bytes of its own - it resolves to one of its members, and *which* one depends on
+ * the language the game runs in, so all of them are used. Answering with the members is what keeps
+ * two rules honest at once: the set id is not a dangling reference (it names assets that exist), and
+ * the members are not unused (a row reaches every one of them).
+ *
+ * A set that resolves to nothing contributes no reference rather than its own id. The row is broken
+ * either way, and `assets/group-incomplete` says so in words an author can act on - where a dangling
+ * asset id would send them looking for a file that was never supposed to exist.
+ */
+function expandReferencedAsset(assetId: string, expand?: AssetSetExpander): readonly string[] {
+    const members = expand?.(assetId);
+    return members ? members : [assetId];
+}
+
+/**
+ * Split a slice's references into "what this uses" and "what named a set".
+ *
+ * The story scan does this as it walks, because it is building both lists from one pass over a
+ * document it is already inside. Every other slice produces its references first and asks afterwards,
+ * which is the same answer arrived at from the other end: a reference whose id is a set stands for
+ * one reference per member, and the site itself is recorded so removing the set can name it.
+ *
+ * Applied per slice rather than once over the whole index, because the two lists are stored per
+ * slice and rebuilt per slice - a slice that re-reads has to replace both of its own halves.
+ *
+ * Without this, a set id in a character or a widget reaches the index as an ordinary asset id, and
+ * `assets/missing` - an error, which refuses the build - reports it as a reference to a file that
+ * does not exist. That is the whole reason a set is usable in those fields at all.
+ */
+export function splitAssetSetReferences(
+    references: readonly AssetReference[],
+    expand?: AssetSetExpander,
+): { references: AssetReference[]; setReferences: AssetReference[] } {
+    if (!expand) {
+        return { references: [...references], setReferences: [] };
+    }
+    const out: AssetReference[] = [];
+    const setReferences: AssetReference[] = [];
+    for (const reference of references) {
+        const members = expand(reference.assetId);
+        if (!members) {
+            out.push(reference);
+            continue;
+        }
+        // Recorded whether or not it resolves to anything: a set with no files is exactly the one
+        // whose removal leaves a field naming an id nothing in the project has.
+        setReferences.push(reference);
+        for (const memberId of members) {
+            // The member is in the key for the reason the story scan gives: one field naming a set
+            // uses several assets, and a single key would leave every language after the first
+            // invisible to the index.
+            out.push({ ...reference, id: `${reference.id}:${memberId}`, assetId: memberId });
+        }
+    }
+    return { references: out, setReferences };
+}
+
+/** One story read: what the index answers with, and the sites that named an asset set. */
+export interface StoryAssetReferenceScan {
+    references: AssetReference[];
+    /**
+     * Sites naming a set, carrying the set's own id.
+     *
+     * Deliberately not in `references`: that index answers "what uses this asset", and a set is not
+     * an asset - a set id in there would be a dangling id to every rule that reads it. This list
+     * answers the question asked just before a set is removed, which the index cannot: a row names
+     * the set, not the file, so it goes on naming it after the file is gone.
+     */
+    setReferences: AssetReference[];
+}
+
+export function extractStoryAssetReferences(
+    document: StoryDocument,
+    storyName: string,
+    expandAssetSet?: AssetSetExpander,
+): AssetReference[] {
+    return scanStoryAssetReferences(document, storyName, expandAssetSet).references;
+}
+
+export function scanStoryAssetReferences(
+    document: StoryDocument,
+    storyName: string,
+    expandAssetSet?: AssetSetExpander,
+): StoryAssetReferenceScan {
     const references: AssetReference[] = [];
+    const setReferences: AssetReference[] = [];
 
     for (const scene of listScenesInDocumentOrder(document)) {
         const sceneName = scene.name;
@@ -257,47 +352,104 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
             if (!isLibraryAssetId(assetId)) {
                 return;
             }
-            references.push({
-                id: `story:${document.id}:${scene.id}:${blockId}:${field}`,
-                assetId: assetId.trim(),
-                kind: "story",
-                label: sceneName,
-                detail,
-                field,
-                target: {
-                    kind: "storyBlock",
-                    storyId: document.id,
-                    sceneId: scene.id,
-                    blockId,
-                    storyName,
-                    sceneName,
-                },
-            });
+            const trimmed = assetId.trim();
+            const members = expandAssetSet?.(trimmed);
+            if (members) {
+                // Recorded whether or not it resolves to anything. A set with no files is exactly
+                // the one whose removal leaves a row naming an id nothing in the project has.
+                setReferences.push({
+                    id: `assetSet:${document.id}:${scene.id}:${blockId}:${field}`,
+                    assetId: trimmed,
+                    kind: "story",
+                    label: sceneName,
+                    detail,
+                    field,
+                    target: {
+                        kind: "storyBlock",
+                        storyId: document.id,
+                        sceneId: scene.id,
+                        blockId,
+                        storyName,
+                        sceneName,
+                    },
+                });
+            }
+            for (const memberId of expandReferencedAsset(trimmed, expandAssetSet)) {
+                references.push({
+                    // The member is in the key: one row naming a set uses several assets, and a
+                    // single key would leave every language after the first invisible to the index.
+                    id: memberId === trimmed
+                        ? `story:${document.id}:${scene.id}:${blockId}:${field}`
+                        : `story:${document.id}:${scene.id}:${blockId}:${field}:${memberId}`,
+                    assetId: memberId,
+                    kind: "story",
+                    label: sceneName,
+                    detail,
+                    field,
+                    target: {
+                        kind: "storyBlock",
+                        storyId: document.id,
+                        sceneId: scene.id,
+                        blockId,
+                        storyName,
+                        sceneName,
+                    },
+                });
+            }
         };
 
-        if (isLibraryAssetId(scene.defaultBackgroundAssetId)) {
-            references.push({
-                id: `story:${document.id}:${scene.id}:__scene__:defaultBackgroundAssetId`,
-                assetId: scene.defaultBackgroundAssetId.trim(),
-                kind: "story",
-                label: sceneName,
-                detail,
-                field: "scene.defaultBackgroundAssetId",
-                target: { kind: "storyScene", storyId: document.id, sceneId: scene.id, storyName, sceneName },
-            });
-        }
+        /**
+         * One of the scene's own two asset fields, read the way a row's is.
+         *
+         * Sets are expanded here too, for the reason `expandReferencedAsset` gives: a scene naming a
+         * set uses every file it can resolve to, and recording the set id itself would report a
+         * dangling reference for a scene whose background resolves perfectly well.
+         */
+        const pushSceneReference = (field: string, assetId: unknown, suffix: string) => {
+            if (!isLibraryAssetId(assetId)) {
+                return;
+            }
+            const trimmed = assetId.trim();
+            const target = {
+                kind: "storyScene" as const,
+                storyId: document.id,
+                sceneId: scene.id,
+                storyName,
+                sceneName,
+            };
+            if (expandAssetSet?.(trimmed)) {
+                setReferences.push({
+                    id: `assetSet:${document.id}:${scene.id}:__scene__:${suffix}`,
+                    assetId: trimmed,
+                    kind: "story",
+                    label: sceneName,
+                    detail,
+                    field,
+                    target,
+                });
+            }
+            for (const memberId of expandReferencedAsset(trimmed, expandAssetSet)) {
+                references.push({
+                    id: memberId === trimmed
+                        ? `story:${document.id}:${scene.id}:__scene__:${suffix}`
+                        : `story:${document.id}:${scene.id}:__scene__:${suffix}:${memberId}`,
+                    assetId: memberId,
+                    kind: "story",
+                    label: sceneName,
+                    detail,
+                    field,
+                    target,
+                });
+            }
+        };
 
-        if (isLibraryAssetId(scene.bgm?.assetId)) {
-            references.push({
-                id: `story:${document.id}:${scene.id}:__scene__:bgm`,
-                assetId: scene.bgm!.assetId.trim(),
-                kind: "story",
-                label: sceneName,
-                detail,
-                field: "scene.bgm.assetId",
-                target: { kind: "storyScene", storyId: document.id, sceneId: scene.id, storyName, sceneName },
-            });
-        }
+        pushSceneReference(
+            "scene.defaultBackgroundAssetId",
+            scene.defaultBackgroundAssetId,
+            "defaultBackgroundAssetId",
+        );
+
+        pushSceneReference("scene.bgm.assetId", scene.bgm?.assetId, "bgm");
 
         // Depth first, so the "used by" list under an asset reads down the scene the way the author
         // wrote it. The record's key order would be UUID order once it has been rewritten once.
@@ -306,10 +458,24 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
                 pushBlockReference(block.id, "dialogue.voiceAssetId", block.payload.voiceAssetId);
                 continue;
             }
+            // A jump is its own block kind, not an action, so the switch below never sees it -
+            // and it carries a transition, which since 0.30.0 can name a rule image.
+            if (block.kind === "jump") {
+                pushBlockReference(block.id, "transition.ruleAssetId", block.payload.transition?.ruleAssetId);
+                continue;
+            }
             if (block.kind !== "action") {
                 continue;
             }
             const payload = block.payload;
+            // Every transition-carrying payload can name a rule image, and it is the one asset a
+            // row uses without the id sitting on the payload itself. Walked before the switch so a
+            // new transition-carrying action cannot forget it.
+            // `nvl` is excluded because its `transition` is a StoryTransformRef and not a
+            // transition at all - the panel animates through its own transform, and it has no kind.
+            if ("transition" in payload && payload.action !== "nvl") {
+                pushBlockReference(block.id, "transition.ruleAssetId", payload.transition?.ruleAssetId);
+            }
             switch (payload.action) {
                 case "setBackground":
                     pushBlockReference(block.id, "background.assetId", payload.assetId);
@@ -327,7 +493,7 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
                     pushBlockReference(block.id, "video.assetId", payload.assetId);
                     break;
                 case "displayable":
-                    pushBlockReference(block.id, "displayable.maskAssetId", payload.maskAssetId);
+                    pushBlockReference(block.id, "displayable.maskAssetId", payload.transform?.to?.maskAssetId ?? undefined);
                     break;
                 default:
                     break;
@@ -335,7 +501,7 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
         }
     }
 
-    return references;
+    return { references, setReferences };
 }
 
 /**

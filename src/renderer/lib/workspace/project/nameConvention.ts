@@ -150,6 +150,9 @@ export const ProjectNameConvention = {
     // The build variants the project can be shipped as, and what each one says differently from the
     // project itself. Cross-cutting like the three above, so it sits at editor root too.
     EditorAppTags: ["editor", "app-tags.json"],
+    // The asset sets the project declares - the library entries that stand for a family of files
+    // indexed by axes. Cross-cutting like the four above, so it sits at editor root too.
+    EditorAssetSets: ["editor", "asset-sets.json"],
     // The words this project spells on purpose (character names, place names, invented terms), which
     // the spellchecker is told about while the project is open. Cross-cutting like the three above,
     // so it sits at editor root too.

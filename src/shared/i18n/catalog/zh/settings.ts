@@ -11,6 +11,12 @@ export const settings = {
     persistFailed: "保存设置失败",
     resetToDefault: "恢复默认值",
     customColor: "自定义颜色…",
+    source: {
+        official: "官方源",
+        noMirror: "不使用镜像",
+        chinaMirror: "中国镜像",
+        customPlaceholder: "自定义地址",
+    },
     fontPicker: {
         searchPlaceholder: "搜索字体…",
         presets: "预设",
@@ -83,6 +89,15 @@ export const settings = {
                 light: "亮色",
                 dark: "暗色",
             },
+        },
+        windowIcon: {
+            label: "窗口图标",
+            description: "Studio 窗口与任务栏按钮所用的图标。桌面与开始菜单的快捷方式仍使用安装时的图标",
+            options: {
+                default: "NarraLeaf",
+                narra: "Narra",
+            },
+            unsupportedPlatform: "此选项不适用于此操作系统",
         },
         accentColor: {
             label: "强调色",
@@ -168,7 +183,7 @@ export const settings = {
         spellcheckLanguage: {
             label: "拼写检查语言",
             description: "在故事正文中标出拼写错误。译文一律不检查",
-            noDictionary: "尚未安装本工程所用语言的拼写词典，正文中不会标出任何内容。工程词典仍然保存着本工程自己的词条",
+            noDictionary: "尚未安装本工程所用语言的拼写词典。",
             options: {
                 followProject: "跟随工程语言",
                 off: "不检查拼写",
@@ -196,22 +211,22 @@ export const settings = {
         },
         electronMirror: {
             label: "Electron 下载镜像",
-            description: "下载 Electron 所用的镜像地址，留空则使用官方源",
+            description: "下载 Electron 所用的镜像地址",
         },
         electronBuilderBinariesMirror: {
             label: "构建工具下载镜像",
-            description: "构建时下载安装器工具（NSIS、AppImage、代码签名辅助程序）所用的镜像地址，留空则使用官方源",
+            description: "构建时下载安装器工具（NSIS、AppImage、代码签名辅助程序）所用的镜像地址",
         },
         downloadRewrites: {
             label: "下载地址替换",
         },
         pluginRegistryUrl: {
             label: "插件注册表地址",
-            description: "插件商店从哪里取索引，留空则使用 NarraLeaf 官方注册表",
+            description: "插件商店从哪里取索引",
         },
         uiTemplateRegistryUrl: {
             label: "界面模板注册表地址",
-            description: "模板商店从哪里取索引，留空则使用 NarraLeaf 官方注册表",
+            description: "模板商店从哪里取索引",
         },
         checkpointInterval: {
             label: "自动检查点间隔",
@@ -224,7 +239,7 @@ export const settings = {
         versionControlAuthor: {
             label: "作者名",
             description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
-            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录你自己的名字。",
+            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录此处填写的名字。",
         },
         versionControlAuthorEmail: {
             label: "作者邮箱",
@@ -234,9 +249,9 @@ export const settings = {
             label: "关闭工作区时弹出提示",
             description: "关闭工作区窗口时先询问确认",
         },
-        returnToLauncherOnClose: {
-            label: "关闭工作区后返回首页",
-            description: "关闭此项则在没有其他窗口时直接退出 NarraLeaf Studio",
+        reopenLastProject: {
+            label: "启动时打开上次的项目",
+            description: "打开上次所在的项目，而不是停在启动器",
         },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",
@@ -288,24 +303,23 @@ export const settings = {
         },
     },
     dictionaries: {
-        loading: "正在读取缓存…",
+        loading: "正在加载…",
         remove: "移除",
         browse: "查看可用词典",
         refresh: "重新获取",
-        browsing: "正在获取列表…",
+        browsing: "正在加载…",
         download: "下载",
         downloading: "正在下载…",
-        failed: "无法获取词典列表。请先检查设置里的网络策略，再试一次",
-        noDictionaryLanguages: "中文和日语没有拼写词典，以后也不会有：这两种语言词与词之间不分开写，词表无从比对。用它们写的工程不会被标出任何内容",
+        failed: "无法获取词典列表。请检查设置中的网络策略。",
         installed: {
-            title: "本机已有",
-            emptyTitle: "还没有词典",
-            emptyDescription: "在下载一份之前，任何工程都不会被标出内容",
+            title: "已安装",
+            emptyTitle: "尚未安装词典",
+            emptyDescription: "下载词典后即可对正文进行拼写检查。",
         },
         available: {
             title: "可下载",
-            prompt: "词典列表在网上。需要时再去取",
-            none: "列表里的词典都已经在本机了",
+            prompt: "尚未获取词典列表。",
+            none: "可用词典已全部安装。",
         },
     },
     servers: {

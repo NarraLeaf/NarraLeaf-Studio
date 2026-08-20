@@ -39,22 +39,40 @@ import { getUIComponentLink, isLinkedUIComponentElement, type UIElement } from "
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
-import type { FieldDefinition, InlineRowItemContext, PropertyEditorSchema } from "./framework/types";
+import type {
+    FieldDefinition,
+    InlineRowItemContext,
+    InputGroupTrailingContext,
+    PropertyEditorSchema,
+} from "./framework/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import {
+    commitStateAwareLayoutPatches,
+    currentStateOffset,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/stateGeometry";
+import { useEditorEnteredState } from "@/lib/ui-editor/hooks/useEnteredElementState";
+import { stateScopedMoveTarget } from "@/lib/ui-editor/widget-modules/shared/appearance/stateHost";
+import { StatePositionMotionButton } from "@/lib/ui-editor/widget-modules/shared/appearance/StatePositionMotionButton";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
+import { AssetSetInspector } from "./AssetSetInspector";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
@@ -105,9 +123,23 @@ function createLayoutInspectorSchema(
     };
 
     const getPrimaryLayout = (data: UIInspectorData) => data.elements[0]?.layout;
+    /**
+     * Where the element sits on the surface right now, the state it is being shown in included.
+     *
+     * A part held away from where it rests reads that held position, because that is the one on
+     * screen and the one a number typed here is meant to replace. Only the element's own state
+     * offset is added: an ancestor being held somewhere moves this element with it, and the field
+     * is about where this element sits inside its parent, not about what the parent is doing.
+     */
     const readElementSurfaceTopLeft = (element: UIElement) => {
         const document = documentService.getDocument();
-        return document.elements[element.id] ? getElementSurfaceTopLeft(document, element.id) : element.layout;
+        if (!document.elements[element.id]) {
+            return element.layout;
+        }
+        const base = getElementSurfaceTopLeft(document, element.id);
+        const entered = UIEditorStateService.getInstance().getEnteredState();
+        const offset = currentStateOffset(document, entered, element.id);
+        return offset ? { x: base.x + offset.x, y: base.y + offset.y } : base;
     };
     const applySurfacePositionPatch = (axis: "x" | "y", surfaceValue: number) => {
         const document = documentService.getDocument();
@@ -123,7 +155,14 @@ function createLayoutInspectorSchema(
                 [axis]: surfaceValue - parentTopLeft[axis] - Math.min(0, size),
             };
         });
-        documentService.updateElementLayouts(patches);
+        // A number typed while a state is entered says where the element sits *in that state*, the
+        // same thing dragging it there says.
+        commitStateAwareLayoutPatches(
+            documentService,
+            UIEditorStateService.getInstance().getEnteredState(),
+            patches,
+            surfaceId ?? null,
+        );
     };
 
     const createDefaultSizeField = (): FieldDefinition<UIInspectorData> => {
@@ -301,6 +340,33 @@ function createLayoutInspectorSchema(
                     selectAllOnFocus: true,
                 },
             ],
+            // Inside a widget that declares states, X and Y say where this sits in the state on
+            // screen - so how it gets there belongs on the same row. Elsewhere a position has no
+            // states to move between and there is nothing to configure.
+            trailing: ({ readOnly }: InputGroupTrailingContext<UIInspectorData>) => {
+                if (elements.length !== 1) {
+                    return null;
+                }
+                const element = elements[0];
+                const document = documentService.getDocument();
+                const scoped = stateScopedMoveTarget(
+                    document,
+                    UIEditorStateService.getInstance().getEnteredState(),
+                    element.id,
+                );
+                if (!scoped) {
+                    return null;
+                }
+                return (
+                    <StatePositionMotionButton
+                        element={document.elements[element.id] ?? element}
+                        documentService={documentService}
+                        shownVariantId={scoped.variantId}
+                        readOnly={readOnly}
+                        draftResetKey={`${primaryId}|${scoped.variantId}`}
+                    />
+                );
+            },
             order: 0,
         }),
         defineField<UIInspectorData, any>({
@@ -492,6 +558,21 @@ function createElementAnimationField(element: UIElement, t: TranslateFn): FieldD
     });
 }
 
+/**
+ * The state picker every element with more than one look gets, above everything else in the panel.
+ *
+ * Ordered before the layout fields because it is not a property of the element: it decides which
+ * state the fields below are editing, and which one the canvas is drawing.
+ */
+function createElementStateField(element: UIElement): FieldDefinition<UIInspectorData> {
+    return defineField<UIInspectorData, any>({
+        id: `element.state:${element.id}`,
+        type: "custom",
+        order: -1,
+        component: ElementStateBar,
+    });
+}
+
 function mergeInspectorWithLayoutSchema(
     layoutSchema: PropertyEditorSchema<UIInspectorData>,
     inspectorSchema: PropertyEditorSchema<UIInspectorData>,
@@ -499,6 +580,7 @@ function mergeInspectorWithLayoutSchema(
     t: TranslateFn,
 ): PropertyEditorSchema<UIInspectorData> {
     const layoutFields = layoutSchema.fields ?? [];
+    const stateField = createElementStateField(element);
     const animationField = createElementAnimationField(element, t);
     const baseTitle = inspectorSchema.title ?? element.name ?? t("properties.layout.uiElement");
     const baseId = `ui-element:${element.id}`;
@@ -510,7 +592,7 @@ function mergeInspectorWithLayoutSchema(
             if (targetTabId && tab.id === targetTabId) {
                 return {
                     ...tab,
-                    fields: [...layoutFields, ...tab.fields, animationField],
+                    fields: [stateField, ...layoutFields, ...tab.fields, animationField],
                 };
             }
             return tab;
@@ -530,7 +612,7 @@ function mergeInspectorWithLayoutSchema(
     return createPropertyEditorSchema<UIInspectorData>({
         id: baseId,
         title: baseTitle,
-        fields: [...layoutFields, ...(inspectorSchema.fields ?? []), animationField],
+        fields: [stateField, ...layoutFields, ...(inspectorSchema.fields ?? []), animationField],
         onFieldChange: inspectorSchema.onFieldChange,
         showSavingIndicator: inspectorSchema.showSavingIndicator,
     });
@@ -600,6 +682,25 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const [activeAsset, setActiveAsset] = useState<Asset | null>(null);
     const [activeCharacter, setActiveCharacter] = useState<Character | null>(null);
+    const [activeSetId, setActiveSetId] = useState<string | null>(null);
+    /**
+     * Bumped by the set service and by the asset library, and read only as a `useMemo` dependency.
+     *
+     * A counter rather than the values themselves: what this panel needs is "something changed, look
+     * again", and holding a copy of either would be a second answer to a question the services
+     * already own.
+     */
+    const [assetSetRevision, setAssetSetRevision] = useState(0);
+    /**
+     * The asset library's own counter, subscribed unconditionally.
+     *
+     * It used to be wired only while a set was the subject, on the reasoning that "a panel showing a
+     * picture has no reason to re-run" for an import or a rename. That was wrong about this panel:
+     * the story action inspector, the scene's default background and its BGM all print an asset's
+     * NAME, and those records are mutated in place - so a rename left every one of them showing the
+     * old word until some unrelated interaction re-rendered the rail.
+     */
+    const assetLibraryRevision = useAssetLibraryRevision();
     const [assetMetadata, setAssetMetadata] = useState<AssetData<any> | null>(null);
     const [characterVersion, setCharacterVersion] = useState(0);
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
@@ -620,6 +721,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return context.services.get<AssetsService>(Services.Assets);
     }, [context, isInitialized]);
 
+    const assetSetService = useMemo(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<AssetSetService>(Services.AssetSets);
+    }, [context, isInitialized]);
+
     const serviceAssets = useMemo(() => {
         if (!context || !isInitialized) return null;
         return context.services.get<ServiceAssetsService>(Services.ServiceAssets);
@@ -629,6 +735,10 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!context || !isInitialized) return null;
         return context.services.get<UIService>(Services.UI);
     }, [context, isInitialized]);
+
+    // The position fields read the state an element is being shown in, so entering one has to rebuild
+    // the schema the same way a document edit does.
+    const enteredState = useEditorEnteredState();
 
     const storyService = useMemo(() => {
         if (!context || !isInitialized) return null;
@@ -718,6 +828,42 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     // The header states the context (which scene), the body states the subject (which row, via the
     // inspector's own heading). Restating the row here would put the same sentence on screen twice in
     // a 460px column.
+    /**
+     * The set the panel is showing, read back off the service every time it changes rather than
+     * taken from the selection.
+     *
+     * The selection carries the record as it was when the row was clicked, and every edit in this
+     * inspector rewrites that record - so drawing from the selection would show the author their
+     * first click for as long as they kept editing.
+     */
+    const activeSet = useMemo(
+        () => (activeSetId && assetSetService ? assetSetService.getSet(activeSetId) ?? null : null),
+        [activeSetId, assetSetService, assetSetRevision],
+    );
+
+    /**
+     * The library as resolution sees it, plus the names to print for a resolved variant.
+     *
+     * Rebuilt when the asset library changes rather than held: a set names its members by tag, so an
+     * import or a retag is exactly what makes a hole fill in, and a cached list would leave the
+     * inspector showing the hole.
+     */
+    const { setCandidates, setAssetsById } = useMemo(() => {
+        const candidates: AssetSetCandidate[] = [];
+        const byId = new Map<string, Asset>();
+        if (!assetsService || !activeSet) {
+            return { setCandidates: candidates, setAssetsById: byId as ReadonlyMap<string, Asset> };
+        }
+        const map = assetsService.getAssets();
+        for (const bucket of Object.values(map)) {
+            for (const asset of Object.values(bucket ?? {})) {
+                candidates.push({ id: asset.id, type: asset.type, tags: asset.tags });
+                byId.set(asset.id, asset);
+            }
+        }
+        return { setCandidates: candidates, setAssetsById: byId as ReadonlyMap<string, Asset> };
+    }, [assetsService, activeSet, assetLibraryRevision]);
+
     const panelTitle = storyMotionSelection
         ? t("properties.panel.motionKeyframe")
         : storyScene
@@ -730,6 +876,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? activeCharacter.profile.getProfile().name
         : activeAsset
         ? activeAsset.name
+        : activeSet
+        ? activeSet.name
         : t("properties.panel.title");
     const panelSubtitle = storyMotionSelection
         ? t("properties.panel.storyMotion")
@@ -741,7 +889,20 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? t("properties.panel.scene")
         : activeCharacter
         ? t("properties.panel.character")
+        : activeSet
+        ? t("assets.sets.itemType")
         : activeAsset?.type;
+
+    /**
+     * Both halves of what the set inspector draws.
+     *
+     * Subscribed only while a set is the subject: the asset library emits on every import, rename
+     * and retag in the project, and a panel showing a picture has no reason to re-run for any of it.
+     */
+    useEffect(() => {
+        if (!activeSetId || !assetSetService) return;
+        return assetSetService.onSetsChanged(() => setAssetSetRevision(revision => revision + 1));
+    }, [activeSetId, assetSetService]);
 
     // Listen to selection changes
     useEffect(() => {
@@ -763,6 +924,12 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             setStoryMotionSelection(motionSelection);
             setStorySelection(story);
             setActiveAsset(!motionSelection && !story && selection.type === "asset" ? (selection.data as Asset) : null);
+            // Only the id: the record itself is read back off the service, see `activeSet`.
+            setActiveSetId(
+                !motionSelection && !story && selection.type === "assetSet"
+                    ? (selection.data as AssetSet).id
+                    : null,
+            );
             setActiveCharacter(!motionSelection && !story && selection.type === "character" ? (selection.data as Character) : null);
             setAssetMetadata(null);
             setUISelection(!motionSelection && !story && isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
@@ -848,7 +1015,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 data={{ element: elements[0], elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
             />
         );
-    }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion, t]);
+    }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion, enteredState, t]);
 
     const selectUiCanvasElement = useCallback(
         (surfaceId: string, elementId: string) => {
@@ -1182,6 +1349,19 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return <PropertyEditor schema={assetSchema} data={assetContext} />;
         }
 
+        // Asset set editor
+        if (activeSet && assetSetService) {
+            return (
+                <AssetSetInspector
+                    set={activeSet}
+                    candidates={setCandidates}
+                    assetsById={setAssetsById}
+                    service={assetSetService}
+                    assetsService={assetsService}
+                />
+            );
+        }
+
         return null;
     };
 
@@ -1197,7 +1377,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         && !activeComponentDefinition
         && !sceneEditorContext
         && !activeCharacter
-        && !activeAsset;
+        && !activeAsset
+        && !activeSet;
     if (isEmpty) {
         return (
             <div className="nl-editor-surface flex h-full min-h-0 items-center justify-center p-6 text-center text-xs text-fg-subtle">

@@ -23,6 +23,7 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         blueprintDocument: null,
         uiDocument: null,
         assets: [],
+        assetSets: [],
         referencedAssetIds: new Set<string>(),
         assetReferences: new Map(),
         // A rule test asserts on the rule, so the index it reads is complete unless the test is
@@ -43,6 +44,7 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
             exists: async () => false,
             readBytes: async () => null,
             probeImage: async () => ({ ok: false, reason: "test context has no io" }),
+            probeVideoAlpha: async () => ({ ok: false, reason: "test context has no io" }),
         },
         ...overrides,
     };

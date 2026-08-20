@@ -14,12 +14,18 @@ import {
     UI_SWITCH_ON_VARIANT_ID,
     type UISwitchChildSlot,
 } from "@shared/types/ui-editor/switch";
+import {
+    getStateMotions,
+    resolveStateMotionOffset,
+    type UIStateMotion,
+} from "@shared/types/ui-editor/stateMotion";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { getSwitchProps } from "./helpers";
 
 /**
@@ -74,21 +80,40 @@ function rectRatioX(rect: DOMRect, clientX: number): number {
     return (clientX - rect.left) / Math.max(1, rect.width);
 }
 
-/** Flips one part to its `on` appearance variant. Geometry is deliberately left untouched. */
-function withOnVariant(element: UIElement): UIElement {
+/**
+ * Hands a child what the switch says about the state it is in.
+ *
+ * One thing, normally: the variant id. Everything a child looks like and everywhere it sits while the
+ * switch is on lives in that variant, so the switch does not compute geometry for anything.
+ *
+ * The offset is the exception, and only for projects written while the travel was kept on the switch
+ * instead - it is handed for both states, because turning off is a move back and the part only knows
+ * to make it if it is given the same motion with a zero offset.
+ */
+function withSwitchState(
+    element: UIElement,
+    checked: boolean,
+    motions: UIStateMotion[],
+): UIElement {
+    const stateMotionOffset = resolveStateMotionOffset(
+        motions,
+        checked ? UI_SWITCH_ON_VARIANT_ID : null,
+        element.id,
+    );
     return {
         ...element,
         extra: {
             ...(element.extra ?? {}),
-            runtimeVariantOverrideId: UI_SWITCH_ON_VARIANT_ID,
+            ...(checked ? { runtimeVariantOverrideId: UI_SWITCH_ON_VARIANT_ID } : {}),
+            ...(stateMotionOffset ? { stateMotionOffset } : {}),
         },
     };
 }
 
 /**
- * The switch owns no geometry at all: on/off is an appearance variant on each part (the track's
- * colour, the thumb's `transformOffsetX`), so this renderer only decides *which variant* the two
- * parts resolve with and dispatches the blueprint events. Compare `slider/renderer.tsx`, which has
+ * The switch owns no geometry at all: on/off is an appearance variant on each child (the track's
+ * colour, the thumb's `transformOffsetX`), so this renderer only decides *which variant* everything
+ * inside resolves with and dispatches the blueprint events. Compare `slider/renderer.tsx`, which has
  * to compute the handle's position on every render.
  *
  * Dragging keeps that property. A press does not toggle; the pointer's normalized position on the
@@ -97,7 +122,10 @@ function withOnVariant(element: UIElement): UIElement {
  * being dragged by an inline transform this renderer would have to compute.
  */
 export function SwitchRenderer(props: WidgetRendererProps) {
-    const { element, document, hostAdapter, renderChildren } = props;
+    const { element, document, hostAdapter, renderChildren, useAppearanceInspectorPreview } = props;
+    // In the editor the author's entered state is what the switch shows, so flipping the state bar
+    // previews the toggle - including its motion - without touching the authored `checked`.
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const flushFrameRef = useRef<number | null>(null);
     // A toggle whose graph is still running swallows further toggles rather than queueing them:
@@ -129,7 +157,9 @@ export function SwitchRenderer(props: WidgetRendererProps) {
     }, [checked]);
     // What the parts are drawn as. Mid-drag this previews the release rather than the committed
     // state, which is why nothing writes to the runtime store until the pointer comes up.
-    const displayChecked = pendingChecked ?? checked;
+    const displayChecked = enteredState
+        ? enteredState.variantId === UI_SWITCH_ON_VARIANT_ID
+        : pendingChecked ?? checked;
 
     const trackElement = useMemo(() => findSwitchPart(element, document, "track"), [document, element]);
     const thumbElement = useMemo(() => findSwitchPart(element, document, "thumb"), [document, element]);
@@ -322,14 +352,21 @@ export function SwitchRenderer(props: WidgetRendererProps) {
     );
 
     const canRenderParts = Boolean(renderChildren);
-    const childrenIds = [trackElement?.id, thumbElement?.id].filter((id): id is string => Boolean(id));
-    const elementOverrides = displayChecked
-        ? Object.fromEntries(
-              [trackElement, thumbElement]
-                  .filter((part): part is UIElement => Boolean(part))
-                  .map(part => [part.id, withOnVariant(part)]),
-          )
-        : undefined;
+    // Everything the author put inside, in the order the outline shows it - not just the two parts
+    // the widget was born with. A switch is a box that knows it is on or off; a label, an icon or a
+    // second thumb inside it is drawn in that state like everything else, and is positioned in it
+    // the same way. Naming only track and thumb here is what used to make a third child invisible.
+    const childrenIds = element.childrenIds.filter(id => Boolean(document.elements[id]));
+    const stateMotions = getStateMotions(element.props);
+    // Built for both states, not just on: turning off is a move back, and a part written before
+    // positions lived in states only knows to make it because the switch hands it the same motion
+    // with a zero offset.
+    const elementOverrides = Object.fromEntries(
+        childrenIds
+            .map(id => document.elements[id])
+            .filter((part): part is UIElement => Boolean(part))
+            .map(part => [part.id, withSwitchState(part, displayChecked, stateMotions)]),
+    );
 
     const hostStyle: CSSProperties = {
         position: "relative",

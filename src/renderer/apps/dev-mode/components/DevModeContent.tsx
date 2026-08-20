@@ -916,6 +916,22 @@ export function DevModeContent(props: DevModeContentProps) {
     }, []);
 
     /**
+     * The clip a weather seed describes, produced now if it does not exist yet.
+     *
+     * Submitted at `blocking` on the other side, because someone pressed Run: if Studio had already
+     * started the same bake speculatively, this adopts the one in flight rather than queueing behind
+     * it, and the wait is whatever was left of it.
+     *
+     * Returns null rather than throwing when it cannot be made. A missing clip is a scene that plays
+     * without its weather and says so in the diagnostics; the story itself still runs, which is the
+     * difference between a seed that failed and a session that will not start.
+     */
+    const resolveWeatherClip = useCallback<NonNullable<GameAppHost["resolveWeatherClip"]>>(async spec => {
+        const result = await getInterface().devMode.resolveWeatherClip(spec);
+        return result.success && result.data?.url ? result.data.url : null;
+    }, []);
+
+    /**
      * Author-supplied puppet backends, read straight out of the open project.
      *
      * The reading itself lives in `devModePuppetHost.ts` because a Surface `nl.puppet` widget needs the
@@ -979,6 +995,21 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [projectPath]);
 
     /**
+     * The Move Mouse family's request, handed to the main process.
+     *
+     * No project path: unlike Fetch and Open Link there is nothing on disk to check it against. The
+     * act is bounded by the window instead - the handler converts the point against the window that
+     * sent it and clamps it to that window's own content box, so this cannot reach past the preview.
+     */
+    const movePointer = useCallback<NonNullable<GameAppHost["movePointer"]>>(async request => {
+        const result = await getInterface().blueprintPointer.move(request);
+        if (!result.success) {
+            return { outcome: "failed", error: result.error ?? "Move Mouse failed" };
+        }
+        return result.data.result;
+    }, []);
+
+    /**
      * The Open Link node's request, handed to the main process.
      *
      * The project path travels with it because the handler reads the project's own declared
@@ -1030,9 +1061,17 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [projectPath]);
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
-        write: async (id, savedGame, capture, metadata) => {
+        write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) => {
             const ref = requireProjectRef("Save Game");
-            const result = await getInterface().devMode.save.write(ref, id, savedGame, capture, metadata);
+            const result = await getInterface().devMode.save.write(
+                ref,
+                id,
+                savedGame,
+                capture,
+                metadata,
+                compatibility,
+                playtimeSeconds,
+            );
             if (!result.success) {
                 throw new Error(result.error ?? `Save Game failed: ${id}`);
             }
@@ -1068,6 +1107,14 @@ export function DevModeContent(props: DevModeContentProps) {
             }
             return result.data.ids;
         },
+        listHeaders: async () => {
+            const ref = requireProjectRef("List Saves");
+            const result = await getInterface().devMode.save.listHeaders(ref);
+            if (!result.success) {
+                throw new Error(result.error ?? "List Saves failed");
+            }
+            return result.data.headers;
+        },
     }), [requireProjectRef]);
 
     const quitApplication = useCallback(async (): Promise<void> => {
@@ -1078,6 +1125,28 @@ export function DevModeContent(props: DevModeContentProps) {
         const result = await getInterface().devMode.stop(projectPath);
         if (!result.success) {
             throw new Error(result.error ?? "Quit failed");
+        }
+    }, [projectPath]);
+
+    /**
+     * Start the game over in this window, for the cases a running build cannot correct itself -
+     * today, the player changing the language mid-playthrough (see `localeRestart`).
+     *
+     * A session reload rather than a process relaunch, because the process here is Studio: a shipped
+     * game restarting means its own window going down and coming back, and the equivalent of that
+     * for an author is this window's game restarting, not their editor closing. It is the very same
+     * reload a file save triggers - the project is recompiled and the environment remounted from
+     * boot - so the author sees what a player would see, from the same code path they already rely
+     * on. Stopping and relaunching instead cannot work from here: the stop takes this window with
+     * it, and nothing would be left to ask for the launch.
+     */
+    const restartApplication = useCallback(async (): Promise<void> => {
+        if (!projectPath) {
+            throw new Error("Restart failed: no project");
+        }
+        const result = await getInterface().devMode.reload(projectPath);
+        if (!result.success) {
+            throw new Error(result.error ?? "Restart failed");
         }
     }, [projectPath]);
 
@@ -1284,14 +1353,17 @@ export function DevModeContent(props: DevModeContentProps) {
             log,
             reportIssue,
             resolveStoryAssetUrl,
+            resolveWeatherClip,
             saveStore,
             listPuppetBackendModules,
             quitApplication,
+            restartApplication,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
             subscribeCloseRequested,
             networkFetch,
+            movePointer,
             openExternal,
             exportProgress,
             importProgress,
@@ -1302,15 +1374,18 @@ export function DevModeContent(props: DevModeContentProps) {
         getFullscreen,
         log,
         networkFetch,
+        movePointer,
         openExternal,
         exportProgress,
         importProgress,
         onDebugEvent,
         persistenceAdapter,
         quitApplication,
+        restartApplication,
         listPuppetBackendModules,
         reportIssue,
         resolveStoryAssetUrl,
+        resolveWeatherClip,
         runtimePlugins.ready,
         saveStore,
         setFullscreen,

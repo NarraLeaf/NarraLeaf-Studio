@@ -9,6 +9,7 @@ import { FocusArea } from "@/lib/workspace/services/ui";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { HostVisibility } from "@/lib/components/layout";
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
 import { openNewTab } from "../../modules/new-tab/openNewTab";
 import { useEditorGroupDrop } from "./useEditorGroupDrop";
@@ -378,8 +379,11 @@ export function EditorGroup({ group }: EditorGroupProps) {
     // Close shortcut: tab strip closes multi-selection (or active if none selected)
     useKeybinding({
         id: `editor-group-${group.id}-close-tabs-strip`,
-        // Registration is per group; the catalog id is what the palette and any rebind key on.
-        catalogId: "editor.close-selected-tabs",
+        // Registration is per group; the catalog id is what the palette and any rebind key on - and
+        // it is the SAME id the editor-body registration below uses, because the two are one command
+        // at two scopes rather than two commands sharing a chord. Their `when` predicates are
+        // disjoint, so a single entry can never be ambiguous about which one a keypress reaches.
+        catalogId: "editor.close-tab",
         key: closeTabShortcut,
         description: "Close selected editor tabs",
         handler: handleCloseTabStripSelection,
@@ -390,7 +394,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
     // Close shortcut: editor body closes active tab only
     useKeybinding({
         id: `editor-group-${group.id}-close-tab-editor-body`,
-        catalogId: "editor.close-active-tab",
+        catalogId: "editor.close-tab",
         key: closeTabShortcut,
         description: "Close active editor tab",
         handler: handleCloseActiveTab,
@@ -565,7 +569,12 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                 regionLabel={String(tab.title)}
                                 isolationKey={tab.id}
                             >
-                                <tab.component tabId={tab.id} payload={tab.payload} active={isActive} />
+                                {/* A kept-alive tab keeps its popups too, and a popup portalled to
+                                    the body is not inside the box that just went `display: none`.
+                                    This is how it learns to put itself away. */}
+                                <HostVisibility visible={isActive}>
+                                    <tab.component tabId={tab.id} payload={tab.payload} active={isActive} />
+                                </HostVisibility>
                             </WorkspacePanelErrorBoundary>
                         </div>
                     );

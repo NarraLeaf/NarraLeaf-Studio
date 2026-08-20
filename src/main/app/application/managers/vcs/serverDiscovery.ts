@@ -54,7 +54,7 @@ const TIMEOUT_MS = 5_000;
 const MAX_BODY_LENGTH = 64 * 1024;
 
 /** An address taken apart, once it is one. */
-interface ServerEndpoint {
+export interface ServerEndpoint {
     host: string;
     port: number;
     /** The address as it will be stored: lower case, with the port written out. */

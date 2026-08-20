@@ -18,8 +18,8 @@ function shape(source: string): string {
 
 describe("getCommandSegments", () => {
     it("colours by role, not by position", () => {
-        expect(shape("/hide Narra t=fade d=1s")).toBe(
-            "[scaffold]/[verb]hide[scaffold] [target]Narra[scaffold] [key]t=[value]fade[scaffold] [key]d=[value]1[scaffold]s",
+        expect(shape("/hide Narra out=fade d=1s")).toBe(
+            "[scaffold]/[verb]hide[scaffold] [target]Narra[scaffold] [key]out=[value]fade[scaffold] [key]d=[value]1[scaffold]s",
         );
     });
 
@@ -27,7 +27,7 @@ describe("getCommandSegments", () => {
         // The load-bearing property: the mirror has to occupy the same width as the text beneath it,
         // character for character, or the colours drift away from the caret as the line grows.
         for (const source of [
-            "/hide Narra t=fade d=1s",
+            "/hide Narra out=fade d=1s",
             "/bg forest_day",
             "/say Alice Hello, world",
             "/set 'boss hp' += 2",
@@ -42,14 +42,14 @@ describe("getCommandSegments", () => {
     });
 
     it("keeps the scaffold muted — the trigger, the binders, the keys and the unit", () => {
-        const scaffold = getCommandSegments("/hide Narra t=fade d=1s")
+        const scaffold = getCommandSegments("/hide Narra out=fade d=1s")
             .filter(segment => segment.role === "scaffold")
             .map(segment => segment.text);
         // The `s` is in here on purpose: `1s` is one second, and the unit says which KIND of one it
         // is — the same job the key does — so it recedes with the key rather than lighting up as a value.
         // The keys are their own segments (see `shape`), and the space in front of each is not: it
         // separates two tokens and has to survive a surface that drops the key.
-        expect(scaffold).toEqual(["/", " ", " ", "t=", " ", "d=", "s"]);
+        expect(scaffold).toEqual(["/", " ", " ", "out=", " ", "d=", "s"]);
     });
 
     it("marks the key and its binder, and nothing else, as the part a surface may drop", () => {
@@ -57,7 +57,7 @@ describe("getCommandSegments", () => {
         // the row shows a stray `=`, one too many and two tokens run together as `Narrafade`.
         const keys = (source: string) =>
             getCommandSegments(source).filter(segment => segment.paramKey).map(segment => segment.text);
-        expect(keys("/hide Narra t=fade d=1s")).toEqual(["t=", "d="]);
+        expect(keys("/hide Narra out=fade d=1s")).toEqual(["out=", "d="]);
         // A bare flag parses with its key and value on the same span — there is no `=` to cut at, and
         // dropping the word would erase the arg rather than shorten it.
         expect(keys("/bgm battle loop")).toEqual([]);

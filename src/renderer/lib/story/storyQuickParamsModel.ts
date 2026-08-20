@@ -73,6 +73,16 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
         }
         return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
     }
+    if (payload.action === "character" && payload.operation === "expression") {
+        // The swap's own transition, and the only character row where that ref is played at all:
+        // `expression` compiles to `char(src, transition)`. Same rule as `setBackground` above - the
+        // number appears only once a transition exists, so a quick edit never has to invent a kind.
+        const transition = payload.transition;
+        if (!transition) {
+            return [];
+        }
+        return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
+    }
     if (payload.action === "character" && (payload.operation === "enter" || payload.operation === "exit")) {
         // The TRANSFORM, not the transition: an entering character has nothing to transition from, so
         // `/show Alice d=2` writes `transform.durationMs` and the compiler drives the entrance entirely
@@ -90,11 +100,20 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
     }
     if (payload.action === "camera") {
         // The camera's `d=` is the whole feel of the move — the one knob worth a token on the row.
-        // Except under `motion`, where the timing lives in the bound Story Motion's keyframes: an
-        // editable `d=` there would offer to tune a number nothing reads.
-        return payload.operation === "motion"
-            ? []
-            : [durationParam("d", "d", payload.durationMs ?? 0, undefined, ms => ({ ...payload, durationMs: ms }))];
+        // A `reset` keeps its timing on the payload (there is no bag to hang one on); a pose keeps it
+        // in the ref, like every other subject's. A bound Story Motion has neither, because its timing
+        // lives in its own keyframes and an editable `d=` would offer to tune a number nothing reads.
+        if (payload.operation === "reset") {
+            return [durationParam("d", "d", payload.durationMs ?? 0, undefined, ms => ({ ...payload, durationMs: ms }))];
+        }
+        const transform = payload.transform;
+        if (transform?.mode === "animation") {
+            return [];
+        }
+        return [durationParam("d", "d", transform?.durationMs ?? 0, undefined, ms => ({
+            ...payload,
+            transform: { ...(transform ?? { mode: "props" as const }), durationMs: ms },
+        }))];
     }
     if (payload.action === "audio") {
         const params: QuickParam[] = [];

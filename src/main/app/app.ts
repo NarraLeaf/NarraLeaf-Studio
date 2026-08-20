@@ -11,10 +11,18 @@ import { devModeNetworkPolicy, readProjectNetworkSettings } from "./application/
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
+import { StudioTaskScheduler } from "./application/managers/tasks/StudioTaskScheduler";
+import { WeatherBakeManager } from "./application/managers/weather/WeatherBakeManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { findProjectConfigFileName } from "@shared/utils/nlproj";
+import {
+    LaunchOpenLookup,
+    LaunchOpenRequest,
+    resolveFirstLaunchOpenRequest,
+} from "./application/launchOpenRequest";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
 import { TRAY_RESIDENCY_NOTICE_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { getMainTranslator } from "./application/i18n";
@@ -46,6 +54,20 @@ const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
 const WINDOW_CASCADE_STEP = 32;
 
 /**
+ * Why a workspace is going away.
+ *
+ * `"close"` is the window's own close box, Cmd+W and Quit: the window ends and nothing takes its
+ * place, so the app quits or goes resident exactly as it would with any other last window.
+ * `"launcher"` is File ▸ Back to Launcher: the author is not leaving Studio, they are leaving this
+ * project, so the home screen is up before this window goes.
+ *
+ * These were one path with a preference choosing between them, which made "quit when I close a
+ * project" and "let me go back to the home screen" mutually exclusive when they are not the same
+ * question. See `handleWorkspaceExitRequest`.
+ */
+export type WorkspaceExitIntent = "close" | "launcher";
+
+/**
  * `candidate` as an absolute path if it names a directory, otherwise null.
  *
  * Relative paths resolve against the working directory, which is what a `--project .` typed in a
@@ -62,6 +84,38 @@ function resolveExistingDirectory(candidate: string): string | null {
     }
 }
 
+/**
+ * `candidate` as an absolute path if it names a file. The file half of
+ * {@link resolveExistingDirectory}, and unreadable is "not a file" for the same reason.
+ */
+function resolveExistingFile(candidate: string, base?: string): string | null {
+    try {
+        const absolute = base ? path.resolve(base, candidate) : path.resolve(candidate);
+        return fs.statSync(absolute).isFile() ? absolute : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Whether `directory` holds a project config, without reading it.
+ *
+ * Synchronous because it answers a launch, which has to decide what window to open before it opens
+ * one - and because it reads one directory listing. A directory that cannot be listed is not a
+ * project here, which is the same answer as an empty one and the right one either way.
+ */
+function directoryHoldsProject(directory: string): boolean {
+    try {
+        return findProjectConfigFileName(fs.readdirSync(directory, { withFileTypes: true }).map(entry => ({
+            name: path.parse(entry.name).name,
+            ext: path.extname(entry.name) || null,
+            type: entry.isDirectory() ? "directory" : "file",
+        }))) !== null;
+    } catch {
+        return false;
+    }
+}
+
 export class App extends BaseApp {
     public static create(config: AppConfig): App {
         return new App(config);
@@ -73,6 +127,8 @@ export class App extends BaseApp {
         this.previewManager = new PreviewManager(this);
         this.gameTestManager = new GameTestManager(this);
         this.gameBuildManager = new GameBuildManager(this);
+        this.taskScheduler = new StudioTaskScheduler();
+        this.weatherBakeManager = new WeatherBakeManager(this, this.taskScheduler);
         this.mediaConvertManager = new MediaConvertManager(this);
         // The commit pipeline has to settle the renderer's auto-save debt before it
         // stages, and only the window layer can ask a window to do that. Handed in as a
@@ -123,6 +179,8 @@ export class App extends BaseApp {
     private readonly gameTestManager: GameTestManager;
     private readonly gameBuildManager: GameBuildManager;
     private readonly mediaConvertManager: MediaConvertManager;
+    private readonly taskScheduler: StudioTaskScheduler;
+    private readonly weatherBakeManager: WeatherBakeManager;
     private readonly vcsManager: VcsManager;
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
@@ -155,6 +213,22 @@ export class App extends BaseApp {
         return this.mediaConvertManager;
     }
 
+    /**
+     * The one queue Studio's long work goes through.
+     *
+     * App-wide rather than per-window: the work belongs to the machine, not to whichever window
+     * happened to ask for it, and two windows onto the same project must not bake the same clip
+     * twice.
+     */
+    public getTaskScheduler(): StudioTaskScheduler {
+        return this.taskScheduler;
+    }
+
+    /** Produces the clips weather seeds describe, and finds the ones already made. */
+    public getWeatherBakeManager(): WeatherBakeManager {
+        return this.weatherBakeManager;
+    }
+
     public getVcsManager(): VcsManager {
         return this.vcsManager;
     }
@@ -162,15 +236,6 @@ export class App extends BaseApp {
     /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
     public getUpdateManager(): UpdateManager {
         return this.updateManager;
-    }
-
-    private applyWindowIcon(window: AppWindow): void {
-        const iconPath = this.getWindowIconPath();
-        if (!iconPath) {
-            return;
-        }
-
-        window.setIcon(iconPath);
     }
 
     /**
@@ -307,13 +372,21 @@ export class App extends BaseApp {
     /**
      * Open Settings on a particular entry - or move the open Settings window to it.
      *
-     * One implementation for both callers (the IPC handler renderers use, and the tray's Check
-     * for Updates row), because "open settings at X" has to be idempotent from either: launching
-     * unconditionally would leave two Settings windows disagreeing about what is selected.
+     * The one way a Settings window comes into being: the IPC handler renderers use, the tray's
+     * Check for Updates row and macOS's Cmd+, all arrive here, because "open settings at X" has to
+     * be idempotent from every one of them - launching unconditionally would leave two Settings
+     * windows disagreeing about what is selected.
      *
-     * `opener` is who asked, and becomes the new window's parent. The tray has no window to offer,
-     * so the launcher is brought back first - which is also the right thing to look at behind a
-     * Settings window that was opened from an empty desktop.
+     * **Settings belongs to the app, not to whoever opened it, and is therefore a top-level
+     * window.** It used to be constructed with the opening window as its Electron `parent`, which
+     * made Chromium destroy it whenever that window went away: closing one of two open projects,
+     * or the launcher retiring itself the moment a project opened, silently took Settings with it
+     * while the rest of Studio carried on. Its contents are global - there is nothing about it that
+     * belongs to one project - so nothing was gained by the link either.
+     *
+     * `opener` is kept only as the answer to "which display should this come up on"; a Settings
+     * window opened from the tray with no window in sight is a perfectly good outcome and no longer
+     * has to raise a launcher first to have something to hang from.
      */
     public async revealSettings(
         props: WindowProps[WindowAppType.Settings],
@@ -332,18 +405,7 @@ export class App extends BaseApp {
             return;
         }
 
-        let parent = opener;
-        if (!parent || parent.isClosed()) {
-            await this.revealLauncher();
-            parent = this.findLauncher();
-        }
-        if (!parent) {
-            this.logger.warn("[Settings] No window to open Settings from.");
-            return;
-        }
-
-        await this.launchSettings(parent as AppWindow<WindowAppType.Launcher>, props, {
-            parent: parent.win,
+        await this.launchSettings(props, {
             minWidth: 800,
             minHeight: 500,
             width: 1200,
@@ -351,7 +413,31 @@ export class App extends BaseApp {
             center: true,
             x: undefined,
             y: undefined,
+            ...this.displayPlacement(opener, 1200, 800),
         });
+    }
+
+    /**
+     * Centre a window of `width` x `height` on the display `opener` is on.
+     *
+     * `center: true` centres on the *primary* display, so a Studio being used on a second monitor
+     * would put every window it raises back on the first one. Nothing to do when there is no opener
+     * to follow: the primary display is the only answer left, and it is the right one.
+     */
+    private displayPlacement(
+        opener: AppWindow | undefined,
+        width: number,
+        height: number,
+    ): Partial<Electron.BrowserWindowConstructorOptions> {
+        if (!opener || opener.isClosed()) {
+            return {};
+        }
+        const { workArea } = screen.getDisplayMatching(opener.win.getBounds());
+        return {
+            x: Math.round(workArea.x + (workArea.width - width) / 2),
+            y: Math.round(workArea.y + (workArea.height - height) / 2),
+            center: false,
+        };
     }
 
     /**
@@ -413,54 +499,300 @@ export class App extends BaseApp {
     }
 
     /**
-     * The window this session starts on: the project `--project` named, or the launcher.
+     * The project this launch should open by itself, or null to sit on the home screen.
      *
-     * The launcher is opened either way, and the project is then opened *from* it - the same call
-     * a click on the recent list makes, so a scripted launch inherits the whole of it: the
-     * one-project-one-window lookup, the macOS bookmark re-authorization, the recents entry the
-     * workspace writes once it has actually loaded, and the launcher retiring itself only after
-     * the workspace reports a working project. Every way this can fail therefore lands on the home
-     * screen with a line in the log, rather than on a windowless app or a dead end.
+     * `--project` wins outright - it names a project, and naming one is more specific than the
+     * standing preference to carry on where the last session left off. Everything else is that
+     * preference: the head of the history, which is the project the author was last in.
      *
-     * Dev-only, and deliberately not a general "open this file" entry point (see
-     * {@link MainCommandLineOptions.project}).
+     * Three things deliberately suppress the reopen, all of them cases where the author is not
+     * asking to be put back to work:
+     *   - `--launcher`, the escape hatch. A project that hangs or crashes the workspace on load
+     *     would otherwise be reopened by every launch, and the home screen - the one place to open
+     *     a *different* project from - would be unreachable. Not dev-gated, for that reason: the
+     *     launch that needs it most is a packaged one.
+     *   - first-run setup still owed, which is a question to answer rather than a project to be
+     *     dropped into.
+     *   - an empty history, which is every genuinely first launch.
      */
-    public async openStartupWindow(): Promise<void> {
+    private resolveSessionStartupProject(): { projectPath: string; source: "path" | "recent" | "last-session" } | null {
         const selectorError = this.getStartupProjectError();
         if (selectorError) {
             this.logger.warn(`[Startup] ${selectorError}`);
         }
 
-        await this.ensureLauncher();
-
         const selector = this.getStartupProjectSelector();
-        if (!selector) {
-            return;
+        if (selector) {
+            const resolution = resolveStartupProject(selector, {
+                resolveDirectory: candidate => resolveExistingDirectory(candidate),
+                recentProjects: () => this.globalState.recentlyOpened.list(),
+            });
+            if (!resolution.ok) {
+                this.logger.warn(`[Startup] ${resolution.reason}. Opening the launcher instead.`);
+                return null;
+            }
+            return { projectPath: resolution.projectPath, source: resolution.source };
         }
 
-        const resolution = resolveStartupProject(selector, {
-            resolveDirectory: candidate => resolveExistingDirectory(candidate),
-            recentProjects: () => this.globalState.recentlyOpened.list(),
-        });
-        if (!resolution.ok) {
-            this.logger.warn(`[Startup] ${resolution.reason}. Opening the launcher instead.`);
-            return;
+        if (this.wantsLauncherOnStartup()) {
+            this.logger.info("[Startup] --launcher was given; staying on the home screen.");
+            return null;
+        }
+        if (!this.globalState.get("workspace.reopenLastProject")) {
+            return null;
+        }
+        if (this.shouldRunOnboarding()) {
+            return null;
         }
 
-        const launcher = this.findLauncher();
-        if (!launcher) {
-            this.logger.warn("[Startup] The launcher is gone; not opening the requested project.");
-            return;
+        // The history is most-recent-first, so its head is where the author was. Deliberately not
+        // checked against the disk here: the workspace's own load is what knows whether a project
+        // is openable, and a failed one already lands on an error screen with the launcher still
+        // behind it. A stat() here would catch only the easiest case and would have to guess at
+        // the rest.
+        const last = this.globalState.recentlyOpened.list()[0];
+        if (!last) {
+            return null;
         }
+        return { projectPath: last.path, source: "last-session" };
+    }
 
-        this.logger.info(
-            `[Startup] Opening project "${resolution.projectPath}" (matched by ${resolution.source})`,
-        );
+    /**
+     * The window this session starts on: the project asked for or carried over, or the launcher.
+     *
+     * The launcher is opened either way, and the project is then opened *from* it - the same call
+     * a click on the recent list makes, so a startup inherits the whole of it: the
+     * one-project-one-window lookup, the macOS bookmark re-authorization, the recents entry the
+     * workspace writes once it has actually loaded, and the launcher retiring itself only after
+     * the workspace reports a working project. Every way this can fail therefore lands on the home
+     * screen with a line in the log, rather than on a windowless app or a dead end.
+     *
+     * That last part is what keeps the reopen from being a way to lose the app: a project deleted,
+     * moved or corrupted since is not a failed launch, it is a home screen with a message - and the
+     * author is one click from opening something else.
+     *
+     * Restores one project, never a set. Studio opens one window per project, so a session that
+     * ended with three of them open comes back as the one at the head of the history; nothing
+     * records which windows were up when the last one went. That is the shape of the preference,
+     * not a gap in this method - see `workspace.reopenLastProject`, which is off by default.
+     */
+    public async openStartupWindow(): Promise<void> {
+        // In a finally, so that a launch that failed on its way here still lets later requests
+        // through: `openLaunchRequest` queues everything until this flag is set, and a queue that
+        // is never drained is a Studio that silently ignores every document dropped on it.
         try {
-            await this.openProject(launcher, resolution.projectPath);
-        } catch (error) {
-            this.logger.error(`[Startup] Could not open "${resolution.projectPath}":`, error);
+            await this.ensureLauncher();
+
+            // A path handed to this launch outranks everything below it: the author double-clicked
+            // something, which is more specific than any standing preference about where to resume.
+            if (await this.drainQueuedLaunchOpens()) {
+                return;
+            }
+
+            const startup = this.resolveSessionStartupProject();
+            if (!startup) {
+                return;
+            }
+
+            const launcher = this.findLauncher();
+            if (!launcher) {
+                this.logger.warn("[Startup] The launcher is gone; not opening the requested project.");
+                return;
+            }
+
+            this.logger.info(
+                `[Startup] Opening project "${startup.projectPath}" (matched by ${startup.source})`,
+            );
+            try {
+                await this.openProject(launcher, startup.projectPath);
+            } catch (error) {
+                this.logger.error(`[Startup] Could not open "${startup.projectPath}":`, error);
+            }
+        } finally {
+            this.startupSettled = true;
         }
+    }
+
+    /**
+     * Paths handed to Studio before it had anywhere to put them.
+     *
+     * macOS delivers `open-file` before `ready` on a cold launch - that is the *only* way a
+     * double-clicked document reaches an app there, since the path never appears in argv - so the
+     * request exists before the first window does. Held here and drained by
+     * {@link openStartupWindow}, which is also what keeps a double-clicked project from racing the
+     * "reopen the last project" it must override.
+     */
+    private readonly queuedLaunchOpens: LaunchOpenRequest[] = [];
+
+    /** True once {@link openStartupWindow} has decided what this session opens on. */
+    private startupSettled = false;
+
+    /** Reads paths against the disk. Injected into the resolver so that stays pure and testable. */
+    private launchOpenLookup(base?: string): LaunchOpenLookup {
+        return {
+            resolveFile: candidate => resolveExistingFile(candidate, base),
+            resolveDirectory: candidate => resolveExistingDirectory(base ? path.resolve(base, candidate) : candidate),
+            isProjectDirectory: directoryHoldsProject,
+            dirname: filePath => path.dirname(filePath),
+            extname: filePath => path.extname(filePath),
+        };
+    }
+
+    /**
+     * Take a launch's paths and act on the first one Studio recognises. Answers whether it did.
+     *
+     * `base` is the working directory the paths are relative to, which for a second launch is that
+     * process's rather than this one's - the whole reason Electron reports it with the event.
+     */
+    public async openLaunchPaths(candidates: readonly string[], base?: string): Promise<boolean> {
+        const request = resolveFirstLaunchOpenRequest(candidates, this.launchOpenLookup(base));
+        if (!request) {
+            return false;
+        }
+        return this.openLaunchRequest(request);
+    }
+
+    /**
+     * Act on one resolved request now, or queue it if this launch has not yet decided what it
+     * opens on. Answers whether it was acted on.
+     */
+    private async openLaunchRequest(request: LaunchOpenRequest): Promise<boolean> {
+        if (!this.startupSettled) {
+            this.queuedLaunchOpens.push(request);
+            return false;
+        }
+        return this.applyLaunchOpenRequest(request);
+    }
+
+    /** Act on everything that arrived before there was a window. Answers whether anything did. */
+    private async drainQueuedLaunchOpens(): Promise<boolean> {
+        const fromArgv = resolveFirstLaunchOpenRequest(this.getLaunchOpenPaths(), this.launchOpenLookup());
+        if (fromArgv) {
+            this.queuedLaunchOpens.push(fromArgv);
+        }
+        if (this.queuedLaunchOpens.length === 0) {
+            return false;
+        }
+
+        let opened = false;
+        // In order, and all of them: a cold launch can carry several `open-file` events, and each
+        // one is a document somebody asked for. Only argv is narrowed to one (see
+        // `resolveFirstLaunchOpenRequest`).
+        for (const request of this.queuedLaunchOpens.splice(0)) {
+            opened = await this.applyLaunchOpenRequest(request) || opened;
+        }
+        return opened;
+    }
+
+    private async applyLaunchOpenRequest(request: LaunchOpenRequest): Promise<boolean> {
+        try {
+            if (request.kind === "project") {
+                await this.openProjectFromOutside(request.projectPath);
+                return true;
+            }
+            await this.openPackageFromOutside(request.packagePath);
+            return true;
+        } catch (error) {
+            this.logger.error("[Launch] Could not act on the path Studio was given:", error);
+            return false;
+        }
+    }
+
+    /**
+     * The window an externally-requested open should be attributed to.
+     *
+     * A workspace before the launcher, deliberately. `openProject` retires a *launcher* opener the
+     * moment the project is up - correct when the author clicked a row in it, wrong when they
+     * double-clicked a file in the file manager and Studio happened to have its home screen open
+     * behind everything. Preferring a workspace leaves that home screen where they left it.
+     *
+     * Undefined when there is nothing at all, which is a cold launch: the caller raises the
+     * launcher first, so the open inherits the whole of `openStartupWindow`'s failure behaviour.
+     */
+    private launchOpener(): AppWindow | undefined {
+        const alive = this.windowManager.getWindows().filter(window => !window.isClosed());
+        return alive.find(window => window.getWindowType() === WindowAppType.Workspace)
+            ?? alive.find(window => window.getWindowType() === WindowAppType.Launcher)
+            ?? alive[0];
+    }
+
+    /**
+     * Open a project Studio was pointed at from outside - a file association, a shell argument, a
+     * second launch handing it over.
+     *
+     * Goes through {@link openProject} like every other way in, so one project stays one window:
+     * a project that is already open is focused rather than opened twice, and nothing is retired
+     * that the author did not ask to leave.
+     */
+    public async openProjectFromOutside(projectPath: string): Promise<void> {
+        const existing = this.findWorkspaceForProject(projectPath);
+        if (existing) {
+            if (existing.win.isMinimized()) {
+                existing.win.restore();
+            }
+            existing.focus();
+            this.logger.info(`[Launch] "${projectPath}" is already open; focusing its window.`);
+            return;
+        }
+
+        let opener = this.launchOpener();
+        if (!opener) {
+            await this.ensureLauncher();
+            opener = this.findLauncher();
+        }
+        if (!opener) {
+            this.logger.warn(`[Launch] No window to open "${projectPath}" from.`);
+            return;
+        }
+
+        this.logger.info(`[Launch] Opening project "${projectPath}".`);
+        await this.openProject(opener, projectPath);
+    }
+
+    /**
+     * Open the import wizard on a package Studio was pointed at from outside.
+     *
+     * A package is not a project: nothing can be opened until it has been unpacked somewhere, and
+     * where is a question only the author can answer. So this raises the wizard already on its
+     * import flow with the package chosen, and opens whatever comes out of it - the same hand-off
+     * the launcher's own New Project makes, except that main is the one waiting for the answer,
+     * because no renderer asked for this window.
+     */
+    public async openPackageFromOutside(packagePath: string): Promise<void> {
+        let opener = this.launchOpener();
+        if (!opener) {
+            await this.ensureLauncher();
+            opener = this.findLauncher();
+        }
+        if (!opener) {
+            this.logger.warn(`[Launch] No window to open "${packagePath}" from.`);
+            return;
+        }
+
+        this.logger.info(`[Launch] Opening the import wizard on "${packagePath}".`);
+        const wizard = await this.launchProjectWizard(opener, { packagePath }, {
+            parent: opener.win,
+            resizable: false,
+            width: 760,
+            height: 620,
+            center: true,
+            x: undefined,
+            y: undefined,
+        });
+        // Read, not readwrite, and not recursive - one file that gets copied out of. The same grant
+        // the wizard's own package picker makes, because the renderer cannot tell the two apart.
+        this.storageManager.grantFileSystemAccess(wizard, packagePath, "read", false, undefined, "session");
+        // Independent for the reason the wizard always is: the window it hangs from may retire
+        // while the author is still choosing where to unpack.
+        opener.addChild(wizard, "independent");
+
+        wizard.setCloseResultResolver(result => {
+            if (result && result.created) {
+                void this.openProjectFromOutside(result.projectPath).catch(error => {
+                    this.logger.error("[Launch] Could not open the unpacked project:", error);
+                });
+            }
+        });
     }
 
     /**
@@ -588,6 +920,70 @@ export class App extends BaseApp {
         }
     }
 
+    /**
+     * Whether any live window still holds this project - a workspace, or the Dev Mode window a
+     * workspace opened.
+     *
+     * The window that is going away has usually not been unregistered yet when this is asked (the
+     * `window-closed` event runs before `unregisterWindow`), which is why "live" means
+     * `!isClosed()`: a destroyed window answers no for itself.
+     */
+    public hasLiveWindowForProject(projectPath: string): boolean {
+        const target = normalizeProjectPath(projectPath);
+        return this.windowManager.getWindows().some(window => {
+            if (window.isClosed()) {
+                return false;
+            }
+            const candidate = (window.getProps() as { projectPath?: unknown } | undefined)?.projectPath;
+            return typeof candidate === "string" && normalizeProjectPath(candidate) === target;
+        });
+    }
+
+    /**
+     * Stop everything this project has running: Dev Mode, the preview runtime, and a test's game
+     * process.
+     *
+     * **A project's runtimes belong to its window.** Everything that drives them lives there - the
+     * Run control that started them, the stop button, the console they report into, the status the
+     * toolbar shows. With the window gone, a Dev Mode window went on recompiling on every file
+     * change with its output going nowhere and no way to stop it short of closing it by hand, and a
+     * preview went on running as a whole separate process. Leaving them was never a decision; there
+     * simply was no hook.
+     *
+     * Called for every way a workspace can end - the close box, Cmd+W, Back to Launcher, and a
+     * switch retiring the window it came from - because it hangs off the window closing rather than
+     * off any one of those gestures.
+     *
+     * Never throws and never blocks the close: the window is already gone by the time this runs.
+     */
+    public async stopProjectRuntimes(projectPath: string): Promise<void> {
+        const results = await Promise.allSettled([
+            this.devModeManager.stop(projectPath),
+            this.previewManager.stop(projectPath),
+            this.gameTestManager.stopProject(projectPath),
+        ]);
+        for (const result of results) {
+            if (result.status === "rejected") {
+                this.logger.warn(`[Runtime] Could not stop a runtime for "${projectPath}":`, result.reason);
+            }
+        }
+    }
+
+    /**
+     * Stop every project's runtimes. Used on the way out of the app.
+     *
+     * Not the same thing as the windows closing, and that is the whole reason it exists: a preview
+     * and a test run are separate *processes*, and only Windows' job object reaps those with their
+     * parent - on macOS and Linux they are reparented and outlive Studio.
+     */
+    public async stopAllProjectRuntimes(): Promise<void> {
+        await Promise.allSettled([
+            this.devModeManager.stopAll(),
+            this.previewManager.stopAll(),
+            this.gameTestManager.stopAll(),
+        ]);
+    }
+
     /** Flush every open workspace concurrently. Used on the way out of the app. */
     public async flushAllWorkspacesPendingSaves(): Promise<void> {
         const workspaces = this.windowManager.getWindows().filter(
@@ -597,27 +993,21 @@ export class App extends BaseApp {
         await Promise.allSettled(workspaces.map(window => this.flushWorkspacePendingSaves(window)));
     }
 
-    /**
-     * Whether a workspace other than this one is still on screen.
-     *
-     * Read while a window is closing, so the closing window itself is excluded by identity rather
-     * than by `isClosed()`: at this point the close has been taken over and re-issued, and the
-     * window is still very much alive.
-     */
-    private hasOtherOpenWorkspace(window: AppWindow<WindowAppType.Workspace>): boolean {
-        return this.windowManager.getWindows().some(other =>
-            other !== window
-            && !other.isClosed()
-            && other.getWindowType() === WindowAppType.Workspace
-        );
-    }
 
     /**
-     * Decide what closing a workspace means, honouring the user's preferences: confirm first if
-     * asked, then either fall back to the launcher or let the close stand (which quits the app
-     * when this was the last window).
+     * Run a workspace's exit: confirm if asked, flush, checkpoint, and then either stand aside for
+     * the launcher or let the close stand.
+     *
+     * `intent` is the whole difference between the two exits, and it is an argument rather than a
+     * preference on purpose. "Close this window" and "leave this project" are different things the
+     * author asks for, and they used to arrive on one path with a boolean setting picking which
+     * one happened - so a profile could have one or the other but never both. The exit that
+     * follows is identical in every other respect, which is why they share this method.
      */
-    private async handleWorkspaceCloseRequest(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+    private async handleWorkspaceExitRequest(
+        window: AppWindow<WindowAppType.Workspace>,
+        intent: WorkspaceExitIntent,
+    ): Promise<void> {
         if (this.globalState.get("workspace.confirmBeforeClose")) {
             const confirmed = await this.confirmWorkspaceClose(window);
             if (!confirmed) {
@@ -642,14 +1032,11 @@ export class App extends BaseApp {
             return;
         }
 
-        // "Return to the launcher" means "leave me somewhere to work", so it only applies when this
-        // was the last project on screen. With a second workspace still open the author already has
-        // somewhere to be, and opening the home screen next to it puts a window they did not ask for
-        // on the desktop - the exact outcome of closing the second window the project switcher just
-        // opened. The preference is not consulted at all in that case, rather than being read and
-        // overridden, because it answers a question ("what happens when I leave Studio's last
-        // project") this close is not asking.
-        if (this.globalState.get("workspace.returnToLauncherOnClose") && !this.hasOtherOpenWorkspace(window)) {
+        // The home screen comes up only for the exit that asked for it. A plain close is now
+        // allowed to be a plain close: it hands the decision back to the last-window handling
+        // (tray residency on Windows, staying alive on macOS), which is what the author expects
+        // from a window's close box and from Cmd+W.
+        if (intent === "launcher") {
             this.reportWorkspaceCloseStage(window, "launcher");
             try {
                 await this.ensureLauncher();
@@ -666,6 +1053,42 @@ export class App extends BaseApp {
         }
 
         window.forceClose();
+    }
+
+    /**
+     * Workspaces whose exit is still settling, so a second request does not stack a second
+     * confirmation sheet on top of the first.
+     *
+     * Held here rather than in a closure per window because the two exits are two entry points -
+     * the window's close guard and the return-to-launcher channel - and a guard each would let one
+     * gesture start while the other was mid-flight. A window that is exiting is exiting, whichever
+     * of the two asked for it.
+     */
+    private readonly workspaceExits = new Set<AppWindow<WindowAppType.Workspace>>();
+
+    /**
+     * Start a workspace's exit, or bring the one already running to the front.
+     *
+     * The usual reason for a second attempt is that the confirmation sheet is not where the user
+     * is looking, so focusing beats swallowing the gesture without a trace.
+     */
+    public requestWorkspaceExit(
+        window: AppWindow<WindowAppType.Workspace>,
+        intent: WorkspaceExitIntent,
+    ): void {
+        if (this.workspaceExits.has(window)) {
+            window.focus();
+            return;
+        }
+
+        this.workspaceExits.add(window);
+        void this.handleWorkspaceExitRequest(window, intent)
+            .catch(error => {
+                this.logger.error("Failed to handle workspace exit request:", error);
+            })
+            .finally(() => {
+                this.workspaceExits.delete(window);
+            });
     }
 
     /**
@@ -689,8 +1112,13 @@ export class App extends BaseApp {
         }
     }
 
-    async launchSettings(
-        parent: AppWindow<WindowAppType.Launcher>,
+    /**
+     * Build the Settings window. Private on purpose: {@link revealSettings} is the only caller, and
+     * it is the one that knows there may already be one open.
+     *
+     * Deliberately parentless - see revealSettings for what the parent link used to cost.
+     */
+    private async launchSettings(
         props: WindowProps[WindowAppType.Settings],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.Settings>> {
@@ -700,7 +1128,6 @@ export class App extends BaseApp {
             autoFocus: true,
             preload: this.getPreloadScript(),
             options: {
-                parent: parent.win,
                 frame: false,
                 titleBarStyle: 'hidden',
                 show: false,
@@ -746,25 +1173,12 @@ export class App extends BaseApp {
         // Closing a workspace means "leave this project", not "quit the app". The decision needs
         // to await a confirmation sheet and the launcher's window, so always take the close over
         // and re-issue it via forceClose() once settled.
-        let closeRequestPending = false;
+        //
+        // The close box, Cmd+W and Quit all arrive here, and all of them mean "close this window" -
+        // not "take me home". Leaving for the launcher is its own gesture and its own channel; see
+        // `requestWorkspaceExit`.
         window.setCloseGuard(() => {
-            if (closeRequestPending) {
-                // Closing again while the last request is still settling would stack up
-                // confirmation sheets. The usual reason for the second attempt is that the
-                // sheet is not where the user is looking, so bring it to them instead of
-                // swallowing the click without a trace.
-                window.focus();
-                return true;
-            }
-
-            closeRequestPending = true;
-            void this.handleWorkspaceCloseRequest(window)
-                .catch(error => {
-                    this.logger.error("Failed to handle workspace close request:", error);
-                })
-                .finally(() => {
-                    closeRequestPending = false;
-                });
+            this.requestWorkspaceExit(window, "close");
             return true;
         });
 
@@ -867,9 +1281,8 @@ export class App extends BaseApp {
             && opener.getWindowType() === WindowAppType.Workspace;
 
         // forceClose() is deliberate wherever the opener is retired below: opening a project is
-        // not a "close this workspace" gesture, so it must skip the close guard's confirm sheet
-        // and return-to-launcher, which would otherwise interrupt the open or flash the home
-        // window.
+        // not a "close this workspace" gesture, so it must skip the close guard's confirm sheet,
+        // which would otherwise interrupt the open with a question nobody asked.
         //
         // Skipping the close guard also skips the work it does on the way out, so this repeats it:
         //   - the flush, because the auto-save is debounced, and forceClosing a workspace 300ms

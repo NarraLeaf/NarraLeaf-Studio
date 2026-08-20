@@ -30,7 +30,13 @@ function sameName(left: string, right: string): boolean {
     return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
-function matchesTarget(option: SceneDisplayableRef, target: { name: string; kind?: string; sourceBlockId?: string }): boolean {
+/**
+ * Whether a listed stage object is the one a target ref names.
+ *
+ * Exported because the channel previews resolve the same question - which picture is this row
+ * acting on - and two answers to "is this the object" would eventually disagree about a rename.
+ */
+export function matchesTarget(option: SceneDisplayableRef, target: { name: string; kind?: string; sourceBlockId?: string }): boolean {
     if (target.sourceBlockId) {
         return option.sourceBlockId === target.sourceBlockId;
     }
@@ -119,13 +125,16 @@ export function DisplayableTargetField(props: {
     }, [query]);
 
     const choose = (option: SceneDisplayableRef) => {
-        props.onChange({ name: option.name, kind: option.kind, sourceBlockId: option.sourceBlockId });
+        // All three, always. `name` is the stage key the lookup needs and `label` the only half safe
+        // to render - an unnamed character keys on its id, so a ref that stored the key alone put a
+        // UUID on screen the moment its source row was deleted.
+        props.onChange({ name: option.name, label: option.label, kind: option.kind, sourceBlockId: option.sourceBlockId });
         setOpen(false);
     };
 
     const chooseBuiltin = (builtin: StoryDisplayableBuiltin) => {
         const meta = DISPLAYABLE_BUILTIN_META[builtin];
-        props.onChange({ builtin, kind: meta.kind, name: meta.label });
+        props.onChange({ builtin, kind: meta.kind, name: meta.label, label: meta.label });
         setOpen(false);
     };
 

@@ -10,6 +10,7 @@ import {
 } from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
+    enumFreeformValue,
     freeTargetKind,
     paramTypes,
     type StoryCommandParam,
@@ -29,7 +30,7 @@ import type {
     StoryCommandTargetValue,
     StoryCommandValue,
 } from "./storyCommandValues";
-import { BGM_OBJECT_NAME } from "./storyCommandValues";
+import { assetChoices, BGM_OBJECT_NAME } from "./storyCommandValues";
 
 /**
  * Resolution: parsed args → values the payload can hold.
@@ -54,8 +55,8 @@ export type {
     StoryCommandTargetValue,
     StoryCommandValue,
 } from "./storyCommandValues";
-export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandResolvedArgs } from "./storyCommandValues";
-export { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS } from "./storyCommandValues";
+export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandCharacterSources, StoryCommandResolvedArgs } from "./storyCommandValues";
+export { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS, EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandValues";
 
 /**
  * Exact, case-insensitive match by name.
@@ -114,9 +115,7 @@ export function parseLiteral(raw: string): StoryLiteralValue {
     return raw;
 }
 
-function assetsOfType(context: StoryCommandContext, assetType: "image" | "audio" | "video"): readonly StoryCommandNamedRef[] {
-    return assetType === "image" ? context.images : assetType === "audio" ? context.audio : context.videos;
-}
+
 
 /** The character an owner param resolved to, whether it came through a `character` or a `target` slot. */
 function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
@@ -142,13 +141,30 @@ function resolveTarget(
     const needle = value.trim().toLowerCase();
     const matches: StoryCommandTargetValue[] = [];
 
+    // The reserved words go first, and unconditionally. They name stage singletons the engine
+    // addresses without a creator block, so nothing in `stageObjects` can ever spell one and there is
+    // no ambiguity to weigh - a slot that offers `camera` means the camera by that word, always.
+    const reserved = (type.reserved ?? []).find(name => name.toLowerCase() === needle);
+    if (reserved) {
+        return { value: { kind: "target", target: { type: "reserved", name: reserved } } };
+    }
+
     if (type.accepts.includes("character")) {
         const found = context.characters.filter(entry => entry.name.trim().toLowerCase() === needle);
         if (found.length > 1) {
             return { issue: { code: "ambiguousName", span, value } };
         }
         if (found.length === 1) {
-            matches.push({ type: "character", characterId: found[0].id, name: found[0].name });
+            // The entering row, when this scene holds one. It carries the stage key as well as its
+            // id: a character's key is the row's own stage name (or the character id when it has
+            // none), which the cast name this matched on cannot be turned back into.
+            const declaration = context.characterSources?.[found[0].id];
+            matches.push({
+                type: "character",
+                characterId: found[0].id,
+                name: found[0].name,
+                ...(declaration ? { stageName: declaration.name, sourceBlockId: declaration.blockId } : {}),
+            });
         }
     }
 
@@ -156,7 +172,9 @@ function resolveTarget(
         if (kind === "character") {
             continue;
         }
-        // The background-music channel answers to the reserved name; it is always "on stage".
+        // The background-music channel answers to the reserved name; it is always "on stage". It
+        // carries no `sourceBlockId` because there is no row to carry: a scene declares its music on
+        // its own record, so the channel is referenced as a built-in rather than bound to a block.
         if (kind === "audio" && needle === BGM_OBJECT_NAME) {
             matches.push({ type: "stageObject", objectKind: "audio", name: BGM_OBJECT_NAME, known: true });
             continue;
@@ -164,7 +182,11 @@ function resolveTarget(
         const names = context.stageObjects[kind] ?? [];
         const found = names.find(name => name.trim().toLowerCase() === needle);
         if (found !== undefined) {
-            matches.push({ type: "stageObject", objectKind: kind, name: found, known: true });
+            // The declaring row, when the scene holds one - a name that exists only because some row
+            // mentions it resolves without an id rather than anchoring to a row that does not
+            // declare it. Keyed on `needle`, which is already trimmed and lower-cased.
+            const sourceBlockId = context.stageObjectSources?.[kind]?.[needle];
+            matches.push({ type: "stageObject", objectKind: kind, name: found, known: true, ...(sourceBlockId ? { sourceBlockId } : {}) });
         }
     }
 
@@ -173,6 +195,17 @@ function resolveTarget(
     }
     if (matches.length === 1) {
         return { value: { kind: "target", target: matches[0] } };
+    }
+
+    // A kind the slot resolves only so it can refuse it. Checked AFTER the accepted kinds, so a name
+    // two worlds share still lands on the world this verb can act on rather than on the complaint.
+    for (const kind of type.refuses ?? []) {
+        const named = kind === "character"
+            ? context.characters.some(entry => entry.name.trim().toLowerCase() === needle)
+            : (context.stageObjects[kind] ?? []).some(name => name.trim().toLowerCase() === needle);
+        if (named) {
+            return { issue: { code: "unsupportedTarget", span, value, kind } };
+        }
     }
 
     // Nothing on stage answers. A free-typed name can stand only where its kind is knowable anyway
@@ -199,12 +232,12 @@ function resolveContent(
         return { value: { kind: "text", value } };
     }
     const assetType = target.objectKind === "video" ? "video" : "image";
-    const found = findByName(assetsOfType(context, assetType), value);
+    const found = findByName(assetChoices(context, assetType, type.allowSets), value);
     if (found === "ambiguous") {
         return { issue: { code: "ambiguousName", span, value } };
     }
     if (!found) {
-        return { issue: { code: "unknownAsset", span, value, assetType } };
+        return { issue: { code: "unknownAsset", span, value, assetType, ...(type.allowSets ? { allowSets: type.allowSets } : {}) } };
     }
     return { value: { kind: "asset", assetId: found.id } };
 }
@@ -222,7 +255,7 @@ function resolveAgainstType(
 ): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } | null {
     switch (type.kind) {
         case "asset": {
-            const found = findByName(assetsOfType(context, type.assetType), value);
+            const found = findByName(assetChoices(context, type.assetType, type.allowSets), value);
             if (found === "ambiguous") {
                 return { issue: { code: "ambiguousName", span, value } };
             }
@@ -344,7 +377,13 @@ function resolveAgainstType(
             // stays faithful to what was typed, the payload gets what it can store. A translated
             // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` and the
             // project file never carries a locale.
-            return option ? { value: { kind: "enum", value: option.value } } : null;
+            if (option) {
+                return { value: { kind: "enum", value: option.value } };
+            }
+            // A shape the word list cannot hold - a drawn easing curve - banked in the spelling the
+            // slot canonicalizes it to, for the same reason an alias is.
+            const freeform = enumFreeformValue(type, value);
+            return freeform === null ? null : { value: { kind: "enum", value: freeform } };
         }
         case "keyword":
             return value.trim().toLowerCase() === type.value.toLowerCase()
@@ -537,7 +576,7 @@ function resolveParam(
 function issueForUnresolvable(type: StoryCommandParamType, value: string, span: StoryCommandSpan): StoryCommandResolutionIssue {
     switch (type.kind) {
         case "asset":
-            return { code: "unknownAsset", span, value, assetType: type.assetType };
+            return { code: "unknownAsset", span, value, assetType: type.assetType, ...(type.allowSets ? { allowSets: type.allowSets } : {}) };
         case "scene":
             return { code: "unknownScene", span, value };
         case "audioTrack":

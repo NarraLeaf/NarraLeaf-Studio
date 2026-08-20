@@ -216,7 +216,7 @@ export const characters = {
             duplicateAxis: "{name} という名前の軸が 2 つある",
             axisDefaultMissing: "{axis} に既定のタグがないので、代わりに {name} を使う",
             occluded: "{name} は上のレイヤーに完全に隠れている",
-            avatarCombinations: "ダイアログのアバターを {count} 枚焼くことになる。軸を絞ると枚数が減る",
+            avatarCombinations: "ダイアログのアバターを {count} 枚生成する。軸を絞ると枚数が減る",
             combinationNoArt: "{name} は何も描かない",
             snapshotStale: "{name} は、もう存在しないタグで保存されている",
             poseNoImage: "{name} に画像がない",
@@ -253,7 +253,7 @@ export const characters = {
         voiceTrackMissing: "バスが見つからない",
         // ボイスの下に選べるものが何も無いときだけ出す。つまり、セレクトでは解決できず、
         // 先にバスを作りに行くしかない場面。
-        voiceTrackEmpty: "このキャラクター専用の音量を持たせるには、「プロジェクト → オーディオ」でボイスの下にバスを足す",
+        voiceTrackEmpty: "このキャラクター専用の音量を持たせるには、「プロジェクト ▸ ゲーム」でボイスの下にバスを追加する",
         select: "選択",
         thumbnailAlt: "サムネイル",
         color: "色",

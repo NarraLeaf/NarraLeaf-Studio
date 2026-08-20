@@ -5,14 +5,18 @@ import { Services, type WorkspaceContext } from "@/lib/workspace/services/servic
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
+import { requestAssetSetReveal } from "../assets/assetSetReveal";
 import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
 import { openSceneFlowTab } from "../story-flow/openSceneFlowTab";
+import { createCharacterEditorTab } from "../characters/state/useCharacterFocus";
+import { STORY_VARIABLES_PANEL_ID } from "../story-variables/storyVariablesPanelId";
 
 export interface SearchJumpDeps {
     openEditorTab: (tab: EditorTabDefinition<any>) => void;
@@ -23,7 +27,6 @@ export interface SearchJumpDeps {
 
 const LOCALIZATION_PANEL_ID = "narraleaf-studio:localization";
 const ASSETS_PANEL_ID = "narraleaf-studio:assets";
-const CHARACTERS_PANEL_ID = "narraleaf-studio:characters";
 
 /**
  * Navigate to a search hit. Shared by the search panel and the command palette's search mode.
@@ -71,8 +74,11 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             if (!character) {
                 return false;
             }
-            // Characters have no editor tab — the panel selection IS how one is opened.
-            deps.setPanelVisibility(CHARACTERS_PANEL_ID, true);
+            // The character's own editor, which is what "open a character" means everywhere else in
+            // the workspace — the cast list has opened one since it gained a tab, and a search hit
+            // that instead revealed the panel and selected a row was the odd one out. The selection
+            // still follows so the inspector rail shows who was opened.
+            deps.openEditorTab(createCharacterEditorTab(character));
             context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "character", data: character });
             return true;
         }
@@ -114,6 +120,34 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
         case "localizationKey":
             deps.setPanelVisibility(LOCALIZATION_PANEL_ID, true);
             return true;
+        case "storyVariable":
+            // A saved or persistent variable is declared in the variables panel rather than by any
+            // row, so the panel IS its address — the same bargain `localizationKey` makes above. The
+            // panel cannot yet be told which entry to reveal; the target carries the identity so that
+            // the day it can, nothing that produces one of these has to change.
+            deps.setPanelVisibility(STORY_VARIABLES_PANEL_ID, true);
+            return true;
+        case "assetSet": {
+            const context = deps.context;
+            if (!context) {
+                return false;
+            }
+            // A set has no preview editor - it is a row in the assets panel with an inspector, so
+            // this is the `asset` case's second arm and nothing more. Resolved live for the same
+            // reason that one is: the declaration may be gone, and a jump that reveals the panel
+            // with nothing selected is worse than one that declines.
+            const set = context.services.get<AssetSetService>(Services.AssetSets).getSet(target.assetSetId);
+            if (!set) {
+                return false;
+            }
+            deps.setPanelVisibility(ASSETS_PANEL_ID, true);
+            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "assetSet", data: set });
+            // Selecting it fills the inspector; this puts the ROW on screen. They are different
+            // questions - a set can be several folders down from anything the panel is currently
+            // drawing, and an inspector for a row nobody can see reads as a jump that half worked.
+            requestAssetSetReveal(ASSETS_PANEL_ID, target.assetSetId);
+            return true;
+        }
         case "asset": {
             const context = deps.context;
             if (!context) {
@@ -134,6 +168,23 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             // No preview editor for this type - reveal it selected in the assets panel instead.
             deps.setPanelVisibility(ASSETS_PANEL_ID, true);
             context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "asset", data: asset });
+            return true;
+        }
+        case "assetSet": {
+            const context = deps.context;
+            if (!context) {
+                return false;
+            }
+            // A set has no preview editor - it is a row in the assets panel with an inspector, so
+            // this is the `asset` case's second arm and nothing more. Resolved live for the same
+            // reason that one is: the declaration may be gone, and a jump that reveals the panel
+            // with nothing selected is worse than one that declines.
+            const set = context.services.get<AssetSetService>(Services.AssetSets).getSet(target.assetSetId);
+            if (!set) {
+                return false;
+            }
+            deps.setPanelVisibility(ASSETS_PANEL_ID, true);
+            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "assetSet", data: set });
             return true;
         }
     }

@@ -78,7 +78,7 @@ export const plugins = {
             runtimeOnly: "仅游戏运行时",
             runtimeOnlyHint: "该插件只扩展运行中的游戏，在编辑器中没有可执行的部分",
             suppressed: "已为本项目停用",
-            suppressedHint: "已安装的版本与本项目当初依赖的版本不兼容；请更新插件，或在「项目 → 依赖」中重新扫描依赖表",
+            suppressedHint: "已安装的版本与本项目当初依赖的版本不兼容；请更新插件，或在「项目 ▸ 应用」中重新扫描依赖表",
             failed: "载入失败",
         },
         suppressedNotice: "本项目未载入这些插件：{names}；已安装的版本与项目当初依赖的版本不兼容，详见「插件」面板",

@@ -68,6 +68,13 @@ import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from ".
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
 import { probeVcsServer } from "./serverDiscovery";
+import {
+    createServerProject,
+    listServerProjects,
+    type ServerProjectResult,
+    type ServerProjectsResult,
+} from "./serverProjects";
+import { forgetServerToken, recallServerToken, rememberServerToken } from "./serverTokens";
 
 /**
  * Owns Lore state for open projects.
@@ -1692,6 +1699,15 @@ export class VcsManager extends Manager {
             signedIn,
         ];
         this.writeStoredServerSessions(servers);
+        // Sealed here rather than at the sign-in, because this is the one path that
+        // has the token and knows which server it turned out to be for. A machine
+        // that cannot seal keeps none, and the calls that want one say so.
+        if (!rememberServerToken(this.app.getGlobalState(), signedIn.remoteOrigin, options.token)) {
+            this.app.logger.warn(
+                "[Vcs] Kept no token for", signedIn.remoteOrigin,
+                "- this machine cannot seal one, so its project list will ask for it again",
+            );
+        }
         this.app.logger.info(
             "[Vcs] Added server", signedIn.remoteOrigin, "at", signedIn.authUrl,
             "as", signedIn.account.username || signedIn.account.displayName,
@@ -1729,8 +1745,58 @@ export class VcsManager extends Manager {
         const servers = this.storedServerSessions()
             .filter((other) => other.remoteOrigin !== stored.remoteOrigin);
         this.writeStoredServerSessions(servers);
+        forgetServerToken(this.app.getGlobalState(), stored.remoteOrigin);
         this.app.logger.info("[Vcs] Removed server", stored.remoteOrigin);
         return servers;
+    }
+
+    /**
+     * The projects one server holds.
+     *
+     * Asked of the server rather than remembered, every time: a list kept here
+     * would be a list that is wrong the moment somebody else pushes, and this is
+     * one small request over a connection that is already trusted.
+     */
+    public async listServerProjects(remoteOrigin: string): Promise<ServerProjectsResult> {
+        const session = this.storedServerSession(remoteOrigin);
+        if (!session) return { ok: false, problem: { kind: "no-token" } };
+        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
+        if (token === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerProjects({
+            authUrl: session.authUrl,
+            token,
+            userDataDir: this.app.getUserDataDir(),
+        });
+    }
+
+    /**
+     * Ask a server to make a project.
+     *
+     * The server both records it and creates the repository, in that order and
+     * within one call. Studio deliberately does not ask `loreserver` for a
+     * repository itself: one made that way is one the server has no row for, and
+     * a repository with no row is reachable by nobody at all.
+     */
+    public async createServerProject(
+        remoteOrigin: string,
+        name: string,
+        description?: string,
+    ): Promise<ServerProjectResult> {
+        const session = this.storedServerSession(remoteOrigin);
+        if (!session) return { ok: false, problem: { kind: "no-token" } };
+        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
+        if (token === null) return { ok: false, problem: { kind: "no-token" } };
+        const made = await createServerProject({
+            authUrl: session.authUrl,
+            token,
+            userDataDir: this.app.getUserDataDir(),
+            name,
+            ...(description === undefined ? {} : { description }),
+        });
+        if (made.ok) {
+            this.app.logger.info("[Vcs] Created", made.project.name, "on", remoteOrigin);
+        }
+        return made;
     }
 
     /** Every session this installation has recorded, in the order they were written. */

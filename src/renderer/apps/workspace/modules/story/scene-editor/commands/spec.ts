@@ -10,6 +10,7 @@ import type {
     StoryCommandTargetKind,
     StoryCommandValue,
     StoryPuppetChannel,
+    StoryReservedTargetName,
 } from "../storyCommandValues";
 import type { StoryCommandGroupId } from "../storyCommandCategories";
 
@@ -255,7 +256,7 @@ export function secondsParam(hint = "duration"): StoryCommandParamSpec {
     return { aliases: ["duration"], hint, type: SECONDS_TYPE };
 }
 
-/** The `at=` word list. Exported so a positional placement slot spells the same three words. */
+/** The `pos=` word list. Exported so a positional placement slot spells the same three words. */
 export const PLACEMENT_OPTIONS = [{ value: "left" }, { value: "center" }, { value: "right" }] as const;
 
 /**
@@ -295,10 +296,18 @@ export function appTagParam(hint = "appTag"): StoryCommandParamSpec {
     return { hint, type: { kind: "appTag" }, positional: true, core: true };
 }
 
-/** `at=` - a placement. */
+/**
+ * `pos=` - a placement.
+ *
+ * `pos` is the canonical key since M2, and `at` stays as an alias. The two were always the same slot;
+ * what changed is which of them the prop vocabulary spells, and a placement is a POSITION - the same
+ * channel `/transform pos=` writes - so the two surfaces now say one word for one channel. `at` is
+ * kept rather than burned because a param key is not a command token: an old `/image forest at=left`
+ * re-parses to exactly the same row, so there is nothing for a rename to silently reinterpret.
+ */
 export function placementParam(): StoryCommandParamSpec {
     return {
-        aliases: ["pos"],
+        aliases: ["at"],
         hint: "placement",
         type: { kind: "enum", options: PLACEMENT_OPTIONS },
     };
@@ -325,11 +334,25 @@ export function opensInspectorAfterCommit(
 
 export function targetParam(
     accepts: readonly StoryCommandTargetKind[],
-    options?: { core?: boolean; skippable?: boolean; fallbackKind?: StoryCommandStageObjectKind },
+    options?: {
+        core?: boolean;
+        skippable?: boolean;
+        fallbackKind?: StoryCommandStageObjectKind;
+        /** Stage singletons this slot also answers to by their reserved word (`camera`). */
+        reserved?: readonly StoryReservedTargetName[];
+        /** Kinds resolved only so they can be refused with a reason - see the grammar's `refuses`. */
+        refuses?: readonly StoryCommandTargetKind[];
+    },
 ): StoryCommandParamSpec {
     return {
         hint: "target",
-        type: { kind: "target", accepts, ...(options?.fallbackKind ? { fallbackKind: options.fallbackKind } : {}) },
+        type: {
+            kind: "target",
+            accepts,
+            ...(options?.fallbackKind ? { fallbackKind: options.fallbackKind } : {}),
+            ...(options?.reserved ? { reserved: options.reserved } : {}),
+            ...(options?.refuses ? { refuses: options.refuses } : {}),
+        },
         positional: true,
         ...(options?.core ? { core: true } : {}),
         ...(options?.skippable ? { skippable: true } : {}),

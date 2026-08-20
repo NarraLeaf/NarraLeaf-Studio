@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import type { Translator } from "@shared/i18n";
-import { Select, type SelectOption } from "@/lib/components/elements";
+import { CONTROL_HEIGHT_CLASS, Select, Switch, type SelectOption } from "@/lib/components/elements";
+import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { EasingCurveEditor } from "../../../components/ui/EasingCurveEditor";
 
 /**
  * The action inspector's shared field primitives.
@@ -17,7 +20,13 @@ export const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 
 export type TFunc = Translator["t"];
 
-export const easingOptions = (t: TFunc): SelectOption[] => [
+/**
+ * The easing word list, plus the option that stands for a drawn curve.
+ *
+ * Not exported: {@link EasingField} is the only thing that renders it, so a new action cannot pair
+ * this list with a plain select and end up offering the custom option with no card to draw it in.
+ */
+const easingOptions = (t: TFunc): SelectOption[] => [
     { value: "", label: t("storyInspector.easing.default") },
     { value: "linear", label: t("storyInspector.easing.linear") },
     { value: "easeIn", label: t("storyInspector.easing.easeIn") },
@@ -30,7 +39,56 @@ export const easingOptions = (t: TFunc): SelectOption[] => [
     { value: "backOut", label: t("storyInspector.easing.backOut") },
     { value: "backInOut", label: t("storyInspector.easing.backInOut") },
     { value: "anticipate", label: t("storyInspector.easing.anticipate") },
+    { value: CUSTOM_EASING_OPTION, label: t("storyInspector.easing.custom") },
 ];
+
+/**
+ * The option that stands for a curve rather than a word.
+ *
+ * Not a stored value: picking it writes a `cubic-bezier(…)` into the same field the named easings
+ * use, and a stored curve reads back as this option. The field carries one string either way, which
+ * is why nothing downstream - the compiler, the command line, the document - grew a second shape.
+ */
+export const CUSTOM_EASING_OPTION = "__custom";
+
+/**
+ * The `Easing` field, whole: the pick, plus the curve card when the pick is a drawn one.
+ *
+ * Every action that eases anything shows this one field, so it owns the whole choice rather than
+ * leaving each caller to pair a select with a card. The card sits under the select inside the same
+ * grid cell, which is what makes it read as belonging to this field rather than as a new section.
+ */
+export function EasingField(props: { t: TFunc; value: string | undefined; onChange: (easing: string | undefined) => void }) {
+    const custom = isStoryBezierEasing(props.value);
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.t("storyInspector.field.easing")}</label>
+            <Select
+                fullWidth
+                portalMenu
+                options={easingOptions(props.t)}
+                value={custom ? CUSTOM_EASING_OPTION : (props.value ?? "")}
+                onChange={next => props.onChange(nextEasingValue(String(next), props.value))}
+            />
+            {custom ? (
+                <div className="mt-1.5">
+                    <EasingCurveEditor easing={props.value ?? STORY_DEFAULT_BEZIER_EASING} onChange={props.onChange} />
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+/**
+ * What the picked option stores. Asking for a custom curve keeps the curve already there, so
+ * switching to a named easing and back does not throw away the shape the author drew.
+ */
+export function nextEasingValue(picked: string, current: string | undefined): string | undefined {
+    if (picked !== CUSTOM_EASING_OPTION) {
+        return picked || undefined;
+    }
+    return isStoryBezierEasing(current) ? current : STORY_DEFAULT_BEZIER_EASING;
+}
 
 /**
  * A titled, boxed group used to organise the compact action editor into scannable
@@ -98,6 +156,30 @@ export function SegToggle<T extends string>(props: { value: T; options: { value:
     );
 }
 
+/**
+ * A boolean field.
+ *
+ * Drawn with the shared `Switch`, like every other boolean in Studio, and stacked label-above-control
+ * like every other field in this kit. It replaces a hand-rolled checkbox row that sat inline at a
+ * `min-h-[34px]` of its own: off the shared size scale, and bottom-aligned against neighbours that
+ * are top-aligned, so the one boolean in a grid of fields read as a control borrowed from elsewhere.
+ */
+export function ToggleField(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
+            <div className={`flex items-center ${CONTROL_HEIGHT_CLASS.md}`}>
+                <Switch
+                    size="sm"
+                    checked={props.checked}
+                    onCheckedChange={props.onChange}
+                    aria-label={props.label}
+                />
+            </div>
+        </div>
+    );
+}
+
 export function SelectField(props: { label: string; options: SelectOption[]; value: string | number; onChange: (value: string | number) => void }) {
     return (
         <div>
@@ -123,6 +205,43 @@ export function NumberField(props: { label: string; value: number | undefined; o
                 onEmpty={() => props.onChange(undefined)}
                 type="text"
                 inputMode="decimal"
+            />
+        </div>
+    );
+}
+
+/**
+ * A free-typed string, or a pick when `options` is given.
+ *
+ * Moved here from `StorySceneActionInspector` when the camera editor grew a raw-CSS escape hatch: it
+ * was the third file that needed a plain text row, and the kit exists precisely so the second one
+ * does not draw its own.
+ */
+export function TextField(props: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    options?: SelectOption[];
+    /** Shown when `value` is empty — used for a derived default, which is not authored content. */
+    placeholder?: string;
+}) {
+    if (props.options) {
+        return (
+            <SelectField
+                label={props.label}
+                options={props.options}
+                value={props.value}
+                onChange={value => props.onChange(String(value))}
+            />
+        );
+    }
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
+            <EnhancedInput
+                value={props.value}
+                placeholder={props.placeholder}
+                onChange={props.onChange}
             />
         </div>
     );

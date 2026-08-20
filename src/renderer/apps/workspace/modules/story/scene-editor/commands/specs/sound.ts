@@ -3,7 +3,7 @@ import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import { BGM_OBJECT_NAME, type StoryCommandValue } from "../../storyCommandValues";
 import { asAudioTrackId, asBoolean, asDurationMs, asNumber, asTarget, asText, audioTrackParam, defineStoryCommand, SECONDS_TYPE, targetParam } from "../spec";
-import { deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
+import { actionableTargetRef, audioTargetRef, deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
 
 /**
  * Sound: `/bgm`, `/sound`, and the control family `/vol` `/rate` `/stop` `/pause` `/resume`
@@ -25,7 +25,10 @@ function audioControlBlock(
     if (block.kind !== "action" || block.payload.action !== "audio") {
         return block;
     }
-    const payload = { ...block.payload, objectName: asTarget(args.target)?.name ?? BGM_OBJECT_NAME };
+    const target = asTarget(args.target);
+    // The name stays authoritative; the reference beside it is what follows a rename of the
+    // `playSound` row that created the handle - or names the music channel, which has no such row.
+    const payload = { ...block.payload, objectName: target?.name ?? BGM_OBJECT_NAME, target: audioTargetRef(target) };
     const fadeMs = asDurationMs(args.fade);
     if (fadeMs !== undefined) {
         payload.fadeMs = fadeMs;
@@ -64,11 +67,11 @@ function mediaControlBlock(
             parentId: null,
             childrenIds: [],
             kind: "action",
-            payload: { action: "video", operation: ops.video, objectName: target.name },
+            payload: { action: "video", operation: ops.video, objectName: target.name, target: actionableTargetRef(target) },
         };
     }
     if (target?.type === "stageObject" && target.objectKind === "vfx" && ops.vfx) {
-        const block = vfxOperationBlock(ops.vfx, target.name, ctx.generateId);
+        const block = vfxOperationBlock(ops.vfx, target.name, ctx.generateId, { target: actionableTargetRef(target) });
         if (block.kind === "action" && block.payload.action === "vfx") {
             const payload = { ...block.payload };
             writeVfx?.(payload);
@@ -87,7 +90,7 @@ export const bgm = defineStoryCommand({
     examples: ["/bgm theme", "/bgm theme vol=0.6 fade=1 loop", "/bgm theme track=Music"],
     quickParams: ["vol", "loop"],
     params: {
-        audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
+        audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio", allowSets: true }, positional: true, core: true },
         // The track IS the bus the clip is routed to, and supplies the loop default; `vol` and
         // `loop` below are the row's own. Omitted, the music built-in answers - which is the
         // behaviour every `/bgm` line written before tracks existed already had.
@@ -134,7 +137,7 @@ export const sound = defineStoryCommand({
     examples: ["/sound hit", "/sound hit name=impact vol=0.8", "/sound hit track=SFX fade=0.2"],
     quickParams: ["vol", "loop"],
     params: {
-        audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
+        audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio", allowSets: true }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
         track: audioTrackParam(),
         vol: { aliases: ["volume"], hint: "vol", type: { kind: "number", min: 0, max: 1 } },
@@ -300,6 +303,7 @@ export const seek = defineStoryCommand({
                     action: "video",
                     operation: "seek",
                     objectName: target.name,
+                    target: actionableTargetRef(target),
                     timeMs,
                 },
             };

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Star, Trash2 } from "lucide-react";
+import { useEditorEnteredState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { useTranslation } from "@/lib/i18n";
-import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type {
     AppearanceFieldTransition,
     AppearanceModel,
@@ -10,17 +9,7 @@ import type {
     AppearanceVariant,
 } from "@shared/types/ui-editor/appearance";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
-import { Select } from "@/lib/components/elements/Select";
-import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
-import {
-    addVariant,
-    newVariantId,
-    removeVariant,
-    renameVariant,
-    replaceVariant,
-    setDefaultVariantId,
-    setGroupTransitionOnAllVariants,
-} from "./appearancePatch";
+import { ensureVariantExists, replaceVariant, setGroupTransitionOnAllVariants } from "./appearancePatch";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { CompactContainerAppearance } from "./compact/CompactContainerAppearance";
@@ -28,6 +17,8 @@ import { CompactButtonAppearance } from "./compact/CompactButtonAppearance";
 import { CompactTextAppearance } from "./compact/CompactTextAppearance";
 import { moduleHasAnyAppearanceTransitionInModel } from "./appearanceMotion";
 import { AppearanceReadOnlyProvider } from "./appearanceReadOnly";
+import { AppearancePositionInLayoutProvider } from "./appearancePositionOwner";
+import { findStateHost } from "./stateHost";
 import {
     BUTTON_MODULE_KEYS as BUTTON_KEYS,
     CONTAINER_MODULE_KEYS as CONTAINER_KEYS,
@@ -125,14 +116,6 @@ export type AppearanceAuthoringPanelProps = {
     readOnly?: boolean;
 };
 
-function cloneVariantShallow(source: AppearanceVariant, id: string, name: string): AppearanceVariant {
-    return {
-        id,
-        name,
-        propertyGroups: JSON.parse(JSON.stringify(source.propertyGroups)) as AppearancePropertyGroup[],
-    };
-}
-
 export function AppearanceAuthoringPanel({
     kind,
     appearance,
@@ -143,16 +126,29 @@ export function AppearanceAuthoringPanel({
 }: AppearanceAuthoringPanelProps) {
     const { t } = useTranslation();
     const elementId = inspectorData.element.id;
-    const [selectedVariantId, setSelectedVariantId] = useState<string>(() => {
-        if (!isUsableAppearanceModel(appearance)) {
-            return "";
-        }
-        const cached = UIEditorStateService.getInstance().getAppearanceInspectorVariant(elementId);
-        if (cached && appearance.variants.some(v => v.id === cached)) {
-            return cached;
-        }
-        return appearance.defaultVariantId;
-    });
+    const entered = useEditorEnteredState();
+    // Which state this panel edits is not its own decision: the state bar above it enters one, the
+    // canvas draws that one, and these modules edit that one. Keeping a second selection here is how
+    // an author ends up editing a state they cannot see.
+    //
+    // Entered on an ancestor counts. A switch's parts are drawn in the switch's state, so with the
+    // switch turned on the canvas shows the track's on variant - and a panel still editing the
+    // resting one takes the author's new colour and puts it where they are not looking.
+    const stateHost = useMemo(
+        () => findStateHost(inspectorData.documentService.getDocument(), elementId),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [elementId, inspectorData.documentService, draftResetKey],
+    );
+    const stateOwnerId = entered?.elementId === elementId ? elementId : stateHost?.element.id ?? null;
+    const shownVariantId = isUsableAppearanceModel(appearance)
+        ? entered && entered.elementId === stateOwnerId
+            ? entered.variantId ?? appearance.defaultVariantId
+            : appearance.defaultVariantId
+        : "";
+    /** The state's name, for the variant this panel creates the first time it is edited in one. */
+    const shownStateName =
+        stateHost?.states.find(state => state.id === shownVariantId)?.name ?? shownVariantId;
+    const selectedVariantId = shownVariantId;
 
     const [containerModuleModes, setContainerModuleModes] = useState(DEFAULT_CONTAINER_MODULE_MODES);
     const [buttonModuleModes, setButtonModuleModes] = useState(DEFAULT_BUTTON_MODULE_MODES);
@@ -191,39 +187,20 @@ export function AppearanceAuthoringPanel({
         setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
     }, [draftResetKey, selectedVariantId]);
 
-    useEffect(() => {
-        if (!isUsableAppearanceModel(appearance)) {
-            return;
-        }
-        setSelectedVariantId(prev => {
-            if (appearance.variants.some(v => v.id === prev)) {
-                return prev;
-            }
-            const cached = UIEditorStateService.getInstance().getAppearanceInspectorVariant(elementId);
-            if (cached && appearance.variants.some(v => v.id === cached)) {
-                return cached;
-            }
-            return appearance.defaultVariantId;
-        });
-    }, [appearance, elementId]);
-
-    useEffect(() => {
-        if (!isUsableAppearanceModel(appearance) || !selectedVariantId) {
-            return;
-        }
-        if (!appearance.variants.some(v => v.id === selectedVariantId)) {
-            return;
-        }
-        UIEditorStateService.getInstance().setAppearanceInspectorVariant(elementId, selectedVariantId);
-    }, [appearance, selectedVariantId, elementId]);
-
     const model = appearance;
     const selectedVariant = useMemo(() => {
         if (!isUsableAppearanceModel(model)) {
             return null;
         }
-        return model.variants.find(v => v.id === selectedVariantId) ?? model.variants[0] ?? null;
-    }, [model, selectedVariantId]);
+        const own = model.variants.find(v => v.id === selectedVariantId);
+        if (own) {
+            return own;
+        }
+        // A part that has never been given a look in this state shows the resting one, so the fields
+        // start from what is on screen; the first edit is what gives the state a variant of its own.
+        const resting = model.variants.find(v => v.id === model.defaultVariantId) ?? model.variants[0] ?? null;
+        return resting ? { ...resting, id: selectedVariantId, name: shownStateName } : null;
+    }, [model, selectedVariantId, shownStateName]);
 
     const containerMotionFieldsConfigured = useMemo(() => {
         if (!isUsableAppearanceModel(model)) {
@@ -262,9 +239,15 @@ export function AppearanceAuthoringPanel({
             if (!isUsableAppearanceModel(model) || !selectedVariant) {
                 return;
             }
-            onReplace(replaceVariant(model, selectedVariant.id, nextVariant));
+            onReplace(
+                replaceVariant(
+                    ensureVariantExists(model, selectedVariant.id, shownStateName),
+                    selectedVariant.id,
+                    nextVariant,
+                ),
+            );
         },
-        [model, onReplace, selectedVariant]
+        [model, onReplace, selectedVariant, shownStateName]
     );
 
     const appearanceDraftResetKey = useMemo(() => {
@@ -297,118 +280,10 @@ export function AppearanceAuthoringPanel({
         );
     }
 
-    const variantOptions = model.variants.map(v => ({
-        value: v.id,
-        label: v.name || t("widgetAppearance.variant.untitled"),
-    }));
-
-    const handleAddVariant = () => {
-        const base = selectedVariant ?? model.variants[0];
-        if (!base) {
-            return;
-        }
-        const id = newVariantId();
-        // English on purpose - see DEFAULT_APPEARANCE_VARIANT_NAME. The name is written to the
-        // document, so translating it would ship one author's UI language to every other author.
-        const nextName = `Variant ${model.variants.length + 1}`;
-        const variant = cloneVariantShallow(base, id, nextName);
-        onReplace(addVariant(model, variant));
-        setSelectedVariantId(id);
-        setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
-        setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
-        setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
-    };
-
-    const handleRemoveVariant = () => {
-        if (!selectedVariant || model.variants.length <= 1) {
-            return;
-        }
-        const removedId = selectedVariant.id;
-        const nextModel = removeVariant(model, removedId);
-        onReplace(nextModel);
-        setSelectedVariantId(nextModel.defaultVariantId);
-        setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
-        setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
-        setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
-    };
-
-    const handleSetDefault = () => {
-        if (!selectedVariant) {
-            return;
-        }
-        onReplace(setDefaultVariantId(model, selectedVariant.id));
-    };
-
-    const handleRenameVariant = (raw: string) => {
-        if (!selectedVariant) {
-            return;
-        }
-        onReplace(renameVariant(model, selectedVariant.id, raw));
-    };
-
     // Named rather than returned directly so the provider can wrap it without re-indenting the whole
     // panel; nothing else about the tree changes.
     const body = (
         <div className="space-y-3 min-w-0">
-            <div className="flex flex-wrap gap-2 items-center min-w-0">
-                <div className="flex-1 min-w-[8rem]">
-                    <Select
-                        value={selectedVariant?.id ?? ""}
-                        options={variantOptions}
-                        fullWidth
-                        // Which variant this panel SHOWS, and nothing else - the three buttons beside
-                        // it are the ones that add, default and delete. Marked inspect-only so a
-                        // frozen workspace can read what an element looks like when hovered or
-                        // pressed, instead of being stuck on whichever variant happened to be
-                        // selected.
-                        inspectOnly
-                        onChange={v => {
-                            const id = String(v);
-                            setSelectedVariantId(id);
-                            setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
-                            setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
-                            setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
-                        }}
-                    />
-                </div>
-                <button
-                    type="button"
-                    data-tip={t("widgetAppearance.variant.addTitle")} aria-label={t("widgetAppearance.variant.addTitle")}
-                    onClick={handleAddVariant}
-                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill"
-                >
-                    <Plus className="w-4 h-4" />
-                </button>
-                <button
-                    type="button"
-                    data-tip={t("widgetAppearance.variant.setDefaultTitle")} aria-label={t("widgetAppearance.variant.setDefaultTitle")}
-                    onClick={handleSetDefault}
-                    disabled={!selectedVariant || model.defaultVariantId === selectedVariant.id}
-                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40"
-                >
-                    <Star className="w-4 h-4" />
-                </button>
-                <button
-                    type="button"
-                    data-tip={t("widgetAppearance.variant.deleteTitle")} aria-label={t("widgetAppearance.variant.deleteTitle")}
-                    onClick={handleRemoveVariant}
-                    disabled={model.variants.length <= 1}
-                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-danger hover:bg-danger/10 disabled:opacity-40"
-                >
-                    <Trash2 className="w-4 h-4" />
-                </button>
-            </div>
-
-            <div className="min-w-0">
-                <label className="text-2xs tracking-wide text-fg-subtle block mb-1">{t("widgetAppearance.variant.nameLabel")}</label>
-                <EnhancedInput
-                    key={selectedVariant?.id}
-                    value={selectedVariant?.name ?? ""}
-                    onChange={handleRenameVariant}
-                    className="text-xs"
-                />
-            </div>
-
             {selectedVariant && (
                 <>
                     {kind === "button" ? (
@@ -462,5 +337,9 @@ export function AppearanceAuthoringPanel({
         </div>
     );
 
-    return <AppearanceReadOnlyProvider value={readOnly}>{body}</AppearanceReadOnlyProvider>;
+    return (
+        <AppearanceReadOnlyProvider value={readOnly}>
+            <AppearancePositionInLayoutProvider value={stateHost !== null}>{body}</AppearancePositionInLayoutProvider>
+        </AppearanceReadOnlyProvider>
+    );
 }

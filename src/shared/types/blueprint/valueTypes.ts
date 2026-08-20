@@ -4,6 +4,7 @@
  */
 
 export const BLUEPRINT_VALUE_TYPE_VECTOR2D = "Vector2D" as const;
+export const BLUEPRINT_VALUE_TYPE_RECT = "Rect" as const;
 export const BLUEPRINT_VALUE_TYPE_RGBA_COLOR = "RGBAColor" as const;
 export const BLUEPRINT_VALUE_TYPE_ELEMENT = "element" as const;
 export const BLUEPRINT_VALUE_TYPE_ARRAY = "array" as const;
@@ -23,6 +24,21 @@ export type BlueprintElementRef = {
 export type BlueprintVector2D = {
     x: number;
     y: number;
+};
+
+/**
+ * An axis-aligned rectangle, in whichever space the pin producing it names.
+ *
+ * A named type rather than bare `json`, because every rectangle in the graph - a widget's bounds, a
+ * measured rect, an image crop - carries the same four fields, while a pin typed `json` accepts any
+ * object at all. `width` and `height` are non-negative once normalized: a widget authored with a
+ * negative extent still covers a real area, and the top-left already accounts for it.
+ */
+export type BlueprintRect = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
 };
 
 export type BlueprintRGBAColor = {
@@ -265,6 +281,7 @@ export function normalizeBlueprintAnimationToken(value: unknown): BlueprintAnima
 }
 
 const DEFAULT_VECTOR2D: BlueprintVector2D = { x: 0, y: 0 };
+const DEFAULT_RECT: BlueprintRect = { x: 0, y: 0, width: 0, height: 0 };
 const DEFAULT_RGBA_COLOR: BlueprintRGBAColor = { r: 255, g: 255, b: 255, a: 1 };
 
 function toFiniteNumber(value: unknown): number | undefined {
@@ -303,6 +320,41 @@ export function normalizeBlueprintVector2D(value: unknown): BlueprintVector2D {
         x: toFiniteNumber(record.x) ?? DEFAULT_VECTOR2D.x,
         y: toFiniteNumber(record.y) ?? DEFAULT_VECTOR2D.y,
     };
+}
+
+/**
+ * Reads any object carrying the four fields as a rect, folding a negative extent into the origin.
+ *
+ * The folding is what lets a rect taken from a widget authored bottom-up or right-to-left describe
+ * the same area as one authored the ordinary way. Every rect leaving here answers `x + width` for
+ * its right edge, so no consumer has to ask which corner it was handed.
+ */
+export function normalizeBlueprintRect(value: unknown): BlueprintRect {
+    const record = readRecord(value);
+    if (!record) {
+        return { ...DEFAULT_RECT };
+    }
+    return normalizeRectExtent(
+        toFiniteNumber(record.x) ?? DEFAULT_RECT.x,
+        toFiniteNumber(record.y) ?? DEFAULT_RECT.y,
+        toFiniteNumber(record.width) ?? DEFAULT_RECT.width,
+        toFiniteNumber(record.height) ?? DEFAULT_RECT.height,
+    );
+}
+
+/** The same folding, for callers that already hold four numbers. */
+export function normalizeRectExtent(x: number, y: number, width: number, height: number): BlueprintRect {
+    return {
+        x: width < 0 ? x + width : x,
+        y: height < 0 ? y + height : y,
+        width: Math.abs(width),
+        height: Math.abs(height),
+    };
+}
+
+/** The point equidistant from a rect's four edges. */
+export function blueprintRectCenter(rect: BlueprintRect): BlueprintVector2D {
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 
 function parseHexColor(input: string): BlueprintRGBAColor | undefined {

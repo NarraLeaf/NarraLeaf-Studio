@@ -1,3 +1,11 @@
+import {
+    EXPERIMENTAL_CONDITION_FLAG_PREFIX,
+    EXPERIMENTAL_CONDITION_IDS,
+    EXPERIMENTAL_FLAG,
+    isExperimentalConditionId,
+    type ExperimentalConditionId,
+} from "@shared/types/experimental";
+
 export const DEFAULT_CDP_PORT = 9222;
 
 /**
@@ -28,6 +36,18 @@ export interface StartupProjectCommandLineOptions {
      */
     selector: string | null;
     error: string | null;
+}
+
+export interface ExperimentalCommandLineOptions {
+    /**
+     * `--experimental` was given. Whether it is honoured is a second question - a packaged Studio
+     * never enters the mode. See `BaseApp.getExperimentalState`.
+     */
+    requested: boolean;
+    /** Conditions named by `--x-<id>` flags, in registry order and without duplicates. */
+    conditions: ExperimentalConditionId[];
+    /** `--x-` flags that name no registered condition, so the launch can report them. */
+    unknownConditionFlags: string[];
 }
 
 export interface MainCommandLineOptions {
@@ -63,8 +83,42 @@ export interface MainCommandLineOptions {
      * not resolve.
      */
     project: StartupProjectCommandLineOptions;
+    /**
+     * Start on the home screen, whatever `workspace.reopenLastProject` says.
+     *
+     * The escape hatch for the reopen, and the one startup flag here that is NOT dev-gated: a
+     * project that hangs or crashes the workspace as it loads would otherwise be reopened by every
+     * launch, leaving no way to reach the home screen and open a different one. A packaged build is
+     * exactly where that happens, and this flag opens nothing and reads no path - it only declines
+     * to restore - so argv arriving from a shortcut has nothing to abuse here.
+     *
+     * `--project` still wins: naming a project is a more specific request than declining to
+     * restore one.
+     */
+    launcher: boolean;
     cdp: CdpCommandLineOptions;
     devReload: DevReloadCommandLineOptions;
+    /**
+     * Development launch that unlocks test conditions which are not part of the product.
+     *
+     * Parsed unconditionally and refused later for a packaged build, the same way `--cdp` is. See
+     * `@shared/types/experimental` for what the flags are and why there are two levels of them.
+     */
+    experimental: ExperimentalCommandLineOptions;
+    /**
+     * Bare paths the launch was given, in the order they appeared - a double-clicked `.nlproj`, a
+     * `.nlspkg` dropped on the icon, a folder passed on the command line.
+     *
+     * Kept as strings and nothing more. What a path *is* is decided by `resolveLaunchOpenRequest`
+     * against the disk, and this file has no business touching the disk (same rule `--project`
+     * follows). Anything that is not a project, a project folder or a package is ignored there,
+     * which is what makes it safe to collect every positional argument here without knowing where
+     * it came from.
+     *
+     * NOT dev-gated, unlike `--project`. This is the mechanism a packaged Studio is supposed to
+     * answer file associations with; `--project`'s doc comment names it as the one that is not.
+     */
+    openPaths: string[];
 }
 
 export function isMainDevMode(options: MainCommandLineOptions, isPackaged: boolean): boolean {
@@ -97,6 +151,30 @@ function takeValue(value: string | undefined): string | null {
     return value;
 }
 
+/**
+ * Flags whose *next* argument is a value rather than a path.
+ *
+ * Without this list, `--project demo` would offer "demo" to the open-request resolver as well.
+ * Only the separated forms need it; `--flag=value` is one argument and never looks positional.
+ */
+const VALUE_TAKING_FLAGS = new Set([
+    "--project",
+    "--cdp-port",
+    "--dev-reload-port",
+]);
+
+/**
+ * Whether `argv[1]` is the app script rather than something the launch was asked to open.
+ *
+ * Only development has one: `electron dist/main/index.js --dev` puts the entry point where a
+ * packaged launch puts the first real argument. Matching on the extension rather than on
+ * `process.defaultApp` keeps this file pure, and costs nothing in the packaged case that matters -
+ * neither a project folder nor a `.nlproj` nor a `.nlspkg` ends in `.js`.
+ */
+function isAppScriptArgument(argument: string | undefined): boolean {
+    return argument !== undefined && /\.(?:js|mjs|cjs)$/i.test(argument);
+}
+
 export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOptions {
     let cdpEnabled = false;
     let cdpPort = DEFAULT_CDP_PORT;
@@ -107,11 +185,26 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     let devReloadError: string | null = null;
     let projectSelector: string | null = null;
     let projectError: string | null = null;
+    const experimentalConditions = new Set<ExperimentalConditionId>();
+    const unknownConditionFlags = new Set<string>();
+    const openPaths: string[] = [];
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
 
-        if (arg === "--dev" || arg === "--onboarding" || arg === "--skip-onboarding") {
+        // Index 0 is the executable and index 1 may be the app script, neither of which is an
+        // argument. Everything else that is not a switch and does not follow one is a candidate
+        // path - `resolveLaunchOpenRequest` decides whether it is anything at all, so a Chromium
+        // positional or a stray word costs nothing here.
+        const isPositional = i > (isAppScriptArgument(argv[1]) ? 1 : 0)
+            && !arg.startsWith("-")
+            && !VALUE_TAKING_FLAGS.has(argv[i - 1] ?? "");
+        if (isPositional) {
+            openPaths.push(arg);
+        }
+
+        if (arg === "--dev" || arg === "--onboarding" || arg === "--skip-onboarding"
+            || arg === "--launcher") {
             continue;
         }
 
@@ -137,6 +230,20 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
 
             projectSelector = value;
             projectError = null;
+            continue;
+        }
+
+        if (arg === EXPERIMENTAL_FLAG) {
+            continue;
+        }
+
+        if (arg.startsWith(EXPERIMENTAL_CONDITION_FLAG_PREFIX)) {
+            const id = arg.slice(EXPERIMENTAL_CONDITION_FLAG_PREFIX.length);
+            if (isExperimentalConditionId(id)) {
+                experimentalConditions.add(id);
+            } else {
+                unknownConditionFlags.add(arg);
+            }
             continue;
         }
 
@@ -215,6 +322,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             selector: projectSelector,
             error: projectError,
         },
+        launcher: argv.includes("--launcher"),
         cdp: {
             enabled: cdpEnabled,
             port: cdpPort,
@@ -226,5 +334,13 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             portSource: devReloadPortSource,
             error: devReloadError,
         },
+        experimental: {
+            requested: argv.includes(EXPERIMENTAL_FLAG),
+            // Registry order rather than the order they were typed, so two launches with the same
+            // conditions produce the same list wherever it is printed.
+            conditions: EXPERIMENTAL_CONDITION_IDS.filter(id => experimentalConditions.has(id)),
+            unknownConditionFlags: [...unknownConditionFlags],
+        },
+        openPaths,
     };
 }

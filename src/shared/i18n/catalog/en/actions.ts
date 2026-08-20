@@ -22,6 +22,9 @@ export const actions = {
         menu: "Run and build",
         // Production Build, folded into the dropdown to make room for the version control widget.
         productionBuild: "Production Build…",
+        // Beside Production Build because it is the same kind of thing: it produces a file
+        // rather than launching anything.
+        exportPatch: "Export Patch…",
         // Which build variant Dev Mode, Preview and Test assemble as. The row is only there when
         // the project has a variant to pick, so most projects never see it.
         runAs: "Run as",
@@ -40,8 +43,13 @@ export const actions = {
             label: "Export Project",
             tooltip: "Export the current project as a package",
         },
+        returnToLauncher: {
+            label: "Back to Launcher",
+            tooltip: "Leave this project and go back to the launcher",
+        },
         close: {
-            tooltip: "Close the current workspace",
+            label: "Close Window",
+            tooltip: "Close this window",
         },
     },
     help: {

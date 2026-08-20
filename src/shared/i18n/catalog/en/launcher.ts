@@ -30,7 +30,7 @@ export const launcher = {
         // since the wizard behind it still does more than create.
         empty: {
             title: "Welcome to NarraLeaf Studio",
-            subtitle: "Projects you open appear here.",
+            subtitle: "Opened projects appear here.",
             openFolder: "Open…",
         },
         // Named after the OS that will answer, because that is what the author is about to see.

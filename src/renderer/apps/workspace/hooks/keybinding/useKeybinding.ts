@@ -141,6 +141,14 @@ export interface KeybindingDefinition {
     description?: string;
     /** Condition when the keybinding should be active */
     when?: KeybindingCondition;
+    /**
+     * When true, this binding may fire while DOM focus is in a text field. Defaults to false, as
+     * the single-binding form does - a workspace shortcut defers to typing.
+     *
+     * Set it for chords that type nothing an author could lose: the run shortcuts are function
+     * keys, and F5 is pressed with the caret still in the line that was just written.
+     */
+    allowInEditable?: boolean;
 }
 
 /**
@@ -256,6 +264,7 @@ export function useKeybindings(options: UseKeybindingsOptions): void {
                 description: kb.description,
                 handler,
                 when: commonWhen || kb.when ? when : undefined,
+                allowInEditable: kb.allowInEditable,
                 catalogId: catalogPrefix ? `${catalogPrefix}${kb.id}` : undefined,
             };
 

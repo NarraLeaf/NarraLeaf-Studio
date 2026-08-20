@@ -1,7 +1,15 @@
-import type { StoryActionPayload, StoryBlock, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
-import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandValue } from "../storyCommandValues";
-import { asDurationMs, asEnum } from "./spec";
-import { transformPresetFor, transitionKindFor } from "./transitions";
+import type {
+    StoryActionableTargetRef,
+    StoryActionPayload,
+    StoryBlock,
+    StoryDisplayableTargetRef,
+    StoryTransformRef,
+    StoryTransitionRef,
+} from "@shared/types/story";
+import { ACTIONABLE_BUILTIN_META, BGM_STAGE_OBJECT_NAME, characterStageName, DISPLAYABLE_BUILTIN_META } from "@shared/types/story";
+import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandTargetValue, StoryCommandValue } from "../storyCommandValues";
+import { asDurationMs, asEnum, asTarget } from "./spec";
+import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
 
 /**
  * Shared "modifier args → payload fragment" writers.
@@ -19,39 +27,47 @@ import { transformPresetFor, transitionKindFor } from "./transitions";
  */
 export function withTransitionRef(
     current: StoryTransitionRef | undefined,
-    context: "scene" | "character",
+    context: "scene" | "character" | "expression",
     t: StoryCommandValue | undefined,
     d: StoryCommandValue | undefined,
+    rule?: StoryCommandValue | undefined,
 ): StoryTransitionRef | undefined {
     const word = asEnum(t);
-    const kind = word === undefined ? undefined : transitionKindFor(context, word);
+    // Naming a picture says which engine plays it, so `t=` is not also required. `/bg forest
+    // rule=spiral` is the whole line, and the word remains typeable for a row that wants the
+    // engine before it has picked a picture.
+    const ruleAssetId = rule?.kind === "asset" ? rule.assetId : undefined;
+    const kind = ruleAssetId !== undefined
+        ? "ruleReveal" as const
+        : word === undefined ? undefined : transitionKindFor(context, word);
     const durationMs = asDurationMs(d);
-    if (kind === undefined && durationMs === undefined) {
+    if (kind === undefined && durationMs === undefined && ruleAssetId === undefined) {
         return current;
     }
     return {
         ...(current ?? { kind: transitionKindFor(context, "fade") ?? "fadeIn" }),
         ...(kind !== undefined ? { kind } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
+        ...(ruleAssetId !== undefined ? { ruleAssetId } : {}),
     };
 }
 
-/** Fold `at=` / `d=` into a transform - placement presets, for character and create commands. */
+/** Fold `at=` / `d=` into a transform - the three placements, for character and create commands. */
 export function withPlacementTransform(
     current: StoryTransformRef | undefined,
     at: StoryCommandValue | undefined,
     d: StoryCommandValue | undefined,
 ): StoryTransformRef | undefined {
-    const preset = asEnum(at) as StoryTransformRef["preset"] | undefined;
+    const placement = asEnum(at);
     const durationMs = asDurationMs(d);
-    if (preset === undefined && durationMs === undefined) {
+    if (placement === undefined && durationMs === undefined) {
         return current;
     }
-    return {
-        ...(current ?? {}),
-        ...(preset !== undefined ? { preset } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-    };
+    const placed = placement === undefined ? current : applyPlacementToTransform(current, placement);
+    if (durationMs === undefined) {
+        return placed;
+    }
+    return { ...(placed ?? {}), durationMs };
 }
 
 /**
@@ -88,9 +104,16 @@ export function deriveObjectName(stageKind: StoryCommandStageObjectKind, assetPa
         if (args.name) {
             return {};
         }
-        const asset = assetParam ? args[assetParam] : undefined;
-        const seed = asset?.kind === "asset" ? assetBaseName(context, stageKind, asset.assetId) ?? base : base;
-        return { name: { kind: "text", value: dedupeObjectName(seed, context.stageObjects[stageKind] ?? []) } };
+        const source = assetParam ? args[assetParam] : undefined;
+        // A slot may name something other than an asset - `/vfx snow` names a generated source by a
+        // word - and the row should still be called after what the author typed rather than after the
+        // command. The word IS the name in that case; there is no file to strip an extension from.
+        const stem = source?.kind === "asset"
+            ? assetBaseName(context, stageKind, source.assetId) ?? base
+            : source?.kind === "enum"
+                ? source.value
+                : base;
+        return { name: { kind: "text", value: dedupeObjectName(stem, context.stageObjects[stageKind] ?? []) } };
     };
 }
 
@@ -131,14 +154,101 @@ export function withRevealTransform(
     d: StoryCommandValue | undefined,
 ): StoryTransformRef | undefined {
     const word = asEnum(t);
-    const preset = word === undefined ? undefined : transformPresetFor(context, word);
     const durationMs = asDurationMs(d);
-    if (preset === undefined && durationMs === undefined) {
+    if (word === undefined && durationMs === undefined) {
         return current;
     }
+    const posed = word === undefined ? current : applyTransitionWordToTransform(current, context, word);
+    if (durationMs === undefined) {
+        return posed;
+    }
+    return { ...(posed ?? {}), durationMs };
+}
+
+/**
+ * The displayable target ref a generic-effect block addresses — the resolved line target reduced to
+ * the name-plus-kind pair a `displayable` payload stores, which the inspector's binding resolves back.
+ *
+ * Shared because more than one command builds that payload from a target param, and the mapping is a
+ * rule rather than a formality: which kinds are Displayables at all is stated here once.
+ */
+export function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplayableTargetRef | undefined {
+    if (!target) {
+        return undefined;
+    }
+    if (target.type === "reserved") {
+        // The camera is not one of these: it has a payload arm of its own (`story.camera` is
+        // addressed distinctly by the engine), so a caller that resolved it never reaches here.
+        if (target.name === "camera") {
+            return undefined;
+        }
+        const meta = DISPLAYABLE_BUILTIN_META[target.name];
+        // `builtin` is the source of truth for these; `name`/`kind` ride along as the display
+        // fallbacks `resolveDisplayableTargetRef` documents, so a ref stays readable on its own.
+        return { builtin: target.name, kind: meta.kind, name: meta.label, label: meta.label };
+    }
+    if (target.type === "character") {
+        // `name` is the STAGE KEY, not the cast name. The compiler registers a character's portrait
+        // under its entering row's stage name - or under the character id when that row named none -
+        // so storing what the author typed made the lookup miss the moment the two differed, and
+        // `getImage` being get-or-create turned that miss into a blank sprite rather than an error.
+        // The cast name is what a person reads, so it becomes `label`.
+        return {
+            kind: "character",
+            name: target.stageName ?? characterStageName(target.characterId),
+            label: target.name,
+            ...(target.sourceBlockId ? { sourceBlockId: target.sourceBlockId } : {}),
+        };
+    }
+    // Audio, video and vfx are not Displayables and no caller's `accepts` list offers them; this arm
+    // exists to keep the function total, not because a line can reach it.
+    if (target.objectKind === "audio" || target.objectKind === "video" || target.objectKind === "vfx") {
+        return { name: target.name, label: target.name };
+    }
+    // An image / text / layer names itself: the stage key IS what the author typed, so the two halves
+    // coincide. `label` is written anyway rather than left for the reader to infer - a reference with
+    // no label falls back to `name`, and that fallback is the legacy path, not this one.
     return {
-        ...(current ?? {}),
-        ...(preset !== undefined ? { preset } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
+        kind: target.objectKind,
+        name: target.name,
+        label: target.name,
+        ...(target.sourceBlockId ? { sourceBlockId: target.sourceBlockId } : {}),
     };
+}
+
+/**
+ * The reference a row addressing a named `Actionable` handle stores - a clip, an ambience overlay, a
+ * sound played by an earlier row.
+ *
+ * The `Actionable` counterpart of {@link displayableTargetRef}, and separate from it because the two
+ * ref types are siblings rather than one widened type: `StoryDisplayableTargetKind` deliberately
+ * excludes video and vfx, and audio is not a stage object at all.
+ *
+ * A named handle's stage key is the name the author typed, so `name` and `label` coincide here. The
+ * one case where they do not - a `playSound` row with no name, which keys on its `assetId` - is not
+ * reachable from a line: the candidate list only offers rows that HAVE a name. It is reachable
+ * through the anchor, and that is exactly what `resolveActionableTargetRef` reads `label` for.
+ */
+export function actionableTargetRef(target: Extract<StoryCommandTargetValue, { type: "stageObject" }>): StoryActionableTargetRef {
+    return {
+        name: target.name,
+        label: target.name,
+        ...(target.sourceBlockId ? { sourceBlockId: target.sourceBlockId } : {}),
+    };
+}
+
+/**
+ * The reference a sound-control row stores.
+ *
+ * An omitted target means the music channel (`/vol 0.5` turns the music down), and so does the
+ * reserved word spelled out. That channel is referenced as `{ builtin: "bgm" }` rather than bound to
+ * a row, because it HAS no declaring row: a scene states its music on its own record, and every
+ * `/vol` addresses the same handle whether or not this scene holds a `/bgm` line.
+ */
+export function audioTargetRef(target: StoryCommandTargetValue | undefined): StoryActionableTargetRef {
+    if (target?.type === "stageObject" && target.name !== BGM_STAGE_OBJECT_NAME) {
+        return actionableTargetRef(target);
+    }
+    const meta = ACTIONABLE_BUILTIN_META.bgm;
+    return { builtin: "bgm", name: meta.name, label: meta.label };
 }

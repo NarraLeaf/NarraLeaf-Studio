@@ -1,11 +1,24 @@
 import { DoorOpen, Hourglass, ScrollText, Wallpaper } from "lucide-react";
 import { createBlockForCommand } from "../../storyActionCommands";
-import { asNumber, defineStoryCommand, SECONDS_TYPE, secondsParam } from "../spec";
+import { asNumber, defineStoryCommand, SECONDS_TYPE, secondsParam, type StoryCommandParamSpec } from "../spec";
 import { withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { transitionOptions } from "../transitions";
 import { storySecondsToMs } from "@shared/utils/storyTime";
 
 /** Scene & flow: `/bg`, `/jump`, `/wait`, `/nvl`. */
+
+/**
+ * `rule=` — the greyscale picture a rule transition plays in the order of.
+ *
+ * Its own param rather than a spelling of `t=`: `t=` is a closed word list and a rule is a project
+ * asset, so the two slots answer different questions. Naming a picture implies the engine, which is
+ * why a line that carries one does not also have to carry `t=rule`.
+ */
+const ruleParam = (): StoryCommandParamSpec => ({
+    aliases: ["ruleimage"],
+    hint: "ruleImage",
+    type: { kind: "asset", assetType: "image" },
+});
 
 export const bg = defineStoryCommand({
     id: "background",
@@ -13,18 +26,19 @@ export const bg = defineStoryCommand({
     aliases: ["background"],
     category: "scene",
     icon: Wallpaper,
-    examples: ["/bg forest_day", "/bg forest_day t=fade d=0.5", "/bg #101018"],
+    examples: ["/bg forest_day", "/bg forest_day t=fade d=0.5", "/bg #101018", "/bg forest_day rule=spiral d=1.2"],
     // Inline quick-edit: the transition duration. The transition kind (`t`, an enum) stays an
     // inspector choice — a qualitative pick, not a high-frequency micro-adjust.
     quickParams: ["d"],
     params: {
         image: {
             hint: "imageOrColor",
-            type: [{ kind: "asset", assetType: "image" }, { kind: "color" }],
+            type: [{ kind: "asset", assetType: "image", allowSets: true }, { kind: "color" }],
             positional: true,
             core: true,
         },
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("scene") } },
+        rule: ruleParam(),
         d: secondsParam(),
     },
     build(args, ctx) {
@@ -41,7 +55,7 @@ export const bg = defineStoryCommand({
             payload.color = args.image.color;
             payload.assetId = undefined;
         }
-        const transition = withTransitionRef(payload.transition, "scene", args.t, args.d);
+        const transition = withTransitionRef(payload.transition, "scene", args.t, args.d, args.rule);
         return { ...block, payload: { ...payload, ...(transition ? { transition } : {}) } };
     },
 });
@@ -51,11 +65,12 @@ export const jump = defineStoryCommand({
     token: "jump",
     category: "scene",
     icon: DoorOpen,
-    examples: ["/jump 'Chapter 2'", "/jump 'Chapter 2' t=fade d=0.6"],
+    examples: ["/jump 'Chapter 2'", "/jump 'Chapter 2' t=fade d=0.6", "/jump 'Chapter 2' rule=spiral d=1.2"],
     quickParams: ["scene"],
     params: {
         scene: { hint: "scene", type: { kind: "scene" }, positional: true, core: true },
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("scene") } },
+        rule: ruleParam(),
         d: secondsParam(),
     },
     build(args, ctx) {
@@ -67,7 +82,7 @@ export const jump = defineStoryCommand({
         if (args.scene?.kind === "scene") {
             payload.targetSceneId = args.scene.sceneId;
         }
-        const transition = withTransitionRef(payload.transition, "scene", args.t, args.d);
+        const transition = withTransitionRef(payload.transition, "scene", args.t, args.d, args.rule);
         return { ...block, payload: { ...payload, ...(transition ? { transition } : {}) } };
     },
 });
@@ -102,9 +117,11 @@ export const nvl = defineStoryCommand({
     token: "nvl",
     category: "scene",
     icon: ScrollText,
-    examples: ["/nvl", "/nvl t=fade d=0.4"],
+    examples: ["/nvl", "/nvl in=fade d=0.4"],
     params: {
-        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("nvl") } },
+        // `in=`, as on `/show` and `/image`: the NVL panel's `transition` field is a transform ref, not
+        // a `StoryTransitionRef`, and the panel only ever comes IN.
+        in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("nvl") } },
         d: secondsParam(),
     },
     build(args, ctx) {
@@ -113,7 +130,7 @@ export const nvl = defineStoryCommand({
             return block;
         }
         // NVL's `transition` field is a transform ref (preset-based) - see the payload's note.
-        const transition = withRevealTransform(block.payload.transition, "nvl", args.t, args.d);
+        const transition = withRevealTransform(block.payload.transition, "nvl", args.in, args.d);
         return transition ? { ...block, payload: { ...block.payload, transition } } : block;
     },
 });

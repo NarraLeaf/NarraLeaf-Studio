@@ -7,21 +7,36 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { Sound, type LiveGame, type Scene } from "narraleaf-react";
+import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
+import { createChoiceVoicePlayer, type ChoiceVoicePlayer } from "./choiceVoicePlayback";
+import {
+    readWrappedStorableNamespace,
+    readWrappedStorableValue,
+} from "@shared/utils/storableValue";
+import {
+    buildSaveCompatibilityStamp,
+    normalizeSaveCompatibilityConfiguration,
+    planSaveResume,
+    readSaveCompatibilityStamp,
+} from "@shared/types/saveCompatibility";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
+    LOCALE_RESTART_RESUME_KEY,
     LOCALE_STORAGE_KEY,
     characterTranslationUnitId,
     matchSystemLocale,
+    normalizeLanguageChangeConfiguration,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
 import {
     isAutoSaveId,
+    isReservedSaveId,
     normalizeAutoSaveConfiguration,
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
     type SaveRecordLine,
+    type SaveRecordPlaytime,
     type SaveRecordTimes,
 } from "@shared/types/saves";
 import {
@@ -135,6 +150,12 @@ import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
+import {
+    applyLocaleChange,
+    consumeFreshRestart,
+    promotePendingLocale,
+    resumeAfterLocaleRestart,
+} from "./localeRestart";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
@@ -155,22 +176,48 @@ import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from 
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
+import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
+import { holdStageAdvance } from "./stageAdvanceHold";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
     GameAppHost,
+    GameAppLogLevel,
     GameAppOverlayContext,
     GameAppSaveBridge,
     GameAppSaveRecord,
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
+import { usePlaytime } from "./usePlaytime";
+import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
+import type { WeatherSeedRef } from "@shared/weather/model";
+import { weatherSpecForStage } from "@shared/weather/stage";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
 // rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
 // STAGE_WARMUP_TIMEOUT_MS, because cutting a warm-up short is the one failure that shows up as
 // in-game stutter, and boot latency is explicitly not what this trades against.
 const NLR_BOOT_PRELOAD_TIMEOUT_MS = 45_000;
+/**
+ * How long a load waits for the page the player was on to finish leaving. Generous next to any
+ * authored page transition and short next to a player wondering whether the game is stuck.
+ */
+const SAVE_LOAD_ROUTER_EXIT_TIMEOUT_MS = 3000;
+/**
+ * How long the resume after a language restart waits for an environment to come up, and how often
+ * it looks. Long enough to cover a cold boot that has a scene to fetch and decode; bounded so a
+ * boot that never produces one leaves the parked run for the next one instead of waiting forever.
+ */
+const LOCALE_RESUME_SESSION_WAIT_MS = 30_000;
+const LOCALE_RESUME_POLL_MS = 200;
+/**
+ * How long the environment has to stand still before the parked run is loaded into it. Covers the
+ * gap between a mount publishing its live game and whatever started that mount entering the game.
+ */
+const LOCALE_RESUME_SETTLE_MS = 1000;
+/** The longest the surfaces are held back for a resume. A cover that never lifts is its own bug. */
+const LOCALE_RESUME_COVER_MAX_MS = 10_000;
 // How long a mount waits for the first scene to be fetched and decoded. Long enough that a real
 // project's opening scene always finishes: a longer loading step is the cheaper cost, since the
 // alternative is the player paying for it on a button they just pressed. Bounded only so a broken
@@ -309,6 +356,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         let cancelled = false;
         void (async () => {
             try {
+                // Before the stored language is read, and in this effect rather than its own so the
+                // order is not a matter of which effect React runs first: a player who deferred a
+                // change last session is owed it now, and everything below - and every line the
+                // game is about to render - has to see the language they chose, not the one they
+                // were in when they chose it.
+                await promotePendingLocale({
+                    persistenceGetAsync: key => core.scopeBridge.persistenceGetAsync(key),
+                    persistenceSet: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                });
+                if (cancelled) {
+                    return;
+                }
                 const stored = await core.scopeBridge.persistenceGetAsync(LOCALE_STORAGE_KEY);
                 if (cancelled || (typeof stored === "string" && localization.locales.some(locale => locale.code === stored))) {
                     return;
@@ -318,7 +377,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     : [];
                 const matched = matchSystemLocale(localization.locales, candidates);
                 if (!cancelled && matched && matched !== localization.sourceLocale) {
-                    core.scopeBridge.persistenceSet(LOCALE_STORAGE_KEY, matched);
+                    // Session-only: re-derived from `navigator` on every boot, so storing it
+                    // would pin a guess and stop the game following an OS language change. An
+                    // explicit choice goes through the Set Language node, which does store.
+                    core.scopeBridge.persistenceSetSessionOnly(LOCALE_STORAGE_KEY, matched);
                 }
             } catch {
                 // Non-fatal: the game falls back to the source language.
@@ -471,6 +533,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
     >(null);
     const cleanupBundleIdRef = useRef<string | null>(null);
+    /** The runtime core whose language-restart resume has already been attempted. */
+    const localeResumeAttemptedRef = useRef<unknown>(null);
+    /**
+     * Whether this launch owes the player a run and has not put it back yet.
+     *
+     * It holds the surface stack back while that is true. The screen the player left is not the
+     * screen they are coming back to, and painting the title for the second and a half a load takes
+     * would be showing them a place they never went. What they get instead is what a boot already
+     * looks like before its first surface - the shell's own background - and then their line.
+     */
+    const [localeResumePending, setLocaleResumePending] = useState(false);
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
@@ -478,12 +551,84 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
     // Built once and never rebuilt, because a Game UI slot surface holds whichever copy it was given
     // when its session was mounted. Both members read the refs above at call time.
-    const { isInGame, requireLiveGame: requireActiveLiveGame } = useMemo(() => createSessionGate<LiveGame>({
+    /**
+     * The session gate. `isPlaythroughRunning` lives inside it rather than beside its three callers
+     * here for the reason the gate exists at all: a Game UI slot surface keeps the callbacks it was
+     * built with, and this one used to read the session *state*, which a slot's copy sees as null
+     * for that game's whole life. MEASURED: changing the language from the quick menu changed it
+     * under a running playthrough and never restarted, while the same control on a page did.
+     */
+    const {
+        isInGame,
+        requireLiveGame: requireActiveLiveGame,
+        isPlaythroughRunning,
+        hasLiveGame,
+    } = useMemo(() => createSessionGate<LiveGame>({
         sessionId: nlrSessionIdRef,
         liveGameSessionId: nlrLiveGameSessionIdRef,
         liveGame: nlrLiveGameRef,
         stageVisible: gameStageVisibleRef,
+        gameEntered: gameEnteredRef,
     }), []);
+    /**
+     * Whether the story is the thing the player is looking at, rather than merely the thing behind
+     * what they are looking at.
+     *
+     * `isInGame` answers "is a session mounted with its stage on screen", and stays true under a
+     * settings screen the player opened mid-game - which is correct for it, and is what lets a quick
+     * menu drawn over the stage know it has a game to act on. Anything that drives the story forward
+     * on its own needs the narrower question, because the stage being on screen underneath a menu is
+     * not the player watching it. MEASURED: skipping turned on from the quick menu and then Config
+     * opened ran the story to its end behind the settings screen.
+     *
+     * Both stores are read at call time, never captured: they are external stores exactly so a
+     * reader outside React gets the answer for this instant. See `sessionGate` for why anything a
+     * Game UI slot surface can reach has to be built that way.
+     */
+    const isStoryOnScreen = useCallback((): boolean => {
+        if (!isInGame()) {
+            return false;
+        }
+        return !isStageCovered({
+            pageEntries: navigation.getState().navStack,
+            pagesHiddenForGame: studioPageHiddenForGameRef.current,
+            gameHiddenKeys: gameHiddenNavKeysRef.current,
+            layers: layerStack.getSnapshot().layers,
+        });
+    }, [isInGame, layerStack, navigation]);
+    /**
+     * The same question as `isStoryOnScreen`, asked of this render rather than of this instant.
+     *
+     * One predicate, two readers: the skip loop runs outside React and needs the answer for the
+     * moment it steps, while a suspension on the engine has to be taken and handed back as the
+     * answer changes, which is a dependency. Both read `isStageCovered` over the same four inputs -
+     * the states here are the reactive view of the stores the callback above reads.
+     */
+    const stageCovered = isStageCovered({
+        pageEntries: navStack,
+        pagesHiddenForGame: studioPageHiddenForGame,
+        gameHiddenKeys: gameHiddenNavKeys,
+        layers,
+    });
+    /**
+     * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
+     * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
+     * below reads it, and a save has to record the time at the moment it is written.
+     */
+    const playtime = usePlaytime({
+        isPlaying: isPlaythroughRunning,
+        // The store the two functions below reach, so the hook can wait for it and read again when
+        // it is replaced. Without it the stored total is read on the hook's first commit, when the
+        // core is still null, and never again.
+        persistenceSource: core?.scopeBridge ?? null,
+        // Optional-chained because the runtime core is null until the bundle mounts.
+        persistenceGetAsync: async key => core?.scopeBridge.persistenceGetAsync(key),
+        // Not awaited: the value is readable the moment this returns, the clock has already
+        // counted the seconds, and a failed disk write only means the next flush carries them.
+        persistenceSet: (key, value) => {
+            void core?.scopeBridge.persistenceSet(key, value);
+        },
+    });
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
@@ -526,6 +671,14 @@ export function GameApp(props: GameAppProps): ReactNode {
      * after `newGame()`. Persistent values do not wait: they live outside the engine and survive.
      */
     const pendingImportedProgressRef = useRef<GameProgressDocumentV1 | null>(null);
+    /**
+     * A save whose saved-scope values are being carried into a story that is being started again.
+     *
+     * The `Return to where it stopped` policy relaunches instead of loading, and a relaunch is a
+     * `Start Game`: it calls `newGame()`, which clears every namespace. The values wait here for
+     * the same reason an imported progress document does, and are applied at the same moment.
+     */
+    const pendingCarriedSaveRef = useRef<SavedGame | null>(null);
     /**
      * The story row the engine was last executing, or undefined when nothing was.
      *
@@ -571,6 +724,16 @@ export function GameApp(props: GameAppProps): ReactNode {
      * `hostApi.sound.subscribeMixerChanges`, which is how the video widget follows a slider drag.
      */
     const preferenceListenersRef = useRef<Set<() => void>>(new Set());
+    /**
+     * Depth of a preference write Studio made to move the engine rather than to record a choice.
+     *
+     * There is one: re-arming auto-forward after a settings screen closes writes `autoForward` the
+     * value it already holds, because that write is the only way to schedule the line on screen
+     * again (see `stageAdvanceHold`). The engine's store emits on every write, changed or not, so
+     * without this the author's `On Preference Changed` would report a setting the player did not
+     * touch. Synchronous, like the emit it brackets.
+     */
+    const engineNudgeDepthRef = useRef(0);
     const subscribeGamePreferences = useCallback((listener: () => void) => {
         preferenceListenersRef.current.add(listener);
         return () => {
@@ -580,6 +743,13 @@ export function GameApp(props: GameAppProps): ReactNode {
     const currentDialogNametagRef = useRef<string | null>(null);
     const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
     const prefersReducedMotion = useReducedMotion();
+
+    // The choice voice player is built once and outlives any one render, so the host it logs through
+    // is read here rather than captured.
+    const hostRef = useRef(host);
+    useEffect(() => {
+        hostRef.current = host;
+    }, [host]);
 
     useEffect(() => {
         widgetPatchesByScopeRef.current = widgetPatchesByScope;
@@ -1023,7 +1193,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!core) {
             throw new Error("Clear Text Read: runtime is not ready");
         }
-        await core.scopeBridge.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+        await core.scopeBridge.persistenceSet(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
         core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
     }, [core]);
 
@@ -1171,6 +1341,52 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
     }, [progressVariableDefs]);
 
+    /**
+     * Put a save's saved-scope values into the story that has just been started again.
+     *
+     * The whole namespace rather than the project's declared variables: a story's own `/save` rows
+     * declare saved variables too, and a player relaunched into their chapter with half their flags
+     * would be in a state no playthrough could have produced. Read straight off the serialized
+     * store, which is where a load would have read it from as well.
+     */
+    const applyCarriedSaveState = useCallback((savedGame: SavedGame): void => {
+        const liveGame = nlrLiveGameRef.current;
+        const compiled = nlrCompiledRef.current;
+        if (!liveGame || !compiled) {
+            return;
+        }
+        const store = (savedGame as unknown as { game?: { store?: Record<string, unknown> } }).game?.store;
+        if (!store || typeof store !== "object") {
+            return;
+        }
+        const storable = liveGame.getStorable();
+        const savedNamespaceName = compiled.savedNamespaceName;
+        const savedValues = savedNamespaceName ? store[savedNamespaceName] : undefined;
+        if (savedNamespaceName && savedValues && typeof savedValues === "object" && storable.hasNamespace(savedNamespaceName)) {
+            const namespace = storable.getNamespace(savedNamespaceName);
+            // Unwrapped first. A save holds `{type, data, dates?, undefineds?}` per value, and
+            // `set` takes the value - handing it the wrapper stores an object where the author
+            // declared a boolean, which reads back as truthy-but-not-true and quietly sends every
+            // condition down its other branch. See `readWrappedStorableValue`.
+            for (const [key, value] of Object.entries(readWrappedStorableNamespace(savedValues))) {
+                namespace.set(key, value as never);
+            }
+        }
+        const visitedNamespaceName = compiled.visitedNamespaceName;
+        const visitedValues = visitedNamespaceName ? store[visitedNamespaceName] : undefined;
+        const visited = visitedValues && typeof visitedValues === "object"
+            ? readWrappedStorableValue((visitedValues as Record<string, unknown>)[STORY_VISITED_SCENES_KEY])
+            : undefined;
+        if (visitedNamespaceName && Array.isArray(visited) && storable.hasNamespace(visitedNamespaceName)) {
+            const merged = mergeVisitedSceneIds(
+                readStoryVisitedIds(storable, visitedNamespaceName, STORY_VISITED_SCENES_KEY),
+                visited.filter((id): id is string => typeof id === "string"),
+            );
+            // A new array, never a push - see `applyImportedSavedProgress`.
+            storable.getNamespace(visitedNamespaceName).set(STORY_VISITED_SCENES_KEY, merged);
+        }
+    }, []);
+
     const exportProgressInGame = useCallback(async (): Promise<{ outcome: "written" | "failed"; error: string }> => {
         if (!host.exportProgress) {
             return {
@@ -1239,11 +1455,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 progressVariableDefs().persistent,
                 imported.persistentVariables,
                 (storageKey, value) => {
-                    // Both halves of the write, as the story compiler's own persistence bridge does
-                    // it: the in-memory map so the very next read sees it, and the host store so it
-                    // survives the session.
-                    core.scopeBridge.persistenceSet(storageKey, value);
-                    void core.scopeBridge.persistenceSetAsync(storageKey, value);
+                    void core.scopeBridge.persistenceSet(storageKey, value);
                 },
             );
         }
@@ -1320,7 +1532,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const {
         getCurrentNametag,
         getNotificationsInGame,
+        getFutureInGame,
         getHistoryInGame,
+        canRedoHistoryInGame,
+        canUndoHistoryInGame,
+        redoHistoryInGame,
         restoreHistoryInGame,
         getChoiceCountInGame,
         isNvlModeInGame,
@@ -1396,6 +1612,41 @@ export function GameApp(props: GameAppProps): ReactNode {
             return false;
         }
     }, [host]);
+
+    /**
+     * Speak one choice option, at most one instance of that option at a time.
+     *
+     * The bookkeeping - which option is already speaking, and what `Interrupt Others` stops - lives
+     * in {@link createChoiceVoicePlayer}. This supplies only the start: a fresh `Sound` per play,
+     * for the reason `playVoiceUnit` gives, on the bus the compile assigned, so a per-character
+     * voice bus and the player's fader for it apply here exactly as they do to a spoken line.
+     *
+     * Built once per mount and held in a ref: the map of speaking options must survive a render, and
+     * every read it needs is through a ref already.
+     */
+    const choiceVoicePlayerRef = useRef<ChoiceVoicePlayer | null>(null);
+    if (!choiceVoicePlayerRef.current) {
+        choiceVoicePlayerRef.current = createChoiceVoicePlayer({
+            start: async unitId => {
+                const liveGame = nlrLiveGameRef.current;
+                const playback = nlrCompiledRef.current?.getVoicePlayback?.(unitId);
+                if (!liveGame || !playback) {
+                    return null;
+                }
+                return await liveGame.playSound(new Sound({ src: playback.src, type: playback.busId }));
+            },
+            onError: error => hostRef.current?.log(
+                "warning",
+                `Play Choice Voice: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+        });
+    }
+
+    const playChoiceVoiceUnit = useCallback(
+        (unitId: string, options: { interruptOthers: boolean }): Promise<boolean> =>
+            choiceVoicePlayerRef.current?.play(unitId, options) ?? Promise.resolve(false),
+        [],
+    );
 
     // Mount-scoped, not session-scoped: each mount replaces the previous subscription itself, and
     // this is only the last one, on the way out.
@@ -1602,6 +1853,33 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [endingSurfaceId, host, quitGame]);
 
+    /**
+     * What this build stamps into the saves it writes, and compares the saves it is asked to load
+     * against. One value for both halves: a stamp written by one rule and read by another would
+     * make a build disagree with its own saves.
+     *
+     * Null when the bundle carries no story hash - a bundle assembled before hashes existed - which
+     * turns every comparison into "cannot be compared" and leaves loading exactly as it was.
+     */
+    const saveStamp = useMemo(
+        () => (bundle.storyHash
+            ? buildSaveCompatibilityStamp({ storyHash: bundle.storyHash, gameVersion: bundle.gameVersion })
+            : null),
+        [bundle.gameVersion, bundle.storyHash],
+    );
+    const saveCompatibilityConfig = useMemo(
+        () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
+        [bundle.saveCompatibility],
+    );
+    /**
+     * What this project asked for when the player changes language mid-playthrough. Read from the
+     * bundle like every other policy the shipped game obeys, so a build behaves the same in Dev
+     * Mode, in a preview and in the packaged game.
+     */
+    const languageChange = useMemo(
+        () => normalizeLanguageChangeConfiguration(bundle.languageChange),
+        [bundle.languageChange],
+    );
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
@@ -1617,11 +1895,53 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
             }
         }
-        await host.saveStore.write(id, liveGame.serialize(), capture, metadata);
+        await host.saveStore.write(
+            id,
+            liveGame.serialize(),
+            capture,
+            metadata,
+            saveStamp ?? undefined,
+            playtime.getRunSeconds(),
+        );
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
-    }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame]);
+    }, [
+        host.saveStore,
+        playtime,
+        pluginHost,
+        reportSaveCaptureFailure,
+        requireActiveLiveGame,
+        saveStamp,
+    ]);
+
+    /**
+     * The scene a save's position names, as this build ships it.
+     *
+     * The story id the position carries is only a hint: it comes out of an anchor written by
+     * another build, which may have split or renamed its documents. It is tried first and the
+     * library is searched when it does not hold the scene, so a save survives a story being moved
+     * between documents. Null when no document in this build has that scene at all.
+     */
+    const resolveSavedScene = useCallback((storyId: string, sceneId: string): {
+        storyId: string;
+        scene: { blocks?: Record<string, unknown> };
+    } | null => {
+        const documents = bundle.storyLibrary?.documents;
+        if (!documents || !sceneId) {
+            return null;
+        }
+        const named = storyId ? documents[storyId] : undefined;
+        if (named?.scenes?.[sceneId]) {
+            return { storyId, scene: named.scenes[sceneId] };
+        }
+        for (const [candidateId, document] of Object.entries(documents)) {
+            if (document?.scenes?.[sceneId]) {
+                return { storyId: candidateId, scene: document.scenes[sceneId] };
+            }
+        }
+        return null;
+    }, [bundle.storyLibrary]);
 
     /**
      * Load a save, or leave the run that is going exactly where it is.
@@ -1634,9 +1954,20 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("Load Save");
+
+        // Captured on the way past rather than re-read afterwards: a save record carries a whole
+        // serialized playthrough, and reading one twice to look at one number would double the
+        // cost of every load.
+        let storedPlaytimeSeconds: number | undefined;
         const outcome = await loadSaveIntoGame({
             id,
-            readRecord: () => host.saveStore.read(id),
+            readRecord: async () => {
+                const record = await host.saveStore.read(id);
+                storedPlaytimeSeconds = readSavePlaytimeSeconds(record?.metadata.playtimeSeconds);
+                return record;
+            },
+            currentStamp: saveStamp,
+            compatibilityConfig: saveCompatibilityConfig,
             game: {
                 // `constructMaps` is the engine's own lookup table for a load and caches on the
                 // live game, so checking against it is checking against exactly what `deserialize`
@@ -1677,6 +2008,45 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // count, which is why one balanced load afterwards cannot clear it and every later
                 // load in the session would sit there locked.
                 releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
+                /**
+                 * The `Return to where it stopped` policy: a story launch, not a load.
+                 *
+                 * `forceReinit` is passed because the fast path in `startStoryInGame` skips the
+                 * recompile when the mounted story already matches the request - which is exactly
+                 * the case here, and exactly the case where reusing the mounted session would drop
+                 * the row the player is being put back on.
+                 */
+                relaunch: async target => {
+                    const start = startStoryInGameRef.current;
+                    if (!start) {
+                        throw new Error("the story cannot be started here");
+                    }
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    // Reported rather than thrown: nothing has been touched yet, and a throw here
+                    // would be read as a run that was spent halfway.
+                    if (!found) {
+                        return "nowhere";
+                    }
+                    // Asked before launching, never inferred from a failure: a launch handed a row
+                    // that is gone plays the scene from the top and says nothing (see
+                    // `collectStoryPlaybackPlan`), so waiting for a throw would report every
+                    // degraded landing as a row-precise one.
+                    const hasRow = Boolean(target.blockId && found.scene.blocks?.[target.blockId]);
+                    // Queued rather than written: the launch calls `newGame()`, which clears every
+                    // namespace, so values written now would be the ones it wipes.
+                    pendingCarriedSaveRef.current = target.savedGame;
+                    try {
+                        await start({
+                            storyId: found.storyId,
+                            sceneId: target.sceneId,
+                            ...(hasRow && target.blockId ? { startBlockId: target.blockId } : {}),
+                        }, { forceReinit: true });
+                    } catch (error) {
+                        pendingCarriedSaveRef.current = null;
+                        throw error;
+                    }
+                    return hasRow ? "row" : "scene";
+                },
             },
             // The engine's notification channel, which draws through the project's Notifications
             // surface when it has one and the engine's own component when it does not.
@@ -1695,12 +2065,48 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (outcome.status !== "loaded") {
             return outcome;
         }
+        // A relaunch has already entered and revealed its own session (that is what `Start Game`
+        // does); the live game this closure captured is the one it replaced. Waiting on it here
+        // would wait on a session nobody is driving any more.
+        if (outcome.applied !== "save") {
+            return outcome;
+        }
+        // Only here: a load that was refused or rolled back leaves the player on the run they were
+        // already having, and that run's stopwatch has to keep its own reading. A record with no
+        // reading (written before playtime was tracked) starts the inherited run from zero, which
+        // is the only honest answer when nobody was counting.
+        playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
-        await liveGame.waitForRouterExit().promise;
+        /**
+         * Let the page the player was on finish leaving before the stage is revealed - but never
+         * wait on one that is not there.
+         *
+         * The wait is for the NEXT exit-complete event, which the load's own `router.clear()`
+         * produces only when a page was open. Every load the product shipped with came from one (a
+         * save screen, a title screen), so the event always arrived. A load taken with the stage
+         * already on screen and nothing over it produces no exit at all, and an unbounded wait then
+         * never returns: the save IS applied and the player is back where they were, while
+         * everything after this line - the reveal, and whatever the caller meant to do next - simply
+         * never happens. MEASURED: resuming after a language restart left the parked save on disk
+         * for exactly this reason, on a run that had otherwise gone perfectly.
+         *
+         * A deadline rather than a check for an open page, because the failure is the same shape
+         * whatever caused it: an exit that does not arrive must not strand the caller.
+         */
+        await withDeadline(liveGame.waitForRouterExit().promise, SAVE_LOAD_ROUTER_EXIT_TIMEOUT_MS);
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
         return outcome;
-    }, [hideCurrentStudioPagesForGame, host.log, host.reportIssue, host.saveStore, requireActiveLiveGame]);
+    }, [
+        hideCurrentStudioPagesForGame,
+        host.log,
+        host.reportIssue,
+        host.saveStore,
+        requireActiveLiveGame,
+        resolveSavedScene,
+        saveCompatibilityConfig,
+        saveStamp,
+    ]);
 
     /**
      * The same load for the surfaces declared as `Promise<void>`: the blueprint host API and the
@@ -1718,9 +2124,222 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
     }, [loadSave]);
 
+    /**
+     * The same load for a graph, which hears a refusal as a branch rather than as an error.
+     *
+     * `Load Save` carries a `Failed` pin, and a refusal is the ordinary end of asking for an old
+     * save: the player has been told, the author has been told, and the run is where it was. A
+     * throw here would put a red error in front of an author whose title screen is already handling
+     * the case. Anything that is a caller mistake - no game runtime - still throws, from `loadSave`.
+     */
+    const loadSaveForGraph = useCallback(async (id: string): Promise<boolean> => {
+        return (await loadSave(id)).status === "loaded";
+    }, [loadSave]);
+
     const deleteSave = useCallback(async (id: string) => {
         await host.saveStore.remove(id);
     }, [host.saveStore]);
+
+    /**
+     * Report a language-restart step to both channels a host has, on one call.
+     *
+     * Everything this reports is a failure the author has to be able to see, and Dev Mode's issues
+     * panel only shows what comes through `reportIssue`. `session` is the honest origin: none of it
+     * happens while a story row is running - the player is in a menu - so there is no row to blame.
+     */
+    const reportLocaleRestart = useCallback((level: GameAppLogLevel, message: string) => {
+        host.log(level, `[${host.id}] ${message}`);
+        if (level !== "info") {
+            host.reportIssue?.({ level, message, origin: "session" });
+        }
+    }, [host]);
+
+    /**
+     * The player picked a language. Everything that makes that more than a stored string.
+     *
+     * See `localeRestart` for why a running playthrough is restarted rather than told: the language
+     * is already inside the rendered text, the backlog, the sentence being typed, the voice under
+     * it and the assets held for the scene, and none of those can be rewritten in place. Nothing
+     * happens at all on a title screen or a settings page opened before a run started, which is
+     * where most players change it.
+     */
+    const handleLocaleChanged = useCallback(async (code: string): Promise<void> => {
+        await applyLocaleChange({
+            isPlaythroughRunning,
+            inGame: languageChange.inGame,
+            writeSave: id => writeSave(id),
+            persistenceSet: async (key, value) => {
+                await core?.scopeBridge.persistenceSet(key, value);
+            },
+            restartApplication: host.restartApplication,
+            report: reportLocaleRestart,
+        }, code);
+    }, [core, host.restartApplication, isPlaythroughRunning, languageChange, reportLocaleRestart, writeSave]);
+
+    /**
+     * Put the player back into the run a language change restarted the game out of.
+     *
+     * Waits for a live game before it reads anything, and that wait is the point. The two paths that
+     * bring an environment up - the boot preload and a Dev Mode reload - both finish asynchronously
+     * and both have branches that end early (a superseded mount, a story that would not compile), so
+     * hanging the resume off the end of either meant it silently did not happen. MEASURED: two runs
+     * of the same acceptance, one resumed and one came back to the title screen with the run still
+     * parked. It waits for the fact it needs instead, and gives up rather than blocking anything.
+     *
+     * The marker is only read once a game exists to load into, so a boot that never gets one leaves
+     * it for the next boot rather than consuming it into nothing.
+     */
+    const resumeLocaleRestart = useCallback(async (): Promise<void> => {
+        if (!core) {
+            return;
+        }
+        const scope = core.scopeBridge;
+        /**
+         * Is anything owed? Asked before anything is waited for, and only to decide what the player
+         * looks at while the answer is acted on.
+         *
+         * A boot that owes a resume is going to put the stage up in a moment, so the surfaces that
+         * would otherwise paint first - the title screen the player just left - are held back until
+         * it does. Peeking costs one store read on every launch and saves every resumed launch a
+         * flash of a screen the player did not ask to see. The marker is read again, and cleared,
+         * by the resume itself; this read decides nothing but the cover.
+         */
+        const pendingSeam = {
+            persistenceGetAsync: (key: string) => scope.persistenceGetAsync(key),
+            persistenceSet: (key: string, value: unknown) => scope.persistenceSet(key, value),
+        };
+        const deadline = Date.now() + LOCALE_RESUME_SESSION_WAIT_MS;
+        const settle = (ms = LOCALE_RESUME_POLL_MS) => new Promise(resolve => { window.setTimeout(resolve, ms); });
+        /**
+         * The environment this launch is meant to act on, ready and standing still.
+         *
+         * Two conditions, both learned from a real run. The session has to belong to THIS bundle
+         * revision: the refs still describe the previous one until a reload's mount replaces them,
+         * and a load into the session being torn down is thrown away by the mount that follows -
+         * the player lands at the top of the scene with their parked run already deleted. And the
+         * environment has to have stopped moving: a mount publishes its live game a moment before
+         * whatever started it enters the game, and entering calls `newGame()`, which wipes exactly
+         * what the load just put back.
+         *
+         * Answers false when neither happens in time. A launch that never produces a game must
+         * leave what it was owed for the next one rather than consume it into nothing.
+         */
+        const sessionPrefix = `${bundle.bundleId}:${bundle.revision}:`;
+        const environmentIsMine = () => Boolean(hasLiveGame() && nlrSessionIdRef.current?.startsWith(sessionPrefix));
+        const waitForOwnEnvironment = async (): Promise<boolean> => {
+            while (!environmentIsMine()) {
+                if (Date.now() > deadline) {
+                    return false;
+                }
+                await settle();
+            }
+            await settle(LOCALE_RESUME_SETTLE_MS);
+            return environmentIsMine();
+        };
+        /**
+         * A restart the player is not meant to come back from, which only this host has to act on.
+         *
+         * A packaged game ends and starts again on its title screen, so by the time this runs there
+         * is nothing to leave. Dev Mode restarts by reloading its session, and a reload deliberately
+         * puts the author back into the story they were testing - so without this the same setting
+         * would end a playthrough in the shipped game and quietly keep it in the editor. Waited for
+         * the same way the resume is, because the run this has to end is still coming up.
+         */
+        if (await consumeFreshRestart(pendingSeam)) {
+            setLocaleResumePending(true);
+            try {
+                // The surface this launch starts on, which is where a player who restarted with
+                // nothing kept belongs. A host that names none has no page to leave to, and the
+                // run simply stays - the same degradation the ending page takes.
+                const entrySurfaceId = host.entrySurfaceId?.trim();
+                if (entrySurfaceId && await waitForOwnEnvironment() && isPlaythroughRunning()) {
+                    await quitGame(entrySurfaceId);
+                }
+            } catch (error) {
+                reportLocaleRestart("error", `The game could not be returned to its start after the language change: ${normalizeError(error)}`);
+            } finally {
+                setLocaleResumePending(false);
+            }
+            return;
+        }
+        let owed = false;
+        try {
+            owed = typeof await scope.persistenceGetAsync(LOCALE_RESTART_RESUME_KEY) === "string";
+        } catch {
+            owed = false;
+        }
+        if (!owed) {
+            return;
+        }
+        setLocaleResumePending(true);
+        // The cover is capped for the reason every cover is: a screen that never lifts is worse
+        // than the one it was hiding. If the resume is still going by then the player gets the
+        // title screen and the load lands under it, which is the behaviour without a cover at all.
+        const coverCap = window.setTimeout(() => setLocaleResumePending(false), LOCALE_RESUME_COVER_MAX_MS);
+        const uncover = () => {
+            window.clearTimeout(coverCap);
+            setLocaleResumePending(false);
+        };
+        if (!await waitForOwnEnvironment()) {
+            uncover();
+            return;
+        }
+        /**
+         * The load, retried while the environment is still settling.
+         *
+         * A game existing when the marker is read does not mean one exists a tick later: the
+         * environment that is up may be the one being replaced, and a mount nulls the live game
+         * before it publishes the new one. MEASURED: the resume read the marker, reached the load,
+         * and was told "game runtime is not available" - by a session that came up two seconds
+         * later. The gate is asked again after a failure to tell that apart from a load that failed
+         * with a game right there in front of it, which is not something waiting can fix.
+         */
+        const loadParkedSave = async (id: string): Promise<boolean> => {
+            for (;;) {
+                try {
+                    return await loadSaveForGraph(id);
+                } catch (error) {
+                    if (hasLiveGame() || Date.now() > deadline) {
+                        throw error;
+                    }
+                }
+                await settle();
+                while (!hasLiveGame()) {
+                    if (Date.now() > deadline) {
+                        throw new Error("no game runtime came up to resume into");
+                    }
+                    await settle();
+                }
+            }
+        };
+        try {
+            await resumeAfterLocaleRestart({
+                persistenceGetAsync: key => scope.persistenceGetAsync(key),
+                persistenceSet: (key, value) => scope.persistenceSet(key, value),
+                loadSave: loadParkedSave,
+                deleteSave,
+                report: reportLocaleRestart,
+            });
+        } catch (error) {
+            // Contained here rather than raised: the caller is a boot, and a boot that reports
+            // itself as failed takes the whole stage down with it. Nothing that can go wrong in a
+            // resume is worse than the title screen the player gets by falling through it.
+            reportLocaleRestart("error", `The playthrough could not be resumed after the language change: ${normalizeError(error)}`);
+        } finally {
+            uncover();
+        }
+    }, [
+        bundle.bundleId,
+        bundle.revision,
+        core,
+        deleteSave,
+        hasLiveGame,
+        host.entrySurfaceId,
+        isPlaythroughRunning,
+        loadSaveForGraph,
+        quitGame,
+        reportLocaleRestart,
+    ]);
 
     // `saves.write` for runtime plugins: the very same paths the Save Game /
     // Load Save nodes take, so a plugin save is indistinguishable from an
@@ -1739,12 +2358,23 @@ export function GameApp(props: GameAppProps): ReactNode {
     // Player slots only. Autosaves live in the same store under reserved ids and
     // are listed by List Auto Saves instead, so an authored Save/Load screen
     // built on this never has to filter Studio's bookkeeping out of its grid.
+    // The same goes for the run parked by a language restart, which is nobody's
+    // slot and is gone again by the time the player reaches a save screen.
     // (The plugin `saves.listIds` surface is deliberately left raw - it is
     // documented as direct store access, not the authoring view.)
     const listSaveIds = useCallback(async (): Promise<string[]> => {
-        const ids = await host.saveStore.listIds();
-        return ids.filter(id => !isAutoSaveId(id));
-    }, [host.saveStore]);
+        const headers = await host.saveStore.listHeaders();
+        return headers
+            .filter(header => !isReservedSaveId(header.id))
+            // The same decision the load itself makes, from the same header bytes: a slot this
+            // project would refuse is a slot a save screen must not draw a Load button on.
+            .filter(header => planSaveResume(
+                readSaveCompatibilityStamp(header.compatibility),
+                saveStamp,
+                saveCompatibilityConfig,
+            ).plan.action !== "discard")
+            .map(header => header.id);
+    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
 
     /**
      * The save slots, published for host debug overlays.
@@ -1779,6 +2409,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             if (!record) {
                 return null;
             }
+            // The same policy `List Saves` applies, for the same reason: a "continue" button on an
+            // autosave this project would refuse is a button that cannot work. Autosaves carry the
+            // same stamp - they are ordinary records under reserved ids.
+            const resume = planSaveResume(
+                readSaveCompatibilityStamp(record.metadata.compatibility),
+                saveStamp,
+                saveCompatibilityConfig,
+            );
+            if (resume.plan.action === "discard") {
+                return null;
+            }
             const updatedAt = Date.parse(record.metadata.updatedAt ?? "");
             const createdAt = Date.parse(record.metadata.createdAt ?? "");
             return {
@@ -1791,18 +2432,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore]);
+    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
 
     const autoSave = useAutoSave({
         config: autoSaveConfig,
         // The same gate `writeSave` itself enforces, so a true here always means
         // the write can actually serialize something.
-        isPlaying: () => Boolean(
-            gameEnteredRef.current
-            && nlrSession?.id
-            && nlrLiveGameSessionIdRef.current === nlrSession.id
-            && nlrLiveGameRef.current,
-        ),
+        isPlaying: isPlaythroughRunning,
         // Screenshots on: the point of an autosave ring is a screen that lists
         // it, and a list of thumbnail-less rows is a worse feature. The cost is
         // bounded by the scheduler's play-head gate - an idle game captures
@@ -1859,6 +2495,24 @@ export function GameApp(props: GameAppProps): ReactNode {
      * an object at all, still answers as a slot that exists with nothing to quote; refusing to
      * report the slot would take a row off the player's save screen over a missing caption.
      */
+    /**
+     * How long the playthrough behind one slot was played.
+     *
+     * Its own read, like `Get Save Time` and `Get Save Line` before it. A record written before
+     * playtime was tracked answers `recorded: false` rather than zero seconds: a save screen has to
+     * be able to leave that row blank instead of stating the player finished in no time at all.
+     */
+    const getSavePlaytime = useCallback(async (id: string): Promise<SaveRecordPlaytime | null> => {
+        const record = await host.saveStore.read(id);
+        if (!record) {
+            return null;
+        }
+        const seconds = readSavePlaytimeSeconds(record.metadata.playtimeSeconds);
+        return seconds === undefined
+            ? { seconds: 0, recorded: false }
+            : { seconds, recorded: true };
+    }, [host.saveStore]);
+
     const getSaveLine = useCallback(async (id: string): Promise<SaveRecordLine | null> => {
         const record = await host.saveStore.read(id);
         if (!record) {
@@ -1967,6 +2621,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
+            // Forwarded, and the size decided here: a weather clip is baked to the project's own
+            // stage, which this component knows and the compiler deliberately does not. A host with
+            // no baker passes nothing and its weather rows compile to a diagnostic.
+            ...(host.resolveWeatherClip
+                ? { resolveWeatherClip: (ref: WeatherSeedRef) => host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc)) }
+                : {}),
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             // The saved half of the same registry. This is the call both shipping runtimes go through
@@ -1976,14 +2636,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
-                      // Both halves of the write: the in-memory map so the very next story read
-                      // sees it, and the host store so it survives the session. Without the second
-                      // half a story-written persistent variable was invisible to every blueprint,
-                      // because `Get Persistent` reads through the adapter rather than the map.
-                      set: (key, value) => {
-                          core.scopeBridge.persistenceSet(key, value);
-                          return core.scopeBridge.persistenceSetAsync(key, value);
-                      },
+                      set: (key, value) => core.scopeBridge.persistenceSet(key, value),
                   }
                 : undefined,
             localization: bundle.localization && core
@@ -2061,17 +2714,24 @@ export function GameApp(props: GameAppProps): ReactNode {
                 startStoryInGameRef.current?.(request) ??
                 Promise.reject(new Error("Start Game: runtime is not ready")),
             writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
-            loadSaveInGame: loadSaveAction,
+            loadSaveInGame: loadSaveForGraph,
             deleteSaveInGame: id => deleteSave(id),
             listSaveIds,
             getSaveMetadata,
             getSaveTimes,
             getSaveLine,
+            getSavePlaytime,
             getSavePreview,
+            getPlaytime: playtime.getRunSeconds,
+            getTotalPlaytime: playtime.getTotalSeconds,
             writeAutoSaveInGame: autoSave.writeNow,
             listAutoSaves,
             getHistoryInGame,
+            getFutureInGame,
             restoreHistoryInGame,
+            redoHistoryInGame,
+            canUndoHistoryInGame,
+            canRedoHistoryInGame,
             exportProgressInGame,
             importProgressInGame,
             getCurrentNametag,
@@ -2098,6 +2758,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             soundTransport,
             audioTracks: bundle.audio?.tracks,
             subscribeGamePreferences,
+            // A language picker is exactly the kind of thing an author builds into a dialogue-box
+            // quick menu, and a slot surface's Set Language reaches this and nothing else.
+            localeChangedInGame: handleLocaleChanged,
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             widgetRuntimeStore,
@@ -2128,6 +2791,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The `skipReadText` preference cannot be honoured from outside the engine's own skip
             // loop, so the game app runs its own; see the effect that builds `skipRunController`.
             hostOwnsSkipKey: true,
+            // The author's pause length, from the bundle. A bundle written before the setting
+            // carries nothing and gets the engine's own value, which is what those builds shipped.
+            ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
         });
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are
@@ -2138,7 +2804,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             preference: (game as { preference?: PreferenceStoreLike }).preference,
             defaults: bundle.preferences,
             read: key => core.scopeBridge.persistenceGetAsync(key),
-            write: (key, value) => core.scopeBridge.persistenceSetAsync(key, value),
+            write: (key, value) => core.scopeBridge.persistenceSet(key, value),
+            // `autoForwardDelay` is the engine's config rather than one of its preferences, and it
+            // is read again for every line, so writing it here is enough for a change made in a
+            // settings screen to take effect on the next one.
+            configureEngine: config => game.configure(config),
             log: (level, message) => host.log(level, message),
         });
         // The player's own volumes, restored on top of the author's declaration and written back on
@@ -2149,7 +2819,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         audioBusPersistenceRef.current = await attachAudioBusPersistence({
             mixer: (game as { audioBuses?: Parameters<typeof attachAudioBusPersistence>[0]["mixer"] }).audioBuses,
             read: key => core.scopeBridge.persistenceGetAsync(key),
-            write: (key, value) => core.scopeBridge.persistenceSetAsync(key, value),
+            write: (key, value) => core.scopeBridge.persistenceSet(key, value),
             onVolumeChange: () => preferenceListenersRef.current.forEach(listener => listener()),
             log: (level, message) => host.log(level, message),
         });
@@ -2226,12 +2896,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         getCurrentNametag,
         resolveAvatarAssetId,
         getGamePreferenceInGame,
+        getFutureInGame,
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
+        handleLocaleChanged,
         autoSave.writeNow,
         listAutoSaves,
         hideDialogInGame,
@@ -2253,6 +2926,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         quitGame,
         rejectPendingGameStarts,
         rendererRegistry,
+        canRedoHistoryInGame,
+        canUndoHistoryInGame,
+        redoHistoryInGame,
         restoreHistoryInGame,
         selectChoiceInGame,
         setChoiceRuntime,
@@ -2284,6 +2960,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
         liveGame.newGame();
+        // A fresh playthrough starts the stopwatch from nothing. A load overwrites this moments
+        // later with the reading it inherited; nothing else in the file resets it.
+        playtime.seedRun(0);
         gameEnteredRef.current = true;
         // A document imported before this point has been waiting for exactly this moment:
         // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written
@@ -2293,12 +2972,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             pendingImportedProgressRef.current = null;
             applyImportedSavedProgress(importedProgress);
         }
+        const carriedSave = pendingCarriedSaveRef.current;
+        if (carriedSave) {
+            pendingCarriedSaveRef.current = null;
+            applyCarriedSaveState(carriedSave);
+        }
         // `onFirstSceneReady` already ends on a painted frame (see waitForStageVisualReadyWithTimeout),
         // so there is nothing left to wait for here: an extra frame only delays the UI's exit.
         await sceneReady;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
-    }, [applyImportedSavedProgress, hideCurrentStudioPagesForGame]);
+    }, [applyCarriedSaveState, applyImportedSavedProgress, hideCurrentStudioPagesForGame]);
 
     const startStoryInGame = useCallback(async (
         request: DevModeStartStoryRequest,
@@ -2380,17 +3064,24 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
             onQuitGame: quitGame,
             onWriteSave: writeSave,
-            onLoadSave: loadSaveAction,
+            onLoadSave: loadSaveForGraph,
             onDeleteSave: deleteSave,
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
             onGetSaveTimes: getSaveTimes,
             onGetSaveLine: getSaveLine,
+            onGetSavePlaytime: getSavePlaytime,
+            onGetPlaytime: playtime.getRunSeconds,
+            onGetTotalPlaytime: playtime.getTotalSeconds,
             onGetSavePreview: getSavePreview,
             onWriteAutoSave: autoSave.writeNow,
             onListAutoSaves: listAutoSaves,
             onGetHistory: getHistoryInGame,
+            onGetFuture: getFutureInGame,
             onRestoreHistory: restoreHistoryInGame,
+            onRedoHistory: redoHistoryInGame,
+            onCanUndoHistory: canUndoHistoryInGame,
+            onCanRedoHistory: canRedoHistoryInGame,
             onGetNametag: getCurrentNametag,
             onGetNotifications: getNotificationsInGame,
             onGetChoiceCount: getChoiceCountInGame,
@@ -2420,11 +3111,13 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetTrackVolume: soundTransport.getTrackVolume,
             onSetTrackVolume: soundTransport.setTrackVolume,
             onNetworkFetch: host.networkFetch,
+            onMovePointer: host.movePointer,
             onOpenExternal: host.openExternal,
             onExportProgress: exportProgressInGame,
             onImportProgress: importProgressInGame,
             audioTracks: bundle.audio?.tracks,
             onSubscribeGamePreferences: subscribeGamePreferences,
+            onLocaleChanged: handleLocaleChanged,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -2445,6 +3138,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             localizationConfig: bundle.localization ?? null,
             voiceConfig: bundle.voice ?? null,
             onPlayVoice: playVoiceUnit,
+            onPlayChoiceVoice: playChoiceVoiceUnit,
         });
         hostAdapter = createDevModeBlueprintHostAdapter({
             bundle,
@@ -2480,12 +3174,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         getChoiceCountInGame,
         getCurrentNametag,
         getGamePreferenceInGame,
+        getFutureInGame,
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
+        handleLocaleChanged,
         autoSave.writeNow,
         listAutoSaves,
         hideDialogInGame,
@@ -2507,6 +3204,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         nextInGame,
         openSurface,
         quitGame,
+        canRedoHistoryInGame,
+        canUndoHistoryInGame,
+        redoHistoryInGame,
         restoreHistoryInGame,
         selectChoiceInGame,
         setSentenceSpeedInGame,
@@ -2618,10 +3318,47 @@ export function GameApp(props: GameAppProps): ReactNode {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bootReady, bundle.bundleId]);
 
+    /**
+     * The one place a language restart is resumed from.
+     *
+     * Keyed on the runtime core rather than hung off the boot or the reload that produced one. Two
+     * reasons, both measured on a real run:
+     *
+     *  - Both of those paths are asynchronous and both have branches that end early (a superseded
+     *    mount, a story that would not compile), so a resume that lives inside one of them is
+     *    skipped exactly when it is needed.
+     *  - The core is what owns the persistence store, and a reload builds a NEW one while the old
+     *    one's adapter is detached and its values cleared. Keying on the bundle instead fired this
+     *    on the render *before* the new core arrived, read the store through the dead one, and
+     *    concluded that nothing was parked - while the marker sat on disk and the player's run sat
+     *    in a save nobody would ever read again.
+     *
+     * One attempt per environment, waiting for the environment itself, and a no-op in every launch
+     * that owes nothing - which is all of them but the one immediately after a language change.
+     */
+    useEffect(() => {
+        if (!host.ready || !core) {
+            return;
+        }
+        if (localeResumeAttemptedRef.current === core) {
+            return;
+        }
+        localeResumeAttemptedRef.current = core;
+        // Deliberately not waiting for the boot preload to finish: it takes seconds, and the answer
+        // to "is a run owed" has to be in hand before the first surface paints or the player sees
+        // the title screen they are about to be taken off. The resume itself waits for the
+        // environment; only the question is asked early.
+        void resumeLocaleRestart();
+    }, [core, host.ready, resumeLocaleRestart]);
+
     const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
         ? visibleEntries
             .filter(entry => entry.sessionKey === host.sessionKey)
-            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
+            .filter(entry => isPageEntryDrawn({
+                entryKey: entry.key,
+                pagesHiddenForGame: studioPageHiddenForGame,
+                gameHiddenKeys: gameHiddenNavKeys,
+            }))
             .map(entry => {
                 const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
                 return visibleSurface ? { entry, surface: visibleSurface } : null;
@@ -2658,7 +3395,12 @@ export function GameApp(props: GameAppProps): ReactNode {
      * was never coming, and a mutually exclusive group stayed occupied by something invisible. The
      * stack settles those waits itself once it knows which of its layers have no frame to lose.
      */
-    const renderedLayerKeys = new Set(nlrPreloadDone ? visibleLayers.map(item => item.layer.key) : []);
+    /**
+     * Whether the surface stack may draw. Everything the boot preload gates, plus the moment a
+     * language restart is putting a playthrough back: see `localeResumePending`.
+     */
+    const surfacesReady = nlrPreloadDone && !localeResumePending;
+    const renderedLayerKeys = new Set(surfacesReady ? visibleLayers.map(item => item.layer.key) : []);
     const unrenderedLayerKeys = layers
         .filter(layer => !renderedLayerKeys.has(layer.key))
         .map(layer => layer.key);
@@ -2672,7 +3414,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
-        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)) &&
+        isPageEntryDrawn({
+            entryKey: activeEntry.key,
+            pagesHiddenForGame: studioPageHiddenForGame,
+            gameHiddenKeys: gameHiddenNavKeys,
+        }) &&
         // The app-level keyDown/keyUp dispatch belongs to the page lane, so it stops the moment a
         // layer takes the keyboard - otherwise Escape would reach the page under an open modal.
         compositeInput.keyboardOwnerKey === activeEntry.key,
@@ -2724,17 +3470,24 @@ export function GameApp(props: GameAppProps): ReactNode {
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
                     onQuitGame: quitGame,
                     onWriteSave: writeSave,
-                    onLoadSave: loadSaveAction,
+                    onLoadSave: loadSaveForGraph,
                     onDeleteSave: deleteSave,
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
                     onGetSaveTimes: getSaveTimes,
                     onGetSaveLine: getSaveLine,
+                    onGetSavePlaytime: getSavePlaytime,
+                    onGetPlaytime: playtime.getRunSeconds,
+                    onGetTotalPlaytime: playtime.getTotalSeconds,
                     onGetSavePreview: getSavePreview,
                     onWriteAutoSave: autoSave.writeNow,
                     onListAutoSaves: listAutoSaves,
                     onGetHistory: getHistoryInGame,
+                    onGetFuture: getFutureInGame,
                     onRestoreHistory: restoreHistoryInGame,
+                    onRedoHistory: redoHistoryInGame,
+                    onCanUndoHistory: canUndoHistoryInGame,
+                    onCanRedoHistory: canRedoHistoryInGame,
                     onGetNametag: getCurrentNametag,
                     onGetNotifications: getNotificationsInGame,
                     onGetChoiceCount: getChoiceCountInGame,
@@ -2764,11 +3517,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetTrackVolume: soundTransport.getTrackVolume,
                     onSetTrackVolume: soundTransport.setTrackVolume,
                     onNetworkFetch: host.networkFetch,
+                    onMovePointer: host.movePointer,
                     onOpenExternal: host.openExternal,
                     onExportProgress: exportProgressInGame,
                     onImportProgress: importProgressInGame,
                     audioTracks: bundle.audio?.tracks,
                     onSubscribeGamePreferences: subscribeGamePreferences,
+                    onLocaleChanged: handleLocaleChanged,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
@@ -2789,6 +3544,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     localizationConfig: bundle.localization ?? null,
                     voiceConfig: bundle.voice ?? null,
                     onPlayVoice: playVoiceUnit,
+                    onPlayChoiceVoice: playChoiceVoiceUnit,
                 });
                 nestedHostAdapter = createDevModeBlueprintHostAdapter({
                     bundle,
@@ -2855,12 +3611,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         getChoiceCountInGame,
         getCurrentNametag,
         getGamePreferenceInGame,
+        getFutureInGame,
         getHistoryInGame,
         getNotificationsInGame,
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
+        handleLocaleChanged,
         autoSave.writeNow,
         listAutoSaves,
         hideDialogInGame,
@@ -2882,6 +3641,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         nextInGame,
         openSurface,
         quitGame,
+        canRedoHistoryInGame,
+        canUndoHistoryInGame,
+        redoHistoryInGame,
         restoreHistoryInGame,
         selectChoiceInGame,
         setSentenceSpeedInGame,
@@ -3095,8 +3857,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [activeSurface, activeSurfaceKeyboardReady, bundle, core, host, hostAdapterBundle]);
 
     /**
-     * Holding the skip key. Studio's loop, not the engine's - see `skipRunController` for why the
-     * binding had to move, and `createNlrGameWithGameUi` for where it moved to.
+     * Skipping. Studio's loop, not the engine's - see `skipRunController` for why the binding had to
+     * move, and `createNlrGameWithGameUi` for where it moved to.
+     *
+     * Two ways in, one run: the skip key, and the `skipping` preference a graph writes. The
+     * preference is what a quick menu button and a touch screen bind to, so the controller is
+     * driven from the same change stream everything else reads, and it writes the value back
+     * whenever a run ends on its own - the guard stopping it, the window losing focus, the session
+     * going away. The value and the run therefore cannot disagree, which is the whole point of
+     * having a value at all.
      *
      * Everything the loop needs is read through refs at the moment it needs it, so the controller
      * survives a preference change, a story launch and a dialog beat without being rebuilt; it is
@@ -3111,7 +3880,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Loosened on purpose: `skipReadText` is Studio's own preference riding in the engine's
         // store (see `preferenceRuntime`), so it is not in `GamePreference` and the typed accessor
         // would refuse it.
-        const preference = (game as { preference?: { getPreference?: (key: string) => unknown } }).preference;
+        const preference = (game as {
+            preference?: {
+                getPreference?: (key: string) => unknown;
+                setPreference?: (key: string, value: unknown) => void;
+            };
+        }).preference;
         const readPreference = (key: string): unknown => preference?.getPreference?.(key);
         const readNumber = (key: string, fallback: number): number => {
             const value = readPreference(key);
@@ -3119,9 +3893,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
         const controller = createSkipRunController({
             matchesSkipKey: key => game.keyMap.match(STUDIO_SKIP_KEY_BINDING, key),
-            // `skip` is the author's permission to skip at all, and `isInGame` is what keeps a held
-            // key on a title screen from advancing the story behind it.
-            canSkip: () => isInGame() && readPreference("skip") !== false,
+            // `skip` is the author's permission to skip at all, and `isStoryOnScreen` is what keeps
+            // a held key on a title screen - or a mode left on under a settings screen - from
+            // advancing the story behind it.
+            canSkip: () => isStoryOnScreen() && readPreference("skip") !== false,
             isBlocked: () => {
                 // A session that went away mid-hold ends the run rather than ticking into nothing.
                 if (!nlrLiveGameRef.current?.getGameState()) {
@@ -3134,22 +3909,83 @@ export function GameApp(props: GameAppProps): ReactNode {
             getSkipInterval: () => readNumber("skipInterval", 100),
             skipOnce: () => nlrLiveGameRef.current?.skipDialog(),
             isTextEntryTarget,
+            // Letting go, for a run nobody is holding a key for. Writing the preference is what a
+            // Skip button reads back, so the button un-lights itself the moment the run stops.
+            onSkippingEnded: () => {
+                try {
+                    preference?.setPreference?.("skipping", false);
+                } catch {
+                    // The session this controller belongs to is already gone; there is nothing left
+                    // for the value to describe.
+                }
+            },
         });
         const onKeyDown = (event: KeyboardEvent) => controller.handleKeyDown(event);
         const onKeyUp = (event: KeyboardEvent) => controller.handleKeyUp(event);
         // A window that loses focus mid-hold never delivers the keyup, and the run would go on
-        // skipping behind whatever the player switched to.
+        // skipping behind whatever the player switched to. The mode ends here too: a game skipping
+        // itself behind another window is the same problem whichever started it.
         const onBlur = () => controller.stop();
+        // The value side. Read rather than taken from the event, so the audio mixer's own fan-out
+        // through this same listener set costs nothing but a re-read.
+        const unsubscribePreferences = subscribeGamePreferences(() => {
+            controller.setSkipping(readPreference("skipping") === true);
+        });
+        controller.setSkipping(readPreference("skipping") === true);
         window.addEventListener("keydown", onKeyDown);
         window.addEventListener("keyup", onKeyUp);
         window.addEventListener("blur", onBlur);
         return () => {
             controller.stop();
+            unsubscribePreferences();
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
             window.removeEventListener("blur", onBlur);
         };
-    }, [isInGame, nlrSession]);
+    }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
+
+    /**
+     * Hold the story still while a page or a modal layer is drawn over the stage.
+     *
+     * The skip loop above stops itself, because Studio runs it. Auto-forward is the engine's own
+     * timer and reaches the dialog through a click the host never sees, so nothing a predicate can
+     * say will stop it - the engine's `suspendAdvance` is what does, and this is the one place
+     * Studio takes one. It covers the stage click and the advance key with it, which is the same
+     * answer for the same reason: the player is looking at the screen on top.
+     *
+     * Mount and cleanup are the two edges of "covered", so a suspension cannot survive the render
+     * that decided the stage was clear. See `stageAdvanceHold` for what releasing has to do besides
+     * releasing.
+     */
+    useEffect(() => {
+        if (!stageCovered) {
+            return;
+        }
+        const heldLiveGame = nlrLiveGameRef.current;
+        const preference = (nlrSession?.game as {
+            preference?: {
+                getPreference?: (key: string) => unknown;
+                setPreference?: (key: string, value: unknown) => void;
+            };
+        } | undefined)?.preference;
+        const hold = holdStageAdvance({
+            suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
+            isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
+            isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
+            rearmAutoForward: () => {
+                engineNudgeDepthRef.current += 1;
+                try {
+                    preference?.setPreference?.("autoForward", true);
+                } catch {
+                    // A session torn down between the check and the write; the line it would have
+                    // woken is gone with it.
+                } finally {
+                    engineNudgeDepthRef.current -= 1;
+                }
+            },
+        });
+        return hold.release;
+    }, [nlrSession, stageCovered]);
 
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
@@ -3380,6 +4216,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                     liveGame,
                     preferenceSnapshotRef,
                     (key, value, previousValue) => {
+                        // A write Studio made to nudge the engine is not a change to report: the
+                        // value on both sides of it is the player's own, untouched.
+                        if (engineNudgeDepthRef.current > 0) {
+                            return;
+                        }
                         dispatchPreferenceChangeRef.current?.(key, value, previousValue);
                         preferenceListenersRef.current.forEach(listener => listener());
                     },
@@ -3390,7 +4231,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                     textReadTrackerRef.current = createTextReadTracker({
                         ...createNlrDialogReadHooks(dialogGameState),
                         persistenceGetAsync: key => core.scopeBridge.persistenceGetAsync(key),
-                        persistenceSet: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                        // The read set is only useful across sessions - within one the tracker
+                        // answers from its own Set - so reaching the store is the entire point of
+                        // persisting it. It once did not, and skip-read-text skipped nothing on
+                        // every playthrough after the first.
+                        persistenceSet: (key, value) => {
+                            void core.scopeBridge.persistenceSet(key, value);
+                        },
                         setMirror: value => core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, value),
                         resolveReadKey: createReadKeyResolver(nlrSession?.compiled.actionIdBindings ?? []),
                     });
@@ -3520,7 +4367,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         mode={surfacePresenceMode}
                         onExitComplete={handleSurfaceExitComplete}
                     >
-                        {nlrPreloadDone
+                        {surfacesReady
                             ? visibleSurfaceEntries.map(({ entry, surface }, layerIndex) => (
                                 <AppSurfaceLayerWithAdapter
                                     key={entry.key}
@@ -3566,7 +4413,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         mode="sync"
                         onExitComplete={handleLayerExitComplete}
                     >
-                        {nlrPreloadDone
+                        {surfacesReady
                             ? visibleLayers.map(({ layer, surface }, index) => (
                                 <AppSurfaceLayerWithAdapter
                                     key={layer.key}

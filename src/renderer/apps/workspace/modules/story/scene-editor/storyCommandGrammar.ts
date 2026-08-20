@@ -1,4 +1,9 @@
-import type { StoryCommandStageObjectKind, StoryCommandTargetKind, StoryPuppetChannel } from "./storyCommandValues";
+import type {
+    StoryCommandStageObjectKind,
+    StoryCommandTargetKind,
+    StoryPuppetChannel,
+    StoryReservedTargetName,
+} from "./storyCommandValues";
 
 /**
  * The grammar vocabulary of the story editor's slash command line: what a param IS, independent of
@@ -46,8 +51,42 @@ export type StoryCommandEnumOption = {
     labelKey?: string;
 };
 
+/**
+ * A shape an enum slot takes BESIDES its words — one value an author can state that no word list
+ * could hold.
+ *
+ * There is exactly one today: the `cubic-bezier(…)` an easing curve editor draws. An easing is a
+ * word ninety-nine times out of a hundred, so the slot stays an enum — the menu still offers the
+ * eleven curves by name, and a misspelt word is still an error rather than free text — and this
+ * declares the one further thing it will take.
+ *
+ * `normalize` is what keeps the row and the line agreeing on spelling: the value banked is the one
+ * this returns, so `ease=cubic-bezier(.42, 0, .58, 1)` is stored the way the editor writes it and
+ * prints back as a single token.
+ */
+export type StoryCommandEnumFreeform = {
+    accepts: (raw: string) => boolean;
+    normalize?: (raw: string) => string;
+};
+
 export type StoryCommandParamType =
-    | { kind: "asset"; assetType: "image" | "audio" | "video" }
+    /**
+     * A file from one of the three libraries a line can name.
+     *
+     * `allowSets` opens the slot to the project's asset sets as well, and it is a statement about
+     * where the id ENDS UP, not a preference: assembly resolves a set only for the payload fields
+     * `assetIdSlots` lists (`assetId`, `voiceAssetId`, the two masks), so a set id written anywhere
+     * else reaches the build as an id nothing answers. Set it on a param whose `build` writes one of
+     * those fields, and nowhere else - `assetSetCommandParams.test.ts` builds each command and checks
+     * that claim against the materializer's own slot list.
+     *
+     * The same flag governs all three surfaces the name passes through, which is why it lives on the
+     * type rather than at each of them: what the completion menu offers, what the row's inline
+     * dropdown offers, and what a typed name resolves to. A slot that offered a set it could not
+     * resolve, or resolved one it never offered, would be a name the author can read on the row and
+     * not type back.
+     */
+    | { kind: "asset"; assetType: "image" | "audio" | "video"; allowSets?: true }
     /**
      * A character. `allowTemp` is the difference between a *speaker* and a *portrait*:
      *  - `/say Zoe …` - a dialogue row may carry a bare `speakerName`, so a name matching no character
@@ -146,14 +185,34 @@ export type StoryCommandParamType =
            * sound command that also reaches video, not a coin flip between the two.
            */
           fallbackKind?: StoryCommandStageObjectKind;
+          /**
+           * Stage singletons this slot also answers to by their reserved word (`camera`).
+           *
+           * Tried BEFORE any name on stage, and the words are the engine's own, so nothing an author
+           * can create could shadow one. A slot that names none of them behaves exactly as it did.
+           */
+          reserved?: readonly StoryReservedTargetName[];
+          /**
+           * Kinds this slot resolves in order to REFUSE them, with a reason.
+           *
+           * Not "`accepts` minus something": a kind left out of `accepts` is simply not looked up, so
+           * `/transform petals` would report "no such target" for an overlay sitting in plain sight
+           * on the stage. Listing it here resolves the name, finds the Vfx, and reports
+           * `unsupportedTarget` naming what it found - the difference between "check your spelling"
+           * and "this verb cannot reach that".
+           *
+           * Read only by resolution. The browse menu and the candidate list stay on `accepts`, so a
+           * refused kind never files the command under its subject and is never offered.
+           */
+          refuses?: readonly StoryCommandTargetKind[];
       }
     /**
      * The new content of a `/swap` - typed by what the *target* resolved to: an image target takes an
      * image asset, a video target a video asset, a text target free text. `dependsOn` names the
      * target param, exactly as {@link characterForm} does.
      */
-    | { kind: "content"; dependsOn: string }
-    | { kind: "enum"; options: readonly StoryCommandEnumOption[] }
+    | { kind: "content"; dependsOn: string; allowSets?: true }
+    | { kind: "enum"; options: readonly StoryCommandEnumOption[]; freeform?: StoryCommandEnumFreeform }
     /** A bare word that means itself, e.g. the `click` in `/wait click`. Used inside unions. */
     | { kind: "keyword"; value: string }
     | {
@@ -255,8 +314,11 @@ export type StoryCommandDef = {
 /** Named-param lookup by name or alias. Positional params are addressable by name too (`/bg image=forest` is legal). */
 export function findParam(def: StoryCommandDef, key: string): StoryCommandParam | null {
     const normalized = key.trim().toLowerCase();
-    return def.params.find(param => param.name === normalized)
-        ?? def.params.find(param => (param.aliases ?? []).includes(normalized))
+    // Both sides are folded. A param name is an author-facing WORD as well as a record key, and the
+    // prop vocabulary has two that read wrong in lower case (`scaleX`, `repeatDelay`) — folding only
+    // the typed side made those two unreachable by the very spelling the row prints for them.
+    return def.params.find(param => param.name.toLowerCase() === normalized)
+        ?? def.params.find(param => (param.aliases ?? []).some(alias => alias.toLowerCase() === normalized))
         ?? null;
 }
 
@@ -306,6 +368,22 @@ export function numberValueOf(type: Extract<StoryCommandParamType, { kind: "numb
         : trimmed;
     const parsed = Number(body);
     return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * The value a {@link StoryCommandEnumFreeform} slot banks for this text, or `null` when the text is
+ * not that shape (which includes every slot that declares none).
+ *
+ * Sits beside {@link matchEnumOption} because the two are the same question asked of one slot: the
+ * parser, the resolver and the candidate list each ask both, in that order, and a slot with no
+ * freeform behaves exactly as it did.
+ */
+export function enumFreeformValue(type: Extract<StoryCommandParamType, { kind: "enum" }>, raw: string): string | null {
+    const trimmed = raw.trim();
+    if (!trimmed || !type.freeform?.accepts(trimmed)) {
+        return null;
+    }
+    return type.freeform.normalize ? type.freeform.normalize(trimmed) : trimmed;
 }
 
 /** Resolve an author-typed enum value (canonical or alias) to its option. Case-insensitive. */

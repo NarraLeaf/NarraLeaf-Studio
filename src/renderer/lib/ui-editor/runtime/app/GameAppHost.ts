@@ -1,3 +1,5 @@
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
+import type { WeatherBakeSpec } from "@shared/weather/model";
 import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -9,6 +11,7 @@ import type {
     GameProgressImportResult,
 } from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -66,16 +69,52 @@ export type GameAppSaveRecord = {
         /** ISO timestamps written by the store; absent on records it could not stamp. */
         createdAt?: string;
         updatedAt?: string;
+        /** What produced the save; absent on records written before the stamp existed. */
+        compatibility?: SaveCompatibilityStamp;
+        /** Seconds of play behind the save; absent on records written before playtime was tracked. */
+        playtimeSeconds?: number;
     };
 };
 
 /** Host-side raw save storage. Game-level logic (serialize, capture, reveal) stays in GameApp. */
 export type GameAppSaveStore = {
-    write(id: string, savedGame: unknown, capture: string | undefined, metadata: unknown): Promise<void>;
+    write(
+        id: string,
+        savedGame: unknown,
+        capture: string | undefined,
+        metadata: unknown,
+        /** What produced the save; omitted leaves the record unstamped. See `saveCompatibility`. */
+        compatibility?: SaveCompatibilityStamp,
+        /**
+         * Seconds of play behind the save; omitted leaves the record without a reading.
+         *
+         * A shell that drops this still type-checks - a trailing optional parameter always does -
+         * so `savePlaytimeForwarding.test` reads the shells as text instead.
+         */
+        playtimeSeconds?: number,
+    ): Promise<void>;
     read(id: string): Promise<GameAppSaveRecord | null>;
     readPreview(id: string): Promise<string | null | undefined>;
     remove(id: string): Promise<void>;
     listIds(): Promise<string[]>;
+    /**
+     * Every slot's header, in one go.
+     *
+     * Separate from {@link listIds} because deciding what a save screen may offer needs more than
+     * an id and much less than a record: reading each slot through {@link read} would carry a whole
+     * serialized playthrough and a base64 screenshot per slot across a process boundary, every time
+     * a menu opens, to look at three fields.
+     */
+    listHeaders(): Promise<GameAppSaveHeader[]>;
+};
+
+/** One slot as a listing sees it. */
+export type GameAppSaveHeader = {
+    id: string;
+    /** Absent on records written before the stamp existed. */
+    compatibility?: SaveCompatibilityStamp;
+    /** Seconds of play behind the save; absent on records written before playtime was tracked. */
+    playtimeSeconds?: number;
 };
 
 /** What the boot preload should do once the NLR environment can mount. */
@@ -150,6 +189,19 @@ export type GameAppHost = {
         assetId: string,
         assetType?: StoryAssetKind,
     ) => Promise<string | null | undefined> | string | null | undefined;
+    /**
+     * The clip a weather seed describes, produced if it does not exist yet.
+     *
+     * Optional, and its absence is a real state rather than an oversight: a host that cannot produce
+     * one (nothing to spawn an encoder with) compiles a story whose weather rows are left out with a
+     * diagnostic, which is a scene that plays without weather rather than one that will not start.
+     *
+     * Takes a whole spec rather than a seed, because the SIZE is the host's question - it follows the
+     * project's stage, which the compiler has no business knowing.
+     */
+    resolveWeatherClip?: (
+        spec: WeatherBakeSpec,
+    ) => Promise<string | null | undefined> | string | null | undefined;
     saveStore: GameAppSaveStore;
     /**
      * The author-supplied drawing backends for the engine's puppet seam, if this host can serve
@@ -163,6 +215,26 @@ export type GameAppHost = {
      */
     listPuppetBackendModules?: () => Promise<PuppetBackendModuleSource[]>;
     quitApplication: () => Promise<void>;
+    /**
+     * Start this shell over: end it and bring it back, from the top.
+     *
+     * Asked for exactly one reason today - the player changed the language while a playthrough was
+     * running, which invalidates far more than the strings still to be shown (see `localeRestart`).
+     * Nothing about it is language-specific: it is "this build cannot fix itself in place, put it
+     * back to boot".
+     *
+     * What "restart" means is the shell's business and the shells differ honestly. The packaged
+     * desktop game relaunches its process. The web export reloads the page, which is the same act
+     * for a shell that IS a page. Dev Mode reloads its session, which recompiles the project and
+     * restarts the environment in that window - the author gets what a player would get without
+     * Studio itself going down around them.
+     *
+     * Omitted by hosts with nothing to restart (the workspace story preview). A language change
+     * mid-run then applies without one, which leaves the session showing two languages until it
+     * ends - reported at the point it happens, because a host that quietly did nothing would look
+     * exactly like one where the restart failed.
+     */
+    restartApplication?: () => Promise<void>;
     /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
     getFullscreen?: () => Promise<boolean>;
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
@@ -186,6 +258,19 @@ export type GameAppHost = {
      * no running game to play through.
      */
     networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    /**
+     * Put the player's real cursor at a point in this window, for the Move Mouse family.
+     *
+     * The point is in CSS pixels from the top-left of the web contents, which is as far as the
+     * renderer can usefully speak: where that lands on the desktop depends on where the window is
+     * and how the display is scaled, and neither is knowable from a page. Every desktop shell hands
+     * it to its main process for that reason, and the web export declines - a page cannot position
+     * the pointer, and drawing a stand-in would be a different feature wearing this one's name.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * `unsupported`, the same degradation {@link networkFetch} takes.
+     */
+    movePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
     /**
      * Open one web address in the player's browser, for the Open Link node.
      *

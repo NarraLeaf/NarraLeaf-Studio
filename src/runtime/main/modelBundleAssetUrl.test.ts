@@ -77,8 +77,10 @@ describe("model bundle asset URLs in a built game", () => {
     });
 
     it("serves the entry file for the bare asset id", async () => {
-        // A caller holding only the id still reaches the manifest - it just does not get a URL that
-        // siblings resolve against, which is why the renderer appends `bundleEntry`.
+        // A caller holding only the id still reaches the entry file through an unprotected pack's
+        // manifest. What it does not get is a URL that siblings resolve against - that is what the
+        // trailing-slash mount is for (see `resolveModelBundleKey`), and it is the shape the
+        // renderer builds so that no entry file name has to ship.
         const resolved = resolveRuntimeAssetPath(appDir, makePack(), ASSET_ID);
         expect(await fs.readFile(resolved, "utf-8")).toBe(`bytes:${ENTRY}`);
     });

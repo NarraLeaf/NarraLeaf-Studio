@@ -8,6 +8,15 @@ import type { HelpEditorPayload } from "./HelpEditor";
 export const HELP_TAB_ID = helpModule.metadata.id;
 
 /**
+ * Distinguishes one request for a topic from the next one for the same topic.
+ *
+ * The reader is a single tab, so asking for a topic it was already opened at carries an identical
+ * topic id; without this the reader would stay wherever the author had browsed to since, which
+ * reads as the request having been ignored.
+ */
+let requestCount = 0;
+
+/**
  * Live tab definition for the help browser. Shared by the palette command, the popover's "All
  * topics" and session restore, so a restored help tab is identical to a freshly opened one.
  */
@@ -18,7 +27,7 @@ export function createHelpTab(topicId?: HelpTopicId): EditorTabDefinition<HelpEd
         icon: helpModule.metadata.icon,
         component: helpModule.component as EditorTabDefinition<HelpEditorPayload>["component"],
         closable: true,
-        payload: topicId ? { topicId } : undefined,
+        payload: topicId ? { topicId, request: ++requestCount } : undefined,
     };
 }
 

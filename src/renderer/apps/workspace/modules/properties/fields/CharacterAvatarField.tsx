@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useWorkspace } from "@/apps/workspace/context";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useTranslation } from "@/lib/i18n";
@@ -25,6 +27,15 @@ export function CharacterAvatarField({ data }: CustomFieldProps<CharacterEditorC
     const [open, setOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
     const { url } = useAssetObjectUrl(assetId);
+    const { context, isInitialized } = useWorkspace();
+    // An avatar can be answered by a set: it is one picture of one character, which is exactly the
+    // kind of thing that changes with the language it is read in. The package carries the answer.
+    const { virtualGroups, resolveAssetPreviewUrl } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
 
     const commit = (next: string | null): void => {
         setAssetId(next);
@@ -61,6 +72,7 @@ export function CharacterAvatarField({ data }: CustomFieldProps<CharacterEditorC
                 anchorRef={anchorRef}
                 title={t("characters.properties.defaultAvatar")}
                 multiple={false}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </div>
     );

@@ -6,7 +6,8 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
-import { AssetField } from "./StorySceneActionInspector";
+import { AssetField } from "./AssetField";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 
 /**
  * Inline reveal-time event config popover, mirroring the Pause / Interpolation popovers. The
@@ -22,6 +23,9 @@ export function ExpressionPopover(props: {
     onRemove: () => void;
     onClose: () => void;
 }) {
+    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
+    // whatever the author moved to; the caller's own dismissal is what puts it away.
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const characterId = props.character?.profile.getId();

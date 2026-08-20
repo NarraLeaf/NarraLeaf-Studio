@@ -92,6 +92,32 @@ export class WorkspaceOpenRecentHandler extends IPCHandler<IPCEventType.workspac
 }
 
 /**
+ * Whether a project already has a window of its own.
+ *
+ * Asked by the title-bar switcher before it offers a choice of window. Opening an already-open
+ * project focuses the window that has it whichever way it was asked for ({@link App.openProject}),
+ * so the question has one outcome and putting it to the author is a step with nothing behind it.
+ *
+ * The answer is read here rather than in the renderer because the window list and the path identity
+ * used to match against it are both the main process's - a renderer comparing paths itself would be
+ * a second opinion on "same project", and one of the two would eventually be wrong.
+ *
+ * A window asking about its own project is told yes: opening it is a no-op that focuses this window,
+ * which is not a choice either.
+ */
+export class WorkspaceIsProjectOpenHandler extends IPCHandler<IPCEventType.workspaceIsProjectOpen> {
+    readonly name = IPCEventType.workspaceIsProjectOpen;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.workspaceIsProjectOpen]["data"],
+    ): RequestStatus<IPCEvents[IPCEventType.workspaceIsProjectOpen]["response"]> {
+        return this.success({ open: Boolean(window.getApp().findWorkspaceForProject(projectPath)) });
+    }
+}
+
+/**
  * Handler for selecting a folder to open as workspace
  */
 export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.workspaceSelectFolder> {
@@ -187,11 +213,11 @@ export class WorkspaceOpenProjectFolderHandler extends IPCHandler<IPCEventType.w
 }
 
 /**
- * Handler for closing workspace window.
+ * Handler for closing a workspace window.
  *
- * Returning to the launcher is the workspace window's own close behaviour (see the close guard
- * installed in App.launchWorkspace), so this only has to request the close - the native close
- * box takes the exact same path.
+ * Goes through `window.close()` so the close guard installed in App.launchWorkspace runs - the
+ * native close box takes the exact same path, and both mean the window ends here. Going back to
+ * the home screen instead is {@link WorkspaceReturnToLauncherHandler}.
  */
 export class WorkspaceCloseHandler extends IPCHandler<IPCEventType.workspaceClose> {
     readonly name = IPCEventType.workspaceClose;
@@ -199,6 +225,28 @@ export class WorkspaceCloseHandler extends IPCHandler<IPCEventType.workspaceClos
 
     public async handle(window: AppWindow): Promise<RequestStatus<void>> {
         window.close();
+
+        return this.success(void 0);
+    }
+}
+
+/**
+ * Handler for leaving a project for the home screen.
+ *
+ * Deliberately NOT `window.close()`: the close guard would run this as a close, and a close is
+ * the one thing this is not. The exit work (confirm, flush, checkpoint) is the same either way,
+ * so both intents meet inside `App.requestWorkspaceExit` - which is also where a second request
+ * arriving mid-exit is folded into the first, whichever gesture sent it.
+ */
+export class WorkspaceReturnToLauncherHandler extends IPCHandler<IPCEventType.workspaceReturnToLauncher> {
+    readonly name = IPCEventType.workspaceReturnToLauncher;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed("Only a workspace window can return to the launcher");
+        }
+        window.app.requestWorkspaceExit(window as AppWindow<WindowAppType.Workspace>, "launcher");
 
         return this.success(void 0);
     }

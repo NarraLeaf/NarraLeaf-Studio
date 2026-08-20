@@ -45,7 +45,7 @@ export const EDITOR_SPLIT_RATIO_EPSILON = 0.02;
  * member compiles everywhere and changes nothing — the dispatch sites have to be found by hand.
  */
 export interface SelectionState {
-    type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | "storyBlock" | null;
+    type: "asset" | "assetSet" | "character" | "element" | "scene" | "storyMotionKeyframe" | "storyBlock" | null;
     data: any | UIElementSelection | null;
 }
 

@@ -17,6 +17,7 @@ import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { getListProps } from "./helpers";
+import type { TextWritingMode } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import type { ListDirection, ListWidgetProps } from "./types";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { StaticEffectsSection } from "@/lib/ui-editor/widget-modules/shared/effects/StaticEffectsSection";
@@ -563,6 +564,16 @@ function ListLayoutField(props: CustomFieldProps<UIInspectorData>) {
                         draftResetKey={`${draftResetKey}-item-gap`}
                         onFiniteNumber={value => patch({ itemGap: clampListSpacingPx(value, 128) })}
                         max={128}
+                    />
+                    <ListSelectControl
+                        label={t("widgets.typography.writingMode")}
+                        value={current.writingMode}
+                        options={[
+                            { value: "horizontal-tb", label: t("widgets.typography.writingHorizontal") },
+                            { value: "vertical-rl", label: t("widgets.typography.writingVerticalRl") },
+                            { value: "vertical-lr", label: t("widgets.typography.writingVerticalLr") },
+                        ]}
+                        onChange={value => patch({ writingMode: value as TextWritingMode })}
                     />
                 </div>
                 <div className="mt-2">

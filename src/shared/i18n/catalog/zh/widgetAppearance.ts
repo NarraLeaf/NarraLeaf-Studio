@@ -2,14 +2,14 @@ import type { LocaleNamespace } from "../types";
 
 export const widgetAppearance = {
     panel: {
-        invalidModel: "此元素没有有效的外观数据，请从素材面板新建一个",
+        invalidModel: "此元素没有有效的外观数据，请从资产面板新建一个",
     },
-    variant: {
-        nameLabel: "变体名称",
-        untitled: "未命名变体",
-        addTitle: "添加变体（复制当前）",
-        setDefaultTitle: "设为默认变体",
-        deleteTitle: "删除变体",
+    state: {
+        label: "状态",
+        untitled: "未命名状态",
+        addTitle: "添加状态（复制当前）",
+        setDefaultTitle: "设为默认状态",
+        deleteTitle: "删除状态",
     },
     motion: {
         animatedFields: "动画字段",
@@ -148,8 +148,8 @@ export const widgetAppearance = {
     fields: {
         imageFill: "图片填充",
         imageFillNeedsContext: "图片填充需要检视器上下文",
-        imageUrlPlaceholder: "URL 或资源引用",
-        imageUrlPlaceholderLegacy: "URL 或资源引用（旧版）",
+        imageUrlPlaceholder: "URL 或资产引用",
+        imageUrlPlaceholderLegacy: "URL 或资产引用（旧版）",
     },
     fills: {
         cover: "覆盖",
@@ -160,6 +160,34 @@ export const widgetAppearance = {
     fillType: {
         color: "颜色",
         image: "图片",
+        gradient: "渐变",
+    },
+    gradient: {
+        title: "渐变",
+        openEditorAria: "编辑渐变",
+        closeAria: "关闭渐变",
+        previewAria: "渐变预览",
+        kind: "类型",
+        kindLinear: "线性",
+        kindRadial: "径向",
+        kindConic: "角向",
+        angle: "角度",
+        center: "中心",
+        centerXAria: "渐变中心，水平",
+        centerYAria: "渐变中心，垂直",
+        radius: "半径",
+        radiusXAria: "渐变半径，水平",
+        radiusYAria: "渐变半径，垂直",
+        stops: "色标",
+        addStopAria: "添加色标",
+        stopColorAria: "色标 {index} 颜色",
+        stopOffsetAria: "色标 {index} 位置",
+        stopReorderAria: "重新排序色标 {index}",
+        stopReorderHint: "拖动，或按上下方向键",
+        stopRemoveAria: "删除色标 {index}",
+        stopRemoveFloor: "渐变至少保留两个色标。",
+        motionUnavailableAria: "背景颜色动效，渐变下不可用",
+        motionUnavailable: "渐变没有单一颜色可插值。填充不透明度与可见性仍会过渡。",
     },
     blend: {
         normal: "正常",

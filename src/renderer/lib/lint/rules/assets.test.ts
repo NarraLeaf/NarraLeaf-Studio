@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import type { AssetSet } from "@shared/types/assetSet";
 import { AssetType } from "../../workspace/services/assets/assetTypes";
 import type { AssetReference } from "../../workspace/services/references/referenceModel";
-import type { LintAssetEntry, LintContext, LintImageProbe } from "../context";
+import type { LintAlphaProbe, LintAssetEntry, LintContext, LintImageProbe } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintFinding, LintRuleId } from "../types";
 import { ASSETS_LINT_RULES } from "./assets";
@@ -21,7 +22,7 @@ function runRule(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
 }
 
 function asset(id: string, overrides: Partial<LintAssetEntry> = {}): LintAssetEntry {
-    return { id, type: AssetType.Image, name: `${id}.png`, ext: "png", meta: {}, ...overrides };
+    return { id, type: AssetType.Image, name: `${id}.png`, ext: "png", meta: {}, tags: [], ...overrides };
 }
 
 const storyReference: AssetReference = {
@@ -245,6 +246,7 @@ describe("assets/unreadable", () => {
                 exists: async () => false,
                 readBytes: async () => null,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 1, height: 1 }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -259,7 +261,7 @@ describe("assets/unreadable", () => {
         const probeImage = vi.fn(async (): Promise<LintImageProbe> => ({ ok: false, reason: "not a png" }));
         const ctx = createTestLintContext({
             assets: [asset("corrupt")],
-            io: { exists: async () => true, readBytes: async () => readable, probeImage },
+            io: { exists: async () => true, readBytes: async () => readable, probeImage, probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }) },
         });
 
         const findings = await runRule("assets/unreadable", ctx);
@@ -276,6 +278,7 @@ describe("assets/unreadable", () => {
                 exists: async () => true,
                 readBytes: async () => readable,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 800, height: 600 }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -296,7 +299,7 @@ describe("assets/unreadable", () => {
                 asset("bgm", { type: AssetType.Audio, name: "bgm.ogg", ext: "ogg" }),
                 asset("font", { type: AssetType.Font, name: "serif.ttf", ext: "ttf" }),
             ],
-            io: { exists, readBytes, probeImage },
+            io: { exists, readBytes, probeImage, probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }) },
         });
 
         expect(await runRule("assets/unreadable", ctx)).toEqual([]);
@@ -313,6 +316,7 @@ describe("assets/unreadable", () => {
                 exists: async () => true,
                 readBytes,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 8, height: 8 }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -329,6 +333,7 @@ describe("assets/unreadable", () => {
                 exists,
                 readBytes,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: false, reason: "unreadable" }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -350,6 +355,7 @@ describe("assets/unreadable", () => {
                 exists: async () => false,
                 readBytes: async () => null,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: false, reason: "unreadable" }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -365,6 +371,7 @@ describe("assets/unreadable", () => {
                 exists: async () => true,
                 readBytes: async () => null,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 8, height: 8 }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -427,5 +434,173 @@ describe("assets/oversized", () => {
         });
 
         expect(await runOversized(ctx)).toEqual([]);
+    });
+});
+
+/**
+ * `assets/group-incomplete`.
+ *
+ * Stated as what a set must not be able to hide: a variant nobody imported, a variant two files
+ * claim, and an arrangement of axes no build could satisfy.
+ */
+describe("assets/group-incomplete", () => {
+    const runSets = (ctx: LintContext) => runRule("assets/group-incomplete", ctx);
+
+    /** `char:alice` fixed, one build axis over moods and one runtime axis over locales. */
+    function aliceSet(overrides: Partial<AssetSet> = {}): AssetSet {
+        return {
+            id: "set-alice",
+            name: "Alice",
+            type: AssetType.Image,
+            filter: ["char:alice"],
+            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy", "sad"], fallback: "happy" },
+            ...overrides,
+        };
+    }
+
+    function tagged(id: string, tags: string[]): LintAssetEntry {
+        return asset(id, { tags });
+    }
+
+    const fullLibrary = [
+        tagged("a", ["char:alice", "mood:happy"]),
+        tagged("c", ["char:alice", "mood:sad"]),
+    ];
+
+    it("says nothing about a project that declares no sets", async () => {
+        expect(await runSets(createTestLintContext({ assets: fullLibrary }))).toEqual([]);
+    });
+
+    it("says nothing when every variant resolves to one file", async () => {
+        const ctx = createTestLintContext({ assets: fullLibrary, assetSets: [aliceSet()] });
+
+        expect(await runSets(ctx)).toEqual([]);
+    });
+
+    it("names the variant that has no file, as the tags that would fix it", async () => {
+        // The fallback is the one that has to resolve, so it is the one whose absence is a hole.
+        const ctx = createTestLintContext({
+            assets: fullLibrary.slice(0, 1),
+            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
+        });
+
+        expect(await runSets(ctx)).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.message",
+            messageParams: { set: "Alice", variant: "mood:sad" },
+            location: { kind: "project" },
+        }]);
+    });
+
+    it("reports a variant two files claim, which resolves to nothing just as a hole does", async () => {
+        const ctx = createTestLintContext({
+            assets: [...fullLibrary, tagged("e", ["char:alice", "mood:happy"])],
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.messageAmbiguous",
+            messageParams: { set: "Alice", variant: "mood:happy", count: "2" },
+            location: { kind: "project" },
+        }]);
+    });
+
+    it("never names a file, so a variant a package left out cannot reach a log", async () => {
+        const ctx = createTestLintContext({
+            assets: fullLibrary.slice(0, 1),
+            assetSets: [aliceSet()],
+        });
+
+        const params = (await runSets(ctx)).map(finding => JSON.stringify(finding.messageParams));
+        expect(params.some(text => text.includes("a.png") || text.includes("\"a\""))).toBe(false);
+    });
+
+    it("reports a set resolved when built hanging under one resolved while running", async () => {
+        const outer = aliceSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en"], fallback: "en" } });
+        const inner = aliceSet({
+            id: "inner",
+            name: "Alice EN",
+            filter: ["char:alice", "locale:en"],
+            axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"], fallback: "happy" },
+        });
+        const ctx = createTestLintContext({
+            assets: [tagged("x", ["char:alice", "locale:en", "mood:happy"])],
+            assetSets: [outer, inner],
+        });
+
+        expect(await runSets(ctx)).toContainEqual({
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.messageResidency",
+            messageParams: { set: "Alice EN", axis: "mood", outerAxis: "locale" },
+            location: { kind: "project" },
+        });
+    });
+
+    it("reports an incoherent set once, instead of a hole for every cell it does not have", async () => {
+        const ctx = createTestLintContext({
+            assets: fullLibrary,
+            assetSets: [aliceSet({ axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: [], fallback: "" } })],
+        });
+
+        const findings = await runSets(ctx);
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsGroupIncomplete.messageDeclaration");
+    });
+
+    it("holds the fixed filter, so another character's files do not fill a hole", async () => {
+        const ctx = createTestLintContext({
+            assets: [...fullLibrary.slice(0, 1), tagged("z", ["char:bob", "mood:sad"])],
+            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
+        });
+
+        expect(await runSets(ctx)).toHaveLength(1);
+    });
+
+    it("says nothing about a variant with no file while the fallback answers it", async () => {
+        // The whole point of the fallback: one file, and the variants that do not differ say nothing.
+        const ctx = createTestLintContext({
+            assets: fullLibrary.slice(0, 1),
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toEqual([]);
+    });
+
+    it("reports the set when the fallback itself has no file, which leaves nothing to fall back to", async () => {
+        const ctx = createTestLintContext({
+            assets: [tagged("c", ["char:alice", "mood:sad"])],
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.message",
+            messageParams: { set: "Alice", variant: "mood:happy" },
+            location: { kind: "project" },
+        }]);
+    });
+
+    it("reports a set that names no fallback at all", async () => {
+        const ctx = createTestLintContext({
+            assets: fullLibrary,
+            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "" } })],
+        });
+
+        const findings = await runSets(ctx);
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsGroupIncomplete.messageFallback");
+    });
+
+    it("ignores a file of another type carrying the right tags", async () => {
+        const ctx = createTestLintContext({
+            assets: [
+                ...fullLibrary.slice(0, 1),
+                asset("z", { type: AssetType.Audio, tags: ["char:alice", "mood:sad"] }),
+            ],
+            assetSets: [aliceSet({ axis: { kind: "release", key: "mood", residency: "build", values: ["happy", "sad"], fallback: "sad" } })],
+        });
+
+        expect(await runSets(ctx)).toHaveLength(1);
     });
 });

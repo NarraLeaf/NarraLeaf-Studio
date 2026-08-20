@@ -30,6 +30,8 @@ export type SessionGateRefs<TLiveGame> = {
     liveGame: Ref<TLiveGame | null>;
     /** Whether the stage is on screen: the difference between "mounted" and "being played". */
     stageVisible: Ref<boolean>;
+    /** Whether a game was entered on this session: the difference between "on screen" and "played". */
+    gameEntered: Ref<boolean>;
 };
 
 export type SessionGate<TLiveGame> = {
@@ -40,6 +42,21 @@ export type SessionGate<TLiveGame> = {
     requireLiveGame: (operation: string) => TLiveGame;
     /** Whether a session is mounted and its stage is on screen. */
     isInGame: () => boolean;
+    /**
+     * Whether the mounted session has a live game to act on at all - mounted or not entered, on
+     * screen or behind a menu. What a caller asks when it is waiting for an environment to come up
+     * rather than asking whether one is being played.
+     */
+    hasLiveGame: () => boolean;
+    /**
+     * Whether a playthrough is running and could be serialized right now.
+     *
+     * Narrower than {@link isInGame}, and asked by everything that acts on the run rather than
+     * draws it: the autosave scheduler, the playtime clock, and the language change that has to
+     * decide whether switching costs a restart. It lives here rather than beside them so it is
+     * built from refs by construction - the same reason the rest of this file exists.
+     */
+    isPlaythroughRunning: () => boolean;
 };
 
 export function createSessionGate<TLiveGame>(refs: SessionGateRefs<TLiveGame>): SessionGate<TLiveGame> {
@@ -53,5 +70,16 @@ export function createSessionGate<TLiveGame>(refs: SessionGateRefs<TLiveGame>): 
             return liveGame;
         },
         isInGame: (): boolean => Boolean(refs.stageVisible.current && refs.sessionId.current),
+        hasLiveGame: (): boolean => Boolean(
+            refs.sessionId.current
+            && refs.liveGameSessionId.current === refs.sessionId.current
+            && refs.liveGame.current,
+        ),
+        isPlaythroughRunning: (): boolean => Boolean(
+            refs.gameEntered.current
+            && refs.sessionId.current
+            && refs.liveGameSessionId.current === refs.sessionId.current
+            && refs.liveGame.current,
+        ),
     };
 }

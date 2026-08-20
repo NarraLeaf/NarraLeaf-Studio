@@ -15,6 +15,8 @@ import { ControlBar } from "./ControlBar";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
+import { TitleBarMenus } from "../ui/titleBarMenus";
+import { HostVisibility } from "@/lib/components/layout";
 import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceUndoKeybindings } from "./WorkspaceUndoKeybindings";
 import { WorkspaceHistoryMenu } from "./WorkspaceHistoryMenu";
@@ -24,6 +26,7 @@ import { EditorCommands } from "./EditorCommands";
 import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
+import { NarralangCommands } from "../../modules/story/narralang/NarralangCommands";
 import { WorkspaceCommands } from "./WorkspaceCommands";
 import { KeybindingCheatSheet } from "./KeybindingCheatSheet";
 import { WorkspaceHelp } from "./WorkspaceHelp";
@@ -33,10 +36,13 @@ import { QuickOpenPicker } from "./QuickOpenPicker";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
 import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
+import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
+import { useDialogs } from "../../hooks/useUIService";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { RecoveryBanner } from "../../recovery/RecoveryBanner";
+import { ExperimentalNotice } from "../../experimental/ExperimentalNotice";
 import { RECOVERY_PANEL_ID } from "../../modules/recovery";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
@@ -62,7 +68,8 @@ import { useVersionSurface } from "../../hooks/useVersionSurface";
 
 interface WorkspaceLayoutProps {
     title: string;
-    iconSrc: string;
+    /** See `TitleBarProps.iconSrc`: omit for the product mark, `""` for none. */
+    iconSrc?: string;
 }
 
 
@@ -122,6 +129,8 @@ function normalizeStoredPanelId(panelId: string | null | undefined): string | nu
 export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const { getPanelsByPosition, registerActionGroup, unregisterActionGroup } = useRegistry();
     const { context, recovery } = useWorkspace();
+    // Only whether one is up, for the title bar's menus; `DialogContainer` is what draws them.
+    const dialogs = useDialogs();
     const { t } = useTranslation();
 
     // Sidebar visibility states
@@ -598,6 +607,46 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
     }, [t, context, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
 
+    /**
+     * The dock toggles, by key.
+     *
+     * Registered from the same refs the commands above run through, so the keystroke and the palette
+     * row cannot drift apart. `catalogPrefix` composes each id below into the command id it runs
+     * (`narraleaf-studio:toggle-left-sidebar` and friends), which is what keeps the palette to one
+     * row per toggle showing its chord rather than listing the shortcut again under a second name.
+     *
+     * `allowInEditable`, unlike most workspace shortcuts: none of these three chords types anything,
+     * and an author whose caret is in a story line is exactly who wants the bottom panel out of the
+     * way without first clicking somewhere neutral.
+     */
+    useKeybindings({
+        keybindings: [
+            {
+                id: "left-sidebar",
+                key: "mod+shift+b",
+                description: "Show or hide the left sidebar",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleLeftSidebar(),
+            },
+            {
+                id: "bottom-panel",
+                key: "mod+j",
+                description: "Show or hide the bottom panel",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleBottomPanel(),
+            },
+            {
+                id: "right-sidebar",
+                key: "mod+alt+r",
+                description: "Show or hide the right sidebar",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleRightSidebar(),
+            },
+        ],
+        idPrefix: "workspace-dock",
+        catalogPrefix: "narraleaf-studio:toggle-",
+    });
+
     const activateLeftPanelForDrop = useCallback(
         (panelId: string) => {
             setActiveLeftPanelId(panelId);
@@ -766,14 +815,18 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 iconSrc={iconSrc}
                 center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
                 actionBar={
-                    <div className="flex items-center gap-0.5">
+                    /* One bar, so only one of its menus is ever on screen, the pointer and the
+                       arrow keys walk between the action groups, and Alt reaches them directly.
+                       Its keyboard stands down while a dialog is up, which is the same gate
+                       `KeybindingService` puts on its own bindings. */
+                    <TitleBarMenus className="flex items-center gap-0.5" suspended={dialogs.length > 0}>
                         {/* The window's identity, and the version control menu inside it — one reader
                             for both, handed down. The rail below gets the SAME object: a second
                             `useVersionSurface()` would be a second answer to "which version is this",
                             and that has already been on screen once (rail `#3`, status cell `#2`). */}
                         <ProjectSwitcher versionSurface={versionSurface} />
                         <ActionBar hideAllGroups={isMac} />
-                    </div>
+                    </TitleBarMenus>
                 }
                 controlBar={
                     <ControlBar
@@ -788,6 +841,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             />
 
             <RecoveryBanner />
+
+            <ExperimentalNotice />
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">
@@ -808,15 +863,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     onSelectPanel={setActiveLeftPanelId}
                 />
 
-                {/* Left Sidebar - Always rendered, controlled by CSS visibility */}
+                {/* Left Sidebar - Always rendered, controlled by CSS visibility. Collapsing it
+                    hides the panel without unmounting it, so anything the panel portalled to the
+                    body would stay on screen; `HostVisibility` is what tells those layers. */}
                 <div 
                     className={leftSidebarVisible && activeLeftPanelId ? "flex" : "hidden"}
                 >
-                    <LeftSidebar
-                        panelId={activeLeftPanelId || ""}
-                        onClose={() => setLeftSidebarVisible(false)}
-                        width={effective.left}
-                    />
+                    <HostVisibility visible={!!(leftSidebarVisible && activeLeftPanelId)}>
+                        <LeftSidebar
+                            panelId={activeLeftPanelId || ""}
+                            onClose={() => setLeftSidebarVisible(false)}
+                            width={effective.left}
+                        />
+                    </HostVisibility>
                     <ResizableHandle direction="horizontal" onResize={handleLeftSidebarResize} />
                 </div>
 
@@ -841,11 +900,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
                     >
                         <ResizableHandle direction="vertical" onResize={handleBottomPanelResize} />
-                        <BottomPanel
-                            panelId={activeBottomPanelId || ""}
-                            onClose={() => setBottomPanelVisible(false)}
-                            height={effective.bottom}
-                        />
+                        <HostVisibility visible={!!(bottomPanelVisible && activeBottomPanelId)}>
+                            <BottomPanel
+                                panelId={activeBottomPanelId || ""}
+                                onClose={() => setBottomPanelVisible(false)}
+                                height={effective.bottom}
+                            />
+                        </HostVisibility>
                     </div>
                 </div>
 
@@ -854,11 +915,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
                 >
                     <ResizableHandle direction="horizontal" onResize={handleRightSidebarResize} />
-                    <RightSidebar
-                        panelId={activeRightPanelId || ""}
-                        onClose={() => setRightSidebarVisible(false)}
-                        width={effective.right}
-                    />
+                    <HostVisibility visible={!!(rightSidebarVisible && activeRightPanelId)}>
+                        <RightSidebar
+                            panelId={activeRightPanelId || ""}
+                            onClose={() => setRightSidebarVisible(false)}
+                            width={effective.right}
+                        />
+                    </HostVisibility>
                 </div>
 
                 {/* Right Sidebar Selector */}
@@ -909,6 +972,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             <WorkspaceFreezeCommands />
             <LintCommands />
             <StoryScriptCommands />
+            <NarralangCommands />
             <KeybindingCheatSheet />
             {/* Present in a recovery window too: that is the one place an author most needs to be
                 told what is going on, and help reads nothing from the project. */}

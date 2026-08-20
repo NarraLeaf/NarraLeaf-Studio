@@ -22,8 +22,12 @@ const GAP_PX = 8;
 const MARGIN_PX = 12;
 
 export interface HelpOverlayProps {
-    /** Shows the "All topics" footer when given; the workspace opens its help tab here. */
-    onOpenBrowser?: () => void;
+    /**
+     * Shows the "All topics" footer when given; the workspace opens its help tab here. The topic on
+     * screen is handed over, so the list opens on the question that was being read rather than at
+     * its first row.
+     */
+    onOpenBrowser?: (topicId: HelpTopicId) => void;
     /** Chord resolver handed to {@link HelpContent} - the workspace passes its keybinding service. */
     resolveShortcut?: (catalogId: string) => string | undefined;
 }
@@ -214,7 +218,7 @@ export function HelpOverlay({ onOpenBrowser, resolveShortcut }: HelpOverlayProps
                         type="button"
                         onClick={() => {
                             close();
-                            onOpenBrowser();
+                            onOpenBrowser(topic.id);
                         }}
                         // Same hover behaviour as the links inside the body: it navigates, so it
                         // takes the pointer and the underline. It keeps the muted colour because it

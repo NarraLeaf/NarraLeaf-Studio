@@ -29,6 +29,18 @@ export interface DraggedItemState {
     isGroup: boolean;
 }
 
+/**
+ * A set being dragged to another folder.
+ *
+ * Held apart from {@link DraggedItemState} rather than folded into it: that one is what the
+ * workspace-wide asset drag is encoded from, and a set is not a file - dropping it on an editor has
+ * nothing to hand over. Only the folders and the section roots in this panel answer to it.
+ */
+export interface DraggedAssetSetState {
+    category: AssetCategory;
+    setId: string;
+}
+
 export interface UseDragAndDropParams {
     context: WorkspaceContext | null;
     groups: Record<AssetCategory, AssetGroup[]>;
@@ -41,6 +53,13 @@ export interface UseDragAndDropParams {
     panelId: string;
     onWorkspaceDragSessionStart?: (assets: Asset[], primaryId: string, sourcePanelId?: string) => void;
     onWorkspaceDragSessionEnd?: () => void;
+    /**
+     * File a dragged set in another folder. Absent while the panel has no sets to drag.
+     *
+     * The move itself is the panel's: it takes the sets nested inside the dragged one and the files
+     * they answer with, and both of those are readings of the library this hook does not hold.
+     */
+    onAssetSetDrop?: (setId: string, targetCategory: AssetCategory, targetGroupId?: string) => Promise<void> | void;
 }
 
 export function useDragAndDrop({
@@ -53,6 +72,7 @@ export function useDragAndDrop({
     panelId,
     onWorkspaceDragSessionStart,
     onWorkspaceDragSessionEnd,
+    onAssetSetDrop,
 }: UseDragAndDropParams) {
     // Dropping INTO the panel moves or imports, so it is off while frozen. Dragging OUT of it is not:
     // that is how an author hands an asset to another editor, the receiving side refuses its own write,
@@ -60,6 +80,7 @@ export function useDragAndDrop({
     // deliberately left alone and only the drop targets stop lighting up.
     const freeze = useFreezeGuard();
     const [draggedItem, setDraggedItem] = useState<DraggedItemState | null>(null);
+    const [draggedAssetSet, setDraggedAssetSet] = useState<DraggedAssetSetState | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
 
@@ -102,8 +123,25 @@ export function useDragAndDrop({
         ]
     );
 
+    /**
+     * Start dragging a set's row.
+     *
+     * Nothing is put on the data transfer beyond what a drag needs to exist: a set is a row in this
+     * panel and means nothing anywhere else, so an editor it is dropped on must receive nothing
+     * rather than something it would have to refuse.
+     */
+    const handleAssetSetDragStart = useCallback((event: DragEvent, category: AssetCategory, setId: string) => {
+        event.stopPropagation();
+        onWorkspaceDragSessionEnd?.();
+        setDraggedItem(null);
+        setDraggedAssetSet({ category, setId });
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", "");
+    }, [onWorkspaceDragSessionEnd]);
+
     const handleDragEnd = useCallback(() => {
         setDraggedItem(null);
+        setDraggedAssetSet(null);
         setDropTargetId(null);
         onWorkspaceDragSessionEnd?.();
     }, [onWorkspaceDragSessionEnd]);
@@ -152,7 +190,21 @@ export function useDragAndDrop({
             event.preventDefault();
             event.stopPropagation();
 
-            if (!context || !draggedItem || freeze.frozen) return;
+            if (!context || freeze.frozen) return;
+
+            // A set first: it is its own drag, and the branches below all read `draggedItem`.
+            if (draggedAssetSet) {
+                const { setId, category } = draggedAssetSet;
+                setDraggedAssetSet(null);
+                setDragOver(false);
+                setDropTargetId(null);
+                if (category === targetCategory) {
+                    await onAssetSetDrop?.(setId, targetCategory, targetGroup?.id);
+                }
+                return;
+            }
+
+            if (!draggedItem) return;
 
             const assetsService = context.services.get<AssetsService>(Services.Assets);
 
@@ -224,12 +276,14 @@ export function useDragAndDrop({
         },
         [
             context,
+            draggedAssetSet,
             draggedItem,
             filteredAssets,
             filteredGroups,
             freeze,
             groups,
             isDescendantGroup,
+            onAssetSetDrop,
             onDropCompleted,
             onWorkspaceDragSessionEnd,
             selectedItems,
@@ -238,11 +292,13 @@ export function useDragAndDrop({
 
     return {
         draggedItem,
+        draggedAssetSet,
         dropTargetId,
         dragOver,
         setDragOver,
         setDropTargetId,
         handleDragStart,
+        handleAssetSetDragStart,
         handleDragEnd,
         handlePanelDragOver,
         handlePanelDragLeave,

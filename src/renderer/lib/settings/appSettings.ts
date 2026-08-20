@@ -57,6 +57,8 @@ import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
+import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
+import { MIRROR_PLUGIN_REGISTRY_URL } from "@shared/constants/pluginRegistry";
 import {
     EDITOR_LINE_NUMBERS_DEFAULT,
     EDITOR_LINE_NUMBERS_KEY,
@@ -76,6 +78,7 @@ import {
     TOOLTIP_DELAY_MIN_MS,
     TOOLTIP_DELAY_STEP_MS,
 } from "@/lib/settings/tooltipOptions";
+import { WINDOW_ICON_DEFAULT, WINDOW_ICON_IDS, WINDOW_ICON_KEY } from "@shared/constants/windowIcon";
 
 /**
  * Category metadata used by the shared settings UI.
@@ -289,6 +292,39 @@ export const AppSettings: AppSettingDefinition[] = [
             auto: "settings.items.themeMode.options.auto",
             light: "settings.items.themeMode.options.light",
             dark: "settings.items.themeMode.options.dark",
+        },
+    },
+    {
+        // Applied by the main process (`BaseApp.refreshWindowIcons`), which is the only side that
+        // can call `BrowserWindow.setIcon`: writing this key re-icons every open window and the
+        // tray, so the change lands without a restart.
+        //
+        // What it deliberately does not reach is the desktop shortcut, the Start menu entry, and a
+        // pinned taskbar item - those carry resources compiled into the executable. The row's
+        // description says as much, because otherwise the first thing this setting looks like is
+        // one that did not work.
+        key: WINDOW_ICON_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Window icon",
+        labelKey: "settings.items.windowIcon.label",
+        description: "The icon on Studio's windows and taskbar buttons. Desktop and Start menu shortcuts keep the installed icon.",
+        descriptionKey: "settings.items.windowIcon.description",
+        defaultValue: WINDOW_ICON_DEFAULT,
+        options: [...WINDOW_ICON_IDS],
+        optionLabelKeys: {
+            default: "settings.items.windowIcon.options.default",
+            narra: "settings.items.windowIcon.options.narra",
+        },
+        availability: async () => {
+            // Static for the lifetime of the window, like the ⌘Q row above: macOS has no
+            // per-window icon to set, and a Linux window icon is the compositor's to honour or
+            // ignore, so Windows is the only platform where the choice takes effect.
+            const { isWindowsPlatform } = await import("@/lib/app/platform");
+            return isWindowsPlatform()
+                ? { enabled: true }
+                : { enabled: false, reasonKey: "settings.items.windowIcon.unsupportedPlatform" };
         },
     },
     {
@@ -678,8 +714,9 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
-        // Applied by the main process in `App.handleWorkspaceCloseRequest`: the workspace
-        // window's close guard shows a native confirmation sheet before letting the close through.
+        // Applied by the main process in `App.handleWorkspaceExitRequest`, so it covers both ways
+        // out of a workspace: closing the window and going back to the launcher each show the
+        // confirmation sheet before the exit is allowed through.
         key: "workspace.confirmBeforeClose",
         category: "workspace",
         scope: SettingScope.Global,
@@ -691,18 +728,18 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: false,
     },
     {
-        // Applied by the main process in `App.handleWorkspaceCloseRequest`: when on, closing a
-        // workspace reopens the launcher first. When off the close simply stands, so the app
-        // quits if the workspace was the last window.
-        key: "workspace.returnToLauncherOnClose",
+        // Read once per launch by `App.resolveSessionStartupProject`. Closing a workspace is no
+        // longer what this is about: leaving a project for the home screen is its own File menu
+        // entry, so both behaviours are available whichever way this is set.
+        key: "workspace.reopenLastProject",
         category: "workspace",
         scope: SettingScope.Global,
         type: SettingValueType.Boolean,
-        label: "Return to the home screen when closing a workspace",
-        labelKey: "settings.items.returnToLauncherOnClose.label",
-        description: "Turn this off to quit NarraLeaf Studio instead when no other window is open.",
-        descriptionKey: "settings.items.returnToLauncherOnClose.description",
-        defaultValue: true,
+        label: "Reopen the last project on startup",
+        labelKey: "settings.items.reopenLastProject.label",
+        description: "Open the project the last session was in, instead of starting on the launcher.",
+        descriptionKey: "settings.items.reopenLastProject.description",
+        defaultValue: false,
     },
     {
         // Read by the main process (`RecentlyOpened.limit`) every time the history is written, so
@@ -922,28 +959,40 @@ export const AppSettings: AppSettingDefinition[] = [
         key: "plugins.registryUrl",
         category: "network",
         scope: SettingScope.Global,
-        type: SettingValueType.String,
+        type: SettingValueType.Source,
         label: "Plugin registry URL",
         labelKey: "settings.items.pluginRegistryUrl.label",
-        description: "Where the plugin store looks. Leave empty to use the official NarraLeaf registry.",
+        description: "Where the plugin store looks for its index.",
         descriptionKey: "settings.items.pluginRegistryUrl.description",
         defaultValue: "",
+        // The official entry stores "", which is what makes it the default without this list
+        // having to name the official address; see `OFFICIAL_SOURCE_VALUE`.
+        options: [OFFICIAL_SOURCE_VALUE, MIRROR_PLUGIN_REGISTRY_URL],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.official",
+            [MIRROR_PLUGIN_REGISTRY_URL]: "settings.source.chinaMirror",
+        },
     },
     {
         // Read by the main process (uiTemplateRegistryClient.resolveTemplateRegistryUrl)
         // when the UI editor's template store fetches the index or a template bundle.
-        // Empty = the official NarraLeaf/UI-Templates registry index. Unlike the plugin
-        // registry this one really is enough on its own: template files resolve against
-        // the index's own directory (registryBaseDir), so they follow it to a mirror.
+        // Empty = the official NarraLeaf/UI-Templates registry index. This key reaches
+        // further than the plugin one: a template's files resolve against the index's own
+        // directory (registryBaseDir), so they follow it wherever it points - which is why
+        // no mirror is offered by name here. See uiTemplateRegistry.ts for the measurement.
         key: "uiTemplates.registryUrl",
         category: "network",
         scope: SettingScope.Global,
-        type: SettingValueType.String,
+        type: SettingValueType.Source,
         label: "UI template registry URL",
         labelKey: "settings.items.uiTemplateRegistryUrl.label",
-        description: "Where the template store looks. Leave empty to use the official NarraLeaf registry.",
+        description: "Where the template store looks for its index.",
         descriptionKey: "settings.items.uiTemplateRegistryUrl.description",
         defaultValue: "",
+        options: [OFFICIAL_SOURCE_VALUE],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.official",
+        },
     },
     {
         // Read by the main-process GameBuildManager (readElectronMirror) and
@@ -952,12 +1001,19 @@ export const AppSettings: AppSettingDefinition[] = [
         key: "build.electronMirror",
         category: "network",
         scope: SettingScope.Global,
-        type: SettingValueType.String,
+        type: SettingValueType.Source,
         label: "Electron download mirror",
         labelKey: "settings.items.electronMirror.label",
-        description: "Mirror for downloading Electron. Leave empty to use the official source.",
+        description: "Mirror for downloading Electron.",
         descriptionKey: "settings.items.electronMirror.description",
         defaultValue: "",
+        // Official or typed, with no mirror in between: the two registries above have one
+        // community mirror each that we can name, and there is no equivalent for these binaries
+        // that Studio can vouch for. An address offered by name reads as endorsed.
+        options: [OFFICIAL_SOURCE_VALUE],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+        },
     },
     {
         // Read by the build worker (winCodeSignCache.binariesMirror), ahead of the two
@@ -968,12 +1024,16 @@ export const AppSettings: AppSettingDefinition[] = [
         key: "build.electronBuilderBinariesMirror",
         category: "network",
         scope: SettingScope.Global,
-        type: SettingValueType.String,
+        type: SettingValueType.Source,
         label: "Build tooling mirror",
         labelKey: "settings.items.electronBuilderBinariesMirror.label",
-        description: "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers). Leave empty to use the official source.",
+        description: "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers).",
         descriptionKey: "settings.items.electronBuilderBinariesMirror.description",
         defaultValue: "",
+        options: [OFFICIAL_SOURCE_VALUE],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+        },
     },
     {
         // The rewrite table (see @shared/utils/downloadSource). Rendered by its own panel:

@@ -36,7 +36,7 @@ export const FAVORITES_SETTING_KEY = "story.actionCreator.starredActionIds";
  * carrying one has to be recognised rather than kept as an unknown plugin action.
  */
 export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
-    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable", string | null>
+    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable" | "screenBlink" | "screenVignette", string | null>
 > = {
     narration: null,
     conditionIf: null,
@@ -61,7 +61,8 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
 
     characterEnter: "show",
     characterExit: "hide",
-    characterMove: "move",
+    // M2: a move is a position, which is a prop of the one bag - `/transform <who> pos=`.
+    characterMove: "transform",
     characterExpression: "face",
 
     imageCreate: "image",
@@ -82,9 +83,14 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
     displayableShow: "show",
     displayableHide: "hide",
     displayableTransform: "transform",
-    displayableEffect: "fx",
-    screenBlink: "blink",
-    screenVignette: "vignette",
+    // M2: an "effect" was one prop of the one bag. v19 finished the job: the two screen gestures are
+    // lens props on the camera, so they are a `/transform camera lens=` row like any other.
+    displayableEffect: "transform",
+    // The two retired screen gestures, and the lens row that replaced them: all three are the one
+    // `/transform` verb, because a blink is a prop of the camera's bag now.
+    screenBlink: "transform",
+    screenVignette: "transform",
+    cameraBlink: "transform",
 
     bgm: "bgm",
     sound: "sound",

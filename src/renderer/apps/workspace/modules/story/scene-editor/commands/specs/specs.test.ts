@@ -4,7 +4,7 @@ import { BUILTIN_AUDIO_TRACKS, resolveAudioTrack } from "@shared/types/audioTrac
 import { getQuickParams } from "@/lib/story/storyQuickParamsModel";
 import { canCommit, parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
-import { getCommandSpec, listCommandSpecs } from "../registry";
+import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
 
@@ -15,9 +15,10 @@ import { declarationFromArgs } from "./variables";
  */
 
 const CONTEXT: StoryCommandContext = {
-    images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }],
+    images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }, { id: "i3", name: "spiral" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
+    assetSets: [],
     // Alice is drawn by Studio; Doll is drawn by a runtime the author supplied, so she has no
     // authoring-time differentials at all - the two together are what the `/face` union has to serve.
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
@@ -95,6 +96,29 @@ describe("scene commands", () => {
         expect(build("/bg #1a1a1a")).toMatchObject({ payload: { color: "#1a1a1a", assetId: undefined } });
     });
 
+    it("/bg takes a rule image, and naming one is what says which engine plays it", () => {
+        // No `t=rule` on the line: the picture implies the engine, which is the whole reason
+        // `rule=` is a slot of its own rather than a spelling of `t=`.
+        expect(build("/bg forest_day rule=spiral d=1.2")).toMatchObject({
+            payload: {
+                action: "setBackground",
+                assetId: "i1",
+                transition: { kind: "ruleReveal", ruleAssetId: "i3", durationMs: 1200 },
+            },
+        });
+        // The word still parses on its own, for a row that picks its picture on the right.
+        expect(build("/bg forest_day t=rule")).toMatchObject({
+            payload: { transition: { kind: "ruleReveal" } },
+        });
+    });
+
+    it("/jump takes a rule image too", () => {
+        expect(build("/jump \"Chapter 2\" rule=spiral")).toMatchObject({
+            kind: "jump",
+            payload: { transition: { kind: "ruleReveal", ruleAssetId: "i3" } },
+        });
+    });
+
     it("/bg rejects a word its context does not support", () => {
         // zoom is a reveal word; the scene context must say so rather than store it.
         expect(parseCommandLine("/bg forest_day t=zoom")).toMatchObject({ issues: [{ code: "badValue" }] });
@@ -116,16 +140,18 @@ describe("scene commands", () => {
 
 describe("generic verbs", () => {
     it("/show dispatches on the target: a character enters", () => {
-        // `at=` wins the preset when both are given — a transform holds one, and a placement is the
-        // more specific instruction. The rule `/image` already followed.
-        expect(build("/show Alice smile at=left t=fade d=0.3")).toMatchObject({
+        // `at=` wins when both are given. Since v18 the two no longer fight over one field - a
+        // placement is a position and a fade is an opacity - but the rule stands: the placement is the
+        // more specific instruction, and `withPlacementTransform` clears the channels the vocabulary
+        // owns, so the row states one look and the line prints the word that produced it.
+        expect(build("/show Alice smile pos=left in=fade d=0.3")).toMatchObject({
             kind: "action",
             payload: {
                 action: "character",
                 operation: "enter",
                 characterId: "c1",
                 pose: "t1",
-                transform: { preset: "left", durationMs: 300 },
+                transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 300 },
             },
         });
     });
@@ -134,24 +160,24 @@ describe("generic verbs", () => {
         // Not `transition`: `enter` compiles to `char(src).show(transform)` and `exit` to
         // `hide(transform)`, so a transition ref written here would be a setting nothing reads — and
         // the inspector, which edits the transform, would show a different answer than the row.
-        expect(build("/show Alice t=fade")).toMatchObject({
-            payload: { action: "character", operation: "enter", transform: { preset: "fadeIn" } },
+        expect(build("/show Alice in=fade")).toMatchObject({
+            payload: { action: "character", operation: "enter", transform: { to: { opacity: 1 } } },
         });
-        expect(build("/hide Alice t=fade")).toMatchObject({
-            payload: { action: "character", operation: "exit", transform: { preset: "fadeOut" } },
+        expect(build("/hide Alice out=fade")).toMatchObject({
+            payload: { action: "character", operation: "exit", transform: { to: { opacity: 0 } } },
         });
-        expect(build("/hide Alice t=fade").payload).not.toHaveProperty("transition.kind", "fadeIn");
+        expect(build("/hide Alice out=fade").payload).not.toHaveProperty("transition.kind", "fadeIn");
     });
 
-    it("/show dispatches on the target: an image reveals through its transform preset", () => {
-        expect(build("/show hero t=fade d=0.2")).toMatchObject({
-            payload: { action: "image", operation: "show", objectName: "hero", transform: { preset: "fadeIn", durationMs: 200 } },
+    it("/show dispatches on the target: an image reveals through its transform props", () => {
+        expect(build("/show hero in=fade d=0.2")).toMatchObject({
+            payload: { action: "image", operation: "show", objectName: "hero", transform: { to: { opacity: 1 }, durationMs: 200 } },
         });
     });
 
     it("/hide is direction-aware: the same word fades OUT", () => {
-        expect(build("/hide hero t=fade")).toMatchObject({
-            payload: { action: "image", operation: "hide", objectName: "hero", transform: { preset: "fadeOut" } },
+        expect(build("/hide hero out=fade")).toMatchObject({
+            payload: { action: "image", operation: "hide", objectName: "hero", transform: { to: { opacity: 0 } } },
         });
         expect(build("/hide Alice")).toMatchObject({ payload: { action: "character", operation: "exit" } });
     });
@@ -161,12 +187,12 @@ describe("generic verbs", () => {
         // the transition, so every character row printed "0s". Asserted end to end — parse, resolve,
         // build, then project — because neither half is wrong on its own, only the pair.
         const ms = (source: string) => getQuickParams(build(source)).find(param => param.id === "d")?.value;
-        expect(ms("/hide Alice t=fade d=2")).toMatchObject({ kind: "duration", ms: 2000 });
-        expect(ms("/show Alice at=left d=0.3")).toMatchObject({ kind: "duration", ms: 300 });
+        expect(ms("/hide Alice out=fade d=2")).toMatchObject({ kind: "duration", ms: 2000 });
+        expect(ms("/show Alice pos=left d=0.3")).toMatchObject({ kind: "duration", ms: 300 });
         // Known boundary, asserted so it is a decision and not a surprise: a stage object resolves to
         // an image/text/displayable payload, and `getQuickParams` has no branch for those, so `d=` is
         // stored on the transform (see the `/hide hero` case above) but earns no inline token yet.
-        expect(ms("/hide hero t=fade d=1.5")).toBeUndefined();
+        expect(ms("/hide hero out=fade d=1.5")).toBeUndefined();
     });
 
     it("/show reaches text, video and layer targets too", () => {
@@ -181,8 +207,8 @@ describe("generic verbs", () => {
         // it is refused by the grammar itself rather than surviving to resolution: `zoom` reaches a
         // character exactly as it reaches an image, and `blinds` (a whole-screen transition) reaches
         // neither.
-        expect(issuesOf("/show Alice t=zoom")).toEqual([]);
-        expect(parseCommandLine("/show Alice t=blinds")).toMatchObject({ issues: [{ code: "badValue" }] });
+        expect(issuesOf("/show Alice in=zoom")).toEqual([]);
+        expect(parseCommandLine("/show Alice in=blinds")).toMatchObject({ issues: [{ code: "badValue" }] });
         expect(issuesOf("/show hero smile")).toEqual(["unknownForm"]);
     });
 
@@ -251,6 +277,43 @@ describe("puppet state channels", () => {
         expect(issuesOf("/face Nobody smile")).toEqual(["unknownCharacter"]);
     });
 
+    it("/face takes a transition, and writes it on the ref the swap actually plays", () => {
+        // `expression` is the one character operation the engine plays a `StoryTransitionRef` on -
+        // it compiles to `char(src, transition)`. So `d=` is THAT ref's duration; the transform's
+        // duration is the entrance/exit timing, and a swap that wrote it would edit a live-looking
+        // field nothing on stage reads.
+        expect(build("/face Alice smile t=wipe d=0.4")).toMatchObject({
+            payload: {
+                action: "character",
+                operation: "expression",
+                characterId: "c1",
+                pose: "t1",
+                transition: { kind: "softWipe", durationMs: 400 },
+            },
+        });
+        expect(build("/face Alice smile t=wipe d=0.4").payload).not.toHaveProperty("transform");
+        // `fade` on a swap is a fade-in, not the crossfade it is on a `/bg`: `Dissolve` half-fades
+        // both frames at once and shows the background through the middle, while `FadeIn` leaves the
+        // outgoing frame fully opaque and brings the new one up over it. The crossfade is still
+        // reachable - by name.
+        expect(build("/face Alice smile t=fade")).toMatchObject({ payload: { transition: { kind: "fadeIn" } } });
+        expect(build("/face Alice smile t=dissolve")).toMatchObject({ payload: { transition: { kind: "dissolve" } } });
+        // No `t=`, no ref: a row that says nothing about the swap must not gain a field.
+        expect(build("/face Alice smile").payload).not.toHaveProperty("transition");
+    });
+
+    it("refuses a transition on a puppet, whose expression has no second frame", () => {
+        // A puppet's expression compiles to `puppet.setExpression(name)` - the backend owns the inside
+        // of the box, and nothing in that call takes a transition. The key is the mistake, not the
+        // character, so the report names the key.
+        expect(issuesOf("/face Doll smile t=wipe")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/face Doll smile d=0.4")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/face Doll smile t=wipe d=0.4")).toEqual(["unsupportedParam", "unsupportedParam"]);
+        // The verb itself is untouched on both kinds of character.
+        expect(issuesOf("/face Doll smile")).toEqual([]);
+        expect(issuesOf("/face Alice smile t=wipe d=0.4")).toEqual([]);
+    });
+
     it("/motion and /skin write their own operation and nothing else", () => {
         expect(build("/motion Doll run")).toMatchObject({
             kind: "action",
@@ -314,8 +377,8 @@ describe("puppet state channels", () => {
 
 describe("media objects", () => {
     it("/image auto-names from the asset filename", () => {
-        expect(build("/image forest_day at=left")).toMatchObject({
-            payload: { action: "image", operation: "create", objectName: "forest_day", assetId: "i1", transform: { preset: "left" } },
+        expect(build("/image forest_day pos=left")).toMatchObject({
+            payload: { action: "image", operation: "create", objectName: "forest_day", assetId: "i1", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } },
         });
     });
 
@@ -335,6 +398,41 @@ describe("media objects", () => {
         expect(build("/font title 48")).toMatchObject({ payload: { operation: "setFontSize", fontSize: 48, objectName: "title" } });
         expect(build("/font title color=#ff0000")).toMatchObject({ payload: { operation: "setFontColor", fontColor: "#ff0000" } });
         expect(issuesOf("/font title 48 color=#ff0000")).toEqual(["conflictingParams"]);
+    });
+
+    it("/front raises one displayable, and states nothing else", () => {
+        expect(build("/front hero")).toMatchObject({
+            kind: "action",
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "image", name: "hero" } },
+        });
+        expect(build("/front title")).toMatchObject({
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "text", name: "title" } },
+        });
+        // The stage key, not the cast name - the compiler registers a portrait under its entering
+        // row's stage name, and a line never gives it one, so the key is the character id. See the
+        // `/transform Alice` case below for the whole rule.
+        expect(build("/front Alice")).toMatchObject({
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "character", name: "c1", label: "Alice" } },
+        });
+        // No duration, no bag: the raise is one frame, and the payload carries neither.
+        expect(Object.keys(build("/front hero").payload).sort()).toEqual(["action", "operation", "target"]);
+        expect(Object.keys(getCommandSpec("front")?.params ?? {})).toEqual(["target"]);
+    });
+
+    it("/front names what it found when the target is a kind it cannot raise", () => {
+        // The `refuses` half, exactly as `/transform` does it: a layer, a video and an ambience
+        // overlay are on stage under names the author can see, so the slot resolves them in order to
+        // report them - answering "nothing on stage is named overlay" would be a lie.
+        for (const line of ["/front overlay", "/front clip", "/front petals"]) {
+            expect(issuesOf(line)).toEqual(["unsupportedTarget"]);
+        }
+        // ...and a name nothing answers to is still the other message: check the spelling.
+        expect(issuesOf("/front nobody")).toEqual(["unknownTarget"]);
+        // The refused kinds are refused, never quietly accepted into a payload that cannot hold them.
+        const target = getCommandSpec("front")?.params.target.type;
+        const accepts = (Array.isArray(target) ? target : [target]).flatMap(type =>
+            type && type.kind === "target" ? [...type.accepts] : []);
+        expect(accepts).toEqual(["image", "text", "character"]);
     });
 });
 
@@ -720,53 +818,95 @@ describe("logic and effects", () => {
         expect(issuesOf("/goto nowhere")).toEqual(["unknownLabel"]);
     });
 
-    it("/blink and /vignette read their knobs in seconds", () => {
-        expect(build("/blink d=0.2 hold=0.1 color=#ffffff")).toMatchObject({
-            payload: { action: "screenEffect", effect: "blink", durationMs: 200, holdMs: 100, color: "#ffffff" },
+    it("gives the camera the lens, by name for a gesture and by number for a state", () => {
+        // `/screen` is gone: the eyelids and the vignette are the camera's own glass, so they compose
+        // with a grade and a pan instead of being a one-shot the scene played on a layer of its own.
+        expect(getCommandSpec("screen")).toBeNull();
+        expect(build("/transform camera lens=blink")).toMatchObject({
+            payload: { action: "camera", operation: "transform", transform: { to: { lens: { preset: "blink" } } } },
         });
-        expect(build("/vignette opacity=0.5")).toMatchObject({ payload: { effect: "vignette", opacity: 0.5 } });
+        // A state, not a gesture: this holds the eyes shut until something opens them.
+        expect(build("/transform camera shutter=1")).toMatchObject({
+            payload: { transform: { to: { shutter: 1 } } },
+        });
+        expect(build("/transform camera vignette=0.6 vignetteInner=30")).toMatchObject({
+            payload: { transform: { to: { vignette: 0.6, vignetteInner: "30%" } } },
+        });
+        // Camera only, and structurally so: the engine renders the lens from the camera's own overlay
+        // and no other Displayable has one.
+        expect(issuesOf("/transform hero lens=blink")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
     });
 
-    it("/camera reads its operation as the first positional and the knob as the second", () => {
-        expect(build("/camera zoom 1.5 d=0.8")).toMatchObject({
+    it("/transform takes a drawn easing curve where it takes an easing word", () => {
+        // The inspector can state a curve no word names, so the line has to be able to say it too -
+        // otherwise a row carrying one printed a value that retyping the row would drop.
+        expect(build("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2,1)")).toMatchObject({
+            payload: { transform: { easing: "cubic-bezier(0.4,0,0.2,1)" } },
+        });
+        // Canonicalized the way an alias is: pasted from a browser's own spelling, banked as the card writes it.
+        expect(build("/transform hero zoom=1.2 ease='cubic-bezier(0.4, 0, 0.2, 1)'")).toMatchObject({
+            payload: { transform: { easing: "cubic-bezier(0.4,0,0.2,1)" } },
+        });
+        // Still an enum: a word off the list is an error, not free text quietly stored.
+        expect(parseCommandLine("/transform hero zoom=1.2 ease=swoosh")).toMatchObject({ issues: [{ code: "badValue" }] });
+        expect(parseCommandLine("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2)")).toMatchObject({ issues: [{ code: "badValue" }] });
+    });
+
+    it("/transform camera reads the camera as a reserved target word", () => {
+        expect(build("/transform camera zoom=1.5 d=0.8")).toMatchObject({
             kind: "action",
-            payload: { action: "camera", operation: "zoom", zoom: 1.5, durationMs: 800 },
+            payload: { action: "camera", operation: "transform", transform: { to: { zoom: 1.5 }, durationMs: 800 } },
         });
-        expect(build("/camera pan left d=0.6")).toMatchObject({
-            payload: { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 }, durationMs: 600 },
+        expect(build("/transform camera pos=left d=0.6")).toMatchObject({
+            payload: { action: "camera", operation: "transform", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 600 } },
         });
-        expect(build("/camera darken 0.6")).toMatchObject({ payload: { operation: "darken", darkness: 0.6 } });
-        expect(build("/camera rotate -15")).toMatchObject({ payload: { operation: "rotate", rotation: -15 } });
-        expect(build("/camera reset d=0.6")).toMatchObject({ payload: { operation: "reset", durationMs: 600 } });
-        // `/cam` is the same command, and an alias resolves to the canonical operation.
-        expect(build("/cam dim 0.4")).toMatchObject({ payload: { action: "camera", operation: "darken", darkness: 0.4 } });
+        // `pan=` is the same slot: the camera's own reading of the position channel.
+        expect(build("/transform camera pan=right")).toMatchObject({ payload: { transform: { to: { position: { xalign: 0.75 } } } } });
+        expect(build("/transform camera rot=-15")).toMatchObject({ payload: { transform: { to: { rotation: -15 } } } });
+        expect(build("/reset camera d=0.6")).toMatchObject({ payload: { operation: "reset", durationMs: 600 } });
+        // The retired `/camera darken 0.4` is `bright=0.6`: the engine's `darken(d)` IS
+        // `brightness(1 - d)`, one CSS channel, so the prop vocabulary spells the channel.
+        expect(build("/transform camera bright=0.6")).toMatchObject({
+            payload: { transform: { to: { filter: { brightness: 0.6 } } } },
+        });
+        // The look library stays reachable by NAME, so the inspector can re-open on the grade.
+        expect(build("/transform camera look=moonlight")).toMatchObject({
+            payload: { transform: { to: { look: { preset: "moonlight" } } } },
+        });
     });
 
-    it("/camera leaves a knob it was not given at its neutral value", () => {
-        // A knob named without a value still has to build a coherent block - `zoom 1` IS "no zoom",
-        // so the row says what it will do rather than carrying an undefined the compiler guesses at.
-        expect(build("/camera zoom")).toMatchObject({ payload: { operation: "zoom", zoom: 1 } });
-        expect(build("/camera pan")).toMatchObject({ payload: { operation: "pan", position: { xalign: 0.5 } } });
-        // The operation is the required core (B9): a bare `/camera` has nothing to commit.
-        expect(getCommandSpec("camera")?.params.op.core).toBe(true);
+    it("gives the camera every channel of the bag, in as many at once as the line states", () => {
+        // The camera used to be the one subject that could state a SINGLE channel, because its payload
+        // spelled one operation plus that operation's own field. v19 gave it the bag, so a row that
+        // pans and zooms is one row rather than a reported conflict.
+        expect(issuesOf("/transform camera zoom=2 rot=10")).toEqual([]);
+        expect(build("/transform camera zoom=2 rot=10 opacity=0.5")).toMatchObject({
+            payload: { transform: { to: { zoom: 2, rotation: 10, opacity: 0.5 } } },
+        });
+        // `color=` is still the exception, on every subject: it is `fontColor`, and only a text has one.
+        expect(issuesOf("/transform camera color=#fff")).toEqual(["unsupportedParam"]);
+        // Two writers of the one CSS filter channel is still refused, camera or not.
+        expect(issuesOf("/transform camera look=moonlight blur=4")).toEqual(["conflictingParams"]);
     });
 
-    it("/camera motion commits an unbound Story Motion ref and routes only that line to the inspector", () => {
-        // The knob for `motion` is a motion ASSET, which no command line can name - so the line lands
-        // the ref in animation mode and the inspector does the picking. The other five operations are
-        // complete as typed, and yanking the caret out of those rows would stop the author mid-flow;
-        // hence a predicate rather than the spec-wide boolean `/fx` and `/vfx` use.
-        const shot = build("/camera motion");
+    it("/transform camera motion commits an unbound Story Motion ref and routes only that line to the inspector", () => {
+        // A Story Motion is a binding no command line can name, so the line states the mode and the
+        // inspector does the picking. Every other row is complete as typed, and yanking the caret out
+        // of those would stop the author mid-flow - hence a predicate, not a spec-wide boolean.
+        const shot = build("/transform camera motion");
         expect(shot).toMatchObject({
             kind: "action",
-            payload: { action: "camera", operation: "motion", motion: { mode: "animation" } },
+            payload: { action: "camera", operation: "transform", transform: { mode: "animation" } },
         });
-        const spec = getCommandSpec("camera");
+        const spec = getCommandSpec("transform");
         expect(opensInspectorAfterCommit(spec, shot)).toBe(true);
-        expect(opensInspectorAfterCommit(spec, build("/camera zoom 1.5"))).toBe(false);
-        expect(opensInspectorAfterCommit(spec, build("/camera reset"))).toBe(false);
-        // `/camera shot` is the alias, and it resolves to the canonical operation.
-        expect(build("/cam shot")).toMatchObject({ payload: { action: "camera", operation: "motion" } });
+        expect(opensInspectorAfterCommit(spec, build("/transform camera zoom=1.5"))).toBe(false);
+        expect(opensInspectorAfterCommit(spec, build("/transform hero pos=left"))).toBe(false);
+        // A displayable's Story Motion rides the same flag, on its own payload arm.
+        expect(build("/transform hero motion")).toMatchObject({
+            payload: { action: "displayable", transform: { mode: "animation" } },
+        });
     });
 
     it("/vfx places a looping overlay and names it off the clip", () => {
@@ -779,6 +919,24 @@ describe("logic and effects", () => {
         });
         // Blend mode decides whether the material reads at all, so the create row opens the inspector.
         expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
+    });
+
+    it("/vfx takes a weather word as its source, and the word names the row", () => {
+        // The seed branch is tried before the asset branch, so the three weather words are reserved
+        // in this slot. The overlay is named after the word for the same reason a clip names it after
+        // the file: the author typed it, so it is what they will address later.
+        expect(build("/vfx snow")).toMatchObject({
+            payload: { action: "vfx", operation: "create", objectName: "snow", seed: { seed: "snow" }, loop: true },
+        });
+        // One source or the other - a seeded row must carry no assetId to be read instead.
+        const seeded = build("/vfx rain");
+        expect(seeded.kind === "action" && seeded.payload.action === "vfx" ? seeded.payload.assetId : "unset").toBeUndefined();
+        // And a clip still resolves exactly as before.
+        expect(build("/vfx intro")).toMatchObject({
+            payload: { action: "vfx", assetId: "v1", objectName: "intro" },
+        });
+        const clip = build("/vfx intro");
+        expect(clip.kind === "action" && clip.payload.action === "vfx" ? clip.payload.seed : "unset").toBeUndefined();
     });
 
     it("the generic verbs reach a vfx with its own payload", () => {
@@ -795,25 +953,91 @@ describe("logic and effects", () => {
         expect(build("/stop petals")).toMatchObject({ payload: { action: "audio", operation: "stopSound", objectName: "petals" } });
     });
 
-    it("keeps a vfx out of every displayable slot - it is not a Displayable", () => {
-        // §7.2's hard rule. Enforced twice over: `accepts` never lists vfx, so the line cannot even
-        // resolve, and `StoryDisplayableTargetKind` excludes it, so no payload could hold it either.
-        for (const id of ["transform", "fx"]) {
+    it("keeps a vfx out of every displayable slot - but says so instead of pretending it is not there", () => {
+        // §7.2's hard rule, enforced twice over: `accepts` never lists vfx, and
+        // `StoryDisplayableTargetKind` excludes it, so no payload could hold one either. What changed
+        // in M2 is the REPORT - the kind sits in `refuses`, so the name resolves far enough to name
+        // what it found rather than claiming nothing on stage answers to it.
+        for (const id of ["transform", "reset"]) {
             const target = getCommandSpec(id)?.params.target.type;
             const accepts = (Array.isArray(target) ? target : [target]).flatMap(type =>
                 type && type.kind === "target" ? [...type.accepts] : []);
             expect(accepts).not.toContain("vfx");
         }
-        expect(issuesOf("/transform petals")).toEqual(["unknownTarget"]);
-        expect(issuesOf("/fx petals")).toEqual(["unknownTarget"]);
+        expect(issuesOf("/transform petals")).toEqual(["unsupportedTarget"]);
+        expect(issuesOf("/reset petals")).toEqual(["unsupportedTarget"]);
+        // A name nothing answers to is still the other message: check the spelling, not the verb.
+        expect(issuesOf("/transform nobody")).toEqual(["unknownTarget"]);
     });
 
-    it("/fx and /transform bind their displayable target and defer the rest to the inspector", () => {
-        expect(getCommandSpec("fx")?.inspectorAfterCommit).toBe(true);
-        expect(build("/fx hero")).toMatchObject({ payload: { action: "displayable", target: { kind: "image", name: "hero" } } });
+    it("/transform writes the prop bag and /reset clears it", () => {
+        // The reference stores the STAGE key and labels itself with the cast name. This context has
+        // no scene, so no entering row states a stage name and the key falls back to the character
+        // id - the same rule the compiler registers a nameless portrait under. `targetRefs.test.ts`
+        // covers the case where a scene DOES declare the entrance.
         expect(build("/transform Alice d=0.4")).toMatchObject({
-            payload: { action: "displayable", operation: "transform", target: { kind: "character", name: "Alice" }, durationMs: 400 },
+            payload: {
+                action: "displayable",
+                operation: "transform",
+                target: { kind: "character", name: "c1", label: "Alice" },
+                transform: { durationMs: 400 },
+            },
         });
+        // Several filter names compose into the ONE structured record - the ergonomic the whole
+        // redesign turns on, and what makes the next filter function a name rather than an operation.
+        expect(build("/transform hero blur=4 gray=1")).toMatchObject({
+            payload: { transform: { to: { filter: { blur: 4, grayscale: 1 } } } },
+        });
+        // Sugar and the raw escape hatch write one CSS channel, so one row may not carry both.
+        expect(issuesOf("/transform hero blur=4 filter=\"drop-shadow(0 0 4px red)\"")).toEqual(["conflictingParams"]);
+        expect(build("/transform hero filter=\"drop-shadow(0 0 4px red)\"")).toMatchObject({
+            payload: { transform: { to: { filterRaw: "drop-shadow(0 0 4px red)" } } },
+        });
+        // No props means the whole bag; named props mean only those - the old `clearMask` and friends.
+        expect(build("/reset hero")).toMatchObject({
+            payload: { transform: { to: { zoom: 1, opacity: 1, filter: null, clipPath: null } } },
+        });
+        expect(build("/reset hero mask clip")).toMatchObject({
+            payload: { transform: { to: { maskAssetId: null, clipPath: null } } },
+        });
+        expect(build("/reset hero mask clip").payload).not.toHaveProperty("transform.to.zoom");
+        // One verb, two subjects: a variable resets to its declared default through the same word.
+        expect(build("/reset gold")).toMatchObject({ payload: { action: "setVariable" } });
+    });
+
+    it("/transform reaches the built-in layers and the scene background by their reserved words", () => {
+        expect(build("/transform backgroundLayer opacity=0.4")).toMatchObject({
+            payload: { action: "displayable", target: { builtin: "backgroundLayer" }, transform: { to: { opacity: 0.4 } } },
+        });
+        expect(build("/transform background blur=6")).toMatchObject({
+            payload: { target: { builtin: "background" }, transform: { to: { filter: { blur: 6 } } } },
+        });
+    });
+
+    it("flip= states which way a sprite faces, absolutely — it is never a toggle", () => {
+        // The compiler emits a STATIC transform, so a line meaning "the other way from whatever it is
+        // now" could not be built. Both states are therefore spelled out, and saying either twice is
+        // a no-op rather than an undo. `scaleY` is deliberately absent: a mirror is horizontal, and
+        // restating a vertical scale would reset one an earlier row set.
+        expect(build("/transform hero flip=on")).toMatchObject({
+            payload: {
+                action: "displayable",
+                operation: "transform",
+                target: { kind: "image", name: "hero" },
+                transform: { to: { scaleX: -1 } },
+            },
+        });
+        expect(build("/transform hero flip=on").payload).not.toHaveProperty("transform.to.scaleY");
+        expect(build("/transform hero flip=off")).toMatchObject({ payload: { transform: { to: { scaleX: 1 } } } });
+        expect(build("/transform Alice flip=on d=0.3")).toMatchObject({
+            payload: { target: { kind: "character", name: "c1", label: "Alice" }, transform: { to: { scaleX: -1 }, durationMs: 300 } },
+        });
+    });
+
+    it("leaves `flip` to /toggle, whose alias it already was", () => {
+        // A token is what a stored line RE-PARSES as. `/flip met` was written against the boolean verb
+        // long before a sprite could be mirrored, and it has to keep meaning that.
+        expect(getCommandDef("flip")?.commandId).toBe("toggle");
     });
 });
 

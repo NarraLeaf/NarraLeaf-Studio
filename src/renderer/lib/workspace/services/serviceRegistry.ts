@@ -37,6 +37,7 @@ import { ReferenceService } from "./references/ReferenceService";
 import { VariableRegistryService } from "./variables/VariableRegistryService";
 import { AudioTrackService } from "./audio/AudioTrackService";
 import { AppTagService } from "./appTag/AppTagService";
+import { AssetSetService } from "./assets/AssetSetService";
 import { BrandService } from "./brand/BrandService";
 import { DictionaryService } from "./dictionary/DictionaryService";
 import { SaveSchemaService } from "./saves/SaveSchemaService";
@@ -47,6 +48,7 @@ import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
 import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
 import { MediaSupportService } from "./media/MediaSupportService";
 import { RecoveryService } from "./core/RecoveryService";
+import { WeatherPrebakeService } from "./weather/WeatherPrebakeService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -63,6 +65,7 @@ export class ServiceRegistry {
         [Services.Character]: CharacterService.getInstance(),
         [Services.PuppetDescription]: PuppetDescriptionService.getInstance(),
         [Services.MediaSupport]: MediaSupportService.getInstance(),
+        [Services.WeatherPrebake]: WeatherPrebakeService.getInstance(),
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),
@@ -89,6 +92,7 @@ export class ServiceRegistry {
         [Services.VariableRegistry]: VariableRegistryService.getInstance(),
         [Services.AudioTracks]: AudioTrackService.getInstance(),
         [Services.AppTags]: AppTagService.getInstance(),
+        [Services.AssetSets]: AssetSetService.getInstance(),
         [Services.Brand]: BrandService.getInstance(),
         [Services.Dictionary]: DictionaryService.getInstance(),
         [Services.SaveSchema]: SaveSchemaService.getInstance(),

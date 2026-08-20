@@ -57,6 +57,8 @@ export const storyInspector = {
         fromAngle: "開始の角度 °",
         rows: "行",
         cols: "列",
+        rule: "ルール画像",
+        inverted: "明部から開始",
         stagger: "ずらし",
         shape: "形",
         pattern: "パターン",
@@ -97,9 +99,11 @@ export const storyInspector = {
         rotate: "回転",
         opacity: "不透明度",
         darken: "暗くする",
+        flip: "左右反転",
         circleReveal: "円で開く",
         circleClose: "円で閉じる",
         slideReveal: "スライドで開く",
+        custom: "カスタム",
     },
 
     easing: {
@@ -115,6 +119,7 @@ export const storyInspector = {
         backOut: "バックアウト",
         backInOut: "バックインアウト",
         anticipate: "予備動作",
+        custom: "カスタムカーブ",
     },
 
     transition: {
@@ -133,6 +138,10 @@ export const storyInspector = {
         slide: "プッシュ",
         throughColor: "色を挟む",
         darkness: "暗さ",
+        exposure: "露出",
+        ruleReveal: "ルール画像",
+        exposureEv: "露出量（EV）",
+        exposureLift: "暗部の持ち上げ 0-1",
         startX: "開始 X",
         startY: "開始 Y",
         blurPx: "ぼかし px",
@@ -155,8 +164,10 @@ export const storyInspector = {
         fan: "何枚かのブレードが中心のまわりを並んで回る",
         dots: "格子状のドットが広がり、やがてつながって埋まる",
         slide: "古い画像が出ていき、新しい画像が片側から入ってくる",
-        darkness: "開始の暗さで画像を入れ替え、終了の暗さまで動かす。1 → 0 は暗転から明け、0 → 1 は暗転へ落とす",
+        darkness: "開始の暗さで画像を入れ替え、終了の暗さまで動かす。1 → 0 は暗転から明け、0 → 1 は暗転へ向かう",
         throughColor: "画面をいったん色で覆い、保持してから、新しい画像の上で外す。暗転や白転、アイリス、フラッシュ（保持 0）に使う",
+        exposure: "画面を白飛びさせ、ハイライトから先に、暗部を最後に飛ばしてから新しい画面へ戻る。暗部の持ち上げが 0 だと黒は白くならない",
+        ruleReveal: "グレースケール画像が指定する順序で画面を切り替える。暗い部分が先、明るい部分が最後",
     },
 
     wipeDirection: {
@@ -202,7 +213,7 @@ export const storyInspector = {
     // CSS のキーワードではなく、そのモードが何のためのものかで名付ける。選択はクリップについての
     // 制作上の事実で、キーワードだけでは答えを知っている人の役にしか立たない。
     vfxBlend: {
-        normal: "通常（アルファ付き透過 WebM）",
+        normal: "通常（不透明のクリップ）",
         screen: "スクリーン（黒地の発光）",
         multiply: "乗算（白地の影）",
         lighten: "比較（明）",
@@ -218,6 +229,8 @@ export const storyInspector = {
 
     vfx: {
         name: "エフェクト名",
+        source: "ソース",
+        sourceClip: "クリップ",
         clip: "ループするクリップ",
         blendMode: "ブレンド",
         opacity: "不透明度（0-1）",
@@ -228,37 +241,89 @@ export const storyInspector = {
         fade: "フェード（秒）",
     },
 
+    weather: {
+        density: "量",
+        sizeNear: "手前の大きさ",
+        sizeFar: "奥の大きさ",
+        sway: "揺れ",
+        streak: "尾の長さ",
+        wind: "風向き（度）",
+        depthSpread: "奥行き差",
+    },
+
     cameraOperation: {
-        zoom: "ズーム",
-        pan: "パン",
-        rotate: "回転",
-        // 「画面」ではなく「ステージ」。これはカメラの明るさで、`/vignette` のシーン内マスクではない。
-        darken: "ステージを暗くする",
-        motion: "カメラのモーション",
         reset: "カメラをリセット",
     },
 
-    // 選択ボタンのラベル。6 つが横に並ぶ短さにしてある。上の正式名はそれぞれのツールチップに残るので、
-    // 「ステージを暗くする」は必要な場所で *ステージ* と言える。
-    cameraOperationShort: {
-        zoom: "ズーム",
-        pan: "パン",
-        rotate: "回転",
-        darken: "暗く",
-        motion: "モーション",
-        reset: "リセット",
+    cameraResetHint: "位置、グレード、レンズ効果を戻します。",
+
+    cameraLook: {
+        memory: "回想",
+        monologue: "心の声",
+        mono: "モノクロ",
+        moonlight: "月明かり",
+        faint: "意識が遠のく",
+        hangover: "二日酔い",
     },
 
-    camera: {
-        zoom: "ズーム（1 が基準）",
-        rotation: "回転 °",
-        darkness: "ステージの暗さ（0-1）",
-        xalign: "X の基準（0-1）",
-        yalign: "Y の基準（0-1）",
+    cameraLens: {
+        blink: "まばたき",
+        slowBlink: "ゆっくりまばたき",
+        vignettePulse: "ビネットの脈動",
     },
 
+    cameraLookHint: {
+        channel: "後に追加したルックはステージの暗さを上書きする。カメラをリセットすると解除される。",
+        monologue: "ステージ全体の彩度と明るさを下げるだけ。周辺を暗くするにはビネットを別の行で足す。",
+        hangover: "画面が二度揺れてからルックが落ち着く。行は揺れが終わるまで待ち、長さが揺れの速さを決める。",
+    },
+
+    transformChannel: {
+        reveal: "リビール",
+        search: "エフェクトを検索",
+        noMatch: "一致するエフェクトなし",
+        inherit: "継承",
+        maskSettings: "マスク設定",
+        maskSize: "サイズ",
+        maskPosition: "位置",
+        maskRepeat: "繰り返し",
+        maskMode: "モード",
+        clipShape: {
+            inset: "矩形",
+            circle: "円",
+            ellipse: "楕円",
+            raw: "カスタムパス",
+        },
+        clipParam: {
+            top: "上 %",
+            right: "右 %",
+            bottom: "下 %",
+            left: "左 %",
+            radius: "半径 %",
+            radiusX: "横半径 %",
+            radiusY: "縦半径 %",
+            x: "中心 X %",
+            y: "中心 Y %",
+        },
+        restore: "{channel}を戻す",
+        restored: "戻す",
+        add: "追加",
+        remove: "削除",
+        xAlign: "X",
+        yAlign: "Y",
+    },
+    transformChannelGroup: {
+        geometry: "位置とスケール",
+        filter: "フィルター",
+        look: "ルック",
+        lens: "レンズ",
+        composite: "合成",
+        text: "テキスト",
+        timing: "タイミング",
+    },
     displayableOperation: {
         transform: "変形",
+        bringToFront: "最前面へ",
         mask: "マスク",
         clearMask: "マスクを外す",
         clip: "クリップパス",
@@ -318,11 +383,6 @@ export const storyInspector = {
         setRate: "再生速度を決める",
         muteSound: "消音を切り替え",
         seekSound: "この位置へ",
-    },
-
-    screenEffectOption: {
-        blink: "まばたき",
-        vignette: "ビネット",
     },
 
     waitMode: {

@@ -29,7 +29,7 @@ export const test = {
     picker: {
         title: "运行测试",
         start: "开始",
-        empty: "没有注册任何测试",
+        empty: "尚未注册任何测试",
     },
     status: {
         running: "运行中",

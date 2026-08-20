@@ -1,10 +1,12 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
+import type { DialogueConfiguration } from "./dialogue";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
-import type { GameLocalizationBundle } from "./localization";
+import type { GameLocalizationBundle, LanguageChangeConfiguration } from "./localization";
 import type { PlayerPreferences } from "./preference";
 import type { AutoSaveConfiguration } from "./saves";
+import type { SaveCompatibilityConfiguration } from "./saveCompatibility";
 import type { SaveSchemaRuntimeTable } from "./saveSchema";
 import type { GameVoiceBundle } from "./voice";
 import type { GameAudioBundle } from "./audio";
@@ -12,7 +14,7 @@ import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryAnimationAsset, StoryAnimationAssetId, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
+import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
 
 export type DevModeEntry =
     | {
@@ -148,6 +150,12 @@ export type DevModeCharacterSummary = {
      *    Studio has no standing to call a colour unreadable there.
      */
     color?: string;
+    /**
+     * What the character's OWN asset set fields resolve to, per locale - today `defaultAvatarAssetId`
+     * and nothing else. A pose, a layer and an avatar entry each carry their own; see
+     * `@shared/build/characterAssetSets` for why the answers are not gathered into one place.
+     */
+    assetVariants?: StoryAssetVariants;
 };
 
 /**
@@ -158,6 +166,8 @@ export type DevModeCharacterSummary = {
 export type CharacterAvatarSummaryEntry = {
     baked?: boolean;
     overrideAssetId?: string | null;
+    /** What this entry's own asset set resolves to, per locale. See `@shared/build/characterAssetSets`. */
+    assetVariants?: StoryAssetVariants;
 };
 
 /**
@@ -168,7 +178,13 @@ export type CharacterAvatarSummaryEntry = {
 export type CharacterAppearanceSummary =
     | {
           kind: "preset";
-          poses: { id: string; name: string; assetId: string | null }[];
+          poses: {
+              id: string;
+              name: string;
+              assetId: string | null;
+              /** What this pose's own asset set resolves to, per locale. */
+              assetVariants?: StoryAssetVariants;
+          }[];
           defaultPoseId: string | null;
           /** Dialog avatars keyed by pose id. */
           avatars?: Record<string, CharacterAvatarSummaryEntry>;
@@ -189,6 +205,11 @@ export type CharacterAppearanceSummary =
               assetId?: string | null;
               options?: Record<string, string | null>;
               hidden?: boolean;
+              /**
+               * What this layer's own asset sets resolve to, per locale - covering `assetId` and
+               * every entry of `options`, which are the same slot drawn for different tags.
+               */
+              assetVariants?: StoryAssetVariants;
           }[];
       }
     | {
@@ -321,6 +342,39 @@ export type DevModeBundle = {
      * which the game app reads as "the defaults" (autosaving is on by default).
      */
     autoSave?: AutoSaveConfiguration;
+    /**
+     * What a save from another build of this game is allowed to do, baked from `.nlproj`
+     * `app.saveCompatibility`. Absent on bundles that predate the feature, which every consumer
+     * reads as the defaults.
+     */
+    saveCompatibility?: SaveCompatibilityConfiguration;
+    /**
+     * What a language change does to a running playthrough, baked from `.nlproj`
+     * `app.languageChange`. Absent on bundles that predate the setting, which the game app reads as
+     * the default - restart and come back - because that is what those builds already did.
+     */
+    languageChange?: LanguageChangeConfiguration;
+    /**
+     * The author's dialogue settings, baked from `.nlproj` `app.dialogue`. Absent on bundles that
+     * predate the section, which every consumer reads as the engine's own values.
+     */
+    dialogue?: DialogueConfiguration;
+    /**
+     * The author's own version for this build, copied from `.nlproj` `metadata.version`.
+     *
+     * Stamped into every save this build writes and compared against the stamp on every save it is
+     * asked to load. Studio never interprets it - `1.4.0` and `winter-build` are equally valid, and
+     * both are compared for equality and nothing else. Blank when the project carries no version.
+     */
+    gameVersion?: string;
+    /**
+     * A fingerprint of the story documents this build ships, taken at assembly.
+     *
+     * The engine hashes the story it is running and stamps that into saves, and that hash cannot
+     * answer the question a title screen asks: it has no story mounted. This one travels with the
+     * bundle for exactly that reason. See `@shared/utils/storyContentHash`.
+     */
+    storyHash?: string;
     /**
      * What the player's settings start at, baked from `.nlproj` `app.preferences`.
      *

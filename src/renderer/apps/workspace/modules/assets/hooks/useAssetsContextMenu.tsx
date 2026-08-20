@@ -56,10 +56,29 @@ export interface UseAssetsContextMenuParams {
     /** Copies the targeted rows out to a folder the author picks. */
     handleExport: () => Promise<void>;
     handleCreateGroup: (category: AssetCategory, parentGroupId?: string) => Promise<void>;
+    /**
+     * Declares an empty set in the folder the menu was opened on.
+     *
+     * Offered wherever New Folder is, because a set is a folder to whoever is browsing: it is made
+     * in a place, and which files answer it is said in the dialog.
+     */
+    handleCreateAssetSetIn?: (category: AssetCategory, groupId?: string) => void;
+    /** Declares a set at one value of the set the right-clicked member is drawn under. */
+    handleCreateAssetSetAt?: (setId: string, value: string) => void;
     /** Other only. `groupId` is the group the menu was opened on, absent from the category header. */
     handleCreateTextFile: (groupId?: string) => Promise<void>;
     handleImportToGroup: (category: AssetCategory, groupId?: string) => Promise<void>;
     handleCreateMagicTags?: () => Promise<void>;
+    /**
+     * Declares a set out of the rows the menu will act on.
+     *
+     * Offered on an asset row rather than on the category header, because a set is made *of* files:
+     * the tags on the chosen rows are the whole declaration, so there is nothing to make one from
+     * until some rows are chosen.
+     */
+    handleCreateAssetSet?: () => Promise<void>;
+    /** False for a selection spanning two asset types, which a set has no answer for. */
+    canCreateAssetSet?: boolean;
     /** How the developer section reports a copied identifier. `UIService.showNotification`. */
     notify?: (message: string, type: "success" | "error") => void;
 }
@@ -82,19 +101,29 @@ export function useAssetsContextMenu({
     handleDelete,
     handleExport,
     handleCreateGroup,
+    handleCreateAssetSetIn,
+    handleCreateAssetSetAt,
     handleCreateTextFile,
     handleImportToGroup,
     handleCreateMagicTags,
+    handleCreateAssetSet,
+    canCreateAssetSet,
     notify,
 }: UseAssetsContextMenuParams) {
     const { t, tn } = useTranslation();
     const freeze = useFreezeGuard();
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
-    const showContextMenu = useCallback((event: React.MouseEvent, category: AssetCategory, item: Asset | AssetGroup | null, isGroup: boolean) => {
+    const showContextMenu = useCallback((
+        event: React.MouseEvent,
+        category: AssetCategory,
+        item: Asset | AssetGroup | null,
+        isGroup: boolean,
+        assetSetValue?: { setId: string; value: string },
+    ) => {
         event.preventDefault();
         event.stopPropagation();
-        setContextMenuTarget({ category, item, isGroup });
+        setContextMenuTarget({ category, item, isGroup, ...(assetSetValue ? { assetSetValue } : {}) });
         showMenu(event);
     }, [setContextMenuTarget, showMenu]);
 
@@ -175,6 +204,19 @@ export function useAssetsContextMenu({
                     label: t("assets.magicTag.title"),
                     onClick: async () => {
                         await handleCreateMagicTags();
+                        closeContextMenu();
+                    },
+                });
+            }
+
+            // Directly under Magic Tags, which is what produces the tags a set is declared in terms
+            // of: tag the files, then say which of those categories are axes.
+            if (hasAssets && handleCreateAssetSet && canCreateAssetSet) {
+                items.push({
+                    id: "new-asset-set",
+                    label: t("assets.sets.menu.create"),
+                    onClick: async () => {
+                        await handleCreateAssetSet();
                         closeContextMenu();
                     },
                 });
@@ -296,6 +338,21 @@ export function useAssetsContextMenu({
             });
         }
 
+        // On a row drawn inside a set: the sub-set that hangs at this value. It belongs to the
+        // place rather than to the file, so it sits with New Folder rather than with Rename.
+        if (contextMenuTarget.assetSetValue && handleCreateAssetSetAt) {
+            const { setId, value } = contextMenuTarget.assetSetValue;
+            items.push({
+                id: "new-sub-asset-set",
+                label: t("assets.sets.menu.createSub"),
+                disabled: !canCreateAssetSet,
+                onClick: () => {
+                    handleCreateAssetSetAt(setId, value);
+                    closeContextMenu();
+                },
+            });
+        }
+
         items.push({
             id: "new-group",
             label: contextMenuTarget.isGroup ? t("assets.menu.newSubGroup") : t("assets.menu.newGroup"),
@@ -307,6 +364,22 @@ export function useAssetsContextMenu({
                 closeContextMenu();
             },
         });
+
+        // Beside New Folder, and only where a folder can be made: a set is filed in a place the same
+        // way, and a row offering to make one on top of a file would have to guess what place meant.
+        if (handleCreateAssetSetIn && (!contextMenuTarget.item || contextMenuTarget.isGroup)) {
+            items.push({
+                id: "new-asset-set",
+                label: t("assets.sets.menu.createHere"),
+                onClick: () => {
+                    handleCreateAssetSetIn(
+                        contextMenuTarget.category,
+                        contextMenuTarget.isGroup ? (contextMenuTarget.item as AssetGroup).id : undefined,
+                    );
+                    closeContextMenu();
+                },
+            });
+        }
 
         items.push({
             id: "import-assets",
@@ -332,7 +405,7 @@ export function useAssetsContextMenu({
         );
 
         return freezeContextMenuRows(withDeveloperRows, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
-    }, [canConvertMedia, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
+    }, [canConvertMedia, canCreateAssetSet, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateAssetSet, handleCreateAssetSetAt, handleCreateAssetSetIn, handleCreateGroup, handleCreateMagicTags, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
 
     return {
         menuState,

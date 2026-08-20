@@ -7,17 +7,23 @@
  *
  * The on/off *looks* are not modelled here: both child parts carry an appearance variant with the
  * fixed id `UI_SWITCH_ON_VARIANT_ID`, and the renderer only flips the parts to it while checked.
- * That is why this table has no `thumbInset`, no `transitionMs` / `transitionEasing` and no
- * `orientation` - the travel is the `on` variant's `transformOffsetX`, the transition is that
- * field's own transition, and a rotated switch is `transformRotation`. Storing any of them here
- * too would be one number in two places.
+ * That is why this table has no `thumbInset` and no `orientation`: the track's on colour is that
+ * variant's, and a rotated switch is `transformRotation`.
+ *
+ * How far the thumb travels is not a look and is not stored here either. It is a state motion on the
+ * switch itself (`props.stateMotions`, see `@shared/types/ui-editor/stateMotion`), because the thumb's
+ * own geometry belongs to the thumb: an author who drags it is placing it, not describing a state.
  */
+
+import type { UIStateMotionOffset } from "./stateMotion";
 
 export type UISwitchChildSlot = "track" | "thumb";
 
 export type UISwitchElementExtra = {
     switchSlot?: UISwitchChildSlot;
     runtimeVariantOverrideId?: string;
+    /** Handed down by the switch for the state it is in; the part itself stores nothing about it. */
+    stateMotionOffset?: UIStateMotionOffset;
 };
 
 export type UISwitchWidgetProps = {

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { Switch } from "@/lib/components/elements";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -32,6 +33,7 @@ import { BorderStrokeCompactRows } from "./BorderStrokeCompactRows";
 import { AppearanceFieldMotionButton, ModuleMotionMenuButton } from "./AppearanceMotionControls";
 import { CompactEffectsAppearance } from "./CompactEffectsAppearance";
 import { ButtonCursorSelect } from "../editors/ButtonCursorSelect";
+import { useAppearancePositionInLayout } from "../appearancePositionOwner";
 
 type Props = {
     variant: AppearanceVariant;
@@ -61,6 +63,7 @@ export function CompactButtonAppearance({
     motionFieldsConfigured,
 }: Props) {
     const { t } = useTranslation();
+    const positionInLayout = useAppearancePositionInLayout();
     const backgroundMode = buttonModuleModes.background;
     const borderMode = buttonModuleModes.border;
     const spacingMode = buttonModuleModes.spacing;
@@ -320,15 +323,15 @@ export function CompactButtonAppearance({
                         </div>
                     </div>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer pt-1">
-                    <input
-                        type="checkbox"
+                <div className="flex items-center gap-2 pt-1 text-xs text-fg-muted">
+                    <Switch
+                        size="sm"
                         checked={Boolean(getSpacing("clipContent"))}
-                        onChange={e => patchSpacing("clipContent", e.target.checked)}
-                        className="rounded-sm border-edge-strong"
+                        onCheckedChange={next => patchSpacing("clipContent", next)}
+                        aria-label={t("widgetAppearance.spacing.clipContent")}
                     />
                     {t("widgetAppearance.spacing.clipContent")}
-                </label>
+                </div>
             </CompactModuleCard>
 
             <CompactModuleCard title={t("widgetAppearance.mouse.title")}>
@@ -354,56 +357,58 @@ export function CompactButtonAppearance({
                     />
                 }
             >
-                <div className="flex flex-wrap gap-2 min-w-0">
-                    <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                        <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.xOffset")}</span>
-                        <div className="flex items-center gap-1 min-w-0">
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(readFiniteNumber(getTransform("transformOffsetX"), 0))}
-                                draftResetKey={`${draftResetKey}-tox`}
-                                onFiniteNumber={v => patchTransform("transformOffsetX", v)}
-                                inputMode="numeric"
-                                type="number"
-                                unit="px"
-                                leftIcon={<Move className="w-4 h-4 text-fg-muted" />}
-                                className="w-full min-w-0"
-                                selectAllOnFocus
-                            />
-                            {transformMotionVisible ? (
-                                <AppearanceFieldMotionButton
-                                    variant={variant}
-                                    setFieldTransition={setFieldTransition}
-                                    groupKey="transformOffsetX"
-                                    draftResetKey={draftResetKey}
+                {positionInLayout ? null : (
+                    <div className="flex flex-wrap gap-2 min-w-0">
+                        <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
+                            <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.xOffset")}</span>
+                            <div className="flex items-center gap-1 min-w-0">
+                                <NumericDraftEnhancedInput
+                                    committedDisplay={String(readFiniteNumber(getTransform("transformOffsetX"), 0))}
+                                    draftResetKey={`${draftResetKey}-tox`}
+                                    onFiniteNumber={v => patchTransform("transformOffsetX", v)}
+                                    inputMode="numeric"
+                                    type="number"
+                                    unit="px"
+                                    leftIcon={<Move className="w-4 h-4 text-fg-muted" />}
+                                    className="w-full min-w-0"
+                                    selectAllOnFocus
                                 />
-                            ) : null}
+                                {transformMotionVisible ? (
+                                    <AppearanceFieldMotionButton
+                                        variant={variant}
+                                        setFieldTransition={setFieldTransition}
+                                        groupKey="transformOffsetX"
+                                        draftResetKey={draftResetKey}
+                                    />
+                                ) : null}
+                            </div>
+                        </div>
+                        <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
+                            <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.yOffset")}</span>
+                            <div className="flex items-center gap-1 min-w-0">
+                                <NumericDraftEnhancedInput
+                                    committedDisplay={String(readFiniteNumber(getTransform("transformOffsetY"), 0))}
+                                    draftResetKey={`${draftResetKey}-toy`}
+                                    onFiniteNumber={v => patchTransform("transformOffsetY", v)}
+                                    inputMode="numeric"
+                                    type="number"
+                                    unit="px"
+                                    leftIcon={<Move className="w-4 h-4 text-fg-muted" />}
+                                    className="w-full min-w-0"
+                                    selectAllOnFocus
+                                />
+                                {transformMotionVisible ? (
+                                    <AppearanceFieldMotionButton
+                                        variant={variant}
+                                        setFieldTransition={setFieldTransition}
+                                        groupKey="transformOffsetY"
+                                        draftResetKey={draftResetKey}
+                                    />
+                                ) : null}
+                            </div>
                         </div>
                     </div>
-                    <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
-                        <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.yOffset")}</span>
-                        <div className="flex items-center gap-1 min-w-0">
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(readFiniteNumber(getTransform("transformOffsetY"), 0))}
-                                draftResetKey={`${draftResetKey}-toy`}
-                                onFiniteNumber={v => patchTransform("transformOffsetY", v)}
-                                inputMode="numeric"
-                                type="number"
-                                unit="px"
-                                leftIcon={<Move className="w-4 h-4 text-fg-muted" />}
-                                className="w-full min-w-0"
-                                selectAllOnFocus
-                            />
-                            {transformMotionVisible ? (
-                                <AppearanceFieldMotionButton
-                                    variant={variant}
-                                    setFieldTransition={setFieldTransition}
-                                    groupKey="transformOffsetY"
-                                    draftResetKey={draftResetKey}
-                                />
-                            ) : null}
-                        </div>
-                    </div>
-                </div>
+                )}
 
                 <div className="mt-2 flex min-w-0 flex-col gap-1">
                     <span className="text-xs font-medium text-fg-muted">{t("widgetAppearance.transform.zoom")}</span>

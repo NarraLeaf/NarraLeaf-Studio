@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Camera, Check, ChevronDown, ChevronRight, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { BookOpen, Camera, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useWorkspace } from "@/apps/workspace/context";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { getDefById, localizedCommandToken } from "./commands/registry";
 import type { EditorComponentProps } from "../../types";
@@ -53,6 +56,7 @@ import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
+import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
 import {
     getSegmentSlot,
     replaceInSegment,
@@ -71,6 +75,9 @@ import {
     STORY_EDITOR_DENSITIES,
 } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
+import { NarralangScriptView } from "../narralang/NarralangScriptView";
+import { useNarralangScript } from "../narralang/useNarralangScript";
+import { useNarralangCommit } from "../narralang/useNarralangCommit";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
@@ -184,6 +191,16 @@ function StorySceneOverviewBlock(props: {
     const selectButtonRef = useRef<HTMLButtonElement | null>(null);
     const backgroundAssetId = scene.defaultBackgroundAssetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(backgroundAssetId);
+    const workspace = useWorkspace();
+    // The same field the scene inspector edits, so it offers the same choices. It was the one
+    // surface of `defaultBackgroundAssetId` that did not, which read as the panel and the card
+    // disagreeing about what a scene background can be.
+    const assetSets = useAssetSetPickerSource({
+        context: workspace.context,
+        isInitialized: workspace.isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
 
     // Collapsed by default once the scene is set up; expanded on a freshly created scene (no default
     // background yet) so the author is prompted to name it and pick a backdrop. A manual toggle is
@@ -240,7 +257,14 @@ function StorySceneOverviewBlock(props: {
         onUpdateScene({ defaultBackgroundAssetId: null });
     }, [onUpdateScene]);
 
-    const backgroundLabel = backgroundAsset?.name ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
+    const backgroundLabel = backgroundAsset?.name
+        // A set has no record in the image library, so the "this picture is gone" phrase would be
+        // printed over one that resolves. Both kinds of id go through the one function that answers
+        // for both.
+        ?? (backgroundAssetId && workspace.context
+            ? resolveAssetDisplayName(workspace.context.services, backgroundAssetId)
+            : null)
+        ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
 
     return (
         <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-edge bg-fill-subtle">
@@ -404,6 +428,9 @@ function StorySceneOverviewBlock(props: {
                 anchorRef={selectButtonRef}
                 title={t("story.sceneEditor.selectDefaultBackground")}
                 multiple={false}
+                {...(assetSets.virtualGroups
+                    ? { virtualGroups: assetSets.virtualGroups, resolveAssetPreviewUrl: assetSets.resolveAssetPreviewUrl }
+                    : {})}
             />
         </div>
     );
@@ -428,6 +455,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     );
     /** The rows currently in the air. Empty except during a drag; see {@link handleDragStart}. */
     const [draggingGroup, setDraggingGroup] = useState<Set<StoryBlockId>>(EMPTY_DRAG_GROUP);
+    /**
+     * Whether the scene is being read as a script instead of as rows.
+     *
+     * Deliberately not persisted, and deliberately not a tab of its own. It is a way of *looking* at
+     * the scene the author reaches for and then leaves — the rows are where the work happens — and a
+     * remembered one would reopen a chapter in the surface that cannot yet edit it.
+     *
+     * The row list is hidden rather than unmounted while this is on: it holds the scroll position,
+     * the virtualiser's measurements and the controller's refs, and throwing those away and rebuilding
+     * them is exactly the cost a view toggle must not have. Declared this high because the keybinding
+     * table below stands down while it is true.
+     */
+    const [scriptOpen, setScriptOpen] = useState(false);
     // The find bar's opener lives with the rest of the find state, further down; the binding table is
     // built before it exists, so it reaches the current one through a ref.
     const openFindRef = useRef<() => void>(() => {});
@@ -620,7 +660,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
 
     useKeybindings({
         keybindings: effectiveKeybindings,
-        enabled: editor.isInitialized && Boolean(editor.context && payload?.storyId && payload.sceneId),
+        // Every binding in the table acts on the row selection, and the script view has none — its
+        // Delete would delete rows the author cannot see. Monaco brings its own find and its own
+        // navigation, so nothing is lost by standing down for as long as it is on screen.
+        enabled: editor.isInitialized && !scriptOpen && Boolean(editor.context && payload?.storyId && payload.sceneId),
         when: whenEditorFocused(tabId),
         idPrefix: `story-scene-editor-${tabId}`,
         catalogPrefix: "story.",
@@ -1385,6 +1428,26 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     previewWidthRef.current = previewWidth;
     const editorBodyRef = useRef<HTMLDivElement | null>(null);
 
+    const script = useNarralangScript(editor.scene ?? null, editor.document ?? null, scriptOpen);
+    /**
+     * Whether the script may be written back, and what to say when it may not.
+     *
+     * Two independent refusals with one surface: a scene the script cannot say is read-only for good
+     * (the gate), and a frozen workspace refuses every write of project data. The freeze reason is
+     * the shared one `useFreezeGuard` hands every other control, so the author learns what frozen
+     * looks like once instead of reading a different excuse per panel.
+     */
+    const scriptEditable = script.editable && !freeze.frozen;
+    const scriptReadOnlyReason = freeze.frozen ? freeze.reason : t("story.narralang.view.readOnly");
+    const scriptCommit = useNarralangCommit(
+        editor.scene ?? null,
+        editor.document ?? null,
+        // The very tables the `/` line beside it resolves names through, so the two surfaces cannot
+        // disagree about what the project contains.
+        editor.commandContext,
+        scriptOpen && scriptEditable,
+    );
+
     const togglePreview = useCallback(() => {
         setPreviewPane(current => {
             const base = current ?? DEFAULT_STORY_SCENE_PREVIEW_PANE_STATE;
@@ -1698,7 +1761,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         /** The row's block, by id, from whatever scene is current. */
         const blockOf = (blockId: StoryBlockId) => latest().editor.scene?.blocks[blockId] ?? null;
         return {
-            select: (blockId, event) => latest().editor.selectRow(blockId, event),
+            // The row's `click`, which selects only when its `mousedown` declined - see
+            // `storyRowSelectionGesture`. Wiring this to `selectRow` is what made Ctrl+click a no-op:
+            // the row would then be selected twice per press, and a toggle applied twice is nothing.
+            select: (blockId, event) => latest().editor.selectRowFromClick(blockId, event),
             contextMenu: (blockId, event) => latest().openRowContextMenu(event, blockId),
             mouseDown: (blockId, event) => latest().editor.beginDragSelection(blockId, event),
             mouseEnter: blockId => latest().editor.extendDragSelection(blockId),
@@ -1901,6 +1967,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         {/* Resolved once for the whole scene: every committed row reads itself back as a command line,
             and each of these lookups is an IPC round trip or a service subscription per mount. */}
         <StoryCommandLineProvider slashAtAlias={editor.slashAtAlias} commandContext={editor.commandContext}>
+        {/* Following a name to the thing it names is READING, so it sits outside the row-action
+            surface above and keeps working while the workspace is frozen — that is the state in which
+            looking a reference up is all there is left to do. */}
+        <StoryRefNavigationProvider document={document} sceneId={scene.id}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
         <div
             ref={editor.rootRef}
@@ -1916,9 +1986,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             // plain-paste flag for the paste that follows. While frozen that paste never runs, so the
             // flag was never consumed and never reset - it sat here and turned the first paste after
             // the thaw into a plain one the author never asked for.
-            onKeyDown={freeze.run(editor.handleKeyDown)}
-            onCopy={editor.copySelectionToClipboard}
-            onPaste={freeze.run(editor.handlePaste)}
+            // Detached while the script is on screen: all three act on the row selection, and the
+            // copy handler in particular claims the event — leaving it attached would make copying a
+            // passage out of the script yield the rows behind it instead of the text on screen.
+            onKeyDown={scriptOpen ? undefined : freeze.run(editor.handleKeyDown)}
+            onCopy={scriptOpen ? undefined : editor.copySelectionToClipboard}
+            onPaste={scriptOpen ? undefined : freeze.run(editor.handlePaste)}
         >
             <div className="flex min-h-[44px] items-center gap-3 border-b border-edge px-3">
                 <div className="flex min-w-0 items-center gap-2">
@@ -1929,6 +2002,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     </div>
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {/* The filter and the density are controls for the row LIST, and the script is not
+                        one — neither of them would change a character of it. They stand down while it
+                        is on rather than sitting there inert, which is the same call the text editor's
+                        strip makes about a registry with nothing in it. The group is right-aligned, so
+                        the three controls that remain do not move when these two go. */}
+                    {!scriptOpen ? (
+                    <>
                     {/* One control for the whole of "what is on this page".
                         A separate "narrative only" toggle used to sit to its left, and it was a
                         mistake twice over: it was one point inside this button's own space, and its
@@ -1967,6 +2047,22 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     >
                         <Rows3 className="h-4 w-4" />
                     </button>
+                    </>
+                    ) : null}
+                    {/* The same scene, read as a script. It is tinted the way the other view controls
+                        are when they are on, because that is what it is — a way of looking at the
+                        page, not a pane that opens beside it. Icon-only for the same reason they are:
+                        one glyph nothing else here can be. */}
+                    <button
+                        type="button"
+                        onClick={() => setScriptOpen(open => !open)}
+                        data-tip={scriptOpen ? t("story.narralang.view.close") : t("story.narralang.view.open")}
+                        aria-label={scriptOpen ? t("story.narralang.view.close") : t("story.narralang.view.open")}
+                        aria-pressed={scriptOpen}
+                        className={["rounded-md p-1.5 transition-colors", scriptOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                    >
+                        <Code className="h-4 w-4" />
+                    </button>
                     {/* The manual used to be a modal, which meant closing what you were reading before
                         you could use it. It is the right-hand panel now, so the documentation and the
                         line you are writing are on screen together. */}
@@ -1998,7 +2094,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 </div>
             </div>
 
-            {findOpen ? (
+            {findOpen && !scriptOpen ? (
                 <StoryFindBar
                     query={findQuery}
                     onQueryChange={value => { setFindQuery(value); setFindCursor(0); }}
@@ -2024,7 +2120,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
 
             <div ref={editorBodyRef} className="relative flex min-h-0 flex-1 flex-row">
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            {/* Hidden, not unmounted — see `scriptOpen`. The layout classes go with it rather than
+                sitting under a `hidden` that overrides them, so the column has no size to contribute
+                while the script has the body. */}
+            <div className={scriptOpen ? "hidden" : "relative flex min-h-0 min-w-0 flex-1 flex-col"}>
             {/* The prose surface. A custom workspace background clears every base `bg-surface` fill
                 (see styles.css), which is right for chrome and wrong for the text you are reading,
                 so this one paints its own — at the `editor.surfaceOpacity` the author chose. Opaque
@@ -2292,6 +2391,19 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 />
             ) : null}
             </div>
+            {/* Mounted only while it is on: a Monaco instance and the print behind it are not things
+                a scene tab should be carrying around for an author who never asked for the script. */}
+            {scriptOpen ? (
+                <NarralangScriptView
+                    text={script.text}
+                    rows={script.rows}
+                    ready={script.ready}
+                    editable={scriptEditable}
+                    readOnlyReason={scriptReadOnlyReason}
+                    commit={scriptCommit.commit}
+                    breakMerge={scriptCommit.breakMerge}
+                />
+            ) : null}
             {previewOpen && previewMode === "dock" ? (
                 <>
                     <ResizableHandle
@@ -2337,6 +2449,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
         </div>
         </StoryRowActionsContext.Provider>
+        </StoryRefNavigationProvider>
         </StoryCommandLineProvider>
         </StoryEditorTextStyleProvider>
     );
