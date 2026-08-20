@@ -200,6 +200,20 @@ const ASSET_ID_PROPERTY_NAMES = new Set(["assetId", "fontAssetId", "posterAssetI
  * preloader has nothing useful to do with an id it cannot resolve; here that id is precisely the
  * finding.
  */
+/**
+ * The fonts the project defaults to, which the page walk cannot see.
+ *
+ * They are a demand like any other - every line of text the game draws asks for them - and they are
+ * named in the bundle rather than in a widget, so a package that dropped them would fail at the
+ * first painted character with nothing in the walk having asked about it.
+ */
+export function collectProjectFontDemands(pack: GameRuntimePackV1): ShippedAssetDemand[] {
+    return (pack.bundle.fonts ?? []).map(entry => ({
+        assetId: entry.assetId.trim(),
+        origin: "Project design",
+    })).filter(demand => Boolean(demand.assetId));
+}
+
 export function collectSurfaceAssetDemands(uidoc: UIDocument): ShippedAssetDemand[] {
     const demands: ShippedAssetDemand[] = [];
     const seen = new Set<string>();
@@ -257,7 +271,11 @@ export async function auditShippedContent(input: {
 }): Promise<ShippedContentAuditResult> {
     const { pack, reader } = input;
     const story = await collectStoryAssetDemands(pack);
-    const demands = [...story.demands, ...collectSurfaceAssetDemands(pack.bundle.ui.uidoc)];
+    const demands = [
+        ...story.demands,
+        ...collectSurfaceAssetDemands(pack.bundle.ui.uidoc),
+        ...collectProjectFontDemands(pack),
+    ];
     const failures: ShippedContentAuditFailure[] = [];
     const checked = new Set<string>();
     for (const demand of demands) {

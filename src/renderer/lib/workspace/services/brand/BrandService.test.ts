@@ -3,6 +3,8 @@ import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { join } from "@shared/utils/path";
 import { formatBrandLink, parseBrandLink } from "@shared/brand/brandLink";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { getActiveProjectFontIds } from "@shared/typography/projectFonts";
+import { PROJECT_FONT_STACK_MAX } from "@shared/types/typography";
 import {
     BRAND_SCHEMA_VERSION,
     BUILTIN_BRAND_COLORS,
@@ -262,6 +264,7 @@ describe("BrandService mutations", () => {
         service.replaceDocument({
             schemaVersion: BRAND_SCHEMA_VERSION,
             colors: [{ id: "primary", value: "#ABCDEF" }],
+            fonts: [],
         });
 
         expect(service.getColor("primary")).toMatchObject({ value: "#ABCDEF" });
@@ -365,5 +368,107 @@ describe("BrandService when the file on disk cannot be read", () => {
         expect(unreadable).not.toHaveBeenCalled();
         expect(getActiveBrandPalette().resolveCss("primary")).toBeNull();
         expect(getActiveBrandPalette().resolveCss("text.muted")).toBe("#9AA3AE");
+    });
+});
+
+
+/**
+ * The project's default font stack, stored beside the palette in the same document.
+ *
+ * What is being pinned here is the pair of things a font stack has that a palette does not: it is
+ * ordered, and its order is the priority every piece of text in the project inherits - so a move
+ * that wrapped, or a duplicate that appeared twice, is a change to how the whole game renders.
+ */
+describe("BrandService default font stack", () => {
+    it("is empty for a project that has never chosen one, and for a v1 document", async () => {
+        const fresh = await createHarness();
+        expect(fresh.service.listFonts()).toEqual([]);
+
+        const v1 = await createHarness(JSON.stringify({
+            schemaVersion: 1,
+            colors: [{ id: "primary", value: "#ABCDEF" }],
+        }));
+        expect(v1.service.listFonts()).toEqual([]);
+        expect(getActiveProjectFontIds()).toEqual([]);
+    });
+
+    it("appends, publishes and persists", async () => {
+        const { service, files } = await createHarness();
+
+        expect(service.addFont("font-a")).toBe(true);
+        expect(service.addFont("font-b")).toBe(true);
+
+        expect(service.listFonts()).toEqual([{ assetId: "font-a" }, { assetId: "font-b" }]);
+        expect(getActiveProjectFontIds()).toEqual(["font-a", "font-b"]);
+
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).fonts).toEqual([{ assetId: "font-a" }, { assetId: "font-b" }]);
+    });
+
+    // The caller is a picker the author has just pressed a font in: a silent no-op there is
+    // indistinguishable from a control that does not work.
+    it("refuses a font already on the stack, and says so", async () => {
+        const { service } = await createHarness();
+        service.addFont("font-a");
+
+        expect(service.addFont("font-a")).toBe(false);
+        expect(service.listFonts()).toHaveLength(1);
+    });
+
+    it("refuses to grow past the cap", async () => {
+        const { service } = await createHarness();
+        for (let index = 0; index < PROJECT_FONT_STACK_MAX; index += 1) {
+            expect(service.addFont(`font-${index}`)).toBe(true);
+        }
+
+        expect(service.addFont("one-too-many")).toBe(false);
+        expect(service.listFonts()).toHaveLength(PROJECT_FONT_STACK_MAX);
+    });
+
+    it("moves one rung at a time", async () => {
+        const { service } = await createHarness();
+        service.addFont("a");
+        service.addFont("b");
+        service.addFont("c");
+
+        expect(service.moveFont("c", -1)).toBe(true);
+        expect(service.listFonts().map(entry => entry.assetId)).toEqual(["a", "c", "b"]);
+        expect(service.moveFont("a", 1)).toBe(true);
+        expect(service.listFonts().map(entry => entry.assetId)).toEqual(["c", "a", "b"]);
+    });
+
+    /** The end of the list is a no-op, never a wrap - a wrap is the one outcome nobody meant. */
+    it("does not wrap at either end", async () => {
+        const { service } = await createHarness();
+        service.addFont("a");
+        service.addFont("b");
+
+        expect(service.moveFont("a", -1)).toBe(false);
+        expect(service.moveFont("b", 1)).toBe(false);
+        expect(service.listFonts().map(entry => entry.assetId)).toEqual(["a", "b"]);
+    });
+
+    it("removes, and reports a font that was not there", async () => {
+        const { service } = await createHarness();
+        service.addFont("a");
+
+        expect(service.removeFont("b")).toBe(false);
+        expect(service.removeFont("a")).toBe(true);
+        expect(service.listFonts()).toEqual([]);
+        expect(getActiveProjectFontIds()).toEqual([]);
+    });
+
+    it("notifies subscribers", async () => {
+        const { service } = await createHarness();
+        const seen: number[] = [];
+        const unsubscribe = service.onFontsChanged(fonts => seen.push(fonts.length));
+
+        service.addFont("a");
+        service.addFont("b");
+        service.removeFont("a");
+        unsubscribe();
+        service.addFont("c");
+
+        expect(seen).toEqual([1, 2, 1]);
     });
 });

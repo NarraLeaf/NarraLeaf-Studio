@@ -98,7 +98,11 @@ export const properties = {
     },
     fontAsset: {
         fallbackName: "Font",
-        none: "No font",
+        // What a widget that has chosen no font of its own is set in - never "no font", because
+        // there is one: the project's, from Project -> Design.
+        projectDefault: "Project default font",
+        /** The one-row picker section holding it, above the built-in stacks and the library. */
+        projectSection: "Project",
         choose: "Choose font",
         loadError: "The font could not be loaded ({error}). The preview uses a fallback until the asset is valid.",
         select: "Select Font",
@@ -154,6 +158,8 @@ export const properties = {
             uiElement: "Interface",
             character: "Character",
             voice: "Voice",
+            /** Project -> Design: the fonts the whole project defaults to. */
+            design: "Design",
         },
     },
     tags: {

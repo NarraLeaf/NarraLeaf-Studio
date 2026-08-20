@@ -8,6 +8,10 @@ import {
     EDITOR_BUILTIN_FONT_VIRTUAL_GROUP,
     getBuiltinEditorFontDisplayName,
 } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
+import {
+    PROJECT_DEFAULT_FONT_OPTION_ID,
+    projectDefaultFontVirtualGroup,
+} from "@/lib/ui-editor/fonts/projectDefaultFontOption";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -19,8 +23,6 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { FontAssetFieldDefinition } from "../types";
 import { FieldLayout } from "./FieldLayout";
 import { makeFreezeGuard, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-
-const FONT_ASSET_SELECTOR_VIRTUAL_GROUPS: AssetSelectorVirtualGroup[] = [EDITOR_BUILTIN_FONT_VIRTUAL_GROUP];
 
 interface FontAssetFieldProps<TData extends UIInspectorData = UIInspectorData> {
     field: FontAssetFieldDefinition<TData>;
@@ -44,6 +46,25 @@ export function FontAssetField<TData extends UIInspectorData>({
 
     const assetId = field.getValue(data);
     const { cssFamily, loading: fontLoading, error: fontError } = useEditorFontFamily(assetId);
+
+    /**
+     * The project's own default is offered first, above the built-in stacks and the library.
+     *
+     * It is an entry in the picker rather than only the empty state, because "follows the project"
+     * is a choice an author makes on purpose - having picked a font and changed their mind, the way
+     * back has to be somewhere they can press. What it writes is null: absence *is* the state (see
+     * `@shared/types/typography`), so nothing new is stored in any document.
+     */
+    const virtualGroups = useMemo<AssetSelectorVirtualGroup[]>(
+        () => [
+            projectDefaultFontVirtualGroup(
+                t("properties.fontAsset.projectSection"),
+                t("properties.fontAsset.projectDefault"),
+            ),
+            EDITOR_BUILTIN_FONT_VIRTUAL_GROUP,
+        ],
+        [t],
+    );
 
     const [selectorOpen, setSelectorOpen] = useState(false);
     const previewRef = useRef<HTMLButtonElement | null>(null);
@@ -79,7 +100,11 @@ export function FontAssetField<TData extends UIInspectorData>({
         return assetsService.getAssets()[AssetType.Font]?.[assetId]?.name ?? null;
     }, [assetId, assetsService]);
 
-    const previewLabel = assetId ? assetName ?? t("properties.fontAsset.fallbackName") : t("properties.fontAsset.none");
+    // Never "no font": a widget that has chosen nothing is set in the project's default, so naming
+    // the state after what it does is the only reading that matches what is on screen beside it.
+    const previewLabel = assetId
+        ? assetName ?? t("properties.fontAsset.fallbackName")
+        : t("properties.fontAsset.projectDefault");
 
     const applyAssetId = useCallback(
         (next: string | null) => {
@@ -99,7 +124,9 @@ export function FontAssetField<TData extends UIInspectorData>({
             if (!selected) {
                 return;
             }
-            applyAssetId(selected.id);
+            // The project-default row is an offer, not an id: it is stored as absence, which is what
+            // every widget that has never been touched already holds.
+            applyAssetId(selected.id === PROJECT_DEFAULT_FONT_OPTION_ID ? null : selected.id);
             setSelectorOpen(false);
         },
         [applyAssetId],
@@ -161,11 +188,11 @@ export function FontAssetField<TData extends UIInspectorData>({
             <AssetSelector
                 visible={selectorOpen}
                 assetType={AssetType.Font}
-                virtualGroups={FONT_ASSET_SELECTOR_VIRTUAL_GROUPS}
+                virtualGroups={virtualGroups}
                 virtualGroupsPlacement="before"
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={handleConfirm}
-                selectedIds={assetId ? [assetId] : []}
+                selectedIds={assetId ? [assetId] : [PROJECT_DEFAULT_FONT_OPTION_ID]}
                 anchorRef={previewRef}
                 title={t("properties.fontAsset.select")}
                 multiple={false}

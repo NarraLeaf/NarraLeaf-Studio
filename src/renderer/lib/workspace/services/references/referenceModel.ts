@@ -75,7 +75,7 @@ import type { SearchJumpTarget } from "../search/searchIndexModel";
  */
 
 /** Which kind of document holds the reference — drives grouping and the icon in the UI. */
-export type ReferenceSiteKind = "story" | "blueprint" | "uiElement" | "voice" | "character";
+export type ReferenceSiteKind = "story" | "blueprint" | "uiElement" | "voice" | "character" | "design";
 
 export interface AssetReference {
     /** Stable unique id (React key, and the dedupe key when slices are merged). */
@@ -98,7 +98,8 @@ export interface AssetReference {
 }
 
 /** The slices the index is assembled from; a gap names the one it came from. */
-export type ReferenceSliceKind = "story" | "storyAnimation" | "blueprint" | "ui" | "voice" | "character";
+export type ReferenceSliceKind = "story" | "storyAnimation" | "blueprint" | "ui" | "voice" | "character"
+    | "design";
 
 /**
  * Why one site could not be turned into a reference.
@@ -220,6 +221,38 @@ export function isLibraryAssetId(value: unknown): value is string {
         !trimmed.startsWith(BUILTIN_EDITOR_FONT_ID_PREFIX) &&
         !trimmed.startsWith(DEV_MODE_SAVE_PREVIEW_ASSET_ID_PREFIX)
     );
+}
+
+/**
+ * The project's default font stack, as references.
+ *
+ * Small, and the only reason it is a slice of its own: these are the one asset use that lives
+ * outside every document the other five walk. Without it a font that the whole game is set in reads
+ * as unreferenced — the unused-asset report offers it for deletion, and the delete guard lets it go
+ * without a word, taking the typeface out of every line of text at once.
+ *
+ * `label` is a fixed word rather than something the author named, the way `BLUEPRINT_SLICE_LOCATION`
+ * is: there is one of these per project and nobody named it. The rung's place in the stack goes in
+ * `field`, because the order is what an author would need to recognise the row.
+ */
+export function extractProjectFontReferences(
+    fonts: readonly { assetId: string }[],
+    label: string,
+): AssetReference[] {
+    const references: AssetReference[] = [];
+    fonts.forEach((entry, index) => {
+        if (!isLibraryAssetId(entry.assetId)) {
+            return;
+        }
+        references.push({
+            id: `design:font:${entry.assetId.trim()}`,
+            assetId: entry.assetId.trim(),
+            kind: "design",
+            label,
+            field: `fonts[${index + 1}]`,
+        });
+    });
+    return references;
 }
 
 /** Group references by asset id — the shape the panel queries. */

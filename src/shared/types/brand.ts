@@ -20,8 +20,15 @@
  * Comments in English per project convention.
  */
 
-/** Persisted document version for `editor/brand.json`. Independent of every other document. */
-export const BRAND_SCHEMA_VERSION = 1;
+import {normalizeProjectFontStack, type ProjectFontEntry} from "./typography";
+
+/**
+ * Persisted document version for `editor/brand.json`. Independent of every other document.
+ *
+ * v2 added `fonts` - the project's default font stack, see {@link ProjectFontEntry}. A v1 file reads
+ * as a project with no default font, which is what every project had before the field existed.
+ */
+export const BRAND_SCHEMA_VERSION = 2;
 
 export type BrandColor = {
     /**
@@ -50,10 +57,20 @@ export type BrandColor = {
     builtin?: true;
 };
 
-/** The persisted document. An array because the seed order is the order the panel draws. */
+/**
+ * The persisted document. An array because the seed order is the order the panel draws.
+ *
+ * The fonts live here rather than in a document of their own because the surface they are edited on
+ * is one surface - Project -> Design is where a project's look is decided - and a second file would
+ * mean a second service, a second autosave, a second thing to load before a preview can start, all
+ * to carry a list that is usually two rows long. What they are is `@shared/types/typography`;
+ * this module only owns the fact that they are stored beside the colours.
+ */
 export type ProjectBrandDocument = {
     schemaVersion: number;
     colors: BrandColor[];
+    /** In priority order - the first family with a glyph wins, per character. Empty is the default. */
+    fonts: ProjectFontEntry[];
 };
 
 function seedColor(id: string, value: string): BrandColor {
@@ -239,6 +256,9 @@ export function migrateProjectBrandDocument(raw: unknown): ProjectBrandDocument 
     return {
         schemaVersion: BRAND_SCHEMA_VERSION,
         colors: normalizeProjectBrandColors(record.colors),
+        // Absent on every v1 file, and on every project that has never chosen one. Both read as an
+        // empty stack, which is the state text rendered in before this field existed.
+        fonts: normalizeProjectFontStack(record.fonts),
     };
 }
 
@@ -247,5 +267,6 @@ export function createEmptyProjectBrandDocument(): ProjectBrandDocument {
     return {
         schemaVersion: BRAND_SCHEMA_VERSION,
         colors: normalizeProjectBrandColors([]),
+        fonts: [],
     };
 }
