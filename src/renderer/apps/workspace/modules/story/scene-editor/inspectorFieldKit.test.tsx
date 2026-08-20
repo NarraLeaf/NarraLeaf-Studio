@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
-import { CUSTOM_EASING_OPTION, EasingField, nextEasingValue, type TFunc } from "./inspectorFieldKit";
+import { CUSTOM_EASING_OPTION, EasingField, nextEasingValue, ToggleField, type TFunc } from "./inspectorFieldKit";
 
 /**
  * The `Easing` field's two states, asserted as markup: a named easing is a pick and nothing else, a
@@ -56,5 +56,21 @@ describe("the easing field", () => {
         expect(nextEasingValue("easeOut", "cubic-bezier(0.4,0,0.2,1)")).toBe("easeOut");
         // The blank option is the field's "no easing stated", which is stored as nothing at all.
         expect(nextEasingValue("", "easeOut")).toBeUndefined();
+    });
+});
+
+describe("the toggle field", () => {
+    it("draws the shared switch rather than a checkbox of its own", () => {
+        const markup = renderToStaticMarkup(
+            <ToggleField label="storyInspector.vfx.loop" checked onChange={() => undefined} />,
+        );
+        // The one thing worth pinning: a boolean in the inspector is the same control as a boolean
+        // anywhere else in Studio. A hand-rolled `<input type="checkbox">` here is what this replaced.
+        expect(markup).toContain('role="switch"');
+        expect(markup).toContain('aria-checked="true"');
+        expect(markup).not.toContain('type="checkbox"');
+        // On the shared size scale, so the field lines up with the inputs beside it in the grid.
+        expect(markup).toContain("min-h-9");
+        expect(markup).not.toContain("min-h-[34px]");
     });
 });

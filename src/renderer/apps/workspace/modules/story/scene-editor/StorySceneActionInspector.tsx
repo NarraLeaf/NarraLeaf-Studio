@@ -109,6 +109,7 @@ import {
     SelectField,
     Section,
     TextField,
+    ToggleField,
     type TFunc,
 } from "./inspectorFieldKit";
 
@@ -237,7 +238,7 @@ function VariableValueField(props: {
     const { t } = useTranslation();
     const label = props.label ?? t("storyInspector.field.value");
     if (props.valueType === "boolean") {
-        return <CheckboxField label={label} checked={props.value === true} onChange={checked => props.onChange(checked)} />;
+        return <ToggleField label={label} checked={props.value === true} onChange={checked => props.onChange(checked)} />;
     }
     if (props.valueType === "number") {
         return (
@@ -631,7 +632,7 @@ function InspectorFields(props: {
                     </FieldGrid>
                     <Section title={t("storyInspector.section.timing")}>
                         <FieldGrid cols={2}>
-                            <CheckboxField
+                            <ToggleField
                                 label={t("storyInspector.dialogue.pauseAfter")}
                                 checked={pauseEnabled}
                                 onChange={checked => props.onUpdatePayload({ ...payload, pauseAfter: checked ? true : undefined })}
@@ -941,7 +942,7 @@ function ActionPayloadFields(props: {
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                         allowAssetSets
                     />
-                    <CheckboxField label={t("storyInspector.image.autoFit")} checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
+                    <ToggleField label={t("storyInspector.image.autoFit")} checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
                 </div>
                 <TransformPresetEditor
                     value={payload.transform}
@@ -1104,7 +1105,7 @@ function ActionPayloadFields(props: {
                     onChange={assetId => props.onChange({ ...payload, assetId })}
                     allowAssetSets
                 />
-                <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                <ToggleField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
                 {payload.operation === "seek" ? (
                     <SecondsField
                         label={t("storyInspector.video.seekTime")}
@@ -1350,7 +1351,7 @@ function AudioActionEditor(props: {
                     />
                 ) : null}
                 {has("loop") ? (
-                    <CheckboxField
+                    <ToggleField
                         label={t("storyInspector.audio.loop")}
                         // The resolved answer, not the raw field: a row on a non-looping track whose
                         // box read "on" because the field is empty would be lying about the game.
@@ -1359,7 +1360,7 @@ function AudioActionEditor(props: {
                     />
                 ) : null}
                 {has("muted") ? (
-                    <CheckboxField
+                    <ToggleField
                         label={t("storyInspector.field.muted")}
                         checked={Boolean(payload.muted)}
                         onChange={muted => props.onChange({ ...payload, muted })}
@@ -1481,7 +1482,7 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                             value={payload.zIndex}
                             onChange={zIndex => props.onChange({ ...payload, zIndex })}
                         />
-                        <CheckboxField
+                        <ToggleField
                             label={t("storyInspector.vfx.loop")}
                             checked={payload.loop !== false}
                             onChange={loop => props.onChange({ ...payload, loop })}
@@ -2458,7 +2459,7 @@ function TransitionEditor(props: {
                             onChange={ruleAssetId => props.onChange({ ...value, kind: realKind, ruleAssetId })}
                         />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
-                        <CheckboxField
+                        <ToggleField
                             label={t("storyInspector.field.inverted")}
                             checked={value.props?.inverted === true}
                             onChange={inverted => setParam({ inverted })}
@@ -2527,20 +2528,6 @@ function TransitionEditor(props: {
                 <div className="mt-1.5 text-2xs text-fg-subtle">{transitionHints(t)[realKind] ?? ""}</div>
             )}
         </Section>
-    );
-}
-
-function CheckboxField(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-    return (
-        <label className="flex h-full min-h-[34px] items-end gap-2 pb-1 text-sm text-fg-muted">
-            <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={props.checked}
-                onChange={event => props.onChange(event.target.checked)}
-            />
-            <span>{props.label}</span>
-        </label>
     );
 }
 
