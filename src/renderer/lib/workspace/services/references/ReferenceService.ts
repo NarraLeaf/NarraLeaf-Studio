@@ -29,6 +29,7 @@ import {
 } from "./referenceModel";
 import { lookupAssetIdForToken } from "@/lib/workspace/assets/assetUrlTokens";
 import { uiAssetSlotAcceptsSets } from "@shared/build/uiAssetSlots";
+import { BLUEPRINT_SET_LEGAL_PARAM_KEYS } from "@shared/build/blueprintAssetSlots";
 
 /**
  * The property name a UI reference's `field` path ends in.
@@ -494,8 +495,8 @@ export class ReferenceService extends Service<ReferenceService> {
      * files it used to resolve to, so the project check reports no error over a field that names an
      * id nothing has.
      *
-     * Three slices, not one: a set is nameable by a character and by a widget as well as by a row. A
-     * slice left out of this is the one whose stale answer survives a rescan.
+     * Four slices, not one: a set is nameable by a character, a widget and a blueprint node as well as
+     * by a row. A slice left out of this is the one whose stale answer survives a rescan.
      *
      * Every feed lands on one key per slice, so a burst of tag writes (an import, a wizard) costs
      * one rescan each rather than one per file.
@@ -690,11 +691,23 @@ export class ReferenceService extends Service<ReferenceService> {
                 },
                 resolveAssetPins: type => this.resolveBlueprintAssetPins(type),
             });
-            this.blueprintReferences = extraction.references;
+            // An asset pin may name a set, and a set id is not an asset: left unexpanded it reaches
+            // `assets/missing` as a reference to a file the project does not have, which refuses the
+            // build. Only the pins a build can resolve are expanded - see
+            // `BLUEPRINT_SET_LEGAL_PARAM_KEYS` for why this list is shorter than the one this scan
+            // just walked.
+            const split = splitAssetSetReferences(
+                extraction.references,
+                this.assetSetExpander(),
+                reference => BLUEPRINT_SET_LEGAL_PARAM_KEYS.has(reference.field ?? ""),
+            );
+            this.blueprintReferences = split.references;
+            this.sliceSetReferences.set("blueprint", split.setReferences);
             this.setSliceGaps("blueprint", extraction.gaps);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan blueprints:", error);
             this.blueprintReferences = [];
+            this.sliceSetReferences.set("blueprint", []);
             this.setSliceGaps("blueprint", [{ reason: "sliceFailed", slice: "blueprint", location: BLUEPRINT_SLICE_LOCATION }]);
         }
     }
