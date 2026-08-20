@@ -260,6 +260,77 @@ describe("story/stage-object-missing", () => {
 
 // --- story/stage-object-duplicate -------------------------------------------
 
+// --- story/declared-never-shown ---------------------------------------------
+
+describe("story/declared-never-shown", () => {
+    it("is a warning, because a half-written scene is full of declarations not shown yet", () => {
+        expect(rule("story/declared-never-shown").defaultSeverity).toBe("warning");
+    });
+
+    it("reports a create row nothing ever shows", async () => {
+        const findings = await run(
+            "story/declared-never-shown",
+            createTestLintContext({ stories: [storyEntry([createImage("create", "poster")])] }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ object: "poster" });
+        expect(findings[0].location).toMatchObject({ kind: "story", sceneId: SCENE_ID, blockId: "create" });
+    });
+
+    it("says nothing once a row shows it", async () => {
+        expect(await reportedRows("story/declared-never-shown", [
+            createImage("create", "poster"),
+            actionBlock("show", { action: "image", operation: "show", objectName: "poster" }),
+        ])).toEqual([]);
+    });
+
+    it("does not count playing a video as showing it", async () => {
+        // The distinction the split exists for: a declared video is on stage and buffering, and a
+        // `/play` on its own is a clip the player hears and never sees.
+        expect(await reportedRows("story/declared-never-shown", [
+            actionBlock("create", { action: "video", operation: "create", objectName: "opening", assetId: "asset-video" }),
+            actionBlock("play", { action: "video", operation: "play", objectName: "opening" }),
+        ])).toEqual(["create"]);
+    });
+
+    it("leaves a layer alone, since a layer is visible the moment it exists", async () => {
+        expect(await reportedRows("story/declared-never-shown", [
+            actionBlock("layer", { action: "layer", operation: "create", objectName: "foreground" }),
+        ])).toEqual([]);
+    });
+
+    it("reads an ambience overlay across the whole story, not one scene", async () => {
+        // An overlay is game-level: rain declared in a prologue and shown two scenes later is the
+        // ordinary way to write one, and reporting it would make the rule wrong exactly where the
+        // feature is used properly.
+        const declare = actionBlock("declare", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" });
+        const reveal = actionBlock("reveal", { action: "vfx", operation: "show", objectName: "rain" });
+        const entry: LintStoryEntry = {
+            id: "story-1",
+            name: "Story",
+            document: {
+                schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+                id: "story-1",
+                name: "Story",
+                chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: [SCENE_ID, "scene-2"] }],
+                scenes: {
+                    [SCENE_ID]: scene([declare]),
+                    "scene-2": {
+                        id: "scene-2",
+                        name: "Later",
+                        runtimeName: "Later",
+                        rootBlockIds: ["reveal"],
+                        blocks: { reveal },
+                    } as StoryScene,
+                },
+            } as StoryDocument,
+        };
+
+        const findings = await run("story/declared-never-shown", createTestLintContext({ stories: [entry] }));
+        expect(findings).toEqual([]);
+    });
+});
+
 describe("story/stage-object-duplicate", () => {
     it("is a warning, because the object exists and only the author's intent is unsettled", () => {
         expect(rule("story/stage-object-duplicate").defaultSeverity).toBe("warning");

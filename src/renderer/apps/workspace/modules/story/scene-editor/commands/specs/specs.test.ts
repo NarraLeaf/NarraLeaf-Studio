@@ -175,6 +175,21 @@ describe("generic verbs", () => {
         });
     });
 
+    it("/show carries an opacity and a rate for an overlay, and refuses them anywhere else", () => {
+        // This showing's own values, not the overlay's: they ride the show row and never touch the
+        // row that declares the overlay.
+        expect(build("/show petals d=0.5 opacity=0.4 rate=2")).toMatchObject({
+            payload: { action: "vfx", operation: "show", objectName: "petals", durationMs: 500, opacity: 0.4, rate: 2 },
+        });
+        // Nothing else has a field for either, so a row that types them elsewhere is reported rather
+        // than storing numbers the compile does not read.
+        expect(issuesOf("/show hero opacity=0.4")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/show Alice rate=2")).toEqual(["unsupportedParam"]);
+        // On the way out there is nothing to say - a fade out ends at zero, with the clip stopped -
+        // so `/hide` does not take either word at all, rather than taking one and ignoring it.
+        expect(parseCommandLine("/hide petals opacity=0.4").issues.map(issue => issue.code)).toEqual(["unknownParam"]);
+    });
+
     it("/hide is direction-aware: the same word fades OUT", () => {
         expect(build("/hide hero out=fade")).toMatchObject({
             payload: { action: "image", operation: "hide", objectName: "hero", transform: { to: { opacity: 0 } } },
@@ -938,14 +953,17 @@ describe("logic and effects", () => {
         });
     });
 
-    it("/vfx places a looping overlay and names it off the clip", () => {
+    it("/vfx declares a looping overlay and names it off the clip", () => {
         expect(build("/vfx intro")).toMatchObject({
             kind: "action",
             payload: { action: "vfx", operation: "create", objectName: "intro", assetId: "v1", loop: true },
         });
-        expect(build("/vfx intro name=rain opacity=0.6 d=1.2")).toMatchObject({
-            payload: { objectName: "rain", opacity: 0.6, durationMs: 1200 },
+        expect(build("/vfx intro name=rain opacity=0.6")).toMatchObject({
+            payload: { objectName: "rain", opacity: 0.6 },
         });
+        // The row reveals nothing, so it carries no fade: `d=` is not a parameter of it, and a stored
+        // duration would be a number the compile does not read.
+        expect(parseCommandLine("/vfx intro d=1.2").issues.map(issue => issue.code)).toEqual(["unknownParam"]);
         // Blend mode decides whether the material reads at all, so the create row opens the inspector.
         expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
     });
