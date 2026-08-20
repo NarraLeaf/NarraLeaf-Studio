@@ -1372,9 +1372,25 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
         ? (name.trim() === "" ? "" : `${picked}/${name.trim()}`)
         : choice === MANUAL_SERVER ? address.trim() : "";
 
+    /**
+     * Put this project on the chosen server, or point it at the typed address.
+     *
+     * **The two are different acts and the difference is what the list means.** A server
+     * out of the list has a session and an API: it can be asked to record this project,
+     * which is the step that makes it clonable by anybody else and the step that used to
+     * be missing - connecting alone left the author's work reachable from the one machine
+     * that set it up. So a chosen server gets the whole act: recorded, connected, sent.
+     *
+     * A typed address is a bare `loreserver` with nothing in front of it. It has no
+     * project list to be recorded in and nothing to ask, so it gets what it always got:
+     * the address written, and the author's own Send button afterwards.
+     */
     const connect = () => {
         if (!chosen) return;
-        void surface.setRemote(chosen).then(saved => {
+        const done = picked !== null
+            ? surface.publish(picked, name.trim())
+            : surface.setRemote(chosen);
+        void done.then(saved => {
             if (saved) onClose();
         });
     };
@@ -2320,6 +2336,8 @@ function busyKey(busy: NonNullable<VersionSurface["busy"]>) {
             return "workspace.shell.versionControl.server.checking" as const;
         case "push":
             return "workspace.shell.versionControl.server.pushing" as const;
+        case "publish":
+            return "workspace.shell.versionControl.server.publish.publishing" as const;
         case "sync":
             return "workspace.shell.versionControl.server.syncing" as const;
     }

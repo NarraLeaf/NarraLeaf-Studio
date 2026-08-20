@@ -14,6 +14,7 @@ import type {
     VcsMergeDecision,
     VcsMergeDocument,
     VcsMergeState,
+    VcsPublishOutcome,
     VcsPushResult,
     VcsRepositoryInfo,
     VcsRevisionDiffResult,
@@ -672,6 +673,28 @@ export class VersionControlService extends Service<VersionControlService> implem
         const result = await getInterface().vcs.setRemote(this.projectPath(), url);
         if (!result.success) throw vcsCallFailed(result);
         return result.data.url;
+    }
+
+    /**
+     * Put this project on a server: register it there, point it at the server, send it.
+     *
+     * **Contacts the server, where {@link setRemote} does not**, and writes on both ends.
+     * Slow by the standards of this service: three calls, one of which sends the whole
+     * history.
+     *
+     * The two shapes of refusal are not a mixture by accident. Only the first step
+     * answers through the outcome, because it is the only one whose failure has no
+     * sentence anywhere yet; connecting and sending refuse by throwing, with the
+     * backend's own words, which the rail already knows how to draw.
+     */
+    public async publish(remoteOrigin: string, name: string): Promise<VcsPublishOutcome> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const result = await getInterface().vcs.publishProject(this.projectPath(), remoteOrigin, name);
+        if (!result.success) throw vcsCallFailed(result);
+        return result.data;
     }
 
     /**

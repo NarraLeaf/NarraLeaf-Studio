@@ -21,5 +21,9 @@ export const SERVER_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Trans
     // A server that gave a reason of its own still reads as the general case: what it put
     // in the refusal is English written for whoever runs it.
     rejected: "launcher.servers.problem.unknown",
+    // Only reachable while publishing, which happens in the workspace and not here.
+    // Mapped rather than left out because the table is exhaustive by type, which is what
+    // makes a new refusal a compile error instead of a blank line on screen.
+    "wrong-repository": "launcher.servers.problem.unknown",
     unknown: "launcher.servers.problem.unknown",
 };

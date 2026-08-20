@@ -16,6 +16,8 @@ const PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
     refused: "wizard.source.onServerRefused",
     unreachable: "wizard.source.onServerUnreachable",
     rejected: "wizard.source.onServerUnknown",
+    // Publishing is the only thing that answers this, and it happens in the workspace.
+    "wrong-repository": "wizard.source.onServerUnknown",
     unknown: "wizard.source.onServerUnknown",
 };
 

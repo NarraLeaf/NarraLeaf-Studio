@@ -33,7 +33,8 @@ import {
     VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsRefreshServerHandler, VcsForgetServerHandler,
     VcsListServerProjectsHandler, VcsGetServerProjectHandler, VcsListServerProjectHistoryHandler,
     VcsListServerMembersHandler,
-    VcsSignInWithPasswordHandler, VcsCreateServerProjectHandler, VcsListLocalRepositoriesHandler,
+    VcsSignInWithPasswordHandler, VcsCreateServerProjectHandler, VcsPublishProjectHandler,
+    VcsListLocalRepositoriesHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
@@ -425,6 +426,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsListServerMembersHandler(),
     new VcsSignInWithPasswordHandler(),
         new VcsCreateServerProjectHandler(),
+        new VcsPublishProjectHandler(),
         new VcsListLocalRepositoriesHandler(),
         new VcsAddServerHandler(),
         new VcsRefreshServerHandler(),
