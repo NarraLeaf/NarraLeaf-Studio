@@ -361,7 +361,6 @@ export const workspace = {
             categoryVersionControl: "版本控制",
             editor: {
                 closeTab: "关闭标签页",
-                closeSelectedTabs: "关闭选中的标签页",
                 closeOthers: "关闭其他标签页",
                 closeToRight: "关闭右侧标签页",
                 closeAll: "关闭全部标签页",
@@ -833,6 +832,7 @@ export const workspace = {
             categories: {
                 general: "通用",
                 run: "运行",
+                view: "视图",
                 story: "故事编辑器",
                 uiEditor: "UI 编辑器",
                 blueprint: "蓝图编辑器",

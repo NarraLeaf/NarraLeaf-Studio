@@ -77,7 +77,7 @@ export const menu = {
         minimize: "Minimize",
         zoom: "Zoom",
         front: "Bring All to Front",
-        leftSidebar: "Show Sidebar",
+        leftSidebar: "Show Left Bar",
         bottomPanel: "Show Bottom Bar",
         rightSidebar: "Show Right Bar",
     },

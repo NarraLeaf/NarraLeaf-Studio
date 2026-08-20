@@ -35,6 +35,7 @@ import { QuickOpenPicker } from "./QuickOpenPicker";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
 import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
+import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
@@ -600,6 +601,46 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             }
         };
     }, [t, context, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
+
+    /**
+     * The dock toggles, by key.
+     *
+     * Registered from the same refs the commands above run through, so the keystroke and the palette
+     * row cannot drift apart. `catalogPrefix` composes each id below into the command id it runs
+     * (`narraleaf-studio:toggle-left-sidebar` and friends), which is what keeps the palette to one
+     * row per toggle showing its chord rather than listing the shortcut again under a second name.
+     *
+     * `allowInEditable`, unlike most workspace shortcuts: none of these three chords types anything,
+     * and an author whose caret is in a story line is exactly who wants the bottom panel out of the
+     * way without first clicking somewhere neutral.
+     */
+    useKeybindings({
+        keybindings: [
+            {
+                id: "left-sidebar",
+                key: "mod+alt+b",
+                description: "Show or hide the left sidebar",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleLeftSidebar(),
+            },
+            {
+                id: "bottom-panel",
+                key: "mod+j",
+                description: "Show or hide the bottom panel",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleBottomPanel(),
+            },
+            {
+                id: "right-sidebar",
+                key: "mod+alt+r",
+                description: "Show or hide the right sidebar",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleRightSidebar(),
+            },
+        ],
+        idPrefix: "workspace-dock",
+        catalogPrefix: "narraleaf-studio:toggle-",
+    });
 
     const activateLeftPanelForDrop = useCallback(
         (panelId: string) => {
