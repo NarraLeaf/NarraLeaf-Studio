@@ -236,6 +236,8 @@ export const storyInspector = {
         zIndex: "Z-index",
         loop: "Loop",
         rate: "Speed (1 = normal)",
+        showOpacity: "Opacity (this showing)",
+        showRate: "Speed (this showing)",
         fade: "Fade (s)",
     },
 

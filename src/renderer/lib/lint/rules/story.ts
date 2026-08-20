@@ -15,7 +15,9 @@ import {
     listSceneBlocksInDocumentOrder,
     listSceneLabels,
     listScenesInDocumentOrder,
+    revealableStageObjectDeclarations,
     sceneLabelNames,
+    shownStageObjectKeys,
     type StageObjectReference,
     type StoryBlock,
     type StoryBlockId,
@@ -736,6 +738,64 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         location: storyLocation(entry, scene, reference.blockId),
                         target: blockTarget(entry, scene, reference.blockId),
                     });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * Something declared and never shown.
+         *
+         * A `create` row names an object, sources it and poses it, and leaves it invisible - `/show`
+         * is what reveals it. So a declaration nothing ever shows is an object the player never sees,
+         * and the row that made it did nothing at all.
+         *
+         * `warning`, not error, on the criterion the whole set follows: an author part-way through a
+         * scene has declarations they have not shown yet, and refusing a build for a draft is how a
+         * rule gets switched off. What makes it worth reporting anyway is that this is the failure
+         * mode of documents written before the split, where `create` DID reveal - every one of those
+         * rows now declares and stops there, and nothing else in the project says so.
+         *
+         * Two spans, because the objects have two lifetimes. An image, a text or a video belongs to
+         * its scene and can only be shown inside it. An ambience overlay is game-level - rain started
+         * in one scene is still falling in the next - so its reveal may be in any scene, and reading
+         * one scene at a time would report every overlay declared in a prologue and shown later.
+         */
+        id: "story/declared-never-shown",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyDeclaredNeverShown",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const entry of ctx.stories) {
+                const scenes = listScenesInDocumentOrder(entry.document);
+                const shownByScene = new Map<string, ReadonlySet<string>>();
+                const shownAnywhere = new Set<string>();
+                for (const scene of scenes) {
+                    const shown = shownStageObjectKeys(scene);
+                    shownByScene.set(scene.id, shown);
+                    for (const key of shown) {
+                        shownAnywhere.add(key);
+                    }
+                }
+                for (const scene of scenes) {
+                    for (const declaration of revealableStageObjectDeclarations(scene)) {
+                        const key = `${declaration.kind}:${declaration.name}`;
+                        const shown = declaration.kind === "vfx"
+                            ? shownAnywhere.has(key)
+                            : shownByScene.get(scene.id)?.has(key) === true;
+                        if (shown) {
+                            continue;
+                        }
+                        findings.push({
+                            ruleId: "story/declared-never-shown",
+                            messageKey: "lint.rule.storyDeclaredNeverShown.message",
+                            messageParams: { object: declaration.label },
+                            location: storyLocation(entry, scene, declaration.blockId),
+                            target: blockTarget(entry, scene, declaration.blockId),
+                        });
+                    }
                 }
             }
             return findings;
