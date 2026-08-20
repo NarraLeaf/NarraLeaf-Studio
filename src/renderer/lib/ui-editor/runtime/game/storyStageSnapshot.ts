@@ -679,6 +679,14 @@ class SnapshotWalker {
             this.bringToFront(bucket.key);
             return;
         }
+        // A loop settles nothing, and that is the engine's own rule rather than a simplification
+        // here: a looping transform never writes the element's transform state, so the pose a save
+        // records - and the pose this snapshot is - is the one the element had before it started.
+        // `stopLoop` is the same fact from the other side: it goes back to that pose, so it changes
+        // nothing this walk holds either.
+        if (operation === "loop" || operation === "stopLoop") {
+            return;
+        }
         const visibility: VisibilityTransformMode = operation === "transform" ? "none" : operation;
         const props = this.finalProps(payload.transform, visibility, block.id);
         if (bucket.record) {

@@ -2945,6 +2945,18 @@ async function compileCameraAction(
         const duration = Math.max(0, finiteOr(payload.durationMs, 0));
         return [recordStatement(ctx, camera.resetCamera(duration, parseStoryEasing(payload.easing) as any), block)];
     }
+    if (payload.operation === "loop" || payload.operation === "stopLoop") {
+        // The camera is a Displayable like any other subject, so its half of the loop is the same
+        // two calls - see the displayable arm for why one is awaited and the other is not.
+        if (!supportsLoop(camera, ctx, block.id)) {
+            return [];
+        }
+        if (payload.operation === "stopLoop") {
+            return [recordStatement(ctx, camera.stopLoop(transformOptions(timingOf(payload.transform))), block)];
+        }
+        const loop = buildLoopTransform(clampCameraTransform(payload.transform) ?? {}, ctx, block.id);
+        return loop ? [recordStatement(ctx, camera.loop(loop, loopOptions(payload.transform)), block)] : [];
+    }
     const transform = payload.transform;
     if (!transform) {
         // Every authoring path writes a ref, even an empty one, so a row without one states nothing
@@ -4618,6 +4630,7 @@ type TransformTiming = {
     delayMs?: number;
     repeat?: number;
     repeatDelayMs?: number;
+    repeatType?: StoryTransformRef["repeatType"];
 };
 
 function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
@@ -4627,6 +4640,7 @@ function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
         delayMs: ref?.delayMs,
         repeat: ref?.repeat,
         repeatDelayMs: ref?.repeatDelayMs,
+        repeatType: ref?.repeatType,
     };
 }
 
@@ -4645,13 +4659,98 @@ function transformOptions(timing: TransformTiming | undefined): Record<string, u
 /** A Transform over one prop bag, carrying repeat only when a row asked for it. */
 function buildTransform(props: Record<string, unknown>, timing: TransformTiming | undefined): Transform {
     const options = transformOptions(timing);
-    if (timing?.repeat === undefined && timing?.repeatDelayMs === undefined) {
+    if (timing?.repeat === undefined && timing?.repeatDelayMs === undefined && timing?.repeatType === undefined) {
         return new Transform(props as any, options as any);
     }
     return new Transform([{ props, options }] as any, {
         repeat: timing.repeat,
         repeatDelay: timing.repeatDelayMs,
+        repeatType: timing.repeatType,
     } as any);
+}
+
+/**
+ * A looping transform: one Transform, and it must be ONE, because `Displayable.loop` takes a single
+ * one rather than a chain.
+ *
+ * That is the whole difference from {@link emitTransformProps}, and it is what decides the loop's
+ * vocabulary. The settled emitter may produce two statements - a discrete half that snaps and an
+ * eased half that moves - plus separate calls for a mask (which registers a preload) and for the clip
+ * generators. None of those can ride inside one Transform, so a loop carries the eased half and this
+ * reports the rest rather than storing a channel that would never move.
+ *
+ * `from` becomes a zero-duration first step, which is exactly what a two-ended loop is: snap to the
+ * trough, ease to the peak, repeat. With `repeatType: "mirror"` that is a breath.
+ */
+function buildLoopTransform(
+    ref: StoryTransformRef,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Transform | null {
+    if (ref.mode === "animation") {
+        // A Story Motion is already a whole keyframed shot; looping one is the shot repeating, and
+        // the engine takes any Transform. Its own timing lives in its keyframes.
+        return createAnimationTransform(ref, ctx, blockId, "none");
+    }
+    if (ref.clipReveal) {
+        diagnostic(ctx, "warning", blockId, "A looping transform cannot carry a clip reveal; the reveal is ignored.");
+    }
+    const to = foldStoryTransformLook(ref.to, resolveStoryCameraLook, preset =>
+        diagnostic(ctx, "warning", blockId, `Camera look "${preset}" is not a known grade.`));
+    const { cut, tween } = splitStoryTransformChange(ref.from, to);
+    if (!isEmptyStoryTransformProps(cut)) {
+        // Named, not swallowed: these are the channels that cannot be interpolated (a mask, a blend
+        // mode, a raw filter chain), so inside a loop they would sit at one value for ever while the
+        // author watched for a change that could never come.
+        diagnostic(ctx, "warning", blockId, "A looping transform can only animate channels that interpolate; the rest of this row will not change.");
+    }
+    if (isEmptyStoryTransformProps(tween)) {
+        diagnostic(ctx, "warning", blockId, "A looping transform states nothing to animate.");
+        return null;
+    }
+    // No repeat config on the Transform itself: `Displayable.loop` forces `repeat: Infinity` and reads
+    // the direction and the gap from its own options, so stating them twice would only give the two
+    // somewhere to disagree.
+    const options = transformOptions(timingOf(ref));
+    const steps: { props: Record<string, unknown>; options: Record<string, unknown> }[] = [];
+    if (ref.from && !isEmptyStoryTransformProps(ref.from)) {
+        steps.push({ props: storyTransformPropsToNlr(ref.from), options: { duration: 0 } });
+    }
+    steps.push({ props: storyTransformPropsToNlr(tween), options });
+    return new Transform(steps as any);
+}
+
+/**
+ * Whether the engine behind this build can play a looping transform at all.
+ *
+ * A feature detect rather than a version compare, for the reason the element-id one is: the engine is
+ * a normal dependency an author's machine may have pinned older, and a missing method would surface
+ * as `target.loop is not a function` from inside a compile - a stack trace about Studio, for a row
+ * the author wrote. Asking the object is both simpler and exactly the question.
+ */
+/**
+ * The engine's `LoopOptions` - how each round runs, not how many there are.
+ *
+ * The count is not here and cannot be: a loop repeats until something stops it, which is the whole
+ * difference between this and `transform.repeat(n)`. The spec refuses a row that states both.
+ */
+function loopOptions(ref: StoryTransformRef | undefined): Record<string, unknown> {
+    const options: Record<string, unknown> = {};
+    if (ref?.repeatType) {
+        options.repeatType = ref.repeatType;
+    }
+    if (ref?.repeatDelayMs !== undefined) {
+        options.repeatDelay = Math.max(0, ref.repeatDelayMs);
+    }
+    return options;
+}
+
+function supportsLoop(target: any, ctx: SceneCompileContext, blockId: string): boolean {
+    if (typeof target?.loop === "function" && typeof target?.stopLoop === "function") {
+        return true;
+    }
+    diagnostic(ctx, "error", blockId, "This engine cannot play looping transforms. Update narraleaf-react to 0.32.0 or newer.");
+    return false;
 }
 
 /**
@@ -4884,11 +4983,23 @@ function emitClipReveal(
 
 async function compileDisplayableOperation(
     target: any,
-    operation: "show" | "hide" | "transform",
+    operation: "show" | "hide" | "transform" | "loop" | "stopLoop",
     transform: StoryTransformRef | undefined,
     ctx: SceneCompileContext,
     blockId: string,
 ): Promise<NlrStatement | null> {
+    if (operation === "loop" || operation === "stopLoop") {
+        if (!supportsLoop(target, ctx, blockId)) {
+            return null;
+        }
+        if (operation === "stopLoop") {
+            // The way back is finite even when it is instant, so this one IS awaited - unlike the
+            // loop it ends.
+            return target.stopLoop(transformOptions(timingOf(transform)));
+        }
+        const loop = buildLoopTransform(transform ?? {}, ctx, blockId);
+        return loop ? target.loop(loop, loopOptions(transform)) : null;
+    }
     if (transform?.mode === "animation") {
         const animationTransform = createAnimationTransform(transform, ctx, blockId, operation === "transform" ? "none" : operation);
         if (operation === "show") {
