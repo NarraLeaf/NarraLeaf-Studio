@@ -51,6 +51,48 @@
     "config.voice": {
       "sourceText": "Voice"
     },
+    "confirm.cancel": {
+      "sourceText": "Cancel"
+    },
+    "confirm.deleteSave": {
+      "sourceText": "Delete this save? It cannot be brought back."
+    },
+    "confirm.deleteSaveAnswer": {
+      "sourceText": "Delete"
+    },
+    "confirm.historyBack": {
+      "sourceText": "Go back to this line? Everything after it is undone."
+    },
+    "confirm.historyBackAnswer": {
+      "sourceText": "Go back"
+    },
+    "confirm.load": {
+      "sourceText": "Load this save? Unsaved progress is lost."
+    },
+    "confirm.loadAnswer": {
+      "sourceText": "Load"
+    },
+    "confirm.loadAuto": {
+      "sourceText": "Load this auto save? The game you are in is left behind."
+    },
+    "confirm.overwrite": {
+      "sourceText": "This slot already holds a save. Overwrite it?"
+    },
+    "confirm.overwriteAnswer": {
+      "sourceText": "Overwrite"
+    },
+    "confirm.quit": {
+      "sourceText": "Quit the game?"
+    },
+    "confirm.quitAnswer": {
+      "sourceText": "Quit"
+    },
+    "confirm.toTitle": {
+      "sourceText": "Return to the title screen? Unsaved progress is lost."
+    },
+    "confirm.toTitleAnswer": {
+      "sourceText": "Return to title"
+    },
     "load.autoSaves": {
       "sourceText": "Auto saves"
     },

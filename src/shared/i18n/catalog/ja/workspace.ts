@@ -74,6 +74,8 @@ export const workspace = {
             reviewFilterUnreviewed: "未確認",
             charactersGroup: "キャラクター",
             characterSpeaker: "キャラクター",
+            scenesGroup: "シーン",
+            sceneSpeaker: "シーン",
             addKey: "追加",
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",
@@ -375,7 +377,6 @@ export const workspace = {
             categoryVersionControl: "バージョン管理",
             editor: {
                 closeTab: "タブを閉じる",
-                closeSelectedTabs: "選択中のタブを閉じる",
                 closeOthers: "ほかのタブを閉じる",
                 closeToRight: "右側のタブを閉じる",
                 closeAll: "すべてのタブを閉じる",
@@ -862,6 +863,7 @@ export const workspace = {
             categories: {
                 general: "一般",
                 run: "実行",
+                view: "表示",
                 story: "ストーリーエディタ",
                 uiEditor: "UI エディタ",
                 blueprint: "ブループリントエディタ",

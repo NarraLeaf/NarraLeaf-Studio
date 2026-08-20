@@ -79,6 +79,7 @@ import type {
     BlueprintGamePreferenceValue,
 } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
+import { resolveLocalizedStoredText } from "@shared/types/localization";
 import { buildSaveMetadataFromFields, readSaveMetadataFields } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaField } from "@shared/types/saveSchema";
 import { saveSchemaPinId } from "../effectivePins";
@@ -1593,15 +1594,29 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         // graph that was reading the blob.
         saveSchemaPins: { kind: "output" },
         async execute(ctx) {
-            const metadata = await requireHostApi(ctx).game.getSaveMetadata(resolveSaveId(ctx));
+            const api = requireHostApi(ctx);
+            const metadata = await api.game.getSaveMetadata(resolveSaveId(ctx));
             const fields = getActiveSaveSchemaFields();
             const byFieldId = readSaveMetadataFields(fields, metadata);
+            const localization = api.localization.getConfig();
+            const locale = localization ? await api.localization.getLocale() : "";
             const outputValues: Record<string, unknown> = { metadata };
             for (const field of fields) {
                 // Never `undefined`: a slot written before this field was declared answers with the
                 // field's configured default, which is what lets an author add a field to a shipped
                 // game without blanking every save already on a player's disk.
-                outputValues[saveSchemaPinId(field.id)] = byFieldId[field.id];
+                const value = byFieldId[field.id];
+                // A string field may hold a reference to something the project translates - a scene
+                // name is the one that exists - and a save screen has to show it in the language the
+                // player is reading. Anything else is returned exactly as stored, which is what keeps
+                // every slot written before references existed rendering the literal it already has.
+                outputValues[saveSchemaPinId(field.id)] = localization && typeof value === "string"
+                    ? resolveLocalizedStoredText(
+                        { ...localization, tables: localization.tables ?? {} },
+                        locale,
+                        value,
+                    )
+                    : value;
             }
             return {
                 nextPort: "next",

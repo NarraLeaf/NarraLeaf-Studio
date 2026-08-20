@@ -2,8 +2,8 @@
  * Translation table editor (editor-area tab, one per target locale).
  * Rows follow the story's narrative order (chapters → scenes → depth-first
  * blocks) so translators read lines in context, never alphabetically; each
- * story source opens with a "Characters" group so display names translate
- * alongside the lines that speak them. The "Interface text" source carries
+ * story source opens with a "Characters" and a "Scenes" group so display names
+ * and place names translate alongside the lines that use them. The "Interface text" source carries
  * both UI widget texts and the named-key registry (keys are managed inline:
  * editable source, hover remove, trailing add row).
  * Two modes: "translate" is a clean bilingual reading view; "review" is a
@@ -32,6 +32,7 @@ import {
     deriveUnitState,
     extractCharacterTranslationRows,
     extractKeyTranslationRows,
+    extractSceneTranslationRows,
     extractUiTranslationRows,
     type LocalizationUnitState,
     type StoryTranslationRow,
@@ -56,6 +57,7 @@ const UI_SOURCE_VALUE = "__ui__";
 
 /** Group keys for the synthetic groups a source may carry. */
 const CHARACTERS_GROUP_KEY = "__characters__";
+const SCENES_GROUP_KEY = "__scenes__";
 const KEYS_GROUP_KEY = "__keys__";
 
 /** A display row of any origin (story line, character name, UI text, named key). */
@@ -226,6 +228,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
         let disposed = false;
         const extract = () => {
             try {
+                const document = storyService.getStoryDocument(storyId);
                 const characterRows: TableRow[] = extractCharacterTranslationRows(characters).map(row => ({
                     unitId: row.unitId,
                     sourceText: row.sourceText,
@@ -234,7 +237,17 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                     groupName: t("workspace.localization.table.charactersGroup"),
                     speaker: t("workspace.localization.table.characterSpeaker"),
                 }));
-                const storyRows: TableRow[] = localizationService.extractRows(storyService.getStoryDocument(storyId)).map(row => ({
+                // Ahead of the lines, beside the cast: the names of the places are the other thing a
+                // translator wants settled before translating anything that happens in them.
+                const sceneRows: TableRow[] = extractSceneTranslationRows(document).map(row => ({
+                    unitId: row.unitId,
+                    sourceText: row.sourceText,
+                    interpolationCount: 0,
+                    groupKey: SCENES_GROUP_KEY,
+                    groupName: t("workspace.localization.table.scenesGroup"),
+                    speaker: t("workspace.localization.table.sceneSpeaker"),
+                }));
+                const storyRows: TableRow[] = localizationService.extractRows(document).map(row => ({
                     unitId: row.unitId,
                     sourceText: row.sourceText,
                     interpolationCount: row.interpolationCount,
@@ -242,7 +255,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                     groupName: row.sceneName,
                     speaker: speakerNameFor(row),
                 }));
-                setRows([...characterRows, ...storyRows]);
+                setRows([...characterRows, ...sceneRows, ...storyRows]);
             } catch {
                 setRows([]);
             }
