@@ -112,6 +112,7 @@ import {
     ToggleField,
     type TFunc,
 } from "./inspectorFieldKit";
+import { WeatherSeedPreview } from "./WeatherSeedPreview";
 
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg-muted outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -1577,16 +1578,19 @@ function WeatherSeedFields(props: {
         props.onChange(Object.keys(next).length > 0 ? next : undefined);
     };
     return (
-        <FieldGrid cols={2}>
-            {weatherParamsOf(props.seed).map(key => (
-                <NumberField
-                    key={key}
-                    label={t(`storyInspector.weather.${key}` as TranslationKey)}
-                    value={resolved[key]}
-                    onChange={value => set(key, value)}
-                />
-            ))}
-        </FieldGrid>
+        <>
+            <WeatherSeedPreview seed={props.seed} params={props.params} />
+            <FieldGrid cols={2}>
+                {weatherParamsOf(props.seed).map(key => (
+                    <NumberField
+                        key={key}
+                        label={t(`storyInspector.weather.${key}` as TranslationKey)}
+                        value={resolved[key]}
+                        onChange={value => set(key, value)}
+                    />
+                ))}
+            </FieldGrid>
+        </>
     );
 }
 

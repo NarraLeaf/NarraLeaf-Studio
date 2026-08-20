@@ -1,6 +1,8 @@
+import { useEffect, useRef } from "react";
 import { Layers } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { useAssetsPanelContext } from "../AssetsPanelContext";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 
 /**
@@ -33,6 +35,38 @@ export function useSetSummary(entry: ResolvedAssetSet): string {
         : t("assets.sets.variantsResolved", { resolved: String(resolved), total: String(total) });
 }
 
+/**
+ * The mark a set wears when a jump landed on it, in whichever view is drawing it.
+ *
+ * Two things at once because they answer the same question - "which one" - at two distances: the row
+ * is brought on screen, and then said apart from the rows around it. Neither alone is the answer. A
+ * scroll with no mark lands the author in a tree of identical rows; a mark with no scroll is drawn
+ * somewhere they are not looking.
+ *
+ * The ring is `primary` and it expires, for the reason the settings highlight gives: it says "here",
+ * and a ring that stays says "wrong".
+ *
+ * Keyed on the request rather than on the set id, so following the same reference twice marks it
+ * twice - and so a row that mounts a render later than the request (the grid steps into its enclosing
+ * sets first) still scrolls itself in, since its effect runs on its own mount.
+ */
+export function useAssetSetRevealMark(setId: string) {
+    const { assetSetReveal } = useAssetsPanelContext();
+    const marked = assetSetReveal?.setId === setId;
+    const nonce = marked ? assetSetReveal!.nonce : null;
+    const ref = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (nonce === null) {
+            return;
+        }
+        ref.current?.scrollIntoView({ block: "center" });
+    }, [nonce]);
+    return { ref, marked };
+}
+
+/** What a revealed row is drawn with. Inset because a library row runs the full width of the panel. */
+export const ASSET_SET_REVEAL_RING = "ring-1 ring-inset ring-primary";
+
 export function AssetSetIconTile({
     entry,
     selected,
@@ -59,8 +93,10 @@ export function AssetSetIconTile({
     onDragEnd?: () => void;
 }) {
     const summary = useSetSummary(entry);
+    const reveal = useAssetSetRevealMark(entry.set.id);
     return (
         <div
+            ref={reveal.ref}
             data-asset-set-id={entry.set.id}
             draggable={!!onDragStart}
             className={cn(
@@ -68,6 +104,7 @@ export function AssetSetIconTile({
                 onDragStart && "nl-drag-source",
                 selected ? "border-primary bg-primary/10" : entry.incomplete ? "border-warning/40" : "border-edge",
                 dragging && "opacity-50",
+                reveal.marked && ASSET_SET_REVEAL_RING,
             )}
             onClick={event => {
                 onSelect(event);

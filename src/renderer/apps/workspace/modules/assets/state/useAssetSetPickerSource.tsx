@@ -1,11 +1,12 @@
 import { useCallback, useMemo } from "react";
 import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetType, categoryOfAssetType, type AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { useTranslation } from "@/lib/i18n";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import type { AssetSelectorVirtualGroup } from "../components/AssetSelector";
-import { useAssetData } from "./useAssetData";
+import { createEmptyAssetCategoryRecord } from "./assetCategoryRecord";
 import { useAssetSets, type ResolvedAssetSet } from "./useAssetSets";
 
 /**
@@ -43,9 +44,30 @@ export function useAssetSetPickerSource({
         () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
         [context, isInitialized],
     );
-    // The cached library snapshot the panel already holds, so a second reader costs a lookup rather
-    // than a directory walk.
-    const { assets } = useAssetData({ context, isInitialized });
+    /**
+     * The library, read straight off the service.
+     *
+     * Not through `useAssetData`: that hook reloads the whole library on every asset event, per
+     * instance, and this hook is mounted once per asset FIELD - a scene of rows, a blueprint canvas
+     * of pins. Reading the records the service already holds and re-reading them when the revision
+     * moves is the same answer at the cost of one pass over the records.
+     */
+    const revision = useAssetLibraryRevision();
+    const assets = useMemo(() => {
+        const record = createEmptyAssetCategoryRecord<Asset>();
+        if (!assetsService) {
+            return record;
+        }
+        for (const [type, byId] of Object.entries(assetsService.getAssets())) {
+            const category: AssetCategory = categoryOfAssetType(type as AssetType);
+            for (const asset of Object.values((byId ?? {}) as Record<string, Asset>)) {
+                record[category].push(asset);
+            }
+        }
+        return record;
+        // `revision`: the library's records are mutated in place, so nothing else here moves when a
+        // file is retagged - and a tag is exactly what decides which file answers a coordinate.
+    }, [assetsService, revision]);
     const { resolved, findSet } = useAssetSets({ context, isInitialized, assets });
 
     const choices = useMemo(
