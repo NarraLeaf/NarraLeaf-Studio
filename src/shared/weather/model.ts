@@ -95,10 +95,19 @@ export type WeatherSeedDefinition = {
     /** Particles are drawn as a smear along the fall line rather than a disc. */
     streaked: boolean;
     /**
-     * Particles tumble: the disc's cross-axis breathes on an integer harmonic, which reads as a petal
-     * turning over without costing a per-pixel rotation.
+     * Particles tumble: they turn in the plane and foreshorten across it, both on integer harmonics
+     * so the loop still closes. Only worth anything on a seed whose particle has a shape to turn -
+     * a disc looks identical at every angle, which is why this travels with {@link sprite}.
      */
     tumbles: boolean;
+    /**
+     * Particles are drawn from the petal bitmap rather than as an ellipse of light.
+     *
+     * Snow and rain are lights, and an ellipse with a soft falloff is not an approximation of them:
+     * it is what they look like. A petal has an outline and tone across it, which is the half no
+     * formula gives you and, at the size sakura draws at, the half that reads.
+     */
+    sprite?: boolean;
 };
 
 /**
@@ -135,6 +144,7 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
         tint: [255, 206, 214],
         streaked: false,
         tumbles: true,
+        sprite: true,
     },
 };
 

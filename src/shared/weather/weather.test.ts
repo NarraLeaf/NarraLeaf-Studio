@@ -9,6 +9,7 @@ import {
     type WeatherSeedId,
 } from "./model";
 import { buildWeatherField, createWeatherRenderer } from "./field";
+import { petalSprite, PETAL_SPRITE_SIZE } from "./petalSprite";
 import { weatherBakeDescriptor, weatherBakeKey } from "./bakeKey";
 
 /**
@@ -228,5 +229,87 @@ describe("the labels every surface asks for", () => {
             }
         }
         expect(missing).toEqual([]);
+    });
+});
+
+/**
+ * The petal, which is the one particle in this system that has a shape.
+ *
+ * Snow and rain are lights: an ellipse with a soft falloff is not an approximation of a snowflake,
+ * it is what one looks like. A petal is an outline with tone across it, and neither of those is
+ * something a formula in the rasteriser gives you - which is why it is a bitmap, and why what is
+ * pinned here is the bitmap being a petal rather than a blob.
+ */
+describe("the petal sprite", () => {
+    const sprite = petalSprite();
+    const at = (row: number, column: number) => sprite[row * PETAL_SPRITE_SIZE + column];
+
+    it("is a 64x64 single channel that decodes to exactly its declared size", () => {
+        expect(sprite.length).toBe(PETAL_SPRITE_SIZE * PETAL_SPRITE_SIZE);
+    });
+
+    it("has an outline: the corners are empty and the middle is not", () => {
+        const half = PETAL_SPRITE_SIZE / 2;
+        expect(at(0, 0)).toBe(0);
+        expect(at(0, PETAL_SPRITE_SIZE - 1)).toBe(0);
+        expect(at(PETAL_SPRITE_SIZE - 1, 0)).toBe(0);
+        expect(at(PETAL_SPRITE_SIZE - 1, PETAL_SPRITE_SIZE - 1)).toBe(0);
+        expect(at(half, half)).toBeGreaterThan(128);
+    });
+
+    it("is notched at the tip, which is what says cherry rather than leaf", () => {
+        // The last rows are cut into two lobes: the centre column is empty where the sides are not.
+        const half = PETAL_SPRITE_SIZE / 2;
+        const notchRow = PETAL_SPRITE_SIZE - 10;
+        expect(at(notchRow, half)).toBe(0);
+        expect(Math.max(at(notchRow, half - 10), at(notchRow, half + 10))).toBeGreaterThan(0);
+    });
+
+    it("carries tone rather than being a mask, and is brighter toward the tip", () => {
+        const half = PETAL_SPRITE_SIZE / 2;
+        // Mean over what the petal actually covers, not a sum: the tip half is the narrower one, so
+        // a sum would be measuring area and answering the opposite question.
+        const meanLight = (from: number, to: number) => {
+            let total = 0;
+            let lit = 0;
+            for (let row = from; row < to; row++) {
+                for (let column = 0; column < PETAL_SPRITE_SIZE; column++) {
+                    if (at(row, column) > 0) {
+                        total += at(row, column);
+                        lit++;
+                    }
+                }
+            }
+            return total / Math.max(1, lit);
+        };
+        const values = new Set(sprite);
+        // A silhouette would hold two values; this holds a gradient.
+        expect(values.size).toBeGreaterThan(64);
+        expect(meanLight(half, PETAL_SPRITE_SIZE)).toBeGreaterThan(meanLight(0, half));
+    });
+
+    it("is not radially symmetric, which is the whole reason a rotation means anything", () => {
+        // The old sakura particle was a disc whose cross-axis breathed. A disc looks the same at
+        // every angle, so the "tumble" it had could only ever read as a pulse. Turning this one
+        // through a right angle gives a different picture, and the marginals are the cheapest proof:
+        // a radially symmetric sprite has identical row and column profiles.
+        let difference = 0;
+        for (let i = 0; i < PETAL_SPRITE_SIZE; i++) {
+            let row = 0;
+            let column = 0;
+            for (let j = 0; j < PETAL_SPRITE_SIZE; j++) {
+                row += at(i, j);
+                column += at(j, i);
+            }
+            difference += Math.abs(row - column);
+        }
+        expect(difference).toBeGreaterThan(PETAL_SPRITE_SIZE * 256);
+    });
+
+    it("is drawn from by sakura and by nothing else", () => {
+        const params = (seed: WeatherSeedId) => resolveWeatherParams({ seed });
+        expect(buildWeatherField("sakura", params("sakura"), 320, 180).sprite).toBe(true);
+        expect(buildWeatherField("snow", params("snow"), 320, 180).sprite).toBe(false);
+        expect(buildWeatherField("rain", params("rain"), 320, 180).sprite).toBe(false);
     });
 });
