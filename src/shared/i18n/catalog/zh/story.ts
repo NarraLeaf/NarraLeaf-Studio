@@ -195,6 +195,24 @@ export const story = {
         bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
         scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
     },
+    // 粘贴到另一个工程里的行。行落位之后，只报一次结果。
+    crossProject: {
+        pasted: {
+            other: "已粘贴 {count} 行",
+        },
+        pastedFrom: {
+            other: "已从 {project} 粘贴 {count} 行",
+        },
+        speakerNames: {
+            other: "{count} 位说话人改为只用名字",
+        },
+        imported: {
+            other: "已导入 {count} 项资产",
+        },
+        unresolved: {
+            other: "{count} 处引用未解析",
+        },
+    },
     flow: {
         tabTitle: "场景流程",
         tabTitleNamed: "场景流程：{name}",
@@ -1100,6 +1118,10 @@ export const story = {
         duplicate: "复制行",
         disable: "禁用",
         enable: "启用",
+        bindSpeaker: {
+            one: "关联 {count} 行的说话人",
+            other: "关联 {count} 行的说话人",
+        },
         playFromHere: "从此行播放",
         openInspector: "打开检查器",
         delete: "删除",

@@ -234,6 +234,30 @@ export const story = {
         bulkConfirmDetail: "This adds them below the current line as one undo step.",
         scriptFile: "This is a story script. Use Import Script to bring it back in.",
     },
+    // Rows pasted into a project other than the one they were copied from. One line of counts,
+    // reported once, after the rows land.
+    crossProject: {
+        pasted: {
+            one: "{count} row pasted",
+            other: "{count} rows pasted",
+        },
+        pastedFrom: {
+            one: "{count} row pasted from {project}",
+            other: "{count} rows pasted from {project}",
+        },
+        speakerNames: {
+            one: "{count} speaker kept as a name",
+            other: "{count} speakers kept as names",
+        },
+        imported: {
+            one: "{count} asset imported",
+            other: "{count} assets imported",
+        },
+        unresolved: {
+            one: "{count} reference unresolved",
+            other: "{count} references unresolved",
+        },
+    },
     flow: {
         tabTitle: "Scene Flow",
         tabTitleNamed: "Scene Flow: {name}",
@@ -1233,6 +1257,15 @@ export const story = {
         duplicate: "Duplicate",
         disable: "Disable",
         enable: "Enable",
+        /**
+         * Bind the speaker on the selected rows to a character that already exists. Only offered when
+         * the selection holds rows whose speaker resolves to nothing, so the count is always the
+         * number of lines the character chosen from the submenu is about to take over.
+         */
+        bindSpeaker: {
+            one: "Link speaker on {count} line",
+            other: "Link speaker on {count} lines",
+        },
         playFromHere: "Play from here",
         openInspector: "Open inspector",
         delete: "Delete",

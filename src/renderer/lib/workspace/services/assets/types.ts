@@ -159,3 +159,21 @@ export interface LegacyTypedAssetGroup extends Omit<AssetGroup, "category"> {
 export type AssetGroupMap = {
     [K in AssetCategory]: Record<string, AssetGroup>;
 };
+
+/**
+ * Why a caller-chosen asset id was turned away, for the two refusals a caller is expected to
+ * recognise rather than merely report.
+ *
+ * Carried as `RequestStatus.code`, which is shared with everything else that fails - including
+ * Node's own `ENOENT` - hence the namespace. The distinction that matters is `IdInUse`: an asset
+ * arriving under an id the library already holds is the ordinary outcome of importing the same
+ * payload twice, and the right response to it is to carry on, not to report a failure.
+ */
+export const AssetCreateErrorCode = {
+    /** Not a storage id: it has no content path, so nothing could be written under it. */
+    InvalidId: "asset/invalid-id",
+    /** An asset already holds the id. Its bytes and its record were left untouched. */
+    IdInUse: "asset/id-in-use",
+} as const;
+
+export type AssetCreateErrorCode = (typeof AssetCreateErrorCode)[keyof typeof AssetCreateErrorCode];

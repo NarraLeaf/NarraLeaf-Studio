@@ -31,6 +31,19 @@ type RuntimeGrantPolicy = {
         mode: FileSystemGrantMode;
         recursive: false;
     };
+    /**
+     * Files another window of the same Studio process offered, redeemed against a token that
+     * crossed the clipboard with a paste. Non-recursive: the grant covers exactly the files named
+     * in the manifest, and the manifest was verified against the offering window's own read access
+     * before the token existed. See `@shared/types/assetTransfer`.
+     *
+     * Declaring it says the window type takes part in asset transfer at all, which is why both
+     * halves - offering and redeeming - are gated on it.
+     */
+    transferredAsset?: {
+        mode: FileSystemGrantMode;
+        recursive: false;
+    };
 };
 
 type WindowPermissionContext = {
@@ -68,6 +81,7 @@ const workspaceImportGrants: RuntimeGrantPolicy = {
     selectSaveFile: { mode: "write", recursive: false },
     selectDirectory: { mode: "read", recursive: true },
     droppedFile: { mode: "read", recursive: false },
+    transferredAsset: { mode: "read", recursive: false },
 };
 
 const pluginPermissionElevatedAccess = (): ApiCapability[] => [
