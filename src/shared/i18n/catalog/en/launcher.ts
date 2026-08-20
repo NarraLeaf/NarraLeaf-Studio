@@ -128,9 +128,17 @@ export const launcher = {
             // from a deployment whose reader is not working. It replaces the facts rather
             // than filling them with zeroes, and it does not repeat what the server said
             // about it - that sentence is written for whoever runs the server.
+            //
+            // **About the project file and nothing else.** The versions are asked for
+            // separately and can be missing on their own, and this said about a project
+            // whose scene count is on screen above it would be a plain contradiction; that
+            // state has its own line below.
             unread: "The server has not read this project.",
             versions: "Recent versions",
             noVersions: "No versions recorded.",
+            // A page that came back without them, on a project the server otherwise
+            // answered for. Not "none": what is unknown here is the list, not its length.
+            versionsUnavailable: "This project's versions are not available.",
             olderVersions: "Older versions are not shown.",
         },
         // Who else works on this server. The account addresses are read with the list and
