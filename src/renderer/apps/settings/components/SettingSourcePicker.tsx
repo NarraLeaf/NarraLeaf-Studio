@@ -6,6 +6,7 @@ import { Button } from "@/lib/components/elements/Button";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { matchedSourcePreset } from "@/lib/settings/sourceSelection";
+import { SETTING_CONTROL_WIDTH_PX } from "./settingControlWidth";
 
 /**
  * Download-source chooser for a `SettingValueType.Source` row: the sources Studio knows the address
@@ -23,10 +24,10 @@ import { matchedSourcePreset } from "@/lib/settings/sourceSelection";
 
 /**
  * Floor for the panel, and so also the width below which it stops matching its trigger. It tracks
- * the trigger's own width (`w-48` on the settings row): a floor above that would put the panel
- * wider than the control it belongs to and the two would stop lining up.
+ * the trigger's own width, which on a settings row is `SETTING_CONTROL_WIDTH`: a floor above that
+ * would put the panel wider than the control it belongs to and the two would stop lining up.
  */
-const PANEL_MIN_WIDTH_PX = 192;
+const PANEL_MIN_WIDTH_PX = SETTING_CONTROL_WIDTH_PX;
 const PANEL_GAP_PX = 4;
 const VIEWPORT_MARGIN_PX = 8;
 
