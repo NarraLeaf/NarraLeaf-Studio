@@ -33,6 +33,9 @@ const bridge = vi.hoisted(() => ({
     repositories: [] as VcsLocalRepository[],
     refreshServer: vi.fn(() => Promise.resolve({ success: true, data: { servers: [] } })),
     listServerProjects: vi.fn(),
+    listServerMembers: vi.fn(),
+    getServerProject: vi.fn(),
+    listServerProjectHistory: vi.fn(),
     launchSettings: vi.fn(),
     launchWorkspace: vi.fn(() => Promise.resolve()),
     launchProjectWizard: vi.fn(() => Promise.resolve({ success: true, data: null })),
@@ -45,6 +48,9 @@ vi.mock("@/lib/app/bridge", () => ({
             listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
             refreshServer: bridge.refreshServer,
             listServerProjects: bridge.listServerProjects,
+            listServerMembers: bridge.listServerMembers,
+            getServerProject: bridge.getServerProject,
+            listServerProjectHistory: bridge.listServerProjectHistory,
             listLocalRepositories: () =>
                 Promise.resolve({ success: true, data: { repositories: bridge.repositories } }),
             createServerProject: bridge.createServerProject,
@@ -62,7 +68,7 @@ const OTHER = "lore://other.example.lan:41337";
 /** Sixteen bytes as hex, which is what `.lore/id` holds and what a server lists. */
 const REPOSITORY = "019fda5ba4fe799096aaab7585aa4722";
 
-function session(origin = ORIGIN, name?: string): VcsServerSession {
+function session(origin = ORIGIN, name?: string, capabilities?: string[]): VcsServerSession {
     return {
         authUrl: "https://team.example.lan:41402",
         remoteOrigin: origin,
@@ -76,6 +82,7 @@ function session(origin = ORIGIN, name?: string): VcsServerSession {
         },
         signedInAt: 0,
         ...(name === undefined ? {} : { name }),
+        ...(capabilities === undefined ? {} : { capabilities }),
     };
 }
 
@@ -97,6 +104,9 @@ afterEach(() => {
     bridge.repositories = [];
     bridge.refreshServer.mockClear();
     bridge.listServerProjects.mockReset();
+    bridge.listServerMembers.mockReset();
+    bridge.getServerProject.mockReset();
+    bridge.listServerProjectHistory.mockReset();
     bridge.launchSettings.mockClear();
     bridge.launchWorkspace.mockClear();
     bridge.launchProjectWizard.mockClear();
@@ -104,8 +114,12 @@ afterEach(() => {
 });
 
 /** One server, already chosen because a list of one is not a choice. */
-function open(projects: VcsServerProject[], repositories: VcsLocalRepository[] = []) {
-    bridge.servers = [session(ORIGIN, "Blackwood Studio")];
+function open(
+    projects: VcsServerProject[],
+    repositories: VcsLocalRepository[] = [],
+    capabilities?: string[],
+) {
+    bridge.servers = [session(ORIGIN, "Blackwood Studio", capabilities)];
     bridge.repositories = repositories;
     bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects } });
     render(<ServersTab />);
@@ -268,6 +282,89 @@ describe("reaching a server", () => {
 
         await waitFor(() => expect(document.body.textContent)
             .toContain("launcher.servers.problem.unreachable"));
+    });
+});
+
+describe("what a server offers", () => {
+    it("asks for nothing a server did not say it serves", async () => {
+        open([project()]);
+
+        await waitFor(() => expect(bridge.listServerProjects).toHaveBeenCalled());
+        expect(bridge.listServerMembers).not.toHaveBeenCalled();
+        // Not an error and not an empty section: there is simply no roster on this screen.
+        expect(document.querySelector("[data-server-people]")).toBeNull();
+        expect(document.body.textContent).not.toContain("launcher.servers.people");
+        // And with nothing to say about a project, its row does not open into anything.
+        expect(document.querySelector("[data-project-action='select']")).toBeNull();
+    });
+
+    it("reads the roster of a server that offers one", async () => {
+        bridge.listServerMembers.mockResolvedValue({
+            success: true,
+            data: { ok: true, members: [{
+                username: "ada",
+                displayName: "Ada Lovelace",
+                email: "ada@nomen.example",
+                operator: true,
+                disabled: false,
+                serviceAccount: false,
+            }] },
+        });
+        open([project()], [], ["projects", "members"]);
+
+        await waitFor(() => expect(bridge.listServerMembers).toHaveBeenCalledWith(ORIGIN));
+        await waitFor(() => expect(document.querySelector("[data-server-member='ada']")).not.toBeNull());
+        // Read with the list, drawn for nobody until somebody is opened.
+        expect(document.body.textContent).not.toContain("ada@nomen.example");
+    });
+
+    it("opens a project into what the server knows, and back again", async () => {
+        bridge.getServerProject.mockResolvedValue({
+            success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
+        });
+        bridge.listServerProjectHistory.mockResolvedValue({
+            success: true, data: { ok: true, page: { more: false } },
+        });
+        open([project()], [], ["projects", "project-detail", "project-history"]);
+
+        fireEvent.click(await find("[data-project-action='select']"));
+
+        await waitFor(() => expect(bridge.getServerProject).toHaveBeenCalledWith(ORIGIN, REPOSITORY));
+        // The state the deployment is in today: recorded, not read.
+        await waitFor(() => expect(document.querySelector("[data-project-unread]")).not.toBeNull());
+
+        fireEvent.click(document.querySelector("[data-project-action='back']")!);
+        await waitFor(() => expect(document.querySelector("[data-server-project-detail]")).toBeNull());
+        expect(document.querySelector("[data-server-project]")).not.toBeNull();
+    });
+
+    it("reads the roster once, however many projects are looked at", async () => {
+        bridge.listServerMembers.mockResolvedValue({ success: true, data: { ok: true, members: [] } });
+        bridge.getServerProject.mockResolvedValue({
+            success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
+        });
+        open([project()], [], ["projects", "members", "project-detail"]);
+
+        await waitFor(() => expect(bridge.listServerMembers).toHaveBeenCalledTimes(1));
+        fireEvent.click(await find("[data-project-action='select']"));
+        await waitFor(() => expect(document.querySelector("[data-project-unread]")).not.toBeNull());
+        fireEvent.click(document.querySelector("[data-project-action='back']")!);
+
+        await waitFor(() => expect(document.querySelector("[data-server-project-detail]")).toBeNull());
+        // The list was put away, not taken down: going back is not a second visit.
+        expect(bridge.listServerMembers).toHaveBeenCalledTimes(1);
+        expect(bridge.listServerProjects).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the row's own action working where the row can also be opened", async () => {
+        open([project()], [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY }],
+            ["projects", "project-detail"]);
+
+        fireEvent.click(await find("[data-project-action='open']"));
+
+        expect(bridge.launchWorkspace).toHaveBeenCalledWith({ projectPath: "D:/games/Moonlit" }, true);
+        // Opening the project on this disk is not opening the panel about it.
+        expect(bridge.getServerProject).not.toHaveBeenCalled();
     });
 });
 

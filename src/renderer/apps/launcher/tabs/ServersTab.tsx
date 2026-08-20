@@ -13,17 +13,19 @@ import {
 } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
-import { ServerRow, serverDisplayName, serverHost, useServers } from "@/lib/vcs/servers";
+import { ServerRow, serverCan, serverDisplayName, serverHost, useServers } from "@/lib/vcs/servers";
 import type { TranslationKey } from "@shared/i18n";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import type {
     VcsLocalRepository,
     VcsServerProject,
-    VcsServerProjectsProblem,
     VcsServerSession,
 } from "@shared/types/vcs";
 import { createProjectFromWizard } from "../projectActions";
+import { ServerPeople } from "./ServerPeople";
+import { ServerProjectDetailView } from "./ServerProjectDetail";
+import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
  * What exists on the servers this installation is signed in to.
@@ -37,18 +39,10 @@ import { createProjectFromWizard } from "../projectActions";
  *
  * Nothing is asked of a server until an author opens it. The list of servers is local, so
  * the left column costs nothing; choosing one is the deliberate act that goes to the
- * network, and it goes exactly twice - once to ask the server what it is now, once to ask
- * what it holds.
+ * network, and what is asked for then is what that server said it offers - the projects it
+ * holds, and the roster if it has one. **A capability it did not advertise is never asked
+ * for**, so a deployment that offers less has fewer sections rather than more errors.
  */
-
-/** The sentence for each way a server can fail to say what it holds. */
-const PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
-    "no-token": "launcher.servers.problem.noToken",
-    refused: "launcher.servers.problem.refused",
-    unreachable: "launcher.servers.problem.unreachable",
-    rejected: "launcher.servers.problem.unknown",
-    unknown: "launcher.servers.problem.unknown",
-};
 
 /** Where a project's remote lives, without the repository name on the end. */
 function originOf(remote: string): string {
@@ -95,6 +89,8 @@ export function ServersTab() {
     const [reading, setReading] = useState(false);
     const [repositories, setRepositories] = useState<VcsLocalRepository[]>([]);
     const [creating, setCreating] = useState(false);
+    /** Which project is open, by id. The pane shows the list or one project, never both. */
+    const [opened, setOpened] = useState<string | null>(null);
     // Which servers have already been asked what they are, this visit. A refresh is a
     // network call and the answer is a name and a version, so once per server is
     // proportionate and twice is a habit.
@@ -127,6 +123,8 @@ export function ServersTab() {
         setReading(true);
         setProblem(null);
         setProjects(null);
+        // A project open on the server being left does not stay open on the one arriving.
+        setOpened(null);
 
         void (async () => {
             const bridge = getInterface();
@@ -147,7 +145,7 @@ export function ServersTab() {
                 return;
             }
             if (!result.data.ok) {
-                setProblem(PROBLEM_KEYS[result.data.problem.kind]);
+                setProblem(SERVER_PROBLEM_KEYS[result.data.problem.kind]);
                 return;
             }
             setProjects(result.data.projects);
@@ -157,6 +155,19 @@ export function ServersTab() {
     const session = useMemo(
         () => servers.find(entry => entry.remoteOrigin === chosen) ?? null,
         [servers, chosen],
+    );
+
+    // What this server offers, read off what it last said about itself rather than found
+    // out by asking. See `serverCan`: a deployment that does not do one of these has no
+    // section for it, which is not the same thing as a section that failed.
+    const canDetail = serverCan(session, "project-detail");
+    const canHistory = serverCan(session, "project-history");
+    const canOpenProject = canDetail || canHistory;
+
+    /** The project on screen, if the list still has the one that was opened. */
+    const openedProject = useMemo(
+        () => (opened === null ? null : projects?.find(entry => entry.id === opened) ?? null),
+        [opened, projects],
     );
 
     // Adding a server signs the whole installation in, so it happens in Settings. Both ways
@@ -254,14 +265,46 @@ export function ServersTab() {
                 ) : (
                     <>
                         <ServerHeader session={session} onNewProject={() => setCreating(true)} />
-                        <ProjectList
-                            projects={projects}
-                            problem={problem}
-                            reading={reading}
-                            repositories={repositories}
-                            onOpen={openProject}
-                            onGet={remote => void getProject(remote)}
-                        />
+                        {openedProject !== null && (
+                            <ServerProjectDetailView
+                                remoteOrigin={session.remoteOrigin}
+                                project={openedProject}
+                                canDetail={canDetail}
+                                canHistory={canHistory}
+                                onBack={() => setOpened(null)}
+                                action={(
+                                    <ProjectAction
+                                        project={openedProject}
+                                        local={localCopyOf(openedProject, repositories)}
+                                        onOpen={openProject}
+                                        onGet={remote => void getProject(remote)}
+                                    />
+                                )}
+                            />
+                        )}
+                        {/* Put away behind the project on screen rather than taken down.
+                            Coming back is meant to be the list as it was left - the same
+                            scroll position, and the roster read once for this visit rather
+                            than again for every project somebody looks at. */}
+                        <div className={cn(
+                            "flex min-h-0 flex-1 flex-col",
+                            openedProject !== null && "hidden",
+                        )}>
+                            <ProjectList
+                                projects={projects}
+                                problem={problem}
+                                reading={reading}
+                                repositories={repositories}
+                                onOpen={openProject}
+                                onGet={remote => void getProject(remote)}
+                                onSelect={canOpenProject ? setOpened : null}
+                            />
+                            {/* Under the projects, because that is the order the questions
+                                come in: what is here, then who else is. */}
+                            {serverCan(session, "members") && (
+                                <ServerPeople remoteOrigin={session.remoteOrigin} />
+                            )}
+                        </div>
                     </>
                 )}
             </section>
@@ -317,6 +360,7 @@ function ProjectList({
     repositories,
     onOpen,
     onGet,
+    onSelect,
 }: {
     projects: VcsServerProject[] | null;
     problem: TranslationKey | null;
@@ -324,6 +368,8 @@ function ProjectList({
     repositories: readonly VcsLocalRepository[];
     onOpen: (projectPath: string) => void;
     onGet: (remote: string) => void;
+    /** Null where this server says nothing about a project beyond listing it. */
+    onSelect: ((projectId: string) => void) | null;
 }) {
     const { t } = useTranslation();
 
@@ -343,6 +389,7 @@ function ProjectList({
                     local={localCopyOf(project, repositories)}
                     onOpen={onOpen}
                     onGet={onGet}
+                    onSelect={onSelect}
                 />
             ))}
         </div>
@@ -356,8 +403,69 @@ function ProjectList({
  * not, in which case there is a copy to fetch. Never both, and never neither: two actions
  * on a row where only one of them can apply is a row that has to be read before it can be
  * used.
+ *
+ * The name reads on into what the server knows about the project, where the server knows
+ * anything. It is a control of its own rather than the whole row, because the row already
+ * ends in a control and a button inside a button is neither.
  */
 function ProjectRow({
+    project,
+    local,
+    onOpen,
+    onGet,
+    onSelect,
+}: {
+    project: VcsServerProject;
+    local: VcsLocalRepository | null;
+    onOpen: (projectPath: string) => void;
+    onGet: (remote: string) => void;
+    onSelect: ((projectId: string) => void) | null;
+}) {
+    const { t, formatDate } = useTranslation();
+    const version = lastVersionLine(project, t, formatDate);
+
+    const body = (
+        <>
+            <span className="block truncate text-sm text-fg">{project.name}</span>
+            {project.description !== "" && (
+                <span className="block truncate text-xs text-fg-subtle">{project.description}</span>
+            )}
+            {version !== null && (
+                <span className="block truncate text-2xs text-fg-subtle">{version}</span>
+            )}
+        </>
+    );
+
+    return (
+        <div
+            data-server-project={project.id}
+            className="flex items-center gap-3 border-t border-edge px-3 py-2.5 transition-colors duration-150 first:border-t-0 hover:bg-fill-subtle"
+        >
+            {onSelect === null ? (
+                <span className="min-w-0 flex-1">{body}</span>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => onSelect(project.id)}
+                    data-project-action="select"
+                    className="min-w-0 flex-1 cursor-default text-left"
+                >
+                    {body}
+                </button>
+            )}
+            <ProjectAction project={project} local={local} onOpen={onOpen} onGet={onGet} />
+        </div>
+    );
+}
+
+/**
+ * Open the copy that is here, or fetch one.
+ *
+ * One component for the row and for the project opened out of it, so that the action does
+ * not change wording or behaviour depending on which of the two a reader is looking at -
+ * and so that a project fetched from the detail leaves the same list re-read behind it.
+ */
+function ProjectAction({
     project,
     local,
     onOpen,
@@ -368,45 +476,28 @@ function ProjectRow({
     onOpen: (projectPath: string) => void;
     onGet: (remote: string) => void;
 }) {
-    const { t, formatDate } = useTranslation();
-    const version = lastVersionLine(project, t, formatDate);
+    const { t } = useTranslation();
 
-    return (
-        <div
-            data-server-project={project.id}
-            className="flex items-center gap-3 border-t border-edge px-3 py-2.5 transition-colors duration-150 first:border-t-0 hover:bg-fill-subtle"
+    return local !== null ? (
+        <Button
+            size="sm"
+            onClick={() => onOpen(local.path)}
+            data-project-action="open"
+            data-tip={local.path}
+            className="shrink-0"
         >
-            <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-fg">{project.name}</span>
-                {project.description !== "" && (
-                    <span className="block truncate text-xs text-fg-subtle">{project.description}</span>
-                )}
-                {version !== null && (
-                    <span className="block truncate text-2xs text-fg-subtle">{version}</span>
-                )}
-            </span>
-            {local !== null ? (
-                <Button
-                    size="sm"
-                    onClick={() => onOpen(local.path)}
-                    data-project-action="open"
-                    data-tip={local.path}
-                    className="shrink-0"
-                >
-                    {t("launcher.servers.open")}
-                </Button>
-            ) : (
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onGet(project.remote)}
-                    data-project-action="get"
-                    className="shrink-0"
-                >
-                    {t("launcher.servers.get")}
-                </Button>
-            )}
-        </div>
+            {t("launcher.servers.open")}
+        </Button>
+    ) : (
+        <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onGet(project.remote)}
+            data-project-action="get"
+            className="shrink-0"
+        >
+            {t("launcher.servers.get")}
+        </Button>
     );
 }
 
