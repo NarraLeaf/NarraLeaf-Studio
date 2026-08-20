@@ -34,6 +34,17 @@ export type StoryRefJumpContext = {
      * is well-formed, and left empty rather than guessed when it does not.
      */
     assetType?: (assetId: string) => string | null;
+    /**
+     * Whether an asset id is in fact an asset SET.
+     *
+     * A row stores one id for both — that is what makes a set usable in a field that took a file —
+     * so which of the two a word names is a question about the project, not about the line, and the
+     * projection has no business answering it. It is asked here because this is where a word turns
+     * into a destination, and the destinations differ: a file opens its preview, a set is a row in
+     * the library. Left out rather than guessed when the caller has no set service, in which case a
+     * set id lands on the asset branch and resolves to nothing, exactly as it did before.
+     */
+    isAssetSet?: (assetId: string) => boolean;
 };
 
 export function storyRefJumpTarget(ref: StoryCommandLineRef, where: StoryRefJumpContext): SearchJumpTarget | null {
@@ -42,7 +53,9 @@ export function storyRefJumpTarget(ref: StoryCommandLineRef, where: StoryRefJump
         case "character":
             return { kind: "character", characterId: ref.characterId };
         case "asset":
-            return { kind: "asset", assetId: ref.assetId, assetType: where.assetType?.(ref.assetId) ?? "" };
+            return where.isAssetSet?.(ref.assetId)
+                ? { kind: "assetSet", assetSetId: ref.assetId }
+                : { kind: "asset", assetId: ref.assetId, assetType: where.assetType?.(ref.assetId) ?? "" };
         case "scene": {
             const scene = document.scenes[ref.sceneId];
             return scene
