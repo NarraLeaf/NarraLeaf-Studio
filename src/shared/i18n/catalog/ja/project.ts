@@ -96,8 +96,17 @@ export const project = {
         required: "必須",
     },
     userData: {
-        description: "配布したゲームがプレイヤーのセーブと進行を置く場所。"
-            + "アプリケーション名を変更しても場所は移動しない",
+        description: "配布したデスクトップ版がプレイヤーのセーブと進行を置く場所",
+        windowsLinux: "Windows と Linux",
+        windowsLinuxDescription: "Windows・Linux 版がプレイヤーのファイルを置く場所",
+        macos: "macOS",
+        macosDescription: "macOS 版がプレイヤーのファイルを置く場所",
+        mode: {
+            appRoot: "ゲームのフォルダー内",
+            userData: "ユーザーフォルダー内",
+        },
+        // プレイヤーがこのゲームを置いたフォルダーの代わり。そのパスは本人の環境にしか書けない。
+        gameFolder: "<ゲームフォルダー>",
         copy: "場所をコピー",
         copied: "場所をコピーした",
         copyFailed: "場所をコピーできなかった",

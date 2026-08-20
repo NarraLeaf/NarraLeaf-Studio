@@ -99,8 +99,18 @@ export const project = {
     // part is a setting, and it names no storefront, because which of them to hand this to is the
     // author's decision. The description says what the paths are, and stops there.
     userData: {
-        description: "Where a shipped game keeps the player's saves and progress. Renaming the "
-            + "application does not move it.",
+        description: "Where a shipped desktop game keeps the player's saves and progress.",
+        windowsLinux: "Windows and Linux",
+        windowsLinuxDescription: "Where a Windows or Linux build keeps the player's files.",
+        macos: "macOS",
+        macosDescription: "Where a macOS build keeps the player's files.",
+        mode: {
+            appRoot: "In the game's folder",
+            userData: "In the player's user folder",
+        },
+        // Stands in for the folder a player put their copy of the game in, which is a path only
+        // their own machine can spell.
+        gameFolder: "<game folder>",
         copy: "Copy locations",
         copied: "Locations copied.",
         copyFailed: "Could not copy the locations.",
