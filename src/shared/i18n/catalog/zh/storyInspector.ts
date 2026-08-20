@@ -222,6 +222,7 @@ export const storyInspector = {
         sway: "飘摆",
         streak: "拖影",
         wind: "风向（度）",
+        fallSpeed: "落速",
         depthSpread: "景深差",
     },
 
