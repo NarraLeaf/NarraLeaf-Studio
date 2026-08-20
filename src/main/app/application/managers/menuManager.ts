@@ -204,22 +204,26 @@ export class MenuManager {
         }
     }
 
+    /**
+     * Cmd+, - through the same reveal-or-focus path every other opener uses.
+     *
+     * It used to launch unconditionally, so a second Cmd+, produced a second Settings window while
+     * the in-app opener next to it correctly reused the first. `revealSettings` is the only thing
+     * that knows whether one is already open.
+     *
+     * The focused window is passed only so Settings comes up on the display the author is working
+     * on; a Cmd+, with nothing focused still opens it.
+     */
     private openPreferencesForFocusedWindow(): void {
-        const appWindow = this.getFocusedAppWindow();
+        // Same target rule as the rest of this menu (`openRecentProject`): whatever is focused, or
+        // what was focused last while the app is in the background. App is reached through it for
+        // the reason given there - this class holds the narrower BaseApp.
+        const appWindow = this.getMenuTargetWindow();
         if (!appWindow) {
             return;
         }
 
-        void appWindow.getApp().launchSettings(appWindow, {}, {
-            parent: appWindow.win,
-            minWidth: 800,
-            minHeight: 500,
-            width: 1200,
-            height: 800,
-            center: true,
-            x: undefined,
-            y: undefined,
-        }).catch((error) => {
+        void appWindow.getApp().revealSettings({}, appWindow).catch((error) => {
             this.app.logger.error("Failed to open preferences:", error);
         });
     }
