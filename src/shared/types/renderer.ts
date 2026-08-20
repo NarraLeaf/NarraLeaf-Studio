@@ -73,7 +73,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -866,6 +866,23 @@ export interface RendererPreloadedInterface {
             remoteOrigin: string,
             projectId: string,
         ): Promise<RequestStatus<VcsServerProjectDetailOutcome>>;
+        /**
+         * Take one project off a server. **Goes to the network**, and it is the one call
+         * in this group that changes what a server holds rather than reading it.
+         *
+         * **What it removes is the project, not the work.** The server stops listing it
+         * and stops answering for it; the repository keeps its store and every revision
+         * in it, and a project removed by mistake is published again under the same
+         * repository id and comes back with its history. Nothing here destroys anything
+         * an author wrote, so a surface offering this must not say that it does.
+         *
+         * Nothing on this machine changes either: a local copy goes on opening, and its
+         * remote goes on pointing where it pointed.
+         */
+        deleteServerProject(
+            remoteOrigin: string,
+            projectId: string,
+        ): Promise<RequestStatus<VcsServerProjectDeleteOutcome>>;
         /**
          * The latest revisions on one of a server's projects, newest first.
          * **Goes to the network**, and only where `project-history` is advertised.
