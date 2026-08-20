@@ -88,7 +88,6 @@ export const settings = {
         confirmQuit: {
             label: "Confirm before quitting with ⌘Q",
             description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
-            unsupportedPlatform: "Not available on this operating system.",
         },
         themeMode: {
             label: "Theme",

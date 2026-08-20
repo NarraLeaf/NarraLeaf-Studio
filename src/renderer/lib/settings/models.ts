@@ -125,9 +125,26 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
     /** Action only: invoke on the first click - for navigation-style actions with no consequence. */
     skipConfirm?: boolean;
     /**
+     * Whether the row exists on this machine at all, asked synchronously every time the list is
+     * built. `false` removes it from the Settings window entirely - the navigation tree, the list
+     * and the search all read the same filtered registry, so a hidden row cannot be reached from
+     * any of them.
+     *
+     * Only for conditions that cannot change while Studio runs, which in practice means the host
+     * platform: an author would have to move machines for the answer to differ, so nothing has to
+     * re-ask it. Anything that can change under the window - a workspace opening, a dictionary
+     * being installed - belongs in `availability`, which re-evaluates and leaves the row visible
+     * with its reason.
+     *
+     * The key stays a preference regardless. `getAllAppSettings` is deliberately unfiltered, so a
+     * settings file written on macOS still round-trips its `app.confirmQuit` through a Windows
+     * machine instead of being dropped on the way through.
+     */
+    visible?: () => boolean;
+    /**
      * Dynamic availability, re-evaluated on mount and whenever the Settings window regains focus
      * (the condition usually depends on other windows, e.g. "a workspace is open"; it may also be
-     * fixed for the session, as the platform check on `app.confirmQuit` is).
+     * fixed for the session, as the platform check on `ui.menuBar.mode` is).
      * When unavailable, the control renders disabled.
      *
      * `reasonKey` replaces the description whenever it is returned, `enabled` or not. Usually it is

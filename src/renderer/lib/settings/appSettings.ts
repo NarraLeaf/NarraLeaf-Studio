@@ -49,6 +49,7 @@ import {
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
 import { CONFIRM_QUIT_DEFAULT, CONFIRM_QUIT_KEY } from "@shared/constants/quit";
+import { isMacPlatform } from "@/lib/app/platform";
 import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
@@ -219,9 +220,11 @@ export const AppSettings: AppSettingDefinition[] = [
         // can be seen at all: ⌘Q reaches Studio as the App menu's key equivalent, and swallowing it
         // has to happen before the menu acts on it.
         //
-        // macOS only, and the platform check is the whole of the availability rule - there is no
-        // state anywhere else that could make it true, so unlike the background-image row this one
-        // never changes answer for the lifetime of the window.
+        // macOS only, and hidden outright everywhere else. ⌘Q is a macOS keystroke; on Windows and
+        // Linux there is no gesture for this row to govern, so a disabled row with "not available on
+        // this operating system" under it was answering a question the author had no way to ask.
+        // The key is still stored and still exported - see `getAllAppSettings` - so a settings file
+        // that travels between machines keeps whatever the Mac chose.
         key: CONFIRM_QUIT_KEY,
         category: "general",
         scope: SettingScope.Global,
@@ -231,15 +234,10 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
         descriptionKey: "settings.items.confirmQuit.description",
         defaultValue: CONFIRM_QUIT_DEFAULT,
-        availability: async () => {
-            // Dynamic, like the background-image row below: `platform` reaches the window bootstrap
-            // for its cached answer, and this module is also loaded by the settings export/import
-            // scope walker, which runs where no window has booted.
-            const { isMacPlatform } = await import("@/lib/app/platform");
-            return isMacPlatform()
-                ? { enabled: true }
-                : { enabled: false, reasonKey: "settings.items.confirmQuit.unsupportedPlatform" };
-        },
+        // Asked at render, never at module load: `isMacPlatform` reads the bootstrap's cached
+        // platform info and answers `false` where no window has booted, which is also where this
+        // module gets loaded by the settings export/import scope walker.
+        visible: () => isMacPlatform(),
     },
     {
         // Read by the main process's UpdateManager when it decides whether to schedule the launch
@@ -874,9 +872,9 @@ export const AppSettings: AppSettingDefinition[] = [
         },
         availability: async () => {
             // macOS puts these groups on the system menu bar instead (`useNativeMenuSync`), so
-            // neither value would move anything. Shown disabled with the reason rather than hidden,
-            // like the ⌘Q row above: a preference that disappears with the machine gets reported
-            // as missing.
+            // neither value would move anything. Shown disabled with the reason rather than hidden
+            // like the ⌘Q row: this preference has a meaning on every platform and the author can
+            // still read which one is stored - it is only the applying of it that macOS takes over.
             const { isMacPlatform } = await import("@/lib/app/platform");
             return isMacPlatform()
                 ? { enabled: false, reasonKey: "settings.items.menuBarMode.unsupportedPlatform" }
