@@ -758,8 +758,18 @@ export type StoryActionPayload =
            *
            * Additive: no document written before it carries the value, so no schema bump - the same
            * rule `camera` and `vfx` came in under.
+           *
+           * `loop` and `stopLoop` are the fifth and sixth, and they are the one pair here that is not
+           * a pose the story waits for. A loop repeats until something ends it, so the row states it
+           * and the scene carries straight on; `stopLoop` ends it and eases the element back to the
+           * pose it kept underneath. Anything else addressed at the same element - a `transform`, a
+           * `show`, a `reset` - ends the loop too, because an element carries one transform at a time.
+           *
+           * Additive (narraleaf-react 0.32.0's `Displayable.loop` / `stopLoop`): no document written
+           * before this carries either value, so no schema bump - the same rule `bringToFront` came
+           * in under.
            */
-          operation: "show" | "hide" | "transform" | "bringToFront";
+          operation: "show" | "hide" | "transform" | "bringToFront" | "loop" | "stopLoop";
           target: StoryDisplayableTargetRef;
           transform?: StoryTransformRef;
       }
@@ -832,8 +842,12 @@ export type StoryActionPayload =
            * filter in a zero-duration sequence and eases only the pose. Writing neutral values into a
            * ref instead would put the filter back in the same transform as the pose and walk the picture
            * blue → cyan → green → olive again, which is the defect that fix exists for.
+           *
+           * `loop` and `stopLoop` are the camera's half of narraleaf-react 0.32.0's looping
+           * transform - a handheld sway, a slow drift - and carry the same {@link transform} a
+           * `transform` row does. Additive on the same terms as the `displayable` arm's pair.
            */
-          operation: "transform" | "reset";
+          operation: "transform" | "reset" | "loop" | "stopLoop";
           /**
            * `transform` — where the camera ends up, in the same shape `/transform` hands a sprite.
            *
@@ -1502,6 +1516,17 @@ export type StoryClipReveal = {
  * `CommonTransformProps.delay` and `TransformConfig.repeat/repeatDelay` have always been there and
  * Studio simply never passed them.
  */
+/**
+ * How a repeat plays each time round - the engine's `TransformDefinitions.RepeatType`.
+ *
+ * A value tuple as well as a type for the same reason {@link STORY_TRANSITION_KINDS} is one: the
+ * command layer needs the closed set at runtime to offer it as an enum, and a second hand-written
+ * list would drift.
+ */
+export const STORY_TRANSFORM_REPEAT_TYPES = ["loop", "reverse", "mirror"] as const;
+
+export type StoryTransformRepeatType = (typeof STORY_TRANSFORM_REPEAT_TYPES)[number];
+
 export type StoryTransformRef = {
     /** Absent means `"props"`. Only a Story Motion has to say which it is. */
     mode?: "props" | "animation";
@@ -1518,6 +1543,13 @@ export type StoryTransformRef = {
     delayMs?: number;
     repeat?: number;
     repeatDelayMs?: number;
+    /**
+     * Which way each repeat runs - see {@link StoryTransformRepeatType}. Read by a finite `repeat`
+     * and by a `loop` row alike; absent is the engine's default, which restarts from the first pose.
+     *
+     * Additive (narraleaf-react 0.32.0): no document written before it carries one.
+     */
+    repeatType?: StoryTransformRepeatType;
     /** A clip-path generator - see {@link StoryClipReveal}. Runs on this ref's own timing. */
     clipReveal?: StoryClipReveal;
     animationId?: StoryAnimationAssetId;

@@ -1316,17 +1316,34 @@ function displayableSentence(
     if (payload.operation === "bringToFront") {
         return { commandId, args: [positional("target", label, who)] };
     }
-    if (payload.operation === "transform") {
+    // Ending a loop is a `/transform` line whose whole content is the flag and how long the way back
+    // takes. No bag is printed because a `stopLoop` row holds none - see the spec's refusal.
+    if (payload.operation === "stopLoop") {
+        return {
+            commandId,
+            args: [
+                positional("target", label, who),
+                arg("stopLoop", "true"),
+                arg("d", seconds(payload.transform?.durationMs), {
+                    apply: next => patchTransform(payload, { durationMs: msOf(next) }),
+                }),
+            ],
+        };
+    }
+    if (payload.operation === "transform" || payload.operation === "loop") {
+        // The flag is what makes the row read as the thing it is - a motion that keeps going rather
+        // than a pose the scene waits for - so it is printed first, next to the subject.
+        const looping = payload.operation === "loop" ? [arg("loop", "true")] : [];
         // A Story Motion states its shot in a binding rather than in props, so the line says which
         // mode the row is in and the motion's name rides the inspector - the same shape the retired
         // `/camera motion` had.
         if (payload.transform?.mode === "animation") {
-            return { commandId, args: [positional("target", label, who), arg("motion", "true")] };
+            return { commandId, args: [positional("target", label, who), ...looping, arg("motion", "true")] };
         }
         // The whole neutral bag, and only the whole one, is a `/reset`. A partial clear prints as the
         // `=none` that produced it (`/transform hero mask=none`), which is the same row and the
         // spelling the vocabulary calls canonical.
-        if (isNeutralStoryTransformProps(payload.transform?.to)) {
+        if (payload.operation === "transform" && isNeutralStoryTransformProps(payload.transform?.to)) {
             return {
                 commandId: "reset",
                 args: [
@@ -1337,7 +1354,7 @@ function displayableSentence(
                 ],
             };
         }
-        return { commandId, args: [positional("target", label, who), ...transformArgs(payload, lookups)] };
+        return { commandId, args: [positional("target", label, who), ...looping, ...transformArgs(payload, lookups)] };
     }
     const direction = payload.operation === "show" ? "reveal" : "conceal";
     return {

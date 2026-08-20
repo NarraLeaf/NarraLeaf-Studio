@@ -573,6 +573,8 @@ export const story = {
         delay: "Delay Seconds",
         repeat: "Repeat Times",
         repeatDelay: "Repeat Gap",
+        repeatType: "Repeat Direction",
+        stopLoop: "Stop Loop",
         fromProps: "Start Props",
         // Direction, which is what `/show` and `/hide` each say instead of the old "transition".
         conceal: "Conceal",
@@ -589,6 +591,10 @@ export const story = {
      * that merely echoes a canonical value, so these entries change nothing on their own.
      */
     enumValue: {
+        // How each repeat runs (`repeatType=`).
+        loop: "loop",
+        reverse: "reverse",
+        mirror: "mirror",
         // Weather seeds - reserved words in the `/vfx` source slot.
         snow: "snow",
         rain: "rain",
