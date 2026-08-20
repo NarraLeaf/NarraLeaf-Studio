@@ -48,8 +48,14 @@ import type { UIEditorClipboardPayload } from "./uiEditorClipboard";
  * A payload with no `source` never left this window: nothing writes one without the stamp, and the
  * system clipboard is the only way one can arrive from elsewhere. It is read as same-project, which
  * is the behaviour it was copied under.
+ *
+ * Takes only the stamp, so the surface clipboard's payload asks the same question of the same
+ * function rather than carrying a second answer to it.
  */
-export function isUiPasteFromAnotherProject(payload: UIEditorClipboardPayload, projectPath: string): boolean {
+export function isUiPasteFromAnotherProject(
+    payload: Pick<UIEditorClipboardPayload, "source">,
+    projectPath: string,
+): boolean {
     const source = payload.source?.path;
     if (typeof source !== "string" || !source.trim() || !projectPath.trim()) {
         return false;

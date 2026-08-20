@@ -104,7 +104,7 @@ export function readUiEditorClipboardPayload(json: string): UIEditorClipboardPay
     if (candidate.kind !== UI_EDITOR_CLIPBOARD_KIND || candidate.v !== UI_EDITOR_CLIPBOARD_VERSION) {
         return null;
     }
-    const elements = readElementTable(candidate.elements);
+    const elements = readUiClipboardElementTable(candidate.elements);
     const topLevelElementIds = readStringArray(candidate.topLevelElementIds).filter(id => elements[id]);
     if (topLevelElementIds.length === 0) {
         return null;
@@ -219,8 +219,12 @@ function readStringArray(value: unknown): string[] {
  * else on an element is optional there and is carried through untouched, including props this
  * Studio has never heard of - a widget contributed by a plugin the pasting project also has must
  * survive the trip whole.
+ *
+ * Shared with the surface clipboard (`uiSurfaceClipboard`), whose payload carries the same table
+ * under a whole page rather than under a selection: the judgement about what an element has to be
+ * before it can be copied is the same one, wherever the element was found.
  */
-function readElementTable(value: unknown): Record<UIElementId, UIElement> {
+export function readUiClipboardElementTable(value: unknown): Record<UIElementId, UIElement> {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         return {};
     }

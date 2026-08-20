@@ -577,13 +577,45 @@ export type ImportTemplateResult = {
     importedComponents: UIComponentDefinition[];
 };
 
+/**
+ * Placement read off the surface being imported instead of declared by the caller.
+ *
+ * A template states where its screen belongs, because the document it ships is a design and not a
+ * page out of anyone's project. A surface copied from another project already is one: it was a Page
+ * or a Game UI over there, and a Game UI sat in a named stage slot. Both are carried across rather
+ * than asked about again — an author copying their dialog layout is not choosing a slot for it.
+ */
+export const IMPORT_PLACEMENT_FROM_SOURCE = "sourceSurface" as const;
+
+/** Where an import puts its surfaces: one declared placement, or each surface's own. */
+export type ImportTemplatePlacement = UITemplateSurfacePlacement | typeof IMPORT_PLACEMENT_FROM_SOURCE;
+
+/**
+ * The placement one surface lands under.
+ *
+ * A source surface with no mount is a Page, and a Page has nowhere else to be; a stage surface
+ * brings its slot. Whether that slot is free is a separate question, answered against the receiving
+ * document by {@link UIDocumentService.importTemplateBundle}.
+ */
+export function resolveImportedSurfacePlacement(
+    declared: ImportTemplatePlacement,
+    sourceSurface: UISurface,
+): UITemplateSurfacePlacement {
+    if (declared !== IMPORT_PLACEMENT_FROM_SOURCE) {
+        return declared;
+    }
+    return sourceSurface.kind === "stageSurface"
+        ? { kind: "stageSurface", slotId: sourceSurface.mount?.slotId ?? DEFAULT_UI_STAGE_SLOT_ID }
+        : { kind: "appSurface" };
+}
+
 /** One template's fetched documents plus a resolved placement, ready to import.
  * `assetIdMap` maps the template's original asset ids to the ids they were
  * ingested under in this project; empty/undefined for asset-free templates. */
 export type ImportTemplateBundleInput = {
     document: unknown;
     graphs: unknown;
-    placement: UITemplateSurfacePlacement;
+    placement: ImportTemplatePlacement;
     assetIdMap?: Record<string, string>;
 };
 
@@ -1864,19 +1896,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     /**
-     * Import a downloaded UI template into the open project.
+     * Import surfaces that came from outside this document — a downloaded template,
+     * or a page copied in another project's window.
      *
-     * A template is a `UIDocument` + `UIGraphDocument` pair (possibly on an older
+     * The input is a `UIDocument` + `UIGraphDocument` pair (possibly on an older
      * schema). Both are migrated to the current schema, every surface / element /
      * blueprint id is regenerated, and cross-references are remapped together — the
-     * same discipline as {@link duplicateSurface}, but sourcing from external docs
-     * and building the surface envelope from the caller's `placement` rather than
-     * cloning the source surface's own kind/mount. Nothing in the user's existing
-     * work is replaced; the template's surfaces are appended.
+     * same discipline as {@link duplicateSurface}, but sourcing from external docs.
+     * A surface's blueprints are the part that cannot be done by hand: they are not
+     * on the surface but filed in the blueprint document under owner keys naming
+     * `(surfaceId, elementId)`, so re-idding a surface without re-keying them leaves
+     * a page whose logic still belongs to the ids it had elsewhere.
      *
-     * A stage template whose target slot is already occupied is skipped and its
-     * slot reported back, so the caller can tell the user rather than silently
-     * dropping or clobbering a surface.
+     * The surface envelope is built from `placement`: a template declares one for
+     * the whole bundle, while {@link IMPORT_PLACEMENT_FROM_SOURCE} keeps each
+     * surface's own kind and stage slot. Nothing in the user's existing work is
+     * replaced; the imported surfaces are appended.
+     *
+     * A stage surface whose target slot is already occupied is skipped and its slot
+     * reported back, so the caller can tell the user rather than silently dropping
+     * or clobbering a surface.
      */
     public importTemplateBundle(input: ImportTemplateBundleInput): ImportTemplateResult {
         // migrateIfNeeded is pure (does not touch this.document) and, unlike load(),
@@ -1931,7 +1970,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         for (const sourceSurface of importable) {
-            let placement = input.placement;
+            let placement = resolveImportedSurfacePlacement(input.placement, sourceSurface);
             if (placement.kind === "stageSurface") {
                 const slotId = placement.slotId ?? DEFAULT_UI_STAGE_SLOT_ID;
                 if (occupiedStageSlots.has(slotId)) {
