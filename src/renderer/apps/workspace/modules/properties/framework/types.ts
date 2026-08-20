@@ -11,7 +11,7 @@ export type FieldType =
     | "text"
     | "textarea"
     | "number"
-    | "checkbox"
+    | "toggle"
     | "select"
     | "tags"
     | "custom"
@@ -100,10 +100,11 @@ export interface NumberFieldDefinition<TData = any> extends BaseFieldDefinition<
 }
 
 /**
- * Checkbox field definition
+ * Boolean field definition. Drawn as a switch, so the name says switch: a checkbox in Studio means
+ * membership of a set, not a setting (see `lib/components/elements/Checkbox`).
  */
-export interface CheckboxFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "checkbox";
+export interface ToggleFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "toggle";
     getValue: (data: TData) => boolean;
     setValue: (data: TData, value: boolean) => void | Promise<void>;
 }
@@ -405,7 +406,7 @@ export type FieldDefinition<TData = any> =
     | TextFieldDefinition<TData>
     | TextareaFieldDefinition<TData>
     | NumberFieldDefinition<TData>
-    | CheckboxFieldDefinition<TData>
+    | ToggleFieldDefinition<TData>
     | SelectFieldDefinition<TData>
     | TagsFieldDefinition<TData>
     | InfoFieldDefinition<TData>

@@ -4,7 +4,7 @@ import { BindablePropertyField } from "@/apps/workspace/modules/properties/bluep
 import { isUIInspectorData, type PropertyFieldBindingMeta } from "@/apps/workspace/modules/properties/blueprint/bindingMeta";
 import { TextField } from "./TextField";
 import { NumberField } from "./NumberField";
-import { CheckboxField } from "./CheckboxField";
+import { ToggleField } from "./ToggleField";
 import { SelectField } from "./SelectField";
 import { TagsField } from "./TagsField";
 import { InfoField } from "./InfoField";
@@ -141,12 +141,12 @@ function renderFieldBody<TData>(
                 <NumberField field={field} data={data} onSaving={onSaving} />,
             );
 
-        case "checkbox":
+        case "toggle":
             return wrapBindableField(
                 field,
                 data,
                 onSaving,
-                <CheckboxField field={field} data={data} onSaving={onSaving} />,
+                <ToggleField field={field} data={data} onSaving={onSaving} />,
             );
 
         case "select":
