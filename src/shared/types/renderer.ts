@@ -71,7 +71,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -849,6 +849,46 @@ export interface RendererPreloadedInterface {
          * right when it was stored is wrong the moment somebody else pushes.
          */
         listServerProjects(remoteOrigin: string): Promise<RequestStatus<VcsServerProjectsOutcome>>;
+        /**
+         * What one server knows about one of its projects. **Goes to the network.**
+         *
+         * **Ask only a server whose session advertises `project-detail`.** A deployment
+         * that offers none has no such surface in front of it - the absence of a
+         * capability is a fact about the server, not something to put a sentence to.
+         *
+         * A `file` that is not readable is a complete answer: the server records a project
+         * when it is created and opens the file afterwards. The server's own explanation
+         * for that does not cross this boundary, so there is nothing here to print.
+         */
+        getServerProject(
+            remoteOrigin: string,
+            projectId: string,
+        ): Promise<RequestStatus<VcsServerProjectDetailOutcome>>;
+        /**
+         * The latest revisions on one of a server's projects, newest first.
+         * **Goes to the network**, and only where `project-history` is advertised.
+         *
+         * **An answer with no `revisions` is not an empty history.** The field is left out
+         * for a project the server has not read, which is the ordinary answer for one made
+         * a moment ago, and a surface that reads it as zero says so about work that has
+         * plenty.
+         */
+        listServerProjectHistory(
+            remoteOrigin: string,
+            projectId: string,
+            limit?: number,
+            before?: string,
+        ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>>;
+        /**
+         * Who has an account on one server. **Goes to the network**, and only where
+         * `members` is advertised.
+         *
+         * Every account carries the address recorded on its revisions. Within a server
+         * that is not a secret, but a list that prints all of them at once is a different
+         * thing from an address on one revision - so a surface showing this shows the
+         * address for the one member a reader opens, and not for the list.
+         */
+        listServerMembers(remoteOrigin: string): Promise<RequestStatus<VcsServerMembersOutcome>>;
         /** Ask a server to make a project. **Goes to the network, and writes there.** */
         createServerProject(
             remoteOrigin: string,

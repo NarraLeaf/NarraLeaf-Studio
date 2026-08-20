@@ -22,7 +22,10 @@ import type {
     VcsRevisionDiffResult,
     VcsRevisionKind,
     VcsServerDescription,
+    VcsServerMembersOutcome,
     VcsServerProbe,
+    VcsServerProjectDetailOutcome,
+    VcsServerProjectHistoryOutcome,
     VcsServerReach,
     VcsServerSession,
     VcsSignInResult,
@@ -69,8 +72,11 @@ import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from ".
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
 import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
+import { listServerMembers } from "./serverMembers";
 import {
     createServerProject,
+    getServerProject,
+    listServerProjectHistory,
     listServerProjects,
     type ServerProjectResult,
     type ServerProjectsResult,
@@ -1833,15 +1839,82 @@ export class VcsManager extends Manager {
      * one small request over a connection that is already trusted.
      */
     public async listServerProjects(remoteOrigin: string): Promise<ServerProjectsResult> {
-        const session = this.storedServerSession(remoteOrigin);
-        if (!session) return { ok: false, problem: { kind: "no-token" } };
-        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
-        if (token === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerProjects({
-            authUrl: session.authUrl,
-            token,
-            userDataDir: this.app.getUserDataDir(),
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerProjects(credentials);
+    }
+
+    /**
+     * Who has an account on one server.
+     *
+     * **Only asked of a server that advertised `members`.** The gate is in the renderer,
+     * where the decision whether to draw a roster at all is made; a deployment that offers
+     * no such thing is one with no such section, rather than one that answers a question
+     * with a 404 for somebody to put a sentence to.
+     */
+    public async listServerMembers(remoteOrigin: string): Promise<VcsServerMembersOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerMembers(credentials);
+    }
+
+    /**
+     * What one server knows about one of its projects.
+     *
+     * The server's own explanation for not having read a project ends here, in the log:
+     * it is an English sentence naming the internals it was written about, and the whole
+     * point of the coded refusals either side of this line is that nothing like it reaches
+     * a reader.
+     */
+    public async getServerProject(
+        remoteOrigin: string,
+        projectId: string,
+    ): Promise<VcsServerProjectDetailOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+
+        const read = await getServerProject({ ...credentials, projectId });
+        if (!read.ok) return read;
+        if (!read.detail.file.readable && read.reason !== "") {
+            this.app.logger.info(
+                "[Vcs]", remoteOrigin, "has not read", projectId, "-", read.reason,
+            );
+        }
+        return { ok: true, detail: read.detail };
+    }
+
+    /** The latest revisions on one of a server's projects, newest first. */
+    public async listServerProjectHistory(
+        remoteOrigin: string,
+        projectId: string,
+        options?: { limit?: number; before?: string },
+    ): Promise<VcsServerProjectHistoryOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerProjectHistory({
+            ...credentials,
+            projectId,
+            ...(options?.limit === undefined ? {} : { limit: options.limit }),
+            ...(options?.before === undefined ? {} : { before: options.before }),
         });
+    }
+
+    /**
+     * What it takes to ask a server anything: where it is, and the token for it.
+     *
+     * Null covers both halves of `no-token`, which are one answer to a reader: a server
+     * this installation has no record of, and one whose token cannot be produced on this
+     * machine. Neither is a signed-out session - the repositories still open and still
+     * push - so the sentence for it says to add the server again rather than to sign in.
+     */
+    private serverCredentials(
+        remoteOrigin: string,
+    ): { authUrl: string; token: string; userDataDir: string } | null {
+        const session = this.storedServerSession(remoteOrigin);
+        if (!session) return null;
+        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
+        if (token === null) return null;
+        return { authUrl: session.authUrl, token, userDataDir: this.app.getUserDataDir() };
     }
 
     /**
@@ -1857,14 +1930,10 @@ export class VcsManager extends Manager {
         name: string,
         description?: string,
     ): Promise<ServerProjectResult> {
-        const session = this.storedServerSession(remoteOrigin);
-        if (!session) return { ok: false, problem: { kind: "no-token" } };
-        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
-        if (token === null) return { ok: false, problem: { kind: "no-token" } };
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
         const made = await createServerProject({
-            authUrl: session.authUrl,
-            token,
-            userDataDir: this.app.getUserDataDir(),
+            ...credentials,
             name,
             ...(description === undefined ? {} : { description }),
         });

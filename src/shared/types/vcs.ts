@@ -723,6 +723,31 @@ export interface VcsServerDescription {
 }
 
 /**
+ * The capability names Studio knows how to use.
+ *
+ * **Not the set a server may advertise** - `capabilities` stays `string[]` precisely
+ * because a name this Studio does not know is still worth recording. This is the other
+ * half: the names a call site is allowed to gate on, so that asking for one is checked
+ * against something rather than spelled from memory.
+ *
+ * A server that does not advertise one is not asked, and the surface that would have
+ * shown the answer is simply not there. That is not a failure and never reads as one:
+ * the deployment does not offer it, which is a fact about the server rather than about
+ * this machine, and there is nothing for an author to do about it.
+ */
+export type VcsServerCapability =
+    /** Lists projects, and makes them. Every server that answers this API at all. */
+    | "projects"
+    /** Answers what it knows about one project, including what it read inside the file. */
+    | "project-detail"
+    /** Answers a project's recent revisions. */
+    | "project-history"
+    /** Answers who has an account on it. */
+    | "members"
+    /** Mints a token from a username and password, rather than only accepting a pasted one. */
+    | "password-sign-in";
+
+/**
  * What reaching an address came to, before anything has been added.
  *
  * Four answers because four different things happen next: carry on, ask whether to trust
@@ -963,6 +988,113 @@ export type VcsServerProjectsOutcome =
 /** What a server answered when asked to make one. */
 export type VcsServerProjectOutcome =
     | { ok: true; project: VcsServerProject }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * One account on a server, as that server lists it.
+ *
+ * The roster behind the names on revisions. Everything here is the server's own record;
+ * nothing is inferred, and the three flags are false on a server too old to have an
+ * opinion - marking nobody is a plain list, where marking somebody would be a claim about
+ * their authority.
+ */
+export interface VcsServerMember {
+    /** The name this account answers to, and what a revision is written with. */
+    username: string;
+    /** What to call it on screen; the username again when the server gave nothing else. */
+    displayName: string;
+    /**
+     * The address on this account's revisions, or "" when the server holds none.
+     *
+     * **Fetched, and not drawn until a reader opens one member.** Within a server this is
+     * not a secret - every account can ask for this list - but a list printing everybody's
+     * address at once is a different thing from an address on one revision.
+     */
+    email: string;
+    /** Whether this account administers the server. */
+    operator: boolean;
+    /** Whether the server has stopped accepting it. */
+    disabled: boolean;
+    /** Whether the account belongs to a machine rather than to a person. */
+    serviceAccount: boolean;
+    /** When it was made. Epoch ms; absent from a server that did not say. */
+    createdAt?: number;
+}
+
+/** What a server answered when asked who is on it. */
+export type VcsServerMembersOutcome =
+    | { ok: true; members: VcsServerMember[] }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * What a server could read inside one project's own file.
+ *
+ * **`readable` is the whole of it, and false is an ordinary answer.** A server records a
+ * project the moment it is created and opens the file afterwards, so a project made a
+ * moment ago has nothing here; so does every project on a deployment whose reader is not
+ * working. The server's own explanation is deliberately not carried: it is an English
+ * sentence written for whoever runs the server, and Studio has its own line for this in
+ * every language it speaks.
+ *
+ * Every other field is absent unless the server gave it, so nothing here is ever zero
+ * because nobody looked.
+ */
+export interface VcsServerProjectFile {
+    readable: boolean;
+    /** The title inside the project, which need not be the name the server lists it under. */
+    title?: string;
+    stageWidth?: number;
+    stageHeight?: number;
+    scenes?: number;
+    assets?: number;
+    assetBytes?: number;
+}
+
+/** One project as the server knows it, with whatever it could read inside. */
+export interface VcsServerProjectDetail {
+    project: VcsServerProject;
+    file: VcsServerProjectFile;
+}
+
+/** What a server answered when asked about one project. */
+export type VcsServerProjectDetailOutcome =
+    | { ok: true; detail: VcsServerProjectDetail }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * One revision on a server's copy of a project.
+ *
+ * Only the id is certain. A server that has read a repository has the rest, and one part
+ * way through reading it may not; an absent author is drawn as an absent author rather
+ * than as "unknown".
+ */
+export interface VcsServerRevision {
+    id: RevisionId;
+    /** When it was recorded. Epoch ms. */
+    at?: number;
+    /** The identity written on it. */
+    by?: string;
+    message?: string;
+}
+
+/**
+ * A page of a project's history, as the server holds it.
+ *
+ * **An absent `revisions` is not an empty one.** The field is left out entirely for a
+ * project the server has not read - which is the ordinary answer, and the only answer at
+ * all on a deployment whose reader is not working - while a project that genuinely has no
+ * versions yet would carry an empty list. A surface that treats the two alike says "no
+ * versions" about work that has plenty.
+ */
+export interface VcsServerProjectHistoryPage {
+    revisions?: VcsServerRevision[];
+    /** Whether older revisions exist beyond this page. */
+    more: boolean;
+}
+
+/** What a server answered when asked for one project's recent versions. */
+export type VcsServerProjectHistoryOutcome =
+    | { ok: true; page: VcsServerProjectHistoryPage }
     | { ok: false; problem: VcsServerProjectsProblem };
 
 /**
