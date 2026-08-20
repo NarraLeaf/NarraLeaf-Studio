@@ -277,15 +277,33 @@ export async function listServerProjectHistory(options: {
     return { ok: true, page: { revisions: revisions as VcsServerRevision[], more } };
 }
 
-/** Ask a server to make a project, and get back the one it made. */
+/**
+ * Ask a server to record a project, and get back the one it recorded.
+ *
+ * Two acts behind one request, and `repositoryId` is what says which. Without it the
+ * server invents an id and makes the repository to go with it, which is what the
+ * launcher's "new project" does. With it, the repository already exists on this
+ * machine and the server is being asked for the row alone - the copy that fills it is
+ * the one this installation is about to push.
+ *
+ * **The id that comes back is checked against the one that was sent**, and a server
+ * that answered with a different one is reported as a refusal rather than acted on.
+ * That is the check for a server too old to know the field: it ignores it, makes a
+ * repository of its own, and answers with that repository's id - after which pushing
+ * this project at the name would collide with a repository the author never made.
+ * Reading the answer is a more honest test than asking what a server says it can do,
+ * because it is the outcome rather than the claim.
+ */
 export async function createServerProject(options: {
     authUrl: string;
     token: string;
     userDataDir: string;
     name: string;
     description?: string;
+    /** The repository this project already is, as thirty-two hex characters. */
+    repositoryId?: string;
 }): Promise<ServerProjectResult> {
-    const { name, description, ...rest } = options;
+    const { name, description, repositoryId, ...rest } = options;
     const answer = await askServer({
         ...rest,
         path: PROJECTS_PATH,
@@ -294,12 +312,15 @@ export async function createServerProject(options: {
         body: JSON.stringify({
             name,
             ...(description === undefined ? {} : { description }),
+            ...(repositoryId === undefined ? {} : { repositoryId }),
         }),
     });
     if (!answer.ok) return answer;
 
     const project = readProject(asRecord(answer.value)?.["project"]);
-    return project === null
-        ? { ok: false, problem: { kind: "unknown" } }
-        : { ok: true, project };
+    if (project === null) return { ok: false, problem: { kind: "unknown" } };
+    if (repositoryId !== undefined && project.id.toLowerCase() !== repositoryId.toLowerCase()) {
+        return { ok: false, problem: { kind: "wrong-repository" } };
+    }
+    return { ok: true, project };
 }

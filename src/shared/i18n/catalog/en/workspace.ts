@@ -888,6 +888,25 @@ export const workspace = {
                 syncing: "Getting versions from the server…",
                 syncedNothing: "Already up to date",
                 /**
+                 * Putting a project that already has versions on to a server.
+                 *
+                 * The whole act is one press: the server records the project, the project is
+                 * pointed at the server, and every version on this machine goes up. What these
+                 * say is which of those did not happen, because the author's next move differs
+                 * for each — and because nothing was written when the first one is the one that
+                 * failed.
+                 */
+                publish: {
+                    publishing: "Putting this project on the server…",
+                    noToken: "This installation cannot ask that server to record the project. Add the server again with its token.",
+                    refused: "That server refused the account signed in here, so the project was not recorded.",
+                    unreachable: "That server did not answer, so the project was not recorded.",
+                    // The server answered and made a project, and it is not this one. A server
+                    // too old to be asked for this does exactly that.
+                    wrongRepository: "That server recorded a different project, so nothing was sent to it.",
+                    unknown: "That server did not record the project.",
+                },
+                /**
                  * Signing this installation in to the server, and saying who is signed in.
                  *
                  * The `signedInAs` line is the point of the whole thing: while a session is in
