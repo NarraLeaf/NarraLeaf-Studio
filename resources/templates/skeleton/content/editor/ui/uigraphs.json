@@ -941,14 +941,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Return to the title screen? Unsaved progress is lost.",
-                        "button_1_label": "Return to title",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -995,6 +988,45 @@
                           "y": 410
                         }
                       }
+                    },
+                    "i18n.nConfirm.message": {
+                      "id": "i18n.nConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitle"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 300
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_1_label": {
+                      "id": "i18n.nConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitleAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 450
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_2_label": {
+                      "id": "i18n.nConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 600
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -1024,7 +1056,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nConfirm",
+                        "nodeId": "i18n.nConfirm.message",
                         "port": "in"
                       }
                     },
@@ -1065,6 +1097,66 @@
                       },
                       "to": {
                         "nodeId": "sfx.hoverPlay",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
                         "port": "in"
                       }
                     }
@@ -1275,14 +1367,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Go back to this line? Everything after it is undone.",
-                        "button_1_label": "Go back",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -1302,6 +1387,45 @@
                         "editorLayout": {
                           "x": 280,
                           "y": 450
+                        }
+                      }
+                    },
+                    "i18n.nAsk.message": {
+                      "id": "i18n.nAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.historyBack"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 140,
+                          "y": 920
+                        }
+                      }
+                    },
+                    "i18n.nAsk.button_1_label": {
+                      "id": "i18n.nAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.historyBackAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 140,
+                          "y": 1070
+                        }
+                      }
+                    },
+                    "i18n.nAsk.button_2_label": {
+                      "id": "i18n.nAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 140,
+                          "y": 1220
                         }
                       }
                     }
@@ -1410,6 +1534,66 @@
                     {
                       "from": {
                         "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nAsk.message",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.button_2_label",
                         "port": "next"
                       },
                       "to": {
@@ -3038,14 +3222,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Return to the title screen? Unsaved progress is lost.",
-                        "button_1_label": "Return to title",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -3092,6 +3269,45 @@
                           "y": 410
                         }
                       }
+                    },
+                    "i18n.nConfirm.message": {
+                      "id": "i18n.nConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitle"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 300
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_1_label": {
+                      "id": "i18n.nConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitleAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 450
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_2_label": {
+                      "id": "i18n.nConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 600
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -3121,7 +3337,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nConfirm",
+                        "nodeId": "i18n.nConfirm.message",
                         "port": "in"
                       }
                     },
@@ -3162,6 +3378,66 @@
                       },
                       "to": {
                         "nodeId": "sfx.hoverPlay",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
                         "port": "in"
                       }
                     }
@@ -10930,14 +11206,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Return to the title screen? Unsaved progress is lost.",
-                        "button_1_label": "Return to title",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -10984,6 +11253,45 @@
                           "y": 410
                         }
                       }
+                    },
+                    "i18n.nConfirm.message": {
+                      "id": "i18n.nConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitle"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 300
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_1_label": {
+                      "id": "i18n.nConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitleAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 450
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_2_label": {
+                      "id": "i18n.nConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 600
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -11013,7 +11321,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nConfirm",
+                        "nodeId": "i18n.nConfirm.message",
                         "port": "in"
                       }
                     },
@@ -11054,6 +11362,66 @@
                       },
                       "to": {
                         "nodeId": "sfx.hoverPlay",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
                         "port": "in"
                       }
                     }
@@ -14505,14 +14873,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Return to the title screen? Unsaved progress is lost.",
-                        "button_1_label": "Return to title",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -14559,6 +14920,45 @@
                           "y": 410
                         }
                       }
+                    },
+                    "i18n.nConfirm.message": {
+                      "id": "i18n.nConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitle"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 300
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_1_label": {
+                      "id": "i18n.nConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitleAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 450
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_2_label": {
+                      "id": "i18n.nConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 600
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -14588,7 +14988,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nConfirm",
+                        "nodeId": "i18n.nConfirm.message",
                         "port": "in"
                       }
                     },
@@ -14629,6 +15029,66 @@
                       },
                       "to": {
                         "nodeId": "sfx.hoverPlay",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
                         "port": "in"
                       }
                     }
@@ -16850,14 +17310,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Quit the game?",
-                        "button_1_label": "Quit",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -16904,6 +17357,45 @@
                           "y": 260
                         }
                       }
+                    },
+                    "i18n.nAsk.message": {
+                      "id": "i18n.nAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.quit"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 300
+                        }
+                      }
+                    },
+                    "i18n.nAsk.button_1_label": {
+                      "id": "i18n.nAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.quitAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 450
+                        }
+                      }
+                    },
+                    "i18n.nAsk.button_2_label": {
+                      "id": "i18n.nAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 600
+                        }
+                      }
                     }
                   },
                   "edges": [
@@ -16933,7 +17425,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "nAsk",
+                        "nodeId": "i18n.nAsk.message",
                         "port": "in"
                       }
                     },
@@ -16944,6 +17436,66 @@
                       },
                       "to": {
                         "nodeId": "sfx.hoverPlay",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
                         "port": "in"
                       }
                     }
@@ -17705,14 +18257,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "This slot already holds a save. Overwrite it?",
-                        "button_1_label": "Overwrite",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -17778,14 +18323,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -17970,6 +18508,84 @@
                         "editorLayout": {
                           "x": 1400,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.message": {
+                      "id": "i18n.nOverwriteConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwrite"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_1_label": {
+                      "id": "i18n.nOverwriteConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwriteAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_2_label": {
+                      "id": "i18n.nOverwriteConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -18441,7 +19057,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nOverwriteConfirm",
+                        "nodeId": "i18n.nOverwriteConfirm.message",
                         "port": "in"
                       }
                     },
@@ -18521,7 +19137,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -18812,6 +19428,126 @@
                       },
                       "to": {
                         "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -19447,14 +20183,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "This slot already holds a save. Overwrite it?",
-                        "button_1_label": "Overwrite",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -19520,14 +20249,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -19712,6 +20434,84 @@
                         "editorLayout": {
                           "x": 1400,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.message": {
+                      "id": "i18n.nOverwriteConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwrite"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_1_label": {
+                      "id": "i18n.nOverwriteConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwriteAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_2_label": {
+                      "id": "i18n.nOverwriteConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -20183,7 +20983,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nOverwriteConfirm",
+                        "nodeId": "i18n.nOverwriteConfirm.message",
                         "port": "in"
                       }
                     },
@@ -20263,7 +21063,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -20554,6 +21354,126 @@
                       },
                       "to": {
                         "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -21189,14 +22109,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "This slot already holds a save. Overwrite it?",
-                        "button_1_label": "Overwrite",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -21262,14 +22175,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -21454,6 +22360,84 @@
                         "editorLayout": {
                           "x": 1400,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.message": {
+                      "id": "i18n.nOverwriteConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwrite"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_1_label": {
+                      "id": "i18n.nOverwriteConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwriteAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_2_label": {
+                      "id": "i18n.nOverwriteConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -21925,7 +22909,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nOverwriteConfirm",
+                        "nodeId": "i18n.nOverwriteConfirm.message",
                         "port": "in"
                       }
                     },
@@ -22005,7 +22989,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -22296,6 +23280,126 @@
                       },
                       "to": {
                         "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -22931,14 +24035,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "This slot already holds a save. Overwrite it?",
-                        "button_1_label": "Overwrite",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -23004,14 +24101,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -23196,6 +24286,84 @@
                         "editorLayout": {
                           "x": 1400,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.message": {
+                      "id": "i18n.nOverwriteConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwrite"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_1_label": {
+                      "id": "i18n.nOverwriteConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwriteAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_2_label": {
+                      "id": "i18n.nOverwriteConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -23667,7 +24835,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nOverwriteConfirm",
+                        "nodeId": "i18n.nOverwriteConfirm.message",
                         "port": "in"
                       }
                     },
@@ -23747,7 +24915,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -24038,6 +25206,126 @@
                       },
                       "to": {
                         "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -24673,14 +25961,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "This slot already holds a save. Overwrite it?",
-                        "button_1_label": "Overwrite",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -24746,14 +26027,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -24938,6 +26212,84 @@
                         "editorLayout": {
                           "x": 1400,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.message": {
+                      "id": "i18n.nOverwriteConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwrite"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_1_label": {
+                      "id": "i18n.nOverwriteConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwriteAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_2_label": {
+                      "id": "i18n.nOverwriteConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -25409,7 +26761,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nOverwriteConfirm",
+                        "nodeId": "i18n.nOverwriteConfirm.message",
                         "port": "in"
                       }
                     },
@@ -25489,7 +26841,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -25780,6 +27132,126 @@
                       },
                       "to": {
                         "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -26415,14 +27887,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "This slot already holds a save. Overwrite it?",
-                        "button_1_label": "Overwrite",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -26488,14 +27953,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -26680,6 +28138,84 @@
                         "editorLayout": {
                           "x": 1400,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.message": {
+                      "id": "i18n.nOverwriteConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwrite"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_1_label": {
+                      "id": "i18n.nOverwriteConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.overwriteAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nOverwriteConfirm.button_2_label": {
+                      "id": "i18n.nOverwriteConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -27151,7 +28687,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nOverwriteConfirm",
+                        "nodeId": "i18n.nOverwriteConfirm.message",
                         "port": "in"
                       }
                     },
@@ -27231,7 +28767,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -27522,6 +29058,126 @@
                       },
                       "to": {
                         "nodeId": "nOverwriteList",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nOverwriteConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nOverwriteConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -28132,14 +29788,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Load this save? Unsaved progress is lost.",
-                        "button_1_label": "Load",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -28205,14 +29854,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -28397,6 +30039,84 @@
                         "editorLayout": {
                           "x": 280,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.message": {
+                      "id": "i18n.nLoadConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.load"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_1_label": {
+                      "id": "i18n.nLoadConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.loadAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_2_label": {
+                      "id": "i18n.nLoadConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -28878,7 +30598,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nLoadConfirm",
+                        "nodeId": "i18n.nLoadConfirm.message",
                         "port": "in"
                       }
                     },
@@ -28958,7 +30678,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -29229,6 +30949,126 @@
                       },
                       "to": {
                         "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -29839,14 +31679,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Load this save? Unsaved progress is lost.",
-                        "button_1_label": "Load",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -29912,14 +31745,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -30104,6 +31930,84 @@
                         "editorLayout": {
                           "x": 280,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.message": {
+                      "id": "i18n.nLoadConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.load"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_1_label": {
+                      "id": "i18n.nLoadConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.loadAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_2_label": {
+                      "id": "i18n.nLoadConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -30585,7 +32489,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nLoadConfirm",
+                        "nodeId": "i18n.nLoadConfirm.message",
                         "port": "in"
                       }
                     },
@@ -30665,7 +32569,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -30936,6 +32840,126 @@
                       },
                       "to": {
                         "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -31546,14 +33570,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Load this save? Unsaved progress is lost.",
-                        "button_1_label": "Load",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -31619,14 +33636,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -31811,6 +33821,84 @@
                         "editorLayout": {
                           "x": 280,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.message": {
+                      "id": "i18n.nLoadConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.load"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_1_label": {
+                      "id": "i18n.nLoadConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.loadAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_2_label": {
+                      "id": "i18n.nLoadConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -32292,7 +34380,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nLoadConfirm",
+                        "nodeId": "i18n.nLoadConfirm.message",
                         "port": "in"
                       }
                     },
@@ -32372,7 +34460,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -32643,6 +34731,126 @@
                       },
                       "to": {
                         "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -33253,14 +35461,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Load this save? Unsaved progress is lost.",
-                        "button_1_label": "Load",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -33326,14 +35527,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -33518,6 +35712,84 @@
                         "editorLayout": {
                           "x": 280,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.message": {
+                      "id": "i18n.nLoadConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.load"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_1_label": {
+                      "id": "i18n.nLoadConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.loadAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_2_label": {
+                      "id": "i18n.nLoadConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -33999,7 +36271,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nLoadConfirm",
+                        "nodeId": "i18n.nLoadConfirm.message",
                         "port": "in"
                       }
                     },
@@ -34079,7 +36351,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -34350,6 +36622,126 @@
                       },
                       "to": {
                         "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -34960,14 +37352,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Load this save? Unsaved progress is lost.",
-                        "button_1_label": "Load",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -35033,14 +37418,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -35225,6 +37603,84 @@
                         "editorLayout": {
                           "x": 280,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.message": {
+                      "id": "i18n.nLoadConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.load"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_1_label": {
+                      "id": "i18n.nLoadConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.loadAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_2_label": {
+                      "id": "i18n.nLoadConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -35706,7 +38162,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nLoadConfirm",
+                        "nodeId": "i18n.nLoadConfirm.message",
                         "port": "in"
                       }
                     },
@@ -35786,7 +38242,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -36057,6 +38513,126 @@
                       },
                       "to": {
                         "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -36667,14 +39243,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Load this save? Unsaved progress is lost.",
-                        "button_1_label": "Load",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -36740,14 +39309,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Delete this save? It cannot be brought back.",
-                        "button_1_label": "Delete",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -36932,6 +39494,84 @@
                         "editorLayout": {
                           "x": 280,
                           "y": 1350
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.message": {
+                      "id": "i18n.nLoadConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.load"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_1_label": {
+                      "id": "i18n.nLoadConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.loadAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1650
+                        }
+                      }
+                    },
+                    "i18n.nLoadConfirm.button_2_label": {
+                      "id": "i18n.nLoadConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 1800
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.message": {
+                      "id": "i18n.nDelAsk.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSave"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2100
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_1_label": {
+                      "id": "i18n.nDelAsk.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.deleteSaveAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2250
+                        }
+                      }
+                    },
+                    "i18n.nDelAsk.button_2_label": {
+                      "id": "i18n.nDelAsk.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 640,
+                          "y": 2400
                         }
                       }
                     }
@@ -37413,7 +40053,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nLoadConfirm",
+                        "nodeId": "i18n.nLoadConfirm.message",
                         "port": "in"
                       }
                     },
@@ -37493,7 +40133,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "nDelAsk",
+                        "nodeId": "i18n.nDelAsk.message",
                         "port": "in"
                       }
                     },
@@ -37764,6 +40404,126 @@
                       },
                       "to": {
                         "nodeId": "n38",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nLoadConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nLoadConfirm",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nDelAsk.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nDelAsk",
                         "port": "in"
                       }
                     }
@@ -40230,14 +42990,7 @@
                           "button_2_label",
                           "button_2_pressed"
                         ],
-                        "__inlineLiteralPins": [
-                          "message",
-                          "button_1_label",
-                          "button_2_label"
-                        ],
-                        "message": "Load this auto save? The game you are in is left behind.",
-                        "button_1_label": "Load",
-                        "button_2_label": "Cancel"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -40268,6 +43021,45 @@
                         "editorLayout": {
                           "x": 280,
                           "y": 420
+                        }
+                      }
+                    },
+                    "i18n.n15.message": {
+                      "id": "i18n.n15.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.loadAuto"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 500,
+                          "y": 680
+                        }
+                      }
+                    },
+                    "i18n.n15.button_1_label": {
+                      "id": "i18n.n15.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.loadAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 500,
+                          "y": 830
+                        }
+                      }
+                    },
+                    "i18n.n15.button_2_label": {
+                      "id": "i18n.n15.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 500,
+                          "y": 980
                         }
                       }
                     }
@@ -40359,7 +43151,7 @@
                         "port": "true"
                       },
                       "to": {
-                        "nodeId": "n15",
+                        "nodeId": "i18n.n15.message",
                         "port": "in"
                       }
                     },
@@ -40400,6 +43192,66 @@
                       },
                       "to": {
                         "nodeId": "n14",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.n15.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.n15.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.n15.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.n15.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.n15.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.n15.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.n15.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.n15.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n15",
                         "port": "in"
                       }
                     }

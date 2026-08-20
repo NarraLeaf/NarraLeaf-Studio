@@ -1011,6 +1011,7 @@ export const workspace = {
             // Category headers in the settings table and cheat sheet (from the static catalog).
             categories: {
                 general: "General",
+                run: "Run",
                 story: "Story Editor",
                 uiEditor: "UI Editor",
                 blueprint: "Blueprint Editor",
@@ -1025,6 +1026,11 @@ export const workspace = {
                 cheatSheet: "Show Keyboard Shortcuts",
                 contextHelp: "Help for What Is Focused",
                 reopenClosedTab: "Reopen Closed Tab",
+                // One chord for whichever of Dev Mode, Preview and Test is holding the run slot,
+                // so the three commands that stop them share a single rebindable shortcut.
+                run: {
+                    stop: "Stop the Run",
+                },
                 undo: "Undo",
                 redo: "Redo",
                 quickSwitchNext: "Switch to Next Editor Tab",

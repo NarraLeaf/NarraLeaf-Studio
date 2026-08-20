@@ -6,6 +6,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { FIELD_LABEL_CLASS } from "./inspectorFieldKit";
@@ -44,6 +45,10 @@ export function AssetField(props: {
         () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
         [context, isInitialized],
     );
+    // Read live, and re-read when the library moves: the lookup below is already current on every
+    // render, but nothing would re-render this field for a rename made in the asset panel - the
+    // records are edited in place, so the props it takes do not change.
+    useAssetLibraryRevision();
     const selectedAsset = props.assetId
         ? (assetsService?.getAssets()[props.assetType] as Record<string, Asset> | undefined)?.[props.assetId] ?? null
         : null;

@@ -222,6 +222,76 @@
       "status": "translated",
       "target": "ボイス"
     },
+    "key:confirm.cancel": {
+      "sourceHash": "fnv1a:35afca3b",
+      "status": "translated",
+      "target": "キャンセル"
+    },
+    "key:confirm.deleteSave": {
+      "sourceHash": "fnv1a:8dd920c3",
+      "status": "translated",
+      "target": "このセーブデータを削除しますか？元に戻せません。"
+    },
+    "key:confirm.deleteSaveAnswer": {
+      "sourceHash": "fnv1a:5797ea6a",
+      "status": "translated",
+      "target": "削除"
+    },
+    "key:confirm.historyBack": {
+      "sourceHash": "fnv1a:e97e8c49",
+      "status": "translated",
+      "target": "この行まで戻りますか？それ以降は取り消されます。"
+    },
+    "key:confirm.historyBackAnswer": {
+      "sourceHash": "fnv1a:628e5a9e",
+      "status": "translated",
+      "target": "戻る"
+    },
+    "key:confirm.load": {
+      "sourceHash": "fnv1a:3ac0fe9a",
+      "status": "translated",
+      "target": "このセーブデータをロードしますか？セーブしていない進行状況は失われます。"
+    },
+    "key:confirm.loadAnswer": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:confirm.loadAuto": {
+      "sourceHash": "fnv1a:14c2706a",
+      "status": "translated",
+      "target": "このオートセーブをロードしますか？いま進めているゲームは失われます。"
+    },
+    "key:confirm.overwrite": {
+      "sourceHash": "fnv1a:72168a30",
+      "status": "translated",
+      "target": "このスロットにはすでにセーブデータがあります。上書きしますか？"
+    },
+    "key:confirm.overwriteAnswer": {
+      "sourceHash": "fnv1a:78ff0e92",
+      "status": "translated",
+      "target": "上書き"
+    },
+    "key:confirm.quit": {
+      "sourceHash": "fnv1a:f165e3fa",
+      "status": "translated",
+      "target": "ゲームを終了しますか？"
+    },
+    "key:confirm.quitAnswer": {
+      "sourceHash": "fnv1a:c7b3d356",
+      "status": "translated",
+      "target": "終了"
+    },
+    "key:confirm.toTitle": {
+      "sourceHash": "fnv1a:313d8223",
+      "status": "translated",
+      "target": "タイトル画面に戻りますか？セーブしていない進行状況は失われます。"
+    },
+    "key:confirm.toTitleAnswer": {
+      "sourceHash": "fnv1a:bdf9bb42",
+      "status": "translated",
+      "target": "タイトルへ"
+    },
     "key:load.autoSaves": {
       "sourceHash": "fnv1a:c13c80d4",
       "status": "translated",

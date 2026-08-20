@@ -863,6 +863,7 @@ export const workspace = {
             // 設定の表と一覧の見出し（静的なカタログから来る）。
             categories: {
                 general: "一般",
+                run: "実行",
                 story: "ストーリーエディタ",
                 uiEditor: "UI エディタ",
                 blueprint: "ブループリントエディタ",
@@ -877,6 +878,11 @@ export const workspace = {
                 cheatSheet: "キーボードショートカットを表示",
                 contextHelp: "フォーカスされているもののヘルプ",
                 reopenClosedTab: "閉じたタブを開き直す",
+                // 開発モード・プレビュー・テストのうち、実行中のものを止める一つのキー。
+                // 停止する三つのコマンドが同じ割り当てを共有する。
+                run: {
+                    stop: "実行を停止",
+                },
                 undo: "元に戻す",
                 redo: "やり直す",
                 quickSwitchNext: "次のエディタのタブへ",
