@@ -289,6 +289,16 @@ function expandReferencedAsset(assetId: string, expand?: AssetSetExpander): read
 export function splitAssetSetReferences(
     references: readonly AssetReference[],
     expand?: AssetSetExpander,
+    /**
+     * Whether this particular site may name a set at all.
+     *
+     * Absent means every site in the slice may, which is true of stories and characters. The
+     * interface has one field that may not - a typeface, see `uiAssetSlotAcceptsSets` - and leaving
+     * that site unexpanded is what keeps `assets/missing` pointed at it: a set id there is a
+     * reference the build cannot resolve, and it has to stay reported as one rather than be quietly
+     * counted as a use of the set's files.
+     */
+    accepts?: (reference: AssetReference) => boolean,
 ): { references: AssetReference[]; setReferences: AssetReference[] } {
     if (!expand) {
         return { references: [...references], setReferences: [] };
@@ -296,7 +306,7 @@ export function splitAssetSetReferences(
     const out: AssetReference[] = [];
     const setReferences: AssetReference[] = [];
     for (const reference of references) {
-        const members = expand(reference.assetId);
+        const members = accepts && !accepts(reference) ? null : expand(reference.assetId);
         if (!members) {
             out.push(reference);
             continue;

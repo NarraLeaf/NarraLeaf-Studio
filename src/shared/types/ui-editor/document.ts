@@ -1,3 +1,4 @@
+import type { AssetVariantMap } from "../assetSet";
 import { isContainerFlowLayoutParent } from "./container";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
@@ -75,6 +76,12 @@ export type UISurfaceSettings = {
      */
     backgroundImage?: UISurfaceBackgroundImage;
     pageAnimation?: UIPageAnimationSettings;
+    /**
+     * What the asset set this Surface's own background names resolves to, per locale. Build-written
+     * exactly as {@link UIElement.assetVariants} is, and here rather than on the Surface so the
+     * answer sits beside the only asset a Surface names by itself.
+     */
+    assetVariants?: AssetVariantMap;
 };
 
 export type UISlotDefinition = {
@@ -167,6 +174,22 @@ export type UIElement = {
      */
     animation?: UIPageAnimationSettings;
     extra?: Record<string, unknown>;
+    /**
+     * What each asset set THIS element names resolves to, per locale.
+     *
+     * **Never authored and never on disk under `editor/`.** It is written while a package is being
+     * assembled (`@shared/build/uiAssetSets`) and exists only in the bundle a game runs from, which
+     * is why editing a widget cannot produce one and why version control never sees it.
+     *
+     * It sits on the element rather than in a document-wide table for the reason the story row's
+     * copy gives: a table would enumerate every localized asset the project has, which is the one
+     * thing a protected pack refuses to disclose. One element discloses the variants of the sets
+     * that element itself uses, which is what drawing the widget already discloses.
+     *
+     * Keyed by the set id the props still name - the prop keeps the set id, so a widget whose map is
+     * missing fails loudly at a resolver rather than quietly fetching one language's picture.
+     */
+    assetVariants?: AssetVariantMap;
 };
 
 export function getUIComponentLink(element: Pick<UIElement, "extra"> | null | undefined): UIComponentLink | null {

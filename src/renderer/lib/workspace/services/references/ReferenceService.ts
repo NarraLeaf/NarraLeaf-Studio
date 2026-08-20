@@ -28,6 +28,19 @@ import {
     type ReferenceSliceKind,
 } from "./referenceModel";
 import { lookupAssetIdForToken } from "@/lib/workspace/assets/assetUrlTokens";
+import { uiAssetSlotAcceptsSets } from "@shared/build/uiAssetSlots";
+
+/**
+ * The property name a UI reference's `field` path ends in.
+ *
+ * `field` is a dotted path (`imageFill`, `scrollbar.thumb.imageFill`, `appearance.fontAssetId`), and
+ * what decides whether a set is legal there is the last segment alone.
+ */
+function uiReferenceSlotKey(field: string | undefined): string {
+    const path = field ?? "";
+    const cut = path.lastIndexOf(".");
+    return cut >= 0 ? path.slice(cut + 1) : path;
+}
 
 const REBUILD_DEBOUNCE_MS = 300;
 
@@ -481,8 +494,8 @@ export class ReferenceService extends Service<ReferenceService> {
      * files it used to resolve to, so the project check reports no error over a field that names an
      * id nothing has.
      *
-     * Two slices, not one: a set is nameable by a character as well as by a row. A slice left out of
-     * this is the one whose stale answer survives a rescan.
+     * Three slices, not one: a set is nameable by a character and by a widget as well as by a row. A
+     * slice left out of this is the one whose stale answer survives a rescan.
      *
      * Every feed lands on one key per slice, so a burst of tag writes (an import, a wizard) costs
      * one rescan each rather than one per file.
@@ -506,6 +519,10 @@ export class ReferenceService extends Service<ReferenceService> {
             // grouped view cached against the answers it just replaced.
             this.scheduleRebuild("character", () => {
                 this.rebuildCharacterSlice();
+                this.emitChanged();
+            });
+            this.scheduleRebuild("ui", () => {
+                this.rebuildUISlice();
                 this.emitChanged();
             });
         };
@@ -688,11 +705,22 @@ export class ReferenceService extends Service<ReferenceService> {
             const extraction = extractUIDocumentAssetReferences(uiDocumentService.getDocument(), {
                 resolveAssetToken: lookupAssetIdForToken,
             });
-            this.uiReferences = extraction.references;
+            // A widget or a Surface background may name an asset set, and a set id is not an asset:
+            // left unexpanded it reaches `assets/missing` as a reference to a file the project does
+            // not have, which is an error and refuses the build. The typeface slot is excluded on
+            // purpose - see `uiAssetSlotAcceptsSets`.
+            const split = splitAssetSetReferences(
+                extraction.references,
+                this.assetSetExpander(),
+                reference => uiAssetSlotAcceptsSets(uiReferenceSlotKey(reference.field)),
+            );
+            this.uiReferences = split.references;
+            this.sliceSetReferences.set("ui", split.setReferences);
             this.setSliceGaps("ui", extraction.gaps);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan the UI document:", error);
             this.uiReferences = [];
+            this.sliceSetReferences.set("ui", []);
             this.setSliceGaps("ui", [{ reason: "sliceFailed", slice: "ui", location: UI_SLICE_LOCATION }]);
         }
     }

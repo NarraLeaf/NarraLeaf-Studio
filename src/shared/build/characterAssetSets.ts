@@ -44,7 +44,13 @@ import type { GameLocalizationBundle } from "../types/localization";
  * scan from copying them without being told anything about axes. `axisUnset` is still refused.
  */
 
-/** A fault in one set, and the part of the project that named it. */
+/**
+ * A fault in one set, and the part of the project that named it.
+ *
+ * Declared here because characters were the first content without rows to report against; the
+ * interface pass reports the same shape, so both are one thing for the caller that turns it into a
+ * sentence.
+ */
 export type AssetSetRecordProblem = AssetSetProblemDetail & { slice: string };
 
 export type CharacterAssetSetResult = {
