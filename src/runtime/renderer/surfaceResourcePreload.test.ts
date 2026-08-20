@@ -346,3 +346,44 @@ describe("runtime surface asset preload", () => {
         expect(decoded).toEqual([]);
     });
 });
+
+/**
+ * The project's default fonts are named in the bundle rather than in any widget, so the walk that
+ * collects everything else cannot see them - and they are the one typeface the whole game is set in.
+ */
+describe("the project's default fonts", () => {
+    function packWithDefaultFonts(): GameRuntimePackV1 {
+        const pack = makePack();
+        pack.assets.items["default-font"] = {
+            id: "default-font",
+            type: "font",
+            name: "default",
+            source: "local",
+            relativePath: "assets/default-font.woff2",
+            ext: ".woff2",
+        };
+        (pack.bundle as { fonts?: unknown }).fonts = [
+            { assetId: "default-font" },
+            // A built-in stack is a CSS literal with no bytes to fetch; it is not in the manifest
+            // and must not be warmed.
+            { assetId: "builtin:font:serif" },
+        ];
+        return pack;
+    }
+
+    it("warms with the first surface, ahead of what that surface names", () => {
+        const pack = packWithDefaultFonts();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+
+        expect(collectRuntimeSurfaceAssetIds(pack, home)[0]).toBe("default-font");
+    });
+
+    it("is carried by the whole-pack sweep too", () => {
+        const pack = packWithDefaultFonts();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+
+        const { assetIds } = collectRuntimePackAssetIds(pack, home);
+        expect(assetIds).toContain("default-font");
+        expect(assetIds).not.toContain("builtin:font:serif");
+    });
+});

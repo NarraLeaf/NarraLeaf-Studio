@@ -1,5 +1,5 @@
 /**
- * Project -> Brand: the project's palette, one row per colour.
+ * Project -> Design: the project's palette, one row per colour, and its default font stack.
  *
  * Two parts, and the split is the model's. The colours with a plain id are the project's own and
  * are what an author decides; the ids carrying a dot are the slots each control paints with, and
@@ -32,8 +32,8 @@
  * Comments in English per project convention.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
@@ -46,14 +46,21 @@ import {
     serializeColorValue,
 } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
+import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { EDITOR_BUILTIN_FONT_VIRTUAL_GROUP, getBuiltinEditorFontDisplayName } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
+import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { BrandService } from "@/lib/workspace/services/brand/BrandService";
+import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import { collectBrandLinkReferences, countBrandLinkReferences } from "@shared/brand/brandReferences";
 import type { TranslationKey } from "@shared/i18n";
 import { BRAND_CONTROL_GROUPS, type BrandColor } from "@shared/types/brand";
+import { PROJECT_FONT_STACK_MAX, type ProjectFontEntry } from "@shared/types/typography";
 import { useWorkspace } from "../../../context";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
@@ -75,6 +82,24 @@ const UNREADABLE_COLOR_FALLBACK: ColorValue = { hex: "#FFFFFF", alpha: 1 };
  */
 const SWATCH_BOX_CLASS = "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
     + " ring-1 ring-inset ring-edge-strong";
+
+/**
+ * The specimen's own box, beside the name of the font it is set in.
+ *
+ * Wider than the palette's swatch and squared off rather than round, because what it holds is two
+ * letters rather than a dot - and `rounded-md` is what a box of that size is, per the §3 rule that a
+ * nested box never rounds further than the control scale around it.
+ */
+const SPECIMEN_BOX_CLASS = "inline-flex h-6 w-9 shrink-0 items-center justify-center rounded-md"
+    + " ring-1 ring-inset ring-edge-strong text-xs text-fg";
+
+/**
+ * What the font picker offers besides the library: the system stacks, which need no font file.
+ *
+ * Deliberately not the project-default row `FontAssetField` shows - this is the surface the project
+ * default is built on, and offering it here would be a stack pointing at itself.
+ */
+const FONT_PICKER_VIRTUAL_GROUPS = [EDITOR_BUILTIN_FONT_VIRTUAL_GROUP];
 
 /**
  * Clamps that keep this subtree from widening the panel.
@@ -273,6 +298,179 @@ export function ProjectDesignSection({ uiService }: ProjectSectionProps) {
                     </Accordion>
                 </div>
             </SettingsGroup>
+
+            <FontStackGroup service={brandService} />
+        </div>
+    );
+}
+
+/**
+ * Project -> Design: the fonts text is set in, in priority order.
+ *
+ * The list *is* the feature. A widget that has chosen no font of its own is set in this stack, and a
+ * widget that has chosen one falls through to it for the characters its own typeface has no glyph
+ * for - so the order of these rows is what the rest of the project inherits, and moving a row is the
+ * edit an author comes here to make. See `@shared/types/typography` for why nothing is written into
+ * a widget to make that happen.
+ *
+ * Not an accordion, unlike the control slots above: a stack is two or three rows and all of them are
+ * what the author came for. Not confirmed on delete either - a removed font is one press of Add away,
+ * and the palette's confirmation exists because a deleted colour leaves broken links behind, which a
+ * removed font cannot do.
+ */
+function FontStackGroup({ service }: { service: BrandService | null }) {
+    const { t } = useTranslation();
+    const { context } = useWorkspace();
+    const freeze = useFreezeGuard();
+    const [fonts, setFonts] = useState<ProjectFontEntry[]>([]);
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const addRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!service) {
+            setFonts([]);
+            return;
+        }
+        setFonts(service.listFonts());
+        return service.onFontsChanged(setFonts);
+    }, [service]);
+
+    const assetsService = useMemo(() => {
+        try {
+            return context?.services.get<AssetsService>(Services.Assets) ?? null;
+        } catch {
+            return null;
+        }
+    }, [context]);
+
+    /**
+     * What a row is called: the built-in stack's name, or the library's name for the asset.
+     *
+     * A font the library no longer has is named as missing rather than falling back to the generic
+     * word for a typeface. The stack keeps the id - an asset can come back, and dropping the row
+     * would lose an ordering the author set - so the row has to be able to say what it is holding.
+     */
+    const fontLabel = useCallback((assetId: string): string => {
+        const builtin = getBuiltinEditorFontDisplayName(assetId);
+        if (builtin) {
+            return builtin;
+        }
+        const asset = assetsService?.getAssets()[AssetType.Font]?.[assetId];
+        return asset?.name ?? t("brand.fonts.missing");
+    }, [assetsService, t]);
+
+    const handleConfirm = useCallback((assets: Asset[]) => {
+        for (const asset of assets) {
+            service?.addFont(asset.id);
+        }
+        setPickerOpen(false);
+    }, [service]);
+
+    const full = fonts.length >= PROJECT_FONT_STACK_MAX;
+    const selectedIds = useMemo(() => fonts.map(entry => entry.assetId), [fonts]);
+
+    return (
+        <SettingsGroup
+            title={t("project.group.typography")}
+            description={t("brand.fonts.description")}
+        >
+            {fonts.length > 0 ? (
+                <div className="min-w-0 border-t border-edge">
+                    {fonts.map((entry, index) => (
+                        <FontRow
+                            key={entry.assetId}
+                            entry={entry}
+                            label={fontLabel(entry.assetId)}
+                            service={service}
+                            first={index === 0}
+                            last={index === fonts.length - 1}
+                        />
+                    ))}
+                </div>
+            ) : null}
+            <div className="flex min-w-0" ref={addRef}>
+                <Button size="sm" onClick={() => setPickerOpen(true)} {...freeze.writes(!service || full)}>
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("brand.fonts.add")}
+                </Button>
+            </div>
+
+            <AssetSelector
+                visible={pickerOpen}
+                assetType={AssetType.Font}
+                virtualGroups={FONT_PICKER_VIRTUAL_GROUPS}
+                virtualGroupsPlacement="before"
+                anchorRef={addRef}
+                title={t("brand.fonts.add")}
+                multiple={false}
+                // The stack's own ids, so a font already on it reads as taken rather than as a fresh
+                // pick that silently does nothing - `addFont` refuses a duplicate.
+                selectedIds={selectedIds}
+                onClose={() => setPickerOpen(false)}
+                onConfirm={handleConfirm}
+            />
+        </SettingsGroup>
+    );
+}
+
+/**
+ * One rung: a specimen set in that font alone, its name, and its place in the order.
+ *
+ * `followProjectDefault: false` on the specimen is load-bearing. The default resolution appends the
+ * whole project stack to whatever it is asked for, which is right everywhere else and wrong here:
+ * every row would preview through the same fallbacks and a row whose own font failed to load would
+ * look exactly like one that worked.
+ */
+function FontRow({
+    entry,
+    label,
+    service,
+    first,
+    last,
+}: {
+    entry: ProjectFontEntry;
+    label: string;
+    service: BrandService | null;
+    first: boolean;
+    last: boolean;
+}) {
+    const { t } = useTranslation();
+    const freeze = useFreezeGuard();
+    const { cssFamily } = useEditorFontFamily(entry.assetId, { followProjectDefault: false });
+
+    return (
+        <div className="flex min-w-0 items-center gap-2 border-b border-edge py-1.5">
+            <span className={SPECIMEN_BOX_CLASS} style={cssFamily ? { fontFamily: cssFamily } : undefined}>
+                Aa
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs text-fg">{label}</span>
+            <IconButton
+                size="sm"
+                aria-label={t("brand.fonts.moveUp", { name: label })}
+                className="shrink-0"
+                onClick={() => service?.moveFont(entry.assetId, -1)}
+                {...freeze.writes(!service || first)}
+            >
+                <ChevronUp className="h-3.5 w-3.5" />
+            </IconButton>
+            <IconButton
+                size="sm"
+                aria-label={t("brand.fonts.moveDown", { name: label })}
+                className="shrink-0"
+                onClick={() => service?.moveFont(entry.assetId, 1)}
+                {...freeze.writes(!service || last)}
+            >
+                <ChevronDown className="h-3.5 w-3.5" />
+            </IconButton>
+            <IconButton
+                size="sm"
+                aria-label={t("brand.fonts.remove", { name: label })}
+                className="shrink-0 hover:text-danger"
+                onClick={() => service?.removeFont(entry.assetId)}
+                {...freeze.writes(!service)}
+            >
+                <Trash2 className="h-3.5 w-3.5" />
+            </IconButton>
         </div>
     );
 }

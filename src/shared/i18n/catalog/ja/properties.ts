@@ -98,7 +98,8 @@ export const properties = {
     },
     fontAsset: {
         fallbackName: "フォント",
-        none: "フォントなし",
+        projectDefault: "プロジェクト既定のフォント",
+        projectSection: "プロジェクト",
         choose: "フォントを選ぶ",
         loadError: "フォントを読み込めなかった（{error}）。アセットが正しくなるまで、プレビューは代替フォントで表示する",
         select: "フォントを選択",
@@ -153,6 +154,7 @@ export const properties = {
             uiElement: "インターフェース",
             character: "キャラクター",
             voice: "ボイス",
+            design: "デザイン",
         },
     },
     tags: {

@@ -55,6 +55,7 @@ export const documentDiff = {
         assets: "素材",
         audioTracks: "音轨",
         brandColors: "配色",
+        brandFonts: "默认字体",
         characterGroups: "角色分组",
         characters: "角色",
         dictionaryWords: "词典词条",
