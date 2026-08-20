@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import type { Translator } from "@shared/i18n";
-import { Select, type SelectOption } from "@/lib/components/elements";
+import { CONTROL_HEIGHT_CLASS, Select, Switch, type SelectOption } from "@/lib/components/elements";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { EasingCurveEditor } from "../../../components/ui/EasingCurveEditor";
@@ -152,6 +152,30 @@ export function SegToggle<T extends string>(props: { value: T; options: { value:
                     {option.label}
                 </button>
             ))}
+        </div>
+    );
+}
+
+/**
+ * A boolean field.
+ *
+ * Drawn with the shared `Switch`, like every other boolean in Studio, and stacked label-above-control
+ * like every other field in this kit. It replaces a hand-rolled checkbox row that sat inline at a
+ * `min-h-[34px]` of its own: off the shared size scale, and bottom-aligned against neighbours that
+ * are top-aligned, so the one boolean in a grid of fields read as a control borrowed from elsewhere.
+ */
+export function ToggleField(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
+            <div className={`flex items-center ${CONTROL_HEIGHT_CLASS.md}`}>
+                <Switch
+                    size="sm"
+                    checked={props.checked}
+                    onCheckedChange={props.onChange}
+                    aria-label={props.label}
+                />
+            </div>
         </div>
     );
 }
