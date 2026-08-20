@@ -163,7 +163,7 @@ export const launcher = {
         forget: {
             action: "Remove from this server",
             title: "Remove from this server",
-            message: "{name} will no longer be listed on {server}. Removing takes it off that list and deletes nothing.",
+            message: "{name} will no longer be listed on {server}. Its repository and every version in it stay on the server.",
             confirm: "Remove",
             cancel: "Cancel",
             failed: "The project was not removed.",
