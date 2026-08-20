@@ -1397,6 +1397,31 @@ async function buildLaunchEntryScene(params: {
         statements.push(...await compileSnapshotEffects(ctx, nlrStory.camera, snapshot.camera.effects));
     }
 
+    // A loop is state at the target row, not a pose, so it is replayed as its own call rather than
+    // pre-posed. Without this a launch from a row after `/transform hero loop` would open on a
+    // character who has stopped breathing - while a SAVE taken at the same row restores the motion,
+    // which is the disagreement this closes.
+    for (const record of snapshot.displayables) {
+        if (!record.loop) {
+            continue;
+        }
+        const element = record.kind === "image"
+            ? ctx.images.get(normalizeObjectName(record.objectName))
+            : record.kind === "text"
+                ? ctx.texts.get(normalizeObjectName(record.objectName))
+                : ctx.layers.get(normalizeObjectName(record.objectName));
+        const statement = element && compileSnapshotLoop(ctx, element, record.loop, params.launch.targetBlockId ?? "");
+        if (statement) {
+            statements.push(statement);
+        }
+    }
+    if (snapshot.camera?.loop) {
+        const statement = compileSnapshotLoop(ctx, nlrStory.camera, snapshot.camera.loop, params.launch.targetBlockId ?? "");
+        if (statement) {
+            statements.push(statement);
+        }
+    }
+
     // Play the real story forward from the target row, following jumps into the other scenes.
     const plan = collectStoryPlaybackPlan(scene, launch.targetBlockId, { followJumps: true });
     statements.push(...await compilePlaybackTail(ctx, plan));
@@ -2905,6 +2930,27 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     }
 
     return [];
+}
+
+/**
+ * Restart one looping transform on a pre-posed element - the launch scene's half of
+ * {@link StageSnapshotDisplayable.loop}.
+ *
+ * The same two calls a `loop` row compiles to, so a launch and a normal play reach the same stage.
+ * An engine without the feature reports it once per element rather than throwing, exactly as the row
+ * itself does.
+ */
+function compileSnapshotLoop(
+    ctx: SceneCompileContext,
+    element: any,
+    ref: StoryTransformRef,
+    blockId: string,
+): NlrStatement | null {
+    if (!supportsLoop(element, ctx, blockId)) {
+        return null;
+    }
+    const loop = buildLoopTransform(ref, ctx, blockId);
+    return loop ? element.loop(loop, loopOptions(ref)) : null;
 }
 
 /** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
