@@ -1,4 +1,4 @@
-import { LayoutTemplate, Plus } from "lucide-react";
+import { ClipboardPaste, LayoutTemplate, Plus } from "lucide-react";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 
 type SurfaceActionsProps = {
@@ -8,6 +8,16 @@ type SurfaceActionsProps = {
     onOpenTemplateStore: () => void;
     templateLabel: string;
     templateDisabled: boolean;
+    /**
+     * Add the interface on the machine's clipboard, or undefined when there is not one.
+     *
+     * Undefined removes the control rather than greying it. A disabled Paste is the affordance for
+     * something the author could do and cannot right now - which is what the freeze guard renders,
+     * and it says why. "Nothing has been copied" is not that: it is the ordinary state of a
+     * clipboard, and a permanently greyed row over it teaches nothing.
+     */
+    onPaste?: () => void;
+    pasteLabel: string;
 };
 
 export function SurfaceActions({
@@ -17,9 +27,11 @@ export function SurfaceActions({
     onOpenTemplateStore,
     templateLabel,
     templateDisabled,
+    onPaste,
+    pasteLabel,
 }: SurfaceActionsProps) {
-    // Both write: one creates a surface, the other opens the store whose Apply imports a template
-    // bundle into the interface document.
+    // All three write: one creates a surface, one opens the store whose Apply imports a template
+    // bundle into the interface document, and one adds a copied interface to it.
     const freeze = useFreezeGuard();
     return (
         <div className="px-2 mt-2 space-y-1.5">
@@ -42,6 +54,17 @@ export function SurfaceActions({
                 >
                     <LayoutTemplate className="w-4 h-4" />
                 </button>
+                {onPaste && (
+                    <button
+                        type="button"
+                        onClick={onPaste}
+                        {...freeze.writes(false, pasteLabel)}
+                        aria-label={pasteLabel}
+                        className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-xs text-fg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-fill hover:text-fg"
+                    >
+                        <ClipboardPaste className="w-4 h-4" />
+                    </button>
+                )}
             </div>
         </div>
     );

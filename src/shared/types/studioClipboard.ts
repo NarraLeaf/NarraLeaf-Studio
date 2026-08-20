@@ -27,7 +27,7 @@
  */
 
 /** The editor selections that can travel between windows. One kind, one format name. */
-export type StudioClipboardKind = "ui-elements";
+export type StudioClipboardKind = "ui-elements" | "ui-surfaces" | "blueprint-nodes";
 
 /**
  * The private format each kind occupies on the platform clipboard.
@@ -39,6 +39,8 @@ export type StudioClipboardKind = "ui-elements";
  */
 export const STUDIO_CLIPBOARD_FORMATS: Record<StudioClipboardKind, string> = {
     "ui-elements": "application/x-narraleaf-ui-elements",
+    "ui-surfaces": "application/x-narraleaf-ui-surfaces",
+    "blueprint-nodes": "application/x-narraleaf-blueprint-nodes",
 };
 
 /**

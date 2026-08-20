@@ -127,10 +127,19 @@ import {
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
     buildBlueprintGraphClipboardPayload,
-    getBlueprintGraphClipboard,
     pasteBlueprintGraphClipboardPayload,
     setBlueprintGraphClipboard,
+    type BlueprintGraphClipboardPayload,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphClipboard";
+import {
+    graphClipboardSourceStamp,
+    importForeignGraphAssets,
+    publishGraphClipboard,
+    readGraphClipboardEnvironment,
+    reportForeignGraphPaste,
+    resolveGraphPasteSource,
+    type ForeignGraphPasteReport,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphClipboardBridge";
 import {
     BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
     listBlueprintSetFramePageTargetOptions,
@@ -746,20 +755,48 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         [editor.graphView, localBp, payload],
     );
 
+    // The project behind a copy and a paste: what stamps a payload with where it came from, and
+    // what a foreign one is compared against. Read at each gesture rather than once, because a
+    // service that was still coming up when this tab mounted is available by the time the author
+    // presses anything - and a null cached then would cost the editor its cross-project reach for
+    // as long as the tab stayed open.
+    const readGraphClipboard = useCallback(() => readGraphClipboardEnvironment(context), [context]);
+
+    /**
+     * Fill both clipboards from the current selection, or answer null when it holds nothing.
+     *
+     * The in-window payload is written first and synchronously, so the copy has happened by the time
+     * the gesture returns; the platform clipboard is filled behind it, which is what carries the
+     * fragment to another project's window.
+     */
+    const fillGraphClipboard = useCallback(
+        (activeIr: BlueprintGraphIr): BlueprintGraphClipboardPayload | null => {
+            const environment = readGraphClipboard();
+            const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds, {
+                copyId: uuid.generate(),
+                ...(environment ? { source: graphClipboardSourceStamp(environment) } : {}),
+            });
+            if (!clipboard) {
+                return null;
+            }
+            setBlueprintGraphClipboard(clipboard);
+            if (environment) {
+                publishGraphClipboard(environment, clipboard);
+            }
+            return clipboard;
+        },
+        [editor.selectedNodeIds, readGraphClipboard, uuid],
+    );
+
     const copySelectedGraphNodes = useCallback(() => {
         if (isTypingInField()) {
             return;
         }
         const activeIr = activeIrRef.current;
-        if (!activeIr) {
-            return;
+        if (activeIr) {
+            fillGraphClipboard(activeIr);
         }
-        const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds);
-        if (!clipboard) {
-            return;
-        }
-        setBlueprintGraphClipboard(clipboard);
-    }, [editor.selectedNodeIds]);
+    }, [fillGraphClipboard]);
 
     const cutSelectedGraphNodes = useCallback(() => {
         if (isTypingInField()) {
@@ -769,39 +806,63 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         if (!activeIr) {
             return;
         }
-        const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds);
+        const clipboard = fillGraphClipboard(activeIr);
         if (!clipboard) {
             return;
         }
-        setBlueprintGraphClipboard(clipboard);
         const next = cloneBlueprintIr(activeIr);
         for (const nodeId of clipboard.nodeIds) {
             removeBlueprintNodeFromIr(next, nodeId);
         }
         commitIr(next);
         editor.setSelectedNodeIds([]);
-    }, [commitIr, editor]);
+    }, [commitIr, editor, fillGraphClipboard]);
 
+    /**
+     * Paste whatever the author last copied, from this window or from another project's.
+     *
+     * Asynchronous because the platform clipboard and the file transfer both are, and the freeze is
+     * re-read after each await: nodes written into a frozen workspace reach the in-memory blueprint,
+     * are refused at the file-system boundary, and are gone again at the thaw. The graph is read
+     * from the ref rather than captured, so the paste lands on what the editor holds now.
+     */
     const pasteGraphNodes = useCallback(() => {
         if (isTypingInField()) {
             return;
         }
-        const activeIr = activeIrRef.current;
-        if (!activeIr) {
-            return;
-        }
-        const pasted = pasteBlueprintGraphClipboardPayload({
-            ir: activeIr,
-            payload: getBlueprintGraphClipboard(),
-            generateId: () => uuid.generate(),
-            targetBlueprintId: payload.blueprintId,
-        });
-        if (!pasted) {
-            return;
-        }
-        commitIr(pasted.ir);
-        editor.setSelectedNodeIds(pasted.newNodeIds);
-    }, [commitIr, editor, uuid, payload.blueprintId]);
+        void (async () => {
+            const environment = readGraphClipboard();
+            const source = await resolveGraphPasteSource(environment);
+            if (!source || environment?.isFrozen()) {
+                return;
+            }
+            let imported: ForeignGraphPasteReport = { imported: 0, frozen: false };
+            if (source.foreign) {
+                imported = await importForeignGraphAssets(source);
+                if (imported.frozen || environment?.isFrozen()) {
+                    return;
+                }
+            }
+            const activeIr = activeIrRef.current;
+            if (!activeIr) {
+                return;
+            }
+            const pasted = pasteBlueprintGraphClipboardPayload({
+                ir: activeIr,
+                payload: source.payload,
+                generateId: () => uuid.generate(),
+                targetBlueprintId: payload.blueprintId,
+            });
+            if (!pasted) {
+                return;
+            }
+            commitIr(pasted.ir);
+            editor.setSelectedNodeIds(pasted.newNodeIds);
+            if (source.foreign) {
+                reportForeignGraphPaste(source, imported);
+            }
+        })();
+    }, [commitIr, editor, readGraphClipboard, uuid, payload.blueprintId]);
 
     // A keystroke has no button to grey out, so `freeze.run` is how these are refused: undo, redo,
     // cut and paste all rewrite the graph, and on a frozen project they moved nodes about on screen

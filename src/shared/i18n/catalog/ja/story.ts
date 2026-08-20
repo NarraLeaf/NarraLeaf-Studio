@@ -214,7 +214,7 @@ export const story = {
             other: "翻訳 {count} 件を引き継いだ",
         },
         translationsDropped: {
-            other: "このプロジェクトにない言語の翻訳 {count} 件",
+            other: "見送った翻訳 {count} 件",
         },
     },
     // コピー元とは別のプロジェクトに貼り付けた行。行が入ったあとに、結果だけを一度知らせる。
@@ -226,7 +226,7 @@ export const story = {
             other: "{project} から {count} 行を貼り付けた",
         },
         speakerNames: {
-            other: "話者 {count} 件は名前のみになった",
+            other: "キャラクター未設定 {count} 行",
         },
         imported: {
             other: "アセット {count} 件を取り込んだ",

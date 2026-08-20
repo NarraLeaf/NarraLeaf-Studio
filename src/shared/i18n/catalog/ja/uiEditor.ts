@@ -34,6 +34,8 @@ export const uiEditor = {
         openSurface: "{label} を開く",
         renameSurface: "{label} の名前を変更",
         duplicateSurface: "{label} を複製",
+        copySurface: "{label} をコピー",
+        pasteSurface: "インターフェースを貼り付け",
         deleteSurface: "{label} を削除",
         surfaceActions: "{label} の操作",
         deleteConfirm: "{label} を削除するか",
@@ -179,6 +181,16 @@ export const uiEditor = {
             one: "{count} 件の参照が未解決",
             other: "{count} 件の参照が未解決",
         },
+        surfacePasted: {
+            one: "{count} 個のインターフェースを追加した",
+            other: "{count} 個のインターフェースを追加した",
+        },
+        surfacePastedFrom: {
+            one: "{project} から {count} 個のインターフェースを追加した",
+            other: "{project} から {count} 個のインターフェースを追加した",
+        },
+        slotTaken: "{slot} スロットにはすでにゲーム UI がある",
+        surfaceNotAdded: "このインターフェースを追加できなかった",
     },
     templateStore: {
         open: "テンプレートから始める",

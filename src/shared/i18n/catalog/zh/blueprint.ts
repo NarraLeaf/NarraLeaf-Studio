@@ -45,6 +45,24 @@ export const blueprint = {
         selectLayer: "在左侧选择一个图层",
         previewUnavailable: "预览不可用",
     },
+    crossProject: {
+        pasted: {
+            one: "已粘贴 {count} 个节点",
+            other: "已粘贴 {count} 个节点",
+        },
+        pastedFrom: {
+            one: "已从 {project} 粘贴 {count} 个节点",
+            other: "已从 {project} 粘贴 {count} 个节点",
+        },
+        imported: {
+            one: "已导入 {count} 项资产",
+            other: "已导入 {count} 项资产",
+        },
+        unresolved: {
+            one: "{count} 处引用未解析",
+            other: "{count} 处引用未解析",
+        },
+    },
     addNode: {
         close: "关闭添加节点菜单",
         searchPlaceholder: "搜索节点",
