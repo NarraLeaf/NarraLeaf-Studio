@@ -194,6 +194,14 @@ export const lint = {
             description: "节点绑定的控件在工程中已不存在",
             message: "绑定的控件已不存在",
         },
+        blueprintFnTargetMissing: {
+            title: "函数缺失",
+            description: "Call Fn 节点调用的函数在当前作用域中不存在",
+            // 兜底句，用于没有签名快照的调用：那时只剩一对 id，
+            // 把 id 写进报告等于给作者一个在工程里搜不到的词。
+            message: "调用的函数在当前作用域中不存在",
+            messageNamed: "调用的 {name} 在当前作用域中不存在",
+        },
         blueprintUnreachableNode: {
             title: "无法到达的节点",
             description: "图中没有任何入口可以到达该节点",

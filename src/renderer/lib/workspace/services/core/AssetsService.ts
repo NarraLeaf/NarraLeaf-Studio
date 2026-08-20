@@ -15,7 +15,7 @@ import { BlueprintService } from "../assets/BlueprintService";
 import { AssetOrderManager } from "../assets/mgr/AssetOrderManager";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
-import { LocalAssetsManager, type CreateLocalAssetFromBytesOptions, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
+import { LocalAssetsManager, type CreateLocalAssetFromBytesOptions, type CreateLocalBundleAssetOptions, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
 import type { ExpandImportPathsResult } from "../assets/importPathExpansion";
@@ -1138,6 +1138,21 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         options?: CreateLocalAssetFromBytesOptions,
     ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
         return this.getLocalAssetsManager().createLocalAssetFromBytes(type, name, bytes, groupId, options);
+    }
+
+    /**
+     * Create a bundle asset by copying a directory Studio was pointed at rather than one the author
+     * picked - the directory-backed counterpart of {@link createLocalAssetFromBytes}.
+     *
+     * See {@link LocalAssetsManager.createLocalBundleAssetFromDirectory} for what a caller-chosen id
+     * is refused for, and for why a tree that arrives incomplete lands as nothing at all.
+     */
+    public async createLocalBundleAssetFromDirectory<T extends AssetType>(
+        type: T,
+        sourceDir: string,
+        options?: CreateLocalBundleAssetOptions,
+    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        return this.getLocalAssetsManager().createLocalBundleAssetFromDirectory(type, sourceDir, options);
     }
 
     /**

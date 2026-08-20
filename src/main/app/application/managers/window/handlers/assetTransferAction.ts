@@ -39,6 +39,9 @@ function normalizeEntry(entry: AssetTransferEntry | undefined): AssetTransferEnt
         fileName,
         type,
         ...(typeof entry.size === "number" && Number.isFinite(entry.size) ? { size: entry.size } : {}),
+        // Only the literal `true` marks a directory, so a truthy value of some other shape cannot
+        // talk the offer into checking - and granting - a whole tree.
+        ...(entry.isDirectory === true ? { isDirectory: true } : {}),
         sourcePath: path.resolve(sourcePath),
     };
 }
@@ -81,7 +84,14 @@ export class AssetTransferOfferHandler extends IPCHandler<IPCEventType.assetTran
             if (await storageManager.isPathProtected(entry.sourcePath)) {
                 return this.success<AssetTransferOfferResult>({ offered: false, reason: "protected" });
             }
-            if (!await storageManager.isPathAllowed(window, entry.sourcePath, "read")) {
+            // A directory entry is asked the stronger question. The grant it will be redeemed for
+            // reaches the whole tree, and a window may not hand out more than it holds: a
+            // non-recursive grant on a model bundle's root covers the directory and none of the
+            // files that are the model.
+            const readable = entry.isDirectory
+                ? await storageManager.isPathTreeAllowed(window, entry.sourcePath, "read")
+                : await storageManager.isPathAllowed(window, entry.sourcePath, "read");
+            if (!readable) {
                 return this.success<AssetTransferOfferResult>({ offered: false, reason: "unreadable" });
             }
             verified.push(entry);
@@ -97,9 +107,13 @@ export class AssetTransferOfferHandler extends IPCHandler<IPCEventType.assetTran
 /**
  * Trade a token for read access to the files it stands for.
  *
- * The grant is read-only, non-recursive, and dies with this window. Nothing is re-derived from the
- * token: it addresses a manifest that was verified against the offering window when it was made,
- * and the paths in that manifest are the paths granted.
+ * The grant is read-only and dies with this window. Nothing is re-derived from the token: it
+ * addresses a manifest that was verified against the offering window when it was made, and the
+ * paths in that manifest are the paths granted.
+ *
+ * Recursive only where the entry said it was a directory, and that entry was checked recursively
+ * against the offering window before the token existed. Every other entry reaches its own path and
+ * nothing beside it.
  */
 export class AssetTransferRedeemHandler extends IPCHandler<IPCEventType.assetTransferRedeem> {
     readonly name = IPCEventType.assetTransferRedeem;
@@ -128,7 +142,7 @@ export class AssetTransferRedeemHandler extends IPCHandler<IPCEventType.assetTra
                 window,
                 entry.sourcePath,
                 grantPolicy.mode,
-                grantPolicy.recursive,
+                entry.isDirectory ? grantPolicy.recursiveForDirectories : grantPolicy.recursive,
             );
         }
 

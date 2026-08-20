@@ -28,8 +28,13 @@
  *  - **Offering part of a manifest.** The pasting side cannot tell a short manifest from a complete
  *    one, so a manifest that cannot be honoured whole is not offered at all.
  *
- * Directory-backed assets (model bundles) are outside what this carries: a redeemed grant is
- * non-recursive, so it reaches the path it names and nothing below it.
+ * ## Directory-backed assets
+ *
+ * A model bundle's payload is a directory: its manifest, textures and motions all live below the
+ * path the library records. Such an entry says so - {@link AssetTransferManifestEntry.isDirectory} -
+ * and the grant minted for it is recursive, so a redeem reaches the tree rather than only its root.
+ * The offer is checked recursively to match: a window may hand out a subtree only where it holds a
+ * recursive grant over it, so an offer never reaches further than the window that made it.
  */
 
 /** What the clipboard says about one file: enough to describe it, never where it is. */
@@ -53,6 +58,14 @@ export interface AssetTransferManifestEntry {
     type: string;
     /** Size in bytes, when the offering side already knew it. */
     size?: number;
+    /**
+     * Whether the payload is a directory rather than a single file.
+     *
+     * True for model bundles, the one asset type whose contents are a tree. It decides both halves
+     * of the transfer: the grant covering the entry reaches everything below the path, and the
+     * importing project copies the tree instead of writing bytes.
+     */
+    isDirectory?: boolean;
 }
 
 /** A manifest entry once a token has been honoured: the same description plus where to read it. */
@@ -67,7 +80,10 @@ export type AssetTransferRefusal =
     | "not-permitted"
     /** An entry did not describe a file: no id, no name, or a path that is not absolute. */
     | "invalid-entry"
-    /** An entry named a file the offering window may not read. */
+    /**
+     * An entry named a file the offering window may not read - or, for a directory entry, a tree it
+     * may not read all of.
+     */
     | "unreadable"
     /** An entry named Studio's own application storage. */
     | "protected"

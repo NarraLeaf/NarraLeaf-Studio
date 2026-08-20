@@ -102,6 +102,7 @@ export type LintRuleId =
     | "story/transition-unavailable"
     | "blueprint/reference-missing"
     | "blueprint/element-ref-missing"
+    | "blueprint/fn-target-missing"
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"
     | "ui/unlocalized-text"

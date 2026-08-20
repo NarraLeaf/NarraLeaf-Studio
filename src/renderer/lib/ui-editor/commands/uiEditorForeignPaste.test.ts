@@ -254,6 +254,7 @@ function failingPort(): TransferredAssetPort & { redeem: ReturnType<typeof vi.fn
         has: () => false,
         read: async () => null,
         create: async () => "failed" as const,
+        createFromDirectory: async () => "failed" as const,
         isFrozen: () => false,
     };
 }

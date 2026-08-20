@@ -97,10 +97,9 @@ import {
 } from "@shared/types/blueprint/graph";
 import {
     buildBlueprintFnSignatureSnapshot,
-    findBlueprintFnByRef,
     isBlueprintFnSnapshotStale,
-    isBlueprintFnVisibleToOwner,
     listCallableBlueprintFnOptions,
+    resolveBlueprintFnCallTarget,
 } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
@@ -1782,11 +1781,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const resolveCallableFnSignature = useCallback(
         (fnRef: string) => {
             const currentDoc = localBp.getBlueprintDocument();
-            const decl = findBlueprintFnByRef(currentDoc, fnRef);
-            if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, bp.owner)) {
-                return null;
-            }
-            return buildBlueprintFnSignatureSnapshot(decl);
+            const decl = resolveBlueprintFnCallTarget(currentDoc, fnRef, bp.owner);
+            return decl ? buildBlueprintFnSignatureSnapshot(decl) : null;
         },
         [localBp, bp.owner],
     );
@@ -1818,9 +1814,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 if (typeof fnRef !== "string" || fnRef.length === 0) {
                     continue;
                 }
-                const decl = findBlueprintFnByRef(currentDoc, fnRef);
-                if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, currentBp.owner)) {
-                    // Missing/out-of-scope targets stay untouched — validation reports the error.
+                const decl = resolveBlueprintFnCallTarget(currentDoc, fnRef, currentBp.owner);
+                if (!decl) {
+                    // A target that does not resolve is left exactly as it is: the graph editor and
+                    // `blueprint/fn-target-missing` both report it, and the stored snapshot is the
+                    // only remaining record of what it used to name.
                     continue;
                 }
                 if (isBlueprintFnSnapshotStale(readBlueprintFnSignatureSnapshot(node.params), decl)) {

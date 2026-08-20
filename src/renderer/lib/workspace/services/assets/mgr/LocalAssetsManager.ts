@@ -51,6 +51,25 @@ export interface CreateLocalAssetFromBytesOptions {
     id?: string;
 }
 
+export interface CreateLocalBundleAssetOptions {
+    /**
+     * The storage id to file the new bundle under, instead of a freshly minted one.
+     *
+     * Validated exactly as {@link CreateLocalAssetFromBytesOptions.id} is, and refused the same way
+     * when an asset already holds it - see
+     * {@link LocalAssetsManager.createLocalBundleAssetFromDirectory}.
+     */
+    id?: string;
+    /**
+     * The author-facing name for the asset.
+     *
+     * Needed whenever the source folder is not named after the asset. A bundle arriving from
+     * another project is read out of that project's content tree, where the folder's own name is
+     * the asset id.
+     */
+    name?: string;
+}
+
 export interface ImportFromPathsOptions {
     /**
      * Called before each file and once at the end. Imports are sequential and a large drop can take
@@ -420,6 +439,38 @@ export class LocalAssetsManager {
     }
 
     /**
+     * Create a bundle asset from a directory that is not being picked by the author.
+     *
+     * The counterpart of {@link createLocalAssetFromBytes} for the one asset type whose payload is
+     * a tree: bytes cannot describe a model, so content that arrives named by a document - a story
+     * row or a widget copied out of another project - reaches the library through here instead. It
+     * runs the same import the folder picker runs, so a bundle that travelled is filed exactly like
+     * one that was authored here.
+     *
+     * `options.id` is what makes the reference that arrived with it resolve: the record is filed
+     * under the id the source project used, so nothing in the pasted payload has to be rewritten. A
+     * repeated paste finds the id taken and is refused with {@link AssetCreateErrorCode.IdInUse},
+     * having copied nothing.
+     */
+    public async createLocalBundleAssetFromDirectory<T extends AssetType>(
+        type: T,
+        sourceDir: string,
+        options?: CreateLocalBundleAssetOptions,
+    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        if (!isBundleAssetType(type)) {
+            return { success: false, error: `A ${type} asset is not a directory` };
+        }
+
+        const result = await this.importModelBundle(type, sourceDir, options);
+        if (result.success) {
+            // A single-shot creation, with none of the loops `importFromPaths` marks the type dirty
+            // at the end of.
+            this.assetsService.markDirty(type);
+        }
+        return result;
+    }
+
+    /**
      * The asset holding `id`, whichever type it is filed under, or `null`.
      *
      * Every type is searched rather than only the one being created, because the content path
@@ -723,8 +774,38 @@ export class LocalAssetsManager {
      * Note also that the root listing does not imply the file set - Hiyori's `TapBody` motion is
      * named only inside the manifest - so "copy what looks relevant" is not a thing that can be done
      * correctly here. Everything comes.
+     *
+     * Which is also why a copy that brought only part of the tree is treated as no import at all:
+     * the missing file is a texture or a motion named from inside a manifest Studio never reads, so
+     * a half-copied bundle is a model that lists in the browser and fails at mount with nothing to
+     * trace it back to. Anything already written is removed and the caller is told it failed.
      */
-    private async importModelBundle<T extends AssetType>(type: T, sourceDir: string): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+    private async importModelBundle<T extends AssetType>(
+        type: T,
+        sourceDir: string,
+        options?: CreateLocalBundleAssetOptions,
+    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        const requestedId = options?.id;
+        if (requestedId !== undefined) {
+            // The same gate `createLocalAssetFromBytes` puts a caller-chosen id through, and for the
+            // same reason: the id becomes directory segments of the content path.
+            if (!isValidAssetStorageId(requestedId)) {
+                return {
+                    success: false,
+                    code: AssetCreateErrorCode.InvalidId,
+                    error: `Invalid asset id: ${requestedId}`,
+                };
+            }
+            const holder = this.findAssetById(requestedId);
+            if (holder) {
+                return {
+                    success: false,
+                    code: AssetCreateErrorCode.IdInUse,
+                    error: `An asset already uses the id ${requestedId}: ${holder.name}`,
+                };
+            }
+        }
+
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
 
         const isDirectory = await fsService.isDirExists(sourceDir);
@@ -747,7 +828,7 @@ export class LocalAssetsManager {
             return { success: false, error: `Folder contains no files: ${sourceDir}` };
         }
 
-        const id = this.getUuidService().generate();
+        const id = requestedId ?? this.getUuidService().generate();
         const destPath = this.getLocalAssetPath(id);
         const destDir = dirname(destPath);
         const dirExistCheck = await fsService.isDirExists(destDir);
@@ -765,7 +846,7 @@ export class LocalAssetsManager {
         if (!copyResult.success || !copyResult.data.ok) {
             const message = copyResult.error
                 || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);
-            return { success: false, error: `Failed to copy model bundle: ${sourceDir} to ${destPath}. ${message}` };
+            return this.discardBundlePayload(destPath, `Failed to copy model bundle: ${sourceDir} to ${destPath}. ${message}`);
         }
 
         // Re-list the copy rather than trusting the source listing: what is on disk under the asset
@@ -773,14 +854,23 @@ export class LocalAssetsManager {
         // and not at mount time.
         const listing = await modelService.listBundle(destPath);
         if (!listing.success || !listing.data) {
-            return { success: false, error: listing.error ?? "Failed to read the imported bundle" };
+            return this.discardBundlePayload(destPath, listing.error ?? "Failed to read the imported bundle");
+        }
+
+        const arrived = new Set(listing.data.files);
+        const absent = sourceListing.data.files.find(file => !arrived.has(file));
+        if (absent !== undefined || arrived.size !== sourceListing.data.files.length) {
+            return this.discardBundlePayload(
+                destPath,
+                `The copied model bundle does not match its source${absent === undefined ? "" : `, starting at ${absent}`}: ${sourceDir}`,
+            );
         }
 
         const detection = detectModelBundleEntry(listing.data.files);
         const asset: Asset<T, AssetSource.Local> = {
             id,
             type,
-            name: this.resolveUniqueAssetName(type, basename(sourceDir)),
+            name: this.resolveUniqueAssetName(type, options?.name?.trim() || basename(sourceDir)),
             // No `ext`: the payload is a directory. Deliberately absent rather than empty - see
             // `setAssetExtension`, and the extension migration skips bundle types for the same reason.
             hash: bundleListingFingerprint(listing.data.files),
@@ -801,6 +891,24 @@ export class LocalAssetsManager {
         this.assetsService.getEvents().emit("updated", asset);
 
         return { success: true, data: asset };
+    }
+
+    /**
+     * Remove what a failed bundle import wrote, and report the failure that caused it.
+     *
+     * A tree left behind under an id no record claims is not merely litter: it is what the next
+     * attempt at that id would copy into, and `copyDir` merges rather than replaces, so the second
+     * try would inherit the first one's half of the model.
+     */
+    private async discardBundlePayload<T extends AssetType>(
+        destPath: string,
+        error: string,
+    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        const removed = await appPrivilegedFacade.fs.deleteDir(destPath);
+        if (!removed.success || !removed.data.ok) {
+            console.warn(`[assets] could not remove the incomplete model bundle at ${destPath}`);
+        }
+        return { success: false, error };
     }
 
     private async importLocalAsset<T extends AssetType>(type: T, path: string): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {

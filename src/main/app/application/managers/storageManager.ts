@@ -184,12 +184,37 @@ export class StorageManager extends Manager {
     }
 
     public async isPathAllowed(window: AppWindow, fsPath: string, mode: FileSystemAccessMode): Promise<boolean> {
+        return this.hasFileSystemGrant(window, fsPath, mode, false);
+    }
+
+    /**
+     * Whether `window` may reach everything *below* `fsPath`, not only `fsPath` itself.
+     *
+     * The question a directory-backed asset asks. A non-recursive grant on a directory answers
+     * `isPathAllowed` yes - the path it names is the directory - while reaching none of the files
+     * that are the asset, so the two have to be asked apart. Used before a window is allowed to
+     * offer a model bundle to another window: what is handed out has to be covered by what the
+     * offering window holds.
+     */
+    public async isPathTreeAllowed(window: AppWindow, fsPath: string, mode: FileSystemAccessMode): Promise<boolean> {
+        return this.hasFileSystemGrant(window, fsPath, mode, true);
+    }
+
+    private async hasFileSystemGrant(
+        window: AppWindow,
+        fsPath: string,
+        mode: FileSystemAccessMode,
+        requireSubtree: boolean,
+    ): Promise<boolean> {
         const target = await this.resolvePathForAuthorization(fsPath);
         if (await this.isProtectedStoragePath(target)) {
             return false;
         }
 
         for (const grant of this.getFileSystemGrants(window, mode)) {
+            if (requireSubtree && !grant.recursive) {
+                continue;
+            }
             const root = await this.resolvePathForAuthorization(grant.path);
             if (grant.recursive ? this.isSameOrChild(target, root) : target === root) {
                 return true;

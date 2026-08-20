@@ -14,7 +14,11 @@ import {
     collectProjectElementIds,
     listBlueprintElementRefSites,
 } from "../../workspace/services/ui-editor/blueprint/elementRefSites";
-import { collectExecReachableNodeIds } from "../../workspace/services/ui-editor/blueprint/fnCatalog";
+import {
+    collectExecReachableNodeIds,
+    listBlueprintFnCallSites,
+    resolveBlueprintFnCallTarget,
+} from "../../workspace/services/ui-editor/blueprint/fnCatalog";
 import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
 import { blueprintNodeJumpTarget, listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
@@ -33,10 +37,17 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
  * These rules are that sweep. They are deliberately **not** a project-wide re-run of the editor's
  * validator: that validator renders its messages with `translate()` at the point it finds a
  * problem, and a lint rule may not build prose (see `LintFinding.messageKey` - the locale belongs
- * to whoever renders the report, not to a rule running inside a build). The two therefore overlap
- * in spirit and not in code, and this file stays narrow on purpose: only defects that (a) the
- * editor cannot see because they are about something outside the blueprint, or (b) are worth
- * finding without opening every graph one at a time.
+ * to whoever renders the report, not to a rule running inside a build). It also needs state only an
+ * open editor has - the widget element behind a `widgetMain` blueprint, the runtime event catalogue,
+ * the variable registry - and run without those it would report a healthy project by the dozen. The
+ * two therefore overlap in spirit and not in code, and this file stays narrow on purpose: only
+ * defects that (a) the editor cannot see because they are about something outside the blueprint, or
+ * (b) are worth finding without opening every graph one at a time.
+ *
+ * Where a rule here asks a question the validator also asks, it calls **the same function the
+ * validator calls** rather than the validator (`blueprint/fn-target-missing` and
+ * `resolveBlueprintFnCallTarget` are the case to copy). Sharing the judgement and not the prose is
+ * the only arrangement in which the canvas and the report cannot disagree about one node.
  *
  * Three facts every rule here obeys:
  *
@@ -85,8 +96,10 @@ export const REFERENCE_KIND_BY_OPTIONS_SOURCE: Readonly<Record<string, Blueprint
  * available here - it reports zero findings and reads as a clean project.
  */
 export const UNCHECKED_OPTIONS_SOURCES: ReadonlySet<string> = new Set([
-    // Resolved against fn visibility rules that depend on the calling blueprint's owner; the graph
-    // editor reports an unresolvable call as `fn.call_target_not_found` with that context in hand.
+    // Not checked *by this rule*: resolving a fn ref takes the calling blueprint's owner, which the
+    // option-source sweep above does not have, and the answer is not a set membership test.
+    // `blueprint/fn-target-missing` below asks it properly, through the same resolver the graph
+    // editor uses for `fn.call_target_not_found`.
     "callableFns",
     // Scoped to the component that owns the blueprint, not to the project.
     "componentParams",
@@ -262,6 +275,68 @@ function runElementRefMissing(ctx: LintContext): LintFinding[] {
                 messageKey: "lint.rule.blueprintElementRefMissing.message" as TranslationKey,
                 location: blueprintLocation(site, nodeId),
                 target: blueprintNodeJumpTarget(site, nodeId),
+            });
+        }
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
+// blueprint/fn-target-missing
+// ---------------------------------------------------------------------------
+
+/**
+ * A `Call Fn` whose function is not there.
+ *
+ * A call stores its target as `fn:<blueprintId>:<headNodeId>` and nothing else, so it survives the
+ * disappearance of what it names perfectly intact: the card still draws, still carries its pins,
+ * still sits in the middle of a working chain. What it does at run time is nothing. It arises the
+ * two ways every dangling reference does - a function deleted while calls still named it, and a
+ * fragment pasted from another project, where both halves of the ref are ids that project minted
+ * (`graphForeignPaste` counts exactly these on the way in).
+ *
+ * **The judgement is `resolveBlueprintFnCallTarget`, which is also what the graph editor calls.**
+ * That matters more here than in the sibling rules, because "resolvable" is not a set membership
+ * test: a fn is visible to a caller according to the *calling* blueprint's owner, so the same ref
+ * is good on one surface and dead on the next. Asking the shared resolver is what keeps this report
+ * and the editor's `fn.call_target_not_found` from disagreeing about one node - the whole reason
+ * the rule exists is that until now only the editor asked at all, and only for the graph it had
+ * open.
+ *
+ * Only event graphs are swept, and nothing is lost by it: `Call Fn` declares `graphKinds:
+ * ["event"]`, so an event graph is the only place one can be placed and the only place the editor
+ * judges one. A call found anywhere else is a node in a context that forbids it, which is a
+ * different sentence the editor already says.
+ *
+ * A call with no target picked is not reported. That is an unfinished node - an empty select the
+ * author can see - and the editor says so in those words; this rule is about a call that names
+ * something.
+ */
+function runFnTargetMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.blueprintDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(document)) {
+        if (site.graphKind !== "event") {
+            continue;
+        }
+        for (const call of listBlueprintFnCallSites(site.ir)) {
+            if (resolveBlueprintFnCallTarget(document, call.fnRef, site.owner)) {
+                continue;
+            }
+            // The name the card prints, never the ref: a ref is two ids, and an id in a report is a
+            // word nobody can search a project for. A call stored without a snapshot has no name at
+            // all, and the sentence that omits it says more than one that prints a UUID.
+            findings.push({
+                ruleId: "blueprint/fn-target-missing",
+                messageKey: (call.name
+                    ? "lint.rule.blueprintFnTargetMissing.messageNamed"
+                    : "lint.rule.blueprintFnTargetMissing.message") as TranslationKey,
+                ...(call.name ? { messageParams: { name: call.name } } : {}),
+                location: blueprintLocation(site, call.nodeId),
+                target: blueprintNodeJumpTarget(site, call.nodeId),
             });
         }
     }
@@ -497,6 +572,16 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "error",
         slug: "blueprintElementRefMissing",
         run: ctx => runElementRefMissing(ctx),
+    },
+    {
+        id: "blueprint/fn-target-missing",
+        category: "blueprint",
+        // The standing every other dangling reference has here. The graph editor has always called
+        // this an error on the canvas; below error the report and the canvas would be saying two
+        // different things about one node, and a build would ship a chain that stops halfway.
+        defaultSeverity: "error",
+        slug: "blueprintFnTargetMissing",
+        run: ctx => runFnTargetMissing(ctx),
     },
     {
         id: "blueprint/unreachable-node",

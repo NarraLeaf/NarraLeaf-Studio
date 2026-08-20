@@ -1,4 +1,4 @@
-import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { BlueprintDocument, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { SearchJumpTarget } from "../workspace/services/search/searchIndexModel";
 
 /**
@@ -27,6 +27,14 @@ export type BlueprintGraphSite = {
     blueprintName: string;
     /** Stable owner key, as `ownerRecords` spells it - what the editor navigates by. */
     ownerKey: string;
+    /**
+     * What the blueprint belongs to, structured.
+     *
+     * Beside the key rather than parsed back out of it: what a graph may reach is decided by this
+     * value in several places (fn visibility is the one with teeth), and re-deriving it from a
+     * string is how the answer here and the answer in the editor come to differ.
+     */
+    owner: BlueprintOwnerRef;
     graphKind: BlueprintGraphKind;
     graphId: string;
     ir: BlueprintGraphIr;
@@ -66,6 +74,7 @@ export function listBlueprintGraphSites(document: BlueprintDocument | null): Blu
                     blueprintId: blueprint.id,
                     blueprintName: blueprint.name,
                     ownerKey,
+                    owner: blueprint.owner,
                     graphKind,
                     graphId,
                     ir: slot?.graph ?? {},
