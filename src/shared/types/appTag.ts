@@ -105,8 +105,29 @@ export type AppTagSchemaVersion = typeof APP_TAG_SCHEMA_VERSION;
  *
  * A fixed word rather than a generated id, because it is the value every unresolvable reference
  * falls back to and the one id that has to mean the same thing in a project nobody has opened yet.
+ *
+ * The same word as {@link RELEASE_APP_TAG}'s name, deliberately. It used to be `"release"`, which
+ * collided with the `release` **axis** an asset set varies by: an edition's position on that axis is
+ * an edition id, so a project read `assetAxes: { release: "release" }` and a build refusal read
+ * "resolves release ... does not say which release it is". One word was doing two jobs, and the one
+ * that had to give was the id nobody types.
  */
-export const APP_TAG_ID_RELEASE = "release";
+export const APP_TAG_ID_RELEASE = "main";
+
+/**
+ * What this id was before, still readable where it was written down.
+ *
+ * Only two documents ever stored it as a value: an edition's position on a build axis
+ * ({@link normalizeAppTagAssetAxes}) and the values a release-kind axis promises to cover
+ * (`normalizeAssetSetAxis`). Author tag ids are uuids and never collided with either word, and the
+ * release tag itself is synthesized rather than stored - so those two are the whole of it.
+ */
+export const LEGACY_APP_TAG_ID_RELEASE = "release";
+
+/** The current id for an edition id written before the rename. Identity for everything else. */
+export function migrateAppTagId(id: string): string {
+    return id === LEGACY_APP_TAG_ID_RELEASE ? APP_TAG_ID_RELEASE : id;
+}
 
 /**
  * The keys a tag may override.
@@ -333,7 +354,10 @@ export type ProjectAppTagDocument = {
 export const APP_TAG_REFERENCE_FIELDS = ["appTagId"] as const;
 
 export function isBuiltinAppTagId(id: string): boolean {
-    return id === APP_TAG_ID_RELEASE;
+    // Both spellings, because this is the one funnel `hasAppTag` and `resolveAppTag` go through: an
+    // id written down before the rename still names the release tag, and a build draft or a saved
+    // configuration holding the old word must not read as "the project has no such variant".
+    return id === APP_TAG_ID_RELEASE || id === LEGACY_APP_TAG_ID_RELEASE;
 }
 
 /**
@@ -450,7 +474,10 @@ export function normalizeAppTagAssetAxes(raw: unknown): AppTagAssetAxes {
         const key = rawKey.trim();
         const value = typeof rawValue === "string" ? rawValue.trim() : "";
         if (key && value) {
-            axes[key] = value;
+            // A value here is an edition id, so a record written before the release tag was renamed
+            // says `release` where it now says `main`. Migrated on read rather than by rewriting the
+            // document, because the read is where every consumer already goes.
+            axes[key] = migrateAppTagId(value);
         }
     }
     return axes;

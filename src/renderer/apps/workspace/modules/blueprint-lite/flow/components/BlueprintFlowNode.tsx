@@ -48,6 +48,8 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -180,8 +182,10 @@ function useImageAssetDisplayName(assetId: string | null): string | null {
         if (!assetId || !context) {
             return null;
         }
-        const assetsService = context.services.get<AssetsService>(Services.Assets);
-        return assetsService.getAssets()[AssetType.Image]?.[assetId]?.name ?? null;
+        // Through the shared reader rather than the image pool alone: this pin may hold an asset
+        // set, and a set has no row in the library - looking only there would print "missing" for a
+        // reference the picker itself just offered.
+        return resolveAssetDisplayName(context.services, assetId);
     }, [assetId, assetLibraryRevision, context]);
 }
 
@@ -300,6 +304,16 @@ function ImageAssetPickerCard({
     const { url, loading, error } = useAssetObjectUrl(assetId);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
+    const { context, isInitialized } = useWorkspace();
+    // An image pin may be answered by a set: it is one picture with one job, which is the kind of
+    // thing that changes with the language it is read in. The build writes the answer onto the node
+    // that stores the id - see `@shared/build/blueprintAssetSets`.
+    const { virtualGroups, resolveAssetPreviewUrl } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
     const label = assetId ? assetName ?? t("blueprint.image.fallback") : t("blueprint.image.select");
     // "ImageAsset" is the value-type token shown when a valid asset is bound; it stays untranslated.
     const detail = assetId ? (error ? t("blueprint.image.missing") : "ImageAsset") : t("blueprint.image.none");
@@ -388,6 +402,7 @@ function ImageAssetPickerCard({
                 multiple={false}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={handleConfirm}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </div>
     );
