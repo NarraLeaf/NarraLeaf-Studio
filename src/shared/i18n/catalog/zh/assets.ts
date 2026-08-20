@@ -282,6 +282,7 @@ export const assets = {
         unfinished: "尚未声明变体",
         inUseTitle: "{name} 还在被引用",
         inUseMessage: "以下位置指向它，之后将无法解析：",
+        deleteConfirmMessage: "该资产集内的全部文件也会一并删除",
         picker: {
             section: "资产集",
         },
