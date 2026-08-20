@@ -75,6 +75,7 @@ export const HELP_TOPIC_IDS = [
     "versionServer",
     "freeze",
     "build",
+    "saveLocation",
     "olderSaves",
     "saveSameStory",
     "saveStoryChanged",
@@ -124,6 +125,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "runModes",
         section: "start",
+        shortcuts: ["run:dev-mode", "run:preview", "run:stop"],
         related: ["tests", "build", "freeze", "sceneSnapshot"],
     },
     {
@@ -359,6 +361,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "ship",
         related: ["patches", "icons", "signing", "assetProtection"],
         learnMore: DOCS_URL,
+    },
+    // Where those saves are in the first place. Its own topic rather than a note under the two
+    // below: it is answered once per project and the answer is what a player has to be able to find
+    // again, while those decide what a build does with what it finds.
+    {
+        id: "saveLocation",
+        section: "ship",
+        related: ["olderSaves", "patches"],
     },
     // What a build does with the saves players already have. Three topics rather than one, because
     // the parent answers which of the three cases an author is looking at and the two children

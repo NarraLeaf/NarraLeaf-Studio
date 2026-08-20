@@ -7,7 +7,7 @@ import { ASSET_CATEGORY_TYPES, AssetCategory, AssetData, AssetExtensions, AssetT
 import { assetTypeMatchesExtension } from "../importPathExpansion";
 import { parseSharedBlueprintAssetJson } from "../blueprintAssetSchema";
 import { bundleListingFingerprint, detectModelBundleEntry } from "@shared/utils/modelBundle";
-import { Asset, AssetSource } from "../types";
+import { Asset, AssetCreateErrorCode, AssetSource } from "../types";
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
 import { FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
@@ -38,6 +38,17 @@ export interface ImportProgress {
     total: number;
     /** The file being read right now; absent on the final report. */
     current?: string;
+}
+
+export interface CreateLocalAssetFromBytesOptions {
+    /**
+     * The storage id to file the new asset under, instead of a freshly minted one.
+     *
+     * Validated, never trusted: it becomes directory segments of the content path. An id already
+     * held by any asset is refused rather than overwritten - see
+     * {@link LocalAssetsManager.createLocalAssetFromBytes}.
+     */
+    id?: string;
 }
 
 export interface ImportFromPathsOptions {
@@ -326,18 +337,48 @@ export class LocalAssetsManager {
      * register the record, announce it - and differs only in where the bytes come from. Empty
      * `bytes` is a legitimate call (a new, empty text file), which is why there is no format gate
      * here: `validateFileFormat` rejects a zero-length file, correctly, for imports.
+     *
+     * `options.id` files the asset under an id the caller already holds instead of a fresh one. It
+     * exists for bytes that arrive alongside a document naming them - a story row copied out of
+     * another project references its assets by id, and importing under that id resolves the row
+     * without rewriting every reference inside a payload whose shapes are open-ended. It also makes
+     * a repeated import a no-op: the second one finds the id taken and is refused with
+     * {@link AssetCreateErrorCode.IdInUse}, having written nothing.
      */
     public async createLocalAssetFromBytes<T extends AssetType>(
         type: T,
         name: string,
         bytes: Uint8Array,
         groupId?: string,
+        options?: CreateLocalAssetFromBytesOptions,
     ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
         if (isBundleAssetType(type)) {
             return { success: false, error: "A model bundle cannot be created from bytes" };
         }
 
-        const id = this.getUuidService().generate();
+        const requestedId = options?.id;
+        if (requestedId !== undefined) {
+            // The content path is built by slicing the id into directory segments, so an id of any
+            // other shape is a path question rather than a tidiness one. Same gate every other
+            // reader of an id passes through.
+            if (!isValidAssetStorageId(requestedId)) {
+                return {
+                    success: false,
+                    code: AssetCreateErrorCode.InvalidId,
+                    error: `Invalid asset id: ${requestedId}`,
+                };
+            }
+            const holder = this.findAssetById(requestedId);
+            if (holder) {
+                return {
+                    success: false,
+                    code: AssetCreateErrorCode.IdInUse,
+                    error: `An asset already uses the id ${requestedId}: ${holder.name}`,
+                };
+            }
+        }
+
+        const id = requestedId ?? this.getUuidService().generate();
         const destPath = this.getLocalAssetPath(id);
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
 
@@ -376,6 +417,24 @@ export class LocalAssetsManager {
         this.assetsService.getEvents().emit("updated", asset);
 
         return { success: true, data: asset };
+    }
+
+    /**
+     * The asset holding `id`, whichever type it is filed under, or `null`.
+     *
+     * Every type is searched rather than only the one being created, because the content path
+     * (`assets/content/<2>/<2>/<rest>`) carries no type segment: one id names one file on disk, so
+     * an id an audio asset already occupies is not free for an image.
+     */
+    private findAssetById(id: string): Asset<AssetType, AssetSource> | null {
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        for (const type of Object.values(AssetType)) {
+            const existing: Asset<AssetType, AssetSource> | undefined = metadata[type][id];
+            if (existing) {
+                return existing;
+            }
+        }
+        return null;
     }
 
     /** The shard directory for an asset id, created if this is the first asset in that shard. */

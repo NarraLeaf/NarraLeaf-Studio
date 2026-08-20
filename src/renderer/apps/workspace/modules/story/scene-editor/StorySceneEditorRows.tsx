@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Trash2, TriangleAlert, UserRoundPlus } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
@@ -9,7 +10,11 @@ import { isBuiltinAppTagId } from "@shared/types/appTag";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { cn } from "@/lib/utils/cn";
 import { isRowTextEditable } from "./storySceneReadOnly";
+import { REF_TOKEN_ARMED_CLASS } from "./StoryLineRefToken";
+import { useStoryRefLink } from "./storyRefNavigation";
+import { isJumpModifierEvent } from "./useJumpModifier";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { getCommandGhost } from "./storyCommandGhost";
@@ -2084,6 +2089,11 @@ export function InsertRow(props: {
     const argMenuOpen = chooser === "action" && argOffer.open;
     const actionMenuOpen = chooser === "action" && cursor.kind === "commandName";
 
+    // All three of these portal to the body, so a tab or panel switch leaves whichever is open
+    // hanging over what the author moved to: the row that owns it went `display: none`, and a portal
+    // is not inside that box. Dismissing is the caller's own gesture, the one Escape uses.
+    useDismissWhenHidden(props.onDismissChooser, argMenuOpen || actionMenuOpen || chooser === "character");
+
     /**
      * Replace the token under the caret and put the caret after what was written. The slot's value is
      * controlled, so the caret has to be restored by hand once React has rendered the new text.
@@ -3069,6 +3079,14 @@ function CharacterSelectTrigger(props: {
         [draft, props.characters, props.tempSpeakers],
     );
     const picker = useCharacterPickerState(candidates);
+    /**
+     * The nametag is a reference too — and the only one a dialogue row has, since the words below it
+     * are prose rather than a command line.
+     *
+     * Only for a real cast member: a bare typed speaker is a name and nothing else, with no record to
+     * open, so the modifier leaves it alone rather than lighting up a word that leads nowhere.
+     */
+    const link = useStoryRefLink(props.characterId ? { kind: "character", characterId: props.characterId } : undefined);
     const trimmed = draft.trim();
     // Only worth offering when the name is genuinely new — otherwise it is a duplicate of a candidate.
     const canCreate = Boolean(trimmed) && !candidates.some(candidate => candidate.kind === "character" && candidate.name.toLowerCase() === trimmed.toLowerCase());
@@ -3121,12 +3139,45 @@ function CharacterSelectTrigger(props: {
 
     if (!editing) {
         const unassigned = !committedName;
+        const frozen = freeze.frozen;
+        /** Open the picker — the half of this control that writes, and so the half a freeze takes. */
+        const activate = () => {
+            if (frozen) {
+                return;
+            }
+            beginEditing();
+        };
         return (
             <div ref={rootRef} className={["relative overflow-hidden", props.column ? "max-w-full" : "shrink-0"].join(" ")}>
-                <button
-                    type="button"
-                    className={[
-                        "flex max-w-full items-center truncate rounded-md px-1 py-0.5 text-left hover:bg-fill focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
+                {/* A `<span role="button">` rather than a `<button>`, which is the same move
+                    `lib/components/elements/InspectOnlyButton` makes and for the same reason: this one
+                    control is two things at once, and `disabled` is all-or-nothing. The picker behind
+                    the name WRITES and a freeze must take it; the name in front of it is a reference to
+                    a cast member, and following one is READING — which is the entire point of a frozen
+                    workspace. A disabled form control dispatches no events at all, not even to ask
+                    which of the two a click meant, so the element stops being a form control and the
+                    refusal moves into the handler.
+
+                    What keeps it READING as unavailable while frozen: the hover chip goes away, the
+                    cursor says not-allowed, the freeze reason is on it, it leaves the tab order, and it
+                    reports `aria-disabled`. Deliberately NOT the design system's `opacity-50`: this is
+                    not chrome, it is the speaker's name in the middle of the script, and dimming every
+                    nametag in a frozen scene would degrade the READING rather than the control — the
+                    one thing `freezeGuard` says a freeze may never touch.
+
+                    A `<span>` also has no keyboard activation and no cursor of its own; both are spelled
+                    out below, exactly as `InspectOnlyButton` spells them out. */}
+                <span
+                    role="button"
+                    tabIndex={frozen ? -1 : 0}
+                    aria-disabled={frozen || undefined}
+                    // `freeze.reason` rather than `freeze.writes()`: that helper also returns a
+                    // `disabled` field, which is not an attribute a span has, and this element is
+                    // deliberately supplying its own answer to that question.
+                    data-tip={frozen ? freeze.reason : undefined}
+                    className={cn(
+                        "flex max-w-full items-center truncate rounded-md px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
+                        frozen ? "cursor-not-allowed" : "cursor-pointer hover:bg-fill",
                         // `-ml-1` pulls the hover chip's leading padding back out of the layout, so the
                         // chip contributes exactly its glyphs and the name's FIRST one lands on the
                         // column edge. Medium weight, because in a column of its own the name is a
@@ -3140,24 +3191,48 @@ function CharacterSelectTrigger(props: {
                         // The speaker's own colour, through the one seam the gutter's marks use — so
                         // the name and the face beside it cannot disagree about whose line this is.
                         speakerPaint ? speakerPaint.className : "",
-                        unassigned ? "italic text-fg-subtle hover:text-primary" : speakerPaint ? "" : "text-fg-muted",
+                        unassigned ? cn("italic text-fg-subtle", !frozen && "hover:text-primary") : speakerPaint ? "" : "text-fg-muted",
                         props.className ?? "",
-                    ].join(" ")}
+                        // The same underline every pointing word on a command line takes while the
+                        // modifier is held, so "this leads somewhere" reads identically in the two
+                        // places a row names a character. LAST on purpose: its `cursor-pointer` has to
+                        // win back over the frozen `cursor-not-allowed` above, because while the
+                        // modifier is down this word IS clickable — frozen or not.
+                        link?.armed ? REF_TOKEN_ARMED_CLASS : "",
+                    )}
                     style={speakerPaint && !unassigned
                         ? { ...props.style, ...speakerPaint.style, color: "var(--nl-speaker-name)" }
                         : props.style}
+                    // Both `stopPropagation` calls (here and in the click below) are what keep the row
+                    // beneath from ever seeing this gesture — which matters more now than it did as a
+                    // `<button>`: `storySceneDom.isInteractiveTarget` classifies by tag name, so a span
+                    // no longer counts as interactive and the row's drag-select and focus handlers
+                    // would both claim the press if either call were dropped.
                     onMouseDown={event => {
                         event.preventDefault();
                         event.stopPropagation();
                     }}
-                    {...freeze.writes()}
+                    onKeyDown={event => {
+                        if (event.key !== "Enter" && event.key !== " ") {
+                            return;
+                        }
+                        // Space scrolls the script otherwise. `preventDefault` only, never
+                        // `stopPropagation`: a real button's activation bubbles, and this was a real
+                        // button until this pass.
+                        event.preventDefault();
+                        activate();
+                    }}
                     onClick={event => {
                         event.stopPropagation();
-                        beginEditing();
+                        if (link && isJumpModifierEvent(event)) {
+                            link.open();
+                            return;
+                        }
+                        activate();
                     }}
                 >
                     <span className="truncate">{unassigned ? getCharacterName(props.characters, undefined) : committedName}</span>
-                </button>
+                </span>
             </div>
         );
     }

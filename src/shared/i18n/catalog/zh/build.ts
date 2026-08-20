@@ -93,9 +93,9 @@ export const build = {
         editInProject: "在「项目 ▸ 应用」中编辑",
     },
     content: {
-        protection: "资源保护",
-        protectionOn: "打包后的游戏会加密资源与存档",
-        protectionOff: "资源与存档以明文随包发布",
+        protection: "资产保护",
+        protectionOn: "打包后的游戏会加密资产与存档",
+        protectionOff: "资产与存档以明文随包发布",
         plugins: "随包插件",
         pluginsNone: "没有插件会随游戏发布",
         pluginsRescanUnavailable: "当前窗口无法重新扫描插件列表",
@@ -125,7 +125,7 @@ export const build = {
         secretElsewhere: "在其他设备上设置，本机没有它的值",
         secretEnter: "输入新的值",
         clear: "清除",
-        secretFailed: "无法在本机保存这个值",
+        secretFailed: "无法在本机保存该值",
     },
         patch: {
             title: "导出补丁",
@@ -266,14 +266,14 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin} 的 {sidecar} 程序进入 {platform} 产物后将无法运行；"
             + "请在 {targetPlatform} 机器上构建该目标",
-        "encryption-key-unavailable": "资源保护已开启，但无法取得密钥",
-        "web-unprotected": "资源保护对 Web 导出不生效，其文件以明文发布",
+        "encryption-key-unavailable": "资产保护已开启，但无法取得密钥",
+        "web-unprotected": "资产保护对 Web 导出不生效，其文件以明文发布",
         "progress-carry-unsupported":
             "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",
         "web-lossy-images": "导出的图像将以质量 {quality} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
-        "mobile-payload-too-large": "项目素材体积（{size}）超出移动端安装包能容纳的上限",
+        "mobile-payload-too-large": "项目资产体积（{size}）超出移动端安装包能容纳的上限",
         "version-uncodable": "项目版本 {version} 无法编码为 Android 版本号（主版本号最大 2099，次版本号与修订号最大 999）",
         "appid-android-adjusted": "应用 ID {appId} 不是合法的 Android 包名，构建将使用 {applicationId}",
         "bundleid-ios-adjusted": "应用 ID {appId} 不是合法的 iOS Bundle ID，构建将使用 {bundleId}",
@@ -287,7 +287,7 @@ export const build = {
         "signing-credential-expiring": "{platform} 签名证书将于 {notAfter} 到期；在此之前签出的产物仍然有效，之后的构建需要续期后的证书",
         "signing-secret-unavailable": "本机无法读取 {platform} 签名凭据的密码；重新导入一次即可重新保存密码",
         "signing-tool-missing": "为 {platform} 签名需要 {tool}，本机没有安装；请安装并确保它在 PATH 中，然后重新打开本对话框",
-        "signing-host-unsupported": "本机是 {host}，无法用所选凭据为 {platform} 签名；请在 {platform} 机器上构建这个目标",
+        "signing-host-unsupported": "本机是 {host}，无法用所选凭据为 {platform} 签名；请在 {platform} 机器上构建该目标",
         "signing-needs-network": "为 {platform} 签名需要联网；构建的其余环节都可离线完成",
         "signing-macos-identity-missing": "本机钥匙串里没有名为 {identity} 的证书；请在「钥匙串访问」中安装它，或在此改选其他证书",
         "signing-macos-identity-unusable": "证书 {identity} 无法用于签名：它已过期、私钥不在、或签发链不完整；请在「钥匙串访问」中打开它确认原因",
@@ -298,7 +298,7 @@ export const build = {
         "output-not-writable": "无法写入 {outputDir}",
         "output-not-empty": "输出目录已有文件，同名产物会被覆盖",
     },
-    webStaticNotice: "Web 构建是可部署到任意网页服务器的静态站点；资源加密与 HTTP 限制对它不生效",
+    webStaticNotice: "Web 构建是可部署到任意网页服务器的静态站点；资产加密与 HTTP 限制对它不生效",
     toast: {
         submitted: "构建已开始，进度显示在控制台",
         done: "构建完成",
@@ -348,11 +348,11 @@ export const build = {
         one: "构建已中止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
         other: "构建已中止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
     },
-    mediaNeedsConverting: "{asset} 无法播放，请在素材面板中转换",
+    mediaNeedsConverting: "{asset} 无法播放，请在资产面板中转换",
     mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",
     mediaSummary: {
-        one: "构建已中止：有 {count} 个素材无法播放，详见控制台",
-        other: "构建已中止：有 {count} 个素材无法播放，详见控制台",
+        one: "构建已中止：有 {count} 个资产无法播放，详见控制台",
+        other: "构建已中止：有 {count} 个资产无法播放，详见控制台",
     },
     networkNodeDisallowed: "{blueprint} 发起了网络请求，本工程不允许",
     pointerNodeUnsupported: "{blueprint} 会移动鼠标光标，这在 {platforms} 上不起作用",

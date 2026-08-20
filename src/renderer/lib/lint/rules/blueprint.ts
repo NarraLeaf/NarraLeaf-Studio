@@ -10,6 +10,10 @@ import {
 import type { BlueprintNodeEditorCatalogEntry } from "../../ui-editor/blueprint-nodes/types";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
+import {
+    collectProjectElementIds,
+    listBlueprintElementRefSites,
+} from "../../workspace/services/ui-editor/blueprint/elementRefSites";
 import { collectExecReachableNodeIds } from "../../workspace/services/ui-editor/blueprint/fnCatalog";
 import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
@@ -86,7 +90,10 @@ export const UNCHECKED_OPTIONS_SOURCES: ReadonlySet<string> = new Set([
     "callableFns",
     // Scoped to the component that owns the blueprint, not to the project.
     "componentParams",
-    // Scoped to one surface's element tree, not to the project.
+    // Scoped to one surface's element tree, not to the project - so the option list a node is
+    // filled from cannot answer whether a value in it is still good. `blueprint/element-ref-missing`
+    // below asks the question the other way round, against every element the project has, which is
+    // the only form of it that does not report a graph binding to a widget on another page.
     "elements",
     // `AudioTrackService.resolveTrack` falls back to a channel, so a stale track id moves a sound
     // onto another bus rather than breaking it. That is a quieter problem than this rule's other
@@ -205,6 +212,57 @@ function runReferenceMissing(ctx: LintContext): LintFinding[] {
                     target: blueprintNodeJumpTarget(site, node.id),
                 });
             }
+        }
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
+// blueprint/element-ref-missing
+// ---------------------------------------------------------------------------
+
+/**
+ * A graph bound to a widget the project does not have.
+ *
+ * Three node types write a widget down: the element literal and the two element event heads. A
+ * binding whose element is gone does nothing at all and says nothing about it - an `On Element
+ * Click` head that will never fire, a `Get Element` that throws the first time it runs - and the
+ * canvas draws the graph exactly as it draws a working one.
+ *
+ * It arises two ways and the report is the same for both: a widget deleted while graphs still named
+ * it, and a fragment copied out of another project, where every element id is a UUID that project
+ * minted (`graphForeignPaste`). The id is kept rather than blanked, so the author is left with the
+ * one fact that fixes it.
+ *
+ * **The universe is every element the project has, not the ones on any single page.** A widget id is
+ * unique across the document, and the two narrower questions are both wrong here: the option list a
+ * node's picker is filled from holds one surface's elements, so a graph legitimately naming a widget
+ * on another page would be reported, and a set built from `document.elements` alone omits every
+ * component definition's own tree, so every binding inside a component's blueprint would be. Both
+ * are rules that fire on correct graphs, which is worse than not asking.
+ *
+ * Which surface a reference names is not judged either. An element that exists under a surface id
+ * that has since changed is a stale wire rather than a missing widget - a different sentence, and
+ * one that would send the author looking for a widget still visible on the page.
+ */
+function runElementRefMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const known = collectProjectElementIds(document);
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        for (const { nodeId, ref } of listBlueprintElementRefSites(site.ir)) {
+            if (known.has(ref.elementId)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "blueprint/element-ref-missing",
+                messageKey: "lint.rule.blueprintElementRefMissing.message" as TranslationKey,
+                location: blueprintLocation(site, nodeId),
+                target: blueprintNodeJumpTarget(site, nodeId),
+            });
         }
     }
     return findings;
@@ -429,6 +487,16 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "error",
         slug: "blueprintReferenceMissing",
         run: ctx => runReferenceMissing(ctx),
+    },
+    {
+        id: "blueprint/element-ref-missing",
+        category: "blueprint",
+        // An error, like every other dangling reference: the graph does nothing where the canvas
+        // says it does something, and a build that shipped it would ship a control the player can
+        // press to no effect.
+        defaultSeverity: "error",
+        slug: "blueprintElementRefMissing",
+        run: ctx => runElementRefMissing(ctx),
     },
     {
         id: "blueprint/unreachable-node",

@@ -3,6 +3,7 @@
  * Does not import ui-editor types to avoid cycles; ui-editor bridges map to these types in M1+.
  */
 
+import type { AssetVariantMap } from "../assetSet";
 import type { BlueprintDocumentSchemaVersion } from "./schema";
 
 // ---------------------------------------------------------------------------
@@ -218,6 +219,18 @@ export type BlueprintGraphNode = {
     params?: Record<string, unknown>;
     ports?: Record<string, BlueprintGraphPort>;
     meta?: Record<string, unknown>;
+    /**
+     * What each asset set THIS node's stored params name resolves to, per locale.
+     *
+     * **Never authored and never on disk under `editor/`.** Written while a package is being
+     * assembled (`@shared/build/blueprintAssetSets`) and present only in the bundle a game runs
+     * from, exactly as the same field on a story row, a pose, or a widget is.
+     *
+     * On the node that STORES the id rather than the one that consumes it: an asset pin can be fed
+     * by an edge from a literal node, and then the literal is what holds the id and the consumer
+     * never sees a set at all.
+     */
+    assetVariants?: AssetVariantMap;
 };
 
 export type BlueprintGraphPort = {

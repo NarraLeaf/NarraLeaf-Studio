@@ -98,6 +98,15 @@ export interface ActionGroup {
      * other platforms the group is only ever an in-app dropdown.
      */
     menuSlot?: NativeMenuSlot;
+    /**
+     * The letter Alt reaches this menu by, shown on the label. Studio's own menus declare theirs;
+     * plugins do not get one, because a package that could claim Alt+F would be taking a key off
+     * the File menu on every machine that installed it.
+     *
+     * Ignored on macOS, where these groups are not drawn at all and Option+letter types a
+     * character rather than reaching a menu.
+     */
+    mnemonic?: string;
 }
 
 /**
@@ -113,6 +122,12 @@ export interface ActionDefinition {
     /** i18n key; when set, it overrides `tooltip` at render time (falls back to `tooltip`). */
     tooltipKey?: TranslationKey;
     shortcut?: string;
+    /**
+     * The catalog entry whose chord this row prints, for a command whose key is registered
+     * elsewhere. Undo is the case it exists for: the chord belongs to whichever editor has focus,
+     * so the menu must not register one - but it should still say `Ctrl+Z`. Display only.
+     */
+    shortcutId?: string;
     onClick: (workspace: Workspace) => void;
     order?: number;
     disabled?: boolean;

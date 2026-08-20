@@ -22,6 +22,8 @@
 
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { AssetVariantMap } from "@shared/types/assetSet";
+import { UI_ASSET_ID_PROPERTY_NAMES } from "@shared/build/uiAssetSlots";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import type { StoryDocument } from "@shared/types/story";
 import { listScenesInDocumentOrder } from "@shared/types/story";
@@ -190,8 +192,14 @@ function mapElementsToSurfaces(uidoc: UIDocument): Map<string, string> {
     return owner;
 }
 
-/** Literal property names that hold a library asset id, matched exactly rather than by suffix. */
-const ASSET_ID_PROPERTY_NAMES = new Set(["assetId", "fontAssetId", "posterAssetId"]);
+/**
+ * Literal property names that hold a library asset id, matched exactly rather than by suffix.
+ *
+ * The build's own walk publishes the list. A copy here would be a fourth reading of the same
+ * documents that could drift from the other three, and the way it drifts is that the gate stops
+ * checking the very slot a new widget family stores its picture in.
+ */
+const ASSET_ID_PROPERTY_NAMES = UI_ASSET_ID_PROPERTY_NAMES;
 
 /**
  * Every asset named by any page in the package.
@@ -226,36 +234,53 @@ export function collectSurfaceAssetDemands(uidoc: UIDocument): ShippedAssetDeman
         seen.add(assetId);
         demands.push({ assetId, origin });
     };
-    const walk = (value: unknown, origin: string, keyHint?: string): void => {
+    /**
+     * A record that names an asset set demands its members, not the set id.
+     *
+     * The set id names no bytes and never will: the package carries the answer beside the reference
+     * (`assetVariants`), and what the game fetches is whichever member the player's language picks.
+     * Demanding the set id would fail this gate on every package that uses one; demanding only the
+     * current language's member would let a package ship that goes blank the moment a player
+     * switches languages, which is the failure this gate exists to catch.
+     */
+    const walk = (value: unknown, origin: string, keyHint?: string, variants?: AssetVariantMap): void => {
         if (keyHint !== undefined && ASSET_ID_PROPERTY_NAMES.has(keyHint)) {
-            record(value, origin);
+            const stored = typeof value === "string" ? value.trim() : "";
+            const map = stored ? variants?.[stored] : undefined;
+            if (map) {
+                for (const memberId of Object.values(map)) {
+                    record(memberId, origin);
+                }
+            } else {
+                record(value, origin);
+            }
         }
         if (!value || typeof value !== "object") {
             return;
         }
         if (Array.isArray(value)) {
             for (const item of value) {
-                walk(item, origin);
+                walk(item, origin, undefined, variants);
             }
             return;
         }
         for (const [key, next] of Object.entries(value as Record<string, unknown>)) {
-            walk(next, origin, key);
+            walk(next, origin, key, variants);
         }
     };
     for (const surface of uidoc.surfaces ?? []) {
-        walk(surface, surface.name || surface.id);
+        walk(surface, surface.name || surface.id, undefined, surface.settings?.assetVariants);
     }
     // The whole element, not a chosen few of its fields: the walk is keyed on property names, and an
     // element carries asset ids in props, in style, in its value bindings and in `extra`. Naming the
     // fields here is how a widget family added later becomes an asset nobody checks.
     for (const element of Object.values(uidoc.elements ?? {})) {
-        walk(element, surfaceByElement.get(element.id) ?? (element.name || element.id));
+        walk(element, surfaceByElement.get(element.id) ?? (element.name || element.id), undefined, element.assetVariants);
     }
     for (const component of uidoc.components ?? []) {
         const origin = component.name || component.id;
         for (const element of Object.values(component.elements ?? {})) {
-            walk(element, origin);
+            walk(element, origin, undefined, element.assetVariants);
         }
     }
     return demands;

@@ -110,7 +110,7 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 ## 5. 交互态（统一写法）
 
-- **hover**：行 / 图标按钮用两档——弱 `hover:bg-edge-subtle`、强 `hover:bg-edge`。
+- **hover**：行 / 图标按钮一律 `hover:bg-fill`——共享 `Button` 的 ghost 变体内部就是它,手写行照抄这一档才与组件对齐;要更轻一档(密集列表、已有底色上再叠一层)用 `hover:bg-fill-subtle`。**hover 底不写 `edge` 系**:`edge` 只给 `border-`/`divide-`(见 §1),本条早先误写成 `hover:bg-edge-subtle` / `hover:bg-edge`,全仓没有一处是照它写的。
 - **focus**：统一 `focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`;容器型输入用 `focus-within:` 变体。禁止 `focus:border-*` 与裸 hex ring。
 - **selected / active**：填充式 `bg-primary/15 text-fg`;导航类列表可加左竖条 `border-l-2 border-primary`;tab 用底部下划线 `bg-primary`。
 - **disabled**：统一 `disabled:opacity-50 disabled:cursor-not-allowed`。
@@ -126,9 +126,21 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 - 合并 className **一律用** [`cn()`](../src/renderer/lib/utils/cn.ts)(`clsx` + `tailwind-merge`),不要字符串拼接——这样调用方传入的 `className` 才能可靠覆盖组件基础样式。
 - 优先复用 `src/renderer/lib/components/elements` 下的共享组件,不要重新手写 `<button>` / tab / badge / 空状态。
 
+### 布尔值：开关还是勾选框
+
+**设置和属性一律 `Switch`**（设置页、部件检视器、故事动作检视器都是它）；
+**`Checkbox` 只用于「这一项在不在集合里」和「同意」**——选哪些日志级别、导入哪些模型、
+某个变体声明哪些场景、勾一条许可协议。一个是你打开之后就不管的东西，一个是你逐项去勾的东西。
+
+**不要再手写 `<input type="checkbox">`**：外观全部由 `styles.css` 的全局
+`input[type="checkbox"]` 规则给（16px、`--nl-control-*` 边框、选中的主色与勾、禁用变淡），
+`Checkbox` 只负责配对与那只**箭头光标**（`cursor-default`；被它取代的十二处里有五处写着
+`cursor-pointer`）。`Checkbox.test.tsx` 会扫 `src/renderer`，**全仓只准存在一处
+`type="checkbox"`**，就是这个组件自己。
+
 ### 组件清单（`lib/components/elements`）
 
-已有:`Button` / `IconButton`、`Input` / `TextArea` / `SearchInput` / `InputGroup`、`Select` / `Combobox`、`Modal`(+ `ConfirmModal` / `AlertModal`)、`Card`、`Switch`、`Progress`、`Accordion`、`ContextMenu`。
+已有:`Button` / `IconButton`、`Input` / `TextArea` / `SearchInput` / `InputGroup`、`Select` / `Combobox`、`Modal`(+ `ConfirmModal` / `AlertModal`)、`Card`、`Switch` / `Checkbox`、`Progress`、`Accordion`、`ContextMenu`。
 
 Phase 2 新增(用来替换各处手写模式):
 

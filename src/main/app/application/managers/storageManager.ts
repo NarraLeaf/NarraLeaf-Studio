@@ -3,6 +3,7 @@ import {
     PersistentStateConfig,
     StorageNamespaceInfo
 } from "@shared/types/persistentState";
+import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import crypto from "crypto";
 import { app as electronApp } from "electron";
@@ -58,6 +59,13 @@ type SecurityScopedBookmarkGrant = {
     bookmark: string;
 };
 
+/** A manifest one window offered to the others, addressed by a token. */
+type AssetTransferOffer = {
+    /** Storage key of the offering window. The offer dies when that window does. */
+    ownerKey: number;
+    entries: AssetTransferEntry[];
+};
+
 export class StorageManager extends Manager {
     private storage = new Map<string, FileStorageInfo>();
     private runtimeFileSystemGrants = new Map<number, FileSystemGrant[]>();
@@ -66,6 +74,8 @@ export class StorageManager extends Manager {
     private runtimeSecurityScopedResourceStops = new Map<number, Array<() => void>>();
     private sessionSecurityScopedResourceStops: Array<() => void> = [];
     private securityScopedBookmarkGrants: SecurityScopedBookmarkGrant[] = [];
+    /** Asset manifests offered for a cross-window paste; see {@link recordAssetTransferOffer}. */
+    private assetTransferOffers = new Map<string, AssetTransferOffer>();
     private namespaces = new Map<string, StorageNamespaceInfo>();
     
     constructor(app: BaseApp) {
@@ -200,6 +210,43 @@ export class StorageManager extends Manager {
             .at(0)?.bookmark;
     }
 
+    /**
+     * Record a manifest of files `window` has already been shown to be allowed to read, and return
+     * the token that stands for it.
+     *
+     * The token is the only thing that crosses to another window - a paste carries it on the
+     * clipboard alongside a description of the files, never their paths and never their bytes. The
+     * caller is responsible for the verification: this stores what it is given, and stores nothing
+     * unless the whole manifest passed. See `@shared/types/assetTransfer` for why the table has to
+     * be recorded here rather than derived, and why it is never written to disk.
+     *
+     * Paths are resolved on the way in, so a redeem cannot be handed a different spelling of one
+     * that was checked.
+     */
+    public recordAssetTransferOffer(window: AppWindow, entries: AssetTransferEntry[]): string {
+        const token = crypto.randomBytes(32).toString("base64url");
+        this.assetTransferOffers.set(token, {
+            ownerKey: this.getWindowStorageKey(window),
+            entries: entries.map(entry => ({ ...entry, sourcePath: path.resolve(entry.sourcePath) })),
+        });
+        return token;
+    }
+
+    /**
+     * The manifest a token stands for, or null when this process never minted it.
+     *
+     * Reading an offer does not spend it. A clipboard is a durable thing the author may paste any
+     * number of times, and a one-shot token would make the second paste behave differently from the
+     * first for no reason they could see. Repetition widens nothing: every redeem hands out read
+     * access to the same files, and each redeeming window's grants die with that window. The
+     * lifetime that matters is the offering window's - once the project the bytes belong to is
+     * closed, the offer is gone.
+     */
+    public getAssetTransferOffer(token: string): AssetTransferEntry[] | null {
+        const offer = this.assetTransferOffers.get(token);
+        return offer ? offer.entries.map(entry => ({ ...entry })) : null;
+    }
+
     public revokeWindowFileSystemAccess(window: AppWindow): void {
         // Revocation runs from unregisterWindow, which can fire after the
         // BrowserWindow is already destroyed - at that point webContents (and
@@ -222,6 +269,14 @@ export class StorageManager extends Manager {
         for (const [hash, info] of this.storage) {
             if (info.ownerWebContentsId === key) {
                 this.storage.delete(hash);
+            }
+        }
+        // An offered manifest outlives neither its window nor the process. The project it points
+        // into is closed, so a token still on the clipboard now names nothing - which the paste
+        // side reads as "rows only" rather than as an error.
+        for (const [token, offer] of this.assetTransferOffers) {
+            if (offer.ownerKey === key) {
+                this.assetTransferOffers.delete(token);
             }
         }
     }
@@ -433,6 +488,7 @@ export class StorageManager extends Manager {
         this.stopSecurityScopedResources(this.sessionSecurityScopedResourceStops);
         this.sessionSecurityScopedResourceStops = [];
         this.securityScopedBookmarkGrants = [];
+        this.assetTransferOffers.clear();
         this.namespaces.clear();
     }
 

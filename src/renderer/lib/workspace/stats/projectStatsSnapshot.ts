@@ -17,6 +17,7 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import {
     extractCharacterTranslationRows,
     extractKeyTranslationRows,
+    extractSceneTranslationRows,
     extractUiTranslationRows,
     type TranslatableUnitRef,
 } from "@/lib/workspace/services/localization/localizationModel";
@@ -420,6 +421,9 @@ async function collectTranslatableRows(
         rows.push({ unitId: row.unitId, sourceText: row.sourceText });
     }
     for (const document of documents) {
+        for (const row of extractSceneTranslationRows(document)) {
+            rows.push({ unitId: row.unitId, sourceText: row.sourceText });
+        }
         for (const row of localizationService.extractRows(document)) {
             rows.push({ unitId: row.unitId, sourceText: row.sourceText });
         }

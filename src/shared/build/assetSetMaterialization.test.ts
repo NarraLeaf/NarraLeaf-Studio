@@ -26,7 +26,7 @@ function localeSet(overrides: Partial<AssetSet> = {}): AssetSet {
         name: "Title art",
         type: "image",
         filter: ["cg:title"],
-        axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja"] },
+        axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja"], fallback: "en" },
         ...overrides,
     };
 }
@@ -94,6 +94,36 @@ function run(input: {
     });
 }
 
+/** One story whose SCENE names `assetId` on the field given, rather than a row. */
+function storySceneNaming(field: "defaultBackgroundAssetId" | "bgm", assetId: string): Record<string, StoryDocument> {
+    return {
+        s1: {
+            id: "s1",
+            name: "Chapter 1",
+            schemaVersion: 7,
+            scenes: {
+                sc1: {
+                    id: "sc1",
+                    name: "Opening",
+                    blockOrder: [],
+                    blocks: {},
+                    ...(field === "defaultBackgroundAssetId"
+                        ? { defaultBackgroundAssetId: assetId }
+                        : { bgm: { assetId, volume: 1 } }),
+                },
+            },
+        } as unknown as StoryDocument,
+    };
+}
+
+function sceneOf(result: ReturnType<typeof materializeStoryAssetSets>) {
+    return result.documents.s1.scenes.sc1 as {
+        defaultBackgroundAssetId?: string;
+        bgm?: { assetId?: string };
+        assetVariants?: Record<string, Record<string, string>>;
+    };
+}
+
 function variantsOf(result: ReturnType<typeof run>) {
     return (result.documents.s1.scenes.sc1.blocks.b1 as { assetVariants?: Record<string, Record<string, string>> })
         .assetVariants;
@@ -136,7 +166,7 @@ describe("materializeStoryAssetSets", () => {
     describe("filling", () => {
         it("walks the project's declared fallback before the source locale", () => {
             const result = run({
-                sets: [localeSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja", "zh-CN"] } })],
+                sets: [localeSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja", "zh-CN"], fallback: "en" } })],
                 candidates: library([
                     [EN, ["cg:title", "locale:en"]],
                     [JA, ["cg:title", "locale:ja"]],
@@ -211,7 +241,7 @@ describe("materializeStoryAssetSets", () => {
                     ...parent,
                     id: "child",
                     filter: [...parent.filter, "locale:en"],
-                    axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"] },
+                    axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"], fallback: "happy" },
                 }],
             });
 
@@ -290,7 +320,7 @@ describe("build axes", () => {
             name: "Bath scene",
             type: "image",
             filter: ["cg:bath"],
-            axis: { kind: "release" as const, key: "rating", residency: "build" as const, values: ["all-ages", "adult"] },
+            axis: { kind: "release" as const, key: "rating", residency: "build" as const, values: ["all-ages", "adult"], fallback: "all-ages" },
         };
     }
 
@@ -352,8 +382,9 @@ describe("build axes", () => {
     });
 
     /**
-     * No fallback of any kind, unlike a locale axis. There the worst case is a player seeing another
-     * language's art; here the fallback would decide which bytes ship.
+     * The refusal that survives the fallback. An edition that never declared a position gets no
+     * file at all - taking the fallback for it would be the build guessing which bytes ship, which
+     * is how an adult variant reaches an all-ages package.
      */
     it("refuses an edition that never said which side it is on", () => {
         const result = build(undefined);
@@ -363,8 +394,25 @@ describe("build axes", () => {
         expect(result.collapsedBuildAxis).toBe(false);
     });
 
-    it("refuses a declared position the library has no file for", () => {
+    it("takes the fallback for a declared position the library has no file for", () => {
+        // Declared, and answered by the file the author named as the one everything falls back to.
         const result = build({ rating: "teen" });
+
+        expect(result.problems).toEqual([]);
+        expect(payloadOf(result).assetId).toBe(ALL_AGES);
+    });
+
+    it("refuses when the fallback has no file either, since nothing answers the position", () => {
+        const result = materializeStoryAssetSets({
+            documents: storyNaming(SET_ID),
+            sets: [{
+                ...ratingSet(),
+                axis: { kind: "release" as const, key: "rating", residency: "build" as const, values: ["all-ages", "adult"], fallback: "teen" },
+            }],
+            candidates: RATED_LIBRARY,
+            localization: localization(),
+            assetAxes: { rating: "teen" },
+        });
 
         expect(result.problems).toMatchObject([{ kind: "unfilled", axisKey: "rating", value: "teen" }]);
     });
@@ -379,5 +427,161 @@ describe("build axes", () => {
         });
 
         expect(result.problems).toMatchObject([{ kind: "ambiguous", axisKey: "rating", value: "adult" }]);
+    });
+});
+
+/**
+ * The two fields a scene owns rather than a row: the background it opens on and its music.
+ *
+ * They carry their map on the scene, because the compiler resolves them while it builds the scene -
+ * before any row has run, so there is no row to hang it off.
+ */
+describe("a scene's own asset fields", () => {
+    const AUDIO_SET_ID = "22222222-1111-4111-8111-111111111111";
+
+    it("writes the scene's own variant map for its opening background", () => {
+        const result = materializeStoryAssetSets({
+            documents: storySceneNaming("defaultBackgroundAssetId", SET_ID),
+            sets: [localeSet()],
+            candidates: FULL_LIBRARY,
+            localization: localization(),
+        });
+
+        expect(result.problems).toEqual([]);
+        expect(sceneOf(result).assetVariants).toEqual({ [SET_ID]: { en: EN, ja: JA } });
+        // The id stays: a runtime that lost its map has to fail at the resolver rather than draw
+        // one language's picture for everybody.
+        expect(sceneOf(result).defaultBackgroundAssetId).toBe(SET_ID);
+    });
+
+    it("writes it for the scene's music too, which varies by language as readily", () => {
+        const audioSet: AssetSet = {
+            ...localeSet(),
+            id: AUDIO_SET_ID,
+            type: "audio",
+            filter: ["bgm:theme"],
+        };
+        const clips: AssetSetCandidate[] = [
+            { id: "audio-en", type: "audio", tags: ["bgm:theme", "locale:en"] },
+            { id: "audio-ja", type: "audio", tags: ["bgm:theme", "locale:ja"] },
+        ];
+        const result = materializeStoryAssetSets({
+            documents: storySceneNaming("bgm", AUDIO_SET_ID),
+            sets: [audioSet],
+            candidates: clips,
+            localization: localization(),
+        });
+
+        expect(result.problems).toEqual([]);
+        expect(sceneOf(result).assetVariants).toEqual({ [AUDIO_SET_ID]: { en: "audio-en", ja: "audio-ja" } });
+    });
+
+    it("collapses a build axis into the scene's field, leaving no set id behind", () => {
+        const editionSet: AssetSet = {
+            ...localeSet(),
+            filter: ["cg:title"],
+            axis: { kind: "release", key: "release", residency: "build", values: ["main", "demo"], fallback: "main" },
+        };
+        const result = materializeStoryAssetSets({
+            documents: storySceneNaming("defaultBackgroundAssetId", SET_ID),
+            sets: [editionSet],
+            candidates: library([[EN, ["cg:title", "release:main"]], [JA, ["cg:title", "release:demo"]]]),
+            localization: localization(),
+            assetAxes: { release: "demo" },
+        });
+
+        expect(result.problems).toEqual([]);
+        expect(sceneOf(result).defaultBackgroundAssetId).toBe(JA);
+        expect(sceneOf(result).assetVariants).toBeUndefined();
+        expect(JSON.stringify(result.documents)).not.toContain(SET_ID);
+        expect(JSON.stringify(result.documents)).not.toContain(EN);
+    });
+
+    it("leaves a scene naming no set exactly as it was", () => {
+        const documents = storySceneNaming("defaultBackgroundAssetId", EN);
+        const result = materializeStoryAssetSets({
+            documents,
+            sets: [localeSet()],
+            candidates: FULL_LIBRARY,
+            localization: localization(),
+        });
+
+        expect(result.documents.s1).toBe(documents.s1);
+    });
+});
+
+/**
+ * A transform's mask lives one level down, under the channel that owns it. Assembly reads the same
+ * slots the rewrite writes, so a mask naming a set is resolved like any other reference - it was
+ * not, and the set id reached the shipped game as an id nothing answers.
+ */
+describe("the transform mask, which is written one level down", () => {
+    function storyWithMask(assetId: string): Record<string, StoryDocument> {
+        return {
+            s1: {
+                id: "s1",
+                name: "Chapter 1",
+                schemaVersion: 7,
+                scenes: {
+                    sc1: {
+                        id: "sc1",
+                        name: "Opening",
+                        blockOrder: ["b1"],
+                        blocks: {
+                            b1: {
+                                id: "b1",
+                                kind: "action",
+                                parentId: null,
+                                childrenIds: [],
+                                payload: {
+                                    action: "displayable",
+                                    operation: "transform",
+                                    target: {},
+                                    transform: { to: { maskAssetId: assetId } },
+                                },
+                            },
+                        },
+                    },
+                },
+            } as unknown as StoryDocument,
+        };
+    }
+
+    function maskOf(result: ReturnType<typeof materializeStoryAssetSets>) {
+        const payload = result.documents.s1.scenes.sc1.blocks.b1.payload as {
+            transform?: { to?: { maskAssetId?: string } };
+        };
+        return payload.transform?.to?.maskAssetId;
+    }
+
+    it("writes the row's variant map for a mask naming a locale set", () => {
+        const result = materializeStoryAssetSets({
+            documents: storyWithMask(SET_ID),
+            sets: [localeSet()],
+            candidates: FULL_LIBRARY,
+            localization: localization(),
+        });
+
+        expect(result.problems).toEqual([]);
+        expect((result.documents.s1.scenes.sc1.blocks.b1 as { assetVariants?: unknown }).assetVariants)
+            .toEqual({ [SET_ID]: { en: EN, ja: JA } });
+        expect(maskOf(result)).toBe(SET_ID);
+    });
+
+    it("rewrites the nested field when a build axis collapses it", () => {
+        const editionSet: AssetSet = {
+            ...localeSet(),
+            axis: { kind: "release", key: "release", residency: "build", values: ["main", "demo"], fallback: "main" },
+        };
+        const result = materializeStoryAssetSets({
+            documents: storyWithMask(SET_ID),
+            sets: [editionSet],
+            candidates: library([[EN, ["cg:title", "release:main"]], [JA, ["cg:title", "release:demo"]]]),
+            localization: localization(),
+            assetAxes: { release: "main" },
+        });
+
+        expect(maskOf(result)).toBe(EN);
+        expect(JSON.stringify(result.documents)).not.toContain(JA);
     });
 });

@@ -8,6 +8,7 @@ import {
     AutoSaveConfiguration,
     BuildConfiguration,
     CrashConfiguration,
+    DialogueConfiguration,
     LanguageChangeConfig as LanguageChangeConfiguration,
     LintingConfiguration,
     LocalizationConfiguration,
@@ -16,6 +17,7 @@ import {
     PlayerPreferences,
     ProjectAppConfiguration,
     SaveCompatibilityConfiguration,
+    SaveLocationConfiguration,
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
@@ -23,6 +25,7 @@ import {
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeCrashConfiguration,
+    normalizeDialogueConfiguration,
     normalizeLanguageChangeConfiguration,
     normalizeLintingConfiguration,
     normalizeLocalizationConfiguration,
@@ -30,6 +33,7 @@ import {
     normalizeNetworkConfiguration,
     normalizePlayerPreferences,
     normalizeSaveCompatibilityConfiguration,
+    normalizeSaveLocationConfiguration,
     normalizeSecurityConfiguration,
     normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
@@ -485,6 +489,36 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         });
     }
 
+    /** Where a shipped desktop game writes the player's files; the default for projects without one. */
+    public getSaveLocationConfiguration(): SaveLocationConfiguration {
+        return normalizeSaveLocationConfiguration(this.getProjectConfig().app?.saveLocation);
+    }
+
+    /**
+     * Merge a partial patch into the save-location setting. Written by the project App page and
+     * baked into the app manifest, which is where the runtime reads it: the answer is needed before
+     * Chromium starts, long before anything can open the pack.
+     */
+    public async updateSaveLocationConfiguration(
+        patch: Partial<SaveLocationConfiguration>,
+    ): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const saveLocation = normalizeSaveLocationConfiguration({
+                ...normalizeSaveLocationConfiguration(config.app?.saveLocation),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                saveLocation,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
     /** What a language change does to a running playthrough; the default for projects without one. */
     public getLanguageChangeConfiguration(): LanguageChangeConfiguration {
         return normalizeLanguageChangeConfiguration(this.getProjectConfig().app?.languageChange);
@@ -538,6 +572,36 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 preferences,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the author's dialogue settings, falling back to the engine's own for projects that
+     * predate `app.dialogue`.
+     */
+    public getDialogueConfiguration(): DialogueConfiguration {
+        return normalizeDialogueConfiguration(this.getProjectConfig().app?.dialogue);
+    }
+
+    /**
+     * Merge a partial patch into the author's dialogue settings. Written by the project Game page
+     * and baked into the bundle the game app configures the engine from at boot.
+     */
+    public async updateDialogueConfiguration(patch: Partial<DialogueConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const dialogue = normalizeDialogueConfiguration({
+                ...normalizeDialogueConfiguration(config.app?.dialogue),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                dialogue,
             };
             return {
                 ...config,

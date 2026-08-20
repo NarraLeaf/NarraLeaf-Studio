@@ -6,6 +6,31 @@ import { CharacterService } from "./CharacterService";
 
 vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
 
+/** A story row, as loosely as these tests need one. */
+type StoryRowStub = { id: string; kind: string; parentId: null; childrenIds: never[]; payload: Record<string, unknown> };
+
+/** A dialogue row spoken by a character. */
+function dialogueRow(id: string, characterId: string): StoryRowStub {
+    return {
+        id,
+        kind: "nodeAction",
+        parentId: null,
+        childrenIds: [],
+        payload: { action: "dialogue", characterId, text: { textId: `t-${id}`, role: "dialogue", value: "Hi" } },
+    };
+}
+
+/** A character's stage row. It has no bare-name arm, so a deletion must leave it holding the id. */
+function stageRow(id: string, characterId: string): StoryRowStub {
+    return {
+        id,
+        kind: "action",
+        parentId: null,
+        childrenIds: [],
+        payload: { action: "character", operation: "enter", characterId },
+    };
+}
+
 /**
  * A cast plus the two stores a deletion touches, with no filesystem behind either.
  *
@@ -42,12 +67,38 @@ function createHarness() {
         unlockAsset: vi.fn((assetId: string) => void locks.push(`unlock:${assetId}`)),
     };
 
+    /**
+     * The story library, as far as a deletion is concerned: documents in memory, and a write that
+     * lands payloads on them the way `StoryService.updateBlocks` does.
+     */
+    const documents = new Map<string, { id: string; scenes: Record<string, { id: string; blocks: Record<string, StoryRowStub> }> }>();
+    const stories = {
+        listStories: () => [...documents.keys()].map(id => ({ id })),
+        loadStory: async (storyId: string) => documents.get(storyId),
+        getStoryDocument: (storyId: string) => documents.get(storyId),
+        updateBlocks: vi.fn((storyId: string, edits: { sceneId: string; blockId: string; payload: unknown }[]) => {
+            const document = documents.get(storyId);
+            for (const edit of edits) {
+                document!.scenes[edit.sceneId].blocks[edit.blockId].payload = edit.payload as Record<string, unknown>;
+            }
+        }),
+    };
+    const addStory = (storyId: string, sceneId: string, blocks: StoryRowStub[]) => {
+        documents.set(storyId, {
+            id: storyId,
+            scenes: { [sceneId]: { id: sceneId, blocks: Object.fromEntries(blocks.map(block => [block.id, block])) } },
+        });
+    };
+    const payloadOf = (storyId: string, sceneId: string, blockId: string): Record<string, unknown> =>
+        documents.get(storyId)!.scenes[sceneId].blocks[blockId].payload;
+
     const context = {
         project: {} as never,
         services: {
             get(id: Services) {
                 switch (id) {
                     case Services.History: return history;
+                    case Services.Story: return stories;
                     case Services.ServiceAssets: return serviceAssets;
                     case Services.Assets: return assets;
                     case Services.Uuid: return { generate: () => `id-${++nextId}` };
@@ -60,7 +111,7 @@ function createHarness() {
     };
     history.setContext(context);
     service.setContext(context);
-    return { service, history, files, locks, serviceAssets, assets };
+    return { service, history, files, locks, serviceAssets, assets, stories, addStory, payloadOf };
 }
 
 describe("CharacterService deletion", () => {
@@ -147,6 +198,63 @@ describe("CharacterService deletion", () => {
         expect(service.getGroup(group.id)?.name).toBe("Cast");
         expect(service.listCharactersByGroup(group.id).map(c => c.profile.getName()))
             .toEqual(["Ada", "Bea"]);
+    });
+
+    it("leaves every line it spoke speaking, under its name, in every story", async () => {
+        const { service, addStory, payloadOf } = createHarness();
+        const character = service.createCharacter("Ada");
+        const id = character.profile.getId();
+        addStory("story-1", "scene-1", [dialogueRow("a", id), dialogueRow("b", "someone-else"), stageRow("enter", id)]);
+        addStory("story-2", "scene-2", [dialogueRow("c", id)]);
+
+        await service.deleteCharacter(id);
+
+        // The name the character carried, on every line it spoke, in the story the author had open and
+        // in the one they did not: the player reads the line exactly as before.
+        for (const [storyId, sceneId, blockId] of [["story-1", "scene-1", "a"], ["story-2", "scene-2", "c"]]) {
+            expect(payloadOf(storyId, sceneId, blockId)).toMatchObject({ speakerName: "Ada" });
+            expect(payloadOf(storyId, sceneId, blockId)).not.toHaveProperty("characterId");
+        }
+        // Another character's line is not this deletion's business.
+        expect(payloadOf("story-1", "scene-1", "b")).toMatchObject({ characterId: "someone-else" });
+        // A stage row has no bare-name arm, so it keeps the id and the project lint reports it.
+        expect(payloadOf("story-1", "scene-1", "enter")).toMatchObject({ characterId: id });
+    });
+
+    it("takes the cast and the lines back in one undo", async () => {
+        const { service, history, addStory, payloadOf } = createHarness();
+        const character = service.createCharacter("Ada");
+        const id = character.profile.getId();
+        addStory("story-1", "scene-1", [dialogueRow("a", id)]);
+        addStory("story-2", "scene-2", [dialogueRow("c", id)]);
+
+        await service.deleteCharacter(id);
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        await history.settled();
+
+        expect(service.getCharacter(id)?.profile.getName()).toBe("Ada");
+        expect(payloadOf("story-1", "scene-1", "a")).toMatchObject({ characterId: id });
+        expect(payloadOf("story-2", "scene-2", "c")).toMatchObject({ characterId: id });
+        expect(payloadOf("story-1", "scene-1", "a")).not.toHaveProperty("speakerName");
+        // One gesture, one entry: a second press must not be needed to finish putting it back.
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+
+    it("leaves a line the author has since given a speaker of its own", async () => {
+        const { service, history, addStory, payloadOf, stories } = createHarness();
+        const character = service.createCharacter("Ada");
+        const id = character.profile.getId();
+        addStory("story-1", "scene-1", [dialogueRow("a", id), dialogueRow("b", id)]);
+
+        await service.deleteCharacter(id);
+        // The author repairs one of the degraded lines against a different character before undoing.
+        stories.updateBlocks("story-1", [{ sceneId: "scene-1", blockId: "b", payload: { action: "dialogue", characterId: "char-other", text: { textId: "t-b", role: "dialogue", value: "Hi" } } }]);
+
+        history.undo(projectHistoryScope());
+        await history.settled();
+
+        expect(payloadOf("story-1", "scene-1", "a")).toMatchObject({ characterId: id });
+        expect(payloadOf("story-1", "scene-1", "b")).toMatchObject({ characterId: "char-other" });
     });
 
     it("records nothing for a character that was not there", async () => {

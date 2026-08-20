@@ -10,6 +10,7 @@ import { Trash2 } from "lucide-react";
 import type { StoryConditionRef, StoryDocument, StorySceneId } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { ConditionEditor } from "./ConditionEditor";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 
 const MENU_Z = 90;
 
@@ -22,6 +23,9 @@ export function ConditionPopover(props: {
     onClear: () => void;
     onClose: () => void;
 }) {
+    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
+    // whatever the author moved to; the caller's own dismissal is what puts it away.
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
 

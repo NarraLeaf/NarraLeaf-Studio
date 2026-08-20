@@ -33,6 +33,8 @@ export const uiEditor = {
         openSurface: "Open {label}",
         renameSurface: "Rename {label}",
         duplicateSurface: "Duplicate {label}",
+        copySurface: "Copy {label}",
+        pasteSurface: "Paste interface",
         deleteSurface: "Delete {label}",
         surfaceActions: "{label} actions",
         deleteConfirm: "Delete {label}?",
@@ -162,6 +164,40 @@ export const uiEditor = {
             left: "left",
         },
     },
+    /**
+     * A paste of elements, or of a whole interface, copied in another project.
+     *
+     * Counts only: what came across, and what still needs the author. Each unresolved reference is
+     * named again by the project lint, where it can be jumped to.
+     */
+    crossProject: {
+        pasted: {
+            one: "{count} element pasted",
+            other: "{count} elements pasted",
+        },
+        pastedFrom: {
+            one: "{count} element pasted from {project}",
+            other: "{count} elements pasted from {project}",
+        },
+        imported: {
+            one: "{count} asset imported",
+            other: "{count} assets imported",
+        },
+        unresolved: {
+            one: "{count} reference unresolved",
+            other: "{count} references unresolved",
+        },
+        surfacePasted: {
+            one: "{count} interface pasted",
+            other: "{count} interfaces pasted",
+        },
+        surfacePastedFrom: {
+            one: "{count} interface pasted from {project}",
+            other: "{count} interfaces pasted from {project}",
+        },
+        slotTaken: "The {slot} slot already has a Game UI",
+        surfaceNotAdded: "The interface could not be pasted",
+    },
     templateStore: {
         open: "Start from a template",
         title: "UI templates",
@@ -169,7 +205,7 @@ export const uiEditor = {
         add: "Add to project",
         retry: "Retry",
         empty: "No templates available.",
-        emptyFiltered: "No templates match your search.",
+        emptyFiltered: "No templates match the search.",
         applied: "Added “{name}”.",
         slotTaken: "The {slot} slot already has a Game UI.",
         slotOccupied: "Slot in use",
@@ -188,8 +224,8 @@ export const uiEditor = {
             other: "{count} screens",
         },
         assetsSkipped: {
-            one: "{count} resource could not be imported.",
-            other: "{count} resources could not be imported.",
+            one: "{count} asset could not be imported.",
+            other: "{count} assets could not be imported.",
         },
         componentsAdded: {
             one: "{count} component was added to the library.",

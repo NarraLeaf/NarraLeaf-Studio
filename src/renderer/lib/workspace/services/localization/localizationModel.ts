@@ -14,7 +14,7 @@ import type {
 } from "@shared/types/story";
 import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { LocalizationDocument, LocalizationKeysDocument, LocalizationUnit } from "@shared/types/localization";
-import { characterTranslationUnitId, localizationKeyUnitId } from "@shared/types/localization";
+import { characterTranslationUnitId, localizationKeyUnitId, sceneTranslationUnitId } from "@shared/types/localization";
 import type { TranslationExchangeRow } from "@shared/utils/localizationExchange";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
@@ -142,6 +142,33 @@ export function extractStoryTranslationRows(document: StoryDocument): StoryTrans
         }
     }
     return rows;
+}
+
+/** One scene name as a translation row (unit id `scene:<id>`). */
+export type SceneTranslationRow = {
+    unitId: string;
+    sceneId: string;
+    storyId: string;
+    /** The scene's source-language name - what a save slot or a chapter list shows the player. */
+    sourceText: string;
+};
+
+/**
+ * Scene names as translation rows, in narrative order.
+ *
+ * Narrative order rather than alphabetical, for the reason the story lines are in it: a translator
+ * naming the places of a script reads them in the order the script visits them. Scenes with a blank
+ * name are skipped - there is nothing to translate, and nothing renders it.
+ */
+export function extractSceneTranslationRows(document: StoryDocument): SceneTranslationRow[] {
+    return listScenesInNarrativeOrder(document)
+        .filter(scene => scene.name.trim().length > 0)
+        .map(scene => ({
+            unitId: sceneTranslationUnitId(scene.id),
+            sceneId: scene.id,
+            storyId: document.id,
+            sourceText: scene.name,
+        }));
 }
 
 /** One localizable UI widget text (implicit unit `ui:<elementId>.<prop>`). */

@@ -148,7 +148,7 @@ export function useSurfaceCanvasContextMenu(params: {
                             data?.editor === "ui" && data.surfaceId === surface.id
                                 ? (data.primaryId ?? data.elementIds[data.elementIds.length - 1] ?? null)
                                 : null;
-                        uiEditorPaste(documentService, localBlueprint, stateService, surface.id, {
+                        void uiEditorPaste(documentService, localBlueprint, stateService, surface.id, {
                             hitElementId: lastContextHitElementId.current,
                             primaryElementId: primary,
                         });

@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import { Input } from "@/lib/components/elements/Input";
 import { useTranslation } from "@/lib/i18n";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 
 /**
  * The reading typed over a run of text - furigana over kanji, pinyin or zhuyin over hanzi. Compiles
@@ -38,6 +39,9 @@ export function RubyPopover(props: {
     /** Take the popover down. The caller clears the state that renders it. */
     onClose: () => void;
 }) {
+    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
+    // whatever the author moved to; the caller's own dismissal is what puts it away.
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const [draft, setDraft] = useState(props.value ?? "");
     const panelRef = useRef<HTMLDivElement | null>(null);

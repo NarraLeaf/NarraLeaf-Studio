@@ -4,6 +4,7 @@ import { Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 
 const MODE_BTN = "h-7 px-2.5 text-xs transition-colors";
 
@@ -19,6 +20,9 @@ export function PausePopover(props: {
     onRemove: () => void;
     onClose: () => void;
 }) {
+    // Switching tabs or panels away from this row leaves a body-portalled panel hanging over
+    // whatever the author moved to; the caller's own dismissal is what puts it away.
+    useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const isWait = props.value !== true;
     const ms = typeof props.value === "number" ? props.value : 300;

@@ -22,6 +22,8 @@ import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
 import { readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
+import type { WeatherBakeSpec } from "@shared/weather/model";
+import { weatherClipAssetId } from "@shared/weather/stage";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
@@ -484,6 +486,19 @@ export function GameRuntimeApp() {
         [bridge, pack],
     );
 
+    /**
+     * The clip a weather seed describes, which a shipped game finds rather than makes.
+     *
+     * There is no encoder here and there never will be: the build produced this file and put it in
+     * the pack under an id derived from the same spec, so the lookup is an ordinary asset read. A
+     * spec the pack does not list resolves to whatever the shell says about a missing asset, and the
+     * compile leaves that overlay out with a diagnostic rather than starting a `Vfx` with no source.
+     */
+    const resolveWeatherClip = useCallback(
+        (spec: WeatherBakeSpec) => resolveStoryAssetUrl(weatherClipAssetId(spec)),
+        [resolveStoryAssetUrl],
+    );
+
     const saveStore = useMemo<GameAppSaveStore>(() => ({
         write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) => {
             if (!bridge) {
@@ -589,6 +604,7 @@ export function GameRuntimeApp() {
             disposeMessage: "Preview runtime disposed",
             log,
             resolveStoryAssetUrl,
+            resolveWeatherClip,
             saveStore,
             quitApplication,
             restartApplication,
@@ -619,6 +635,7 @@ export function GameRuntimeApp() {
         quitApplication,
         restartApplication,
         resolveStoryAssetUrl,
+        resolveWeatherClip,
         runtimeReady,
         setFullscreen,
         subscribeFullscreenChanged,

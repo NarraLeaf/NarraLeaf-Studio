@@ -30,8 +30,12 @@ import {
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
     VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
-    VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsForgetServerHandler,
-    VcsListServerProjectsHandler, VcsCreateServerProjectHandler,
+    VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsRefreshServerHandler, VcsForgetServerHandler,
+    VcsListServerProjectsHandler, VcsGetServerProjectHandler, VcsDeleteServerProjectHandler,
+    VcsListServerProjectHistoryHandler,
+    VcsListServerMembersHandler,
+    VcsSignInWithPasswordHandler, VcsCreateServerProjectHandler, VcsPublishProjectHandler,
+    VcsListLocalRepositoriesHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
@@ -48,7 +52,7 @@ import {
     MediaConvertStartHandler,
     MediaProbeHandler,
 } from "./handlers/mediaAction";
-import { StudioTasksGetOverviewHandler } from "./handlers/studioTaskAction";
+import { StudioTasksGetOverviewHandler, StudioTasksPrebakeWeatherHandler } from "./handlers/studioTaskAction";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
@@ -132,6 +136,11 @@ import {
     ProjectTemplateScaffoldHandler,
 } from "./handlers/projectTemplateAction";
 import { AssetExportToFolderHandler, AssetFetchRemoteHandler } from "./handlers/assetAction";
+import { AssetTransferOfferHandler, AssetTransferRedeemHandler } from "./handlers/assetTransferAction";
+import {
+    ClipboardReadEditorSelectionHandler,
+    ClipboardWriteEditorSelectionHandler,
+} from "./handlers/clipboardAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
@@ -235,6 +244,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new MediaConvertCancelHandler(),
         new MediaConvertGetStatusHandler(),
         new StudioTasksGetOverviewHandler(),
+        new StudioTasksPrebakeWeatherHandler(),
         new DevModeResolveWeatherClipHandler(),
         new WorkspaceCloseHandler(),
         new WorkspaceReturnToLauncherHandler(),
@@ -345,6 +355,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectTemplateScaffoldHandler(),
         new AssetFetchRemoteHandler(),
         new AssetExportToFolderHandler(),
+        new AssetTransferOfferHandler(),
+        new AssetTransferRedeemHandler(),
+        new ClipboardWriteEditorSelectionHandler(),
+        new ClipboardReadEditorSelectionHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers
@@ -414,8 +428,16 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsProbeServerHandler(),
         new VcsListServersHandler(),
         new VcsListServerProjectsHandler(),
+        new VcsGetServerProjectHandler(),
+        new VcsDeleteServerProjectHandler(),
+        new VcsListServerProjectHistoryHandler(),
+        new VcsListServerMembersHandler(),
+    new VcsSignInWithPasswordHandler(),
         new VcsCreateServerProjectHandler(),
+        new VcsPublishProjectHandler(),
+        new VcsListLocalRepositoriesHandler(),
         new VcsAddServerHandler(),
+        new VcsRefreshServerHandler(),
         new VcsForgetServerHandler(),
         new VcsSignOutHandler(),
         new VcsTrustAuthorityHandler(),

@@ -9,18 +9,32 @@
  * ## What is in here and what is deliberately not
  *
  * Only the parameters that change PIXELS live here. Everything about how the finished overlay reads
- * on stage — how strongly, how fast, in front of what — is already a runtime knob on the `vfx`
- * payload (`opacity`, `rate`, `zIndex`, `fit`) and must never be duplicated as a seed parameter:
- * duplicating one would mean two answers to one question, and only the baked one would survive a
- * change of mind without a re-bake.
+ * on stage — how strongly, in front of what — is already a runtime knob on the `vfx` payload
+ * (`opacity`, `zIndex`, `fit`) and must never be duplicated as a seed parameter: duplicating one
+ * would mean two answers to one question, and only the baked one would survive a change of mind
+ * without a re-bake.
  *
- * `rate` is the important case. It is the author's "how fast", it is continuous, and it costs
- * nothing: the same frames played faster are still the same frames, so the loop stays seamless. What
- * IS baked is only the *spread* between near and far particles, which is a look rather than a speed.
+ * ## Speed is baked, and `rate` is not the same question
+ *
+ * How fast the particles fall IS a pixel decision, so {@link WEATHER_PARAMS.fallSpeed} is here. The
+ * first round said otherwise — that the playback `rate` was the author's "how fast", since the same
+ * frames played faster cost nothing and keep the seam. That was true and still insufficient, for
+ * three reasons the author hits immediately:
+ *
+ *  - `rate` speeds up the CLIP, so a twelve-second loop played at 3x repeats every four seconds, and
+ *    the repeat is the one artefact this whole approach exists to avoid;
+ *  - it moves everything, including the sway and the tumble, which is a fast-forward rather than
+ *    heavier weather;
+ *  - the inspector's live preview runs the field at its own phase and cannot show a playback rate at
+ *    all, so the one control for speed was invisible in the one place speed is tuned.
+ *
+ * A baked fall speed has none of those: the loop is still twelve seconds, the sway is untouched, and
+ * the preview shows exactly what will play. `rate` remains, unchanged, as what it always really was:
+ * a playback trim for a clip — the author's own, or a baked one — at the moment it plays.
  *
  * ⚠ A `rate` set on the CREATE row survives a save; one set by a later `/rate` row does not (the
- * engine does not persist a runtime rate change). So the author's speed control has to write the
- * create row, not emit a separate row.
+ * engine does not persist a runtime rate change). A baked speed has no such asymmetry, which is the
+ * other reason it belongs here.
  *
  * ## Why the ranges live beside the fields
  *
@@ -38,8 +52,9 @@ export type WeatherSeedId = (typeof WEATHER_SEED_IDS)[number];
  * One tunable number, with the bounds every surface shares.
  *
  * `step` is the inspector's increment, not a quantisation the renderer enforces — the renderer takes
- * any value inside the range. The one real quantisation in this system (the integer fall harmonics)
- * is internal and never reaches a control; see {@link WeatherFieldSpec}.
+ * any value inside the range. `fallSpeed` is the one exception, and it is exact rather than
+ * approximate: the renderer rounds it to a whole number because a fraction of a fall-length does not
+ * close the loop, so its step of 1 is the grid the value actually lives on.
  */
 export type WeatherParamSpec = {
     min: number;
@@ -56,6 +71,7 @@ export type WeatherParamKey =
     | "sway"
     | "streak"
     | "wind"
+    | "fallSpeed"
     | "depthSpread";
 
 /**
@@ -78,6 +94,20 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
     streak: { min: 0, max: 120, step: 2, default: 30 },
     /** Fall direction, in degrees off straight down. Negative leans left. */
     wind: { min: -60, max: 60, step: 1, default: 0 },
+    /**
+     * How fast the field falls, as whole fall-lengths crossed per loop by the FARTHEST particles.
+     *
+     * Whole ones because that is what closes the loop: a particle has to be exactly where it started
+     * when the last frame hands over to the first, and any fraction of a length is a jump. The near
+     * field scales up from this by {@link depthSpread}, so raising the speed keeps the depth reading
+     * it already had instead of flattening it.
+     *
+     * ⚠ Faster rain wants a longer {@link streak}: the smear is a shutter length in pixels, and it
+     * does not follow the speed on its own. Nothing enforces this — a short streak at high speed is
+     * a legitimate look (hail rather than drizzle) — but it is the first thing to reach for when
+     * fast rain reads as a field of dashes.
+     */
+    fallSpeed: { min: 1, max: 12, step: 1, default: 1 },
     /** How much faster the near field falls than the far field. 1 = everything falls together. */
     depthSpread: { min: 1, max: 8, step: 1, default: 3 },
 };
@@ -95,10 +125,19 @@ export type WeatherSeedDefinition = {
     /** Particles are drawn as a smear along the fall line rather than a disc. */
     streaked: boolean;
     /**
-     * Particles tumble: the disc's cross-axis breathes on an integer harmonic, which reads as a petal
-     * turning over without costing a per-pixel rotation.
+     * Particles tumble: they turn in the plane and foreshorten across it, both on integer harmonics
+     * so the loop still closes. Only worth anything on a seed whose particle has a shape to turn -
+     * a disc looks identical at every angle, which is why this travels with {@link sprite}.
      */
     tumbles: boolean;
+    /**
+     * Particles are drawn from the petal bitmap rather than as an ellipse of light.
+     *
+     * Snow and rain are lights, and an ellipse with a soft falloff is not an approximation of them:
+     * it is what they look like. A petal has an outline and tone across it, which is the half no
+     * formula gives you and, at the size sakura draws at, the half that reads.
+     */
+    sprite?: boolean;
 };
 
 /**
@@ -112,7 +151,7 @@ export type WeatherSeedDefinition = {
 export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     snow: {
         id: "snow",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "depthSpread"],
         defaults: { density: 160, sizeNear: 17, sizeFar: 2, sway: 52, depthSpread: 3 },
         tint: [255, 255, 255],
         streaked: false,
@@ -120,7 +159,7 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     },
     rain: {
         id: "rain",
-        params: ["density", "sizeNear", "sizeFar", "streak", "wind", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "streak", "wind", "fallSpeed", "depthSpread"],
         // No sway: rain falls in straight parallel lines, which is also why `wind` reads as a tilt of
         // the whole field rather than as a wobble.
         defaults: { density: 170, sizeNear: 2.4, sizeFar: 1, streak: 30, sway: 0, depthSpread: 7 },
@@ -130,11 +169,12 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     },
     sakura: {
         id: "sakura",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "depthSpread"],
         defaults: { density: 90, sizeNear: 26, sizeFar: 5, sway: 110, depthSpread: 2 },
         tint: [255, 206, 214],
         streaked: false,
         tumbles: true,
+        sprite: true,
     },
 };
 

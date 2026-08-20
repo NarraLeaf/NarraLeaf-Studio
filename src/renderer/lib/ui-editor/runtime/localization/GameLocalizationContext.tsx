@@ -13,6 +13,7 @@ import {
     resolveLocalizedUnitText,
     type GameLocalizationBundle,
 } from "@shared/types/localization";
+import { resolveAssetVariantMember, type AssetVariantCarrier } from "@shared/types/assetSet";
 
 export type GameLocalizationRuntime = {
     bundle: GameLocalizationBundle;
@@ -72,4 +73,48 @@ export function useLocalizedWidgetText(input: LocalizedWidgetTextInput): string 
     }
     return resolveLocalizedUnitText(runtime.bundle, locale, uiTextUnitId(input.elementId, input.prop))
         ?? input.sourceText;
+}
+
+/**
+ * The asset a record's set reference resolves to for the language the game is being played in.
+ *
+ * The picture half of {@link useLocalizedWidgetText}, and deliberately the same shape: a widget
+ * resolves at its own reference point, from the record it was already rendering, and re-renders when
+ * the player changes language. That is not optional polish - a language button on the title screen
+ * changes the language **without restarting**, so a picture resolved once at load would keep showing
+ * the old language's art until something else happened to remount it.
+ *
+ * Answers the id untouched in three cases, each of which is a host that has its own answer:
+ *
+ *  - **The editor canvas**, which mounts no provider. `useAssetObjectUrl` resolves a set there
+ *    against the live library, in the project's source language - a preview of another language is
+ *    a build concern.
+ *  - **Any record with no map**, which is every widget that names an ordinary file, and every widget
+ *    at all until a build writes one.
+ *  - **A set whose axis was collapsed at build time**, whose slot holds a member id by then and has
+ *    no map to look in.
+ *
+ * Subscribing only while a map exists is a cost decision, not a correctness one: this runs for every
+ * rectangle on the page, and a widget with no set has nothing to re-render for.
+ */
+export function useLocalizedAssetId(
+    carrier: AssetVariantCarrier | null | undefined,
+    assetId: string | null | undefined,
+): string | null | undefined {
+    const runtime = useContext(GameLocalizationContext);
+    const hasVariants = Boolean(assetId && carrier?.assetVariants?.[assetId]);
+    const locale = useSyncExternalStore(
+        hasVariants ? (runtime?.subscribe ?? noopSubscribe) : noopSubscribe,
+        () => (hasVariants ? runtime?.getLocale() ?? "" : ""),
+        () => "",
+    );
+    if (!assetId || !hasVariants) {
+        return assetId;
+    }
+    return resolveAssetVariantMember(
+        carrier?.assetVariants,
+        assetId,
+        locale,
+        runtime?.bundle.sourceLocale,
+    ) ?? assetId;
 }

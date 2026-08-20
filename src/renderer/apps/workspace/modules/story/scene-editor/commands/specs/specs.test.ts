@@ -18,6 +18,7 @@ const CONTEXT: StoryCommandContext = {
     images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }, { id: "i3", name: "spiral" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
+    assetSets: [],
     // Alice is drawn by Studio; Doll is drawn by a runtime the author supplied, so she has no
     // authoring-time differentials at all - the two together are what the `/face` union has to serve.
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
@@ -78,6 +79,12 @@ function build(source: string): StoryBlock {
 }
 
 /** Resolution issues for a line - for asserting what must NOT commit. */
+/** What the PARSE rejected, before any target is resolved - an unknown word for the command. */
+function commandLineIssues(source: string): string[] {
+    const line = parseCommandLine(source);
+    return line.kind === "command" ? line.issues.map(issue => issue.code) : [];
+}
+
 function issuesOf(source: string): string[] {
     const line = parseCommandLine(source);
     if (line.kind !== "command" || !line.def) {
@@ -172,6 +179,21 @@ describe("generic verbs", () => {
         expect(build("/show hero in=fade d=0.2")).toMatchObject({
             payload: { action: "image", operation: "show", objectName: "hero", transform: { to: { opacity: 1 }, durationMs: 200 } },
         });
+    });
+
+    it("/show carries an opacity and a rate for an overlay, and refuses them anywhere else", () => {
+        // This showing's own values, not the overlay's: they ride the show row and never touch the
+        // row that declares the overlay.
+        expect(build("/show petals d=0.5 opacity=0.4 rate=2")).toMatchObject({
+            payload: { action: "vfx", operation: "show", objectName: "petals", durationMs: 500, opacity: 0.4, rate: 2 },
+        });
+        // Nothing else has a field for either, so a row that types them elsewhere is reported rather
+        // than storing numbers the compile does not read.
+        expect(issuesOf("/show hero opacity=0.4")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/show Alice rate=2")).toEqual(["unsupportedParam"]);
+        // On the way out there is nothing to say - a fade out ends at zero, with the clip stopped -
+        // so `/hide` does not take either word at all, rather than taking one and ignoring it.
+        expect(commandLineIssues("/hide petals opacity=0.4")).toEqual(["unknownParam"]);
     });
 
     it("/hide is direction-aware: the same word fades OUT", () => {
@@ -852,6 +874,35 @@ describe("logic and effects", () => {
         expect(parseCommandLine("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2)")).toMatchObject({ issues: [{ code: "badValue" }] });
     });
 
+    it("/transform loop is the same bag, played until something stops it", () => {
+        // A bare flag rather than a verb of its own: `loop` is `/repeat`'s alias, and the author
+        // already knows the word from `/bgm theme loop`.
+        expect(build("/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror")).toMatchObject({
+            kind: "action",
+            payload: {
+                action: "displayable",
+                operation: "loop",
+                transform: { to: { scaleY: 1.02 }, durationMs: 900, repeatType: "mirror" },
+            },
+        });
+        // The camera loops too - a handheld sway is the same row about the stage's own glass.
+        expect(build("/transform camera loop rot=0.4 d=1.2")).toMatchObject({
+            payload: { action: "camera", operation: "loop", transform: { to: { rotation: 0.4 } } },
+        });
+    });
+
+    it("/transform stopLoop states the way back and nothing else", () => {
+        expect(build("/transform hero stopLoop d=0.3")).toMatchObject({
+            payload: { action: "displayable", operation: "stopLoop", transform: { durationMs: 300 } },
+        });
+        // A bag beside it would be a pose stored and then never reached, so the line must not commit.
+        expect(issuesOf("/transform hero stopLoop zoom=2")).toEqual(["conflictingParams"]);
+        // Start it and end it on one line: two instructions about one element, and no rule can pick.
+        expect(issuesOf("/transform hero loop stopLoop zoom=2")).toContain("conflictingParams");
+        // A count and "until something stops it" are two answers to how many times it runs.
+        expect(issuesOf("/transform hero loop zoom=2 repeat=3")).toEqual(["conflictingParams"]);
+    });
+
     it("/transform camera reads the camera as a reserved target word", () => {
         expect(build("/transform camera zoom=1.5 d=0.8")).toMatchObject({
             kind: "action",
@@ -908,14 +959,17 @@ describe("logic and effects", () => {
         });
     });
 
-    it("/vfx places a looping overlay and names it off the clip", () => {
+    it("/vfx declares a looping overlay and names it off the clip", () => {
         expect(build("/vfx intro")).toMatchObject({
             kind: "action",
             payload: { action: "vfx", operation: "create", objectName: "intro", assetId: "v1", loop: true },
         });
-        expect(build("/vfx intro name=rain opacity=0.6 d=1.2")).toMatchObject({
-            payload: { objectName: "rain", opacity: 0.6, durationMs: 1200 },
+        expect(build("/vfx intro name=rain opacity=0.6")).toMatchObject({
+            payload: { objectName: "rain", opacity: 0.6 },
         });
+        // The row reveals nothing, so it carries no fade: `d=` is not a parameter of it, and a stored
+        // duration would be a number the compile does not read.
+        expect(commandLineIssues("/vfx intro d=1.2")).toEqual(["unknownParam"]);
         // Blend mode decides whether the material reads at all, so the create row opens the inspector.
         expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
     });

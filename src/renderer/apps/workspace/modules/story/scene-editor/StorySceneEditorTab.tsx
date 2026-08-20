@@ -4,6 +4,9 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useWorkspace } from "@/apps/workspace/context";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { getDefById, localizedCommandToken } from "./commands/registry";
 import type { EditorComponentProps } from "../../types";
@@ -30,7 +33,7 @@ import {
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
-import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
+import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
@@ -53,6 +56,7 @@ import { StoryRowFilterMenu } from "./StoryRowFilterMenu";
 import { appendDeveloperIdSection } from "@/lib/developer";
 import { EMPTY_STORY_ROW_FILTER, storyRowFilterSize } from "./storyRowFilter";
 import { StoryCommandLineProvider } from "./StoryCommandLineView";
+import { StoryRefNavigationProvider } from "./StoryRefNavigationProvider";
 import {
     getSegmentSlot,
     replaceInSegment,
@@ -187,6 +191,16 @@ function StorySceneOverviewBlock(props: {
     const selectButtonRef = useRef<HTMLButtonElement | null>(null);
     const backgroundAssetId = scene.defaultBackgroundAssetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(backgroundAssetId);
+    const workspace = useWorkspace();
+    // The same field the scene inspector edits, so it offers the same choices. It was the one
+    // surface of `defaultBackgroundAssetId` that did not, which read as the panel and the card
+    // disagreeing about what a scene background can be.
+    const assetSets = useAssetSetPickerSource({
+        context: workspace.context,
+        isInitialized: workspace.isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
 
     // Collapsed by default once the scene is set up; expanded on a freshly created scene (no default
     // background yet) so the author is prompted to name it and pick a backdrop. A manual toggle is
@@ -243,7 +257,14 @@ function StorySceneOverviewBlock(props: {
         onUpdateScene({ defaultBackgroundAssetId: null });
     }, [onUpdateScene]);
 
-    const backgroundLabel = backgroundAsset?.name ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
+    const backgroundLabel = backgroundAsset?.name
+        // A set has no record in the image library, so the "this picture is gone" phrase would be
+        // printed over one that resolves. Both kinds of id go through the one function that answers
+        // for both.
+        ?? (backgroundAssetId && workspace.context
+            ? resolveAssetDisplayName(workspace.context.services, backgroundAssetId)
+            : null)
+        ?? (backgroundAssetId ? t("story.background.missingImage") : t("story.background.none"));
 
     return (
         <div className="mx-3 mb-3 overflow-hidden rounded-lg border border-edge bg-fill-subtle">
@@ -407,13 +428,16 @@ function StorySceneOverviewBlock(props: {
                 anchorRef={selectButtonRef}
                 title={t("story.sceneEditor.selectDefaultBackground")}
                 multiple={false}
+                {...(assetSets.virtualGroups
+                    ? { virtualGroups: assetSets.virtualGroups, resolveAssetPreviewUrl: assetSets.resolveAssetPreviewUrl }
+                    : {})}
             />
         </div>
     );
 }
 
 export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     // Subscribed to, not called: the empty scene's example chips spell their commands through the
     // registry's imperative read, which cannot tell React it went stale. Without this the chips keep
     // the old vocabulary after a language change until something else re-renders the tab.
@@ -1737,7 +1761,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         /** The row's block, by id, from whatever scene is current. */
         const blockOf = (blockId: StoryBlockId) => latest().editor.scene?.blocks[blockId] ?? null;
         return {
-            select: (blockId, event) => latest().editor.selectRow(blockId, event),
+            // The row's `click`, which selects only when its `mousedown` declined - see
+            // `storyRowSelectionGesture`. Wiring this to `selectRow` is what made Ctrl+click a no-op:
+            // the row would then be selected twice per press, and a toggle applied twice is nothing.
+            select: (blockId, event) => latest().editor.selectRowFromClick(blockId, event),
             contextMenu: (blockId, event) => latest().openRowContextMenu(event, blockId),
             mouseDown: (blockId, event) => latest().editor.beginDragSelection(blockId, event),
             mouseEnter: blockId => latest().editor.extendDragSelection(blockId),
@@ -1910,12 +1937,40 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const menuTarget = menuTargetId;
     const menuRoots = editor.selectionRootIds();
     const menuAllDisabled = menuRoots.length > 0 && menuRoots.every(id => scene.blocks[id]?.disabled);
+    // What the selection-wide entries act on, and — of those — the rows whose speaker resolves to
+    // nothing: a bare name nobody backs, or a character id this project has never heard of. The second
+    // is what rows pasted in from another project carry, since a character id is minted per project.
+    const menuSelectionIds = menuTarget
+        ? (editor.selectedBlockIds.size > 0 ? [...editor.selectedBlockIds] : [menuTarget])
+        : [];
+    // Anchored on the row the menu was opened from, so a selection holding several unresolved
+    // speakers repairs the one the author pointed at instead of collapsing them into one character.
+    const menuSpeakerRowIds = editor.unresolvedSpeakerRowIds(menuSelectionIds, menuTargetId);
+    // The same candidate list the speaker chooser offers, minus its bare-name entries: this repair
+    // binds to a character that exists, and swapping one unbacked name for another is not a repair.
+    const menuSpeakerTargets = menuSpeakerRowIds.length > 0
+        ? getSpeakerCandidates(editor.characters, [], "").flatMap(candidate => (candidate.kind === "character"
+            ? [{
+                id: `bind-speaker-${candidate.key}`,
+                label: candidate.name,
+                onClick: () => editor.bindSpeakerForRows(menuSpeakerRowIds, candidate.key),
+            }]
+            : []))
+        : [];
     const rowMenuItems: ContextMenuDef = menuTarget ? [
         { id: "insert-above", label: t("story.rowMenu.insertAbove"), ...freeze.menuRow(), onClick: () => editor.startInsertBefore(menuTarget) },
         { id: "insert-below", label: t("story.rowMenu.insertBelow"), ...freeze.menuRow(), onClick: () => editor.startInsertAfter(menuTarget, true) },
         { id: "sep-insert", separator: true },
         { id: "duplicate", label: t("story.rowMenu.duplicate"), ...freeze.menuRow(), onClick: () => editor.duplicateSelection() },
         { id: "disable", label: menuAllDisabled ? t("story.rowMenu.enable") : t("story.rowMenu.disable"), ...freeze.menuRow(), onClick: () => editor.toggleDisableSelection() },
+        // Absent rather than greyed when there is nothing to repair or no character to repair it to:
+        // this is a rung the author reaches for after a paste, not a standing property of a row.
+        ...(menuSpeakerTargets.length > 0 ? [{
+            id: "bind-speaker",
+            label: tn("story.rowMenu.bindSpeaker", menuSpeakerRowIds.length),
+            ...freeze.menuRow(),
+            submenu: menuSpeakerTargets,
+        }] : []),
         { id: "sep-op", separator: true },
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
         { id: "inspector", label: t("story.rowMenu.openInspector"), onClick: () => editor.activateBlockForInspectorOrOp(menuTarget) },
@@ -1940,6 +1995,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         {/* Resolved once for the whole scene: every committed row reads itself back as a command line,
             and each of these lookups is an IPC round trip or a service subscription per mount. */}
         <StoryCommandLineProvider slashAtAlias={editor.slashAtAlias} commandContext={editor.commandContext}>
+        {/* Following a name to the thing it names is READING, so it sits outside the row-action
+            surface above and keeps working while the workspace is frozen — that is the state in which
+            looking a reference up is all there is left to do. */}
+        <StoryRefNavigationProvider document={document} sceneId={scene.id}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
         <div
             ref={editor.rootRef}
@@ -2418,6 +2477,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
         </div>
         </StoryRowActionsContext.Provider>
+        </StoryRefNavigationProvider>
         </StoryCommandLineProvider>
         </StoryEditorTextStyleProvider>
     );

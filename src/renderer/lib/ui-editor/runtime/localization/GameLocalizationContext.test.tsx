@@ -5,10 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import {
     GameLocalizationContext,
+    useLocalizedAssetId,
     useLocalizedWidgetText,
     type GameLocalizationRuntime,
     type LocalizedWidgetTextInput,
 } from "./GameLocalizationContext";
+import type { AssetVariantCarrier } from "@shared/types/assetSet";
 
 const bundle: GameLocalizationBundle = {
     sourceLocale: "en",
@@ -104,5 +106,64 @@ describe("useLocalizedWidgetText", () => {
         expect(getByTestId("text").textContent).toBe("退出");
         act(() => runtime.setLocale("en"));
         expect(getByTestId("text").textContent).toBe("Quit");
+    });
+});
+
+/**
+ * The picture half of the same mechanism. The cases that matter are the two hosts: an editor canvas
+ * with no provider hands the id back untouched (the workspace hook resolves the set there), and a
+ * running game answers from the record's own map and follows a language change without remounting.
+ */
+describe("useLocalizedAssetId", () => {
+    const SET = "set-1";
+    const EN_ASSET = "asset-en";
+    const ZH_ASSET = "asset-zh";
+    const carrier = { assetVariants: { [SET]: { en: EN_ASSET, "zh-CN": ZH_ASSET } } };
+
+    function AssetProbe(props: { carrier: AssetVariantCarrier | null; assetId: string | null }) {
+        return <span data-testid="asset">{useLocalizedAssetId(props.carrier, props.assetId) ?? "(none)"}</span>;
+    }
+
+    function renderAsset(runtime: GameLocalizationRuntime | null, input: { carrier: AssetVariantCarrier | null; assetId: string | null }) {
+        return render(
+            <GameLocalizationContext.Provider value={runtime}>
+                <AssetProbe carrier={input.carrier} assetId={input.assetId} />
+            </GameLocalizationContext.Provider>,
+        );
+    }
+
+    it("hands the id back untouched without a provider (editor canvas)", () => {
+        const { getByTestId } = renderAsset(null, { carrier, assetId: SET });
+        expect(getByTestId("asset").textContent).toBe(SET);
+    });
+
+    it("answers from the record's own map, and follows a language change", () => {
+        const runtime = createRuntime("en");
+        const { getByTestId } = renderAsset(runtime, { carrier, assetId: SET });
+        expect(getByTestId("asset").textContent).toBe(EN_ASSET);
+        act(() => runtime.setLocale("zh-CN"));
+        expect(getByTestId("asset").textContent).toBe(ZH_ASSET);
+    });
+
+    it("hands back an ordinary asset id, which no map mentions", () => {
+        const runtime = createRuntime("zh-CN");
+        const { getByTestId } = renderAsset(runtime, { carrier, assetId: "asset-plain" });
+        expect(getByTestId("asset").textContent).toBe("asset-plain");
+    });
+
+    /**
+     * Defence, not policy: materialization fills every locale, so a language with no entry means the
+     * package and the project it was built from disagree - and one language's picture beats none.
+     */
+    it("falls back to the source language when a locale has no entry", () => {
+        const runtime = createRuntime("yue");
+        const { getByTestId } = renderAsset(runtime, { carrier, assetId: SET });
+        expect(getByTestId("asset").textContent).toBe(EN_ASSET);
+    });
+
+    it("keeps a null id null", () => {
+        const runtime = createRuntime("en");
+        const { getByTestId } = renderAsset(runtime, { carrier, assetId: null });
+        expect(getByTestId("asset").textContent).toBe("(none)");
     });
 });

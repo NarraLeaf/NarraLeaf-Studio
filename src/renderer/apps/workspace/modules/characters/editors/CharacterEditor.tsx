@@ -40,6 +40,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { useFreezeGuard, type FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { EditorComponentProps } from "../../types";
@@ -178,7 +179,17 @@ function DefaultStar(props: {
  */
 export function CharacterEditor({ payload }: EditorComponentProps<CharacterEditorPayload>) {
     const { t } = useTranslation();
-    const { context } = useWorkspace();
+    const { context, isInitialized } = useWorkspace();
+    /**
+     * A differential can be answered by an asset set as well as by a file.
+     *
+     * The same picture in another language is the case a set exists for, and a sprite with words
+     * painted into it is where an author meets it first. What makes it safe here rather than
+     * merely convenient is that the package carries this set's answers: a character belongs to no
+     * row, so there is nowhere to write one, and the table is what the mounted game reads instead.
+     */
+    const { virtualGroups: assetSetGroups, resolveAssetPreviewUrl: resolveAssetSetPreviewUrl } =
+        useAssetSetPickerSource({ context, isInitialized, assetType: AssetType.Image, enabled: true });
     // Reordering the layer stack writes the appearance; hiding and locking a layer are editor state and
     // stay live, which is why they are not guarded here.
     const freeze = useFreezeGuard();
@@ -1157,6 +1168,9 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                     ? "characters.editor.selectAvatarImage"
                     : "characters.editor.selectImage")}
                 multiple={false}
+                {...(assetSetGroups
+                    ? { virtualGroups: assetSetGroups, resolveAssetPreviewUrl: resolveAssetSetPreviewUrl }
+                    : {})}
             />
         </div>
     );

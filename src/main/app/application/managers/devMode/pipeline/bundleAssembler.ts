@@ -29,6 +29,8 @@ import {
     normalizeLocalizationDocument,
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
+import type { DialogueConfiguration } from "@shared/types/dialogue";
+import { normalizeDialogueConfiguration } from "@shared/types/dialogue";
 import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
@@ -61,6 +63,12 @@ import {
     materializeStoryAssetSets,
     type AssetSetMaterializationProblem,
 } from "@shared/build/assetSetMaterialization";
+import {
+    attachCharacterAssetSetVariants,
+    type AssetSetRecordProblem,
+} from "@shared/build/characterAssetSets";
+import { attachUiAssetSetVariants } from "@shared/build/uiAssetSets";
+import { attachBlueprintAssetSetVariants, blueprintGraphs } from "@shared/build/blueprintAssetSets";
 import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
@@ -128,7 +136,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // build actually holds them, which is why this happens here rather than in either loader.
     const shippedTextIds = sceneDrop ? collectTextIds(storyLibrary?.documents ?? {}) : null;
     const localization = restrictLocalization(
-        await loadGameLocalization(context.projectPath),
+        // The scene-name table is attached before the narrowing, not after: it is read as the set of
+        // scenes this build still has, which is exactly what decides whether a `scene:` unit ships.
+        withSceneNames(await loadGameLocalization(context.projectPath), storyLibrary?.documents),
         shippedTextIds,
         context.onNotice,
     );
@@ -136,11 +146,28 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // their declared fallbacks; before everything else, because what it rewrites is the story the
     // rest of this bundle describes.
     const resolvedStoryLibrary = await materializeAssetSets(context, storyLibrary, localization, variant.name);
+    // The other half: the sets named by content that has no rows to write an answer into. Read after
+    // the story pass so both are resolved against the same library and the same edition, and against
+    // the story library this build actually ships - a character dropped with its chapter names no set.
+    await resolveCharacterAssetSets(context, resolvedStoryLibrary?.characters, localization, variant.name);
+    // And the third: the interface names sets from its widgets and its Surfaces, which have no rows
+    // and are not characters. Same library, same edition, same refusal.
+    await resolveUiAssetSets(context, uidoc, localization, variant.name);
+    // And the fourth: a blueprint's asset pins. After the fold above on purpose - a branch this
+    // edition cannot take has already been deleted, so a set named only from there is not this
+    // package's problem and must not be able to refuse its build.
+    await resolveBlueprintAssetSets(
+        context,
+        [...Object.values(localBlueprints.blueprints ?? {}), ...sharedBlueprints.map(asset => asset.blueprint)],
+        localization,
+        variant.name,
+    );
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
+    const dialogue = await loadDialogueConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
     const brand = await loadProjectBrand(context.projectPath);
@@ -166,6 +193,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         autoSave,
         languageChange,
         saveCompatibility,
+        dialogue,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
         // drop, so two editions that carry different chapters do not claim the same story.
@@ -636,6 +664,143 @@ async function materializeAssetSets(
 }
 
 /**
+ * Resolve the sets a character names, and refuse to package one that cannot be.
+ *
+ * The same rule as the story pass in every respect that matters - resolved against the same library
+ * and the same edition, refused on a build, reported as a notice in Dev Mode - and different in the
+ * one the content forces: a character has no row to write the answer into, so the answer goes on the
+ * pose, the layer or the avatar entry that named the set. See `@shared/build/characterAssetSets`.
+ */
+async function resolveCharacterAssetSets(
+    context: DevModeBundleLoadContext,
+    characters: readonly DevModeCharacterSummary[] | undefined,
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+): Promise<void> {
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return;
+    }
+    // In place: these records were built moments ago on their way into a package, and the editor's
+    // own copies live in another process.
+    const result = attachCharacterAssetSetVariants({
+        characters,
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+        assetAxes: context.assetAxes,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeShippedAssetSetProblem(problem, variantName);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        context.onAssetSetCollapse?.();
+    }
+}
+
+/**
+ * Resolve the sets the interface names, and refuse to package one that cannot be.
+ *
+ * The same rule as the two passes above in every respect that matters, and different in the one the
+ * content forces: a widget has no row to write the answer into, so the answer goes on the element -
+ * or, for a Surface's own background, on that Surface's settings. See `@shared/build/uiAssetSets`
+ * for why the reference point rather than a document-wide table.
+ */
+async function resolveUiAssetSets(
+    context: DevModeBundleLoadContext,
+    document: UIDocument | undefined,
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+): Promise<void> {
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return;
+    }
+    const result = attachUiAssetSetVariants({
+        document,
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+        assetAxes: context.assetAxes,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeShippedAssetSetProblem(problem, variantName);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        context.onAssetSetCollapse?.();
+    }
+}
+
+/**
+ * Resolve the sets a blueprint's asset pins name, and refuse to package one that cannot be.
+ *
+ * The answer goes on the node that STORES the id, which is not always the node that consumes it:
+ * an asset pin can be fed by an edge from a literal. See `@shared/build/blueprintAssetSlots` for
+ * why this walk knows fewer pins than the reference index does, and why that asymmetry is what
+ * keeps a plugin's own pin refused rather than half-supported.
+ */
+async function resolveBlueprintAssetSets(
+    context: DevModeBundleLoadContext,
+    blueprints: readonly Blueprint[],
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+): Promise<void> {
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return;
+    }
+    const result = attachBlueprintAssetSetVariants({
+        graphs: blueprintGraphs(blueprints),
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+        assetAxes: context.assetAxes,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeShippedAssetSetProblem(problem, variantName);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        context.onAssetSetCollapse?.();
+    }
+}
+
+/**
+ * The same sentence the story faults get, with the part of the project in place of the scene.
+ *
+ * The set's name is what the author acts on either way; what changes is where to go and look, and
+ * "in the interface" is as precise as a scan of the document can honestly be.
+ */
+function describeShippedAssetSetProblem(problem: AssetSetRecordProblem, variantName: string): string {
+    const set = `Asset set "${problem.setName}", used in ${problem.slice}`;
+    if (problem.kind === "ambiguous") {
+        return `${set}, has more than one asset for ${problem.axisKey} ${problem.value}.`;
+    }
+    if (problem.kind === "unsupported") {
+        const reason = problem.reason === "multipleAxes"
+            ? "has more than one axis, which this build cannot resolve yet"
+            : "declares no axis to resolve";
+        return `${set}, ${reason}.`;
+    }
+    if (problem.kind === "axisUnset") {
+        return `${set}, resolves ${problem.axisKey} when the game is built, and "${variantName}" does not say which ${problem.axisKey} it is.`;
+    }
+    const coordinate = problem.value ? `${problem.axisKey} ${problem.value}` : "the project's language";
+    return `${set}, has no asset for ${coordinate}.`;
+}
+
+/**
  * What the author is told, naming the scene rather than the block id.
  *
  * A build failure has to be actionable from the sentence alone: which set, which coordinate, and
@@ -1026,6 +1191,17 @@ export async function loadSaveCompatibilityConfiguration(
 }
 
 /**
+ * Load the author's dialogue settings from `.nlproj` `app.dialogue`. Dense like the autosave config:
+ * the engine reads a pause length for every line whether or not the author ever opened the page.
+ * Exported for tests.
+ */
+export async function loadDialogueConfiguration(projectPath: string): Promise<DialogueConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeDialogueConfiguration(app?.dialogue);
+}
+
+/**
  * The author's own version for this build, from `.nlproj` `metadata.version`.
  *
  * Read verbatim - never parsed, never defaulted to something like `0.0.0`. A project with no
@@ -1125,6 +1301,30 @@ export const devModeDiskBundleSource: DevModeBundleSource = {
  * invisible in the artifact, and the one mistake worth catching early is a narrowing that took away
  * a line the player can still reach.
  */
+/**
+ * Attach the source-language name of every scene the build carries.
+ *
+ * The per-locale files hold only the translated side, so this is what a `scene:` reference resolves
+ * to when the game is being read in its source language - the same job `keys` does for named keys.
+ */
+function withSceneNames(
+    bundle: GameLocalizationBundle | undefined,
+    documents: Record<string, StoryDocument> | undefined,
+): GameLocalizationBundle | undefined {
+    if (!bundle) {
+        return bundle;
+    }
+    const scenes: Record<string, string> = {};
+    for (const document of Object.values(documents ?? {})) {
+        for (const scene of Object.values(document.scenes ?? {})) {
+            if (scene?.id && typeof scene.name === "string" && scene.name.trim()) {
+                scenes[scene.id] = scene.name;
+            }
+        }
+    }
+    return { ...bundle, scenes };
+}
+
 function restrictLocalization(
     bundle: GameLocalizationBundle | undefined,
     textIds: ReadonlySet<string> | null,

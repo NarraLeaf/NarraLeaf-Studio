@@ -185,7 +185,7 @@ export function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
 
     return (
         <div className="h-screen w-screen flex flex-col bg-surface text-fg">
-            <TitleBar title="NarraLeaf Studio" iconSrc="/favicon.ico" />
+            <TitleBar title="NarraLeaf Studio" />
             <div className="min-h-0 flex-1 overflow-auto flex items-center justify-center bg-surface p-6">
                 <div className="w-full max-w-2xl">
                     <div className="flex items-center gap-3 mb-4">

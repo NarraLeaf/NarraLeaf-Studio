@@ -22,7 +22,9 @@ import {
 import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
+import type { DialogueConfiguration } from "@shared/types/dialogue";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
+import type { SaveLocationConfiguration } from "@shared/utils/userDataLocation";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
@@ -66,6 +68,13 @@ export {
 } from "@shared/types/saves";
 export type { AutoSaveConfiguration } from "@shared/types/saves";
 export {
+    AUTO_FORWARD_DEFAULT_PAUSE_MAX,
+    AUTO_FORWARD_DEFAULT_PAUSE_MIN,
+    DEFAULT_DIALOGUE_CONFIGURATION,
+    normalizeDialogueConfiguration,
+} from "@shared/types/dialogue";
+export type { DialogueConfiguration } from "@shared/types/dialogue";
+export {
     DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
     normalizeSaveCompatibilityConfiguration,
 } from "@shared/types/saveCompatibility";
@@ -74,6 +83,11 @@ export type {
     SaveCompatiblePolicy,
     SaveIncompatiblePolicy,
 } from "@shared/types/saveCompatibility";
+export {
+    DEFAULT_SAVE_LOCATION_CONFIGURATION,
+    normalizeSaveLocationConfiguration,
+} from "@shared/utils/userDataLocation";
+export type { SaveLocationConfiguration, SaveLocationMode } from "@shared/utils/userDataLocation";
 export {
     DEFAULT_LANGUAGE_CHANGE_CONFIGURATION,
     normalizeLanguageChangeConfiguration,
@@ -381,6 +395,12 @@ export type ProjectAppConfiguration = {
      */
     saveCompatibility?: SaveCompatibilityConfiguration;
     /**
+     * Where a shipped desktop game keeps the player's files; absent until configured (see the
+     * defaults, which put them beside the game on Windows and Linux and in the per-user directory
+     * on macOS).
+     */
+    saveLocation?: SaveLocationConfiguration;
+    /**
      * What a language change does to a running playthrough; absent until configured (see the
      * default, which restarts the game and puts the player back where they were).
      */
@@ -393,6 +413,13 @@ export type ProjectAppConfiguration = {
      * is what a *new* player gets, not a cap on what the game may do.
      */
     preferences?: PlayerPreferences;
+    /**
+     * The author's dialogue settings (see @shared/types/dialogue); absent until configured.
+     *
+     * Not a player default: what is here is part of how the script is written, and no settings
+     * screen offers it.
+     */
+    dialogue?: DialogueConfiguration;
     /**
      * The key that ties this project to the builds it produces; absent until the
      * author mints one. Travels with the project on purpose - see the type.

@@ -9,6 +9,7 @@ import {
     computeLocalizationProgress,
     deriveUnitState,
     extractCharacterTranslationRows,
+    extractSceneTranslationRows,
     extractStoryTranslationRows,
 } from "./localizationModel";
 
@@ -122,6 +123,30 @@ describe("extractCharacterTranslationRows", () => {
             { id: "c-3", name: "Mio" },
         ]);
         expect(rows.map(row => row.unitId)).toEqual(["char:c-3"]);
+    });
+});
+
+describe("extractSceneTranslationRows", () => {
+    it("maps scenes to scene:<id> units in narrative order, chapters before unassigned", () => {
+        expect(extractSceneTranslationRows(buildDocument())).toEqual([
+            { unitId: "scene:scene-b", sceneId: "scene-b", storyId: "story-1", sourceText: "Chapter scene" },
+            { unitId: "scene:scene-a", sceneId: "scene-a", storyId: "story-1", sourceText: "Unassigned scene" },
+        ]);
+    });
+
+    it("skips scenes with a blank name - nothing renders one", () => {
+        const document = buildDocument();
+        document.scenes["scene-a"].name = "   ";
+        expect(extractSceneTranslationRows(document).map(row => row.unitId)).toEqual(["scene:scene-b"]);
+    });
+
+    it("keys on the scene id, so renaming a scene keeps its translations", () => {
+        const before = extractSceneTranslationRows(buildDocument());
+        const renamed = buildDocument();
+        renamed.scenes["scene-b"].name = "The rooftop";
+        const after = extractSceneTranslationRows(renamed);
+        expect(after[0].unitId).toBe(before[0].unitId);
+        expect(after[0].sourceText).toBe("The rooftop");
     });
 });
 

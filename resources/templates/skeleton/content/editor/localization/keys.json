@@ -1,5 +1,107 @@
 {
   "keys": {
+    "config.autoForwardDelay": {
+      "sourceText": "Auto forward delay"
+    },
+    "config.bgm": {
+      "sourceText": "BGM"
+    },
+    "config.categorySound": {
+      "sourceText": "Sound"
+    },
+    "config.categoryText": {
+      "sourceText": "Text"
+    },
+    "config.fullscreen": {
+      "sourceText": "Fullscreen"
+    },
+    "config.fullscreenOff": {
+      "sourceText": "Off"
+    },
+    "config.fullscreenOn": {
+      "sourceText": "On"
+    },
+    "config.masterVolume": {
+      "sourceText": "Master volume"
+    },
+    "config.secondsSuffix": {
+      "sourceText": "s"
+    },
+    "config.skip": {
+      "sourceText": "Skip"
+    },
+    "config.skipAllText": {
+      "sourceText": "All text"
+    },
+    "config.skipDelay": {
+      "sourceText": "Skip delay"
+    },
+    "config.skipReadOnly": {
+      "sourceText": "Read only"
+    },
+    "config.soundEffects": {
+      "sourceText": "Sound effects"
+    },
+    "config.textSpeed": {
+      "sourceText": "Text speed"
+    },
+    "config.title": {
+      "sourceText": "Config"
+    },
+    "config.voice": {
+      "sourceText": "Voice"
+    },
+    "confirm.cancel": {
+      "sourceText": "Cancel"
+    },
+    "confirm.deleteSave": {
+      "sourceText": "Delete this save? It cannot be brought back."
+    },
+    "confirm.deleteSaveAnswer": {
+      "sourceText": "Delete"
+    },
+    "confirm.historyBack": {
+      "sourceText": "Go back to this line? Everything after it is undone."
+    },
+    "confirm.historyBackAnswer": {
+      "sourceText": "Go back"
+    },
+    "confirm.load": {
+      "sourceText": "Load this save? Unsaved progress is lost."
+    },
+    "confirm.loadAnswer": {
+      "sourceText": "Load"
+    },
+    "confirm.loadAuto": {
+      "sourceText": "Load this auto save? The game you are in is left behind."
+    },
+    "confirm.overwrite": {
+      "sourceText": "This slot already holds a save. Overwrite it?"
+    },
+    "confirm.overwriteAnswer": {
+      "sourceText": "Overwrite"
+    },
+    "confirm.quit": {
+      "sourceText": "Quit the game?"
+    },
+    "confirm.quitAnswer": {
+      "sourceText": "Quit"
+    },
+    "confirm.toTitle": {
+      "sourceText": "Return to the title screen? Unsaved progress is lost."
+    },
+    "confirm.toTitleAnswer": {
+      "sourceText": "Return to title"
+    },
+    "load.autoSaves": {
+      "sourceText": "Auto saves"
+    },
+    "load.title": {
+      "sourceText": "Load"
+    },
+    "log.title": {
+      "sourceText": "Log"
+    },
     "menu.continue": {
       "sourceText": "Continue"
     },
@@ -20,6 +122,39 @@
     },
     "menu.start": {
       "sourceText": "Start"
+    },
+    "nav.back": {
+      "sourceText": "Back"
+    },
+    "nav.config": {
+      "sourceText": "Config"
+    },
+    "nav.load": {
+      "sourceText": "Load"
+    },
+    "nav.save": {
+      "sourceText": "Save"
+    },
+    "nav.title": {
+      "sourceText": "Title"
+    },
+    "save.title": {
+      "sourceText": "Save"
+    },
+    "scenes.sceneClubroom": {
+      "sourceText": "The clubroom"
+    },
+    "scenes.sceneCorridor": {
+      "sourceText": "The corridor"
+    },
+    "scenes.sceneLastLight": {
+      "sourceText": "Last light"
+    },
+    "scenes.title": {
+      "sourceText": "Scenes"
+    },
+    "slot.empty": {
+      "sourceText": "No Data"
     }
   },
   "schemaVersion": 1

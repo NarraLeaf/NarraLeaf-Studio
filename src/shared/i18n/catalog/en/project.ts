@@ -42,6 +42,7 @@ export const project = {
         saving: "Saving",
         olderSaves: "Older saves",
         language: "Language",
+        dialogue: "Dialogue",
         playerDefaults: "Player defaults",
         audioTracks: "Audio tracks",
         // The two parts of the Brand sub-page. The colors an author decides, and the slots that
@@ -93,15 +94,25 @@ export const project = {
         copyrightTextLabel: "Copyright Notice",
         copyrightTextPlaceholder: "Fonts, music and assets used, and who they belong to…",
         copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. No file is shipped when this is empty.",
-        descriptionPlaceholder: "Describe your project…",
+        descriptionPlaceholder: "Describe the project…",
         required: "Required",
     },
     // Where a shipped game writes what belongs to the player. Stated, not offered: nothing on this
     // part is a setting, and it names no storefront, because which of them to hand this to is the
     // author's decision. The description says what the paths are, and stops there.
     userData: {
-        description: "Where a shipped game keeps the player's saves and progress. Renaming the "
-            + "application does not move it.",
+        description: "Where a shipped desktop game keeps the player's saves and progress.",
+        windowsLinux: "Windows and Linux",
+        windowsLinuxDescription: "Where a Windows or Linux build keeps the player's files.",
+        macos: "macOS",
+        macosDescription: "Where a macOS build keeps the player's files.",
+        mode: {
+            appRoot: "In the game's folder",
+            userData: "In the player's user folder",
+        },
+        // Stands in for the folder a player put their copy of the game in, which is a path only
+        // their own machine can spell.
+        gameFolder: "<game folder>",
         copy: "Copy locations",
         copied: "Locations copied.",
         copyFailed: "Could not copy the locations.",
@@ -226,6 +237,11 @@ export const project = {
         languageResume: "Restart and continue where they were",
         languageRestart: "Restart without keeping the playthrough",
         languageNextLaunch: "Apply the next time the game is started",
+        // The author's own pacing value, on a page otherwise full of the player's. The row says
+        // what the player gets from it; that it is not theirs to change is the group it sits in.
+        autoForwardPauseTitle: "Pause length under auto forward",
+        autoForwardPauseDescription: "How long a pause that waits for a click holds a line while the player has auto forward on. Scaled by game speed.",
+        autoForwardPauseUnit: "ms",
     },
     // The Player defaults group: the value each player setting starts at. Every one of these is
     // still the player's to change while they play, and what they change is kept, so the wording
@@ -334,7 +350,7 @@ export const project = {
         volumeTitle: "Volume",
         volumeUnit: "%",
         loopTitle: "Loop by default",
-        loopDescription: "Clips played on this track repeat unless the action that plays them says otherwise.",
+        loopDescription: "Clips played on this track repeat unless the action that plays them specifies otherwise.",
         duplicate: "Duplicate",
         delete: "Delete",
         // Sits beside Delete inside an open bus: the count the confirmation is about to be about.
@@ -390,7 +406,7 @@ export const project = {
         networkAllowlist: {
             title: "Network request allowlist",
             description: "One address or host pattern per row.",
-            matchHint: "A host on its own covers every path under it. * can replace the first host label (*.example.com) or end a path (/v1/*). The scheme, the host and the port must match exactly.",
+            matchHint: "A host written alone covers every path under it. * can replace the first host label (*.example.com) or end a path (/v1/*). The scheme, the host and the port must match exactly.",
             placeholder: "https://api.example.com/*",
             invalid: "Enter an http:// or https:// address. Use * as a leading host label or at the end of a path.",
             add: "Add address",

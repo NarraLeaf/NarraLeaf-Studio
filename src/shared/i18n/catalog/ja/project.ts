@@ -43,6 +43,7 @@ export const project = {
         saving: "セーブ",
         olderSaves: "以前のセーブ",
         language: "言語",
+        dialogue: "ダイアログ",
         playerDefaults: "プレイヤーの初期値",
         audioTracks: "オーディオトラック",
         // ブランドのサブページの 2 つの部分。作者が決める色と、それに従うスロット。
@@ -96,8 +97,17 @@ export const project = {
         required: "必須",
     },
     userData: {
-        description: "配布したゲームがプレイヤーのセーブと進行を置く場所。"
-            + "アプリケーション名を変更しても場所は移動しない",
+        description: "配布したデスクトップ版がプレイヤーのセーブと進行を置く場所",
+        windowsLinux: "Windows と Linux",
+        windowsLinuxDescription: "Windows・Linux 版がプレイヤーのファイルを置く場所",
+        macos: "macOS",
+        macosDescription: "macOS 版がプレイヤーのファイルを置く場所",
+        mode: {
+            appRoot: "ゲームのフォルダー内",
+            userData: "ユーザーフォルダー内",
+        },
+        // プレイヤーがこのゲームを置いたフォルダーの代わり。そのパスは本人の環境にしか書けない。
+        gameFolder: "<ゲームフォルダー>",
         copy: "場所をコピー",
         copied: "場所をコピーした",
         copyFailed: "場所をコピーできなかった",
@@ -203,6 +213,9 @@ export const project = {
         languageResume: "再起動して元の位置に戻す",
         languageRestart: "再起動する。進行中のプレイは残さない",
         languageNextLaunch: "次回の起動時に反映する",
+        autoForwardPauseTitle: "自動送り中の間の長さ",
+        autoForwardPauseDescription: "自動送りがオンのとき、クリック待ちの間はこの長さになる。ゲームの速さが掛かる",
+        autoForwardPauseUnit: "ms",
     },
     // 「プレイヤーの初期値」の群。各設定がどの値から始まるか。どれもプレイ中にプレイヤーが
     // 変えられ、変えた内容は保たれる。だから文言は「初期値」に徹し、設定画面が守らない約束はしない。

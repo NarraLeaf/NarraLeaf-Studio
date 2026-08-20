@@ -30,7 +30,9 @@ import { useAssetFocus } from "./state/useAssetFocus";
 import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions";
 import { useImportQueue } from "./state/useImportQueue";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
-import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from './AssetsPanelContext';
+import { AssetsPanelContext, type AssetSetRevealState, type AssetsIconViewToolbarCenter } from './AssetsPanelContext';
+import { ASSET_SET_REVEAL_EVENT, consumeAssetSetReveal, type AssetSetRevealRequest } from "./assetSetReveal";
+import { planAssetSetReveal } from "./state/assetSetRevealPlan";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
@@ -43,6 +45,7 @@ import { AssetsIconView } from "./views/AssetsIconView";
 import { assetSelectionKey, type AssetActionTarget } from "./state/assetActionTargets";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
 import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
@@ -51,6 +54,12 @@ import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
 export type AssetViewMode = "list" | "icons" | "overview";
+
+/** How many places naming a set are spelled out before the rest are counted. Matches the delete warning. */
+const ASSET_SET_REFERENCE_PREVIEW_LIMIT = 5;
+
+/** How long a jumped-to set's row stays marked. Long enough to find, short enough not to read as state. */
+const ASSET_SET_REVEAL_MARK_MS = 2200;
 
 const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any> }[] = [
     {
@@ -266,9 +275,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const { focusedItemId, setFocusedItemId, handleAssetClick, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId, focusArea });
     
-    const { selectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection } = useMultiSelection({ 
-        assets, 
-        groups,
+    // No library is handed in: what a shift range covers is the rows the view below is drawing, and
+    // the view publishes those through `publishRowOrder`.
+    const { selectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection, publishRowOrder } = useMultiSelection({
         onSelectionChange: (selection) => {
             if(selection.size === 1) {
                 setFocusedItemId(Array.from(selection)[0]);
@@ -386,6 +395,93 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         context.services.get<UIService>(Services.UI).getStore()
             .setSelection({ type: "assetSet", data: entry.set });
     }, [context]);
+
+    /* --- Landing a jump on a set ------------------------------------------------------------ */
+
+    /**
+     * The set a jump asked for, held until the library has loaded enough to say where it is.
+     *
+     * The request arrives on mount - revealing a hidden panel is what mounts it - and at that moment
+     * the library is still being read, so nothing can be opened yet.
+     */
+    const [pendingRevealSetId, setPendingRevealSetId] = useState<string | null>(null);
+    const [assetSetReveal, setAssetSetReveal] = useState<AssetSetRevealState | null>(null);
+    const revealNonce = useRef(0);
+
+    useEffect(() => {
+        const requested = consumeAssetSetReveal(panelId);
+        if (requested) {
+            setPendingRevealSetId(requested);
+        }
+        const onRequest = (event: Event) => {
+            const detail = (event as CustomEvent<AssetSetRevealRequest>).detail;
+            if (detail?.panelId !== panelId) {
+                return;
+            }
+            // Spend the slot as well: this panel was already mounted, so the copy left for the next
+            // mount would open folders in a panel the author opens later for something else.
+            consumeAssetSetReveal(panelId);
+            setPendingRevealSetId(detail.setId);
+        };
+        window.addEventListener(ASSET_SET_REVEAL_EVENT, onRequest);
+        return () => window.removeEventListener(ASSET_SET_REVEAL_EVENT, onRequest);
+    }, [panelId]);
+
+    useEffect(() => {
+        if (!pendingRevealSetId || !hasLoaded) {
+            return;
+        }
+        // One attempt, against a loaded library. A set that is not there went away between the click
+        // and this render, and holding the request would open folders under the author later.
+        setPendingRevealSetId(null);
+        const plan = planAssetSetReveal({
+            setId: pendingRevealSetId,
+            placements: resolvedAssetSets,
+            groups: Object.values(groups).flat(),
+        });
+        if (!plan) {
+            return;
+        }
+        setCategoryOpenItems(prev => (prev.includes(plan.category) ? prev : [...prev, plan.category]));
+        setExpandedGroups(prev => {
+            const next = new Set(prev);
+            plan.groupPathIds.forEach(id => next.add(id));
+            return next;
+        });
+        setExpandedAssetSets(prev => {
+            const next = new Set(prev);
+            plan.ancestorSetIds.forEach(id => next.add(id));
+            return next;
+        });
+        // The grid shows one folder at a time, so it has to be standing in the right one. Harmless
+        // while the tree is showing, which reads folders from `expandedGroups` instead.
+        setIconGroupPathIds(plan.groupPathIds);
+        // The overview is the one view with no row to land on. Nothing else about the author's view
+        // is touched - a tree stays a tree, a grid stays a grid.
+        setViewMode(prev => (prev === "overview" ? "list" : prev));
+        const entry = findSet(pendingRevealSetId);
+        if (entry) {
+            handleAssetSetSelect(entry);
+        }
+        revealNonce.current += 1;
+        setAssetSetReveal({
+            setId: pendingRevealSetId,
+            ancestorSetIds: plan.ancestorSetIds,
+            nonce: revealNonce.current,
+        });
+    }, [findSet, groups, handleAssetSetSelect, hasLoaded, pendingRevealSetId, resolvedAssetSets]);
+
+    /**
+     * The mark goes away on its own: it says "here", and a ring that stays says "wrong" - the same
+     * bargain the settings highlight makes.
+     */
+    useEffect(() => {
+        if (!assetSetReveal) {
+            return;
+        }
+        const timer = window.setTimeout(() => setAssetSetReveal(null), ASSET_SET_REVEAL_MARK_MS);
+        return () => window.clearTimeout(timer);
+    }, [assetSetReveal]);
 
     const showAssetSetContextMenu = useCallback((event: React.MouseEvent, entry: ResolvedAssetSet) => {
         event.preventDefault();
@@ -546,6 +642,52 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         await fileAssetsInGroup(assetSetSubtreeAssets(entry), targetGroupId);
     }, [assetSetSubtreeAssets, context, fileAssetsInGroup, findSet]);
 
+    /** The ids of a set and the sets drawn inside it, which go together whichever way it is removed. */
+    const assetSetSubtreeIds = useCallback((entry: ResolvedAssetSet): string[] => (
+        assetSetSubtree(entry.set, assetSetDeclarations).map(set => set.id)
+    ), [assetSetDeclarations]);
+
+    /**
+     * Ask before a set stops existing, when something still names it.
+     *
+     * The rows a set is used from name the *set*, not the file behind it, so they are broken by both
+     * of the ways it can go - and the library's own delete check cannot see it: that one reads the
+     * index, which records a set reference as a reference to the members it resolves to, and those
+     * members are exactly what dissolve keeps and what a set with no files never had.
+     *
+     * Warn, do not block, the way the library's delete does: sometimes the row is about to be
+     * rewritten anyway. Answers true when there is nothing to say.
+     */
+    const confirmAssetSetRemoval = useCallback(async (
+        entry: ResolvedAssetSet,
+        action: string,
+    ): Promise<boolean> => {
+        if (!context) return false;
+        const referenceService = context.services.get<ReferenceService>(Services.Reference);
+        const found = await referenceService.findAssetSetReferences(assetSetSubtreeIds(entry));
+        const references = [...found.values()].flat();
+        if (references.length === 0) {
+            return true;
+        }
+        const shown = references.slice(0, ASSET_SET_REFERENCE_PREVIEW_LIMIT).map(reference => {
+            // The detail line already ends with the label for a story reference (`Story > Scene` /
+            // `Scene`), so naming both would print the scene twice.
+            const where = reference.detail?.endsWith(reference.label)
+                ? reference.detail
+                : [reference.detail, reference.label].filter(Boolean).join(" › ");
+            return `  ${where}${reference.field ? ` (${reference.field})` : ""}`;
+        });
+        const remaining = references.length - shown.length;
+        if (remaining > 0) {
+            shown.push(`  ${t("assets.delete.moreReferences", { count: remaining })}`);
+        }
+        return context.services.get<UIService>(Services.UI).showDestructiveConfirm(
+            t("assets.sets.inUseTitle", { name: entry.set.name }),
+            `${t("assets.sets.inUseMessage")}\n\n${shown.join("\n")}`,
+            action,
+        );
+    }, [assetSetSubtreeIds, context, t]);
+
     /**
      * Drop the set and keep the files.
      *
@@ -557,9 +699,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      */
     const handleDissolveAssetSet = useCallback(async (entry: ResolvedAssetSet) => {
         if (!context) return;
+        if (!(await confirmAssetSetRemoval(entry, t("assets.sets.menu.dissolve")))) {
+            return;
+        }
         await fileAssetsInGroup(assetSetOwnAssets(entry), entry.set.groupId);
         context.services.get<AssetSetService>(Services.AssetSets).dissolveSet(entry.set.id);
-    }, [assetSetOwnAssets, context, fileAssetsInGroup]);
+    }, [assetSetOwnAssets, confirmAssetSetRemoval, context, fileAssetsInGroup, t]);
 
     /**
      * Delete the set and the files it holds, the way deleting a folder takes its contents.
@@ -570,13 +715,17 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      */
     const handleDeleteAssetSet = useCallback(async (entry: ResolvedAssetSet) => {
         if (!context) return;
+        if (!(await confirmAssetSetRemoval(entry, t("assets.delete.action")))) {
+            return;
+        }
         const targets: AssetActionTarget[] = assetSetSubtreeAssets(entry)
             .map(asset => ({ isGroup: false, category: entry.category, item: asset }));
-        if (targets.length > 0 && !(await handleDelete(targets))) {
+        if (targets.length > 0
+            && !(await handleDelete(targets, { confirmMessage: t("assets.sets.deleteConfirmMessage") }))) {
             return;
         }
         context.services.get<AssetSetService>(Services.AssetSets).deleteSetSubtree(entry.set.id);
-    }, [assetSetSubtreeAssets, context, handleDelete]);
+    }, [assetSetSubtreeAssets, confirmAssetSetRemoval, context, handleDelete, t]);
 
     /** The sub-set command as the asset menu reaches it: by set id and value, not by record. */
     const handleCreateAssetSetAt = useCallback((setId: string, value: string) => {
@@ -913,8 +1062,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const contextValue = {
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, draggedAssetSet, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
-        expandedAssetSets, setExpandedAssetSets, assetSetNaming, rootAssetSets, memberAssetIds,
-        handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
+        expandedAssetSets, setExpandedAssetSets, assetSetReveal, assetSetNaming, rootAssetSets, memberAssetIds,
+        handleItemSelect, publishRowOrder, handleAssetClick, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu, showAssetSetValueContextMenu,
         handleDragStart, handleAssetSetDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,

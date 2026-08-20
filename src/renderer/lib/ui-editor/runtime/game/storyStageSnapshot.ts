@@ -83,6 +83,8 @@ export type StageSnapshotCamera = {
      * CSS filter re-applied as `camera.filter(f, {duration: 0})`. Never both - see above.
      */
     effects: StageSnapshotEffects;
+    /** The camera's own looping transform at the target row - a handheld sway, a slow drift. */
+    loop?: StoryTransformRef;
 };
 
 export type StageSnapshotDisplayable = {
@@ -105,6 +107,12 @@ export type StageSnapshotDisplayable = {
     fontColor?: string;
     // layer
     zIndex?: number;
+    /**
+     * The looping transform this element carries at the target row, if any - see
+     * {@link StoryTransformRef}. Not a pose: it is replayed as its own `loop()` call on the
+     * pre-posed element rather than folded into {@link props}.
+     */
+    loop?: StoryTransformRef;
 };
 
 export type StoryStageSnapshot = {
@@ -548,7 +556,12 @@ class SnapshotWalker {
                 record.source = { type: "color", color: payload.color };
             }
         }
-        if (payload.operation === "show" || payload.operation === "create") {
+        // A create row declares and poses without revealing, exactly as the compiler does with it -
+        // this walk and that one must answer "what is on stage here" identically, or a launch from a
+        // row plays a scene the editor never showed.
+        if (payload.operation === "create") {
+            record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "none", block.id));
+        } else if (payload.operation === "show") {
             record.visible = true;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "show", block.id));
         } else if (payload.operation === "hide") {
@@ -574,7 +587,10 @@ class SnapshotWalker {
         if (payload.layer) {
             record.layer = payload.layer;
         }
-        if (payload.operation === "show" || payload.operation === "create") {
+        // Declares without revealing; see `applyImage`.
+        if (payload.operation === "create") {
+            record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "none", block.id));
+        } else if (payload.operation === "show") {
             record.visible = true;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "show", block.id));
         } else if (payload.operation === "hide") {
@@ -632,6 +648,13 @@ class SnapshotWalker {
             return;
         }
         const camera = this.camera ?? (this.camera = { props: {}, effects: {} });
+        // The camera's half of the loop rule, and the same one: the binding is state at this row, the
+        // motion settles no pose, and any other camera transform takes the camera back.
+        if (payload.operation === "loop" || payload.operation === "stopLoop") {
+            camera.loop = payload.operation === "loop" ? payload.transform : undefined;
+            return;
+        }
+        camera.loop = undefined;
         const props = this.finalProps(payload.transform, "none", block.id);
         if (props.zoom !== undefined) {
             props.zoom = Math.max(MIN_CAMERA_ZOOM, finiteOr(props.zoom as number, 1));
@@ -678,6 +701,27 @@ class SnapshotWalker {
         if (operation === "bringToFront") {
             this.bringToFront(bucket.key);
             return;
+        }
+        // A loop settles no POSE, and that is the engine's own rule rather than a simplification
+        // here: a looping transform never writes the element's transform state, so the pose a save
+        // records - and the pose this snapshot is - is the one the element had before it started.
+        //
+        // The binding is a different thing from the pose, and it IS part of the state at this row:
+        // the element carries it, a save records it, and a load puts the motion back. So it is
+        // remembered here rather than dropped, which is what makes "play from this row" and "save at
+        // this row" describe the same stage - the alternative is a launch that silently stops a
+        // character breathing.
+        if (operation === "loop" || operation === "stopLoop") {
+            if (bucket.record) {
+                bucket.record.loop = operation === "loop" ? payload.transform : undefined;
+            }
+            return;
+        }
+        // Any other transform ends the loop, because an element carries one at a time. Cleared here
+        // for the same reason the engine's own action clears the binding: a snapshot that kept it
+        // would restart a motion the row had just taken over from.
+        if (bucket.record) {
+            bucket.record.loop = undefined;
         }
         const visibility: VisibilityTransformMode = operation === "transform" ? "none" : operation;
         const props = this.finalProps(payload.transform, visibility, block.id);

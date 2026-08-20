@@ -202,7 +202,7 @@ export function ProjectWizardApp() {
     };
 
     return (
-        <AppLayout title={t("wizard.appTitle")} iconSrc="/favicon.ico">
+        <AppLayout title={t("wizard.appTitle")}>
             <div className="flex h-full flex-col">
                 <div className="flex min-h-0 flex-1">
                     <WizardSteps steps={steps} currentStep={currentStep} />
