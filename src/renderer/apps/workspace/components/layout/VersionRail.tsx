@@ -745,7 +745,7 @@ const CHANGE_TINTS: Record<VcsChangeKind, string> = {
  * it - which is a deliberate boundary rather than an oversight: a draft that outlived the panel would
  * also outlive a project switch, and reappear over someone else's project.
  */
-function CommitForm({ surface }: { surface: VersionSurface }) {
+export function CommitForm({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
     const [message, setMessage] = useState("");
     const frozen = surface.frozen !== null;
@@ -778,8 +778,20 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
         <div data-vcs-seam="commit-form" className="border-b border-edge px-3 py-2">
             {/* Above the message box, because it is answered once and then never again - and because
                 the question it asks ("who is this version by") is about the version the author is
-                one press away from recording. */}
-            <AuthorIdentity surface={surface} />
+                one press away from recording.
+
+                Not asked at all while a session stands. `serverSession` is what
+                `VcsManager.getServerSession` answered for THIS project's remote, and that is the
+                same `storedServerSession(remoteOrigin)` lookup `resolveIdentity` makes before
+                preferring the account over anything in settings - so a name typed here while it is
+                non-null is a name nothing will ever record. Worse, the section above is at that
+                moment saying "Signed in as Ada Lovelace" three lines up, so the panel was asking
+                who to sign versions as directly under its own answer.
+
+                A project pointed at a server that asks nobody who they are keeps the prompt, and so
+                does one pointed at no server: both leave this null, and both record whatever they
+                are told. That is the case this row exists for. */}
+            {surface.serverSession === null && <AuthorIdentity surface={surface} />}
             <TextArea
                 size="sm"
                 rows={2}
@@ -835,10 +847,15 @@ function CommitForm({ surface }: { surface: VersionSurface }) {
  * where a decision made once a year belongs - a permanent field in a 320px column would cost every
  * author width for a question they have already answered.
  *
- * **Absent, too, wherever something else is about to answer it.** A server this installation is
- * signed in to records the name on that account instead (`VcsManager.resolveIdentity`), so the
- * server dialog draws this only for a destination that has no session - which is why the caller
- * decides whether to render it and this component does not read the remote itself.
+ * **Absent, too, wherever something else is about to answer it**, which is both of its callers.
+ * `VcsManager.resolveIdentity` prefers the account of the session stored for a project's remote
+ * origin over anything in settings, so a name typed under a server that has one is a name nothing
+ * records. The commit form therefore draws this only while `serverSession` is null, and the server
+ * dialog only for a destination that has no session at all.
+ *
+ * **Which caller asks is the whole reason the test is on the caller and not here.** The two are
+ * asking about different servers - the one this project uses, and the one it is about to be pointed
+ * at - and a component that read the remote itself could only ever be right about one of them.
  */
 function AuthorIdentity({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
