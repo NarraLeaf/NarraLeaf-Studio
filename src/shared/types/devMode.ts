@@ -1,3 +1,4 @@
+import type { ShippedAssetSetTable } from "../build/assetSetTable";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
@@ -340,6 +341,16 @@ export type DevModeBundle = {
      * predate the section, which every consumer reads as the engine's own values.
      */
     dialogue?: DialogueConfiguration;
+    /**
+     * What the asset sets named OUTSIDE the stories resolve to - characters, the UI document, the
+     * blueprints. Keyed by set id, then by locale.
+     *
+     * A story row carries its own answer, so nothing a story names appears here; see
+     * `@shared/build/assetSetTable` for why the two halves are shaped differently and why this one
+     * cannot simply be the project's set document. Absent means the shipped content names no set,
+     * which is every project that has not put one in a character or a widget.
+     */
+    assetSets?: ShippedAssetSetTable;
     /**
      * The author's own version for this build, copied from `.nlproj` `metadata.version`.
      *

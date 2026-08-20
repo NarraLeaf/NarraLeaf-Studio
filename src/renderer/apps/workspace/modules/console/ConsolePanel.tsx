@@ -3,6 +3,7 @@ import { Download, ListFilter, Terminal, Trash2 } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
+import { Checkbox } from "@/lib/components/elements";
 import { Button } from "@/lib/components/elements";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -397,18 +398,14 @@ export function ConsolePanel({ panelId }: PanelComponentProps) {
                                 className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                             >
                                 {LOG_LEVELS.map(level => (
-                                    <label
+                                    <Checkbox
                                         key={level}
-                                        className="flex cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                        className="rounded-md px-1.5 py-1 text-2xs hover:bg-fill"
+                                        checked={visibleLevels.has(level)}
+                                        onCheckedChange={() => toggleLevel(level)}
                                     >
-                                        <input
-                                            type="checkbox"
-                                            checked={visibleLevels.has(level)}
-                                            onChange={() => toggleLevel(level)}
-                                            className="h-3 w-3 rounded-sm border-edge-strong bg-surface-sunken"
-                                        />
                                         <span className={LEVEL_TEXT_CLASS[level]}>{t(`console.level.${level}`)}</span>
-                                    </label>
+                                    </Checkbox>
                                 ))}
                             </div>
                         ) : null}

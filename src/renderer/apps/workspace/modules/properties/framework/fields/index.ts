@@ -1,6 +1,6 @@
 export { TextField } from "./TextField";
 export { NumberField } from "./NumberField";
-export { CheckboxField } from "./CheckboxField";
+export { ToggleField } from "./ToggleField";
 export { SelectField } from "./SelectField";
 export { TagsField } from "./TagsField";
 export { InfoField } from "./InfoField";

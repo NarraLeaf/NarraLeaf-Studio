@@ -12,6 +12,7 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
+import { requestAssetSetReveal } from "../assets/assetSetReveal";
 import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
 import { openSceneFlowTab } from "../story-flow/openSceneFlowTab";
 import { createCharacterEditorTab } from "../characters/state/useCharacterFocus";
@@ -126,6 +127,27 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             // the day it can, nothing that produces one of these has to change.
             deps.setPanelVisibility(STORY_VARIABLES_PANEL_ID, true);
             return true;
+        case "assetSet": {
+            const context = deps.context;
+            if (!context) {
+                return false;
+            }
+            // A set has no preview editor - it is a row in the assets panel with an inspector, so
+            // this is the `asset` case's second arm and nothing more. Resolved live for the same
+            // reason that one is: the declaration may be gone, and a jump that reveals the panel
+            // with nothing selected is worse than one that declines.
+            const set = context.services.get<AssetSetService>(Services.AssetSets).getSet(target.assetSetId);
+            if (!set) {
+                return false;
+            }
+            deps.setPanelVisibility(ASSETS_PANEL_ID, true);
+            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "assetSet", data: set });
+            // Selecting it fills the inspector; this puts the ROW on screen. They are different
+            // questions - a set can be several folders down from anything the panel is currently
+            // drawing, and an inspector for a row nobody can see reads as a jump that half worked.
+            requestAssetSetReveal(ASSETS_PANEL_ID, target.assetSetId);
+            return true;
+        }
         case "asset": {
             const context = deps.context;
             if (!context) {

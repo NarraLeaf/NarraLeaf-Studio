@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils/cn";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
-import { useSetSummary } from "../components/AssetSetRow";
+import { ASSET_SET_REVEAL_RING, useAssetSetRevealMark, useSetSummary } from "../components/AssetSetRow";
 import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
 import type { AssetSetCell } from "@shared/types/assetSet";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
@@ -211,6 +211,7 @@ function TreeRow({
     dataAttributes,
     className,
     draggable,
+    rowRef,
     onClick,
     onContextMenu,
     onDragStart,
@@ -227,6 +228,8 @@ function TreeRow({
     dataAttributes?: Record<string, string>;
     className?: string;
     draggable?: boolean;
+    /** For a caller that has to bring this row on screen. Nothing else reaches into the row. */
+    rowRef?: React.Ref<HTMLDivElement>;
     onClick?: (event: React.MouseEvent) => void;
     onContextMenu?: (event: React.MouseEvent) => void;
     onDragStart?: (event: React.DragEvent) => void;
@@ -234,6 +237,7 @@ function TreeRow({
 }) {
     return (
         <div
+            ref={rowRef}
             {...dataAttributes}
             draggable={draggable}
             className={cn(
@@ -295,6 +299,7 @@ function AssetSetItem({ entry, level = 0, trailing, nested = false }: {
         showAssetSetValueContextMenu,
     } = useAssetsPanelContext();
     const summary = useSetSummary(entry);
+    const reveal = useAssetSetRevealMark(entry.set.id);
 
     // The whole library of that section, not the filtered list: a set's rows are its own, and one of
     // them turning into "no file" because a search is narrowing the panel would read as a hole in the
@@ -326,12 +331,16 @@ function AssetSetItem({ entry, level = 0, trailing, nested = false }: {
             <TreeRow
                 level={level}
                 draggable={!nested}
+                rowRef={reveal.ref}
                 icon={<Layers className={cn("w-4 h-4 shrink-0", entry.incomplete ? "text-warning" : "text-primary")} />}
                 label={entry.set.name}
                 meta={<span className={entry.incomplete ? "text-warning" : "text-fg-subtle"}>{summary}</span>}
                 trailing={trailing}
                 dataAttributes={{ "data-asset-set-id": entry.set.id }}
-                className={cn(draggedAssetSet?.setId === entry.set.id && "opacity-50")}
+                className={cn(
+                    draggedAssetSet?.setId === entry.set.id && "opacity-50",
+                    reveal.marked && ASSET_SET_REVEAL_RING,
+                )}
                 onClick={() => {
                     // A set is not part of the library's multi-selection: nothing that acts on marked
                     // rows (copy, export, delete bytes) means anything for a set.
