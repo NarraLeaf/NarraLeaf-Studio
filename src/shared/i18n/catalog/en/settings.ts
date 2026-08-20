@@ -109,6 +109,11 @@ export const settings = {
                 slate: "Slate",
             },
         },
+        uiFontFamily: {
+            label: "Interface font",
+            description: "Typeface used for the Studio interface. Any font installed on this computer can be chosen.",
+            // Shares the story editor font's option labels — same four preset ids, same four words.
+        },
         tooltipDelay: {
             label: "Tooltip delay",
             description: "How long the pointer rests on a control before its tooltip appears. Within a toolbar the wait applies to the first tooltip only.",

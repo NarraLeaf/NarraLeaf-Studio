@@ -108,6 +108,10 @@ export const settings = {
                 slate: "スレート",
             },
         },
+        uiFontFamily: {
+            label: "インターフェイスのフォント",
+            description: "Studio の画面に使う書体。この端末に入っているフォントならどれでも選べる",
+        },
         tooltipDelay: {
             label: "ヒントの遅延",
             description: "ポインターがコントロールに止まってからヒントが出るまでの時間。同じツールバー内では最初の一つだけが待つ",

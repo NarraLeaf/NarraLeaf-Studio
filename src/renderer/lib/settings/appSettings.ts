@@ -4,10 +4,17 @@ import { SettingValueType } from "@/lib/settings/types";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
     EDITOR_FONT_FAMILY_PRESETS,
+    EDITOR_FONT_PRESET_STACKS,
     EDITOR_FONT_SIZE_DEFAULT,
     EDITOR_FONT_SIZE_MAX,
     EDITOR_FONT_SIZE_MIN,
 } from "@/lib/settings/editorFontOptions";
+import {
+    UI_FONT_FAMILY_DEFAULT,
+    UI_FONT_FAMILY_KEY,
+    UI_FONT_FAMILY_PRESETS,
+    UI_FONT_PRESET_STACKS,
+} from "@/lib/settings/uiFontOptions";
 import {
     EDITOR_SURFACE_OPACITY_DEFAULT,
     EDITOR_SURFACE_OPACITY_MAX,
@@ -326,6 +333,35 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
+        // Applied by `lib/appearance` as the `--nl-ui-font` custom property, which one guarded rule
+        // in styles.css reads (`html.nl-studio`). Studio chrome only: the game stage in Dev Mode
+        // and every surface preview on a canvas stay in the base stack, because what they show is
+        // the author's game and not their editor.
+        //
+        // `Font`, not `Enum`, for the same reason as the story editor's font below: the list is the
+        // presets PLUS every family installed on this computer, which the picker discovers at open
+        // time. `options` therefore carries only the presets, and nothing validates a stored value
+        // against it.
+        key: UI_FONT_FAMILY_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Font,
+        label: "Interface font",
+        labelKey: "settings.items.uiFontFamily.label",
+        description: "Typeface used for the Studio interface. Any font installed on this computer can be chosen.",
+        descriptionKey: "settings.items.uiFontFamily.description",
+        defaultValue: UI_FONT_FAMILY_DEFAULT,
+        options: [...UI_FONT_FAMILY_PRESETS],
+        optionFontStacks: UI_FONT_PRESET_STACKS,
+        // The same four preset ids as the story editor's font, so the same four labels.
+        optionLabelKeys: {
+            "Default": "settings.items.editorFontFamily.options.default",
+            "Sans Serif": "settings.items.editorFontFamily.options.sansSerif",
+            "Serif": "settings.items.editorFontFamily.options.serif",
+            "Monospace": "settings.items.editorFontFamily.options.monospace",
+        },
+    },
+    {
         // Handed to the tooltip controller by `lib/appearance`, which is also where the accent and
         // the motion preference are applied: a value JS has to read, with no media query or CSS
         // custom property that could carry it instead.
@@ -429,6 +465,7 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionKey: "settings.items.editorFontFamily.description",
         defaultValue: EDITOR_FONT_FAMILY_DEFAULT,
         options: [...EDITOR_FONT_FAMILY_PRESETS],
+        optionFontStacks: EDITOR_FONT_PRESET_STACKS,
         optionLabelKeys: {
             "Default": "settings.items.editorFontFamily.options.default",
             "Sans Serif": "settings.items.editorFontFamily.options.sansSerif",

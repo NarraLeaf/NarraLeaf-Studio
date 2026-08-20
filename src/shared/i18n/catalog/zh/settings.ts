@@ -100,6 +100,10 @@ export const settings = {
                 slate: "石板",
             },
         },
+        uiFontFamily: {
+            label: "界面字体",
+            description: "Studio 界面使用的字体，可从本机已安装的字体中选择",
+        },
         tooltipDelay: {
             label: "提示延迟",
             description: "指针停在控件上多久后出现提示。在同一个工具栏内，只有第一条提示需要等待",
