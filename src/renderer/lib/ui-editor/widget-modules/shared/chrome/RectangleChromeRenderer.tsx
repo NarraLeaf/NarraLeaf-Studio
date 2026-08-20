@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
 import {
@@ -459,7 +460,12 @@ export function RectangleChromeRenderer({
     const legacyImageUrl = props.backgroundImage?.trim() ?? "";
     const activeFill = normalizeImageFill(props);
     const activeMode = activeFill?.mode;
-    const { url: assetUrl } = useAssetObjectUrl(activeFill?.assetId ?? null);
+    // The element is the reference point: a fill that names an asset set is answered by the map the
+    // build wrote onto this element, so the picture follows the player's language without any
+    // project-wide table for a reader to enumerate. In the editor there is no map and the hook hands
+    // the id straight through, where `useAssetObjectUrl` resolves the set against the live library.
+    const fillAssetId = useLocalizedAssetId(element, activeFill?.assetId ?? null);
+    const { url: assetUrl } = useAssetObjectUrl(fillAssetId ?? null);
     const displayUrl = assetUrl ?? (legacyImageUrl ? legacyImageUrl : null);
     const shouldRenderImage = props.fillType === "image";
     const isCropEditing =

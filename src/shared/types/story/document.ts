@@ -1,4 +1,5 @@
 import type { StoryExpression } from "./expression";
+import { resolveAssetVariantMember, type AssetVariantMap } from "../assetSet";
 import type { WeatherSeedRef } from "../../weather/model";
 
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
@@ -449,17 +450,19 @@ export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
  *
  * Total over the project's locales by construction - see `materializeStoryAssetSets` - so reading it
  * is a lookup and not a search.
+ *
+ * The shape moved to `@shared/types/assetSet` when the interface began carrying one too; the name
+ * stays here because the story documents are where it is written and read most.
  */
-export type StoryAssetVariants = Record<string, Record<string, string>>;
+export type StoryAssetVariants = AssetVariantMap;
 
 /**
  * The asset a row's set reference resolves to for `locale`, or null when the row does not name a
  * set at all.
  *
- * The one function every consumer goes through: the compiler on its way to a URL, and the shipped
- * content check on its way to the bytes. Falling back to the source locale is defence rather than
- * policy - materialization already filled every locale, so reaching that line means the pack and the
- * project it was built from disagree, and one language's stage is a better answer than none.
+ * A thin name over {@link resolveAssetVariantMember}, kept so the story call sites read in story
+ * terms; the rule (locale, then the source locale, then nothing) is one implementation for every
+ * kind of record that carries an answer.
  */
 export function resolveStoryAssetVariant(
     variants: StoryAssetVariants | undefined,
@@ -467,16 +470,7 @@ export function resolveStoryAssetVariant(
     locale: string | undefined,
     sourceLocale?: string,
 ): string | null {
-    const map = variants?.[assetId];
-    if (!map) {
-        return null;
-    }
-    const direct = locale ? map[locale] : undefined;
-    if (direct) {
-        return direct;
-    }
-    const source = sourceLocale ? map[sourceLocale] : undefined;
-    return source ?? null;
+    return resolveAssetVariantMember(variants, assetId, locale, sourceLocale);
 }
 
 export type StoryNodeActionBlock = StoryBlockBase<"nodeAction", StoryNodeActionPayload>;

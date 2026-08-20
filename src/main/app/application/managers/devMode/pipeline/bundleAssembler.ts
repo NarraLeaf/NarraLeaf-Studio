@@ -66,6 +66,7 @@ import {
     attachCharacterAssetSetVariants,
     type AssetSetRecordProblem,
 } from "@shared/build/characterAssetSets";
+import { attachUiAssetSetVariants } from "@shared/build/uiAssetSets";
 import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
@@ -147,6 +148,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // the story pass so both are resolved against the same library and the same edition, and against
     // the story library this build actually ships - a character dropped with its chapter names no set.
     await resolveCharacterAssetSets(context, resolvedStoryLibrary?.characters, localization, variant.name);
+    // And the third: the interface names sets from its widgets and its Surfaces, which have no rows
+    // and are not characters. Same library, same edition, same refusal.
+    await resolveUiAssetSets(context, uidoc, localization, variant.name);
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
@@ -668,6 +672,43 @@ async function resolveCharacterAssetSets(
     // own copies live in another process.
     const result = attachCharacterAssetSetVariants({
         characters,
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+        assetAxes: context.assetAxes,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeShippedAssetSetProblem(problem, variantName);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        context.onAssetSetCollapse?.();
+    }
+}
+
+/**
+ * Resolve the sets the interface names, and refuse to package one that cannot be.
+ *
+ * The same rule as the two passes above in every respect that matters, and different in the one the
+ * content forces: a widget has no row to write the answer into, so the answer goes on the element -
+ * or, for a Surface's own background, on that Surface's settings. See `@shared/build/uiAssetSets`
+ * for why the reference point rather than a document-wide table.
+ */
+async function resolveUiAssetSets(
+    context: DevModeBundleLoadContext,
+    document: UIDocument | undefined,
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+): Promise<void> {
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return;
+    }
+    const result = attachUiAssetSetVariants({
+        document,
         sets,
         candidates: await loadAssetSetCandidates(context.projectPath),
         localization,

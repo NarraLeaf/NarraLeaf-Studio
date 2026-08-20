@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { Select } from "@/lib/components/elements/Select";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -39,7 +40,7 @@ export function ImageFillField<TData extends UIInspectorData>({
     onSaving,
 }: ImageFillFieldProps<TData>) {
     const { t } = useTranslation();
-    const { context } = useWorkspace();
+    const { context, isInitialized } = useWorkspace();
     const { frozen } = useFreezeGuard();
     const MODE_OPTIONS = useMemo<{ value: ImageFillMode; label: string }[]>(
         () => [
@@ -80,6 +81,15 @@ export function ImageFillField<TData extends UIInspectorData>({
     }, [allowedModes, MODE_OPTIONS]);
 
     const { url, metadata, loading, error: assetResolveError } = useAssetObjectUrl(normalizedFill.assetId ?? null);
+    // A widget's fill may be answered by a set. The build writes the answer onto the element that
+    // holds this fill, so the shipped game resolves it at the widget rather than through a
+    // project-wide table - see `@shared/build/uiAssetSets`.
+    const { virtualGroups, resolveAssetPreviewUrl } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
     const [isOpen, setIsOpen] = useState(false);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -426,6 +436,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                 anchorRef={previewRef}
                 title={t("properties.imageFill.selectFillImage")}
                 multiple={false}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </>
     );

@@ -891,3 +891,53 @@ export function uniqueAssetSetName(desired: string, taken: readonly string[]): s
         }
     }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Materialised answers                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A materialised asset set reference: set id, then axis value, then the asset that value resolves
+ * to.
+ *
+ * **Never authored and never on disk under `editor/`.** A build writes one of these beside every
+ * record that names a set with a runtime axis, and only there - see `@shared/build/*AssetSets` for
+ * why the answer rides with the reference instead of going into one table the pack would carry.
+ *
+ * Declared here rather than beside the first content type that carried one, because it is now
+ * written onto four unrelated shapes - a story row, a scene, a character's pose, a widget - and a
+ * story type is the wrong home for the one a widget uses. `StoryAssetVariants` remains its name in
+ * the story documents that had it first.
+ */
+export type AssetVariantMap = Record<string, Record<string, string>>;
+
+/** Anything a build can write an answer onto: a row, a scene, a pose, an element, a surface. */
+export type AssetVariantCarrier = { assetVariants?: AssetVariantMap };
+
+/**
+ * The asset a record's set reference resolves to for `locale`, or null when the record names no set
+ * at all.
+ *
+ * The one function every consumer goes through: the story compiler on its way to a URL, the shipped
+ * content check on its way to the bytes, and a widget on its way to a picture. Falling back to the
+ * source locale is defence rather than policy - materialization already filled every locale, so
+ * reaching that line means the pack and the project it was built from disagree, and one language's
+ * picture is a better answer than none.
+ */
+export function resolveAssetVariantMember(
+    variants: AssetVariantMap | undefined,
+    assetId: string,
+    locale: string | undefined,
+    sourceLocale?: string,
+): string | null {
+    const map = variants?.[assetId];
+    if (!map) {
+        return null;
+    }
+    const direct = locale ? map[locale] : undefined;
+    if (direct) {
+        return direct;
+    }
+    const source = sourceLocale ? map[sourceLocale] : undefined;
+    return source ?? null;
+}
