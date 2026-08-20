@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode } from "react";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -124,6 +125,22 @@ describe("a project the server has not read", () => {
         expect(panel()).not.toContain("launcher.servers.detail.scenes");
         expect(panel()).not.toContain("launcher.servers.detail.noVersions");
         expect(document.querySelector("[data-project-versions]")).toBeNull();
+        // And once means once: the versions are missing for the reason already given,
+        // so they do not get a second sentence saying the same absence again.
+        expect(panel()).not.toContain("launcher.servers.detail.versionsUnavailable");
+    });
+
+    it("still lists versions it was given, whatever it could not read in the file", async () => {
+        // A checkout it can walk and a project file it cannot parse. What is suppressed
+        // where the file is unread is the second sentence, never a fact that was said.
+        open({
+            detail: detail({ readable: false }),
+            page: { revisions: [{ id: "a1b2c3d4e5", message: "Chapter two" }], more: false },
+        });
+
+        await waitFor(() => expect(panel()).toContain("Chapter two"));
+        expect(document.querySelectorAll("[data-project-unread]")).toHaveLength(1);
+        expect(panel()).not.toContain("launcher.servers.detail.versionsUnavailable");
     });
 
     it("does not repeat the sentence the server wrote for its own operator", async () => {
@@ -203,6 +220,74 @@ describe("a project the server has read", () => {
         await waitFor(() => expect(panel()).toContain("launcher.servers.detail.lastVersion"));
         expect(panel()).toContain("2026-08-20");
         expect(panel()).toContain("Ada Lovelace");
+    });
+});
+
+/**
+ * What a server answers about a project it holds and cannot hand a page of at this
+ * moment: `revisions` absent, deliberately, because an empty list would read as a
+ * project with no versions.
+ *
+ * Measured against a live server: one read of a checkout at a time, and a second read
+ * arriving while the first is inside it is told the page is not to hand rather than made
+ * to wait behind a clone. So this answer arrives about a project whose title, stage,
+ * scene count and asset count the same panel is already displaying.
+ */
+const NOT_TO_HAND = { success: true, data: { ok: true, page: { more: false } } } as const;
+
+/** Everything the server read, on a project it has read. */
+const READ = detail({ readable: true, stageWidth: 1920, stageHeight: 1080, scenes: 4, assets: 22 });
+
+/** The panel has stopped asking, whatever it settled on. */
+async function settled(): Promise<void> {
+    await waitFor(() => expect(panel()).not.toContain("launcher.servers.detail.loading"));
+}
+
+describe("a project the server has read, whose versions it did not give", () => {
+    it("does not say the server has not read a project whose contents are on screen", async () => {
+        open({ detail: READ, page: { more: false } });
+
+        await settled();
+        expect(panel()).toContain("launcher.servers.detail.scenes");
+        expect(document.querySelector("[data-project-unread]")).toBeNull();
+        // Nor the other direction: versions nobody has been given are not none.
+        expect(panel()).not.toContain("launcher.servers.detail.noVersions");
+        expect(panel()).toContain("launcher.servers.detail.versionsUnavailable");
+    });
+
+    it("keeps the page the server gave, however many times the panel asks", async () => {
+        // React mounts every effect twice outside a packaged build, and the second of two
+        // reads arriving together is the one that gets refused. The first answer is the
+        // one worth keeping, and the ordinary read is the one worth making: one.
+        bridge.getServerProject.mockResolvedValue({ success: true, data: { ok: true, detail: READ } });
+        bridge.listServerProjectHistory
+            .mockResolvedValueOnce({
+                success: true,
+                data: {
+                    ok: true,
+                    page: { revisions: [{ id: "a1b2c3d4e5", message: "Chapter two" }], more: true },
+                },
+            })
+            .mockResolvedValue(NOT_TO_HAND);
+
+        render(
+            <StrictMode>
+                <ServerProjectDetailView
+                    remoteOrigin={ORIGIN}
+                    project={project()}
+                    canDetail
+                    canHistory
+                    action={<button type="button" data-project-action="get">get</button>}
+                    onBack={() => undefined}
+                />
+            </StrictMode>,
+        );
+
+        await settled();
+        expect(bridge.listServerProjectHistory).toHaveBeenCalledTimes(1);
+        expect(panel()).toContain("Chapter two");
+        expect(document.querySelector("[data-project-unread]")).toBeNull();
+        expect(panel()).not.toContain("launcher.servers.detail.versionsUnavailable");
     });
 });
 
