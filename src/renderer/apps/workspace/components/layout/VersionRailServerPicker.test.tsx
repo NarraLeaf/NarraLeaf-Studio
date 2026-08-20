@@ -17,9 +17,9 @@ import type { VersionSurface } from "../../hooks/useVersionSurface";
  *
  * The rail section that reaches this dialog is pinned in the same file, for the same reason: the
  * two are one decision about how much weight a once-a-year act is given, and the drift is always
- * in the direction of giving it more. So the suite below holds the shape - Send and Get a press
- * away, everything rare behind the menu, and the server line reading as a line rather than as the
- * button that covers the rail.
+ * in the direction of giving it more. So the second suite below holds the shape - Send and Get a
+ * press away, everything rare behind the menu, and the server line reading as a line rather than
+ * as the button that covers the rail.
  */
 
 vi.mock("@/lib/i18n", async importOriginal => ({
@@ -63,16 +63,19 @@ function session(origin: string, displayName: string, name?: string): VcsServerS
 const ONE = "lore://one.example.lan:41337";
 const TWO = "lore://two.example.lan:41337";
 
-function picker(remote: string | null) {
+function picker(remote: string | null, overrides: Partial<VersionSurface> = {}) {
     const onClose = vi.fn();
     const surface = {
-        // Absent, so the author-name offer above the list stays out of the way of these cases.
+        // Answered, so the author-name offer stays out of the way of the cases that are not
+        // about it. The cases that are pass `authorName: null` and read where it appears.
         authorName: "Ada Blackwood",
         busy: null,
         failure: null,
         remote,
         remoteNeedsSignIn: false,
         setRemote: vi.fn(() => Promise.resolve(true)),
+        setAuthorName: vi.fn(() => Promise.resolve(true)),
+        ...overrides,
     } as unknown as VersionSurface;
     render(<ServerPickerDialog surface={surface} isOpen onClose={onClose} />);
     return { onClose, surface };
@@ -190,6 +193,55 @@ describe("the server picker", () => {
         // bare server can read or change where its work goes.
         expect(document.querySelector<HTMLInputElement>("input")?.value)
             .toBe("lore://plain.example.lan:41337/my-game");
+    });
+});
+
+/**
+ * Who the versions are by, asked only where nothing else will answer it.
+ *
+ * A server out of the list has a session, and the recorded author then comes from that session's
+ * account - `VcsManager.resolveIdentity` prefers it, keyed on the project's own remote origin. So
+ * the question drawn beside a chosen server is one whose answer is thrown away moments later, asked
+ * at the exact moment it looks most relevant. It survives for the address field, where a bare
+ * server issues no token and records whatever it is told.
+ */
+describe("the author name in the server picker", () => {
+    it("is not asked for a server out of the list", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        picker(null, { authorName: null });
+
+        await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+        // Nothing chosen yet is not a destination either, so it is absent here too.
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
+
+        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+
+        expect(document.querySelector(`[data-server-choice='${ONE}']`)?.getAttribute("aria-pressed")).toBe("true");
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
+    });
+
+    it("is asked for an address the list cannot account for", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        picker(null, { authorName: null });
+
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
+        fireEvent.click(seam("picker-address").querySelector("button")!);
+
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).not.toBeNull();
+
+        // And it goes again the moment the destination is one that answers for itself.
+        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
+    });
+
+    it("stays out of the way once the name has been answered", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        picker(null);
+
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
+        fireEvent.click(seam("picker-address").querySelector("button")!);
+
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
     });
 });
 
