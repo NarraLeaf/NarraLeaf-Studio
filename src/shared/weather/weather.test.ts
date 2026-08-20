@@ -97,6 +97,61 @@ describe("the loop seam", () => {
     });
 });
 
+describe("the fall speed", () => {
+    const fallsOf = (seed: WeatherSeedId, fallSpeed: number, depthSpread?: number) =>
+        buildWeatherField(
+            seed,
+            resolveWeatherParams({
+                seed,
+                params: { fallSpeed, ...(depthSpread === undefined ? {} : { depthSpread }) },
+            }),
+            W,
+            H,
+        ).particles.map(particle => particle.fall);
+
+    it("is a whole number of fall-lengths, whatever the document stored", () => {
+        // A fraction is a visible jump once per loop, so the renderer rounds rather than trusts what
+        // it was handed - the value arrives from a stored row, not from the control.
+        for (const fall of fallsOf("rain", 3.4)) {
+            expect(Number.isInteger(fall)).toBe(true);
+            expect(fall).toBeGreaterThanOrEqual(1);
+        }
+    });
+
+    for (const seed of WEATHER_SEED_IDS) {
+        it(`${seed} keeps the seam exact when the speed is raised`, () => {
+            const params = resolveWeatherParams({ seed, params: { fallSpeed: 5 } });
+            expect(frameAt(seed, 1, params)).toEqual(frameAt(seed, 0, params));
+        });
+    }
+
+    it("leaves the field alone at its default", () => {
+        // The default is 1 because raising the floor would silently re-time every project that
+        // already ships weather: the far field crosses one length per loop, as it always has.
+        const falls = fallsOf("snow", 1, 6);
+        expect(Math.min(...falls)).toBeGreaterThanOrEqual(1);
+        expect(Math.max(...falls)).toBeLessThanOrEqual(6);
+    });
+
+    it("scales the whole field rather than flattening the depth it already had", () => {
+        const falls = fallsOf("snow", 4, 6);
+        // Multiplying, not adding. An ADDITIVE base would top out near 4 + (6 - 1) = 9 here, leaving
+        // the near field barely faster than the far one: the same weather with its depth washed out.
+        expect(Math.min(...falls)).toBeGreaterThanOrEqual(4);
+        expect(Math.max(...falls)).toBeGreaterThan(18);
+    });
+
+    it("actually moves every particle farther per loop", () => {
+        // The thing the author is buying. Particle i is the same particle in both fields (the layout
+        // draws from the same sequence and the count does not depend on speed), so this compares
+        // like with like.
+        const slow = fallsOf("rain", 1);
+        const fast = fallsOf("rain", 3);
+        expect(fast.length).toBe(slow.length);
+        expect(fast.every((fall, index) => fall > slow[index])).toBe(true);
+    });
+});
+
 describe("determinism", () => {
     it("renders the same bytes for the same inputs", () => {
         expect(frameAt("sakura", 0.42)).toEqual(frameAt("sakura", 0.42));

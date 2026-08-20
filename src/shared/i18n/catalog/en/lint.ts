@@ -159,10 +159,22 @@ export const lint = {
             // A character is not created, it walks on - so the remedy is the one word that changes.
             messageCharacter: "Nothing brings {object} on stage, so this row has nothing to act on",
         },
+        storyDeclaredNeverShown: {
+            title: "Unshown stage object",
+            description: "A create row declares an object no row shows",
+            message: "{object} is declared here and no row shows it",
+        },
         storyStageObjectDuplicate: {
             title: "Duplicate stage object",
             description: "Two rows creating one stage name; the second reuses the first",
             message: "{object} is already created above, so this row acts on that one",
+        },
+        storyCharacterMissing: {
+            title: "Missing character",
+            description: "A row naming a character the project does not have",
+            // No subject in the sentence: an unresolved reference leaves only its stored id, which
+            // is a UUID, and a UUID in a report is a word nobody can search a project for.
+            message: "This row names a character the project does not have, so it acts on nothing",
         },
         storyTransitionUnavailable: {
             title: "Unavailable transition",

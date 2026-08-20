@@ -15,7 +15,7 @@ import { BlueprintService } from "../assets/BlueprintService";
 import { AssetOrderManager } from "../assets/mgr/AssetOrderManager";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
-import { LocalAssetsManager, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
+import { LocalAssetsManager, type CreateLocalAssetFromBytesOptions, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
 import type { ExpandImportPathsResult } from "../assets/importPathExpansion";
@@ -1125,16 +1125,19 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * Create an asset whose contents are bytes Studio produced, with no source file on disk.
      *
      * Every other creation path starts from a file the author picked; this is the one that does
-     * not, which is what makes "New Text File" possible at all.
-     * See {@link LocalAssetsManager.createLocalAssetFromBytes}.
+     * not, which is what makes "New Text File" possible at all. `options.id` additionally lets the
+     * bytes be filed under an id the caller already holds, for content that arrives named by a
+     * document rather than by the library - see {@link LocalAssetsManager.createLocalAssetFromBytes}
+     * for what is refused and how.
      */
     public async createLocalAssetFromBytes<T extends AssetType>(
         type: T,
         name: string,
         bytes: Uint8Array,
         groupId?: string,
+        options?: CreateLocalAssetFromBytesOptions,
     ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
-        return this.getLocalAssetsManager().createLocalAssetFromBytes(type, name, bytes, groupId);
+        return this.getLocalAssetsManager().createLocalAssetFromBytes(type, name, bytes, groupId, options);
     }
 
     /**

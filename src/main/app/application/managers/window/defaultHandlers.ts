@@ -134,6 +134,7 @@ import {
     ProjectTemplateScaffoldHandler,
 } from "./handlers/projectTemplateAction";
 import { AssetExportToFolderHandler, AssetFetchRemoteHandler } from "./handlers/assetAction";
+import { AssetTransferOfferHandler, AssetTransferRedeemHandler } from "./handlers/assetTransferAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
@@ -348,6 +349,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectTemplateScaffoldHandler(),
         new AssetFetchRemoteHandler(),
         new AssetExportToFolderHandler(),
+        new AssetTransferOfferHandler(),
+        new AssetTransferRedeemHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers

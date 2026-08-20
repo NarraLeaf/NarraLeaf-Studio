@@ -97,6 +97,8 @@ export type LintRuleId =
     | "story/cut-point-unreachable"
     | "story/stage-object-missing"
     | "story/stage-object-duplicate"
+    | "story/declared-never-shown"
+    | "story/character-missing"
     | "story/transition-unavailable"
     | "blueprint/reference-missing"
     | "blueprint/unreachable-node"
