@@ -800,11 +800,18 @@ export const workspace = {
             // never used version control knows what a server is, and "remote" is a word that only
             // means anything once you already know the model.
             server: {
-                title: "Server",
                 // A project with no server, which is every project until someone says otherwise.
                 // One line and one button, because connecting is a decision rather than a default.
                 none: "Not connected to a server",
                 connect: "Connect to a server",
+                // Pointing a project that already has a server at a different one. Named for the
+                // change rather than for the connection - a project with a server is not being
+                // asked to connect to one - and it carries this catalog's ellipsis, the mark of a
+                // control that opens somewhere else rather than acting where it stands.
+                change: "Change server…",
+                // The overflow control on the server line. What is behind it is decided a few
+                // times in a project's life; what is in front of it is pressed every day.
+                more: "More actions",
                 /**
                  * Choosing which server a project synchronises with.
                  *
@@ -853,6 +860,26 @@ export const workspace = {
                 // the credential fields - asking for a token before anyone has been refused is
                 // asking a question most authors will never need to answer.
                 unauthorized: "This server refused access",
+                /**
+                 * The same seven states, short enough to stand beside the server's own name.
+                 *
+                 * The sentences above are what the state MEANS and they are still what the line
+                 * says on hover; these are what it reads as at a glance, in a column 320px wide
+                 * that has to hold a name, a state and a menu on one line. Shortening is not
+                 * abbreviating: each one names the state in the words of the two buttons under
+                 * it, so "Not sent" is read directly off the Send button beneath it.
+                 */
+                state: {
+                    notChecked: "Not checked",
+                    upToDate: "Up to date",
+                    localAhead: "Not sent",
+                    remoteAhead: "New on the server",
+                    diverged: "Both advanced",
+                    // Said as what happened rather than as what is wrong: nothing answered, which
+                    // is as true of a laptop off the network as of a server that is down.
+                    unreachable: "No answer",
+                    unauthorized: "Refused",
+                },
                 push: "Send to server",
                 pushing: "Sending to the server…",
                 // "Already there" is a success. Pressing this twice is an ordinary thing to do.
