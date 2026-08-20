@@ -123,6 +123,10 @@ export const launcher = {
         detail: {
             back: "All projects",
             loading: "Reading this project",
+            // The overflow beside the one primary control. What is in it is destructive and
+            // nobody opened a project to do it, so it costs a second click to reach.
+            more: "More actions",
+            moreNamed: "More actions for {name}",
             createdBy: "Created by",
             created: "Created",
             lastVersion: "Last version",
@@ -148,6 +152,21 @@ export const launcher = {
             // answered for. Not "none": what is unknown here is the list, not its length.
             versionsUnavailable: "This project's versions are not available.",
             olderVersions: "Older versions are not shown.",
+        },
+        // Taking a project off a server's list, for the one a failed publish left behind.
+        //
+        // **The message is the reason this is a dialog at all.** "Remove" beside a project
+        // name reads as deleting the project, and the route behind it does not do that - it
+        // drops the entry the server lists and leaves what the repository holds where it is.
+        // So the limit is written out rather than implied, in the sentence that names both
+        // the project and the list it is coming off.
+        forget: {
+            action: "Remove from this server",
+            title: "Remove from this server",
+            message: "{name} will no longer be listed on {server}. Removing takes it off that list and deletes nothing.",
+            confirm: "Remove",
+            cancel: "Cancel",
+            failed: "The project was not removed.",
         },
         // Who else works on this server. The account addresses are read with the list and
         // shown one at a time, for the member a reader opens.

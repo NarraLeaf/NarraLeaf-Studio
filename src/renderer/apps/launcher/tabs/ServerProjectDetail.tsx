@@ -1,8 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, MoreVertical } from "lucide-react";
 
 import { getInterface } from "@/lib/app/bridge";
-import { Button, FieldLabel } from "@/lib/components/elements";
+import {
+    Button,
+    ContextMenu,
+    FieldLabel,
+    IconButton,
+    Modal,
+    dialogFooterButtonClass,
+} from "@/lib/components/elements";
+import type { ContextMenuDef } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import type {
@@ -42,19 +50,28 @@ export interface ServerProjectDetailProps {
     remoteOrigin: string;
     /** The project as the list has it. Everything drawn before the server answers. */
     project: VcsServerProject;
+    /** The server's name, for the one sentence that has to say which list is being changed. */
+    server: string;
     /** Whether this server answers what it knows about one project. */
     canDetail: boolean;
     /** Whether this server answers a project's revisions. */
     canHistory: boolean;
     /**
-     * Open or Get, as the row drew it.
+     * Open or Get: the one primary control this page has.
      *
-     * Handed in rather than decided here so that the one action a project has is the same
-     * control in both places: a reader who opened a project to look at it before fetching
-     * it should not have to go back to the list to fetch it.
+     * Handed in rather than decided here because the list is what knows whether a copy is
+     * on this disk, and a reader who opened a project to look at it before fetching it
+     * should not have to go back to the list to fetch it.
      */
     action: React.ReactNode;
     onBack: () => void;
+    /**
+     * Take this project off the server's list, or nothing where there is no such route.
+     *
+     * Absent by default, and then the action is not drawn at all - not drawn disabled, not
+     * drawn with an explanation. Answers whether the server did it.
+     */
+    onForget?: () => Promise<boolean>;
 }
 
 type Bridge = ReturnType<typeof getInterface>["vcs"];
@@ -73,16 +90,22 @@ type Answers = [
 export function ServerProjectDetailView({
     remoteOrigin,
     project,
+    server,
     canDetail,
     canHistory,
     action,
     onBack,
+    onForget,
 }: ServerProjectDetailProps) {
     const { t } = useTranslation();
     const [detail, setDetail] = useState<ServerProjectDetail | null>(null);
     const [page, setPage] = useState<VcsServerProjectHistoryPage | null>(null);
     const [problem, setProblem] = useState<TranslationKey | null>(null);
     const [reading, setReading] = useState(canDetail || canHistory);
+    /** Where the overflow menu is open, if it is. */
+    const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+    /** Whether the question is being asked. Nothing is removed until it is answered. */
+    const [forgetting, setForgetting] = useState(false);
     /**
      * The read that is out, and which project it is for.
      *
@@ -174,6 +197,20 @@ export function ServerProjectDetailView({
      */
     const versionsUnavailable = page !== null && page.revisions === undefined;
 
+    /**
+     * Everything else that can be done to this project, which today is one thing.
+     *
+     * In a menu rather than on the page because it is destructive and nobody came here to
+     * do it: an author opens a project to look at it, and the control they must not press
+     * by accident is the one that should cost a deliberate second click to reach. The
+     * confirmation is where the consequence is written down.
+     */
+    const menuItems: ContextMenuDef = [{
+        id: "forget",
+        label: t("launcher.servers.forget.action"),
+        onClick: () => setForgetting(true),
+    }];
+
     return (
         <div className="flex min-h-0 flex-1 flex-col" data-server-project-detail={project.id}>
             {/* Above the scroller rather than in it. This is one project inside the list it
@@ -198,9 +235,39 @@ export function ServerProjectDetailView({
                             <p className="mt-0.5 text-xs text-fg-muted">{known.description}</p>
                         )}
                     </div>
-                    <div className="shrink-0">{action}</div>
+                    <div className="flex shrink-0 items-center gap-1">
+                        {action}
+                        {onForget !== undefined && (
+                            <IconButton
+                                size="sm"
+                                variant="ghost"
+                                onClick={event => {
+                                    const box = event.currentTarget.getBoundingClientRect();
+                                    setMenu({ x: box.right, y: box.bottom + 4 });
+                                }}
+                                data-project-action="more"
+                                data-tip={t("launcher.servers.detail.more")}
+                                aria-label={t("launcher.servers.detail.moreNamed", { name: known.name })}
+                            >
+                                <MoreVertical className="h-4 w-4" />
+                            </IconButton>
+                        )}
+                    </div>
                 </div>
             </div>
+
+            {menu !== null && (
+                <ContextMenu items={menuItems} position={menu} onClose={() => setMenu(null)} />
+            )}
+
+            {forgetting && onForget !== undefined && (
+                <ForgetProjectDialog
+                    name={known.name}
+                    server={server}
+                    onForget={onForget}
+                    onClose={() => setForgetting(false)}
+                />
+            )}
 
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {reading && (
@@ -235,6 +302,81 @@ export function ServerProjectDetailView({
                 )}
             </div>
         </div>
+    );
+}
+
+/**
+ * Ask before taking a project off a server's list.
+ *
+ * **The sentence is the whole point of the dialog.** "Remove" beside a project name reads as
+ * deleting the project, and the route behind this does not do that: it drops the entry the
+ * server lists and leaves everything the repository holds where it is. So the project is
+ * named, the server is named, and the limit is written out - a reader who is about to be
+ * rid of a failed publish and a reader who thinks they are deleting a year of work press
+ * the same button, and only one of them should.
+ *
+ * A refusal is drawn here rather than swallowed: the server can decline, and a dialog that
+ * closes on a refusal is a dialog that says the project is gone when it is not.
+ */
+function ForgetProjectDialog({
+    name,
+    server,
+    onForget,
+    onClose,
+}: {
+    name: string;
+    server: string;
+    onForget: () => Promise<boolean>;
+    onClose: () => void;
+}) {
+    const { t } = useTranslation();
+    const [busy, setBusy] = useState(false);
+    const [failed, setFailed] = useState(false);
+
+    const submit = async () => {
+        if (busy) return;
+        setBusy(true);
+        setFailed(false);
+        const gone = await onForget();
+        setBusy(false);
+        // Nothing closes this on success: the project it was opened from is gone, and the
+        // list that replaces it is what the caller puts on screen.
+        if (!gone) setFailed(true);
+    };
+
+    return (
+        <Modal
+            isOpen
+            onClose={onClose}
+            title={t("launcher.servers.forget.title")}
+            size="sm"
+            footer={(
+                <div className="flex items-center justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className={dialogFooterButtonClass({ variant: "secondary", disabled: busy })}
+                        disabled={busy}
+                    >
+                        {t("launcher.servers.forget.cancel")}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void submit()}
+                        disabled={busy}
+                        data-servers-action="forget"
+                        className={dialogFooterButtonClass({ variant: "danger", disabled: busy })}
+                    >
+                        {t("launcher.servers.forget.confirm")}
+                    </button>
+                </div>
+            )}
+        >
+            <p className="text-sm text-fg">{t("launcher.servers.forget.message", { name, server })}</p>
+            {failed && (
+                <p className="mt-3 text-xs text-danger">{t("launcher.servers.forget.failed")}</p>
+            )}
+        </Modal>
     );
 }
 

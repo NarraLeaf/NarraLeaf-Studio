@@ -79,6 +79,23 @@ import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 /** The two views of one server. Projects is where a reader lands and where a project opens. */
 type ServersView = "projects" | "people";
 
+/**
+ * Take a project off a server's list.
+ *
+ * Handed in rather than called from here, and absent by default: with no handler there is
+ * no such action anywhere on the screen. A failed publish can leave a project on a server
+ * that nobody can do anything with, and this is the way to be rid of it - the server route
+ * behind it drops the listing and nothing else, which is what the dialog says.
+ */
+export type ForgetServerProject = (
+    remoteOrigin: string,
+    project: VcsServerProject,
+) => Promise<boolean>;
+
+export interface ServersTabProps {
+    onForget?: ForgetServerProject;
+}
+
 /** Where a project's remote lives, without the repository name on the end. */
 function originOf(remote: string): string {
     return parseVcsRemoteUrl(remote)?.origin ?? remote.trim();
@@ -115,7 +132,7 @@ export function localCopyOf(
     return matches.find(entry => entry.remoteOrigin === origin) ?? matches[0];
 }
 
-export function ServersTab() {
+export function ServersTab({ onForget }: ServersTabProps = {}) {
     const { t } = useTranslation();
     const { servers, loading, reload } = useServers();
     const [chosen, setChosen] = useState<string | null>(null);
@@ -258,6 +275,22 @@ export function ServersTab() {
         await getProject(made.data.project.remote);
         return true;
     }, [chosen, getProject]);
+
+    /**
+     * Take one project off this server's list, and put the list back without it.
+     *
+     * The server is the authority on what it lists, so a `true` is taken at its word rather
+     * than checked by asking again: the answer to "is it gone" is the call that removed it.
+     * The project that was open is closed, because there is no longer one to be open on.
+     */
+    const forgetProject = useCallback(async (project: VcsServerProject) => {
+        if (onForget === undefined || chosen === null) return false;
+        const gone = await onForget(chosen, project);
+        if (!gone) return false;
+        setProjects(current => current?.filter(entry => entry.id !== project.id) ?? current);
+        setOpened(null);
+        return true;
+    }, [onForget, chosen]);
 
     // Nothing until the list has been read. It is a local read and lands in a frame, and
     // that frame is the difference between opening on this tab and opening on the empty
@@ -430,9 +463,13 @@ export function ServersTab() {
                                 <ServerProjectDetailView
                                     remoteOrigin={session.remoteOrigin}
                                     project={openedProject}
+                                    server={serverDisplayName(session)}
                                     canDetail={canDetail}
                                     canHistory={canHistory}
                                     onBack={() => setOpened(null)}
+                                    onForget={onForget === undefined
+                                        ? undefined
+                                        : () => forgetProject(openedProject)}
                                     action={(
                                         <ProjectAction
                                             project={openedProject}
