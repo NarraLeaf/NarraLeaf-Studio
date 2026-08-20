@@ -6,6 +6,7 @@ import { ImageFillField } from "@/apps/workspace/modules/properties/framework/fi
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
+import { Switch } from "@/lib/components/elements";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { buttonPropsToImageFillBaseline, getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { FILL_TYPE_OPTIONS, controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -213,15 +214,15 @@ export function ButtonAppearanceValueEditor({
         case "clipContent": {
             const b = Boolean(value);
             return (
-                <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer">
-                    <input
-                        type="checkbox"
+                <div className="flex items-center gap-2 text-xs text-fg-muted">
+                    <Switch
+                        size="sm"
                         checked={b}
-                        onChange={e => onChange(e.target.checked)}
-                        className="rounded-sm border-edge-strong"
+                        onCheckedChange={onChange}
+                        aria-label={t("widgetAppearance.spacing.clip")}
                     />
                     {t("widgetAppearance.spacing.clip")}
-                </label>
+                </div>
             );
         }
         case "cursor":

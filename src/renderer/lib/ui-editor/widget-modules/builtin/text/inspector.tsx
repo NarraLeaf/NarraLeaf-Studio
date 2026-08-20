@@ -289,7 +289,7 @@ export function createTextInspector(ctx: InspectorContext) {
             fields: [
               defineField<D, any>({
                 id: "text.localizable",
-                type: "checkbox",
+                type: "toggle",
                 label: t("widgets.text.localizeText"),
                 getValue: (d: D) => Boolean(getTextProps(d.element).localizable),
                 setValue: (_d: D, value: boolean) => patchProps({ localizable: value }),
@@ -505,7 +505,7 @@ export function createTextInspector(ctx: InspectorContext) {
               }),
               defineField<D, any>({
                 id: "text.tateChuYoko",
-                type: "checkbox",
+                type: "toggle",
                 label: t("widgets.typography.tateChuYoko"),
                 helpText: t("widgets.typography.tateChuYokoHint"),
                 hidden: (d: D) => !supportsTateChuYoko(getTextProps(d.element)),

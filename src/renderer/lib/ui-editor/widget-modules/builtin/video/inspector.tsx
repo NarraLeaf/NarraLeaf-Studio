@@ -269,7 +269,7 @@ export function createVideoInspector(ctx: InspectorContext) {
                         fields: [
                             defineField<D, any>({
                                 id: "video.autoplay",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.video.autoplay"),
                                 helpText: t("widgets.video.autoplayHint"),
                                 getValue: (d: D) => getLiveVideoProps(d).autoplay,
@@ -277,14 +277,14 @@ export function createVideoInspector(ctx: InspectorContext) {
                             }),
                             defineField<D, any>({
                                 id: "video.loop",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.video.loop"),
                                 getValue: (d: D) => getLiveVideoProps(d).loop,
                                 setValue: (d: D, value: boolean) => patchVideo(d, { loop: value }),
                             }),
                             defineField<D, any>({
                                 id: "video.muted",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.video.muted"),
                                 getValue: (d: D) => getLiveVideoProps(d).muted,
                                 setValue: (d: D, value: boolean) => patchVideo(d, { muted: value }),
@@ -319,7 +319,7 @@ export function createVideoInspector(ctx: InspectorContext) {
                             }),
                             defineField<D, any>({
                                 id: "video.controls",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.video.controls"),
                                 helpText: t("widgets.video.controlsHint"),
                                 getValue: (d: D) => getLiveVideoProps(d).controls,

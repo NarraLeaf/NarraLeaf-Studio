@@ -19,6 +19,7 @@ import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStu
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
+import { Checkbox } from "@/lib/components/elements";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -455,18 +456,14 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                         className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-edge bg-surface-overlay p-1 shadow-xl"
                                     >
                                         {OUTPUT_LOG_LEVELS.map(level => (
-                                            <label
+                                            <Checkbox
                                                 key={level}
-                                                className="flex cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-2xs text-fg-muted hover:bg-fill"
+                                                className="rounded-md px-1.5 py-1 text-2xs hover:bg-fill"
+                                                checked={outputLogLevels.has(level)}
+                                                onCheckedChange={() => toggleOutputLogLevel(level)}
                                             >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={outputLogLevels.has(level)}
-                                                    onChange={() => toggleOutputLogLevel(level)}
-                                                    className="h-3 w-3 rounded-sm border-edge-strong bg-surface-sunken"
-                                                />
                                                 {outputLogLevelLabel[level]}
-                                            </label>
+                                            </Checkbox>
                                         ))}
                                     </div>
                                 ) : null}

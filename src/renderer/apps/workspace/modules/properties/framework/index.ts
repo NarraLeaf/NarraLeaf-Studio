@@ -5,7 +5,7 @@ export type {
     TextFieldDefinition,
     TextareaFieldDefinition,
     NumberFieldDefinition,
-    CheckboxFieldDefinition,
+    ToggleFieldDefinition,
     SelectOption,
     SelectFieldDefinition,
     TagsFieldDefinition,

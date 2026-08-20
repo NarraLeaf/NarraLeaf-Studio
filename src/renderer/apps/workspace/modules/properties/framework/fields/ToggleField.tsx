@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback, memo, useRef } from "react";
-import { CheckboxFieldDefinition } from "../types";
+import { Switch } from "@/lib/components/elements";
+import { ToggleFieldDefinition } from "../types";
 
-interface CheckboxFieldProps<TData> {
-    field: CheckboxFieldDefinition<TData>;
+interface ToggleFieldProps<TData> {
+    field: ToggleFieldDefinition<TData>;
     data: TData;
     onSaving: (saving: boolean) => void;
 }
 
 /**
- * Renders a checkbox field
+ * Renders a boolean field as the shared switch — the control every other on/off setting in Studio
+ * uses. (A checkbox would say something else: that this is one member of a set. See `Checkbox`.)
  */
-function CheckboxFieldInner<TData>({ field, data, onSaving }: CheckboxFieldProps<TData>) {
+function ToggleFieldInner<TData>({ field, data, onSaving }: ToggleFieldProps<TData>) {
     const currentValue = field.getValue(data);
     const [localValue, setLocalValue] = useState(currentValue);
     const [isSaving, setIsSaving] = useState(false);
@@ -45,19 +47,17 @@ function CheckboxFieldInner<TData>({ field, data, onSaving }: CheckboxFieldProps
 
     return (
         <div className={`flex items-center gap-2 ${field.className || ""}`}>
-            <input
-                type="checkbox"
+            <Switch
+                size="sm"
                 checked={localValue}
-                onChange={(e) => handleChange(e.target.checked)}
+                onCheckedChange={handleChange}
                 disabled={isDisabled}
-                className="w-4 h-4 rounded-sm border-edge-strong bg-surface-raised text-primary 
-                    focus:ring-primary/50 focus:ring-offset-0 transition-colors
-                    disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label={field.label}
             />
-            {field.label && <label className="text-sm text-fg-muted">{field.label}</label>}
+            {field.label && <span className="text-sm text-fg-muted">{field.label}</span>}
             {field.helpText && <p className="text-xs text-fg-subtle">{field.helpText}</p>}
         </div>
     );
 }
 
-export const CheckboxField = memo(CheckboxFieldInner) as typeof CheckboxFieldInner;
+export const ToggleField = memo(ToggleFieldInner) as typeof ToggleFieldInner;
