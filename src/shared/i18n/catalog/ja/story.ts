@@ -193,7 +193,7 @@ export const story = {
         regexPlaceholder: "^(?<speaker>[^:]+):\\s*(?<text>.+)$",
         problem: {
             invalidRegex: "このパターンはまだ正しくない",
-            missingGroups: "パターンには (?<speaker>…) と (?<text>…) の両方が要る",
+            missingGroups: "パターンには (?<speaker>…) と (?<text>…) の両方が必要",
         },
         presetNamePlaceholder: "この区切りに名前を付ける",
         savePreset: "保存",
@@ -839,7 +839,7 @@ export const story = {
         loadingScene: "ストーリーのシーンを読み込んでいる…",
         notFound: "ストーリーまたはシーンが見つからない",
         addRow: "クリックするか打ち始めると行が増える…",
-        emptyHint: "このシーンは空。新しい行で {trigger} を打つとコマンドを選べる。地の文を書いてもよい",
+        emptyHint: "このシーンは空。新しい行で {trigger} を入力するとコマンドを選べる。地の文を書いてもよい",
         emptyExampleBg: "背景を出す",
         emptyExampleShow: "誰かを舞台に出す",
         emptyExampleSay: "台詞を書く",

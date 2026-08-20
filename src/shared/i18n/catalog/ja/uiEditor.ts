@@ -4,7 +4,7 @@ export const uiEditor = {
     surfaceKind: {
         page: "ページ",
         gameUi: "ゲーム UI",
-        pageDescription: "ページはタイトル、設定、セーブ、履歴、ギャラリーのような 1 画面まるごとのもの",
+        pageDescription: "ページはタイトル、設定、セーブ、履歴、ギャラリーのような 1 画面全体を占めるもの",
         gameUiDescription: "ゲーム UI はプレイ中に働くもの。ダイアログ、選択肢、HUD、ショートカット、通知など",
     },
     // ゲーム UI が取れる 5 つの舞台スロット。作成ダイアログ、サーフェス一覧、プロパティパネル、

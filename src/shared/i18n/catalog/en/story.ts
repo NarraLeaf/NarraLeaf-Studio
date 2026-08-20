@@ -857,7 +857,7 @@ export const story = {
         noCandidates: "No matches.",
         setBackground: "Set background",
         transform: "Transform",
-        invalidHint: "won't build",
+        invalidHint: "will not build",
         // On a cut point row, beside the line that names the variant it ends. The short half is what
         // the row shows; the title is the whole sentence.
         cutPoint: "not in other builds",

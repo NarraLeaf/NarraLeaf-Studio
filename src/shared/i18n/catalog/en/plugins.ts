@@ -52,7 +52,7 @@ export const plugins = {
         update: "Update",
         needsStudio: "Needs Studio {range}",
         emptyList: "No plugins available in the registry.",
-        offline: "Couldn't reach the plugin registry.",
+        offline: "Could not reach the plugin registry.",
         retry: "Try again",
     },
     task: {

@@ -125,7 +125,7 @@ export const build = {
         secretElsewhere: "在其他设备上设置，本机没有它的值",
         secretEnter: "输入新的值",
         clear: "清除",
-        secretFailed: "无法在本机保存这个值",
+        secretFailed: "无法在本机保存该值",
     },
         patch: {
             title: "导出补丁",
@@ -287,7 +287,7 @@ export const build = {
         "signing-credential-expiring": "{platform} 签名证书将于 {notAfter} 到期；在此之前签出的产物仍然有效，之后的构建需要续期后的证书",
         "signing-secret-unavailable": "本机无法读取 {platform} 签名凭据的密码；重新导入一次即可重新保存密码",
         "signing-tool-missing": "为 {platform} 签名需要 {tool}，本机没有安装；请安装并确保它在 PATH 中，然后重新打开本对话框",
-        "signing-host-unsupported": "本机是 {host}，无法用所选凭据为 {platform} 签名；请在 {platform} 机器上构建这个目标",
+        "signing-host-unsupported": "本机是 {host}，无法用所选凭据为 {platform} 签名；请在 {platform} 机器上构建该目标",
         "signing-needs-network": "为 {platform} 签名需要联网；构建的其余环节都可离线完成",
         "signing-macos-identity-missing": "本机钥匙串里没有名为 {identity} 的证书；请在「钥匙串访问」中安装它，或在此改选其他证书",
         "signing-macos-identity-unusable": "证书 {identity} 无法用于签名：它已过期、私钥不在、或签发链不完整；请在「钥匙串访问」中打开它确认原因",

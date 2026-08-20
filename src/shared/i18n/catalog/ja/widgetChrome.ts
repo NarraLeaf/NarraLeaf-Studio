@@ -110,7 +110,7 @@ export const widgetChrome = {
         tile: "タイル",
         listGapHint: "リスト項目どうしの間隔",
         preview: "プレビュー",
-        previewHint: "エディタで仮に並べる項目数",
+        previewHint: "エディタでプレビュー表示する項目数",
         padX: "左右余白",
         padXHint: "左右の内側余白",
         radius: "角丸",

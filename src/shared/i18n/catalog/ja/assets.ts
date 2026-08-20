@@ -213,7 +213,7 @@ export const assets = {
      * そして品質が落ちるという 1 行は、脚注ではなく群の見出しに置く。ボタンより先に読まれる場所だから。
      */
     mediaConvert: {
-        title: "変換が要るファイルがある",
+        title: "変換が必要なファイルがある",
         /** 一覧のどれも変換できないとき、変換を持ちかけるのは嘘になる。 */
         titleRefusedOnly: "読み込めないファイルがある",
         intro: "変換すると、新しいファイルがプロジェクトに書き込まれる。元のファイルは変わらない",
@@ -396,33 +396,19 @@ export const assets = {
                 release: "このプロジェクトにバリアントはない。",
             },
             type: "ファイルの種類",
-            delimiter: "区切り文字",
-            delimiterSpace: "空白",
-            segments: "ファイル名の構成",
             axis: "変化の軸",
         },
         inspector: {
-            axes: "軸",
+            axes: "変化の軸",
             filter: "メンバー共通のタグ",
-            addAxis: "軸を追加",
-            removeAxis: "軸を削除",
-            moveOut: "外側へ",
-            moveIn: "内側へ",
-            axisKey: "タグ分類",
-            axisValues: "値",
-            residency: {
-                label: "解決の時点",
-                build: "ビルド時",
-                runtime: "実行時",
-            },
-            residencyBlocked: "ビルド時に解決する軸は、実行時に解決する軸の内側に置けない。",
+            residencyBlocked: "バリアントによって変わるセットは、言語によって変わるセットの下に置けない。",
             fallback: "既定のバリアント",
             fallbackMissing: "このバリアントにファイルがないため、セット全体が解決できない。",
             variants: "バリアント",
             variantInherited: "既定",
             variantMissing: "ファイルなし",
             variantAmbiguous: "ファイル {count} 件",
-            noVariants: "軸を宣言するとバリアントが解決される。",
+            noVariants: "このプロジェクトには、このセットが変わる対象がない。",
         },
         history: {
             edit: "アセットセットの編集",
