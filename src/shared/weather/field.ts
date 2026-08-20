@@ -38,6 +38,7 @@ import {
     type WeatherSeedId,
     type WeatherTint,
 } from "./model";
+import { petalSprite, PETAL_SPRITE_SIZE } from "./petalSprite";
 
 /** One particle, in the basis aligned to the fall direction. */
 type Particle = {
@@ -65,6 +66,8 @@ export type WeatherField = {
     seed: WeatherSeedId;
     tint: WeatherTint;
     tumbles: boolean;
+    /** Drawn from the petal bitmap rather than as an ellipse of light. */
+    sprite: boolean;
     particles: readonly Particle[];
     /** Fall direction in screen space, as a unit vector. */
     dirX: number;
@@ -173,6 +176,7 @@ export function buildWeatherField(
         seed: seedId,
         tint: seed.tint,
         tumbles: seed.tumbles,
+        sprite: seed.sprite ?? false,
         particles,
         dirX,
         dirY,
@@ -269,6 +273,85 @@ function addParticle(
     }
 }
 
+/**
+ * Add one petal, turned and foreshortened, into the accumulator.
+ *
+ * The petal's own frame is `(a, b)`: `a` runs base-to-tip, `b` across. A pixel is transformed into
+ * that frame and the bitmap is sampled bilinearly, which is what keeps a 10px far petal from
+ * reading as a staircase.
+ *
+ * `squash` is the tumble across the plane - the petal turning its face away - applied to the across
+ * axis only. It never reaches zero, because a petal exactly edge-on for one frame reads as a
+ * flicker rather than as a turn.
+ */
+function addPetal(
+    acc: Float32Array,
+    width: number,
+    height: number,
+    cx: number,
+    cy: number,
+    radius: number,
+    angle: number,
+    squash: number,
+    gain: number,
+    tint: WeatherTint,
+): void {
+    const sprite = petalSprite();
+    // The petal is drawn into a square of side 2*radius, so its half-diagonal bounds every rotation.
+    const bound = Math.ceil(radius * Math.SQRT2);
+    const x0 = Math.max(0, Math.floor(cx - bound));
+    const x1 = Math.min(width - 1, Math.ceil(cx + bound));
+    const y0 = Math.max(0, Math.floor(cy - bound));
+    const y1 = Math.min(height - 1, Math.ceil(cy + bound));
+    if (x1 < x0 || y1 < y0) {
+        return;
+    }
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const invAlong = 1 / radius;
+    const invAcross = 1 / (radius * squash);
+    const half = PETAL_SPRITE_SIZE / 2;
+    const [tr, tg, tb] = tint;
+    const scale = gain / 255;
+
+    for (let y = y0; y <= y1; y++) {
+        const dy = y - cy;
+        let index = (y * width + x0) * 3;
+        for (let x = x0; x <= x1; x++, index += 3) {
+            const dx = x - cx;
+            // Into the petal's frame, in units where the sprite spans -1..1 on both axes.
+            const a = (dx * sin + dy * cos) * invAlong;
+            const b = (dx * cos - dy * sin) * invAcross;
+            if (a <= -1 || a >= 1 || b <= -1 || b >= 1) {
+                continue;
+            }
+            const sx = (b + 1) * half - 0.5;
+            const sy = (a + 1) * half - 0.5;
+            const ix = Math.floor(sx);
+            const iy = Math.floor(sy);
+            const fx = sx - ix;
+            const fy = sy - iy;
+            const ix1 = ix + 1;
+            const iy1 = iy + 1;
+            // Out-of-range taps read as zero, which is the right value: outside the sprite is outside
+            // the petal, and clamping would smear its edge row across the bounding box instead.
+            const p00 = ix >= 0 && ix < PETAL_SPRITE_SIZE && iy >= 0 && iy < PETAL_SPRITE_SIZE ? sprite[iy * PETAL_SPRITE_SIZE + ix] : 0;
+            const p10 = ix1 >= 0 && ix1 < PETAL_SPRITE_SIZE && iy >= 0 && iy < PETAL_SPRITE_SIZE ? sprite[iy * PETAL_SPRITE_SIZE + ix1] : 0;
+            const p01 = ix >= 0 && ix < PETAL_SPRITE_SIZE && iy1 >= 0 && iy1 < PETAL_SPRITE_SIZE ? sprite[iy1 * PETAL_SPRITE_SIZE + ix] : 0;
+            const p11 = ix1 >= 0 && ix1 < PETAL_SPRITE_SIZE && iy1 >= 0 && iy1 < PETAL_SPRITE_SIZE ? sprite[iy1 * PETAL_SPRITE_SIZE + ix1] : 0;
+            const top = p00 + (p10 - p00) * fx;
+            const bottom = p01 + (p11 - p01) * fx;
+            const value = (top + (bottom - top) * fy) * scale;
+            if (value <= 0) {
+                continue;
+            }
+            acc[index] += tr * value;
+            acc[index + 1] += tg * value;
+            acc[index + 2] += tb * value;
+        }
+    }
+}
+
 /** One instant of the field, accumulated at `weight`. The sub-steps of a frame share one accumulator. */
 function accumulateInstant(
     acc: Float32Array,
@@ -291,6 +374,18 @@ function accumulateInstant(
 
         const cx = u * dirX + v * crossX;
         const cy = u * dirY + v * crossY;
+
+        if (field.sprite) {
+            // Two turns at once, both on integer harmonics so phase 1 lands where phase 0 was: one in
+            // the plane (the petal spinning as it falls) and one across it (the face turning away).
+            // The in-plane angle starts from the fall direction, so a tilted field carries its petals
+            // with it instead of leaving them upright in a slanted wind.
+            const spin = twoPi * (p.spinHarm * phase + p.spinPhase);
+            const angle = Math.atan2(dirX, dirY) + spin;
+            const squash = 0.34 + 0.66 * Math.abs(Math.cos(twoPi * (p.swayHarm * phase + p.spinPhase)));
+            addPetal(acc, width, height, cx, cy, p.radius, angle, squash, p.gain * weight, tint);
+            continue;
+        }
 
         const across = field.tumbles
             ? p.radius * (0.35 + 0.65 * Math.abs(Math.cos(twoPi * (p.spinHarm * phase + p.spinPhase))))
