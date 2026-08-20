@@ -19,13 +19,14 @@
  * Comments in English per project convention.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { resolveEffectiveBlueprintNodePins } from "../effectivePins";
 import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
 import type { BlueprintNodeDef } from "../types";
 import { resolveDataPinValue, type DataPinGraph, type DataPinResolveRuntime } from "./graphParamResolvers";
+import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 
 const SENTINEL = "__nl_node_output_sentinel__";
 
@@ -287,5 +288,74 @@ describe("blueprint node data output readability", () => {
                     `resolveSelfOutput() in graphParamResolvers.ts has a branch for it:\n` +
                     unreadable.map(entry => `  - ${entry.pin} (${entry.displayName})`).join("\n"),
         ).toEqual([]);
+    });
+});
+
+/**
+ * An asset set named by a pin, resolved where the pin is read.
+ *
+ * The build writes each answer onto the node that STORES the id; the evaluator rewrites only ids
+ * that node has an answer for, which is what lets it stay ignorant of which pins carry assets - a
+ * question it could not answer for a plugin's node anyway.
+ */
+describe("asset set pins", () => {
+    const SET = "set-1";
+    const EN_ASSET = "asset-en";
+    const JA_ASSET = "asset-ja";
+    const variants = { [SET]: { en: EN_ASSET, ja: JA_ASSET } };
+
+    afterEach(() => {
+        setRuntimeLocaleSource({ getLocale: () => "", sourceLocale: "" })();
+    });
+
+    function withLocale(locale: string, run: () => void): void {
+        const release = setRuntimeLocaleSource({ getLocale: () => locale, sourceLocale: "en" });
+        try {
+            run();
+        } finally {
+            release();
+        }
+    }
+
+    it("answers a stored pin with the member the language names", () => {
+        const graph: DataPinGraph = {
+            nodes: { n1: { type: "nl.setImageAsset", params: { asset: SET }, assetVariants: variants } },
+        };
+
+        withLocale("ja", () => {
+            expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!, undefined)).toBe(JA_ASSET);
+        });
+    });
+
+    it("answers a pin fed by a literal from the literal's own map", () => {
+        const graph: DataPinGraph = {
+            nodes: {
+                lit: { type: "blueprint.data.stringLiteral", params: { value: SET }, assetVariants: variants },
+                consumer: { type: "nl.setImageAsset", params: {} },
+            },
+            edges: [{ from: { nodeId: "lit", port: "value" }, to: { nodeId: "consumer", port: "asset" } }],
+        };
+
+        withLocale("ja", () => {
+            expect(resolveDataPinValue(graph, "consumer", "asset", {}, undefined)).toBe(JA_ASSET);
+        });
+    });
+
+    it("leaves a node with no answers untouched, which is every authored document", () => {
+        const graph: DataPinGraph = {
+            nodes: { n1: { type: "nl.setImageAsset", params: { asset: SET } } },
+        };
+
+        withLocale("ja", () => {
+            expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!, undefined)).toBe(SET);
+        });
+    });
+
+    it("hands the id back outside a running game, where the editor resolves the set itself", () => {
+        const graph: DataPinGraph = {
+            nodes: { n1: { type: "nl.setImageAsset", params: { asset: SET }, assetVariants: variants } },
+        };
+
+        expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!, undefined)).toBe(SET);
     });
 });
