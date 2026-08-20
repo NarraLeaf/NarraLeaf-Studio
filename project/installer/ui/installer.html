@@ -68,6 +68,9 @@
   .fact .v { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   #note { margin-top: 22px; color: var(--fg-muted); line-height: 1.6; }
+  /* Pulled left by its own padding so the link's text starts on the same column as the line
+     above it, rather than being inset by the hover target. */
+  #after { margin-top: 10px; margin-left: -6px; }
   body[data-state="failed"] #note { color: var(--danger); }
 
   /* ---- controls ---------------------------------------------------------------------------- */
@@ -150,6 +153,7 @@
     </div>
 
     <div id="note" hidden></div>
+    <div id="after" hidden><button class="link" id="docs"></button></div>
   </main>
 
   <footer>
@@ -200,7 +204,8 @@
       cancel: "Cancel",
       confirm: "Install",
       launch: "Start",
-      close: "Close"
+      close: "Close",
+      docs: "Documentation"
     },
     zh: {
       name: "中文",
@@ -215,7 +220,8 @@
       cancel: "取消",
       confirm: "安装",
       launch: "启动",
-      close: "关闭"
+      close: "关闭",
+      docs: "文档"
     },
     ja: {
       name: "日本語",
@@ -230,7 +236,8 @@
       cancel: "キャンセル",
       confirm: "インストール",
       launch: "起動",
-      close: "閉じる"
+      close: "閉じる",
+      docs: "ドキュメント"
     }
   };
 
@@ -264,7 +271,9 @@
     // The finish screen says where it went; nothing else needs saying, and the facts it replaces
     // were the question, not the answer.
     el("note").hidden = !done;
+    el("after").hidden = !done;
     if (done) { el("note").textContent = fill(text.installedIn); }
+    el("docs").textContent = text.docs;
 
     el("k-location").textContent = text.location;
     el("k-size").textContent = text.size;
@@ -369,6 +378,20 @@
   });
 
   el("browse").addEventListener("click", function () { send("browse"); });
+
+  /*
+   * The docs site publishes English and Chinese only, and hides the default locale - so English is
+   * at /docs and everything else at /<locale>/docs. A language it has never heard of reads the
+   * English page, which is a working link rather than a 404. Same rule as
+   * src/shared/utils/puppetRuntimes.ts, which is where the app resolves the same thing.
+   *
+   * The URL is built here rather than in the host because the language is only known here: the
+   * picker changes it without telling anyone.
+   */
+  el("docs").addEventListener("click", function () {
+    var prefix = language === "zh" ? "/zh" : "";
+    send("open:https://www.narraleaf.com" + prefix + "/docs/studio");
+  });
 
   // The window has no system frame, so this is the only thing that moves it. The host turns "@drag"
   // into WM_NCLBUTTONDOWN while the button is still down.

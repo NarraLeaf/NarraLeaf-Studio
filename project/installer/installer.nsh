@@ -311,6 +311,26 @@ FunctionEnd
 
 Page custom nlInstallPage nlInstallLeave
 
+; The same pages the stock wizard would have had, declared here so that giving up on the custom UI
+; does not also give up on asking. Without them the fallback goes straight from a double-click into
+; a running install: the install-mode page skips itself, allowToChangeInstallationDirectory is off,
+; and MUI_PAGE_INSTFILES starts the section the moment it is shown. That is an ambush, not a
+; degraded experience.
+;
+; Which set draws is decided at run time, because a page can only be dropped by aborting in its own
+; PRE - the same arrangement the finish page uses.
+Function nlStockPre
+  ${If} $nlState == "ready"
+    Abort
+  ${EndIf}
+FunctionEnd
+
+!define MUI_PAGE_CUSTOMFUNCTION_PRE nlStockPre
+!insertmacro MUI_PAGE_WELCOME
+
+!define MUI_PAGE_CUSTOMFUNCTION_PRE nlStockPre
+!insertmacro MUI_PAGE_DIRECTORY
+
 !macroend
 
 ; ------------------------------------------------------------------------------------------------
@@ -394,6 +414,22 @@ Function nlFinishTick
   ${If} $0 == "launch"
     Call nlStartApp
     SendMessage $HWNDPARENT ${WM_COMMAND} 1 0
+    Return
+  ${EndIf}
+
+  ; A link out of the finish screen. The document builds the URL, because the language it should be
+  ; read in is the one the picker last chose and only the document knows that.
+  ;
+  ; The origin is checked here all the same. The page is a local file this installer wrote, so this
+  ; is not defending against it - it is making sure a shell open can only ever be aimed at one host,
+  ; whatever the document turns into later.
+  StrCpy $1 $0 5
+  ${If} $1 == "open:"
+    StrCpy $2 $0 "" 5
+    StrCpy $3 $2 26
+    ${If} $3 == "https://www.narraleaf.com/"
+      ${StdUtils.ExecShellAsUser} $4 "$2" "open" ""
+    ${EndIf}
   ${EndIf}
 FunctionEnd
 
