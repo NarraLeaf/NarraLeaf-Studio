@@ -714,7 +714,7 @@ export type BlueprintSoundPlayInput = {
  * bare config (no tables) still satisfies the language-management nodes.
  */
 export type GameLocalizationConfigSnapshot = Pick<GameLocalizationBundle, "sourceLocale" | "locales">
-    & Partial<Pick<GameLocalizationBundle, "tables" | "keys">>;
+    & Partial<Pick<GameLocalizationBundle, "tables" | "keys" | "scenes">>;
 
 export type CreateBlueprintHostApiRuntimeOptions = {
     document: UIDocument;
@@ -3299,11 +3299,23 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, "localization.getLocale", "call");
                 try {
                     const config = options.localizationConfig;
-                    const stored = await scope.persistenceGetAsync(LOCALE_STORAGE_KEY);
-                    if (typeof stored === "string" && stored && config?.locales.some(locale => locale.code === stored)) {
-                        return stored;
+                    const known = (value: unknown): value is string =>
+                        typeof value === "string"
+                        && value.length > 0
+                        && Boolean(config?.locales.some(locale => locale.code === value));
+                    // The session map is consulted first, and not as a cache. The language matched
+                    // from the player's system at boot is held session-only - re-derived every
+                    // launch rather than pinned, so the game follows an OS language change - and
+                    // therefore exists nowhere else. An async read would not merely miss it: it
+                    // writes what the store answered back into the map, so asking would EVICT the
+                    // language the game is currently being read in. Every writer updates the map
+                    // synchronously, so it is never behind the store.
+                    const session = scope.persistenceGet(LOCALE_STORAGE_KEY);
+                    if (known(session)) {
+                        return session;
                     }
-                    return config?.sourceLocale ?? "";
+                    const stored = await scope.persistenceGetAsync(LOCALE_STORAGE_KEY);
+                    return known(stored) ? stored : config?.sourceLocale ?? "";
                 } finally {
                     emitHostCall(emit, "localization.getLocale", "return");
                 }

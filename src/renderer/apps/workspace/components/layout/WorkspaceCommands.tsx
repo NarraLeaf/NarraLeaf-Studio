@@ -10,6 +10,9 @@ import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
+import { useKeybinding } from "../../hooks";
+import { SEARCH_PANEL_ID } from "../../modules/search";
+import { requestSearchFocus } from "../../modules/search/searchFocusRequest";
 import { openDefaultSceneFlowTab } from "../../modules/story-flow/openSceneFlowTab";
 import { createStorySceneEditorTab } from "../../modules/story/scene-editor/openStorySceneEditorTab";
 
@@ -36,6 +39,45 @@ const CHARACTERS_PANEL_ID = "narraleaf-studio:characters";
  */
 export function WorkspaceCommands() {
     const { context } = useWorkspace();
+
+    /**
+     * Search the project, and open Settings - the two workspace-wide destinations that had no key.
+     *
+     * They live here rather than with the dock toggles because this is where the commands they run
+     * are declared (Settings) or, for search, where a shortcut with no command of its own has an
+     * owner that is mounted for the whole session.
+     *
+     * Search reveals the panel and asks for the caret, which is the whole gesture: `mod+f` already
+     * searches the scene in front of the author, so the wider one has to land somewhere they can
+     * type. `panels.show` is used rather than a toggle because it always emits, so pressing the
+     * chord while some other panel holds the left dock switches to this one instead of doing
+     * nothing - and a second press re-selects the query, which is what a search shortcut is for.
+     */
+    useKeybinding({
+        id: "workspace-search-panel",
+        catalogId: "panel:narraleaf-studio:search",
+        key: "mod+shift+f",
+        description: "Search the project",
+        allowInEditable: true,
+        handler: () => {
+            if (!context) {
+                return;
+            }
+            context.services.get<UIService>(Services.UI).panels.show(SEARCH_PANEL_ID);
+            requestSearchFocus();
+        },
+    });
+
+    useKeybinding({
+        id: "workspace-open-settings",
+        catalogId: "workspace:open-settings",
+        key: "mod+,",
+        description: "Open Studio settings",
+        allowInEditable: true,
+        handler: () => {
+            void getInterface().app.launchSettings({});
+        },
+    });
 
     useEffect(() => {
         if (!context) {

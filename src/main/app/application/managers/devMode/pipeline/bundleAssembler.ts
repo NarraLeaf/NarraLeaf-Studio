@@ -129,7 +129,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // build actually holds them, which is why this happens here rather than in either loader.
     const shippedTextIds = sceneDrop ? collectTextIds(storyLibrary?.documents ?? {}) : null;
     const localization = restrictLocalization(
-        await loadGameLocalization(context.projectPath),
+        // The scene-name table is attached before the narrowing, not after: it is read as the set of
+        // scenes this build still has, which is exactly what decides whether a `scene:` unit ships.
+        withSceneNames(await loadGameLocalization(context.projectPath), storyLibrary?.documents),
         shippedTextIds,
         context.onNotice,
     );
@@ -1118,6 +1120,30 @@ export const devModeDiskBundleSource: DevModeBundleSource = {
  * invisible in the artifact, and the one mistake worth catching early is a narrowing that took away
  * a line the player can still reach.
  */
+/**
+ * Attach the source-language name of every scene the build carries.
+ *
+ * The per-locale files hold only the translated side, so this is what a `scene:` reference resolves
+ * to when the game is being read in its source language - the same job `keys` does for named keys.
+ */
+function withSceneNames(
+    bundle: GameLocalizationBundle | undefined,
+    documents: Record<string, StoryDocument> | undefined,
+): GameLocalizationBundle | undefined {
+    if (!bundle) {
+        return bundle;
+    }
+    const scenes: Record<string, string> = {};
+    for (const document of Object.values(documents ?? {})) {
+        for (const scene of Object.values(document.scenes ?? {})) {
+            if (scene?.id && typeof scene.name === "string" && scene.name.trim()) {
+                scenes[scene.id] = scene.name;
+            }
+        }
+    }
+    return { ...bundle, scenes };
+}
+
 function restrictLocalization(
     bundle: GameLocalizationBundle | undefined,
     textIds: ReadonlySet<string> | null,

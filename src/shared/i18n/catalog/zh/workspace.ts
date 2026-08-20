@@ -70,6 +70,8 @@ export const workspace = {
             reviewFilterUnreviewed: "未校对",
             charactersGroup: "角色",
             characterSpeaker: "角色",
+            scenesGroup: "场景",
+            sceneSpeaker: "场景",
             addKey: "添加",
             keyNamePlaceholder: "键名（menu.start…）",
             keySourcePlaceholder: "源语言文案",
@@ -359,7 +361,6 @@ export const workspace = {
             categoryVersionControl: "版本控制",
             editor: {
                 closeTab: "关闭标签页",
-                closeSelectedTabs: "关闭选中的标签页",
                 closeOthers: "关闭其他标签页",
                 closeToRight: "关闭右侧标签页",
                 closeAll: "关闭全部标签页",
@@ -831,6 +832,7 @@ export const workspace = {
             categories: {
                 general: "通用",
                 run: "运行",
+                view: "视图",
                 story: "故事编辑器",
                 uiEditor: "UI 编辑器",
                 blueprint: "蓝图编辑器",
