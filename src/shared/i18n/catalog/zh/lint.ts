@@ -154,6 +154,11 @@ export const lint = {
             // 同一件事换个说法就是命令词汇那轮消灭掉的东西。
             messageCharacter: "场景中没有任何行让 {object} 登场，该行没有可操作的对象",
         },
+        storyDeclaredNeverShown: {
+            title: "未显示的舞台对象",
+            description: "创建行声明的对象无任何一行显示",
+            message: "{object} 在该行声明，无任何一行显示",
+        },
         storyStageObjectDuplicate: {
             title: "重复的舞台对象",
             description: "两行创建同一个舞台名称，后一行沿用前一行创建的对象",

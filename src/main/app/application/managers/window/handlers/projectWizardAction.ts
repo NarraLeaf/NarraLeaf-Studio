@@ -1,5 +1,5 @@
 import { IPCMessageType } from "@shared/types/ipc";
-import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { app, dialog } from "electron";
 import path from "path";
@@ -10,8 +10,18 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
     readonly name = IPCEventType.projectWizardLaunch;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{created: boolean; projectPath: string} | null>> {
-        const wizardWindow = await window.getApp().launchProjectWizard(window, {}, {
+    /**
+     * The props are carried through rather than replaced with an empty object.
+     *
+     * They are how a caller opens the wizard on a question already answered - a package
+     * chosen outside Studio, a repository picked off a server's list - and dropping them
+     * here is what made `packagePath` reachable only from inside the main process.
+     */
+    public async handle(
+        window: AppWindow,
+        props: IPCEvents[IPCEventType.projectWizardLaunch]["data"],
+    ): Promise<RequestStatus<{created: boolean; projectPath: string} | null>> {
+        const wizardWindow = await window.getApp().launchProjectWizard(window, props ?? {}, {
             parent: window.win,
             resizable: false,
             // Wider than it is tall, unlike the 600x800 this used to be. The first page is now two

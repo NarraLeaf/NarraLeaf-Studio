@@ -252,12 +252,11 @@ export const settings = {
         },
         versionControlAuthor: {
             label: "作者名",
-            description: "コミットとチェックポイントに記録される。空のままなら NarraLeaf Studio と記録する",
-            fromServer: "このインストールがサインインしているサーバーから取得されます。自分の名前を記録するにはサインアウトしてください。",
+            description: "サーバーに接続していないプロジェクトで記録される。空のままなら NarraLeaf Studio と記録する",
         },
         versionControlAuthorEmail: {
             label: "作者のメールアドレス",
-            description: "作者名の隣に「Name <email>」の形で記録される。空のままならアドレスを記録しない",
+            description: "サーバーに接続していないプロジェクトで、作者名の隣に「Name <email>」の形で記録される。空のままならアドレスを記録しない",
         },
         confirmBeforeClose: {
             label: "ワークスペースを閉じる前に確認",
@@ -350,13 +349,27 @@ export const settings = {
         checking: "確認しています…",
         done: "完了",
         signOut: "サインアウト",
+        signIn: "サインイン",
+        signingIn: "サインインしています…",
         addressLabel: "サーバーアドレス",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
         reached: "{name} が {address} で応答した",
         tokenLabel: "アクセストークン",
         tokenPlaceholder: "アクセストークンを貼り付ける",
         hint: "アクセストークンはサーバー管理者が発行する",
+        usernameLabel: "ユーザー名",
+        passwordLabel: "パスワード",
+        useToken: "代わりにアクセストークンを使う",
+        usePassword: "代わりにユーザー名とパスワードを使う",
+        signInRefused: "サーバーはそのユーザー名とパスワードを受け付けなかった",
+        signInUnavailable: "この端末ではパスワードでサインインできない",
         noAccount: "{name} は誰にも身元を尋ねないため、サーバーは追加されない",
+        joined: {
+            signedInAs: "{name} としてサインインしている",
+            projects: {
+                other: "プロジェクト {count} 件",
+            },
+        },
         probe: {
             unreachable: "そのアドレスから応答がない",
             notAServer: "そのアドレスからの応答は NarraLeaf Team サーバーのものではない",

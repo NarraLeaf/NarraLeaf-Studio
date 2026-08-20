@@ -556,7 +556,12 @@ class SnapshotWalker {
                 record.source = { type: "color", color: payload.color };
             }
         }
-        if (payload.operation === "show" || payload.operation === "create") {
+        // A create row declares and poses without revealing, exactly as the compiler does with it -
+        // this walk and that one must answer "what is on stage here" identically, or a launch from a
+        // row plays a scene the editor never showed.
+        if (payload.operation === "create") {
+            record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "none", block.id));
+        } else if (payload.operation === "show") {
             record.visible = true;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "show", block.id));
         } else if (payload.operation === "hide") {
@@ -582,7 +587,10 @@ class SnapshotWalker {
         if (payload.layer) {
             record.layer = payload.layer;
         }
-        if (payload.operation === "show" || payload.operation === "create") {
+        // Declares without revealing; see `applyImage`.
+        if (payload.operation === "create") {
+            record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "none", block.id));
+        } else if (payload.operation === "show") {
             record.visible = true;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "show", block.id));
         } else if (payload.operation === "hide") {

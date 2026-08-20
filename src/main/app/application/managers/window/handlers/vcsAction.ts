@@ -14,7 +14,12 @@ import type {
     VcsRestoreResult,
     VcsRevisionDiffResult,
     VcsAddServerOutcome,
+    VcsLocalRepository,
     VcsServerProbe,
+    VcsPasswordSignInOutcome,
+    VcsServerMembersOutcome,
+    VcsServerProjectDetailOutcome,
+    VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome,
     VcsServerProjectsOutcome,
     VcsServerSession,
@@ -27,6 +32,7 @@ import type {
     VcsWorkingFileRead,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
+import { readLocalRepository } from "../../vcs/localRepositories";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -578,6 +584,112 @@ export class VcsListServerProjectsHandler extends IPCHandler<IPCEventType.vcsLis
     }
 }
 
+/**
+ * What one server knows about one project.
+ *
+ * Asked only of a server that advertised `project-detail`; a deployment that offers none
+ * has no such surface in front of it, so this is never reached to answer a 404.
+ */
+export class VcsGetServerProjectHandler extends IPCHandler<IPCEventType.vcsGetServerProject> {
+    readonly name = IPCEventType.vcsGetServerProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin, projectId }: IPCEvents[IPCEventType.vcsGetServerProject]["data"],
+    ): Promise<RequestStatus<VcsServerProjectDetailOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().getServerProject(remoteOrigin, projectId));
+    }
+}
+
+/** The latest revisions on one of a server's projects. Asked only where `project-history` is offered. */
+export class VcsListServerProjectHistoryHandler
+    extends IPCHandler<IPCEventType.vcsListServerProjectHistory> {
+    readonly name = IPCEventType.vcsListServerProjectHistory;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin, projectId, limit, before }:
+            IPCEvents[IPCEventType.vcsListServerProjectHistory]["data"],
+    ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>> {
+        return this.tryUse(async () => window.app.getVcsManager().listServerProjectHistory(
+            remoteOrigin,
+            projectId,
+            {
+                ...(limit === undefined ? {} : { limit }),
+                ...(before === undefined ? {} : { before }),
+            },
+        ));
+    }
+}
+
+/**
+ * Who has an account on one server.
+ *
+ * Takes no project, for the same reason listing its projects does not. Asked only of a
+ * server that advertised `members`.
+ */
+/**
+ * Exchange a username and a password for a token.
+ *
+ * The only call in this file that names an address instead of a `remoteOrigin`, because
+ * it is made before this installation has a record of that server - obtaining the token
+ * is what creates one. Everything after it is the sign-in that already existed.
+ *
+ * **The password crosses this boundary once and is kept by nothing on either side of it.**
+ */
+export class VcsSignInWithPasswordHandler extends IPCHandler<IPCEventType.vcsSignInWithPassword> {
+    readonly name = IPCEventType.vcsSignInWithPassword;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { authUrl, username, password }: IPCEvents[IPCEventType.vcsSignInWithPassword]["data"],
+    ): Promise<RequestStatus<VcsPasswordSignInOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().signInWithPassword(authUrl, username, password));
+    }
+}
+
+export class VcsListServerMembersHandler extends IPCHandler<IPCEventType.vcsListServerMembers> {
+    readonly name = IPCEventType.vcsListServerMembers;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin }: IPCEvents[IPCEventType.vcsListServerMembers]["data"],
+    ): Promise<RequestStatus<VcsServerMembersOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().listServerMembers(remoteOrigin));
+    }
+}
+
+/**
+ * Which repositories this machine already holds.
+ *
+ * Takes no project, like the two above: the question is asked of the whole installation,
+ * once, so that a list of a server's projects can say which of them are already here.
+ *
+ * **Two plain file reads per project and nothing else.** Lore's repository lock is
+ * exclusive and blocking - opening a store another process holds never returns, and
+ * every later call on that project queues behind it - so a sweep like this one is
+ * precisely the call that must not open anything. It is also why this does not go
+ * through `VcsManager`: there is no session to want, and a host with no Lore build can
+ * still answer it.
+ */
+export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcsListLocalRepositories> {
+    readonly name = IPCEventType.vcsListLocalRepositories;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>> {
+        return this.tryUse(async () => ({
+            repositories: window.app.globalState.recentlyOpened.list().map(readLocalRepository),
+        }));
+    }
+}
+
 /** Ask a server to make a project. */
 export class VcsCreateServerProjectHandler extends IPCHandler<IPCEventType.vcsCreateServerProject> {
     readonly name = IPCEventType.vcsCreateServerProject;
@@ -599,11 +711,12 @@ export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
 
     public async handle(
         window: AppWindow,
-        { authUrl, remoteUrl, token }: IPCEvents[IPCEventType.vcsAddServer]["data"],
+        { authUrl, remoteUrl, token, description }: IPCEvents[IPCEventType.vcsAddServer]["data"],
     ): Promise<RequestStatus<VcsAddServerOutcome>> {
         return this.tryUse(async () => {
             try {
-                const result = await window.app.getVcsManager().addServer({ authUrl, remoteUrl, token });
+                const result = await window.app.getVcsManager()
+                    .addServer({ authUrl, remoteUrl, token, ...(description ? { description } : {}) });
                 return { ok: true as const, ...result };
             } catch (error) {
                 // Same bargain as signing in from a project: a refusal is an answer the
@@ -613,6 +726,28 @@ export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
                 return { ok: false as const, problem: problem as VcsSignInProblem };
             }
         });
+    }
+}
+
+/**
+ * Ask one server what it is now, and record the answer.
+ *
+ * Goes to the network, and is the only call that changes a stored session without a token
+ * in hand: what it writes is the server's own account of itself, never the account or the
+ * addresses. A server that does not answer leaves its record as it was, so this is safe to
+ * offer against a machine that may be off.
+ */
+export class VcsRefreshServerHandler extends IPCHandler<IPCEventType.vcsRefreshServer> {
+    readonly name = IPCEventType.vcsRefreshServer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin }: IPCEvents[IPCEventType.vcsRefreshServer]["data"],
+    ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
+        return this.tryUse(async () => ({
+            servers: await window.app.getVcsManager().refreshServer(remoteOrigin),
+        }));
     }
 }
 

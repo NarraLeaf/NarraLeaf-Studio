@@ -42,7 +42,7 @@ import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -305,7 +305,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         },
         pickBackgroundImage: () => ipcClient.invoke(IPCEventType.appPickBackgroundImage, {}),
         readBackgroundImage: (file: string) => ipcClient.invoke(IPCEventType.appReadBackgroundImage, { file }),
-        launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
+        // The props go over. They used to be dropped here - the signature took them and the
+        // call sent `{}` - so `packagePath` reached the wizard only from a main-process call
+        // site, and any renderer trying to open the wizard on something got the first page.
+        launchProjectWizard: (props: WindowProps[WindowAppType.ProjectWizard]) =>
+            ipcClient.invoke(IPCEventType.projectWizardLaunch, props ?? {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
         promptServerTrust: (props: ServerTrustPromptProps) => ipcClient.invoke(IPCEventType.serverTrustPrompt, { props }),
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
@@ -573,16 +577,37 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         listServers: () =>
             ipcClient.invoke(IPCEventType.vcsListServers, {}) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         /** Goes to the network. Both addresses may be empty: the token usually carries them. */
-        addServer: (authUrl: string, remoteUrl: string, token: string) =>
-            ipcClient.invoke(IPCEventType.vcsAddServer, { authUrl, remoteUrl, token }) as Promise<RequestStatus<VcsAddServerOutcome>>,
+        addServer: (authUrl: string, remoteUrl: string, token: string, description?: VcsServerDescription) =>
+            ipcClient.invoke(IPCEventType.vcsAddServer, { authUrl, remoteUrl, token, description }) as Promise<RequestStatus<VcsAddServerOutcome>>,
+        /** Goes to the network. Records what the server says it is; changes no sign-in. */
+        refreshServer: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.vcsRefreshServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         forgetServer: (remoteOrigin: string) =>
             ipcClient.invoke(IPCEventType.vcsForgetServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         /** Goes to the network. The list is asked for every time; nothing here caches it. */
         listServerProjects: (remoteOrigin: string) =>
             ipcClient.invoke(IPCEventType.vcsListServerProjects, { remoteOrigin }) as Promise<RequestStatus<VcsServerProjectsOutcome>>,
+        /** Goes to the network. Only for a server that advertised `project-detail`. */
+        getServerProject: (remoteOrigin: string, projectId: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetServerProject, { remoteOrigin, projectId }) as Promise<RequestStatus<VcsServerProjectDetailOutcome>>,
+        /** Goes to the network. Only for a server that advertised `project-history`. */
+        listServerProjectHistory: (remoteOrigin: string, projectId: string, limit?: number, before?: string) =>
+            ipcClient.invoke(IPCEventType.vcsListServerProjectHistory, { remoteOrigin, projectId, limit, before }) as Promise<RequestStatus<VcsServerProjectHistoryOutcome>>,
+        /** Goes to the network. Only for a server that advertised `members`. */
+        listServerMembers: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.vcsListServerMembers, { remoteOrigin }) as Promise<RequestStatus<VcsServerMembersOutcome>>,
+        /**
+         * Goes to the network, carrying no token because this is where one comes from.
+         * The password reaches the main process and is kept by neither side.
+         */
+        signInWithPassword: (authUrl: string, username: string, password: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignInWithPassword, { authUrl, username, password }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
         /** Goes to the network, and writes on the server. */
         createServerProject: (remoteOrigin: string, name: string, description?: string) =>
             ipcClient.invoke(IPCEventType.vcsCreateServerProject, { remoteOrigin, name, description }) as Promise<RequestStatus<VcsServerProjectOutcome>>,
+        /** Local, and no project: two plain file reads over the machine's own history. */
+        listLocalRepositories: () =>
+            ipcClient.invoke(IPCEventType.vcsListLocalRepositories, {}) as Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>,
         push: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
         /** Writes the working tree: re-read every document once this resolves. */

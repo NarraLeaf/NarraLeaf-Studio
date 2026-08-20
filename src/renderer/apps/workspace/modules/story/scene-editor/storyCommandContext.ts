@@ -4,7 +4,7 @@ import type { StoryDocument, StoryScene, StorySceneId } from "@shared/types/stor
 import { actionableSourceIdentity, displayableCreatorIdentity } from "@shared/types/story";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
 import { sceneLabelNames } from "@shared/types/story/labels";
-import { listSceneBlocksInDocumentOrder } from "@shared/types/story/order";
+import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story/order";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { collectTempSpeakers } from "@/lib/workspace/services/story/storyModel";
@@ -14,7 +14,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { segmentPlainText } from "./storyFindReplace";
-import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry } from "./storyCommandResolution";
+import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry, StoryCommandVfxSources } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
@@ -175,6 +175,34 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
         }
     }
     return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio], vfx: [...vfx] };
+}
+
+/**
+ * Which row declares each ambience overlay, across every scene of the story.
+ *
+ * The scene-scoped scan below cannot answer this one: an overlay is game-level, so the row that
+ * declares the rain a scene hides is usually in another scene entirely. Same first-wins rule and
+ * same strict identity, only over a wider span - and the scene travels with the id, because a
+ * block id alone would open the right row number in whichever scene the reader happens to be in.
+ */
+function collectVfxSources(document: StoryDocument | null): StoryCommandVfxSources {
+    const sources: Record<string, { blockId: string; sceneId: string }> = {};
+    if (!document) {
+        return sources;
+    }
+    for (const scene of listScenesInDocumentOrder(document)) {
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
+            const identity = actionableSourceIdentity(block);
+            if (!identity || identity.kind !== "vfx") {
+                continue;
+            }
+            const key = identity.name.trim().toLowerCase();
+            if (key && !(key in sources)) {
+                sources[key] = { blockId: block.id, sceneId: scene.id };
+            }
+        }
+    }
+    return sources;
 }
 
 /**
@@ -405,5 +433,6 @@ export function buildStoryCommandContext(input: {
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
         stageObjectSources: collectStageObjectSources(input.scene),
         characterSources: collectCharacterSources(input.scene),
+        vfxSources: collectVfxSources(input.document),
     };
 }

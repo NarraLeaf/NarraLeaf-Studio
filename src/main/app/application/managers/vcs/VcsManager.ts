@@ -15,13 +15,18 @@ import type {
     VcsMergeResolveResult,
     VcsMergeSideChoice,
     VcsMergeState,
+    VcsPasswordSignInOutcome,
     VcsRepositoryInfo,
     VcsPushResult,
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsRevisionDiffResult,
     VcsRevisionKind,
+    VcsServerDescription,
+    VcsServerMembersOutcome,
     VcsServerProbe,
+    VcsServerProjectDetailOutcome,
+    VcsServerProjectHistoryOutcome,
     VcsServerReach,
     VcsServerSession,
     VcsSignInResult,
@@ -67,9 +72,13 @@ import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from ".
 // Value import, and safe to be one for the same reason: `tls` and `https` and the module
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
-import { probeVcsServer } from "./serverDiscovery";
+import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
+import { listServerMembers } from "./serverMembers";
+import { signInWithPassword } from "./serverPassword";
 import {
     createServerProject,
+    getServerProject,
+    listServerProjectHistory,
     listServerProjects,
     type ServerProjectResult,
     type ServerProjectsResult,
@@ -344,6 +353,27 @@ const SLOW_STORE_OPEN_MS = 5_000;
  * page of history, which is the pattern the cache exists for.
  */
 const MAX_CACHED_REVISION_DIFFS = 24;
+
+/**
+ * A session with what the server said about itself written onto it.
+ *
+ * The three fields are the server's own account of itself and nothing the session depends
+ * on, so a session that has none is left as it is rather than filled with blanks: the
+ * difference between "this server calls itself nothing" and "nobody has asked it yet" is
+ * the difference between a name to show and an address to fall back to.
+ */
+function describeServerSession(
+    session: VcsServerSession,
+    description: VcsServerDescription | undefined,
+): VcsServerSession {
+    if (!description) return session;
+    return {
+        ...session,
+        name: description.name,
+        version: description.version,
+        capabilities: [...description.capabilities],
+    };
+}
 
 export class VcsManager extends Manager {
     private readonly sessions = new Map<string, VcsSession>();
@@ -1667,7 +1697,19 @@ export class VcsManager extends Manager {
      * that the token says nothing.
      */
     public async addServer(
-        options: { authUrl: string; remoteUrl: string; token: string },
+        options: {
+            authUrl: string;
+            remoteUrl: string;
+            token: string;
+            /**
+             * What the server said it is, from the answer the wizard already has.
+             *
+             * Not read again here: the address has just been reached and what answered is
+             * on screen in front of the author. Absent for a path that never probed, and
+             * then the session records the address alone, exactly as it did before.
+             */
+            description?: VcsServerDescription;
+        },
     ): Promise<{ session: VcsServerSession; servers: VcsServerSession[] }> {
         const backend = await requireVcsBackend();
         // Reading the token is also how a paste that is not a token is refused before
@@ -1684,14 +1726,17 @@ export class VcsManager extends Manager {
         // No repository: the store this writes is per-user and outside any of them. The
         // backend wants the field, and an empty one is what the calls that have no project
         // pass - the same shape `clone` signs in under.
-        const signedIn = await backend.signInToServer(
-            { repositoryPath: "", offline: false, cache: false },
-            {
-                remoteUrl,
-                authUrl: options.authUrl,
-                token: options.token,
-                userDataDir: this.app.getUserDataDir(),
-            },
+        const signedIn = describeServerSession(
+            await backend.signInToServer(
+                { repositoryPath: "", offline: false, cache: false },
+                {
+                    remoteUrl,
+                    authUrl: options.authUrl,
+                    token: options.token,
+                    userDataDir: this.app.getUserDataDir(),
+                },
+            ),
+            options.description,
         );
 
         const servers = [
@@ -1713,6 +1758,44 @@ export class VcsManager extends Manager {
             "as", signedIn.account.username || signedIn.account.displayName,
         );
         return { session: signedIn, servers };
+    }
+
+    /**
+     * Ask one server what it is now, and record the answer.
+     *
+     * **Goes to the network**, which is why it is asked for rather than done while a list
+     * is drawn: a session records what the server said the day it was added, and reading
+     * that afresh is one request per server against a machine that may not be on.
+     *
+     * The one call that changes a stored session without a token: nothing here touches the
+     * account, the addresses or the sign-in, so a server that answers under a new name is
+     * still the same server signed in to by the same person. A server that does not answer
+     * leaves the record exactly as it was - the last thing it said about itself is better
+     * than nothing at all, and a machine that is off is not a server that was renamed.
+     */
+    public async refreshServer(remoteOrigin: string): Promise<VcsServerSession[]> {
+        const stored = this.storedServerSession(remoteOrigin);
+        if (!stored) return this.storedServerSessions();
+
+        const address = serverAddressForAuthUrl(stored.authUrl);
+        if (!address) return this.storedServerSessions();
+
+        const probe = await probeVcsServer(address, { userDataDir: this.app.getUserDataDir() });
+        if (probe.kind !== "ready") {
+            this.app.logger.info("[Vcs] Asked", remoteOrigin, "what it is -", probe.kind);
+            return this.storedServerSessions();
+        }
+
+        const servers = this.storedServerSessions().map((session) => (
+            session.remoteOrigin === stored.remoteOrigin
+                ? describeServerSession(session, probe.discovery)
+                : session
+        ));
+        this.writeStoredServerSessions(servers);
+        this.app.logger.info(
+            "[Vcs] Refreshed", remoteOrigin, "-", probe.discovery.name, probe.discovery.version,
+        );
+        return servers;
     }
 
     /**
@@ -1758,15 +1841,113 @@ export class VcsManager extends Manager {
      * one small request over a connection that is already trusted.
      */
     public async listServerProjects(remoteOrigin: string): Promise<ServerProjectsResult> {
-        const session = this.storedServerSession(remoteOrigin);
-        if (!session) return { ok: false, problem: { kind: "no-token" } };
-        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
-        if (token === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerProjects({
-            authUrl: session.authUrl,
-            token,
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerProjects(credentials);
+    }
+
+    /**
+     * Who has an account on one server.
+     *
+     * **Only asked of a server that advertised `members`.** The gate is in the renderer,
+     * where the decision whether to draw a roster at all is made; a deployment that offers
+     * no such thing is one with no such section, rather than one that answers a question
+     * with a 404 for somebody to put a sentence to.
+     */
+    public async listServerMembers(remoteOrigin: string): Promise<VcsServerMembersOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerMembers(credentials);
+    }
+
+    /**
+     * Exchange a username and password for a token, on a server that offers it.
+     *
+     * **The one server call here that takes an address rather than a `remoteOrigin`**, and
+     * it has to: it is asked before this installation has signed in to anything, so there
+     * is no session to look the address up in. What comes back is the same token an
+     * operator would have minted, and the caller adds the server with it exactly as if it
+     * had been pasted.
+     *
+     * The password is handed to one request and kept by nothing - not by this class, not
+     * in the log, and not in whatever is passed back.
+     */
+    public async signInWithPassword(
+        authUrl: string,
+        username: string,
+        password: string,
+    ): Promise<VcsPasswordSignInOutcome> {
+        const outcome = await signInWithPassword({
+            authUrl,
+            username,
+            password,
             userDataDir: this.app.getUserDataDir(),
         });
+        this.app.logger.info(
+            "[Vcs] Password sign-in",
+            authUrl,
+            outcome.ok ? "accepted" : outcome.reason,
+        );
+        return outcome;
+    }
+
+    /**
+     * What one server knows about one of its projects.
+     *
+     * The server's own explanation for not having read a project ends here, in the log:
+     * it is an English sentence naming the internals it was written about, and the whole
+     * point of the coded refusals either side of this line is that nothing like it reaches
+     * a reader.
+     */
+    public async getServerProject(
+        remoteOrigin: string,
+        projectId: string,
+    ): Promise<VcsServerProjectDetailOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+
+        const read = await getServerProject({ ...credentials, projectId });
+        if (!read.ok) return read;
+        if (!read.detail.file.readable && read.reason !== "") {
+            this.app.logger.info(
+                "[Vcs]", remoteOrigin, "has not read", projectId, "-", read.reason,
+            );
+        }
+        return { ok: true, detail: read.detail };
+    }
+
+    /** The latest revisions on one of a server's projects, newest first. */
+    public async listServerProjectHistory(
+        remoteOrigin: string,
+        projectId: string,
+        options?: { limit?: number; before?: string },
+    ): Promise<VcsServerProjectHistoryOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerProjectHistory({
+            ...credentials,
+            projectId,
+            ...(options?.limit === undefined ? {} : { limit: options.limit }),
+            ...(options?.before === undefined ? {} : { before: options.before }),
+        });
+    }
+
+    /**
+     * What it takes to ask a server anything: where it is, and the token for it.
+     *
+     * Null covers both halves of `no-token`, which are one answer to a reader: a server
+     * this installation has no record of, and one whose token cannot be produced on this
+     * machine. Neither is a signed-out session - the repositories still open and still
+     * push - so the sentence for it says to add the server again rather than to sign in.
+     */
+    private serverCredentials(
+        remoteOrigin: string,
+    ): { authUrl: string; token: string; userDataDir: string } | null {
+        const session = this.storedServerSession(remoteOrigin);
+        if (!session) return null;
+        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
+        if (token === null) return null;
+        return { authUrl: session.authUrl, token, userDataDir: this.app.getUserDataDir() };
     }
 
     /**
@@ -1782,14 +1963,10 @@ export class VcsManager extends Manager {
         name: string,
         description?: string,
     ): Promise<ServerProjectResult> {
-        const session = this.storedServerSession(remoteOrigin);
-        if (!session) return { ok: false, problem: { kind: "no-token" } };
-        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
-        if (token === null) return { ok: false, problem: { kind: "no-token" } };
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
         const made = await createServerProject({
-            authUrl: session.authUrl,
-            token,
-            userDataDir: this.app.getUserDataDir(),
+            ...credentials,
             name,
             ...(description === undefined ? {} : { description }),
         });

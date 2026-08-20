@@ -704,6 +704,23 @@ export type StoryActionPayload =
           durationMs?: number;
       }
     | {
+          /**
+           * An image on stage.
+           *
+           * **`create` DECLARES; it does not show.** The row names the object, gives it a source and
+           * settles its pose, and nothing appears until a `show` row reveals it — the rule every
+           * stage object follows (`text`, `video`, `vfx`) with one exception, `layer`, because a
+           * layer is a container and one that mounted invisible would take its contents with it.
+           *
+           * The engine mounts every element a scene mentions at scene start, at opacity zero, so a
+           * declaration is not merely bookkeeping: the picture is fetched and decoded by the time
+           * something shows it, which is the other half of why the two are separate rows.
+           *
+           * ⚠ This changed. Documents written before it have `create` rows that were expected to
+           * reveal, and they are NOT migrated: such a row now declares and the object stays
+           * invisible until a `show` row is added. `story/declared-never-shown` reports the ones
+           * that never are.
+           */
           action: "image";
           operation: "create" | "setSource" | "show" | "hide";
           objectName: string;
@@ -796,6 +813,9 @@ export type StoryActionPayload =
            * A `Video` — an Actionable, not a Displayable, which is why it has its own verb set rather
            * than sharing `displayable`'s. `play` waits for the clip to finish; `resume` does not.
            *
+           * `create` declares, like the `image` arm's: it compiles to `Video.preload()`, which puts a
+           * hidden element on stage so the clip starts buffering, and `show` is what reveals it.
+           *
            * Additive: the four transport operations and `timeMs` are new in A3, and no document
            * written before them carries either, so no schema bump.
            */
@@ -865,8 +885,12 @@ export type StoryActionPayload =
            * pipeline, which is why `StoryDisplayableTargetKind` excludes it and `/transform` `/fx`
            * never offer it as a target.
            *
-           * `create` is what puts it on stage AND registers the name the later verbs address, the
-           * same shape `video` uses. Additive: no document before A3 carries it, so no schema bump.
+           * `create` DECLARES the overlay: it registers the name every later verb addresses, settles
+           * how the clip composites, and preloads it - `Vfx.preload()` - without showing anything.
+           * `show` is the only row that puts it on screen. The two are separate because an overlay
+           * is one thing across the whole story: rain declared once is shown, hidden and shown again
+           * from anywhere, and every one of those rows points back at the row that declared it.
+           * Additive: no document before A3 carries it, so no schema bump.
            */
           action: "vfx";
           operation: "create" | "show" | "hide" | "pause" | "resume" | "setRate";
@@ -904,14 +928,27 @@ export type StoryActionPayload =
            * a Safari-engine target until the row is changed.
            */
           blendMode?: StoryVfxBlendMode;
+          /**
+           * How strongly the overlay reads.
+           *
+           * On a `create` row it is the overlay's own - a property of the material, how heavy that
+           * rain IS - and it is what every plain showing goes back to. On a `show` row it is that
+           * showing's alone: the same rain faint behind a memory and full strength in the storm.
+           * Nothing else reads it, which is why `hide` does not offer it (a fade out ends at zero).
+           */
           opacity?: number;
           loop?: boolean;
           fit?: "cover" | "contain" | "fill";
           zIndex?: number;
           /**
            * Playback speed; 0.5 drifts slowly, 2 falls twice as fast. On `setRate` it is the change;
-           * on `create` it is the loop's resting speed — and only the latter survives a save, since
-           * the engine does not persist a runtime rate change.
+           * on `show` it is that showing's own, restated every time so it cannot leak into the next;
+           * on `create` it is the loop's resting speed — and only the last of the three survives a
+           * save, since the engine does not persist a runtime rate change.
+           *
+           * For a weather seed this is a playback trim on top of the baked `fallSpeed`, not the way
+           * to make it rain harder: playing the clip faster shortens the loop and speeds the sway
+           * with it, while the baked speed leaves both alone. See `@shared/weather/model`.
            */
           rate?: number;
           /** `show` / `hide` — the fade the action waits out. */
