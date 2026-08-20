@@ -2,13 +2,15 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VcsServerDiscovery, VcsServerSession } from "@shared/types/vcs";
-import { AddServerModal } from "./AddServerModal";
+import { AddServerModal, type PasswordSignIn } from "./AddServerModal";
 
 /**
  * Adding a server, from an address to a sentence about what was joined.
  *
- * Two things regress here, and each of them reads as reasonable while it is written.
- * A closing step that fills in "0 projects" for a server that would not answer the
+ * Four things regress here, and each of them reads as reasonable while it is written.
+ * A password half offered on a server that never said it accepts one. Copy that tells
+ * four identical refusals apart, and so tells a stranger which usernames exist. A
+ * closing step that fills in "0 projects" for a server that would not answer the
  * question. And a step that stores something before the last one succeeded, which is
  * what makes leaving halfway a thing an author has to undo.
  */
@@ -45,8 +47,10 @@ vi.mock("@/lib/app/bridge", () => ({
 const ADDRESS = "nlteam://team.example.lan:41402";
 const AUTH = "https://team.example.lan:41402";
 const ORIGIN = "lore://team.example.lan:41337";
-/** What a server answers with, measured. */
-const CAPABILITIES = ["projects", "project-detail", "members", "project-history"];
+/** What a server that serves the route answers with, measured. */
+const WITH_PASSWORD = ["projects", "project-detail", "members", "password-sign-in", "project-history"];
+/** The same server without it, which is every one older than the claim. */
+const WITHOUT_PASSWORD = ["projects", "project-detail", "members", "project-history"];
 
 function discovery(capabilities: string[]): VcsServerDiscovery {
     return {
@@ -112,22 +116,165 @@ function submit(): void {
 }
 
 /** Open the dialog and carry it as far as the identity step. */
-async function reachIdentity(capabilities: string[] = CAPABILITIES) {
+async function reachIdentity(capabilities: string[], signInWithPassword?: PasswordSignIn) {
     bridge.probeServer.mockResolvedValue({
         success: true,
         data: { kind: "ready", address: ADDRESS, discovery: discovery(capabilities) },
     });
-    render(<AddServerModal onClose={onClose} onAdded={onAdded} />);
+    render(
+        <AddServerModal
+            onClose={onClose}
+            onAdded={onAdded}
+            {...(signInWithPassword ? { signInWithPassword } : {})}
+        />,
+    );
     type("field-address", ADDRESS);
     submit();
     await find("wizard-step-2");
 }
 
+/** A sign-in seam that mints a token, so the password half reaches the same store call. */
+const mints: PasswordSignIn = () => Promise.resolve({ ok: true, token: "minted-token" });
+/** The one answer a server gives to four different refusals. */
+const refuses: PasswordSignIn = () => Promise.resolve({ ok: false, reason: "refused" });
+
+describe("which identity a server asks for", () => {
+    it("asks for a token alone where the server never said it takes a password", async () => {
+        await reachIdentity(WITHOUT_PASSWORD);
+
+        expect(seam("identity-token")).not.toBeNull();
+        expect(seam("field-token")).not.toBeNull();
+        expect(seam("identity-password")).toBeNull();
+        // No way to switch either: there is nothing on the other side of it.
+        expect(seam("use-password")).toBeNull();
+        expect(seam("use-token")).toBeNull();
+    });
+
+    it("leads with the password where the server said it takes one", async () => {
+        await reachIdentity(WITH_PASSWORD, mints);
+
+        expect(seam("identity-password")).not.toBeNull();
+        expect(seam("field-username")).not.toBeNull();
+        expect(seam("field-password")).not.toBeNull();
+        // Both are on offer, and the token is the one behind a press.
+        expect(seam("identity-token")).toBeNull();
+        expect(seam("use-token")).not.toBeNull();
+    });
+
+    it("switches to the token and back", async () => {
+        await reachIdentity(WITH_PASSWORD, mints);
+
+        fireEvent.click(seam("use-token")!);
+        expect(seam("identity-token")).not.toBeNull();
+        expect(seam("identity-password")).toBeNull();
+
+        fireEvent.click(seam("use-password")!);
+        expect(seam("identity-password")).not.toBeNull();
+        expect(seam("identity-token")).toBeNull();
+    });
+
+    it("leaves neither the password nor a sentence about it behind on the switch", async () => {
+        await reachIdentity(WITH_PASSWORD, refuses);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+        await find("problem");
+
+        fireEvent.click(seam("use-token")!);
+        // The sentence was about the half that has just been left.
+        expect(seam("problem")).toBeNull();
+
+        fireEvent.click(seam("use-password")!);
+        expect((seam("field-password") as HTMLInputElement).value).toBe("");
+        expect((seam("field-username") as HTMLInputElement).value).toBe("ada");
+    });
+
+    it("hides the password field's text from the screen it is typed on", async () => {
+        await reachIdentity(WITH_PASSWORD, mints);
+
+        expect(seam("field-password")!.getAttribute("type")).toBe("password");
+    });
+});
+
+describe("a password the server will not accept", () => {
+    it("says one thing, because the server says one thing", async () => {
+        await reachIdentity(WITH_PASSWORD, refuses);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        const problem = await find("problem");
+        expect(problem.textContent).toBe("settings.servers.signInRefused");
+        // Nothing that would tell an unknown username from a wrong password, a disabled
+        // account or a service account - the four the server answers identically.
+        expect(document.body.textContent).not.toContain("settings.servers.problems.token");
+        expect(document.body.textContent).not.toContain("settings.servers.problems.refused");
+    });
+
+    it("keeps nothing of the password once the call that used it is made", async () => {
+        await reachIdentity(WITH_PASSWORD, refuses);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        await find("problem");
+        expect((seam("field-password") as HTMLInputElement).value).toBe("");
+        // The username is not a secret and is almost certainly right, so it stays.
+        expect((seam("field-username") as HTMLInputElement).value).toBe("ada");
+    });
+
+    it("stores nothing", async () => {
+        await reachIdentity(WITH_PASSWORD, refuses);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        await find("problem");
+        expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+
+    it("reports an installation with no transport through the ordinary problem line", async () => {
+        // No seam passed at all, which is the default every caller gets today.
+        await reachIdentity(WITH_PASSWORD);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        const problem = await find("problem");
+        expect(problem.textContent).toBe("settings.servers.signInUnavailable");
+        expect(bridge.addServer).not.toHaveBeenCalled();
+    });
+});
+
 describe("storing the server", () => {
-    it("presents a pasted token, with what the server already said about itself", async () => {
+    it("presents the minted token, with what the server already said about itself", async () => {
         bridge.addServer.mockResolvedValue({ success: true, data: { ok: true, session: session("Blackwood Studio"), servers: [] } });
         bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
-        await reachIdentity();
+        await reachIdentity(WITH_PASSWORD, mints);
+
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        submit();
+
+        await waitFor(() => expect(bridge.addServer).toHaveBeenCalledWith(AUTH, ORIGIN, "minted-token", {
+            name: "Blackwood Studio",
+            version: "0.7.0",
+            capabilities: WITH_PASSWORD,
+        }));
+        // Reaching the address a second time for a name it just gave would be a second
+        // answer to a question put a moment ago.
+        expect(bridge.probeServer).toHaveBeenCalledTimes(1);
+    });
+
+    it("presents a pasted token the same way", async () => {
+        bridge.addServer.mockResolvedValue({ success: true, data: { ok: true, session: session("Blackwood Studio"), servers: [] } });
+        bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: true, projects: [] } });
+        await reachIdentity(WITHOUT_PASSWORD);
 
         type("field-token", "  pasted-token  ");
         submit();
@@ -135,16 +282,13 @@ describe("storing the server", () => {
         await waitFor(() => expect(bridge.addServer).toHaveBeenCalledWith(AUTH, ORIGIN, "pasted-token", {
             name: "Blackwood Studio",
             version: "0.7.0",
-            capabilities: CAPABILITIES,
+            capabilities: WITHOUT_PASSWORD,
         }));
-        // Reaching the address a second time for a name it just gave would be a second
-        // answer to a question put a moment ago.
-        expect(bridge.probeServer).toHaveBeenCalledTimes(1);
     });
 
     it("puts a refused token in words and stays where it is", async () => {
         bridge.addServer.mockResolvedValue({ success: true, data: { ok: false, problem: { kind: "refused", detail: "" } } });
-        await reachIdentity();
+        await reachIdentity(WITHOUT_PASSWORD);
 
         type("field-token", "expired");
         submit();
@@ -160,7 +304,7 @@ describe("the closing step", () => {
     async function join(projects: unknown, name = "Blackwood Studio") {
         bridge.addServer.mockResolvedValue({ success: true, data: { ok: true, session: session(name), servers: [] } });
         bridge.listServerProjects.mockResolvedValue(projects);
-        await reachIdentity();
+        await reachIdentity(WITHOUT_PASSWORD);
         type("field-token", "token");
         submit();
         return find("wizard-joined");
@@ -224,7 +368,7 @@ describe("a server that wants nobody's name", () => {
             data: {
                 kind: "ready",
                 address: ADDRESS,
-                discovery: { ...discovery(CAPABILITIES), auth: { required: false, url: AUTH } },
+                discovery: { ...discovery(WITHOUT_PASSWORD), auth: { required: false, url: AUTH } },
             },
         });
         render(<AddServerModal onClose={onClose} onAdded={onAdded} />);
@@ -288,12 +432,18 @@ describe("leaving", () => {
         expect(onAdded).not.toHaveBeenCalled();
     });
 
-    it("stores nothing from the identity step", async () => {
-        await reachIdentity();
+    it("stores nothing from the identity step, on either half", async () => {
+        await reachIdentity(WITH_PASSWORD, mints);
 
+        type("field-username", "ada");
+        type("field-password", "hunter2");
+        fireEvent.click(seam("cancel")!);
+        expect(bridge.addServer).not.toHaveBeenCalled();
+
+        cleanup();
+        await reachIdentity(WITHOUT_PASSWORD);
         type("field-token", "a-token");
         fireEvent.click(seam("cancel")!);
-
         expect(bridge.addServer).not.toHaveBeenCalled();
         expect(onAdded).not.toHaveBeenCalled();
     });
@@ -304,7 +454,7 @@ describe("leaving", () => {
             data: {
                 kind: "ready",
                 address: ADDRESS,
-                discovery: { ...discovery(CAPABILITIES), auth: { required: false, url: AUTH } },
+                discovery: { ...discovery(WITHOUT_PASSWORD), auth: { required: false, url: AUTH } },
             },
         });
         render(<AddServerModal onClose={onClose} onAdded={onAdded} />);

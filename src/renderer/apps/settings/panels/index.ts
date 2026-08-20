@@ -31,6 +31,12 @@ export { ServersPanel } from "./ServersPanel";
 // Adding a server is a dialog rather than part of the panel, so any surface that wants to
 // offer it - the launcher's Servers tab, a project pointed at a server nobody has signed
 // in to - mounts this one instead of writing a second sequence.
-export { AddServerModal } from "./AddServerModal";
-export type { AddServerModalProps } from "./AddServerModal";
+export { AddServerModal, passwordSignInUnavailable } from "./AddServerModal";
+export type {
+    AddServerModalProps,
+    PasswordSignIn,
+    PasswordSignInOutcome,
+    PasswordSignInProblem,
+    PasswordSignInRequest,
+} from "./AddServerModal";
 export { DictionariesPanel } from "./DictionariesPanel";
