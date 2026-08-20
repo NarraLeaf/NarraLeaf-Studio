@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { getInterface } from "@/lib/app/bridge";
-import { FieldLabel } from "@/lib/components/elements";
 import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -28,6 +27,12 @@ import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
  * Drawn only where the server advertised `members`. A deployment that offers no roster has
  * no roster here, and that is not an error to report - it is a fact about the server, and
  * there is nothing an author would do about it.
+ *
+ * **It fills the region it is given and does its own scrolling.** It used to be a capped box
+ * beneath the project list, which put two scrollers in three hundred pixels and charged
+ * every reading of the projects for a list nobody had asked to see. It is now one of the
+ * views the tab swaps between, and it carries no heading of its own: the control that
+ * brought somebody here is still on screen above it, and lit.
  */
 export function ServerPeople({ remoteOrigin }: { remoteOrigin: string }) {
     const { t } = useTranslation();
@@ -64,9 +69,8 @@ export function ServerPeople({ remoteOrigin }: { remoteOrigin: string }) {
     }, [remoteOrigin]);
 
     return (
-        <section className="mt-4 shrink-0" data-server-people={remoteOrigin}>
-            <FieldLabel as="div">{t("launcher.servers.people.title")}</FieldLabel>
-            <div className="max-h-56 overflow-y-auto rounded-md border border-edge">
+        <section className="flex min-h-0 flex-1 flex-col" data-server-people={remoteOrigin}>
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-edge">
                 {members === null && problem === null && (
                     <p className="px-3 py-2 text-xs text-fg-subtle">
                         {t("launcher.servers.people.loading")}

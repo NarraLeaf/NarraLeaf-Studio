@@ -83,7 +83,6 @@ export const launcher = {
         },
         // Which server is being read, when there is more than one to read.
         choose: "Select a server.",
-        signedInAs: "Signed in as {name}",
         newProject: "New Project",
         loading: "Reading the project list",
         noProjects: "This server holds no projects.",
