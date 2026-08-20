@@ -377,7 +377,6 @@ export const workspace = {
             categoryVersionControl: "Version Control",
             editor: {
                 closeTab: "Close Tab",
-                closeSelectedTabs: "Close Selected Tabs",
                 closeOthers: "Close Other Tabs",
                 closeToRight: "Close Tabs to the Right",
                 closeAll: "Close All Tabs",
@@ -1010,6 +1009,7 @@ export const workspace = {
             categories: {
                 general: "General",
                 run: "Run",
+                view: "View",
                 story: "Story Editor",
                 uiEditor: "UI Editor",
                 blueprint: "Blueprint Editor",

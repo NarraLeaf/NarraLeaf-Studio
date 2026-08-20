@@ -301,10 +301,17 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             return;
         }
         seenIds.add(id);
+        // A panel-navigation command can carry a chord too (⇧⌘F reveals the search panel), and it
+        // is catalogued under this very id - so the same override → catalog resolution the other
+        // two sources use applies here, and claiming it keeps the binding from being listed again
+        // under its own name.
+        const panelBinding = keybindingOverrides[id] ?? getKeybindingCatalogEntry(id)?.key;
+        claimBinding(panelBinding);
         out.push({
             id,
             title,
             category: panelCategory,
+            keybinding: panelBinding,
             icon: panel.icon,
             source: "panel",
             run: () => {
