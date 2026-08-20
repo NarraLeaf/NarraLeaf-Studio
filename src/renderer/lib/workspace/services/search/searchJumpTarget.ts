@@ -18,6 +18,15 @@ export type SearchJumpTarget =
     | { kind: "character"; characterId: string }
     | { kind: "uiSurface"; surfaceId: string }
     | { kind: "asset"; assetId: string; assetType: string }
+    /**
+     * An asset set — the row the assets panel draws for it, not a file.
+     *
+     * Its own kind rather than an `asset` with a flag, because the two ids are told apart by asking
+     * the project and the answer differs per target: an asset opens a preview, a set has no bytes to
+     * preview and its address is where it sits in the library. A reference that names a set carries
+     * that id verbatim, so anything holding one of these is holding a set id already.
+     */
+    | { kind: "assetSet"; assetSetId: string }
     | {
           kind: "blueprint";
           blueprintId: string;

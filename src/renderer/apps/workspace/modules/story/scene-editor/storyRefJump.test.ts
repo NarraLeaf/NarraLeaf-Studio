@@ -61,6 +61,16 @@ describe("storyRefJumpTarget", () => {
             .toEqual({ kind: "asset", assetId: "a1", assetType: "" });
     });
 
+    it("sends an id the project holds as a SET to the set, not to a file that is not there", () => {
+        // A row stores one id for both, so the word reads the same either way. Told apart by asking
+        // the project, because that is the only thing that knows - and getting it wrong is silent:
+        // the asset branch resolves a set id to no file at all, so the word lights up and goes nowhere.
+        expect(storyRefJumpTarget({ kind: "asset", assetId: "set1" }, { ...WHERE, isAssetSet: id => id === "set1" }))
+            .toEqual({ kind: "assetSet", assetSetId: "set1" });
+        expect(storyRefJumpTarget({ kind: "asset", assetId: "a1" }, { ...WHERE, isAssetSet: id => id === "set1", assetType: () => "image" }))
+            .toEqual({ kind: "asset", assetId: "a1", assetType: "image" });
+    });
+
     it("carries the story a scene belongs to, which the projection never knew", () => {
         expect(storyRefJumpTarget({ kind: "scene", sceneId: THERE }, WHERE))
             .toEqual({ kind: "storyScene", storyId: "story-1", sceneId: THERE, storyName: "Chapter One", sceneName: "Hallway" });

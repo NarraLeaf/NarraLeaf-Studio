@@ -10,7 +10,9 @@ import { CharacterService } from "@/lib/workspace/services/core/CharacterService
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
+import { requestAssetSetReveal } from "../assets/assetSetReveal";
 import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
 import { openSceneFlowTab } from "../story-flow/openSceneFlowTab";
 import { createCharacterEditorTab } from "../characters/state/useCharacterFocus";
@@ -125,6 +127,20 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             // the day it can, nothing that produces one of these has to change.
             deps.setPanelVisibility(STORY_VARIABLES_PANEL_ID, true);
             return true;
+        case "assetSet": {
+            const context = deps.context;
+            if (!context) {
+                return false;
+            }
+            // A set has no bytes and therefore no preview tab: its row in the library is the whole of
+            // where it lives, and that row is also where its axis and its variants are edited.
+            if (!context.services.get<AssetSetService>(Services.AssetSets).getSet(target.assetSetId)) {
+                return false;
+            }
+            deps.setPanelVisibility(ASSETS_PANEL_ID, true);
+            requestAssetSetReveal(ASSETS_PANEL_ID, target.assetSetId);
+            return true;
+        }
         case "asset": {
             const context = deps.context;
             if (!context) {
