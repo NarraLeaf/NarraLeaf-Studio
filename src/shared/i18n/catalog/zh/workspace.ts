@@ -70,6 +70,8 @@ export const workspace = {
             reviewFilterUnreviewed: "未校对",
             charactersGroup: "角色",
             characterSpeaker: "角色",
+            scenesGroup: "场景",
+            sceneSpeaker: "场景",
             addKey: "添加",
             keyNamePlaceholder: "键名（menu.start…）",
             keySourcePlaceholder: "源语言文案",

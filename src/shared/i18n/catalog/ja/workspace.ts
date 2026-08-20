@@ -74,6 +74,8 @@ export const workspace = {
             reviewFilterUnreviewed: "未確認",
             charactersGroup: "キャラクター",
             characterSpeaker: "キャラクター",
+            scenesGroup: "シーン",
+            sceneSpeaker: "シーン",
             addKey: "追加",
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",
