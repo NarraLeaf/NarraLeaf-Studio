@@ -76,8 +76,10 @@ async function buildBuiltInPlugin(pluginDir, options = {}) {
     fs.rmSync(outDir, { recursive: true, force: true });
     fs.mkdirSync(outDir, { recursive: true });
 
-    const outfiles = [];
-    for (const { entry } of declaredEntries) {
+    // A plugin's entries share no inputs, so they bundle concurrently. The order
+    // of `outfiles` still follows `declaredEntries` — `outfiles[0]` is the
+    // manifest's first declared entry, which callers read as `outfile`.
+    const outfiles = await Promise.all(declaredEntries.map(async ({ entry }) => {
         const sourceEntry = resolveSourceEntry(pluginDir, manifest, entry);
         const outfile = path.join(outDir, entry);
         fs.mkdirSync(path.dirname(outfile), { recursive: true });
@@ -101,8 +103,8 @@ async function buildBuiltInPlugin(pluginDir, options = {}) {
                 '.css': 'css',
             },
         });
-        outfiles.push(outfile);
-    }
+        return outfile;
+    }));
 
     fs.copyFileSync(path.join(pluginDir, 'manifest.json'), path.join(outDir, 'manifest.json'));
     // A declared icon is part of the package: PluginManager refuses a manifest
@@ -133,11 +135,9 @@ async function buildBuiltInPlugins(options = {}) {
     if (pluginDirs.length === 0) {
         return [];
     }
-    const results = [];
-    for (const pluginDir of pluginDirs) {
-        results.push(await buildBuiltInPlugin(pluginDir, options));
-    }
-    return results;
+    // Each plugin owns its own output directory, so nothing here is ordered:
+    // building them one at a time only stretched `yarn dev`'s startup.
+    return Promise.all(pluginDirs.map(pluginDir => buildBuiltInPlugin(pluginDir, options)));
 }
 
 // Nothing here installs into the dev userData directory any more: the main

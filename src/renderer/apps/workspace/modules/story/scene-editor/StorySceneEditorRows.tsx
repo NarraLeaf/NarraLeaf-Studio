@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import type { ClipboardEvent, CSSProperties, ReactNode, RefObject, MouseEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, GanttChart, GripVertical, Image, LayoutGrid, List, Play, Plus, Trash2, TriangleAlert, UserRoundPlus } from "lucide-react";
 import type { TempSpeakerRef } from "@/lib/workspace/services/story/storyModel";
@@ -2087,6 +2088,11 @@ export function InsertRow(props: {
     // says there is something to show.
     const argMenuOpen = chooser === "action" && argOffer.open;
     const actionMenuOpen = chooser === "action" && cursor.kind === "commandName";
+
+    // All three of these portal to the body, so a tab or panel switch leaves whichever is open
+    // hanging over what the author moved to: the row that owns it went `display: none`, and a portal
+    // is not inside that box. Dismissing is the caller's own gesture, the one Escape uses.
+    useDismissWhenHidden(props.onDismissChooser, argMenuOpen || actionMenuOpen || chooser === "character");
 
     /**
      * Replace the token under the caret and put the caret after what was written. The slot's value is

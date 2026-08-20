@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, ReactNode, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "../layout/hostVisibility";
 import { ChevronRight } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { useHostWindow } from "../layout/hostWindow";
@@ -75,6 +76,9 @@ export function ContextMenu({
     iconsEnabled = false,
 }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
+    // Portalled to the body, so the `display: none` that puts a kept-alive tab or panel away leaves
+    // this menu standing over whatever the author switched to.
+    useDismissWhenHidden(onClose, visible);
     /** The window this menu is drawn in - the renderer's own, or a detached editor's. */
     const hostWindow = useHostWindow();
     const doc = hostWindow.document;

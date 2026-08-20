@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import type { StoryBlock } from "@shared/types/story";
 import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import { useCommandTranslation } from "@/lib/i18n";
@@ -94,6 +95,9 @@ function ValuePopover(props: {
     onApply: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
 }) {
+    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
+    // moved to unless it is told (`useDismissWhenHidden`).
+    useDismissWhenHidden(props.onClose);
     // Subscribed to, not called for the words below, which resolve through the imperative
     // `localizedEnumValue` - a snapshot with no way to tell React it went stale. The one string this
     // file names itself (the curve option) goes through the same translator, since it is offered

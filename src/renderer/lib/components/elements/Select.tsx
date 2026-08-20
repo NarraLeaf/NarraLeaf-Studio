@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "../layout/hostVisibility";
 import { ChevronDown, Check } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
@@ -177,6 +178,9 @@ export function Select({
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.placeholder");
     const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
+    // A dropdown portalled to the body survives the `display: none` that puts a kept-alive
+    // tab or panel away, so it has to be told when that happens (`useDismissWhenHidden`).
+    useDismissWhenHidden(() => setIsOpen(false), isOpen);
     const selectRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
     const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
@@ -582,6 +586,9 @@ export function Combobox({
     const resolvedPlaceholder = placeholder ?? t("dialogs.select.searchPlaceholder");
     const optionLabel = (o: SelectOption) => (o.labelKey ? t(o.labelKey) : o.label ?? "");
     const [isOpen, setIsOpen] = useState(false);
+    // A dropdown portalled to the body survives the `display: none` that puts a kept-alive
+    // tab or panel away, so it has to be told when that happens (`useDismissWhenHidden`).
+    useDismissWhenHidden(() => setIsOpen(false), isOpen);
     const [searchTerm, setSearchTerm] = useState("");
     const [filteredOptions, setFilteredOptions] = useState(options);
     const selectRef = useRef<HTMLDivElement>(null);

@@ -16,6 +16,7 @@ import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
 import { TitleBarMenus } from "../ui/titleBarMenus";
+import { HostVisibility } from "@/lib/components/layout";
 import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceUndoKeybindings } from "./WorkspaceUndoKeybindings";
 import { WorkspaceHistoryMenu } from "./WorkspaceHistoryMenu";
@@ -37,6 +38,7 @@ import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
 import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
+import { useDialogs } from "../../hooks/useUIService";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { RecoveryBanner } from "../../recovery/RecoveryBanner";
@@ -126,6 +128,8 @@ function normalizeStoredPanelId(panelId: string | null | undefined): string | nu
 export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const { getPanelsByPosition, registerActionGroup, unregisterActionGroup } = useRegistry();
     const { context, recovery } = useWorkspace();
+    // Only whether one is up, for the title bar's menus; `DialogContainer` is what draws them.
+    const dialogs = useDialogs();
     const { t } = useTranslation();
 
     // Sidebar visibility states
@@ -810,9 +814,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 iconSrc={iconSrc}
                 center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
                 actionBar={
-                    /* One bar, so only one of its menus is ever on screen and the pointer walks
-                       between the action groups without a second click. */
-                    <TitleBarMenus className="flex items-center gap-0.5">
+                    /* One bar, so only one of its menus is ever on screen, the pointer and the
+                       arrow keys walk between the action groups, and Alt reaches them directly.
+                       Its keyboard stands down while a dialog is up, which is the same gate
+                       `KeybindingService` puts on its own bindings. */
+                    <TitleBarMenus className="flex items-center gap-0.5" suspended={dialogs.length > 0}>
                         {/* The window's identity, and the version control menu inside it — one reader
                             for both, handed down. The rail below gets the SAME object: a second
                             `useVersionSurface()` would be a second answer to "which version is this",
@@ -856,15 +862,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     onSelectPanel={setActiveLeftPanelId}
                 />
 
-                {/* Left Sidebar - Always rendered, controlled by CSS visibility */}
+                {/* Left Sidebar - Always rendered, controlled by CSS visibility. Collapsing it
+                    hides the panel without unmounting it, so anything the panel portalled to the
+                    body would stay on screen; `HostVisibility` is what tells those layers. */}
                 <div 
                     className={leftSidebarVisible && activeLeftPanelId ? "flex" : "hidden"}
                 >
-                    <LeftSidebar
-                        panelId={activeLeftPanelId || ""}
-                        onClose={() => setLeftSidebarVisible(false)}
-                        width={effective.left}
-                    />
+                    <HostVisibility visible={!!(leftSidebarVisible && activeLeftPanelId)}>
+                        <LeftSidebar
+                            panelId={activeLeftPanelId || ""}
+                            onClose={() => setLeftSidebarVisible(false)}
+                            width={effective.left}
+                        />
+                    </HostVisibility>
                     <ResizableHandle direction="horizontal" onResize={handleLeftSidebarResize} />
                 </div>
 
@@ -889,11 +899,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
                     >
                         <ResizableHandle direction="vertical" onResize={handleBottomPanelResize} />
-                        <BottomPanel
-                            panelId={activeBottomPanelId || ""}
-                            onClose={() => setBottomPanelVisible(false)}
-                            height={effective.bottom}
-                        />
+                        <HostVisibility visible={!!(bottomPanelVisible && activeBottomPanelId)}>
+                            <BottomPanel
+                                panelId={activeBottomPanelId || ""}
+                                onClose={() => setBottomPanelVisible(false)}
+                                height={effective.bottom}
+                            />
+                        </HostVisibility>
                     </div>
                 </div>
 
@@ -902,11 +914,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
                 >
                     <ResizableHandle direction="horizontal" onResize={handleRightSidebarResize} />
-                    <RightSidebar
-                        panelId={activeRightPanelId || ""}
-                        onClose={() => setRightSidebarVisible(false)}
-                        width={effective.right}
-                    />
+                    <HostVisibility visible={!!(rightSidebarVisible && activeRightPanelId)}>
+                        <RightSidebar
+                            panelId={activeRightPanelId || ""}
+                            onClose={() => setRightSidebarVisible(false)}
+                            width={effective.right}
+                        />
+                    </HostVisibility>
                 </div>
 
                 {/* Right Sidebar Selector */}
