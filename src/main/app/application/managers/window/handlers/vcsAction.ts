@@ -599,11 +599,12 @@ export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
 
     public async handle(
         window: AppWindow,
-        { authUrl, remoteUrl, token }: IPCEvents[IPCEventType.vcsAddServer]["data"],
+        { authUrl, remoteUrl, token, description }: IPCEvents[IPCEventType.vcsAddServer]["data"],
     ): Promise<RequestStatus<VcsAddServerOutcome>> {
         return this.tryUse(async () => {
             try {
-                const result = await window.app.getVcsManager().addServer({ authUrl, remoteUrl, token });
+                const result = await window.app.getVcsManager()
+                    .addServer({ authUrl, remoteUrl, token, ...(description ? { description } : {}) });
                 return { ok: true as const, ...result };
             } catch (error) {
                 // Same bargain as signing in from a project: a refusal is an answer the
@@ -613,6 +614,28 @@ export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
                 return { ok: false as const, problem: problem as VcsSignInProblem };
             }
         });
+    }
+}
+
+/**
+ * Ask one server what it is now, and record the answer.
+ *
+ * Goes to the network, and is the only call that changes a stored session without a token
+ * in hand: what it writes is the server's own account of itself, never the account or the
+ * addresses. A server that does not answer leaves its record as it was, so this is safe to
+ * offer against a machine that may be off.
+ */
+export class VcsRefreshServerHandler extends IPCHandler<IPCEventType.vcsRefreshServer> {
+    readonly name = IPCEventType.vcsRefreshServer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin }: IPCEvents[IPCEventType.vcsRefreshServer]["data"],
+    ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
+        return this.tryUse(async () => ({
+            servers: await window.app.getVcsManager().refreshServer(remoteOrigin),
+        }));
     }
 }
 

@@ -88,6 +88,7 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsServerDescription,
     VcsServerProbe,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
@@ -362,6 +363,7 @@ export enum IPCEventType {
     vcsProbeServer = "vcs.probeServer",
     vcsListServers = "vcs.listServers",
     vcsAddServer = "vcs.addServer",
+    vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
     vcsListServerProjects = "vcs.listServerProjects",
     vcsCreateServerProject = "vcs.createServerProject",
@@ -1378,12 +1380,29 @@ export type IPCVcsEvents = {
      * The token carries the address of the endpoint that issued it and of the server it is
      * good for, so pasting one is the whole of adding a server. `authUrl` and `remoteUrl`
      * are the corrections for a token that names neither, and are empty otherwise.
+     *
+     * `description` is what the probe a moment ago answered, passed on so that adding a
+     * server does not reach the same address twice for the same sentence.
      */
     [IPCEventType.vcsAddServer]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { authUrl: string; remoteUrl: string; token: string },
+        data: { authUrl: string; remoteUrl: string; token: string; description?: VcsServerDescription },
         response: VcsAddServerOutcome;
+    };
+    /**
+     * Ask one server what it is now, and record the answer.
+     *
+     * **Goes to the network.** A session records what its server said the day it was
+     * added, and a session added before Studio kept any of that has nothing to show but an
+     * address; this is what fills it in. Nothing about the sign-in changes, and a server
+     * that does not answer leaves its record as it was.
+     */
+    [IPCEventType.vcsRefreshServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: { servers: VcsServerSession[] };
     };
     /**
      * Take a server off this machine: the stored token and Studio's record of it.
