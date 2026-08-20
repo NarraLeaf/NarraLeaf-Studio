@@ -81,6 +81,8 @@ export interface ModuleActionGroup {
     order?: number;
     /** Where the group lands on the macOS menu bar; see `ActionGroup.menuSlot`. */
     menuSlot?: NativeMenuSlot;
+    /** The letter Alt reaches this menu by; see `ActionGroup.mnemonic`. */
+    mnemonic?: string;
 }
 
 /**

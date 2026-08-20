@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
+import { useDismissWhenHidden } from "@/lib/components/layout";
 import { Check, Edit3, Plus, Search, Spline, X } from "lucide-react";
 import type {
     StoryAnimationAsset,
@@ -62,6 +63,9 @@ export function MotionSelector(props: {
     onClose: () => void;
     onSelect: (animationId: string) => void;
 }) {
+    // Portalled to the body, so a tab or panel switch leaves it hanging over what the author
+    // moved to unless it is told (`useDismissWhenHidden`).
+    useDismissWhenHidden(props.onClose, props.visible);
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
