@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VcsLocalRepository, VcsServerProject, VcsServerSession } from "@shared/types/vcs";
 import { ServersTab, localCopyOf } from "./ServersTab";
@@ -664,5 +664,85 @@ describe("making one on the server", () => {
         expect(submit.disabled).toBe(true);
         fireEvent.click(submit);
         expect(bridge.createServerProject).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * Taking a project off a server's list.
+ *
+ * A failed publish can leave a project on a server that nobody can do anything with, and
+ * until now there was no way to be rid of it. The route is handed in rather than reached
+ * for here, so a build without one draws no such action anywhere - not a disabled one, not
+ * an explanation. Where there is one it is in the overflow on the project's own page,
+ * behind a question that names the project and says what is and is not being removed.
+ */
+describe("getting rid of a project on the server", () => {
+    const DETAIL = {
+        success: true,
+        data: { ok: true, detail: { project: project(), file: { readable: false } } },
+    };
+
+    /** The tab with a route in, on a server that answers for one project. */
+    function openWith(onForget: (origin: string, entry: VcsServerProject) => Promise<boolean>) {
+        bridge.servers = [session(ORIGIN, "Blackwood Studio", ["projects", "project-detail"])];
+        bridge.getServerProject.mockResolvedValue(DETAIL);
+        bridge.listServerProjects.mockResolvedValue({
+            success: true, data: { ok: true, projects: [project()] },
+        });
+        render(<ServersTab onForget={onForget} />);
+    }
+
+    it("offers nothing of the sort where no route was handed in", async () => {
+        bridge.getServerProject.mockResolvedValue(DETAIL);
+        open([project()], [], ["projects", "project-detail"]);
+
+        await openPage();
+        expect(document.querySelector("[data-project-action='more']")).toBeNull();
+    });
+
+    it("asks first, naming the project and the list it comes off", async () => {
+        const forget = vi.fn(() => Promise.resolve(true));
+        openWith(forget);
+
+        await openPage();
+        fireEvent.click(await find("[data-project-action='more']"));
+        fireEvent.click(screen.getByText("launcher.servers.forget.action"));
+
+        // The menu row asks; it does not do. Nothing has reached the server yet.
+        expect(forget).not.toHaveBeenCalled();
+        expect(document.body.textContent)
+            .toContain("launcher.servers.forget.message(Moonlit|Blackwood Studio)");
+
+        fireEvent.click(await find("[data-servers-action='forget']"));
+
+        await waitFor(() => expect(forget)
+            .toHaveBeenCalledWith(ORIGIN, expect.objectContaining({ id: REPOSITORY })));
+        // Off the server's list, so off this one, and the page it was read on is closed
+        // because there is no longer a project to read.
+        await waitFor(() => expect(document.querySelector("[data-server-project]")).toBeNull());
+        expect(document.querySelector("[data-server-project-detail]")).toBeNull();
+    });
+
+    it("says so and keeps the project where the server would not", async () => {
+        const forget = vi.fn(() => Promise.resolve(false));
+        openWith(forget);
+
+        await openPage();
+        fireEvent.click(await find("[data-project-action='more']"));
+        fireEvent.click(screen.getByText("launcher.servers.forget.action"));
+        fireEvent.click(await find("[data-servers-action='forget']"));
+
+        await waitFor(() => expect(document.body.textContent)
+            .toContain("launcher.servers.forget.failed"));
+        // A refusal that closed the dialog would be a screen saying the project is gone.
+        expect(document.querySelector("[data-server-project-detail]")).not.toBeNull();
+    });
+
+    it("keeps it out of the row, where nobody is aiming for it", async () => {
+        openWith(vi.fn(() => Promise.resolve(true)));
+
+        const row = await find(`[data-server-project='${REPOSITORY}']`);
+        expect(row.textContent).not.toContain("launcher.servers.forget");
+        expect(row.querySelector("[data-project-action='more']")).toBeNull();
     });
 });

@@ -47,6 +47,7 @@ vi.mock("@/lib/app/bridge", () => ({
 }));
 
 const ORIGIN = "lore://team.example.lan:41337";
+const SERVER = "Blackwood Studio";
 const PROJECT_ID = "019fda5ba4fe799096aaab7585aa4722";
 
 function project(overrides: Partial<VcsServerProject> = {}): VcsServerProject {
@@ -87,6 +88,7 @@ function open(options: {
         <ServerProjectDetailView
             remoteOrigin={ORIGIN}
             project={options.entry ?? project()}
+            server={SERVER}
             canDetail={options.canDetail ?? true}
             canHistory={options.canHistory ?? true}
             action={<button type="button" data-project-action="get">get</button>}
@@ -275,6 +277,7 @@ describe("a project the server has read, whose versions it did not give", () => 
                 <ServerProjectDetailView
                     remoteOrigin={ORIGIN}
                     project={project()}
+                    server={SERVER}
                     canDetail
                     canHistory
                     action={<button type="button" data-project-action="get">get</button>}
