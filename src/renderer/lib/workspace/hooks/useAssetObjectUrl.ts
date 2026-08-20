@@ -11,7 +11,6 @@ import {
     resolveCharacterAvatarAssetUrl,
 } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
-import { resolveMountedAssetSetMember } from "@/lib/ui-editor/runtime/assetSetAssets";
 import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
@@ -108,16 +107,13 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
         /**
          * The file this call is really about.
          *
-         * A set id names a family of files, and every arm below wants the one it means here. A
-         * mounted game answers with the player's language - Dev Mode included, since it mounts the
-         * same runtime - and the editor answers with the language the author is writing in. An
-         * ordinary asset id gets null from both and is used untouched, which is every call but a
-         * handful.
+         * A set id names a family of files, and every arm below wants the one it means here. Only
+         * the EDITOR answers here: a running game has had its documents resolved for the player's
+         * language before anything rendered, so what reaches this hook there is already a file. An
+         * ordinary asset id gets null back and is used untouched, which is every call but a handful.
          */
         const assetId = requestedAssetId
-            ? resolveMountedAssetSetMember(requestedAssetId)
-                ?? (context ? resolveEditorAssetSetMember(context, requestedAssetId) : null)
-                ?? requestedAssetId
+            ? (context ? resolveEditorAssetSetMember(context, requestedAssetId) : null) ?? requestedAssetId
             : requestedAssetId;
         if (!assetId) {
             if (urlRef.current) {

@@ -49,8 +49,6 @@ import {
 import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
-import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
-import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
@@ -182,10 +180,8 @@ function useImageAssetDisplayName(assetId: string | null): string | null {
         if (!assetId || !context) {
             return null;
         }
-        // Both kinds of id, through the one function that answers for both: a pin may now name an
-        // asset set, and a card that only asked the image library would print the "picture is gone"
-        // label over a set that resolves perfectly well.
-        return resolveAssetDisplayName(context.services, assetId);
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+        return assetsService.getAssets()[AssetType.Image]?.[assetId]?.name ?? null;
     }, [assetId, assetLibraryRevision, context]);
 }
 
@@ -222,14 +218,7 @@ function AudioAssetPickerRow({
         // `assetLibraryRevision`: this row prints the clip's name and reads its in/out marks, and
         // both are edited elsewhere on the record this holds.
     }, [assetId, assetLibraryRevision, context]);
-    const assetName = asset?.name
-        ?? (context && assetId ? resolveAssetDisplayName(context.services, assetId) : null);
-    const assetSets = useAssetSetPickerSource({
-        context,
-        isInitialized: !!context,
-        assetType: AssetType.Audio,
-        enabled: true,
-    });
+    const assetName = asset?.name ?? null;
     // Whether the author marked in/out points on this clip decides whether Loop loops the body or
     // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),
     // so the node has to say which it is.
@@ -281,9 +270,6 @@ function AudioAssetPickerRow({
                 visible={selectorOpen}
                 assetType={AssetType.Audio}
                 multiple={false}
-                {...(assetSets.virtualGroups
-                    ? { virtualGroups: assetSets.virtualGroups, resolveAssetPreviewUrl: assetSets.resolveAssetPreviewUrl }
-                    : {})}
                 anchorRef={anchorRef}
                 selectedIds={assetId ? [assetId] : []}
                 onClose={() => setSelectorOpen(false)}
@@ -314,21 +300,6 @@ function ImageAssetPickerCard({
     const { url, loading, error } = useAssetObjectUrl(assetId);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
-    let pickerContext: ReturnType<typeof useWorkspace>["context"] | null = null;
-    try {
-        pickerContext = useWorkspace().context;
-    } catch {
-        pickerContext = null;
-    }
-    // A pin can name a set. What makes it safe is not this picker but the table the package carries:
-    // this node writes an asset into a widget WHILE THE GAME RUNS, so there is no build-time rewrite
-    // that could have covered it, and the runtime resolves the id itself.
-    const assetSets = useAssetSetPickerSource({
-        context: pickerContext,
-        isInitialized: !!pickerContext,
-        assetType: AssetType.Image,
-        enabled: true,
-    });
     const label = assetId ? assetName ?? t("blueprint.image.fallback") : t("blueprint.image.select");
     // "ImageAsset" is the value-type token shown when a valid asset is bound; it stays untranslated.
     const detail = assetId ? (error ? t("blueprint.image.missing") : "ImageAsset") : t("blueprint.image.none");
@@ -415,9 +386,6 @@ function ImageAssetPickerCard({
                 anchorRef={anchorRef}
                 title={t("blueprint.image.selectAssetTitle")}
                 multiple={false}
-                {...(assetSets.virtualGroups
-                    ? { virtualGroups: assetSets.virtualGroups, resolveAssetPreviewUrl: assetSets.resolveAssetPreviewUrl }
-                    : {})}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={handleConfirm}
             />

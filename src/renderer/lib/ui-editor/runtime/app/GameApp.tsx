@@ -50,11 +50,6 @@ import {
     registerCharacterAvatarAssets,
 } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import {
-    clearAssetSetTable,
-    registerAssetSetTable,
-    resolveMountedAssetSetMember,
-} from "@/lib/ui-editor/runtime/assetSetAssets";
-import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
@@ -411,51 +406,6 @@ export function GameApp(props: GameAppProps): ReactNode {
             subscribe: listener => core.scopeBridge.subscribePersistence(listener),
         };
     }, [bundle.localization, core]);
-    /**
-     * Publish this session's asset-set answers, so a character sprite or a widget picture that names
-     * a set resolves to the file that set means in the player's language.
-     *
-     * Registered during render rather than from an effect, and that is load-bearing: a widget
-     * resolves its picture from its OWN effect, and React runs a child's effects before its parent's
-     * - so a table published from an effect here would arrive after the first widget had already
-     * asked and cached "no such asset". Publishing is a swap of one module-level slot keyed to this
-     * session, so doing it here is idempotent and has nothing to undo if the render is thrown away.
-     *
-     * The locale is read at call time for the reason the text runtime above reads it that way: a
-     * language change does not remount this, and a captured string would leave one picture speaking
-     * the language the session started in.
-     */
-    useMemo(() => {
-        const table = bundle.assetSets;
-        if (!table || !core) {
-            registerAssetSetTable(null);
-            return;
-        }
-        const sourceLocale = bundle.localization?.sourceLocale;
-        registerAssetSetTable({
-            table,
-            getLocale: () => {
-                const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
-                return typeof stored === "string" && stored ? stored : sourceLocale;
-            },
-            ...(sourceLocale ? { sourceLocale } : {}),
-        });
-    }, [bundle.assetSets, bundle.localization, core]);
-    useEffect(() => () => clearAssetSetTable(), []);
-
-    /**
-     * The host's own resolver, with a set id turned into the file it means first.
-     *
-     * One place rather than at each caller: the sound transport and the story compile both go
-     * through the host, and a set that resolved for a picture and not for a sound would be a
-     * difference nothing on screen explains. Story rows are unaffected - their answer is already in
-     * the row by the time the compiler asks, so what arrives here is an ordinary asset id.
-     */
-    const resolveHostAssetUrl = useCallback<GameAppHost["resolveStoryAssetUrl"]>(
-        (assetId, assetType) => host.resolveStoryAssetUrl(resolveMountedAssetSetMember(assetId) ?? assetId, assetType),
-        [host],
-    );
-
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
     // Localized character nametag: NLR reports the authored (source-language)
     // name; map it back to its character and translate the `char:<id>` unit for
@@ -1620,7 +1570,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const soundTransport = useMemo(() => createSoundTransport({
         getLiveGame: () => nlrLiveGameRef.current,
-        resolveAssetUrl: (assetId, assetType) => resolveHostAssetUrl(assetId, assetType),
+        resolveAssetUrl: (assetId, assetType) => host.resolveStoryAssetUrl(assetId, assetType),
         // The bus and the loop default a play inherits. Absent on a bundle that predates tracks,
         // which the transport reads as the built-ins.
         getAudioTracks: () => bundle.audio?.tracks,
@@ -2670,7 +2620,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             launch,
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
-            resolveAssetUrl: resolveHostAssetUrl,
+            resolveAssetUrl: host.resolveStoryAssetUrl,
             // Forwarded, and the size decided here: a weather clip is baked to the project's own
             // stage, which this component knows and the compiler deliberately does not. A host with
             // no baker passes nothing and its weather rows compile to a diagnostic.

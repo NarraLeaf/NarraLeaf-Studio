@@ -83,12 +83,13 @@ export class ReferenceService extends Service<ReferenceService> {
     private uiReferences: AssetReference[] = [];
     private characterReferences: AssetReference[] = [];
     /**
-     * Sites in the three row-less slices that named a set, by slice.
+     * Character sites that named a set.
      *
-     * The same bargain {@link storySetReferences} makes, for the fields a set became usable in once
-     * the package started carrying its answers: the index is keyed by asset id and a set is not an
-     * asset, so the set id stays out of it and the site is recorded here instead. Keyed by slice
-     * because a slice replaces its own half on every rebuild.
+     * The same bargain {@link storySetReferences} makes, for the one row-less slice a set is usable
+     * in: the index is keyed by asset id and a set is not an asset, so the set id stays out of it and
+     * the site is recorded here instead. Keyed by slice because a slice replaces its own half on
+     * every rebuild - and because the interface and the blueprints will want the same thing the day
+     * their references can name a set.
      */
     private sliceSetReferences = new Map<string, AssetReference[]>();
 
@@ -480,8 +481,8 @@ export class ReferenceService extends Service<ReferenceService> {
      * files it used to resolve to, so the project check reports no error over a field that names an
      * id nothing has.
      *
-     * Four slices now, not one: a set is nameable by a character, a widget and a blueprint pin as
-     * well as by a row. A slice left out of this is the one whose stale answer survives a rescan.
+     * Two slices, not one: a set is nameable by a character as well as by a row. A slice left out of
+     * this is the one whose stale answer survives a rescan.
      *
      * Every feed lands on one key per slice, so a burst of tag writes (an import, a wizard) costs
      * one rescan each rather than one per file.
@@ -500,19 +501,11 @@ export class ReferenceService extends Service<ReferenceService> {
         }
         const rescan = () => {
             this.scheduleRebuild("story-library", () => this.resyncStoryLibrary());
-            // These three announce for themselves, the way their own document subscriptions do:
-            // `resyncStoryLibrary` above emits at the end of its own run, and a rebuild nobody is
-            // told about leaves the grouped view cached against the answers it just replaced.
+            // Announces for itself, the way its own document subscription does: `resyncStoryLibrary`
+            // above emits at the end of its own run, and a rebuild nobody is told about leaves the
+            // grouped view cached against the answers it just replaced.
             this.scheduleRebuild("character", () => {
                 this.rebuildCharacterSlice();
-                this.emitChanged();
-            });
-            this.scheduleRebuild("ui", () => {
-                this.rebuildUISlice();
-                this.emitChanged();
-            });
-            this.scheduleRebuild("blueprint", () => {
-                this.rebuildBlueprintSlice();
                 this.emitChanged();
             });
         };
@@ -680,14 +673,11 @@ export class ReferenceService extends Service<ReferenceService> {
                 },
                 resolveAssetPins: type => this.resolveBlueprintAssetPins(type),
             });
-            const split = splitAssetSetReferences(extraction.references, this.assetSetExpander());
-            this.blueprintReferences = split.references;
-            this.sliceSetReferences.set("blueprint", split.setReferences);
+            this.blueprintReferences = extraction.references;
             this.setSliceGaps("blueprint", extraction.gaps);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan blueprints:", error);
             this.blueprintReferences = [];
-            this.sliceSetReferences.set("blueprint", []);
             this.setSliceGaps("blueprint", [{ reason: "sliceFailed", slice: "blueprint", location: BLUEPRINT_SLICE_LOCATION }]);
         }
     }
@@ -698,14 +688,11 @@ export class ReferenceService extends Service<ReferenceService> {
             const extraction = extractUIDocumentAssetReferences(uiDocumentService.getDocument(), {
                 resolveAssetToken: lookupAssetIdForToken,
             });
-            const split = splitAssetSetReferences(extraction.references, this.assetSetExpander());
-            this.uiReferences = split.references;
-            this.sliceSetReferences.set("ui", split.setReferences);
+            this.uiReferences = extraction.references;
             this.setSliceGaps("ui", extraction.gaps);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan the UI document:", error);
             this.uiReferences = [];
-            this.sliceSetReferences.set("ui", []);
             this.setSliceGaps("ui", [{ reason: "sliceFailed", slice: "ui", location: UI_SLICE_LOCATION }]);
         }
     }
