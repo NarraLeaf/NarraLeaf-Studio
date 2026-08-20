@@ -1027,6 +1027,29 @@ export type VcsServerMembersOutcome =
     | { ok: false; problem: VcsServerProjectsProblem };
 
 /**
+ * Why a username and password did not produce a token.
+ *
+ * **Four reasons, and only one of them is about the person typing.** A server too old to
+ * offer this at all (`unavailable`) sends them to ask for a token instead; a server that
+ * did not answer (`unreachable`) is a different errand again. `refused` is the whole of
+ * what a server says about credentials: measured against a real one, an unknown account,
+ * a wrong password, a disabled account and a machine account are one identical refusal,
+ * so nothing here may claim to tell them apart.
+ */
+export type VcsPasswordSignInReason = "refused" | "unavailable" | "unreachable" | "unknown";
+
+/**
+ * What presenting a username and password came to.
+ *
+ * The token is the same kind an operator would have minted and handed over, so what
+ * happens next - `addServer`, and the record this installation keeps - is unchanged by
+ * which of the two ways it arrived.
+ */
+export type VcsPasswordSignInOutcome =
+    | { ok: true; token: string }
+    | { ok: false; reason: VcsPasswordSignInReason };
+
+/**
  * What a server could read inside one project's own file.
  *
  * **`readable` is the whole of it, and false is an ordinary answer.** A server records a

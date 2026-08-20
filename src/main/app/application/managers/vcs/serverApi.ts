@@ -80,7 +80,12 @@ export function request(
     options: {
         method: "GET" | "POST";
         path: string;
-        token: string;
+        /**
+         * Absent for the one route that is asked before there is anything to present:
+         * signing in with a password is how a token is obtained, so it cannot carry one.
+         * An empty header is not the same thing as no header, and this must not send one.
+         */
+        token?: string;
         userDataDir: string;
         body?: string;
     },
@@ -93,7 +98,7 @@ export function request(
         method: options.method,
         headers: {
             accept: "application/json",
-            authorization: `Bearer ${options.token}`,
+            ...(options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }),
             ...(payload === undefined
                 ? {}
                 : { "content-type": "application/json", "content-length": payload.length }),

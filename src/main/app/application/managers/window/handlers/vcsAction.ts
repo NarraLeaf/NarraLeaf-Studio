@@ -16,6 +16,7 @@ import type {
     VcsAddServerOutcome,
     VcsLocalRepository,
     VcsServerProbe,
+    VcsPasswordSignInOutcome,
     VcsServerMembersOutcome,
     VcsServerProjectDetailOutcome,
     VcsServerProjectHistoryOutcome,
@@ -630,6 +631,28 @@ export class VcsListServerProjectHistoryHandler
  * Takes no project, for the same reason listing its projects does not. Asked only of a
  * server that advertised `members`.
  */
+/**
+ * Exchange a username and a password for a token.
+ *
+ * The only call in this file that names an address instead of a `remoteOrigin`, because
+ * it is made before this installation has a record of that server - obtaining the token
+ * is what creates one. Everything after it is the sign-in that already existed.
+ *
+ * **The password crosses this boundary once and is kept by nothing on either side of it.**
+ */
+export class VcsSignInWithPasswordHandler extends IPCHandler<IPCEventType.vcsSignInWithPassword> {
+    readonly name = IPCEventType.vcsSignInWithPassword;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { authUrl, username, password }: IPCEvents[IPCEventType.vcsSignInWithPassword]["data"],
+    ): Promise<RequestStatus<VcsPasswordSignInOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().signInWithPassword(authUrl, username, password));
+    }
+}
+
 export class VcsListServerMembersHandler extends IPCHandler<IPCEventType.vcsListServerMembers> {
     readonly name = IPCEventType.vcsListServerMembers;
     readonly type = IPCMessageType.request;
