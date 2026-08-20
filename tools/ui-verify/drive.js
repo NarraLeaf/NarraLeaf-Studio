@@ -45,6 +45,11 @@ const NAMED_KEYS = {
     End: { code: 'End', keyCode: 35 },
     PageUp: { code: 'PageUp', keyCode: 33 },
     PageDown: { code: 'PageDown', keyCode: 34 },
+    // The function row: F1 is contextual help, F2 renames, and F5-F7 run the project. Without
+    // these the parser fell through to its single-character branch and rejected "F5" outright.
+    ...Object.fromEntries(
+        Array.from({ length: 12 }, (_, index) => [`F${index + 1}`, { code: `F${index + 1}`, keyCode: 112 + index }]),
+    ),
 };
 
 function delay(ms) {

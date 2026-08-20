@@ -187,6 +187,57 @@ describe("collectPaletteCommands", () => {
         expect(commands[0]?.source).toBe("action");
     });
 
+    // The chords below are read from the real KEYBINDING_CATALOG rather than from fixtures: the
+    // point of resolving them here is that a command and the shortcut that runs it stay one row,
+    // and a fixture catalog would prove that about a catalog nobody ships.
+    it("shows a registered command the chord its own id is bound to", () => {
+        const commands = collectPaletteCommands(
+            build({ registered: [{ id: "run:dev-mode", title: "Run Dev Mode", run: () => {} }] }),
+        );
+        expect(commands[0]).toMatchObject({ id: "run:dev-mode", keybinding: "f5" });
+    });
+
+    it("reads the chord from keybindingId when several commands share one shortcut", () => {
+        const commands = collectPaletteCommands(
+            build({
+                registered: [
+                    { id: "run:stop-preview", title: "Stop Preview", keybindingId: "run:stop", run: () => {} },
+                ],
+            }),
+        );
+        expect(commands[0]).toMatchObject({ keybinding: "shift+f5" });
+    });
+
+    it("prefers the user's rebind over the catalog default on a registered command", () => {
+        const commands = collectPaletteCommands(
+            build({
+                registered: [{ id: "run:dev-mode", title: "Run Dev Mode", run: () => {} }],
+                keybindingOverrides: { "run:dev-mode": "f9" },
+            }),
+        );
+        expect(commands[0]).toMatchObject({ keybinding: "f9" });
+    });
+
+    it("gives an action the chord catalogued under its `action:` id", () => {
+        const commands = collectPaletteCommands(
+            build({ actions: [action({ id: "narraleaf-studio:build", label: "Production Build" })] }),
+        );
+        expect(commands[0]).toMatchObject({ keybinding: "mod+shift+b", source: "action" });
+    });
+
+    it("drops the keybinding a catalogued command already shows the chord for", () => {
+        const commands = collectPaletteCommands(
+            build({
+                registered: [{ id: "run:dev-mode", title: "Run Dev Mode", run: () => {} }],
+                keybindings: [
+                    keybinding({ id: "workspace-run-dev-mode", catalogId: "run:dev-mode", key: "f5", description: "Run" }),
+                ],
+            }),
+        );
+        expect(commands).toHaveLength(1);
+        expect(commands[0]?.source).toBe("registered");
+    });
+
     it("treats reordered modifiers as the same chord when de-duplicating", () => {
         const commands = collectPaletteCommands(
             build({

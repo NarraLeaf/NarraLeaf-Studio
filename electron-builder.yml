@@ -86,6 +86,36 @@ files:
       - '**/*'
 extraMetadata:
   main: dist/main/index.js
+# The two file types Studio owns, and the only two paths a launch from outside will act on
+# (`src/main/app/application/launchOpenRequest.ts` has to agree with this list - it decides what a
+# double-clicked path means, and a type registered here but unrecognised there would open Studio
+# and then do nothing).
+#
+#   - `.nlproj` is a project's config file, so double-clicking one opens the FOLDER it sits in.
+#   - `.nlspkg` is an exported project, which is not a project until it has been unpacked; it opens
+#     the import wizard with the package already chosen.
+#
+# A second double-click reaches the Studio that is already running rather than starting a rival one
+# (`app.acquireSingleInstanceLock` + the `second-instance` handler in src/main/index.ts). That is
+# packaged-only by design: development restarts the main process on every rebuild, and a new
+# instance racing the old one out the door would lose the lock and quit.
+#
+# The icon is the app's own. electron-builder appends the extension the platform needs (.ico on
+# Windows, .icns on macOS), so the name is given without one; a document icon distinct from the app
+# icon would be better and is not worth blocking this on.
+fileAssociations:
+  - ext: nlproj
+    name: NarraLeaf Studio Project
+    description: NarraLeaf Studio Project
+    mimeType: application/x-narraleaf-project
+    icon: resources/app-icon
+    role: Editor
+  - ext: nlspkg
+    name: NarraLeaf Studio Project Package
+    description: NarraLeaf Studio Project Package
+    mimeType: application/x-narraleaf-project-package
+    icon: resources/app-icon
+    role: Editor
 
 asar: true
 # The in-app game build worker runs electron-builder with Electron's asar fs

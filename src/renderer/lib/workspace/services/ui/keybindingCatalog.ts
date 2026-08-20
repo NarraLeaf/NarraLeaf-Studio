@@ -33,6 +33,7 @@ import {
     CopyPlus,
     Eraser,
     Flag,
+    FlaskConical,
     Group,
     History,
     IndentDecrease,
@@ -40,8 +41,10 @@ import {
     Keyboard,
     Locate,
     Maximize2,
+    MonitorPlay,
     MoveDown,
     MoveUp,
+    Package,
     PanelRightClose,
     PenLine,
     Pencil,
@@ -54,6 +57,7 @@ import {
     Search,
     SkipBack,
     SkipForward,
+    Square,
     SquareDashed,
     SquareDashedMousePointer,
     SquareX,
@@ -107,6 +111,7 @@ export interface KeybindingCatalogEntry {
 
 const CATEGORY = {
     general: "workspace.shell.keybindings.categories.general" as TranslationKey,
+    run: "workspace.shell.keybindings.categories.run" as TranslationKey,
     story: "workspace.shell.keybindings.categories.story" as TranslationKey,
     uiEditor: "workspace.shell.keybindings.categories.uiEditor" as TranslationKey,
     blueprint: "workspace.shell.keybindings.categories.blueprint" as TranslationKey,
@@ -146,6 +151,25 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // palette showed one untranslated row per group under its catch-all section.
     entry("editor.close-active-tab", "mod+w", "workspace.shell.commandPalette.editor.closeTab", CATEGORY.general, X),
     entry("editor.close-selected-tabs", "mod+w", "workspace.shell.commandPalette.editor.closeSelectedTabs", CATEGORY.general, SquareX),
+
+    // --- Run --------------------------------------------------------------
+    // The function-key row every IDE puts a project behind: F5 starts, Shift+F5 stops. Studio has
+    // two ways to start - Dev Mode and Preview - so they take F5 and F6, which is also where Godot
+    // puts its two run entries. All of them are `allowInEditable`: an author presses F5 with the
+    // caret still in the line they just wrote, and a function key types nothing that could be lost.
+    //
+    // Each id here is the id of the palette command it runs, so the palette shows the chord on the
+    // row that already exists instead of listing the shortcut a second time (see
+    // `collectPaletteCommands`). `run:stop` is the exception - one chord for whichever of the three
+    // stop commands applies, which those commands point at through `keybindingId`.
+    entry("run:dev-mode", "f5", "actions.run.runDevMode", CATEGORY.run, Play),
+    entry("run:preview", "f6", "actions.run.runPreview", CATEGORY.run, MonitorPlay),
+    entry("run:test", "f7", "test.action.open", CATEGORY.run, FlaskConical),
+    entry("run:stop", "shift+f5", "workspace.shell.keybindings.catalog.run.stop", CATEGORY.run, Square),
+    // The build's chord hangs off the ACTION id, because Production Build is a registered action
+    // rather than a palette command (`buildAction`) and an action's shortcut is looked up - by the
+    // palette and by the override map alike - under `action:<id>`.
+    entry("action:narraleaf-studio:build", "mod+shift+b", "actions.run.productionBuild", CATEGORY.run, Package),
 
     // --- Story scene editor (idle mode) ------------------------------------
     entry("story.find", "mod+f", "story.keybindings.find", CATEGORY.story, Search),

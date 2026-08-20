@@ -124,6 +124,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "runModes",
         section: "start",
+        shortcuts: ["run:dev-mode", "run:preview", "run:stop"],
         related: ["tests", "build", "freeze", "sceneSnapshot"],
     },
     {
