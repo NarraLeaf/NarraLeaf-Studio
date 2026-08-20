@@ -215,6 +215,16 @@ export const lint = {
             description: "クリックできるが、動作が何も割り当てられていないウィジェット",
             message: "クリックしても何も実行されない",
         },
+        uiComponentMissing: {
+            title: "存在しないコンポーネント",
+            description: "プロジェクトにないコンポーネントのインスタンス",
+            message: "このインスタンスはプロジェクトにないコンポーネントを参照している",
+        },
+        uiFrameTargetMissing: {
+            title: "存在しない埋め込みページ",
+            description: "プロジェクトにないページを埋め込んでいるページウィジェット",
+            message: "このページウィジェットはプロジェクトにないページを埋め込んでいる",
+        },
         blueprintSaveFieldEmpty: {
             title: "未入力のセーブ項目",
             description: "実行される Save Game ノードで、宣言済みのセーブ項目が未入力",

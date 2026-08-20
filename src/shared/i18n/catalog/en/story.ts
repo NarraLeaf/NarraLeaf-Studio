@@ -233,6 +233,16 @@ export const story = {
         },
         bulkConfirmDetail: "This adds them below the current line as one undo step.",
         scriptFile: "This is a story script. Use Import Script to bring it back in.",
+        // Translations that travelled with copied rows. Part of the cross-project line; on their
+        // own, and only the second of them, after a paste back into the same project.
+        translationsCarried: {
+            one: "{count} translation carried",
+            other: "{count} translations carried",
+        },
+        translationsDropped: {
+            one: "{count} translation in a language this project does not have",
+            other: "{count} translations in languages this project does not have",
+        },
     },
     // Rows pasted into a project other than the one they were copied from. One line of counts,
     // reported once, after the rows land.

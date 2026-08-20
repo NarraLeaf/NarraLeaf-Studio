@@ -22,6 +22,7 @@ import { isRowTextEditable } from "./storySceneReadOnly";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
+import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -75,7 +76,9 @@ import {
     tallyStoryRows,
     type StoryRowFilter,
 } from "./storyRowFilter";
-import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
+import { cloneSerializedBlock, insertSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
+import { collectSubtreeBlocks } from "./storyForeignPaste";
+import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
@@ -125,6 +128,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
     /** Reads the bytes of a file a pasted asset manifest granted this window access to. */
     const fileSystemService = useMemo(() => (context && isInitialized ? context.services.get<FileSystemService>(Services.FileSystem) : null), [context, isInitialized]);
+    /** Holds the translations a copy carries with its rows, and takes them back on a paste. */
+    const localizationService = useMemo(() => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null), [context, isInitialized]);
     /**
      * This window's own project, as the clipboard describes it.
      *
@@ -2306,6 +2311,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         uiService,
         assetsService,
         fileSystemService,
+        localizationService,
         storyId,
         sceneId,
         scene,
@@ -2703,8 +2709,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         recordHistory();
         const target = getInsertionTargetAfter(scene, anchorId);
         const insertedIds: StoryBlockId[] = [];
+        // Duplicating mints fresh textIds exactly as a paste does, so the copies would arrive
+        // untranslated unless the units follow them. Collected before the clone, because the source
+        // ids are what the project's languages are keyed by.
+        const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
+        const textIdMap = new Map<string, string>();
         for (const rootId of orderedRoots) {
-            const cloned = cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate());
+            const cloned = cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate(), textIdMap);
             insertSerializedClone(storyService, storyId, sceneId, cloned, target);
             insertedIds.push(cloned.block.id);
         }
@@ -2714,7 +2725,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             selectionAnchorRef.current = insertedIds[0];
         }
         setEditorMode({ kind: "idle" });
-    }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
+        // After the rows are in, and not awaited: the duplicate is complete without it, and the
+        // translations land in documents of their own. Nothing here reports success - a duplicate
+        // that carried its languages is what the author already expected.
+        if (localizationService) {
+            void carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
+                .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
+        }
+    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
 
     /**
      * The block ids a row operation acts on: the selection (deduped to roots so a container carries its
