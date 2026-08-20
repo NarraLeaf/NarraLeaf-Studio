@@ -81,9 +81,10 @@ export function EditorCommands() {
                 categoryKey: "workspace.shell.commandPalette.categoryEditor",
                 icon: <X className="w-4 h-4" />,
                 // Claiming the chord is what keeps this off the list twice: EditorGroup registers
-                // the same close on `mod+w` per group, and without a claim here the palette listed
-                // both — one "Close Tab" under Editor and another under General.
-                keybinding: "mod+w",
+                // the same close per group, and without a claim here the palette listed both — one
+                // "Close Tab" under Editor and another under General. Named rather than spelled out,
+                // so a rebind moves this row's chord with it instead of leaving a stale ⌘W behind.
+                keybindingId: "editor.close-tab",
                 when: focus => {
                     const target = activeTarget(focus);
                     return !!target && target.tab.closable !== false;

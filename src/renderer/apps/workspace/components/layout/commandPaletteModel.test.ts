@@ -238,6 +238,31 @@ describe("collectPaletteCommands", () => {
         expect(commands[0]?.source).toBe("registered");
     });
 
+    it("gives a panel row the chord catalogued under its `panel:` id", () => {
+        const commands = collectPaletteCommands(
+            build({ panels: [panel({ id: "narraleaf-studio:search", title: "Search" })] }),
+        );
+        expect(commands[0]).toMatchObject({ keybinding: "mod+shift+f", source: "panel" });
+    });
+
+    it("drops the keybinding a panel row already shows the chord for", () => {
+        const commands = collectPaletteCommands(
+            build({
+                panels: [panel({ id: "narraleaf-studio:search", title: "Search" })],
+                keybindings: [
+                    keybinding({
+                        id: "workspace-search-panel",
+                        catalogId: "panel:narraleaf-studio:search",
+                        key: "mod+shift+f",
+                        description: "Search the project",
+                    }),
+                ],
+            }),
+        );
+        expect(commands).toHaveLength(1);
+        expect(commands[0]?.source).toBe("panel");
+    });
+
     it("treats reordered modifiers as the same chord when de-duplicating", () => {
         const commands = collectPaletteCommands(
             build({
