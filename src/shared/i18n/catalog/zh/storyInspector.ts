@@ -297,6 +297,8 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "变换",
+        loop: "循环",
+        stopLoop: "停止循环",
         bringToFront: "置顶",
         mask: "遮罩",
         clearMask: "清除遮罩",

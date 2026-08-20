@@ -145,6 +145,22 @@ describe("projectStoryCommandLine", () => {
         expect(project("/wait click")).toBe("/wait click");
     });
 
+    it("keeps the loop flag on the row, because it is what the row IS", () => {
+        // A `loop` row does not hold the scene up, and the only thing that says so on the line is
+        // the word - so it prints next to the subject rather than being inferred from the payload.
+        // Spelled out as `loop=true`, which is what a bare flag reads back as everywhere: the row is
+        // the full spelling of a line the author may have typed short (`/bgm theme loop` too).
+        expect(project("/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror"))
+            .toBe("/transform hero loop=true scaleY=1.02 d=0.9s repeatType=mirror");
+        // The way back, and nothing else: a `stopLoop` row holds no bag to print.
+        expect(project("/transform hero stopLoop d=0.3")).toBe("/transform hero stopLoop=true d=0.3s");
+        // Both round-trip: the line the row prints builds the row again.
+        expect(build(project("/transform hero loop zoom=1.1 d=0.5")).payload)
+            .toEqual(build("/transform hero loop zoom=1.1 d=0.5").payload);
+        expect(build(project("/transform hero stopLoop d=0.3")).payload)
+            .toEqual(build("/transform hero stopLoop d=0.3").payload);
+    });
+
     it("says it in the command language, keys and values and all", () => {
         i18nStore.setLocale("zh");
         // The line the request asked for: nothing abbreviated, nothing in a language the author is not
