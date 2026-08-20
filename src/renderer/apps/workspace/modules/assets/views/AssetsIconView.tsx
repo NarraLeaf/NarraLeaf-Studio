@@ -102,6 +102,7 @@ export function AssetsIconView({
         draggedAssetSet,
         showAssetSetContextMenu,
         publishRowOrder,
+        assetSetReveal,
     } = useAssetsPanelContext();
     const groupStack = useMemo(() => {
         const groupById = new Map<string, AssetGroup>();
@@ -144,6 +145,22 @@ export function AssetsIconView({
             setSetPathIds(setStack.map(entry => entry.set.id));
         }
     }, [setPathIds.length, setStack]);
+
+    // A jump landing on a set: the panel opened the folder, and stepping into whatever encloses the
+    // set is the part only the grid can do, since it shows one level at a time. The target itself is
+    // not stepped into - it is the tile being revealed, and walking into it would show its contents
+    // instead of it. Keyed on the request so following the same reference twice comes back here.
+    const revealNonce = assetSetReveal?.nonce ?? null;
+    const revealAncestorIds = assetSetReveal?.ancestorSetIds;
+    useEffect(() => {
+        if (revealNonce === null) {
+            return;
+        }
+        setSetPathIds([...(revealAncestorIds ?? [])]);
+        // `revealAncestorIds` is deliberately not a dependency: the request is the event, and its
+        // path is a fact about that request rather than something that changes underneath it.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [revealNonce]);
 
     // A search narrows the whole library, so it takes the reader out of whatever they had opened -
     // the same thing it already does to folders.

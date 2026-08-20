@@ -6,6 +6,7 @@ import { resolveAudioTrack } from "@shared/types/audioTrack";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import type { Translator } from "@shared/i18n";
 import { useTranslation } from "@/lib/i18n";
+import { Switch } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -232,14 +233,15 @@ function SceneBackgroundMusicField({ data }: CustomFieldProps<StorySceneEditorCo
                         </span>
                     </div>
                     <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-1.5 text-xs text-fg-muted">
-                            <input
-                                type="checkbox"
+                        <span className="flex items-center gap-1.5 text-xs text-fg-muted">
+                            <Switch
+                                size="sm"
                                 checked={loops}
-                                onChange={event => patch({ loop: event.target.checked })}
+                                onCheckedChange={loop => patch({ loop })}
+                                aria-label={t("story.sceneEditor.sceneMusicLoop")}
                             />
                             {t("story.sceneEditor.sceneMusicLoop")}
-                        </label>
+                        </span>
                         <label className="flex min-w-0 flex-1 items-center justify-end gap-1.5 text-xs text-fg-muted">
                             {t("story.sceneEditor.sceneMusicFade")}
                             <input

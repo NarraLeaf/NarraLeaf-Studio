@@ -53,6 +53,10 @@ export type { ModalProps } from "./Modal";
 export { Select, Combobox, SelectGroup } from "./Select";
 export type { SelectProps, SelectOption } from "./Select";
 
+// Checkbox component (set membership / consent — a setting is a `Switch`)
+export { Checkbox } from "./Checkbox";
+export type { CheckboxProps } from "./Checkbox";
+
 // Switch components
 export { Switch } from "./Switch";
 export type { SwitchProps, SwitchSize, SwitchVariant } from "./Switch";

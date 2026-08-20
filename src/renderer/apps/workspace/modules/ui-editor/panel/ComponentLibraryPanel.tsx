@@ -8,6 +8,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
+import { Checkbox } from "@/lib/components/elements";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { LivePreviewFrame } from "./LivePreviewFrame";
 
@@ -377,12 +378,10 @@ export function ComponentLibraryPanel({
                                         tabIndex={0}
                                     >
                                         <div className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
+                                            <Checkbox
                                                 checked={selected}
-                                                onChange={() => toggleSelected(component.id)}
+                                                onCheckedChange={() => toggleSelected(component.id)}
                                                 onClick={event => event.stopPropagation()}
-                                                className="h-3.5 w-3.5 accent-primary"
                                                 aria-label={t("uiEditor.componentLibrary.selectComponent", { name: component.name })}
                                             />
                                             <div
