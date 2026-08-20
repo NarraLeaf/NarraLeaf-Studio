@@ -13,6 +13,7 @@
 export { ServerRow } from "./ServerRow";
 export type { ServerRowProps } from "./ServerRow";
 export { serverCan } from "./serverCapabilities";
+export { forgetServerProject } from "./forgetServerProject";
 export { signInWithPassword } from "./passwordSignIn";
 export { serverDisplayName, serverHost } from "./serverIdentity";
 export { useServers } from "./useServers";
