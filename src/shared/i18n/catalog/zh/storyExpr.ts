@@ -33,6 +33,7 @@ export const storyExpr = {
         badValue: "「{value}」不适合这个位置",
         unterminatedQuote: "引号没有闭合",
         unknownAsset: "没有名为「{value}」的{assetType}资产",
+        unknownAssetOrSet: "没有名为「{value}」的{assetType}资产或资产集",
         unknownCharacter: "没有名为「{value}」的角色",
         unknownScene: "没有名为「{value}」的场景",
         unknownAudioTrack: "没有名为「{value}」的音轨",
