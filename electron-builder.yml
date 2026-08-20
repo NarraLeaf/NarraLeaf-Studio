@@ -348,9 +348,17 @@ nsis:
   # Overrides the global name above only to keep the word the Windows convention expects; the
   # no-spaces rule is the same and the reason for it is written there.
   artifactName: NarraLeaf-Studio-Setup-${version}-${arch}.${ext}
-  # The wizard. `allowToChangeInstallationDirectory` has no effect without it.
+  # The wizard.
   oneClick: false
-  allowToChangeInstallationDirectory: true
+  # Off because the folder is chosen in the installer's own UI, which calls the same shell dialog
+  # from the page that shows the path (project/installer/installer.nsh). Leaving it on would put
+  # MUI_PAGE_DIRECTORY in the flow as well, and there is no hook to suppress it: the template
+  # attaches its own PRE to that page, and a page can only be dropped from its PRE.
+  #
+  # The cost lands on the fallback path only - a machine with no WebView2 runtime gets the stock
+  # wizard with no directory page, and installs to the default per-user location. `/D=` still
+  # overrides it there, as does an existing installation's recorded path.
+  allowToChangeInstallationDirectory: false
   # Per-user by default, with the "anyone who uses this computer" option still on the install-mode
   # page (allowElevation). This is the choice that decides what updating feels like: a per-user
   # install updates silently, while an all-users one needs elevation on every update, which the
@@ -365,9 +373,15 @@ nsis:
   # took them would be taking the user's work. Explicit because it is worth being sure about.
   deleteAppDataOnUninstall: false
   # Studio itself ships in English and Chinese, so its installer does too rather than defaulting
-  # to whatever NSIS picks. The selector appears before the first page.
+  # to whatever NSIS picks.
   multiLanguageInstaller: true
-  displayLanguageSelector: true
+  # No selector. It is a Win32 dialog that opens before the installer's own window, so with the
+  # custom UI it would be the first thing seen and the only thing that does not belong; and asking
+  # which of two languages to read a five-line installer in is a question worth answering from the
+  # OS setting instead. NSIS matches $LANGUAGE against the two below and falls back to the first.
+  #
+  # The document carries both languages and is told which to use (installer.nsh, nlPushInit).
+  displayLanguageSelector: false
   installerLanguages:
     - en_US
     - zh_CN
