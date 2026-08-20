@@ -241,6 +241,8 @@ export interface RendererPreloadedInterface {
      */
     studioTasks: {
         getOverview(): Promise<RequestStatus<{ overview: StudioTaskOverview }>>;
+        /** Speculative: have these clips ready before a run asks for them. Resolves on submission. */
+        prebakeWeather(projectPath: string, specs: WeatherBakeSpec[]): Promise<RequestStatus<Record<string, never>>>;
     };
     mediaConvert: {
         start(request: MediaConvertRequest): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;

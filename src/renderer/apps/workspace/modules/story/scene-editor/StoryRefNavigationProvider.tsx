@@ -81,16 +81,11 @@ export function StoryRefNavigationProvider(props: {
                     }
                     return null;
                 },
-                // Asked of the service on every call, for the same reason: a set can be dissolved
-                // while the row that names it is on screen, and the word must stop leading to a
-                // library row at that moment rather than at the next remount.
-                isAssetSet: assetId => {
-                    try {
-                        return !!context?.services.get<AssetSetService>(Services.AssetSets).getSet(assetId);
-                    } catch {
-                        return false;
-                    }
-                },
+                // Asked only when the library did not answer - see `isAssetSet`. Read live for the
+                // same reason as the table above it.
+                isAssetSet: assetId => Boolean(
+                    context?.services.get<AssetSetService>(Services.AssetSets).getSet(assetId),
+                ),
             });
         return {
             canOpen: (ref: Parameters<typeof storyRefJumpTarget>[0]) => resolve(ref) !== null,

@@ -225,6 +225,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     studioTasks: {
         getOverview: () =>
             ipcClient.invoke(IPCEventType.studioTasksGetOverview, {}) as Promise<RequestStatus<{ overview: StudioTaskOverview }>>,
+        prebakeWeather: (projectPath: string, specs: WeatherBakeSpec[]) =>
+            ipcClient.invoke(IPCEventType.studioTasksPrebakeWeather, { projectPath, specs }) as Promise<RequestStatus<Record<string, never>>>,
     },
     mediaConvert: {
         start: (request: MediaConvertRequest) =>

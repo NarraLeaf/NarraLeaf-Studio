@@ -149,7 +149,7 @@ export const widgetAppearance = {
     },
     fields: {
         imageFill: "画像の塗り",
-        imageFillNeedsContext: "画像の塗りにはインスペクタのコンテキストが要る",
+        imageFillNeedsContext: "画像の塗りにはインスペクタのコンテキストが必要",
         imageUrlPlaceholder: "URL またはアセット参照",
         imageUrlPlaceholderLegacy: "URL またはアセット参照（旧形式）",
     },

@@ -167,8 +167,9 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // --- Run --------------------------------------------------------------
     // The function-key row every IDE puts a project behind: F5 starts, Shift+F5 stops. Studio has
     // two ways to start - Dev Mode and Preview - so they take F5 and F6, which is also where Godot
-    // puts its two run entries. All of them are `allowInEditable`: an author presses F5 with the
-    // caret still in the line they just wrote, and a function key types nothing that could be lost.
+    // puts its two run entries, and the row carries on through the test picker and the build. All
+    // of them are `allowInEditable`: an author presses F5 with the caret still in the line they
+    // just wrote, and a function key types nothing that could be lost.
     //
     // Each id here is the id of the palette command it runs, so the palette shows the chord on the
     // row that already exists instead of listing the shortcut a second time (see
@@ -181,18 +182,23 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // The build's chord hangs off the ACTION id, because Production Build is a registered action
     // rather than a palette command (`buildAction`) and an action's shortcut is looked up - by the
     // palette and by the override map alike - under `action:<id>`.
-    entry("action:narraleaf-studio:build", "mod+shift+b", "actions.run.productionBuild", CATEGORY.run, Package),
+    //
+    // F10 rather than VS Code's ⇧⌘B: the sidebar wanted that chord more (see the View block), and
+    // the function row reads better for it anyway - F5 runs, F6 previews, F7 tests, F10 builds, so
+    // everything that acts on the whole project sits on one row.
+    entry("action:narraleaf-studio:build", "f10", "actions.run.productionBuild", CATEGORY.run, Package),
 
     // --- View ---------------------------------------------------------------
     // The dock toggles and the two things an author reaches for without looking. `mod+j` is VS
-    // Code's panel chord exactly; the two sidebars are `mod+alt+` letters rather than VS Code's
-    // `mod+b`, because Ctrl+B inside a story line is the rich-text editor's bold and taking it
-    // would mean an author reaching for the sidebar silently emboldens the sentence they are on.
+    // Code's panel chord exactly. The left bar is `mod+shift+b` rather than VS Code's `mod+b`,
+    // because Ctrl+B inside a story line is the rich-text editor's bold and taking it would mean an
+    // author reaching for the sidebar silently emboldens the sentence they are on - the Shift keeps
+    // the B that names a side bar while leaving bold where an author typing expects it.
     //
     // Each id is the id of the command it runs, so the palette shows the chord on the row that
     // already exists (the panel entry is `panel:<panel id>`, which is how the palette names a
     // panel-navigation command).
-    entry("narraleaf-studio:toggle-left-sidebar", "mod+alt+b", "menu.window.leftSidebar", CATEGORY.view, PanelLeft),
+    entry("narraleaf-studio:toggle-left-sidebar", "mod+shift+b", "menu.window.leftSidebar", CATEGORY.view, PanelLeft),
     entry("narraleaf-studio:toggle-bottom-panel", "mod+j", "menu.window.bottomPanel", CATEGORY.view, PanelBottom),
     entry("narraleaf-studio:toggle-right-sidebar", "mod+alt+r", "menu.window.rightSidebar", CATEGORY.view, PanelRight),
     // Shows the panel and puts the caret in its query box, which is the whole gesture - `mod+f`
@@ -315,4 +321,32 @@ const CATALOG_BY_ID = new Map(KEYBINDING_CATALOG.map(item => [item.id, item]));
 
 export function getKeybindingCatalogEntry(id: string): KeybindingCatalogEntry | undefined {
     return CATALOG_BY_ID.get(id);
+}
+
+/**
+ * The chord an author would actually press for a command, as every surface that shows one must read
+ * it: an override first, then the catalog's default, then whatever the registration carried inline.
+ *
+ * `bindingId` is the catalog id. An action's is `action:<action id>` - the id `UIStore` would file a
+ * `shortcut` under - which is what lets an action carry a rebindable default without declaring one
+ * (see `workspace-run-shortcuts`: a declared `shortcut` registers a second binding no catalog entry
+ * governs, so it can be neither rebound nor found in the settings table).
+ *
+ * Resolution only. Nothing here registers a key; the surfaces that call it are drawing a label.
+ */
+export function resolveShortcut(
+    bindingId: string,
+    overrides: Readonly<Record<string, string>>,
+    inline?: string,
+): string | undefined {
+    return overrides[bindingId] ?? getKeybindingCatalogEntry(bindingId)?.key ?? inline;
+}
+
+/** {@link resolveShortcut} for a registered action, which files its chord under `action:<id>`. */
+export function resolveActionShortcut(
+    actionId: string,
+    overrides: Readonly<Record<string, string>>,
+    inline?: string,
+): string | undefined {
+    return resolveShortcut(`action:${actionId}`, overrides, inline);
 }

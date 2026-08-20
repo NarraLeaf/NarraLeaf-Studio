@@ -3,13 +3,13 @@ import type { LocaleNamespace } from "../types";
 /**
  * `welcome` 日本語。
  *
- * 見出しと副題はあいさつだけで、説明はしない。もとの「はじめかた」4 ステップは削除済み。
+ * 見出しは製品名を示し、副題は 3 つの入口を示す。もとの「はじめかた」4 ステップは削除済み。
  * その 4 つは `workspaceLayout`、`assets`、`storyScene`、`runModes` のヘルプトピックそのもので、
  * ページはそこへリンクするだけにしてある。
  */
 export const welcome = {
-    title: "はじめまして",
-    subtitle: "NarraLeaf Studio へようこそ。準備はいいですか",
+    title: "NarraLeaf Studio へようこそ",
+    subtitle: "シーンの作成、アセットライブラリ、ヘルプのいずれかから始められる",
     quickActions: {
         newScene: {
             label: "シーンを新規作成",
