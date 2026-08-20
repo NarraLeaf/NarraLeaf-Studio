@@ -121,7 +121,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
                 return;
             }
             const s = getUiSelection(stateService, surfaceId);
-            uiEditorPasteAfterSelection(documentService, localBlueprint, stateService, surfaceId, s);
+            void uiEditorPasteAfterSelection(documentService, localBlueprint, stateService, surfaceId, s);
         };
         const duplicate = () => {
             if (!documentService || !localBlueprint || !stateService || isTypingInField()) {

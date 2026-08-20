@@ -55,7 +55,7 @@ export type {
     StoryCommandTargetValue,
     StoryCommandValue,
 } from "./storyCommandValues";
-export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandCharacterSources, StoryCommandResolvedArgs } from "./storyCommandValues";
+export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandCharacterSources, StoryCommandVfxSources, StoryCommandResolvedArgs } from "./storyCommandValues";
 export { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS, EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandValues";
 
 /**

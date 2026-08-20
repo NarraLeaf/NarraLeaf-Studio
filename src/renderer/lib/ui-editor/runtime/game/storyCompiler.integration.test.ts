@@ -541,8 +541,12 @@ describe("compileStudioStoryToNlr", () => {
             },
         };
         const blocks: Record<string, StoryBlock> = {
-            text: {
-                id: "text",
+            // Declared on its own row, because a create row no longer reveals anything: the animation
+            // belongs to the row that SHOWS the caption, which is also what keeps the opacity
+            // assertion below meaningful (a reveal ends at opacity 1; a bare transform says nothing
+            // about opacity at all).
+            textCreate: {
+                id: "textCreate",
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
@@ -551,6 +555,17 @@ describe("compileStudioStoryToNlr", () => {
                     operation: "create",
                     objectName: "caption",
                     text: "Hello",
+                },
+            },
+            text: {
+                id: "text",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "text",
+                    operation: "show",
+                    objectName: "caption",
                     transform: { mode: "animation", animationId: animation.id },
                 },
             },
@@ -578,7 +593,7 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["text", "layerCreate", "layer"]),
+            document: baseDocument(blocks, ["textCreate", "text", "layerCreate", "layer"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
         });
@@ -2411,7 +2426,47 @@ describe("compileStudioStoryToNlr voice", () => {
         ]);
     });
 
-    it("compiles /vfx onto one Vfx, showing on create and clamping its knobs", async () => {
+    it("declares on a create row and reveals only on a show row", async () => {
+        // The rule for every stage object except a layer: `create` names it, sources it and poses it,
+        // and nothing is on screen until something shows it. A layer is exempt because a layer is a
+        // container - one that mounted invisible would take its contents with it.
+        const blocks: Record<string, StoryBlock> = {
+            image: {
+                id: "image", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "image", operation: "create", objectName: "poster", assetId: "asset-poster" },
+            },
+            video: {
+                id: "video", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "video", operation: "create", objectName: "opening", assetId: "asset-opening" },
+            },
+            reveal: {
+                id: "reveal", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "image", operation: "show", objectName: "poster" },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["image", "video", "reveal"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const typesOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .map(action => action.type);
+
+        expect(compiled.diagnostics).toEqual([]);
+        // The source lands and nothing else: no transform, so nothing raises the element's opacity
+        // off the zero it mounts at.
+        expect(typesOf("image")).toContain("image:setSrc");
+        expect(typesOf("image")).not.toContain("displayable:applyTransform");
+        // A declared video is on stage and buffering, which is the whole reason the row is worth
+        // writing early - but it is not visible and it is not playing.
+        expect(typesOf("video")).toContain("video:preload");
+        expect(typesOf("video")).not.toContain("video:show");
+        expect(typesOf("reveal")).toContain("displayable:applyTransform");
+    });
+
+    it("compiles /vfx onto one Vfx, declaring on create and clamping its knobs", async () => {
         const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
             id, kind: "action", parentId: null, childrenIds: [], payload,
         });
@@ -2423,9 +2478,12 @@ describe("compileStudioStoryToNlr voice", () => {
             rate: vfxBlock("rate", { action: "vfx", operation: "setRate", objectName: "rain", rate: -1 }),
             freeze: vfxBlock("freeze", { action: "vfx", operation: "pause", objectName: "rain" }),
             hide: vfxBlock("hide", { action: "vfx", operation: "hide", objectName: "rain", durationMs: 400 }),
+            show: vfxBlock("show", {
+                action: "vfx", operation: "show", objectName: "rain", durationMs: 300, opacity: 0.4, rate: 2,
+            }),
         };
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["create", "rate", "freeze", "hide"]),
+            document: baseDocument(blocks, ["create", "rate", "freeze", "hide", "show"]),
             sceneId: "scene-1",
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
@@ -2433,8 +2491,12 @@ describe("compileStudioStoryToNlr voice", () => {
         const actionOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
 
         expect(compiled.diagnostics).toEqual([]);
-        // A create puts the overlay on screen - the row an author writes to "start the rain" must.
-        expect(actionOf("create")?.type).toBe("vfx:show");
+        // A create DECLARES the overlay and warms its clip; nothing appears until a row shows it.
+        expect(actionOf("create")?.type).toBe("vfx:preload");
+        expect(actionOf("show")?.type).toBe("vfx:show");
+        // Opacity and rate on a show row belong to that showing, so they travel as options - and are
+        // clamped on the way, like every other knob the compiler passes through.
+        expect(actionOf("show")?.contentNode?.getContent?.()[0]).toMatchObject({ duration: 300, opacity: 0.4, rate: 2 });
         expect(actionOf("freeze")?.type).toBe("vfx:pause");
         expect(actionOf("hide")?.type).toBe("vfx:hide");
         expect(actionOf("hide")?.contentNode?.getContent?.()[0]).toMatchObject({ duration: 400 });

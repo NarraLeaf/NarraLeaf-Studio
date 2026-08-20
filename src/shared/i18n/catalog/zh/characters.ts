@@ -24,7 +24,7 @@ export const characters = {
         namePlaceholder: "输入角色名称",
         groupNamePlaceholder: "输入分组名称",
         deleteCharacterConfirm: "删除角色“{name}”？",
-        deleteCharacterDetail: "提到该角色的台词会失去指向，直到它被恢复",
+        deleteCharacterDetail: "台词保留名字，将其放上舞台的行会失去指向",
         deleteGroupConfirm: "删除分组“{name}”？",
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
     },

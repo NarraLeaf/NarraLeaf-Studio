@@ -159,10 +159,22 @@ export const lint = {
             // A character is not created, it walks on - so the remedy is the one word that changes.
             messageCharacter: "Nothing brings {object} on stage, so this row has nothing to act on",
         },
+        storyDeclaredNeverShown: {
+            title: "Unshown stage object",
+            description: "A create row declares an object no row shows",
+            message: "{object} is declared here and no row shows it",
+        },
         storyStageObjectDuplicate: {
             title: "Duplicate stage object",
             description: "Two rows creating one stage name; the second reuses the first",
             message: "{object} is already created above, so this row acts on that one",
+        },
+        storyCharacterMissing: {
+            title: "Missing character",
+            description: "A row naming a character the project does not have",
+            // No subject in the sentence: an unresolved reference leaves only its stored id, which
+            // is a UUID, and a UUID in a report is a word nobody can search a project for.
+            message: "This row names a character the project does not have",
         },
         storyTransitionUnavailable: {
             title: "Unavailable transition",
@@ -183,6 +195,11 @@ export const lint = {
             messageChoice: "Names a choice that no longer exists",
             messageCharacter: "Names a character that no longer exists",
             messageTextKey: "Names a text key the project does not declare",
+        },
+        blueprintElementRefMissing: {
+            title: "Missing widget",
+            description: "A node bound to a widget the project no longer has",
+            message: "Bound to a widget that no longer exists",
         },
         blueprintUnreachableNode: {
             title: "Unreachable node",
@@ -210,6 +227,16 @@ export const lint = {
             title: "Button with no handler",
             description: "A clickable widget nothing listens to",
             message: "Nothing runs when this is clicked",
+        },
+        uiComponentMissing: {
+            title: "Missing component",
+            description: "An instance of a component the project does not have",
+            message: "This instance points at a component the project does not have",
+        },
+        uiFrameTargetMissing: {
+            title: "Missing embedded page",
+            description: "A Page widget embedding a page the project does not have",
+            message: "This Page widget embeds a page the project does not have",
         },
         blueprintSaveFieldEmpty: {
             title: "Empty save field",

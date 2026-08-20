@@ -23,10 +23,11 @@ export const characters = {
         namePlaceholder: "Enter character name",
         groupNamePlaceholder: "Enter group name",
         deleteCharacterConfirm: "Delete character \"{name}\"?",
-        // Was "This action cannot be undone." until deletion became undoable. What is worth
-        // weighing now is the consequence, not the finality: lines naming this character keep the
-        // reference and stop resolving.
-        deleteCharacterDetail: "Lines that name this character stop resolving until it is restored.",
+        // Was "This action cannot be undone." until deletion became undoable. What is worth weighing
+        // now is the consequence, not the finality - and the consequence is no longer the same for
+        // every row: dialogue keeps the name as a bare speaker, while a row that places the character
+        // on stage has no such form and keeps a reference that no longer resolves.
+        deleteCharacterDetail: "Its dialogue keeps the name. Rows that place it on stage stop resolving.",
         deleteGroupConfirm: "Delete group \"{name}\"?",
         deleteGroupDetail: "Characters in this group will be unassigned.",
     },

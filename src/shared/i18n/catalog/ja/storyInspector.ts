@@ -238,6 +238,8 @@ export const storyInspector = {
         zIndex: "重ね順",
         loop: "ループ",
         rate: "速さ（1 が等倍）",
+        showOpacity: "不透明度（今回）",
+        showRate: "速さ（今回）",
         fade: "フェード（秒）",
     },
 
@@ -248,6 +250,7 @@ export const storyInspector = {
         sway: "揺れ",
         streak: "尾の長さ",
         wind: "風向き（度）",
+        fallSpeed: "落下速度",
         depthSpread: "奥行き差",
     },
 

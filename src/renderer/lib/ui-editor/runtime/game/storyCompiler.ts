@@ -3627,8 +3627,11 @@ async function compileImageAction(
         diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
     }
 
+    // A create row DECLARES: it names the object, gives it a source and puts it where it starts, and
+    // nothing appears. `/show` is what reveals it. The pose still lands, so the object is already in
+    // position when something shows it - a declaration says where a thing IS, not that it is seen.
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
-        const operation = payload.operation === "hide" ? "hide" : "show";
+        const operation = payload.operation === "create" ? "transform" : payload.operation;
         const chain = await compileDisplayableOperation(image, operation, payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
@@ -3665,8 +3668,11 @@ async function compileTextAction(
     if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
         statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
+    // Declares, like `/image` create: the words, the size, the colour and the pose, all without
+    // showing anything. See there.
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
-        const chain = await compileDisplayableOperation(text, payload.operation === "hide" ? "hide" : "show", payload.transform, ctx, block.id);
+        const operation = payload.operation === "create" ? "transform" : payload.operation;
+        const chain = await compileDisplayableOperation(text, operation, payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
 
@@ -3711,7 +3717,13 @@ async function compileVideoAction(
     if (!video) {
         return [];
     }
-    if (payload.operation === "show" || payload.operation === "create") {
+    if (payload.operation === "create") {
+        // Declares rather than shows, like `/image`. `preload` is what makes that worth writing on
+        // its own row: the element mounts hidden and starts buffering, so the `/show` or `/play`
+        // that follows is not the first moment anything has been fetched.
+        return [recordStatement(ctx, video.preload(), block)];
+    }
+    if (payload.operation === "show") {
         return [recordStatement(ctx, video.show(), block)];
     }
     if (payload.operation === "hide") {
@@ -3739,8 +3751,14 @@ async function compileVideoAction(
 
 /**
  * `vfx` - the full-screen ambience overlay. Shaped like `compileVideoAction`, not like the displayable
- * ops, because a `Vfx` is an `Actionable`: it has `show`/`hide`/`pause`/`resume`/`setPlaybackRate` and
- * nothing else. `create` both constructs it and registers the name the later rows address.
+ * ops, because a `Vfx` is an `Actionable`: it has `preload`/`show`/`hide`/`pause`/`resume`/
+ * `setPlaybackRate` and nothing else.
+ *
+ * `create` DECLARES the overlay: it builds it, registers the name every later row addresses, and
+ * preloads the clip without showing anything. That is the whole shape of the feature - an overlay is
+ * defined once and then shown, hidden and shown again from anywhere in the story, and the definition
+ * is a place rather than a moment. `show` is the only row that puts it on screen, and it may carry an
+ * opacity and a rate for that showing alone.
  */
 async function compileVfxAction(
     ctx: SceneCompileContext,
@@ -3753,13 +3771,20 @@ async function compileVfxAction(
     if (!vfx) {
         return [];
     }
-    // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
-    // screen, exactly as `/image` and `/video` do.
     const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: parseStoryEasing(payload.easing) as any };
     switch (payload.operation) {
         case "create":
+            return [recordStatement(ctx, vfx.preload(), block)];
         case "show":
-            return [recordStatement(ctx, vfx.show(fade as any), block)];
+            // Opacity and rate on a SHOW row are that showing's own - the same rain reading faintly
+            // behind a memory and at full strength in the storm - so they are passed as options and
+            // never written into the overlay. On a create row the very same two fields ARE the
+            // overlay's configuration, which is why only this arm reads them as overrides.
+            return [recordStatement(ctx, vfx.show({
+                ...fade,
+                ...(payload.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(payload.opacity, 1))) } : {}),
+                ...(payload.rate !== undefined ? { rate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
+            } as any), block)];
         case "hide":
             return [recordStatement(ctx, vfx.hide(fade as any), block)];
         case "pause":

@@ -40,7 +40,18 @@ const DOCUMENT: StoryDocument = {
                 },
             },
         },
-        [THERE]: { id: THERE, name: "Hallway", runtimeName: "hallway", rootBlockIds: [], blocks: {} },
+        [THERE]: {
+            id: THERE,
+            name: "Hallway",
+            runtimeName: "hallway",
+            rootBlockIds: ["b_rain"],
+            blocks: {
+                b_rain: {
+                    id: "b_rain", kind: "action", parentId: null, childrenIds: [],
+                    payload: { action: "vfx", operation: "create", objectName: "rain", assetId: "a_rain" },
+                },
+            },
+        },
     },
 } as unknown as StoryDocument;
 
@@ -83,9 +94,21 @@ describe("storyRefJumpTarget", () => {
     });
 
     it("resolves a row against the scene the row lives in", () => {
-        // Every block reference is scene-local by construction, which is why the ref carries no scene.
+        // A block reference carries no scene unless it has to, and absent means "this one".
         expect(storyRefJumpTarget({ kind: "block", blockId: "b_label" }, WHERE))
             .toEqual({ kind: "storyBlock", storyId: "story-1", sceneId: HERE, blockId: "b_label", storyName: "Chapter One", sceneName: "Kitchen" });
+    });
+
+    it("follows a row reference that names its own scene, which is how an overlay is reached", () => {
+        // The one declaration that can be outside the scene being read: an ambience overlay is held
+        // at game level, so the row that declares the rain this scene hides is usually elsewhere.
+        expect(storyRefJumpTarget({ kind: "block", blockId: "b_rain", sceneId: THERE }, WHERE))
+            .toEqual({ kind: "storyBlock", storyId: "story-1", sceneId: THERE, blockId: "b_rain", storyName: "Chapter One", sceneName: "Hallway" });
+    });
+
+    it("declines a row reference whose named scene does not hold it", () => {
+        // Same rule as every other miss: no target, so the word is never lit up at all.
+        expect(storyRefJumpTarget({ kind: "block", blockId: "b_label", sceneId: THERE }, WHERE)).toBeNull();
     });
 
     it("sends a scene variable to the row that declares it", () => {

@@ -2,6 +2,9 @@
 export const launcher = {
     nav: {
         projects: "Projects",
+        // Between Projects and Plugins because it answers the other half of the same
+        // question: Projects is what this machine has, Servers is what it could have.
+        servers: "Servers",
         plugins: "Plugins",
         learning: "Learning",
         settings: "Settings",
@@ -65,6 +68,90 @@ export const launcher = {
             relocate: "Locate…",
             remove: "Remove from list",
             errorNotAProject: "That folder is not a NarraLeaf project.",
+        },
+    },
+    // The Servers tab. It lists what exists on the servers this installation is signed in to;
+    // what is already on this disk is the Projects tab's answer and is not repeated here.
+    servers: {
+        // Adding a server signs the whole installation in, so it happens in Settings and this
+        // tab points at it - from the end of the list, and from the empty state.
+        manage: "Manage servers",
+        empty: {
+            title: "No servers",
+            description: "Projects on a server appear here.",
+            action: "Add a server",
+        },
+        // Which server is being read, when there is more than one to read.
+        choose: "Select a server.",
+        newProject: "New Project",
+        loading: "Reading the project list",
+        noProjects: "This server holds no projects.",
+        // One action per row, and only one: the project is either already on this disk or it
+        // is not. "Get" rather than "Clone" - the wizard behind it asks where the copy lands.
+        open: "Open",
+        get: "Get",
+        // Only ever drawn when the server named a time. A server that has not read the
+        // repository says nothing about it, and nothing is what this reads back.
+        lastVersion: "Last version {date}",
+        lastVersionBy: "Last version {date} by {name}",
+        problem: {
+            noToken: "This server cannot be asked from this installation. Add it again with its token.",
+            refused: "This server refused the account signed in here.",
+            unreachable: "This server did not answer.",
+            unknown: "This server could not be read.",
+        },
+        create: {
+            title: "New project on {server}",
+            name: "Name",
+            description: "Description",
+            descriptionOptional: "Optional",
+            submit: "Create",
+            cancel: "Cancel",
+            failed: "The project was not created.",
+        },
+        // What one project's row opens into. Only reached on a server that offers to say
+        // something about a project beyond listing it.
+        detail: {
+            back: "All projects",
+            loading: "Reading this project",
+            createdBy: "Created by",
+            created: "Created",
+            lastVersion: "Last version",
+            // Only drawn where the server read the project file, so every one of these is
+            // a number it gave rather than one this end worked out.
+            title: "Title",
+            stage: "Stage",
+            scenes: "Scenes",
+            assets: "Assets",
+            // The ordinary answer for a project recorded a moment ago, and the only answer
+            // from a deployment whose reader is not working. It replaces the facts rather
+            // than filling them with zeroes, and it does not repeat what the server said
+            // about it - that sentence is written for whoever runs the server.
+            //
+            // **About the project file and nothing else.** The versions are asked for
+            // separately and can be missing on their own, and this said about a project
+            // whose scene count is on screen above it would be a plain contradiction; that
+            // state has its own line below.
+            unread: "The server has not read this project.",
+            versions: "Recent versions",
+            noVersions: "No versions recorded.",
+            // A page that came back without them, on a project the server otherwise
+            // answered for. Not "none": what is unknown here is the list, not its length.
+            versionsUnavailable: "This project's versions are not available.",
+            olderVersions: "Older versions are not shown.",
+        },
+        // Who else works on this server. The account addresses are read with the list and
+        // shown one at a time, for the member a reader opens.
+        people: {
+            title: "People",
+            loading: "Reading the member list",
+            none: "This server holds no accounts.",
+            // Marks rather than badges: what they say matters on the day it applies and
+            // never otherwise, so they read as words beside a name.
+            operator: "Operator",
+            disabled: "Disabled",
+            serviceAccount: "Service account",
+            noAddress: "No address on this account.",
         },
     },
     // Plural example - read with translator.tn("launcher.recentCount", count).
