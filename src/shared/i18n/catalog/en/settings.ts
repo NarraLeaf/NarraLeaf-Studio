@@ -257,15 +257,11 @@ export const settings = {
         },
         versionControlAuthor: {
             label: "Author name",
-            description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
-            // Replaces the description above while the field is closed, so the row says why
-            // rather than merely refusing to be typed in. Shown on both author fields.
-            fromServer:
-                "Comes from the server this installation is signed in to. Sign out to record a name entered here again.",
+            description: "Recorded on projects that are not connected to a server. Leave empty to record NarraLeaf Studio instead.",
         },
         versionControlAuthorEmail: {
             label: "Author email",
-            description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
+            description: "Recorded next to the author name, as \"Name <email>\", on projects that are not connected to a server. Leave empty to record no address.",
         },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
@@ -370,19 +366,45 @@ export const settings = {
         checking: "Checking…",
         done: "Done",
         signOut: "Sign out",
+        signIn: "Sign in",
+        signingIn: "Signing in…",
         // The one thing an author is handed. Every other address is behind it, including
         // the `lore://` remote, which is stored and never named to anybody.
         addressLabel: "Server address",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
-        reached: "{name} answered at {address}.",
+        // What the address turned out to be, on the step that asks who you are there. It
+        // names the server rather than narrating the request that found it: the reader is
+        // deciding whether this is the one they meant, not reading a log of the attempt.
+        reached: "The server at {address} is {name}.",
         // "Access token" rather than "password": it is not one, and it cannot be chosen,
         // remembered or reset by the person pasting it.
         tokenLabel: "Access token",
         tokenPlaceholder: "Paste the access token",
         hint: "The access token is issued by the server's administrator.",
+        // The other half of the identity step, on a server that accepts one. A person
+        // handed a username and a password is never asked to learn what a token is.
+        usernameLabel: "Username",
+        passwordLabel: "Password",
+        useToken: "Use an access token instead",
+        usePassword: "Use a username and password instead",
+        // ONE sentence for every refusal, because the server sends one: an unknown
+        // username, a wrong password, a disabled account and a service account are the
+        // same answer on the wire, and copy that told them apart would be telling a
+        // stranger which usernames exist.
+        signInRefused: "The server did not accept that username and password.",
+        signInUnavailable: "This installation cannot sign in with a password.",
         // A server with nothing to sign in to. Said rather than hidden, because the
         // absence of an entry afterwards is otherwise indistinguishable from a failure.
         noAccount: "{name} does not require authentication, so there is nothing to add.",
+        // The closing step. Facts about what was joined and nothing else: no
+        // congratulation, and no count for a server that would not give one.
+        joined: {
+            signedInAs: "Signed in as {name}",
+            projects: {
+                one: "{count} project",
+                other: "{count} projects",
+            },
+        },
         // What reaching an address came to, before anything has been added. Separate from
         // `problems`, which are refusals of a token by a server already reached.
         probe: {

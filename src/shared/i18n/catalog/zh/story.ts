@@ -194,6 +194,30 @@ export const story = {
         },
         bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
         scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+        translationsCarried: {
+            other: "已带入 {count} 条译文",
+        },
+        translationsDropped: {
+            other: "已跳过 {count} 条译文",
+        },
+    },
+    // 粘贴到另一个工程里的行。行落位之后，只报一次结果。
+    crossProject: {
+        pasted: {
+            other: "已粘贴 {count} 行",
+        },
+        pastedFrom: {
+            other: "已从 {project} 粘贴 {count} 行",
+        },
+        speakerNames: {
+            other: "未关联角色 {count} 行",
+        },
+        imported: {
+            other: "已导入 {count} 项资产",
+        },
+        unresolved: {
+            other: "{count} 处引用未解析",
+        },
     },
     flow: {
         tabTitle: "场景流程",
@@ -926,10 +950,10 @@ export const story = {
         skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
         rename: { label: "改名", detail: "改变角色说话时显示的名字" },
         say: { label: "对白", detail: "一句台词" },
-        image: { label: "图片", detail: "在舞台上放置图片" },
-        text: { label: "文本", detail: "在舞台上放置文本" },
-        video: { label: "视频", detail: "在舞台上放置视频" },
-        vfx: { label: "氛围特效", detail: "全屏循环叠加：落花、雨雪、尘埃、光斑" },
+        image: { label: "图片", detail: "在舞台上声明图片，由 /show 显示" },
+        text: { label: "文本", detail: "在舞台上声明文本，由 /show 显示" },
+        video: { label: "视频", detail: "在舞台上声明视频，由 /show 显示" },
+        vfx: { label: "氛围特效", detail: "声明全屏循环叠加：落花、雨雪、尘埃、光斑" },
         layer: { label: "图层", detail: "创建渲染图层" },
         swap: { label: "替换", detail: "替换对象的图片或文本内容" },
         play: { label: "播放", detail: "播放视频" },
@@ -1100,6 +1124,10 @@ export const story = {
         duplicate: "复制行",
         disable: "禁用",
         enable: "启用",
+        bindSpeaker: {
+            one: "关联 {count} 行的说话人",
+            other: "关联 {count} 行的说话人",
+        },
         playFromHere: "从此行播放",
         openInspector: "打开检查器",
         delete: "删除",

@@ -267,7 +267,27 @@ export type StoryCommandContext = {
     stageObjectSources?: StoryCommandStageObjectSources;
     /** Which row brings each character on stage. Optional on the same terms as `stageObjectSources`. */
     characterSources?: StoryCommandCharacterSources;
+    /** Which row declares each ambience overlay, across the whole story. See the type. */
+    vfxSources?: StoryCommandVfxSources;
 };
+
+/**
+ * The row that declares each ambience overlay, keyed by name, across the WHOLE story.
+ *
+ * A seventh bucket of {@link StoryCommandStageObjectSources} would have been the obvious home and is
+ * the wrong shape twice over, both because an overlay is the one stage object the engine does not
+ * scope to a scene:
+ *
+ *  - **The span is different.** That table is one scene's declarations, because an image is gone when
+ *    its scene ends. Rain declared in a prologue is still falling three scenes later, and the row
+ *    that says `/hide rain` is usually not in the scene that started it - which is precisely when an
+ *    author wants to be taken to the row that did.
+ *  - **The value has to carry the scene.** Every other declaration is in the scene being read, so the
+ *    block id alone addresses it. This one is not, and a jump target without the scene would open the
+ *    right row number in the wrong scene.
+ */
+export type StoryCommandVfxSources =
+    Readonly<Record<string, { blockId: string; sceneId: string }>>;
 
 /**
  * One puppet model's vocabulary, as the story editor consumes it.

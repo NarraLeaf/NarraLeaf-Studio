@@ -65,6 +65,20 @@ export type WindowProps = {
          * renderer never resolves it and never picks it up from anywhere else.
          */
         packagePath?: string;
+        /**
+         * A repository the wizard should open on, already filled in.
+         *
+         * The sibling of {@link packagePath}, and set for the same reason: the author has
+         * already chosen the project - off a server's list in the launcher, or by making one
+         * there a moment ago - so the wizard starts on the clone flow with this address rather
+         * than asking a first-page question that has been answered.
+         *
+         * The whole remote, `lore://host:port/name`, as the server lists it. Where the copy
+         * lands is still asked, because that is the one thing the wizard is for: the
+         * destination goes through the native picker, which is the only way a folder can be
+         * written to at all.
+         */
+        remoteUrl?: string;
     },
     [WindowAppType.DevMode]: {
         projectPath: string;

@@ -10,6 +10,7 @@ import {
     closeTree,
     createRepository,
     flushRepository,
+    history,
     loadTree,
     openStore,
     releaseRepository,
@@ -25,6 +26,7 @@ import {
     RepositoryExistsError,
     type InitRepositoryResult,
 } from "./repository";
+import { readRepositoryId } from "./localRepositories";
 import { renderWorkingSetIgnoreFile } from "./workingSet";
 
 /**
@@ -292,13 +294,16 @@ describe.skipIf(!supported)("repository status", () => {
 });
 
 /**
- * What happens when setup does not finish.
+ * What happens when setup does not finish, and what an empty repository really is.
  *
  * The state under test is a directory that passes every cheap "is this a repository"
- * check and holds nothing - no commits, so no readable repository id. Left alone it
- * makes the project permanently un-initialisable behind a message saying it is already
- * done, which for a milestone about not losing the author's work is the worst kind of
- * defect: the recovery path itself lies.
+ * check and holds no commits. Two ordinary things produce it - a clone of a project
+ * nobody has pushed to yet, and a local setup whose rollback could not run - and the
+ * claim these pin is that it is a working repository in both cases: `.lore/id` is on
+ * disk, sixteen bytes of it, and the first version can simply be recorded into it.
+ *
+ * What is still refused is a `.lore/` that cannot say which repository it is, because
+ * there is genuinely nothing to be done with that one.
  *
  * Each case gets its own project directory, and the failure is injected rather than
  * waited for.
@@ -354,18 +359,67 @@ describe.skipIf(!supported)("interrupted setup", () => {
         expect(result.fileCount).toBe(2);
     }, 120_000);
 
-    it("names a rollback that could not run, instead of claiming the project is already versioned", async () => {
+    it("records the first version into a repository that has none, rather than refusing it", async () => {
         const { directory, globals: local } = project();
-        // Precisely what a failed rollback leaves behind: a repository directory with
-        // no commits in it.
+        // Precisely what a failed rollback leaves behind, and byte for byte what
+        // getting an empty project off a server leaves: a repository directory with no
+        // commits in it.
+        const created = await createRepository(local, { repositoryUrl: "lore://127.0.0.1:41337/local" });
+        fs.writeFileSync(path.join(directory, CONFIG), JSON.stringify({ name: "adopted" }));
+
+        const result = await initRepository(local, { message: "Enable version control" });
+
+        expect(result.revision).toMatch(/^[0-9a-f]{64}$/);
+        // The repository it committed into is the one that was already there. A second
+        // one would mean the history the author is about to write is on a repository
+        // nobody else has heard of.
+        expect(result.repositoryId).toBe(created.repository);
+        expect(fs.existsSync(path.join(directory, ".loreignore"))).toBe(true);
+    }, 120_000);
+
+    it("reads the id of an empty repository off the file, because there is no header to read", async () => {
+        // The claim the old refusal rested on, measured: a repository with no revisions
+        // reports no history header at all, and still says which repository it is.
+        const { directory, globals: local } = project();
+        const created = await createRepository(local, { repositoryUrl: "lore://127.0.0.1:41337/local" });
+
+        const { header } = await history(local, { limit: 1 });
+
+        expect(header?.repository).toBeFalsy();
+        expect(fs.readFileSync(path.join(directory, ".lore", "id"))).toHaveLength(16);
+        expect(readRepositoryId(directory)).toBe(created.repository);
+    }, 120_000);
+
+    it("does not remove a repository it found when the first version cannot be recorded", async () => {
+        // The rollback is entitled to delete `.lore/` only where this call made it. One
+        // of the two ways an empty repository exists is a clone of somebody's project,
+        // and deleting that because a commit failed would throw away the connection to
+        // the server along with it.
+        const { directory, globals: local } = project();
         await createRepository(local, { repositoryUrl: "lore://127.0.0.1:41337/local" });
+        fs.mkdirSync(path.join(directory, ".loreignore"));
 
         const failure = await initRepository(local).catch((error: unknown) => error);
-        expect(failure).toBeInstanceOf(IncompleteRepositoryError);
-        expect(failure).not.toBeInstanceOf(RepositoryExistsError);
-        // Actionable: it says which directory to remove. The author has no other way
-        // to know, and every other message here would have them guessing.
-        expect((failure as Error).message).toContain(path.join(directory, ".lore"));
+
+        expect(failure).toBeInstanceOf(Error);
+        expect((failure as NodeJS.ErrnoException).code).toBeTruthy();
+        expect(fs.existsSync(path.join(directory, ".lore"))).toBe(true);
+    }, 120_000);
+
+    it("refuses a `.lore` it cannot read at all, and neither adopts nor removes it", async () => {
+        // A repository whose history cannot be read is treated as one that HAS history,
+        // which is the only safe way to be wrong here. What must not happen is the
+        // other two: committing into a repository nothing can identify, or deleting a
+        // directory that may hold somebody's work.
+        const { directory, globals: local } = project();
+        await createRepository(local, { repositoryUrl: "lore://127.0.0.1:41337/local" });
+        fs.writeFileSync(path.join(directory, ".lore", "id"), Buffer.alloc(8));
+
+        const failure = await initRepository(local).catch((error: unknown) => error);
+
+        expect(failure).toBeInstanceOf(RepositoryExistsError);
+        expect(fs.existsSync(path.join(directory, ".lore"))).toBe(true);
+        expect(fs.existsSync(path.join(directory, ".loreignore"))).toBe(false);
     }, 120_000);
 });
 

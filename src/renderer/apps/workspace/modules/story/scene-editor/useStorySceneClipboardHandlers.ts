@@ -1,8 +1,20 @@
-import { useCallback, type ClipboardEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ClipboardEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
+import type { AssetTransferEntry, AssetTransferManifestEntry } from "@shared/types/assetTransfer";
 import type { StoryBlock, StoryBlockId, StoryScene, StorySceneId } from "@shared/types/story";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { getInterface } from "@/lib/app/bridge";
 import type { Character } from "@/lib/workspace/services/character/Character";
+import {
+    buildAssetTransferEntries,
+    createTransferredAssetPort,
+    findLibraryAsset,
+    readClipboardAssetGrant,
+} from "@/lib/workspace/services/assets/assetTransferImport";
+import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
+import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { translate, translateN } from "@/lib/i18n";
 import {
@@ -17,6 +29,16 @@ import {
     type PlainPasteAnchor,
 } from "@/lib/story/paste/storyPasteTypes";
 import { createBlockForCommand } from "./storyActionCommands";
+import {
+    collectStoryAssetIds,
+    collectStoryCharacterIds,
+    collectSubtreeBlocks,
+    countUnresolvedAssetSites,
+    importTransferredAssets,
+    isStoryPasteFromAnotherProject,
+    listSerializedBlocks,
+    treatForeignCharacterRefs,
+} from "./storyForeignPaste";
 import { filterOutSelectedDescendants, getInsertionTargetAfter } from "./storySceneBlockUtils";
 import {
     cloneSerializedBlock,
@@ -24,16 +46,26 @@ import {
     getPasteAnchorId,
     insertSerializedClone,
     isStoryClipboardPayload,
+    listBlockTextIds,
     parseDialogueLine,
     serializeBlockSubtree,
     STORY_ACTIONS_MIME,
 } from "./storySceneClipboard";
 import { hasShiftModifier, isTextInputActive } from "./storySceneDom";
+import {
+    collectClipboardTranslations,
+    createCarriedTranslationPort,
+    planCarriedTranslations,
+    readProjectLocales,
+    writeCarriedTranslations,
+    type CarriedTranslationPort,
+} from "./storyTranslationTransfer";
 import type {
     EditorMode,
     SerializedStoryBlock,
     StoryBlockTarget,
     StoryClipboardPayload,
+    StoryClipboardTranslations,
     VisibleStoryRow,
 } from "./storySceneEditorTypes";
 
@@ -63,11 +95,31 @@ export function useStorySceneClipboardHandlers(params: {
     storyService: StoryService | null;
     uuidService: UuidService | null;
     uiService: UIService | null;
+    /** The library a foreign paste imports into, and the one a copy offers files out of. */
+    assetsService: AssetsService | null;
+    /** Reads the bytes of a file a redeemed transfer granted access to. */
+    fileSystemService: FileSystemService | null;
+    /**
+     * The translations a copy carries and a paste writes back. Null until the workspace is ready,
+     * which costs a paste its translations and nothing else.
+     */
+    localizationService: LocalizationService | null;
     storyId: string | undefined;
     sceneId: string | undefined;
     scene: StoryScene | null;
     scenes: Record<StorySceneId, StoryScene> | undefined;
     characters: Character[];
+    /**
+     * This project's cast, as a membership test - what tells a character id that works here from
+     * one minted by whichever project the rows were copied out of.
+     */
+    knownCharacterIds: ReadonlySet<string>;
+    /** This window's project directory, and with it the identity a pasted payload is compared against. */
+    projectPath: string;
+    /** What this project is called, carried on the clipboard so a foreign paste can name its source. */
+    projectName: string;
+    /** The project's `identifier`. Travels for display; it is not an identity. */
+    projectIdentifier: string;
     selectedBlockIds: Set<StoryBlockId>;
     activeBlockId: StoryBlockId | null;
     visibleRows: VisibleStoryRow[];
@@ -146,15 +198,26 @@ export function useStorySceneClipboardHandlers(params: {
         }
     }, [params, pasteMayTakeFocus]);
 
-    const pasteBlocks = useCallback((roots: SerializedStoryBlock[], target: StoryBlockTarget) => {
+    /**
+     * Clone the payload's rows into the scene as one undo step. Null when nothing could be written.
+     *
+     * The `textIds` it returns are the renaming the clone performed, old id → new id. Every pasted
+     * line gets a fresh one, so it is the only thing that can still tell which line over there
+     * became which line here - which is what the translations travelling with the rows are keyed by.
+     */
+    const pasteBlocks = useCallback((
+        roots: SerializedStoryBlock[],
+        target: StoryBlockTarget,
+    ): { textIds: Map<string, string> } | null => {
         const { storyService, uuidService, storyId, sceneId } = params;
         if (!storyService || !uuidService || !storyId || !sceneId) {
-            return;
+            return null;
         }
         params.recordHistory();
         const insertedRoots: StoryBlockId[] = [];
+        const textIds = new Map<string, string>();
         for (const root of roots) {
-            const cloned = cloneSerializedBlock(root, () => uuidService.generate());
+            const cloned = cloneSerializedBlock(root, () => uuidService.generate(), textIds);
             insertSerializedClone(storyService, storyId, sceneId, cloned, target);
             insertedRoots.push(cloned.block.id);
         }
@@ -163,6 +226,7 @@ export function useStorySceneClipboardHandlers(params: {
             params.setSelectedBlockIds(new Set(insertedRoots));
             params.setEditorMode({ kind: "idle" });
         }
+        return insertedRoots.length > 0 ? { textIds } : null;
     }, [params, pasteMayTakeFocus]);
 
     /**
@@ -264,6 +328,207 @@ export function useStorySceneClipboardHandlers(params: {
         };
     }, [params]);
 
+    /** The rows a copy would take: the marked ones, or the focused one when nothing is marked. */
+    const selectionRootIds = useMemo(() => {
+        const { scene, selectedBlockIds, activeBlockId } = params;
+        if (!scene) {
+            return [];
+        }
+        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
+        return filterOutSelectedDescendants(scene, ids);
+    }, [params.scene, params.selectedBlockIds, params.activeBlockId]);
+
+    /** Whether a copy would take anything at all - the gate on the work done ahead of the gesture. */
+    const hasSelection = selectionRootIds.length > 0;
+
+    /** The library ids those rows reference, in the order the rows name them. */
+    const selectionAssetIds = useMemo(
+        () => (params.scene ? collectStoryAssetIds(collectSubtreeBlocks(params.scene, selectionRootIds)) : []),
+        [params.scene, selectionRootIds],
+    );
+
+    /**
+     * Grants for the files the current selection would need, minted before the gesture that spends
+     * them - keyed by the ids they cover, so a selection made twice costs one round trip.
+     *
+     * Ahead of the gesture because a `copy` event has to have written the clipboard by the time it
+     * returns, and only the main process can mint the token: one IPC round trip, which no
+     * synchronous handler can wait for. So the offer is made when the selection settles instead. A
+     * selection whose rows reference no importable file offers nothing at all, which is nearly
+     * every selection; and a copy made before an offer comes back still copies its rows, which a
+     * paste treats the way it treats a source window that has since closed.
+     */
+    const assetOffersRef = useRef(new Map<string, { token: string; entries: AssetTransferManifestEntry[] }>());
+    const assetOfferKey = selectionAssetIds.join(" ");
+
+    useEffect(() => {
+        const { assetsService } = params;
+        if (!assetsService || !assetOfferKey || assetOffersRef.current.has(assetOfferKey)) {
+            return;
+        }
+        const entries = buildAssetTransferEntries(assetsService, selectionAssetIds);
+        if (entries.length === 0) {
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            let offered: { token: string } | null = null;
+            try {
+                const status = await getInterface().assets.transfer.offer(entries);
+                offered = status.success && status.data.offered ? { token: status.data.token } : null;
+            } catch (error) {
+                // A refusal is data and arrives as one; this is the transport itself failing, and a
+                // copy that reported it would be a dialog raised by pressing Ctrl+C.
+                console.warn("[storyClipboard] could not offer the selection's assets", error);
+            }
+            if (cancelled || !offered) {
+                return;
+            }
+            assetOffersRef.current.set(assetOfferKey, {
+                token: offered.token,
+                entries: entries.map(({ sourcePath: _path, ...manifest }) => manifest),
+            });
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [assetOfferKey, params.assetsService]);
+
+    /**
+     * Read this project's translations into memory ahead of a copy.
+     *
+     * For the reason the asset grants are minted ahead of the gesture: a `copy` event has to have
+     * written the clipboard by the time it returns, so nothing inside it can wait for a file to be
+     * read. These are the localization service's own documents, so a language the author already
+     * has open costs nothing here, and a project's translations are text.
+     *
+     * Only while there are rows a copy would take, so a scene left open with nothing selected reads
+     * nothing at all.
+     */
+    useEffect(() => {
+        const { localizationService } = params;
+        if (!localizationService || !hasSelection) {
+            return;
+        }
+        const load = () => {
+            for (const locale of readProjectLocales(localizationService)) {
+                if (!localizationService.getDocumentIfLoaded(locale)) {
+                    // A language whose file cannot be read is one this copy carries nothing for.
+                    void localizationService.loadDocument(locale).catch(() => undefined);
+                }
+            }
+        };
+        load();
+        return localizationService.onConfigChanged(load);
+    }, [params.localizationService, hasSelection]);
+
+    /**
+     * Write the translations that travelled with a paste, under the ids it has just minted.
+     *
+     * After the rows rather than before them, because the ids to write under are what pasting the
+     * rows produced. Not part of the paste's undo step, and it cannot be: the scene's history scope
+     * captures the scene document, and translations live in per-locale documents another service
+     * owns. Undoing a paste therefore leaves these behind as orphans - the same state deleting a
+     * translated row already produces, reported by `localization/orphan`.
+     */
+    const carryTranslations = useCallback(async (
+        payload: StoryClipboardPayload,
+        textIds: ReadonlyMap<string, string>,
+    ): Promise<{ written: number; droppedLocales: number; frozen: boolean }> => {
+        const { localizationService } = params;
+        const nothing = { written: 0, droppedLocales: 0, frozen: false };
+        if (!localizationService || !payload.translations) {
+            return nothing;
+        }
+        const plan = planCarriedTranslations(
+            payload.translations,
+            textIds,
+            new Set(readProjectLocales(localizationService)),
+        );
+        if (plan.carried === 0) {
+            return { ...nothing, droppedLocales: plan.droppedLocales };
+        }
+        const outcome = await writeCarriedTranslations(
+            createCarriedTranslationPort(localizationService, params.isFrozen),
+            plan,
+        );
+        return { ...outcome, droppedLocales: plan.droppedLocales };
+    }, [params]);
+
+    /**
+     * A paste of rows written by another project.
+     *
+     * Asynchronous because the files those rows reference are imported first: the rows are pasted
+     * verbatim under the ids they already carry, so an asset that arrives before them makes its row
+     * resolve on the spot rather than after a second gesture. The freeze is re-read after every
+     * await for the reason the bulk plain paste gives - rows written into a frozen workspace reach
+     * the in-memory scene, are refused at the file-system boundary, and are gone again at the thaw.
+     *
+     * The imported files are not part of the undo entry, for the same reason the wizard's created
+     * characters are not part of its own: they are what the rows point at, and one press of undo
+     * takes back the rows.
+     */
+    const pasteForeignBlocks = useCallback(async (payload: StoryClipboardPayload, target: StoryBlockTarget) => {
+        const { assetsService, fileSystemService } = params;
+        const treatment = treatForeignCharacterRefs(payload.roots, {
+            knownCharacterIds: params.knownCharacterIds,
+            characterNames: readClipboardCharacterNames(payload.characterNames),
+        });
+        const blocks = listSerializedBlocks(treatment.roots);
+        const port = assetsService && fileSystemService
+            ? createTransferredAssetPort(assetsService, fileSystemService, params.isFrozen)
+            : null;
+        const transfer = port
+            ? await importTransferredAssets(port, readClipboardAssetGrant(payload.assets), collectStoryAssetIds(blocks))
+            : { imported: 0, failed: 0, frozen: false };
+        if (transfer.frozen || params.isFrozen()) {
+            return;
+        }
+        const pasted = pasteBlocks(treatment.roots, target);
+        if (!pasted) {
+            return;
+        }
+        const translations = await carryTranslations(payload, pasted.textIds);
+        // What this window can say still needs the author: a character id nothing here answers to,
+        // and a file that did not come across. Every other kind of foreign id is kept verbatim and
+        // reported per site by the project lint, which is the report that can jump to the row.
+        const unresolved = treatment.unresolvedCharacterRows
+            + countUnresolvedAssetSites(blocks, assetId => port?.has(assetId) ?? false);
+        params.uiService?.showNotification(
+            describeForeignPaste({
+                rows: blocks.length,
+                project: readClipboardProjectName(payload.source?.name),
+                degradedSpeakers: treatment.degradedSpeakers,
+                imported: transfer.imported,
+                translations: translations.written,
+                droppedTranslations: translations.droppedLocales,
+                unresolved,
+            }),
+            unresolved > 0 ? "warning" : "info",
+        );
+    }, [carryTranslations, params, pasteBlocks]);
+
+    /**
+     * The translations of rows pasted back into the project they were copied from.
+     *
+     * Silent when it works, which is the ordinary case: the rows are where they were written and
+     * every language they carry is still here, so there is nothing an author needs telling. The one
+     * thing worth a word is a language removed between the copy and the paste - those translations
+     * have nowhere to go, and saying nothing would let the author believe they came across.
+     */
+    const pasteOwnTranslations = useCallback(async (
+        payload: StoryClipboardPayload,
+        textIds: ReadonlyMap<string, string>,
+    ) => {
+        const { droppedLocales } = await carryTranslations(payload, textIds);
+        if (droppedLocales > 0) {
+            params.uiService?.showNotification(
+                translateN("story.paste.translationsDropped", droppedLocales),
+                "info",
+            );
+        }
+    }, [carryTranslations, params]);
+
     /**
      * The five routes, from one clipboard payload.
      *
@@ -281,11 +546,20 @@ export function useStorySceneClipboardHandlers(params: {
         switch (route.kind) {
             case "blocks": {
                 try {
-                    const parsed = JSON.parse(storyBlocksPayload) as StoryClipboardPayload;
+                    const parsed: unknown = JSON.parse(storyBlocksPayload);
                     if (!isStoryClipboardPayload(parsed)) {
                         return false;
                     }
-                    pasteBlocks(parsed.roots, anchor.target);
+                    // Rows from this same project - or from a Studio that predates the source field,
+                    // which can only be this machine - paste exactly as they always have.
+                    if (!isStoryPasteFromAnotherProject(parsed, params.projectPath)) {
+                        const pasted = pasteBlocks(parsed.roots, anchor.target);
+                        if (pasted) {
+                            void pasteOwnTranslations(parsed, pasted.textIds);
+                        }
+                        return true;
+                    }
+                    void pasteForeignBlocks(parsed, anchor.target);
                     return true;
                 } catch {
                     // A payload that claims our MIME type but does not parse is not ours to paste.
@@ -317,30 +591,42 @@ export function useStorySceneClipboardHandlers(params: {
             default:
                 return false;
         }
-    }, [params, pasteBlocks, pasteSingleLine, pastePlain, resolveAnchor]);
+    }, [params, pasteBlocks, pasteForeignBlocks, pasteOwnTranslations, pasteSingleLine, pastePlain, resolveAnchor]);
 
     const copySelectionToClipboard = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
         if (isTextInputActive()) {
             return;
         }
-        const { scene, scenes, selectedBlockIds, activeBlockId, characters } = params;
+        const { scene, scenes, characters } = params;
         if (!scene) {
             return;
         }
-        const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
-        const roots = filterOutSelectedDescendants(scene, ids);
+        const roots = selectionRootIds;
         if (roots.length === 0) {
             return;
         }
+        const assets = assetOffersRef.current.get(assetOfferKey);
+        const translations = collectCopiedTranslations(params.localizationService, scene, roots);
         const payload: StoryClipboardPayload = {
-            version: 1,
+            version: 2,
             kind: "narraleaf.story.actions",
             roots: roots.map(id => serializeBlockSubtree(scene, id)),
+            source: {
+                path: normalizeProjectPath(params.projectPath),
+                identifier: params.projectIdentifier,
+                name: params.projectName,
+            },
+            characterNames: collectCopiedCharacterNames(scene, roots, characters),
+            // Absent rather than empty when there is no grant: the field means "these files can be
+            // fetched", and an empty one would say that about nothing.
+            ...(assets ? { assets } : {}),
+            // Absent for the same reason when none of the copied lines is translated.
+            ...(translations ? { translations } : {}),
         };
         event.preventDefault();
         event.clipboardData.setData(STORY_ACTIONS_MIME, JSON.stringify(payload));
         event.clipboardData.setData("text/plain", roots.map(id => exportBlockPlainText(scene.blocks[id], characters, scenes)).join("\n"));
-    }, [params]);
+    }, [assetOfferKey, params, selectionRootIds]);
 
     /**
      * Read the `Ctrl+Shift+V` flag and clear it in the same breath.
@@ -410,4 +696,128 @@ function plainAnchorFor(block: StoryBlock | undefined): PlainPasteAnchor {
         return { kind: "narration" };
     }
     return { kind: "none" };
+}
+
+/**
+ * The languages this project declares, its source language included.
+ *
+ * The source language is in the list because its document may hold units too - nothing stops an
+ * author translating a line into the language it is written in - and a copy that skipped it would
+ * lose exactly those.
+ */
+/**
+ * What every language of this project says about the lines being copied.
+ *
+ * Read from the documents already in memory (see the preload effect): a `copy` event cannot wait
+ * for a file, so a language that has not been read by the time the gesture happens carries nothing
+ * rather than delaying it.
+ */
+function collectCopiedTranslations(
+    service: LocalizationService | null,
+    scene: StoryScene,
+    rootIds: readonly StoryBlockId[],
+): StoryClipboardTranslations | undefined {
+    if (!service) {
+        return undefined;
+    }
+    const textIds = listBlockTextIds(collectSubtreeBlocks(scene, rootIds));
+    if (textIds.length === 0) {
+        return undefined;
+    }
+    return collectClipboardTranslations(
+        textIds,
+        readProjectLocales(service),
+        locale => service.getDocumentIfLoaded(locale)?.units,
+    );
+}
+
+/**
+ * The names to carry for the characters the copied rows speak as.
+ *
+ * Only the characters those rows actually name, and only their names - a paste has no use for
+ * anything else about them, and a wider table would describe a project to whoever pasted it.
+ */
+function collectCopiedCharacterNames(
+    scene: StoryScene,
+    rootIds: readonly StoryBlockId[],
+    characters: readonly Character[],
+): Record<string, string> {
+    const names: Record<string, string> = {};
+    for (const characterId of collectStoryCharacterIds(collectSubtreeBlocks(scene, rootIds))) {
+        const name = characters.find(character => character.profile.getId() === characterId)?.profile.getName().trim();
+        if (name) {
+            names[characterId] = name;
+        }
+    }
+    return names;
+}
+
+/**
+ * The name map off a pasted payload.
+ *
+ * Rebuilt entry by entry rather than trusted, because it was written by another process: what
+ * arrives is JSON of whatever shape, and one value of the wrong type would otherwise be written
+ * into a row as a speaker.
+ */
+function readClipboardCharacterNames(value: unknown): Record<string, string> {
+    if (!value || typeof value !== "object") {
+        return {};
+    }
+    const names: Record<string, string> = {};
+    for (const [characterId, name] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof name === "string" && name.trim()) {
+            names[characterId] = name;
+        }
+    }
+    return names;
+}
+
+/**
+ * The source project's name, when it is one a notification can carry.
+ *
+ * A payload written by another process says what it likes about itself, so a name that is blank or
+ * longer than a line is dropped rather than shortened - the paste then reports its counts without
+ * naming where they came from, which is true either way.
+ */
+function readClipboardProjectName(value: unknown): string | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+    const name = value.trim();
+    return name && name.length <= CLIPBOARD_PROJECT_NAME_LIMIT ? name : null;
+}
+
+const CLIPBOARD_PROJECT_NAME_LIMIT = 64;
+
+/** What a foreign paste did, as one line of counts. Anything that came to nothing is left out. */
+function describeForeignPaste(outcome: {
+    rows: number;
+    project: string | null;
+    degradedSpeakers: number;
+    imported: number;
+    translations: number;
+    droppedTranslations: number;
+    unresolved: number;
+}): string {
+    const parts = [
+        outcome.project
+            ? translateN("story.crossProject.pastedFrom", outcome.rows, { project: outcome.project })
+            : translateN("story.crossProject.pasted", outcome.rows),
+    ];
+    if (outcome.degradedSpeakers > 0) {
+        parts.push(translateN("story.crossProject.speakerNames", outcome.degradedSpeakers));
+    }
+    if (outcome.imported > 0) {
+        parts.push(translateN("story.crossProject.imported", outcome.imported));
+    }
+    if (outcome.translations > 0) {
+        parts.push(translateN("story.paste.translationsCarried", outcome.translations));
+    }
+    if (outcome.droppedTranslations > 0) {
+        parts.push(translateN("story.paste.translationsDropped", outcome.droppedTranslations));
+    }
+    if (outcome.unresolved > 0) {
+        parts.push(translateN("story.crossProject.unresolved", outcome.unresolved));
+    }
+    return parts.join(" · ");
 }

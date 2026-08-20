@@ -1,5 +1,6 @@
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { resolveInsertTargetParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -7,9 +8,16 @@ import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UI
 import {
     buildUiEditorClipboardPayload,
     clearUiEditorClipboard,
-    getUiEditorClipboard,
     setUiEditorClipboard,
+    type UIEditorClipboardPayload,
 } from "./uiEditorClipboard";
+import {
+    importForeignUiAssets,
+    publishUiClipboard,
+    readUiClipboardEnvironment,
+    reportForeignUiPaste,
+    resolveUiPasteSource,
+} from "./uiEditorClipboardBridge";
 import {
     filterSelectionToTopLevelMovers,
     getContainersToUngroup,
@@ -128,28 +136,72 @@ export function resolvePasteTargetAfterSelection(
     return { parentId: parent.id, beforeChildId };
 }
 
+/**
+ * Snapshot a selection without touching either clipboard.
+ *
+ * Duplicate needs the same snapshot a copy makes and none of what a copy *means*: pressing Ctrl+D
+ * used to fill the clipboard, which is invisible while the clipboard is this window's own and is
+ * not once it is the machine's - the author's copied text would be gone for a gesture that never
+ * claimed to take it.
+ */
+function snapshotSelection(
+    documentService: UIDocumentService,
+    localBp: LocalBlueprintService,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+    stamp?: { copyId?: string; source?: UIEditorClipboardPayload["source"] },
+): UIEditorClipboardPayload | null {
+    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
+        return null;
+    }
+    return buildUiEditorClipboardPayload({
+        document: documentService.getDocument(),
+        surfaceId,
+        selectedElementIds: selection.elementIds,
+        getWidgetMainBlueprint: (sid, eid) => getWidgetMainBlueprintSnapshot(localBp, sid, eid),
+        getWidgetValueBlueprint: (sid, eid, propPath) =>
+            getWidgetValueBlueprintSnapshot(localBp, sid, eid, propPath),
+        ...(stamp ?? {}),
+    });
+}
+
+/**
+ * Copy the selection: into this window, and onto the machine's clipboard.
+ *
+ * The in-window copy is what the gesture returns on, so copying stays synchronous and a paste in
+ * this same window is exactly the paste it has always been. Reaching the other project windows is
+ * one round trip through the main process and is left to run on its own - see
+ * `uiEditorClipboardBridge`.
+ */
 export function uiEditorCopySelection(
     documentService: UIDocumentService,
     localBp: LocalBlueprintService,
     surfaceId: string,
     selection: UIElementSelection | null,
 ): boolean {
-    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const payload = buildUiEditorClipboardPayload({
-        document: doc,
-        surfaceId,
-        selectedElementIds: selection.elementIds,
-        getWidgetMainBlueprint: (sid, eid) => getWidgetMainBlueprintSnapshot(localBp, sid, eid),
-        getWidgetValueBlueprint: (sid, eid, propPath) =>
-            getWidgetValueBlueprintSnapshot(localBp, sid, eid, propPath),
-    });
+    const environment = readUiClipboardEnvironment(documentService);
+    // Without a project behind it there is nothing to stamp and nowhere to publish to, and the copy
+    // stays what it was: this window's own.
+    const copyId = environment?.uuidService?.generate();
+    const payload = snapshotSelection(documentService, localBp, surfaceId, selection, environment && copyId
+        ? {
+            copyId,
+            source: {
+                // The identity key rather than the spelling the author opened the project by: it is
+                // never shown, only compared, and the story clipboard's stamp carries the same form.
+                path: normalizeProjectPath(environment.projectPath),
+                identifier: environment.projectIdentifier,
+                name: environment.projectName,
+            },
+        }
+        : undefined);
     if (!payload) {
         return false;
     }
     setUiEditorClipboard(payload);
+    if (environment && copyId) {
+        publishUiClipboard(environment, payload);
+    }
     return true;
 }
 
@@ -175,38 +227,87 @@ export function uiEditorCutSelection(
     return true;
 }
 
+/**
+ * Write a payload into the surface and select what came out of it.
+ *
+ * The one place a clipboard payload becomes elements, whether it came from this window, from
+ * another project's, or from the duplicate gesture that never went near a clipboard at all.
+ */
+function applyClipboardPayload(
+    documentService: UIDocumentService,
+    stateService: UIEditorStateService,
+    surfaceId: string,
+    target: UIEditorPasteTarget,
+    payload: UIEditorClipboardPayload,
+): boolean {
+    const result = documentService.pasteClipboardPayload(surfaceId, target.parentId, target.beforeChildId, payload);
+    if (!result.ok || result.newRootIds.length === 0) {
+        return false;
+    }
+    stateService.setUIElementSelection({
+        editor: "ui",
+        surfaceId,
+        elementIds: result.newRootIds,
+        primaryId: result.newRootIds[result.newRootIds.length - 1],
+    });
+    return true;
+}
+
+/**
+ * The whole of a paste, from wherever the payload turns out to be.
+ *
+ * Asynchronous because the machine's clipboard is held by the main process, and because a payload
+ * from another project has its files imported before its elements are written - an asset that
+ * arrives first makes its widget draw on the spot rather than after a second gesture.
+ *
+ * `resolveTarget` runs after those awaits rather than before them, against the document as it is by
+ * then: a freeze, an undo or another editor's write can land while the clipboard is being read, and
+ * a target picked before that could name an element the surface no longer has.
+ */
+async function pasteFromClipboard(
+    documentService: UIDocumentService,
+    stateService: UIEditorStateService,
+    surfaceId: string,
+    resolveTarget: () => UIEditorPasteTarget | null,
+): Promise<boolean> {
+    const source = await resolveUiPasteSource(documentService);
+    if (!source) {
+        return false;
+    }
+    if (!source.foreign) {
+        const target = resolveTarget();
+        return target ? applyClipboardPayload(documentService, stateService, surfaceId, target, source.payload) : false;
+    }
+    const report = await importForeignUiAssets(source);
+    // Elements written into a frozen workspace reach the in-memory document, are refused at the
+    // file-system boundary, and are gone again when the thaw re-reads it: a paste that looked like
+    // it worked right up until the workspace came back.
+    if (report.frozen || source.environment?.isFrozen()) {
+        return false;
+    }
+    const target = resolveTarget();
+    if (!target || !applyClipboardPayload(documentService, stateService, surfaceId, target, source.payload)) {
+        return false;
+    }
+    reportForeignUiPaste(documentService, source, report);
+    return true;
+}
+
 export function uiEditorPaste(
     documentService: UIDocumentService,
     localBp: LocalBlueprintService,
     stateService: UIEditorStateService,
     surfaceId: string,
     input: { hitElementId?: string | null; primaryElementId?: string | null },
-): boolean {
-    const payload = getUiEditorClipboard();
-    if (!payload) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const resolved = resolveInsertTargetParent(doc, surfaceId, {
-        hitElementId: input.hitElementId,
-        primaryElementId: input.primaryElementId,
-    });
-    if (!resolved) {
-        return false;
-    }
-    const result = documentService.pasteClipboardPayload(surfaceId, resolved.parentId, null, payload);
-    if (!result.ok || result.newRootIds.length === 0) {
-        return false;
-    }
-    const primary = result.newRootIds[result.newRootIds.length - 1];
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: result.newRootIds,
-        primaryId: primary,
-    });
+): Promise<boolean> {
     void localBp;
-    return true;
+    return pasteFromClipboard(documentService, stateService, surfaceId, () => {
+        const resolved = resolveInsertTargetParent(documentService.getDocument(), surfaceId, {
+            hitElementId: input.hitElementId,
+            primaryElementId: input.primaryElementId,
+        });
+        return resolved ? { parentId: resolved.parentId, beforeChildId: null } : null;
+    });
 }
 
 export function uiEditorPasteAfterSelection(
@@ -215,29 +316,10 @@ export function uiEditorPasteAfterSelection(
     stateService: UIEditorStateService,
     surfaceId: string,
     selection: UIElementSelection | null,
-): boolean {
-    const payload = getUiEditorClipboard();
-    if (!payload) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const target = resolvePasteTargetAfterSelection(doc, surfaceId, selection);
-    if (!target) {
-        return false;
-    }
-    const result = documentService.pasteClipboardPayload(surfaceId, target.parentId, target.beforeChildId, payload);
-    if (!result.ok || result.newRootIds.length === 0) {
-        return false;
-    }
-    const primary = result.newRootIds[result.newRootIds.length - 1];
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: result.newRootIds,
-        primaryId: primary,
-    });
+): Promise<boolean> {
     void localBp;
-    return true;
+    return pasteFromClipboard(documentService, stateService, surfaceId, () =>
+        resolvePasteTargetAfterSelection(documentService.getDocument(), surfaceId, selection));
 }
 
 /** Paste using an explicit parent (e.g. context menu on outline row). */
@@ -248,24 +330,9 @@ export function uiEditorPasteIntoParent(
     surfaceId: string,
     targetParentId: string,
     beforeChildId: string | null = null,
-): boolean {
-    const payload = getUiEditorClipboard();
-    if (!payload) {
-        return false;
-    }
-    const result = documentService.pasteClipboardPayload(surfaceId, targetParentId, beforeChildId, payload);
-    if (!result.ok || result.newRootIds.length === 0) {
-        return false;
-    }
-    const primary = result.newRootIds[result.newRootIds.length - 1];
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: result.newRootIds,
-        primaryId: primary,
-    });
+): Promise<boolean> {
     void localBp;
-    return true;
+    return pasteFromClipboard(documentService, stateService, surfaceId, () => ({ parentId: targetParentId, beforeChildId }));
 }
 
 export function uiEditorDuplicateSelection(
@@ -278,8 +345,8 @@ export function uiEditorDuplicateSelection(
     if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
         return false;
     }
-    const copied = uiEditorCopySelection(documentService, localBp, surfaceId, selection);
-    if (!copied) {
+    const payload = snapshotSelection(documentService, localBp, surfaceId, selection);
+    if (!payload) {
         return false;
     }
     const doc = documentService.getDocument();
@@ -299,7 +366,7 @@ export function uiEditorDuplicateSelection(
     const lastTop = tops[tops.length - 1];
     const idx = parent.childrenIds.indexOf(lastTop);
     const beforeChildId = idx >= 0 && idx < parent.childrenIds.length - 1 ? parent.childrenIds[idx + 1] : null;
-    return uiEditorPasteIntoParent(documentService, localBp, stateService, surfaceId, parentId, beforeChildId);
+    return applyClipboardPayload(documentService, stateService, surfaceId, { parentId, beforeChildId }, payload);
 }
 
 export function uiEditorDeleteSelection(

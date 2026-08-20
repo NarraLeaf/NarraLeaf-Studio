@@ -154,10 +154,22 @@ export const lint = {
             // 同一件事换个说法就是命令词汇那轮消灭掉的东西。
             messageCharacter: "场景中没有任何行让 {object} 登场，该行没有可操作的对象",
         },
+        storyDeclaredNeverShown: {
+            title: "未显示的舞台对象",
+            description: "创建行声明的对象无任何一行显示",
+            message: "{object} 在该行声明，无任何一行显示",
+        },
         storyStageObjectDuplicate: {
             title: "重复的舞台对象",
             description: "两行创建同一个舞台名称，后一行沿用前一行创建的对象",
             message: "{object} 已在上方创建，该行操作的是已创建的对象",
+        },
+        storyCharacterMissing: {
+            title: "不存在的角色",
+            description: "该行指定的角色不在本工程中",
+            // 句子里不写出对象：引用解析不到时只剩存下来的 id，而它是一个 UUID，
+            // 把 UUID 写进报告等于给作者一个在工程里搜不到的词。
+            message: "该行指定的角色不在本工程中",
         },
         storyTransitionUnavailable: {
             title: "转场不可用",
@@ -176,6 +188,11 @@ export const lint = {
             messageChoice: "指向的选项已不存在",
             messageCharacter: "指向的角色已不存在",
             messageTextKey: "指向的文本键在工程中未声明",
+        },
+        blueprintElementRefMissing: {
+            title: "控件缺失",
+            description: "节点绑定的控件在工程中已不存在",
+            message: "绑定的控件已不存在",
         },
         blueprintUnreachableNode: {
             title: "无法到达的节点",
@@ -201,6 +218,16 @@ export const lint = {
             title: "未绑定行为的按钮",
             description: "可点击的控件没有任何事件监听",
             message: "点击后不会执行任何内容",
+        },
+        uiComponentMissing: {
+            title: "缺失的组件",
+            description: "引用了工程中不存在的组件的实例",
+            message: "该实例引用的组件在此工程中不存在",
+        },
+        uiFrameTargetMissing: {
+            title: "缺失的嵌入页面",
+            description: "页面控件嵌入了工程中不存在的页面",
+            message: "该页面控件嵌入的页面在此工程中不存在",
         },
         blueprintSaveFieldEmpty: {
             title: "未填写的存档字段",

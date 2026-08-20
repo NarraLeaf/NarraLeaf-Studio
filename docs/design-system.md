@@ -110,7 +110,7 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 ## 5. 交互态（统一写法）
 
-- **hover**：行 / 图标按钮用两档——弱 `hover:bg-edge-subtle`、强 `hover:bg-edge`。
+- **hover**：行 / 图标按钮一律 `hover:bg-fill`——共享 `Button` 的 ghost 变体内部就是它,手写行照抄这一档才与组件对齐;要更轻一档(密集列表、已有底色上再叠一层)用 `hover:bg-fill-subtle`。**hover 底不写 `edge` 系**:`edge` 只给 `border-`/`divide-`(见 §1),本条早先误写成 `hover:bg-edge-subtle` / `hover:bg-edge`,全仓没有一处是照它写的。
 - **focus**：统一 `focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`;容器型输入用 `focus-within:` 变体。禁止 `focus:border-*` 与裸 hex ring。
 - **selected / active**：填充式 `bg-primary/15 text-fg`;导航类列表可加左竖条 `border-l-2 border-primary`;tab 用底部下划线 `bg-primary`。
 - **disabled**：统一 `disabled:opacity-50 disabled:cursor-not-allowed`。

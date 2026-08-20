@@ -199,8 +199,16 @@ export type StoryCommandLineRef =
      * call rather than a fact about the line.
      */
     | { kind: "variable"; target: StoryVariableRef }
-    /** A row in this scene — the label a `/goto` lands on, or the row that declares a stage object. */
-    | { kind: "block"; blockId: string };
+    /**
+     * A row — the label a `/goto` lands on, or the row that declares a stage object.
+     *
+     * `sceneId` is absent for all but one of them, and absent MEANS "this row's own scene": every
+     * declaration index a line reads is scene-scoped, because every stage object but one ends with
+     * the scene that made it. The exception is the ambience overlay, which the engine holds at game
+     * level, so the row that declares the rain a scene hides is usually somewhere else entirely -
+     * and a link to it has to say where.
+     */
+    | { kind: "block"; blockId: string; sceneId?: string };
 
 /**
  * One pointing word inside the line: where it sits, and what it points at.
@@ -588,6 +596,32 @@ function stageObjectLink(
     }
     const key = name?.trim().toLowerCase();
     return blockLink(lookups, key ? lookups.commandContext?.stageObjectSources?.[kind]?.[key] : undefined);
+}
+
+/**
+ * The row that declares an ambience overlay, wherever in the story it is.
+ *
+ * The one link that may leave this scene, because the overlay is the one stage object that outlives
+ * one: a `/hide rain` is very often written in a scene that never mentions rain otherwise, and being
+ * taken to the row that started it is exactly what an author is asking for there.
+ *
+ * The row's own reference is still tried first and still wins, on the same terms as every other
+ * subject - it is the stable anchor and it follows a rename - but only when it points into THIS
+ * scene, which is all a bare block id can address. Anything else resolves by name through the
+ * story-wide index, which is also how the compiler resolves it.
+ */
+function vfxLink(
+    lookups: StoryCommandLineLookups,
+    ref: { builtin?: string; sourceBlockId?: string } | undefined,
+    name: string | undefined,
+): Pick<Arg, "link"> {
+    const bound = blockLink(lookups, ref?.sourceBlockId);
+    if (bound.link) {
+        return bound;
+    }
+    const key = name?.trim().toLowerCase();
+    const declared = key ? lookups.commandContext?.vfxSources?.[key] : undefined;
+    return declared ? { link: { kind: "block", blockId: declared.blockId, sceneId: declared.sceneId } } : {};
 }
 
 /**
@@ -1209,19 +1243,26 @@ function vfxSentence(
         return {
             commandId,
             args: [
-                positional("clip", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
-                    ...assetLink(lookups, payload.assetId),
-                }),
+                // A seeded overlay says its weather WORD in the slot a clip would name, because that
+                // is what the author typed and what the line has to take back: printed as a clip that
+                // is not there, the row read as an overlay with no source at all, and re-typing it
+                // produced exactly that. No picker on this branch - the source select in the
+                // inspector is what swaps a seed for a clip, and it clears the parameters of
+                // whichever it left behind, which a slot-level pick could not do.
+                payload.seed
+                    ? positional("clip", payload.seed.seed, { enum: true })
+                    : positional("clip", assetWord(lookups, payload.assetId), {
+                        ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                        ...assetLink(lookups, payload.assetId),
+                    }),
                 arg("name", name),
                 arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
-                duration,
             ],
         };
     }
     const object = {
         ...(pickStageObject(lookups, "vfx", name, next => retargetActionable(payload, lookups, "vfx", next)) ?? {}),
-        ...stageObjectLink(lookups, "vfx", payload.target, name),
+        ...vfxLink(lookups, payload.target, name),
     };
     if (payload.operation === "setRate") {
         return {
@@ -1231,7 +1272,18 @@ function vfxSentence(
     }
     // `/show` and `/hide` carry the fade an overlay waits out; `/pause` and `/resume` take the name alone.
     const fades = payload.operation === "show" || payload.operation === "hide";
-    return { commandId, args: [positional("target", name, object), fades ? duration : null] };
+    // Only on the way in: a fade out ends at zero with the clip stopped, so neither has anything
+    // to say there - and `/hide` does not take either word.
+    const showing = payload.operation === "show";
+    return {
+        commandId,
+        args: [
+            positional("target", name, object),
+            fades ? duration : null,
+            showing ? arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }) : null,
+            showing ? arg("rate", numberValue(payload.rate), { apply: next => ({ ...payload, rate: Number(next) }) }) : null,
+        ],
+    };
 }
 
 /**

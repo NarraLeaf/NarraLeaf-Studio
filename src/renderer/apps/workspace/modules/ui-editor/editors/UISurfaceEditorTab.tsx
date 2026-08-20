@@ -9,6 +9,7 @@ import {
 } from "react";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
+import { useUiClipboardSync } from "@/lib/ui-editor/commands/useUiClipboardSync";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
 import { MousePointer2, Move, Play, Magnet, PanelsTopLeft } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
@@ -416,6 +417,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             }
         });
     }, [documentService, inputDialog, stateService, surface, t]);
+
+    useUiClipboardSync(Boolean(surface && documentService));
 
     useUIEditorKeybindings({
         tabId,
