@@ -151,12 +151,12 @@ const userDataDir = useSiblingUserData
     });
 
 /**
- * The folder holding the player's copy of this game, and - when the author said so - the player's
- * files with it.
+ * The folder holding the player's copy of this game: where a patch is looked for, and - when the
+ * author said so - where the player's files are kept.
  *
- * Resolved once here so that "where this game is" has one answer. Patch discovery asks the same
- * question below and still answers it for itself, because the two do not agree on macOS: a patch is
- * a file the player drops in, and where they drop it is not settled.
+ * One answer for both, because they are the same question to the person asking it. A player who
+ * moves an installed game to another drive expects their progress to travel with the folder, and
+ * looks in that folder first for anywhere to put a patch.
  */
 const gameRootDir = resolveGameRootDir({
     platform: process.platform,
@@ -323,13 +323,11 @@ void app.whenReady().then(async () => {
         return;
     }
     resources = await createRuntimeResources(appDir, {
-        // Where a player puts a patch. `resourcesPath` rather than `__dirname`
-        // because this module lives inside the archive: its own directory is not
-        // a place anybody can drop a file. One level above the resources folder is
-        // the folder that holds the executable, which is the folder a player has.
-        // Unpackaged runs (preview, a compiled app dir started by hand) have no
-        // such layout, so they take the app dir's parent.
-        gameRootDir: app.isPackaged ? path.dirname(process.resourcesPath) : path.resolve(appDir, ".."),
+        // Where a player puts a patch: the folder their copy of the game sits in,
+        // which is the first place anyone looks for one. The same folder the
+        // player's files may sit in, resolved by the same function, so a player
+        // told where their saves are has been told where a patch goes.
+        gameRootDir,
         // Searched as well, so a patch can outlive reinstalling the game.
         userDataDir,
         // What applied, and what did not, is the only trace a patch leaves.
