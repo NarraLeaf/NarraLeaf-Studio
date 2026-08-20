@@ -323,7 +323,7 @@ describe("asset set pins", () => {
         };
 
         withLocale("ja", () => {
-            expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!)).toBe(JA_ASSET);
+            expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!, undefined)).toBe(JA_ASSET);
         });
     });
 
@@ -337,7 +337,7 @@ describe("asset set pins", () => {
         };
 
         withLocale("ja", () => {
-            expect(resolveDataPinValue(graph, "consumer", "asset", {})).toBe(JA_ASSET);
+            expect(resolveDataPinValue(graph, "consumer", "asset", {}, undefined)).toBe(JA_ASSET);
         });
     });
 
@@ -347,7 +347,7 @@ describe("asset set pins", () => {
         };
 
         withLocale("ja", () => {
-            expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!)).toBe(SET);
+            expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!, undefined)).toBe(SET);
         });
     });
 
@@ -356,6 +356,6 @@ describe("asset set pins", () => {
             nodes: { n1: { type: "nl.setImageAsset", params: { asset: SET }, assetVariants: variants } },
         };
 
-        expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!)).toBe(SET);
+        expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!, undefined)).toBe(SET);
     });
 });
