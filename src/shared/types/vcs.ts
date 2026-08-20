@@ -641,6 +641,30 @@ export interface VcsServerDiscovery {
     authority: { sha256: string };
     /** The server's own version, for a support conversation. */
     version: string;
+    /**
+     * What this deployment offers beyond the protocol every server answers.
+     *
+     * Opaque names, kept as they came: a name this Studio does not know is still worth
+     * recording, because the Studio that knows it is the next one. Empty when the server
+     * named none, which is every server older than this field.
+     */
+    capabilities: string[];
+}
+
+/**
+ * What a server says it is, kept beside the session that reaches it.
+ *
+ * Carried from the answer the wizard already read rather than asked for again: the author
+ * has just been shown what answered at that address, and a second reading is a second
+ * chance for the two to differ.
+ */
+export interface VcsServerDescription {
+    /** What the deployment calls itself. */
+    name: string;
+    /** The server's own version, for a support conversation. */
+    version: string;
+    /** What it offers, as opaque names. */
+    capabilities: string[];
 }
 
 /**
@@ -680,6 +704,19 @@ export interface VcsServerSession {
     account: VcsServerAccount;
     /** When this installation signed in. Epoch ms. */
     signedInAt: number;
+    /**
+     * What the server called itself when it was added.
+     *
+     * **Absent on a session stored before Studio kept it**, and that is a supported
+     * state rather than a gap to migrate: nobody is asked to add a server again for a
+     * label, so a session without one reads as its address until `vcs.refreshServer`
+     * asks the server. The address stays the identity in either case.
+     */
+    name?: string;
+    /** The server's version as it read then. Absent for the same reason as {@link name}. */
+    version?: string;
+    /** What it offered then, as opaque names. Absent for the same reason as {@link name}. */
+    capabilities?: string[];
 }
 
 /**

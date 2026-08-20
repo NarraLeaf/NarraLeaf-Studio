@@ -40,7 +40,7 @@ import type { AssetExportEntry } from "@shared/types/assetExport";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -571,8 +571,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         listServers: () =>
             ipcClient.invoke(IPCEventType.vcsListServers, {}) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         /** Goes to the network. Both addresses may be empty: the token usually carries them. */
-        addServer: (authUrl: string, remoteUrl: string, token: string) =>
-            ipcClient.invoke(IPCEventType.vcsAddServer, { authUrl, remoteUrl, token }) as Promise<RequestStatus<VcsAddServerOutcome>>,
+        addServer: (authUrl: string, remoteUrl: string, token: string, description?: VcsServerDescription) =>
+            ipcClient.invoke(IPCEventType.vcsAddServer, { authUrl, remoteUrl, token, description }) as Promise<RequestStatus<VcsAddServerOutcome>>,
+        /** Goes to the network. Records what the server says it is; changes no sign-in. */
+        refreshServer: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.vcsRefreshServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         forgetServer: (remoteOrigin: string) =>
             ipcClient.invoke(IPCEventType.vcsForgetServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         /** Goes to the network. The list is asked for every time; nothing here caches it. */

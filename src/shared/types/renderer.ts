@@ -71,7 +71,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -821,8 +821,25 @@ export interface RendererPreloadedInterface {
          *
          * **Goes to the network.** Pass empty strings for the two addresses: a token
          * carries both, and they are asked for only after this answers that it does not.
+         *
+         * `description` is what `probeServer` just answered. Passing it is how the server
+         * keeps its own name without this reaching the same address a second time.
          */
-        addServer(authUrl: string, remoteUrl: string, token: string): Promise<RequestStatus<VcsAddServerOutcome>>;
+        addServer(
+            authUrl: string,
+            remoteUrl: string,
+            token: string,
+            description?: VcsServerDescription,
+        ): Promise<RequestStatus<VcsAddServerOutcome>>;
+        /**
+         * Ask one server what it is now. **Goes to the network.**
+         *
+         * Records the name, version and capabilities it answers with, and nothing else:
+         * the account and the addresses are untouched, so this is not a sign-in. A server
+         * added before Studio kept any of that is what this exists for. One that does not
+         * answer leaves its record as it was.
+         */
+        refreshServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /** Take a server off this machine, token and record together. Local. */
         forgetServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /**
