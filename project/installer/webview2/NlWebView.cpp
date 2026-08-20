@@ -270,8 +270,21 @@ void attach_message_handler() {
                 const std::wstring message(raw);
                 CoTaskMemFree(raw);
 
+                // Messages beginning with "@" are answered here rather than queued, because the
+                // script is not always in a position to answer them: during the install itself
+                // NSIS is running a section on another thread and no page loop is polling. Pressing
+                // the installer's own (hidden) buttons works from any page, which is what lets one
+                // document drive the whole wizard.
                 if (message == L"@drag") {
                     begin_window_drag();
+                    return S_OK;
+                }
+                if (message == L"@next" && g_host.top != nullptr) {
+                    PostMessageW(g_host.top, WM_COMMAND, IDOK, 0);
+                    return S_OK;
+                }
+                if (message == L"@cancel" && g_host.top != nullptr) {
+                    PostMessageW(g_host.top, WM_COMMAND, IDCANCEL, 0);
                     return S_OK;
                 }
 
