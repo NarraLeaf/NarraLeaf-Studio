@@ -177,15 +177,15 @@ export const uiEditor = {
             other: "{count} 处引用未解析",
         },
         surfacePasted: {
-            one: "已添加 {count} 个界面",
-            other: "已添加 {count} 个界面",
+            one: "已粘贴 {count} 个界面",
+            other: "已粘贴 {count} 个界面",
         },
         surfacePastedFrom: {
-            one: "已从 {project} 添加 {count} 个界面",
-            other: "已从 {project} 添加 {count} 个界面",
+            one: "已从 {project} 粘贴 {count} 个界面",
+            other: "已从 {project} 粘贴 {count} 个界面",
         },
         slotTaken: "{slot} 槽位已有一个游戏界面",
-        surfaceNotAdded: "无法添加该界面",
+        surfaceNotAdded: "无法粘贴该界面",
     },
     templateStore: {
         open: "从模板开始",

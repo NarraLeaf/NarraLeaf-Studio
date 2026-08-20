@@ -182,15 +182,15 @@ export const uiEditor = {
             other: "{count} 件の参照が未解決",
         },
         surfacePasted: {
-            one: "{count} 個のインターフェースを追加した",
-            other: "{count} 個のインターフェースを追加した",
+            one: "{count} 個のインターフェースを貼り付けた",
+            other: "{count} 個のインターフェースを貼り付けた",
         },
         surfacePastedFrom: {
-            one: "{project} から {count} 個のインターフェースを追加した",
-            other: "{project} から {count} 個のインターフェースを追加した",
+            one: "{project} から {count} 個のインターフェースを貼り付けた",
+            other: "{project} から {count} 個のインターフェースを貼り付けた",
         },
         slotTaken: "{slot} スロットにはすでにゲーム UI がある",
-        surfaceNotAdded: "このインターフェースを追加できなかった",
+        surfaceNotAdded: "このインターフェースを貼り付けられなかった",
     },
     templateStore: {
         open: "テンプレートから始める",

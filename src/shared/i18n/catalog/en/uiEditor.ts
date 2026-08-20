@@ -188,15 +188,15 @@ export const uiEditor = {
             other: "{count} references unresolved",
         },
         surfacePasted: {
-            one: "{count} interface added",
-            other: "{count} interfaces added",
+            one: "{count} interface pasted",
+            other: "{count} interfaces pasted",
         },
         surfacePastedFrom: {
-            one: "{count} interface added from {project}",
-            other: "{count} interfaces added from {project}",
+            one: "{count} interface pasted from {project}",
+            other: "{count} interfaces pasted from {project}",
         },
         slotTaken: "The {slot} slot already has a Game UI",
-        surfaceNotAdded: "The interface could not be added",
+        surfaceNotAdded: "The interface could not be pasted",
     },
     templateStore: {
         open: "Start from a template",
