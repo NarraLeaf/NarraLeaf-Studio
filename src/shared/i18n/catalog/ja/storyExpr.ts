@@ -50,6 +50,7 @@ export const storyExpr = {
         badValue: "\"{value}\" はこのスロットに合わない",
         unterminatedQuote: "引用符が閉じていない",
         unknownAsset: "\"{value}\" という{assetType}がない",
+        unknownAssetOrSet: "\"{value}\" という{assetType}もアセットセットもない",
         unknownCharacter: "\"{value}\" というキャラクターがいない",
         unknownScene: "\"{value}\" というシーンがない",
         unknownAudioTrack: "\"{value}\" というオーディオトラックがない",
