@@ -763,6 +763,14 @@ export const workspace = {
                 sync: "从服务器获取",
                 syncing: "正在从服务器获取版本…",
                 syncedNothing: "已是最新",
+                publish: {
+                    publishing: "正在把此项目放到服务器上…",
+                    noToken: "本机无法请求这台服务器登记该项目，请用令牌重新添加它。",
+                    refused: "这台服务器拒绝了此处登录的账号，项目未被登记。",
+                    unreachable: "这台服务器没有响应，项目未被登记。",
+                    wrongRepository: "这台服务器登记的是另一个项目，因此没有上传任何内容。",
+                    unknown: "这台服务器没有登记该项目。",
+                },
                 signIn: {
                     required: "连接项目前需要先登录该服务器。",
                     open: "登录此服务器",

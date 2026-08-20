@@ -7,7 +7,8 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
 import { VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
-import type { RevisionId, VcsAvailability, VcsMergeState, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncState } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsMergeState, VcsServerProjectsProblem, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncState } from "@shared/types/vcs";
+import type { TranslationKey } from "@shared/i18n";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
     collapseCheckpoints,
@@ -73,6 +74,15 @@ export type VersionBusyKind =
     /** Sending revisions to the server. Nothing local changes, so a failure is harmless. */
     | "push"
     /**
+     * Putting the project on a server for the first time: register, connect, send.
+     *
+     * Its own state rather than `push`, because it is the one of these that takes as long
+     * as the project is big AND changes what the server holds. An author watching a
+     * spinner that says "sending" while three separate things happen has no way to know
+     * which of them the failure below it belongs to.
+     */
+    | "publish"
+    /**
      * Bringing the server's revisions down. Writes the working tree and re-reads every
      * document, so it is in the same class as a restore rather than in the same class as
      * a push.
@@ -99,6 +109,26 @@ export const VERSION_HISTORY_PAGE = 50;
  * all three places.
  */
 const VCS_AUTHOR_NAME_SETTING = "versionControl.authorName";
+
+/**
+ * What the rail says when a server would not record the project being published.
+ *
+ * Its own table rather than the launcher's, because the reader is somewhere else and so
+ * is what they can do next: the launcher is listing what a server holds, and this is one
+ * project that did not get on to it. Every sentence therefore names the publish rather
+ * than the server.
+ *
+ * A server's own words are deliberately not shown for `rejected`. They are English
+ * written for whoever runs it, and the rail is 320px wide.
+ */
+const PUBLISH_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
+    "no-token": "workspace.shell.versionControl.server.publish.noToken",
+    refused: "workspace.shell.versionControl.server.publish.refused",
+    unreachable: "workspace.shell.versionControl.server.publish.unreachable",
+    "wrong-repository": "workspace.shell.versionControl.server.publish.wrongRepository",
+    rejected: "workspace.shell.versionControl.server.publish.unknown",
+    unknown: "workspace.shell.versionControl.server.publish.unknown",
+};
 
 export interface VersionFailure {
     /**
@@ -320,6 +350,18 @@ export interface VersionSurface {
      * knows whether to close.
      */
     setRemote: (url: string | null) => Promise<boolean>;
+    /**
+     * Put this project on a server: register it there, connect it, send it.
+     *
+     * **Contacts the server, where {@link setRemote} does not**, and is the act an author
+     * means by connecting a project that already has versions in it. Answers whether the
+     * whole of it went through, so the dialog knows whether to close; every way it can
+     * fail leaves its sentence in {@link failure}, naming the step that did not go.
+     *
+     * `name` is what the project is called on the server, which is what a collaborator
+     * clones by.
+     */
+    publish: (remoteOrigin: string, name: string) => Promise<boolean>;
     /**
      * Who this installation is signed in to that server as, or null for nobody.
      *
@@ -943,6 +985,53 @@ export function useVersionSurface(): VersionSurface {
     }, [services]);
 
     /**
+     * Put this project on a server.
+     *
+     * Three acts behind one press, and what this owns is which of them the author is
+     * told about. The first answers with a coded problem, because "the server would not
+     * record this project" had no sentence anywhere before; the other two throw, with
+     * the words the backend and the manager already refuse in - including the sign-in
+     * refusal, which is why the same `remoteNeedsSignIn` reading as {@link setRemote}
+     * runs here. A publish stopped for want of a sign-in has to leave the way in on
+     * screen, exactly as connecting does.
+     *
+     * The address is re-read rather than assumed on the way out. Connecting is the
+     * middle step and may or may not have happened by the time this resolves, and the
+     * row that draws the server is the one that has to be right about it.
+     */
+    const publish = useCallback(async (remoteOrigin: string, name: string): Promise<boolean> => {
+        if (!services || busy !== null) {
+            return false;
+        }
+        setBusy("publish");
+        setFailure(null);
+        try {
+            const outcome = await services.versionControl.publish(remoteOrigin, name);
+            if (!alive.current) return outcome.ok;
+            if (!outcome.ok) {
+                setFailure({ text: translate(PUBLISH_PROBLEM_KEYS[outcome.problem.kind]), tone: "failure" });
+                return false;
+            }
+            setRemoteUrl(await services.versionControl.getRemote());
+            setSyncState(await services.versionControl.getSyncState());
+            return true;
+        } catch (thrown) {
+            if (alive.current) {
+                const needsSignIn = vcsSignInRequired(rawMessage(thrown));
+                setRemoteNeedsSignIn(needsSignIn);
+                setFailure(describeFailure(thrown));
+                // Whatever the connect step managed to write. A publish that got as far
+                // as the address and no further is a project WITH a server, and the row
+                // saying so is where the next attempt starts from.
+                setRemoteUrl(await services.versionControl.getRemote().catch(() => null));
+            }
+            return false;
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, busy]);
+
+    /**
      * Present a token to the server.
      *
      * The outcome is kept whichever way it went. A refusal is the more useful of the two
@@ -1168,6 +1257,7 @@ export function useVersionSurface(): VersionSurface {
         merge,
         checkRemote,
         setRemote,
+        publish,
         remoteNeedsSignIn,
         serverSession,
         signIn,

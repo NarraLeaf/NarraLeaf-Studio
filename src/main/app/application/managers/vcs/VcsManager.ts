@@ -16,6 +16,7 @@ import type {
     VcsMergeSideChoice,
     VcsMergeState,
     VcsPasswordSignInOutcome,
+    VcsPublishOutcome,
     VcsRepositoryInfo,
     VcsPushResult,
     VcsRestoreOptions,
@@ -73,6 +74,10 @@ import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from ".
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
 import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
+// Two plain file reads and nothing of Lore's, which is the whole reason it exists: the
+// repository id of a project that has not been opened has to be readable without taking
+// the exclusive lock on it.
+import { readRepositoryId } from "./localRepositories";
 import { listServerMembers } from "./serverMembers";
 import { signInWithPassword } from "./serverPassword";
 import {
@@ -635,8 +640,8 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * Put a project under version control, creating the repository and its first
-     * commit. Fails if the directory already has one.
+     * Put a project under version control, recording its first version. Fails if the
+     * directory already holds a repository that has one.
      *
      * Never called on Studio's behalf. Creating a repository writes `.lore/` into the
      * author's project and takes an exclusive lock on it, so it is theirs to decide.
@@ -644,7 +649,10 @@ export class VcsManager extends Manager {
      * Ordering matters and runs against the grain of the rest of this class: every
      * other entry point starts from {@link sessionFor}, which cannot exist yet - it
      * reads the repository id off the revision history, and there is no history until
-     * this method makes one. So init works on bare globals and takes no session.
+     * this method makes one. So init works on bare globals and takes no session. That
+     * is also true of a repository this finds rather than creates: a clone with no
+     * revisions in it has no session either, which is why the release below has to run
+     * for that case as much as for a fresh one.
      */
     public async initRepository(
         projectPath: string,
@@ -654,11 +662,18 @@ export class VcsManager extends Manager {
             const backend = await this.requireBackend();
             const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
-            // Decided before the attempt, because the cleanup below must not run when
-            // the answer is "it was already one": that path can have a LIVE SESSION on
-            // the same directory, and releasing the repository out from under it would
-            // leave an open store handle pointing at nothing.
-            const preexisting = backend.isRepositoryDirectory(root);
+            /**
+             * Whether this call is the only thing holding the repository.
+             *
+             * Cleared for one refusal and one only: a directory that was already a
+             * repository WITH revisions can have a LIVE SESSION on it - `isRepository`
+             * opens one on every project the workspace shows - and releasing the
+             * repository out from under that would leave an open store handle pointing
+             * at nothing. Every other way out of this block, including the empty
+             * repository that gets adopted and committed into, is a repository nothing
+             * else can have opened.
+             */
+            let held = true;
             try {
                 // Through the same resolver as every other write: the first commit's
                 // author must not be the one revision in the repository attributed
@@ -685,13 +700,16 @@ export class VcsManager extends Manager {
                         .then((identity) => identity.branch)
                         .catch(() => ""),
                 };
+            } catch (error) {
+                if (error instanceof backend.RepositoryExistsError) held = false;
+                throw error;
             } finally {
                 // No session was opened here, so nothing else in this class will ever
                 // let go of the repository - and Lore holds it open after the last
                 // call. Left held, the project directory cannot be moved or deleted
                 // and the author's own `lore` CLI blocks on the lock without an error.
                 // In the `finally` because a half-created repository holds it too.
-                if (!preexisting) {
+                if (held) {
                     await backend.releaseRepository(globals).catch((error) => {
                         this.app.logger.warn("[Vcs] Failed to release the repository after init", root, error);
                     });
@@ -1957,6 +1975,9 @@ export class VcsManager extends Manager {
      * within one call. Studio deliberately does not ask `loreserver` for a
      * repository itself: one made that way is one the server has no row for, and
      * a repository with no row is reachable by nobody at all.
+     *
+     * This makes a NEW, empty repository, which is the opposite of what an author with
+     * a project already on their disk wants. That is {@link publishProject}.
      */
     public async createServerProject(
         remoteOrigin: string,
@@ -1974,6 +1995,81 @@ export class VcsManager extends Manager {
             this.app.logger.info("[Vcs] Created", made.project.name, "on", remoteOrigin);
         }
         return made;
+    }
+
+    /**
+     * Put a project that already exists on to a server: register it, connect it, send it.
+     *
+     * **This is the act, and doing any two thirds of it is a state an author cannot read
+     * their way out of.** Registering alone leaves a row on the server with nothing behind
+     * it. Connecting alone leaves a project that pushes and cannot be cloned, which is what
+     * {@link setRemote} exists to prevent. Sending without either is refused by the server,
+     * because nothing on it reaches a repository that is not one of its projects.
+     *
+     * The order is forced and each step is the precondition of the next:
+     *
+     *  1. **Register**, carrying THIS repository's id. The server records the row under
+     *     that id and asks `loreserver` for nothing - the repository exists here, and the
+     *     copy that fills it is the one step 3 pushes. Nothing local has changed yet, so a
+     *     refusal here leaves the project exactly as it was.
+     *  2. **Connect**, which is {@link setRemote} unchanged: it writes the address and
+     *     registers the repository with `loreserver`, and rolls the address back itself if
+     *     that fails. The registration in step 1 is what makes it succeed - `loreserver`
+     *     announces the repository to the server, and a server with no row for it answers
+     *     that it is not a project of its own.
+     *  3. **Send**, which is {@link push} unchanged.
+     *
+     * **A failure in step 3 keeps the address.** By then the project IS on the server and
+     * IS registered, and neither can be undone from here; taking the address away would
+     * unpublish nothing, hide Send and Get, and be put straight back by the next attempt.
+     * What the author needs at that point is the backend's own sentence about why the send
+     * did not go, which is what they get.
+     *
+     * **The repository id is read off `.lore/id` and never out of the store.** Lore's lock
+     * is exclusive and blocking, so opening a repository another process holds does not
+     * fail - it never returns, and takes every later call with it. See `localRepositories.ts`.
+     *
+     * A project the server already holds is connected and not registered again, which is
+     * the second machine joining a project that is already published.
+     */
+    public async publishProject(
+        projectPath: string,
+        remoteOrigin: string,
+        name: string,
+    ): Promise<VcsPublishOutcome> {
+        const root = projectRoot(projectPath);
+        const repositoryId = readRepositoryId(root);
+        if (repositoryId === undefined) {
+            throw new Error(`${root} is not under version control, so there is nothing to publish`);
+        }
+
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+
+        // Asked rather than assumed, and it is the same question the launcher's list
+        // answers: a project already on this server is one somebody has published, and
+        // registering it a second time is refused by the server anyway.
+        const held = await listServerProjects(credentials);
+        if (!held.ok) return held;
+        const already = held.projects.some((project) => project.id.toLowerCase() === repositoryId);
+
+        if (!already) {
+            const registered = await createServerProject({ ...credentials, name, repositoryId });
+            if (!registered.ok) return registered;
+            this.app.logger.info("[Vcs] Registered", registered.project.name, "on", remoteOrigin, repositoryId);
+        }
+
+        await this.setRemote(projectPath, `${remoteOrigin}/${name}`);
+        if (already) {
+            // Today's behaviour for a project the server already holds: the address, and
+            // nothing sent. Whether this machine's versions belong on top of what is
+            // already there is a question the Send button asks with the state in front
+            // of the author, rather than one a connection answers for them.
+            return { ok: true };
+        }
+        await this.push(projectPath);
+        this.app.logger.info("[Vcs] Published", root, "to", remoteOrigin, "as", name);
+        return { ok: true };
     }
 
     /** Every session this installation has recorded, in the order they were written. */

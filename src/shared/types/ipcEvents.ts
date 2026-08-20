@@ -94,6 +94,7 @@ import type {
     VcsServerDescription,
     VcsServerProbe,
     VcsPasswordSignInOutcome,
+    VcsPublishOutcome,
     VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
@@ -381,6 +382,7 @@ export enum IPCEventType {
     vcsListServerMembers = "vcs.listServerMembers",
     vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsCreateServerProject = "vcs.createServerProject",
+    vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
@@ -1443,6 +1445,25 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { remoteOrigin: string; name: string; description?: string },
         response: VcsServerProjectOutcome;
+    };
+    /**
+     * Put the project that is open on to a server: register it, connect it, send it.
+     *
+     * **Goes to the network three times and writes on both ends.** The opposite act to
+     * the one above: that makes a new, empty repository on the server, and this puts the
+     * repository the author already has where everybody else can reach it.
+     *
+     * `name` is what the project is called on the server, which is the last segment of
+     * the address a collaborator clones by.
+     *
+     * The outcome answers for the first step alone; the other two refuse by throwing,
+     * with the same sentences `vcs.setRemote` and `vcs.push` already refuse with.
+     */
+    [IPCEventType.vcsPublishProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; remoteOrigin: string; name: string },
+        response: VcsPublishOutcome;
     };
     /**
      * Sign in to a server named by the token rather than by a project.

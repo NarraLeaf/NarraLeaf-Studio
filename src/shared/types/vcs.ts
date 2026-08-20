@@ -972,12 +972,19 @@ export type VcsAddServerOutcome =
  * directly, which happens on a machine whose keyring is unavailable and on one
  * that added the server before Studio kept tokens at all. The way out is to add
  * the server again with the token.
+ *
+ * `wrong-repository` is the one that can only happen while publishing: the server
+ * answered with a project whose repository is not the one it was asked to record,
+ * which is what a server too old to understand the request does. It is a refusal
+ * rather than a success because the project on screen is not this project, and
+ * pushing into it would be pushing into a repository nobody made.
  */
 export type VcsServerProjectsProblem =
     | { kind: "no-token" }
     | { kind: "refused" }
     | { kind: "rejected"; detail: string }
     | { kind: "unreachable" }
+    | { kind: "wrong-repository" }
     | { kind: "unknown" };
 
 /** What a server answered when asked for its projects. */
@@ -988,6 +995,23 @@ export type VcsServerProjectsOutcome =
 /** What a server answered when asked to make one. */
 export type VcsServerProjectOutcome =
     | { ok: true; project: VcsServerProject }
+    | { ok: false; problem: VcsServerProjectsProblem };
+
+/**
+ * How putting a project on to a server ended.
+ *
+ * **Only the first step of three answers this way.** Publishing registers the project,
+ * connects it and sends it, and the last two are the calls the rail already makes on
+ * their own - so they refuse by throwing, with the sentences and the sign-in offer that
+ * the rail already draws for them. What is left is the one step with no existing shape:
+ * the server would not record the project, for one of the reasons any question to a
+ * server is refused for.
+ *
+ * A refusal here means nothing was written: the address is untouched and no version has
+ * left the machine.
+ */
+export type VcsPublishOutcome =
+    | { ok: true }
     | { ok: false; problem: VcsServerProjectsProblem };
 
 /**

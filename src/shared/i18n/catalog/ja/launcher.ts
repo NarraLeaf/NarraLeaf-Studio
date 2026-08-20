@@ -71,7 +71,6 @@ export const launcher = {
             action: "サーバーを追加",
         },
         choose: "サーバーを選ぶ",
-        signedInAs: "{name} でサインイン中",
         newProject: "新しいプロジェクト",
         loading: "プロジェクトの一覧を読んでいる",
         noProjects: "このサーバーにプロジェクトはない",

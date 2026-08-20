@@ -17,6 +17,7 @@ import type {
     VcsLocalRepository,
     VcsServerProbe,
     VcsPasswordSignInOutcome,
+    VcsPublishOutcome,
     VcsServerMembersOutcome,
     VcsServerProjectDetailOutcome,
     VcsServerProjectHistoryOutcome,
@@ -701,6 +702,20 @@ export class VcsCreateServerProjectHandler extends IPCHandler<IPCEventType.vcsCr
     ): Promise<RequestStatus<VcsServerProjectOutcome>> {
         return this.tryUse(async () =>
             window.app.getVcsManager().createServerProject(remoteOrigin, name, description));
+    }
+}
+
+/** Put the project that is open on to a server, in the three steps that make it reachable. */
+export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublishProject> {
+    readonly name = IPCEventType.vcsPublishProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, remoteOrigin, name }: IPCEvents[IPCEventType.vcsPublishProject]["data"],
+    ): Promise<RequestStatus<VcsPublishOutcome>> {
+        return this.tryUse(() =>
+            window.app.getVcsManager().publishProject(projectPath, remoteOrigin, name));
     }
 }
 

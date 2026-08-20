@@ -335,7 +335,7 @@ export const settings = {
         signingIn: "正在登录…",
         addressLabel: "服务器地址",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
-        reached: "{address} 响应的服务器为 {name}",
+        reached: "{address} 上的服务器是 {name}",
         tokenLabel: "访问令牌",
         tokenPlaceholder: "粘贴访问令牌",
         hint: "访问令牌由服务器管理员签发",

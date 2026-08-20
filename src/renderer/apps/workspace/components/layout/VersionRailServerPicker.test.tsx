@@ -78,11 +78,20 @@ function picker(remote: string | null, overrides: Partial<VersionSurface> = {}) 
         remote,
         remoteNeedsSignIn: false,
         setRemote: vi.fn(() => Promise.resolve(true)),
+        publish: vi.fn(() => Promise.resolve(true)),
         setAuthorName: vi.fn(() => Promise.resolve(true)),
         ...overrides,
     } as unknown as VersionSurface;
     render(<ServerPickerDialog surface={surface} isOpen onClose={onClose} />);
     return { onClose, surface };
+}
+
+/** The dialog's own Connect button, which is in the modal's footer rather than its body. */
+function connectButton(): HTMLElement {
+    const button = [...document.querySelectorAll("button")]
+        .find(node => node.textContent === "workspace.shell.versionControl.server.save");
+    if (button === undefined) throw new Error("no Connect button on screen");
+    return button;
 }
 
 /** The rail's server section, for a project already pointed at one. */
@@ -218,6 +227,65 @@ describe("the server picker", () => {
         // bare server can read or change where its work goes.
         expect(document.querySelector<HTMLInputElement>("input")?.value)
             .toBe("lore://plain.example.lan:41337/my-game");
+    });
+});
+
+/**
+ * What Connect does, which is not the same act for the two kinds of destination.
+ *
+ * A server out of the list has an API of its own: it can be asked to record this
+ * project, which is the step that makes the work reachable by anybody else. Connecting
+ * without it is the state this whole dialog used to leave behind - a project that pushes
+ * from the one machine that set it up and cannot be cloned from any other.
+ *
+ * A typed address is a bare `loreserver` with nothing in front of it. There is nothing
+ * to record it in, so it keeps what it always had.
+ */
+describe("what Connect does", () => {
+    it("puts the project on a server chosen from the list, rather than only pointing at it", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        const { onClose, surface } = picker(null);
+
+        await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+        fireEvent.change(document.querySelector("input")!, { target: { value: "driftwood" } });
+        fireEvent.click(connectButton());
+
+        expect(surface.publish).toHaveBeenCalledWith(ONE, "driftwood");
+        expect(surface.setRemote).not.toHaveBeenCalled();
+        await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    it("writes the address alone for a server nobody signs in to, because there is nothing to ask", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        const { surface } = picker(null);
+
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
+        fireEvent.click(seam("picker-address").querySelector("button")!);
+        fireEvent.change(document.querySelector("input")!, {
+            target: { value: "lore://plain.example.lan:41337/my-game" },
+        });
+        fireEvent.click(connectButton());
+
+        expect(surface.setRemote).toHaveBeenCalledWith("lore://plain.example.lan:41337/my-game");
+        expect(surface.publish).not.toHaveBeenCalled();
+    });
+
+    it("stays open on a publish that did not go through, so the reason can be read", async () => {
+        bridge.servers = [session(ONE, "ada")];
+        const { onClose } = picker(null, {
+            publish: vi.fn(() => Promise.resolve(false)),
+            failure: { text: "workspace.shell.versionControl.server.publish.refused", tone: "failure" },
+        });
+
+        await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+        fireEvent.change(document.querySelector("input")!, { target: { value: "driftwood" } });
+        fireEvent.click(connectButton());
+
+        await waitFor(() => expect(seam("picker-failure").textContent)
+            .toContain("workspace.shell.versionControl.server.publish.refused"));
+        expect(onClose).not.toHaveBeenCalled();
     });
 });
 
