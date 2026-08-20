@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
     APP_TAG_ID_RELEASE,
+    RELEASE_APP_TAG,
+    migrateAppTagId,
+    normalizeAppTagAssetAxes,
     APP_TAG_SCHEMA_VERSION,
     appTagMechanismKey,
     countAppTagReferences,
@@ -451,5 +454,29 @@ describe("app tag ending page", () => {
     it("gives the release tag the project's page and nothing of its own", () => {
         expect(resolveAppTagEndingSurface(resolveAppTag([], "release"), "surface-credits"))
             .toEqual({ value: "surface-credits", overridden: false });
+    });
+});
+
+/**
+ * The release edition's id, and the one document shape that stored the word it used to be.
+ *
+ * An edition's position on a build axis is an edition id, so a project written before the rename
+ * says `release` where it now says `main`. Migrated where it is read rather than by a pass over
+ * every project - and stated as a test because the two words looked interchangeable for a week.
+ */
+describe("the release edition's id", () => {
+    it("is the same word as its name, so nothing has to translate between them", () => {
+        expect(APP_TAG_ID_RELEASE).toBe("main");
+        expect(RELEASE_APP_TAG.id).toBe(RELEASE_APP_TAG.name);
+    });
+
+    it("reads an edition position written under the old id as the same edition", () => {
+        expect(normalizeAppTagAssetAxes({ release: "release", rating: "release" }))
+            .toEqual({ release: "main", rating: "main" });
+    });
+
+    it("leaves every other value alone", () => {
+        expect(normalizeAppTagAssetAxes({ release: "demo" })).toEqual({ release: "demo" });
+        expect(migrateAppTagId("demo")).toBe("demo");
     });
 });

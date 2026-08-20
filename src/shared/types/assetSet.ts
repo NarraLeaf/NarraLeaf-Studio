@@ -82,6 +82,8 @@
  * not implemented yet.
  */
 
+import { migrateAppTagId } from "./appTag";
+
 /** Persisted document version for `editor/asset-sets.json`. Independent of every other document. */
 export const ASSET_SET_SCHEMA_VERSION = 1;
 
@@ -758,7 +760,17 @@ function normalizeAxis(raw: unknown): AssetSetAxis | null {
     // sets already meant to an author who filled every variant, and it is the only reading that does
     // not turn every set in an existing project into one the panel reports as unfinished.
     const fallback = typeof record.fallback === "string" ? record.fallback.trim() : undefined;
-    return { ...makeAssetSetAxis(kind, normalizeStringList(record.values), fallback) };
+    // A release axis promises edition ids, and the release edition's id used to be `release`. A set
+    // written then still names the same edition; migrating on read keeps its coordinates resolvable
+    // without a pass over every project's documents.
+    const migrate = (value: string) => (kind === "release" ? migrateAppTagId(value) : value);
+    return {
+        ...makeAssetSetAxis(
+            kind,
+            normalizeStringList(record.values).map(migrate),
+            fallback === undefined ? undefined : migrate(fallback),
+        ),
+    };
 }
 
 export function normalizeAssetSet(raw: unknown): AssetSet | null {
