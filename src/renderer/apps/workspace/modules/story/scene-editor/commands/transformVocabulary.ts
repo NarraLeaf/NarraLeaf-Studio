@@ -4,7 +4,9 @@ import type {
     StoryFilterProps,
     StoryTransformProps,
     StoryTransformRef,
+    StoryTransformRepeatType,
 } from "@shared/types/story";
+import { STORY_TRANSFORM_REPEAT_TYPES } from "@shared/types/story";
 import { neutralStoryTransformProps, STORY_FILTER_FUNCTION_ORDER } from "@shared/story/transformProps";
 import { legacyPresetPosition } from "@shared/story/transformLegacy";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
@@ -114,6 +116,10 @@ const BLEND_MODES: readonly StoryCommandEnumOption[] = [
  * options inline with a translator - so the values are restated here and `transformVocabulary.test.ts`
  * is what holds the two lists together.
  */
+/** The engine's repeat directions, as options - derived from the tuple so the two cannot drift. */
+const REPEAT_TYPE_OPTIONS: readonly StoryCommandEnumOption[] =
+    STORY_TRANSFORM_REPEAT_TYPES.map(value => ({ value }));
+
 const EASINGS: readonly StoryCommandEnumOption[] = [
     "linear", "easeIn", "easeOut", "easeInOut", "circIn", "circOut", "circInOut",
     "backIn", "backOut", "backInOut", "anticipate",
@@ -258,6 +264,10 @@ export const TRANSFORM_TIMING_PARAMS = {
     delay: { hint: "delay", type: SECONDS_TYPE },
     repeat: { hint: "repeat", type: { kind: "number", min: 0, integer: true } },
     repeatDelay: { hint: "repeatDelay", type: SECONDS_TYPE },
+    // Which way each round runs, not how many there are - so a finite `repeat=` and a `loop` row read
+    // the same key. `mirror` is what a breathing or floating motion wants: it plays back with the
+    // easing mirrored too, so there is no snap at the joint.
+    repeatType: { hint: "repeatType", type: { kind: "enum", options: REPEAT_TYPE_OPTIONS } },
     from: { hint: "fromProps", type: { kind: "text" } },
     motion: { hint: "storyMotion", type: { kind: "boolean" } },
 } as const satisfies StoryCommandParamsShape;
@@ -540,6 +550,10 @@ export function transformTimingFromArgs(args: TransformArgs): Partial<StoryTrans
     if (repeatDelayMs !== undefined) {
         ref.repeatDelayMs = repeatDelayMs;
     }
+    const repeatType = asEnum(args.repeatType);
+    if (repeatType !== undefined && (STORY_TRANSFORM_REPEAT_TYPES as readonly string[]).includes(repeatType)) {
+        ref.repeatType = repeatType as StoryTransformRepeatType;
+    }
     const from = parseFromProps(asText(args.from)).props;
     if (Object.keys(from).length > 0) {
         ref.from = from;
@@ -742,6 +756,7 @@ export function transformTimingArgs(ref: StoryTransformRef | undefined): readonl
     push("delay", seconds(ref.delayMs));
     push("repeat", numberWord(ref.repeat));
     push("repeatDelay", seconds(ref.repeatDelayMs));
+    push("repeatType", ref.repeatType, true);
     push("from", fromPropsWord(ref.from));
     return args;
 }
@@ -816,6 +831,9 @@ export function patchTransformTiming(ref: StoryTransformRef | undefined, key: st
         case "delay": return { ...base, delayMs: transformSecondsToMs(next) };
         case "repeat": return { ...base, repeat: Number(next) };
         case "repeatDelay": return { ...base, repeatDelayMs: transformSecondsToMs(next) };
+        case "repeatType": return (STORY_TRANSFORM_REPEAT_TYPES as readonly string[]).includes(next)
+            ? { ...base, repeatType: next as StoryTransformRepeatType }
+            : base;
         default: return base;
     }
 }

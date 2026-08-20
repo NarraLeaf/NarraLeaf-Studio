@@ -414,6 +414,10 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
     // Listed so a `/front` row reads its own verb back here rather than showing an empty select. It
     // is the one entry with nothing to configure - see the transform editor's guard below.
     { value: "bringToFront", label: t("storyInspector.displayableOperation.bringToFront") },
+    // The pair that repeats. `loop` configures exactly like `transform` - it is the same bag, played
+    // over and over - while `stopLoop` states no bag at all, so it shares `bringToFront`'s guard.
+    { value: "loop", label: t("storyInspector.displayableOperation.loop") },
+    { value: "stopLoop", label: t("storyInspector.displayableOperation.stopLoop") },
 ];
 
 const displayableEffectHints = (t: TFunc): Record<string, string> => ({
@@ -983,8 +987,10 @@ function ActionPayloadFields(props: {
                     />
                 </FieldGrid>
                 {/* A raise carries no pose and no duration, so the bag editor is not shown for it -
-                    a transform authored here would be stored and then never reach the stage. */}
-                {payload.operation === "bringToFront" ? null : (
+                    a transform authored here would be stored and then never reach the stage. Ending a
+                    loop is the same case for the same reason: it goes back to the pose the element
+                    kept underneath, and there is nothing to state about where that is. */}
+                {payload.operation === "bringToFront" || payload.operation === "stopLoop" ? null : (
                     <TransformPresetEditor
                         value={payload.transform}
                         motionTargetKind={resolvedTarget.kind ?? "image"}

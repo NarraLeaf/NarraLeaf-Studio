@@ -118,6 +118,11 @@ const DISPLAYABLE: Record<OperationOf<"displayable">, CommandId> = {
     hide: "hide",
     transform: "transform",
     bringToFront: "front",
+    // Both read back as `/transform`, because that is the verb that writes them: the pair are bare
+    // flags on it (`/transform hero loop`), not commands of their own - `loop` is `/repeat`'s alias
+    // and the story language's loop is control flow.
+    loop: "transform",
+    stopLoop: "transform",
 };
 
 /** The command id whose label names this payload's verb, or `null` when no command owns it. */

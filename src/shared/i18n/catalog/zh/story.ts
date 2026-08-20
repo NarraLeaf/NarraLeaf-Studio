@@ -491,6 +491,8 @@ export const story = {
         delay: "延迟秒数",
         repeat: "重复次数",
         repeatDelay: "重复间隔",
+        repeatType: "重复方式",
+        stopLoop: "停止循环",
         fromProps: "起始属性",
         conceal: "退场",
     },
@@ -504,6 +506,10 @@ export const story = {
      * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
      */
     enumValue: {
+        // 每一轮怎么放（`repeatType=`）。
+        loop: "重新开始",
+        reverse: "反向",
+        mirror: "往返",
         // 天气种子——`/vfx` 来源槽里的保留词。
         snow: "雪",
         rain: "雨",
