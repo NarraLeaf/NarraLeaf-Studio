@@ -708,7 +708,7 @@ export const help = {
             body:
                 "The network policy in project settings has three positions: no network access, allowlisted addresses only, and any address. The middle one narrows the project to the addresses it lists; every other request is refused, in the editor preview and in the built game.\n"
                 + "\n"
-                + "- A host on its own covers every path under it. Write https://api.example.com/v1/* to cover one part of a host.\n"
+                + "- A host written alone covers every path under it. Write https://api.example.com/v1/* to cover one part of a host.\n"
                 + "- * can replace the first host label, as in https://*.example.com/*.\n"
                 + "- The scheme, the host and the port must match exactly. https://example.com does not cover http://example.com.\n"
                 + "- Addresses a plugin declared are listed under the allowlist and are also reachable. They are the addresses approved when the plugin was installed.\n"

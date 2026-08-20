@@ -90,7 +90,7 @@ export const bgm = defineStoryCommand({
     examples: ["/bgm theme", "/bgm theme vol=0.6 fade=1 loop", "/bgm theme track=Music"],
     quickParams: ["vol", "loop"],
     params: {
-        audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
+        audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio", allowSets: true }, positional: true, core: true },
         // The track IS the bus the clip is routed to, and supplies the loop default; `vol` and
         // `loop` below are the row's own. Omitted, the music built-in answers - which is the
         // behaviour every `/bgm` line written before tracks existed already had.
@@ -137,7 +137,7 @@ export const sound = defineStoryCommand({
     examples: ["/sound hit", "/sound hit name=impact vol=0.8", "/sound hit track=SFX fade=0.2"],
     quickParams: ["vol", "loop"],
     params: {
-        audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio" }, positional: true, core: true },
+        audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio", allowSets: true }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
         track: audioTrackParam(),
         vol: { aliases: ["volume"], hint: "vol", type: { kind: "number", min: 0, max: 1 } },

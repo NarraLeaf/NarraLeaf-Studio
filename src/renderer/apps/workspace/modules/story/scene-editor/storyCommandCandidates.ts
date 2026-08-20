@@ -6,7 +6,7 @@ import { listCommandDefs } from "./commands/registry";
 import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams";
 import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
 import type { StoryCommandCursor } from "./storyCommandCursor";
-import { BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
+import { assetChoices, BGM_OBJECT_NAME, puppetChannelNames, type StoryCommandContext, type StoryCommandNamedRef, type StoryCommandStageObjectKind, type StoryPuppetChannel, type StoryCommandValue } from "./storyCommandValues";
 
 /**
  * What to offer at the caret.
@@ -135,9 +135,7 @@ function nameCandidates(names: readonly string[], query: string, mark?: StoryCan
     return [...prefix, ...rest].map(name => ({ value: name, label: name, ...(mark ? { mark } : {}) }));
 }
 
-function assetsOfType(context: StoryCommandContext, assetType: "image" | "audio" | "video"): readonly StoryCommandNamedRef[] {
-    return assetType === "image" ? context.images : assetType === "audio" ? context.audio : context.videos;
-}
+
 
 /** The character an owner param resolved to, whether through a `character` or a `target` slot. */
 function ownerCharacterId(owner: StoryCommandValue | undefined): string | null {
@@ -215,10 +213,10 @@ function contentCandidates(
         return [];
     }
     if (target.objectKind === "image") {
-        return refCandidates(context.images, query, entry => ({ kind: "asset", assetType: "image", assetId: entry.id }));
+        return refCandidates(assetChoices(context, "image", type.allowSets), query, entry => ({ kind: "asset", assetType: "image", assetId: entry.id }));
     }
     if (target.objectKind === "video") {
-        return refCandidates(context.videos, query, entry => ({ kind: "asset", assetType: "video", assetId: entry.id }));
+        return refCandidates(assetChoices(context, "video", type.allowSets), query, entry => ({ kind: "asset", assetType: "video", assetId: entry.id }));
     }
     // Text content is whatever the author writes.
     return [];
@@ -234,7 +232,7 @@ function candidatesForType(
 ): StoryCommandCandidate[] {
     switch (type.kind) {
         case "asset":
-            return refCandidates(assetsOfType(context, type.assetType), query, entry => ({ kind: "asset", assetType: type.assetType, assetId: entry.id }));
+            return refCandidates(assetChoices(context, type.assetType, type.allowSets), query, entry => ({ kind: "asset", assetType: type.assetType, assetId: entry.id }));
         case "character": {
             const found = refCandidates(context.characters, query, entry => ({ kind: "character", characterId: entry.id }));
             if (!type.allowTemp) {

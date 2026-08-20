@@ -12,7 +12,7 @@ export const dashboard = {
     },
 
     greeting: {
-        lateNight: "夜深了",
+        lateNight: "深夜",
         morning: "早上好",
         noon: "中午好",
         afternoon: "下午好",
