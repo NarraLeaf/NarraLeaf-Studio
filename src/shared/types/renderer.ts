@@ -73,7 +73,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -913,6 +913,17 @@ export interface RendererPreloadedInterface {
             name: string,
             description?: string,
         ): Promise<RequestStatus<VcsServerProjectOutcome>>;
+        /**
+         * Put this project on a server: register it, connect it, send it.
+         *
+         * **Goes to the network, and writes on both ends.** The opposite act to the one
+         * above, which makes a new and empty repository.
+         */
+        publishProject(
+            projectPath: string,
+            remoteOrigin: string,
+            name: string,
+        ): Promise<RequestStatus<VcsPublishOutcome>>;
         /**
          * Which repositories this machine already holds, by id. Local.
          *

@@ -73,7 +73,6 @@ export const launcher = {
             action: "添加服务器",
         },
         choose: "选择一台服务器",
-        signedInAs: "已登录为 {name}",
         newProject: "新建项目",
         loading: "正在读取项目列表",
         noProjects: "这台服务器上没有项目",

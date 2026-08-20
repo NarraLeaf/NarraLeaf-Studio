@@ -12,6 +12,9 @@ import {
     type VcsStatus,
 } from "@shared/types/vcs";
 import { VCS_INITIAL_MESSAGE } from "@shared/vcs/systemRevisionMessage";
+// `fs` over two files and nothing else - no store is opened to read an id, which is
+// the rule that module exists for and the reason this one can import it.
+import { readRepositoryId } from "./localRepositories";
 import { renderWorkingSetIgnoreFile } from "./workingSet";
 import {
     commit,
@@ -100,20 +103,35 @@ export class RepositoryExistsError extends Error {
 }
 
 /**
- * A repository directory with no commits in it - what an interrupted setup leaves.
+ * A repository directory that does not say which repository it is.
  *
- * Its own error because the alternative is a lie the author cannot act on. Such a
- * repository is unusable: its id is only readable off the revision history header, so
- * with no revisions there is nothing to read it back with. Reporting that as "already
- * under version control" tells the author the thing they are attempting is done while
- * nothing works, and leaves them to guess that the fix is deleting a hidden directory.
- * {@link initRepository} rolls this state back on its own; this error exists for the
- * case where the rollback could not.
+ * **This used to be raised for any repository with no commits, and that was wrong
+ * about the facts.** The premise was that such a repository is unusable because its id
+ * is only readable off the revision history header - so with no revisions there is
+ * nothing to read it back with. There is: Lore writes the id to `.lore/id` when the
+ * repository is created, sixteen raw bytes, and it is there in a repository that has
+ * never been committed to. Measured on a freshly cloned empty one, which is what
+ * getting a project made on a server a moment ago produces:
+ * `45f0cf7a6f0d4b22a1e21094a3b8bea4`. `localRepositories.ts` has always read it that
+ * way. So an empty repository is not unusable, and {@link initRepository} now records
+ * the first version into it rather than refusing.
+ *
+ * What is left for this error is the state where that read answers nothing: a `.lore/`
+ * with no id file in it, or one of another length. Nothing can be said about which
+ * repository that directory is, so nothing can be done with it either, and naming it
+ * for removal is the only remedy there is.
+ *
+ * **Measured, and worth knowing before trying to reach it:** Lore reads the same file
+ * to open a repository, so a directory in that state also fails `hasRevisions` - which
+ * answers "yes" for anything it could not read, deliberately, because being wrong the
+ * other way commits into somebody's history. Every such directory therefore comes out
+ * as {@link RepositoryExistsError} in practice, and this is the guard on the id being
+ * returned rather than a message anybody has seen.
  */
 export class IncompleteRepositoryError extends Error {
     constructor(readonly root: string) {
         super(
-            `${root} holds a version control repository with no commits, left behind by an interrupted setup. `
+            `${root} holds a version control repository that does not say which repository it is. `
             + `Remove ${path.join(root, REPOSITORY_DIRECTORY)} and enable version control again.`,
         );
         this.name = "IncompleteRepositoryError";
@@ -134,8 +152,8 @@ const ROLLBACK_RETRY_MS = 100;
  * Measured: a repository created but never committed to answers `revisionHistory`
  * with success and no header at all, so "no revisions" is a positive determination
  * rather than an inference from an error. A thrown error is deliberately NOT read as
- * "empty" - the two errors this feeds differ in what they tell the author to delete,
- * and being wrong in that direction destroys real history.
+ * "empty" - the two answers lead to opposite acts, one of which writes a revision
+ * into somebody's history, and being wrong in that direction is not recoverable.
  */
 async function hasRevisions(globals: LoreGlobals): Promise<boolean> {
     try {
@@ -158,8 +176,13 @@ async function hasRevisions(globals: LoreGlobals): Promise<boolean> {
  * behaviour that once stopped a test deleting its own temp directory.
  *
  * Never throws. The caller has a real failure to report and the cleanup must not
- * replace it with a worse-explained one; a rollback that could not finish surfaces on
- * the next attempt as {@link IncompleteRepositoryError}.
+ * replace it with a worse-explained one; a rollback that could not finish leaves a
+ * repository the next attempt adopts and commits into, rather than a directory the
+ * author is told to delete.
+ *
+ * **Only ever called for a repository THIS call created.** {@link initRepository} also
+ * commits into repositories it finds, and removing one of those would delete a clone
+ * of somebody's project because the first commit into it failed.
  *
  * Only `.lore/` is removed. The ignore file is inert without a repository and the
  * retry rewrites it, so deleting it would be risk without benefit.
@@ -182,6 +205,19 @@ async function discardCreatedRepository(globals: LoreGlobals, root: string): Pro
  * Put a project under version control: create the repository, write the exclusion
  * policy, commit everything it allows.
  *
+ * **The repository is created only when there is not one already.** A directory can
+ * hold a repository with no revisions in it, and two ordinary things produce one: a
+ * clone of a project made on a server a moment ago, and a local setup that was
+ * interrupted after the create and whose rollback could not finish. Neither is broken.
+ * The repository works, its id is on disk in `.lore/id`, and what it is missing is the
+ * one thing this function exists to write - so this writes it, and everything below
+ * runs exactly as it does on a repository created here.
+ *
+ * The two cannot be told apart by looking, and there is no need to: both want their
+ * first version recorded, and the difference between them is only how they came to be
+ * empty. What is NOT adopted is a `.lore/` that cannot say which repository it is -
+ * see {@link IncompleteRepositoryError}.
+ *
  * Three things here are not obvious and all three are load-bearing.
  *
  * **The ignore file is written before staging, not after.** Staging hands Lore the
@@ -190,10 +226,9 @@ async function discardCreatedRepository(globals: LoreGlobals, root: string): Pro
  * correct for every commit except the one that matters most.
  *
  * **It also guarantees the first commit is not empty.** Lore refuses to commit
- * nothing - `revisionCommit` answers "Nothing staged for commit" - and a repository
- * with zero revisions is unusable: its id lives on the history header, so nothing can
- * read it back. A brand new project with no files would hit exactly that without a
- * file the policy itself contributes.
+ * nothing - `revisionCommit` answers "Nothing staged for commit" - so a brand new
+ * project with no files, or a clone of a project nobody has pushed to yet, would have
+ * nothing to record without a file the policy itself contributes.
  *
  * **The flush is mandatory.** Lore's mutable store holds branch tips in memory and
  * writes them lazily, so a process that commits and exits promptly can lose the
@@ -202,10 +237,11 @@ async function discardCreatedRepository(globals: LoreGlobals, root: string): Pro
  *
  * **Everything after `repositoryCreate` is transactional.** A failure between creating
  * the repository and committing into it would otherwise leave a directory that reads
- * as a repository to every cheap test, contains nothing, and cannot be initialised
- * again - the author told they already have version control while none of it works.
- * So the repository is rolled back on failure, and the original error is what reaches
- * the caller rather than anything the cleanup ran into.
+ * as a repository to every cheap test and contains nothing. So the repository is
+ * rolled back on failure, and the original error is what reaches the caller rather
+ * than anything the cleanup ran into. **A repository that was already there is never
+ * rolled back**: this call did not make it, and one of the two ways it can exist is a
+ * clone of somebody's project.
  */
 export async function initRepository(
     globals: LoreGlobals,
@@ -214,21 +250,33 @@ export async function initRepository(
     const root = globals.repositoryPath;
     const scoped: LoreGlobals = { ...globals, identity: options.identity ?? globals.identity };
 
-    if (isRepositoryDirectory(root)) {
-        // Lore would refuse too ("Repository already exist in path ..."), but only
-        // after loading the native library, and re-initialising would orphan the
-        // existing history rather than fail. WHICH refusal matters: one tells the
-        // author they are done, the other tells them their setup was interrupted and
-        // names the directory to remove.
-        throw (await hasRevisions(scoped))
-            ? new RepositoryExistsError(root)
-            : new IncompleteRepositoryError(root);
-    }
+    let repositoryId: string;
+    /** Whether the rollback below is entitled to remove `.lore/`. */
+    let ours = false;
 
-    const created = await createRepository(scoped, {
-        repositoryUrl: options.repositoryUrl ?? PLACEHOLDER_REPOSITORY_URL,
-        description: options.description,
-    });
+    if (isRepositoryDirectory(root)) {
+        if (await hasRevisions(scoped)) {
+            // Lore would refuse too ("Repository already exist in path ..."), but only
+            // after loading the native library, and re-initialising would orphan the
+            // existing history rather than fail.
+            throw new RepositoryExistsError(root);
+        }
+        // Off the file rather than out of the store, which is the whole correction:
+        // an empty repository has no history header to read an id from, and has had
+        // this on disk since it was created.
+        const existing = readRepositoryId(root);
+        if (existing === undefined) {
+            throw new IncompleteRepositoryError(root);
+        }
+        repositoryId = existing;
+    } else {
+        const created = await createRepository(scoped, {
+            repositoryUrl: options.repositoryUrl ?? PLACEHOLDER_REPOSITORY_URL,
+            description: options.description,
+        });
+        repositoryId = created.repository;
+        ours = true;
+    }
 
     try {
         fs.writeFileSync(path.join(root, IGNORE_FILE), renderWorkingSetIgnoreFile(), "utf-8");
@@ -242,12 +290,12 @@ export async function initRepository(
         await flushRepository(scoped);
 
         return {
-            repositoryId: created.repository,
+            repositoryId,
             revision: revision.revision,
             fileCount: staged.counts?.fileAddCount ?? 0,
         };
     } catch (error) {
-        await discardCreatedRepository(scoped, root);
+        if (ours) await discardCreatedRepository(scoped, root);
         throw error;
     }
 }

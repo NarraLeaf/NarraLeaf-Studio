@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getServerProject, listServerProjectHistory, listServerProjects } from "./serverProjects";
+import {
+    createServerProject,
+    getServerProject,
+    listServerProjectHistory,
+    listServerProjects,
+} from "./serverProjects";
 
 /**
  * What a server actually sends, including everything it does not send.
@@ -157,6 +162,71 @@ describe("a project the server has read", () => {
         const result = await listServerProjectHistory({ ...CREDENTIALS, projectId: PROJECT_ID });
 
         expect(result).toEqual({ ok: false, problem: { kind: "unknown" } });
+    });
+});
+
+/**
+ * Asking a server to record a project this machine already has.
+ *
+ * The id is the whole of what makes this different from making a new project, and it
+ * has to survive in both directions: out, because the row the server writes is what
+ * every later permission question is answered from, and back, because a server that
+ * answered with a different one made a project that is not this one.
+ */
+describe("publishing a project that already exists", () => {
+    it("sends the repository id, so the server records the repository this machine holds", async () => {
+        answers({ project: projectRow() });
+
+        const result = await createServerProject({
+            ...CREDENTIALS,
+            name: "moonlit",
+            repositoryId: PROJECT_ID,
+        });
+
+        expect(askServer).toHaveBeenCalledWith(expect.objectContaining({
+            method: "POST",
+            path: "/api/studio/v1/projects",
+            expect: 201,
+            body: JSON.stringify({ name: "moonlit", repositoryId: PROJECT_ID }),
+        }));
+        expect(ok(result).project.id).toBe(PROJECT_ID);
+    });
+
+    it("sends no id at all when there is none, which is what makes a new project", async () => {
+        answers({ project: projectRow() });
+
+        await createServerProject({ ...CREDENTIALS, name: "moonlit", description: "new" });
+
+        expect(askServer).toHaveBeenCalledWith(expect.objectContaining({
+            body: JSON.stringify({ name: "moonlit", description: "new" }),
+        }));
+    });
+
+    it("refuses a server that answered with a different repository", async () => {
+        // What a server too old to know the field does: it ignores it, makes a
+        // repository of its own, and answers with that one. Acting on it would connect
+        // this project to a repository nobody made and push into it.
+        answers({ project: projectRow({ id: "0123456789abcdef0123456789abcdef" }) });
+
+        const result = await createServerProject({
+            ...CREDENTIALS,
+            name: "moonlit",
+            repositoryId: PROJECT_ID,
+        });
+
+        expect(result).toEqual({ ok: false, problem: { kind: "wrong-repository" } });
+    });
+
+    it("accepts the id back in either spelling, because hex is hex", async () => {
+        answers({ project: projectRow({ id: PROJECT_ID.toUpperCase() }) });
+
+        const result = await createServerProject({
+            ...CREDENTIALS,
+            name: "moonlit",
+            repositoryId: PROJECT_ID,
+        });
+
+        expect(result).toMatchObject({ ok: true });
     });
 });
 
