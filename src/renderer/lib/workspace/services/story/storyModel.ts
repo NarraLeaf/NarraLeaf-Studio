@@ -1132,3 +1132,219 @@ export function promoteTempSpeaker(document: StoryDocument, name: string, charac
     }
     return rebound;
 }
+
+/** A dialogue row and the scene it sits in - enough to write it back through the story service. */
+export type StoryDialogueRowRef = {
+    sceneId: StorySceneId;
+    blockId: StoryBlockId;
+    /**
+     * Who the row currently speaks as, when that speaker resolves to nothing.
+     *
+     * Present on the rows {@link collectUnresolvedSpeakerRows} returns, so a caller can tell one
+     * broken speaker from another without re-reading the payload. Two rows repair together only if
+     * these match: a bare name and an unresolvable id are different speakers even when the name on
+     * screen is the same, and rebinding them as one would merge two people into one.
+     */
+    speaker?: StoryUnresolvedSpeaker;
+};
+
+/** An unresolved speaker's identity: the bare name it carries, or the id that answers to nothing. */
+export type StoryUnresolvedSpeaker =
+    | { kind: "name"; value: string }
+    | { kind: "characterId"; value: string };
+
+/** Whether two unresolved speakers are the same one. */
+export function isSameUnresolvedSpeaker(a: StoryUnresolvedSpeaker, b: StoryUnresolvedSpeaker): boolean {
+    return a.kind === b.kind && a.value === b.value;
+}
+
+/**
+ * The subset of `rows` that speaks as one unresolved speaker, or nothing when that cannot be settled.
+ *
+ * Repairing binds rows to a character, so the rows it acts on must all be the same person. A
+ * selection is free to hold lines by several speakers none of whom resolve - a chapter carried in
+ * from another project usually does - and binding those together would make two people one.
+ *
+ * `anchorBlockId` is the row the gesture was aimed at. When that row is itself unresolved its
+ * speaker decides, which is what lets the gesture mean "this speaker" rather than "this selection".
+ * When it is not, the rows must agree among themselves; a selection spanning two unresolved
+ * speakers yields nothing rather than a guess at which was meant.
+ */
+export function narrowToOneUnresolvedSpeaker(
+    rows: readonly StoryDialogueRowRef[],
+    anchorBlockId?: StoryBlockId | null,
+): StoryDialogueRowRef[] {
+    const speakerOf = (row: StoryDialogueRowRef) => row.speaker;
+    const first = rows[0] && speakerOf(rows[0]);
+    if (!first) {
+        return [];
+    }
+    const anchor = rows.find(row => row.blockId === anchorBlockId)?.speaker
+        ?? (rows.every(row => row.speaker && isSameUnresolvedSpeaker(row.speaker, first)) ? first : undefined);
+    if (!anchor) {
+        return [];
+    }
+    return rows.filter(row => row.speaker && isSameUnresolvedSpeaker(row.speaker, anchor));
+}
+
+/** One row's rewritten payload, shaped for `StoryService.updateBlocks`. */
+export type StorySpeakerEdit = StoryDialogueRowRef & {
+    payload: StoryBlock["payload"];
+};
+
+/**
+ * Dialogue rows among `blockIds` whose speaker resolves to nothing.
+ *
+ * Two different states qualify, and treating only the first as "broken" is the mistake that makes
+ * the repair unavailable exactly when it is needed:
+ *
+ *  - a bare {@link StoryNodeActionPayload} `speakerName` with no character behind it, which is what
+ *    typing an unknown name leaves; and
+ *  - a `characterId` no character in this project answers to, which is what rows carried in from
+ *    another project have, since a character id is a UUID minted in the project that created it.
+ *
+ * A row carrying neither is not broken - it is a line nobody speaks - so it is left alone.
+ *
+ * `knownCharacterIds` is supplied rather than looked up because this module has no view of the cast;
+ * only the caller knows which characters exist.
+ */
+export function collectUnresolvedSpeakerRows(
+    document: StoryDocument,
+    blockIds: Iterable<StoryBlockId>,
+    knownCharacterIds: ReadonlySet<string>,
+): StoryDialogueRowRef[] {
+    const wanted = new Set(blockIds);
+    const rows: StoryDialogueRowRef[] = [];
+    if (wanted.size === 0) {
+        return rows;
+    }
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (!wanted.has(block.id) || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            const characterId = block.payload.characterId?.trim();
+            const speakerName = block.payload.speakerName?.trim();
+            if (characterId ? knownCharacterIds.has(characterId) : !speakerName) {
+                continue;
+            }
+            rows.push({
+                sceneId: scene.id,
+                blockId: block.id,
+                speaker: characterId
+                    ? { kind: "characterId", value: characterId }
+                    : { kind: "name", value: speakerName as string },
+            });
+        }
+    }
+    return rows;
+}
+
+/**
+ * Bind the given rows to a character, dropping any bare name they carried.
+ *
+ * The name goes rather than staying as a fallback for the same reason it does in
+ * {@link promoteTempSpeaker}: once the line has a character, the name is the character's to own, and
+ * a stale copy here would silently win back if that character were ever deleted.
+ */
+export function bindRowsToCharacter(
+    document: StoryDocument,
+    rows: readonly StoryDialogueRowRef[],
+    characterId: string,
+): StorySpeakerEdit[] {
+    const edits: StorySpeakerEdit[] = [];
+    if (!characterId.trim()) {
+        return edits;
+    }
+    for (const row of rows) {
+        const block = document.scenes[row.sceneId]?.blocks[row.blockId];
+        if (!block || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+            continue;
+        }
+        const { speakerName: _dropped, ...rest } = block.payload;
+        edits.push({ ...row, payload: { ...rest, characterId } });
+    }
+    return edits;
+}
+
+/**
+ * Repair the speaker on an explicit set of rows: the sibling of {@link promoteTempSpeaker}, scoped by
+ * block id instead of by name.
+ *
+ * The scope is the difference and it is the whole point. {@link promoteTempSpeaker} rewrites every
+ * line in the document that shares a name, which is right when the author has just invented the
+ * character and wrong for a repair: a repair reaches rows the author is not looking at, and rows they
+ * never selected must not change under a gesture aimed at the ones they did. The paste path refuses
+ * that function for the same reason.
+ *
+ * Returns payload edits rather than mutating: writing them through `StoryService.updateBlocks` is
+ * what makes the whole set one document revision, one save and one undo step.
+ */
+export function rebindSpeakersInBlocks(
+    document: StoryDocument,
+    blockIds: Iterable<StoryBlockId>,
+    characterId: string,
+    knownCharacterIds: ReadonlySet<string>,
+): StorySpeakerEdit[] {
+    return bindRowsToCharacter(
+        document,
+        collectUnresolvedSpeakerRows(document, blockIds, knownCharacterIds),
+        characterId,
+    );
+}
+
+/**
+ * Every dialogue row in a document spoken by a given character.
+ *
+ * Only dialogue rows. Character *stage* rows (`payload.action === "character"`) also carry a
+ * `characterId`, and they are deliberately not here: they have no bare-name arm to fall back to, so
+ * they keep the id and are reported by the project lint instead.
+ */
+export function collectRowsSpokenBy(document: StoryDocument, characterId: string): StoryDialogueRowRef[] {
+    const target = characterId.trim();
+    const rows: StoryDialogueRowRef[] = [];
+    if (!target) {
+        return rows;
+    }
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            if (block.payload.characterId?.trim() !== target) {
+                continue;
+            }
+            rows.push({ sceneId: scene.id, blockId: block.id });
+        }
+    }
+    return rows;
+}
+
+/**
+ * Make the given rows speak as a bare name, dropping whatever character they were bound to.
+ *
+ * This is what a character's deletion leaves behind. The line reads in the player's dialogue box
+ * exactly as it did before - the engine's box displays whatever name its `Character` carries, and a
+ * bare name is a first-class, shippable state - and it stays repairable, because
+ * {@link collectUnresolvedSpeakerRows} counts a bare name as a speaker waiting for a character.
+ */
+export function setRowsSpeakerName(
+    document: StoryDocument,
+    rows: readonly StoryDialogueRowRef[],
+    speakerName: string,
+): StorySpeakerEdit[] {
+    const name = speakerName.trim();
+    const edits: StorySpeakerEdit[] = [];
+    if (!name) {
+        return edits;
+    }
+    for (const row of rows) {
+        const block = document.scenes[row.sceneId]?.blocks[row.blockId];
+        if (!block || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+            continue;
+        }
+        const { characterId: _dropped, ...rest } = block.payload;
+        edits.push({ ...row, payload: { ...rest, speakerName: name } });
+    }
+    return edits;
+}

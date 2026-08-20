@@ -159,10 +159,22 @@ export const lint = {
             // キャラクターは作成するものではなく登場させるものなので、変わるのは動詞だけ。
             messageCharacter: "{object} を登場させる行がないため、この行には操作する対象がない",
         },
+        storyDeclaredNeverShown: {
+            title: "表示されないステージオブジェクト",
+            description: "作成行が宣言した対象を表示する行がない",
+            message: "{object} はこの行で宣言され、表示する行がない",
+        },
         storyStageObjectDuplicate: {
             title: "ステージオブジェクトの重複",
             description: "同じステージ名を作成する行が 2 つあり、後の行は先の行のものを使う",
             message: "{object} は上で既に作成されているため、この行はそちらを操作する",
+        },
+        storyCharacterMissing: {
+            title: "存在しないキャラクター",
+            description: "プロジェクトに存在しないキャラクターを指定した行",
+            // 文中に対象を出さない。参照が解決しないとき残るのは保存された id だけで、それは UUID -
+            // 作者がプロジェクト内を検索できない語を報告に出すことになる。
+            message: "この行が指すキャラクターはプロジェクトに存在しないため、この行には操作する対象がない",
         },
         storyTransitionUnavailable: {
             title: "利用できないトランジション",

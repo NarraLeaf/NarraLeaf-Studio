@@ -211,6 +211,24 @@ export const story = {
         bulkConfirmDetail: "現在の行の下に、1 回分の取り消しとして足す",
         scriptFile: "これはストーリーのスクリプト。戻すには「スクリプトを読み込む」を使う",
     },
+    // コピー元とは別のプロジェクトに貼り付けた行。行が入ったあとに、結果だけを一度知らせる。
+    crossProject: {
+        pasted: {
+            other: "{count} 行を貼り付けた",
+        },
+        pastedFrom: {
+            other: "{project} から {count} 行を貼り付けた",
+        },
+        speakerNames: {
+            other: "話者 {count} 件は名前のみになった",
+        },
+        imported: {
+            other: "アセット {count} 件を取り込んだ",
+        },
+        unresolved: {
+            other: "未解決の参照 {count} 件",
+        },
+    },
     flow: {
         tabTitle: "シーンフロー",
         tabTitleNamed: "シーンフロー：{name}",
@@ -980,10 +998,10 @@ export const story = {
         skin: { label: "スキン", detail: "ランタイムが描くキャラクターが着るスキンを決める" },
         rename: { label: "改名", detail: "キャラクターが話すときの表示名を変える" },
         say: { label: "台詞", detail: "台詞を 1 行" },
-        image: { label: "画像", detail: "舞台に画像を置く" },
-        text: { label: "テキスト", detail: "舞台にテキストを置く" },
-        video: { label: "動画", detail: "舞台に動画を置く" },
-        vfx: { label: "環境演出", detail: "全画面でループする重ね描き。花びら、雨、埃、光" },
+        image: { label: "画像", detail: "舞台に画像を宣言する。表示は /show" },
+        text: { label: "テキスト", detail: "舞台にテキストを宣言する。表示は /show" },
+        video: { label: "動画", detail: "舞台に動画を宣言する。表示は /show" },
+        vfx: { label: "環境演出", detail: "全画面でループする重ね描きを宣言。花びら、雨、埃、光" },
         layer: { label: "レイヤー", detail: "描画のレイヤーを作る" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
         play: { label: "再生", detail: "動画を再生する" },
@@ -1158,6 +1176,9 @@ export const story = {
         duplicate: "複製",
         disable: "無効にする",
         enable: "有効にする",
+        bindSpeaker: {
+            other: "{count} 行の話者を割り当て",
+        },
         playFromHere: "ここから再生",
         openInspector: "インスペクタを開く",
         delete: "削除",

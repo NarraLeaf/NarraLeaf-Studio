@@ -36,6 +36,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/label-duplicate",
     "story/label-unused",
     "story/jump-missing",
+    "story/declared-never-shown",
     "story/empty-choice",
     "story/dead-end",
     "story/unreachable-scene",
@@ -45,6 +46,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/cut-point-unreachable",
     "story/stage-object-missing",
     "story/stage-object-duplicate",
+    "story/character-missing",
     "story/transition-unavailable",
     "blueprint/reference-missing",
     "blueprint/unreachable-node",
@@ -74,7 +76,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(46);
+        expect(LINT_RULES).toHaveLength(48);
     });
 
     it("gives every rule a unique id", () => {

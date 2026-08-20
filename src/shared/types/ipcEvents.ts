@@ -48,6 +48,7 @@ import type {
     SpellcheckStatus,
 } from "./spellcheck";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -319,6 +320,8 @@ export enum IPCEventType {
 
     assetFetchRemote = "asset.fetchRemote",
     assetExportToFolder = "asset.exportToFolder",
+    assetTransferOffer = "asset.transfer.offer",
+    assetTransferRedeem = "asset.transfer.redeem",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -3201,6 +3204,37 @@ export type IPCAssetEvents = {
             entries: AssetExportEntry[];
         },
         response: AssetExportResult;
+    };
+    /**
+     * Offer the files behind a copy to whichever window pastes it, and take back the token that
+     * stands for them.
+     *
+     * Main checks the whole manifest against the calling window's own read access before minting
+     * anything, so nothing becomes reachable that the copying project could not already read. The
+     * token goes on the clipboard; the paths stay here.
+     */
+    [IPCEventType.assetTransferOffer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            entries: AssetTransferEntry[];
+        },
+        response: AssetTransferOfferResult;
+    };
+    /**
+     * Trade a token from a paste for read access to the files it stands for.
+     *
+     * A token this process did not mint - the offering window has closed, or the copy came from
+     * another running Studio - answers `available: false`, which is an ordinary outcome and not a
+     * failure. See `@shared/types/assetTransfer`.
+     */
+    [IPCEventType.assetTransferRedeem]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            token: string;
+        },
+        response: AssetTransferRedeemResult;
     };
 };
 

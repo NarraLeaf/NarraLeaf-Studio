@@ -1433,7 +1433,10 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
     const { t } = useTranslation();
     const payload = props.payload;
     const isCreate = payload.operation === "create";
-    const fades = payload.operation === "show" || payload.operation === "hide" || isCreate;
+    const isShow = payload.operation === "show";
+    // A create row reveals nothing, so it has no fade: the duration belongs to the rows that change
+    // the picture.
+    const fades = isShow || payload.operation === "hide";
     return (
         <Section title={t("storyInspector.section.vfx")}>
             <FieldGrid cols={2}>
@@ -1496,9 +1499,23 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                         />
                     </>
                 ) : null}
+                {isShow ? (
+                    <NumberField
+                        label={t("storyInspector.vfx.showOpacity")}
+                        value={payload.opacity}
+                        onChange={opacity => props.onChange({ ...payload, opacity: opacity === undefined ? undefined : Math.min(1, Math.max(0, opacity)) })}
+                    />
+                ) : null}
                 {isCreate || payload.operation === "setRate" ? (
                     <NumberField
                         label={t("storyInspector.vfx.rate")}
+                        value={payload.rate}
+                        onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
+                    />
+                ) : null}
+                {isShow ? (
+                    <NumberField
+                        label={t("storyInspector.vfx.showRate")}
                         value={payload.rate}
                         onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
                     />
