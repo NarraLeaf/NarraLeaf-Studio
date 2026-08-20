@@ -19,7 +19,7 @@
 import https from "https";
 import tls from "tls";
 
-import type { VcsServerProject } from "@shared/types/vcs";
+import type { VcsServerProject, VcsServerProjectHistory } from "@shared/types/vcs";
 
 import { authorityDirectory } from "./authorityTrust";
 import { parseServerAddress, type ServerEndpoint } from "./serverDiscovery";
@@ -169,6 +169,32 @@ function detailOf(body: string): string {
     return "";
 }
 
+/**
+ * What the server has read off a project's repository, field by field.
+ *
+ * **Nothing is filled in.** A field the answer does not carry is left out rather than
+ * defaulted, because every default here would be a claim: zero revisions, a commit at
+ * the epoch, an empty branch name. A server that has not read the repository yet sends
+ * this object with nothing in it, which is the ordinary case for a project made a moment
+ * ago, and it has to survive the trip as nothing rather than as zeroes.
+ */
+function readHistory(value: unknown): VcsServerProjectHistory | undefined {
+    if (typeof value !== "object" || value === null) return undefined;
+    const record = value as Record<string, unknown>;
+    const number = (key: string): Record<string, number> =>
+        typeof record[key] === "number" && Number.isFinite(record[key]) ? { [key]: record[key] } : {};
+    const text = (key: string): Record<string, string> =>
+        typeof record[key] === "string" && record[key] !== "" ? { [key]: record[key] as string } : {};
+    return {
+        ...number("revisions"),
+        ...text("branch"),
+        ...number("bytes"),
+        ...number("lastAt"),
+        ...text("lastBy"),
+        ...text("lastMessage"),
+    };
+}
+
 /** Read one project out of an answer, insisting on the fields everything downstream uses. */
 function readProject(value: unknown): VcsServerProject | null {
     if (typeof value !== "object" || value === null) return null;
@@ -179,6 +205,7 @@ function readProject(value: unknown): VcsServerProject | null {
     if (typeof id !== "string" || typeof name !== "string" || typeof remote !== "string") {
         return null;
     }
+    const history = readHistory(record["history"]);
     return {
         id,
         name,
@@ -186,6 +213,7 @@ function readProject(value: unknown): VcsServerProject | null {
         ...(typeof record["createdBy"] === "string" ? { createdBy: record["createdBy"] } : {}),
         createdAt: typeof record["createdAt"] === "number" ? record["createdAt"] : 0,
         remote,
+        ...(history === undefined ? {} : { history }),
     };
 }
 

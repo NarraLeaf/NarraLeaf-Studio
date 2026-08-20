@@ -71,7 +71,7 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -855,6 +855,18 @@ export interface RendererPreloadedInterface {
             name: string,
             description?: string,
         ): Promise<RequestStatus<VcsServerProjectOutcome>>;
+        /**
+         * Which repositories this machine already holds, by id. Local.
+         *
+         * The answer to "do I already have this one" for a project a server lists. Keyed on
+         * the repository id and never on the name, because two projects share a name and a
+         * folder gets renamed.
+         *
+         * **Reads `.lore/id` and `.lore/config.toml` as files; opens no repository.** Lore's
+         * lock is exclusive and blocking, so a sweep that opened stores would never return
+         * on the first project the author already has open.
+         */
+        listLocalRepositories(): Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>;
         /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.

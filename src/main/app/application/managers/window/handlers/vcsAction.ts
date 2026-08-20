@@ -14,6 +14,7 @@ import type {
     VcsRestoreResult,
     VcsRevisionDiffResult,
     VcsAddServerOutcome,
+    VcsLocalRepository,
     VcsServerProbe,
     VcsServerProjectOutcome,
     VcsServerProjectsOutcome,
@@ -27,6 +28,7 @@ import type {
     VcsWorkingFileRead,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
+import { readLocalRepository } from "../../vcs/localRepositories";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -575,6 +577,30 @@ export class VcsListServerProjectsHandler extends IPCHandler<IPCEventType.vcsLis
     ): Promise<RequestStatus<VcsServerProjectsOutcome>> {
         return this.tryUse(async () =>
             window.app.getVcsManager().listServerProjects(remoteOrigin));
+    }
+}
+
+/**
+ * Which repositories this machine already holds.
+ *
+ * Takes no project, like the two above: the question is asked of the whole installation,
+ * once, so that a list of a server's projects can say which of them are already here.
+ *
+ * **Two plain file reads per project and nothing else.** Lore's repository lock is
+ * exclusive and blocking - opening a store another process holds never returns, and
+ * every later call on that project queues behind it - so a sweep like this one is
+ * precisely the call that must not open anything. It is also why this does not go
+ * through `VcsManager`: there is no session to want, and a host with no Lore build can
+ * still answer it.
+ */
+export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcsListLocalRepositories> {
+    readonly name = IPCEventType.vcsListLocalRepositories;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>> {
+        return this.tryUse(async () => ({
+            repositories: window.app.globalState.recentlyOpened.list().map(readLocalRepository),
+        }));
     }
 }
 

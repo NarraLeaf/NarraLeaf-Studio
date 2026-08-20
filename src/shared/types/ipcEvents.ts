@@ -88,6 +88,7 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsLocalRepository,
     VcsServerDescription,
     VcsServerProbe,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
@@ -367,6 +368,7 @@ export enum IPCEventType {
     vcsForgetServer = "vcs.forgetServer",
     vcsListServerProjects = "vcs.listServerProjects",
     vcsCreateServerProject = "vcs.createServerProject",
+    vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
@@ -1403,6 +1405,25 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { remoteOrigin: string },
         response: { servers: VcsServerSession[] };
+    };
+    /**
+     * Which repositories this machine already holds, by id.
+     *
+     * A server lists its projects by repository id, and the only useful question about one
+     * is whether the author already has it. Names cannot answer that - two projects share a
+     * name, and a folder gets renamed - so this reports the id of every remembered project
+     * together with the server it is configured against.
+     *
+     * **Reads `.lore/id` and `.lore/config.toml` as plain files and opens no repository.**
+     * Lore's lock is exclusive and blocking, so a sweep that opened stores would hang on the
+     * first project the author has open and take every later call with it. A project with
+     * nothing readable is reported without an id rather than dropped.
+     */
+    [IPCEventType.vcsListLocalRepositories]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { repositories: VcsLocalRepository[] };
     };
     /**
      * Take a server off this machine: the stored token and Studio's record of it.

@@ -512,6 +512,34 @@ export function isVcsSignInAddress(url: string): boolean {
  * signing in at all.
  */
 /**
+ * What a server has read off one project's repository, when it has read it.
+ *
+ * **Every field is optional and an empty object is the ordinary answer.** A server
+ * records a project the moment it is created and reads its repository afterwards, so
+ * between those two moments it answers `history: {}` - an object with no facts in it -
+ * and a server older than this claim answers nothing at all. Both mean the same thing,
+ * which is that nothing is known, and neither is a project with zero versions.
+ *
+ * So a reader must decide per field. There is no count to fall back on: `revisions`
+ * being absent is not zero, `lastAt` being absent is not the epoch, and a surface that
+ * fills either in has invented a fact about somebody's work.
+ */
+export interface VcsServerProjectHistory {
+    /** Revisions on the recorded branch. */
+    revisions?: number;
+    /** The branch the rest of this describes. */
+    branch?: string;
+    /** What the repository occupies on the server. */
+    bytes?: number;
+    /** When the last revision was recorded. Epoch ms. */
+    lastAt?: number;
+    /** Who recorded it, as the identity written on the revision. */
+    lastBy?: string;
+    /** The message it was recorded with. */
+    lastMessage?: string;
+}
+
+/**
  * One project a server holds, as that server lists it.
  *
  * The whole of what an author needs in order to choose one: a name to read, a
@@ -530,6 +558,33 @@ export interface VcsServerProject {
     createdAt: number;
     /** Where the repository is, e.g. `lore://studio.example.lan:41337`. */
     remote: string;
+    /**
+     * What the server knows about the work inside it, when it knows anything.
+     *
+     * Absent from an older server and empty from one that has not read the repository
+     * yet - see {@link VcsServerProjectHistory}. Nothing here is ever a default.
+     */
+    history?: VcsServerProjectHistory;
+}
+
+/**
+ * One project this machine already has, by the only identity that survives a rename.
+ *
+ * **Read off plain files, never by opening the repository.** Lore's repository lock is
+ * exclusive and blocking: opening a store another process holds does not fail, it waits
+ * for ever, and every later call on that project queues behind it. So this is `.lore/id`
+ * and one line of `.lore/config.toml`, and a project that cannot be read this way is
+ * simply one with nothing to match on.
+ */
+export interface VcsLocalRepository {
+    /** Where the project is, spelled as the author's history remembers it. Shown, never compared. */
+    path: string;
+    /** What that history calls it. */
+    name: string;
+    /** The repository id from `.lore/id`, as hex. Absent when there is nothing to read. */
+    repositoryId?: string;
+    /** The server it is configured against, as an origin. Absent when it names none. */
+    remoteOrigin?: string;
 }
 
 export interface VcsServerAccount {
