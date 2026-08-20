@@ -160,9 +160,9 @@ export const lint = {
             messageCharacter: "Nothing brings {object} on stage, so this row has nothing to act on",
         },
         storyDeclaredNeverShown: {
-            title: "Declared but never shown",
-            description: "A create row names an object no row ever shows, so the player never sees it",
-            message: "{object} is created here but no row shows it",
+            title: "Unshown stage object",
+            description: "A create row declares an object no row shows",
+            message: "{object} is declared here and no row shows it",
         },
         storyStageObjectDuplicate: {
             title: "Duplicate stage object",

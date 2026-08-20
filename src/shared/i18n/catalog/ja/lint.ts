@@ -160,9 +160,9 @@ export const lint = {
             messageCharacter: "{object} を登場させる行がないため、この行には操作する対象がない",
         },
         storyDeclaredNeverShown: {
-            title: "宣言されたまま表示されない",
-            description: "作成行が対象を宣言しているが、それを表示する行がない",
-            message: "{object} はここで作成されるが、表示する行がない",
+            title: "表示されないステージオブジェクト",
+            description: "作成行が宣言した対象を表示する行がない",
+            message: "{object} はこの行で宣言され、表示する行がない",
         },
         storyStageObjectDuplicate: {
             title: "ステージオブジェクトの重複",

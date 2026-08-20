@@ -155,9 +155,9 @@ export const lint = {
             messageCharacter: "场景中没有任何行让 {object} 登场，该行没有可操作的对象",
         },
         storyDeclaredNeverShown: {
-            title: "声明了但从未显示",
-            description: "创建行声明了一个对象，却没有任何一行显示它，玩家永远看不到",
-            message: "{object} 在此创建，但没有任何一行显示它",
+            title: "未显示的舞台对象",
+            description: "创建行声明的对象无任何一行显示",
+            message: "{object} 在该行声明，无任何一行显示",
         },
         storyStageObjectDuplicate: {
             title: "重复的舞台对象",
