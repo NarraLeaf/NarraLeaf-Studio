@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VcsLocalRepository, VcsServerProject, VcsServerSession } from "@shared/types/vcs";
 import { ServersTab, localCopyOf } from "./ServersTab";
 
@@ -234,12 +233,16 @@ describe("with no servers", () => {
         expect(document.querySelectorAll("[data-servers-action='manage']")).toHaveLength(1);
     });
 
-    it("opens Settings at the servers panel, which is where a server is added", async () => {
+    it("adds a server here rather than sending somebody to Settings for it", async () => {
         render(<ServersTab />);
 
         fireEvent.click(await find("[data-servers-action='manage']"));
 
-        expect(bridge.launchSettings).toHaveBeenCalledWith({ highlight: SERVERS_PANEL_SETTING_KEY });
+        // The one sequence, mounted where it was asked for. Settings still keeps the list
+        // of what this installation is signed in to; it is no longer where adding lives,
+        // so nothing here opens another window to get at it.
+        await waitFor(() => expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull());
+        expect(bridge.launchSettings).not.toHaveBeenCalled();
     });
 
     it("asks no server anything, because there is none to ask", async () => {
