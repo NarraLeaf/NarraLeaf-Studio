@@ -200,6 +200,14 @@ export const lint = {
             description: "プロジェクトに存在しないウィジェットに結び付いたノード",
             message: "結び付いているウィジェットが存在しない",
         },
+        blueprintFnTargetMissing: {
+            title: "関数の欠落",
+            description: "呼び出す関数がこのスコープに存在しない Call Fn ノード",
+            // シグネチャのスナップショットを持たない呼び出し用の受け皿。残るのは id の対だけで、
+            // それを報告に出すのは作者がプロジェクト内を検索できない語を出すことになる。
+            message: "呼び出している関数がこのスコープに存在しない",
+            messageNamed: "呼び出している「{name}」がこのスコープに存在しない",
+        },
         blueprintUnreachableNode: {
             title: "到達できないノード",
             description: "グラフのどの入口からも到達できないノード",

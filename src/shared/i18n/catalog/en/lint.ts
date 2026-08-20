@@ -201,6 +201,15 @@ export const lint = {
             description: "A node bound to a widget the project no longer has",
             message: "Bound to a widget that no longer exists",
         },
+        blueprintFnTargetMissing: {
+            title: "Missing function",
+            description: "A Call Fn node whose function does not exist in its scope",
+            // The fallback, for a call stored without a signature snapshot: all that is left of the
+            // target then is its ref, which is a pair of ids - and an id in a report is a word
+            // nobody can search a project for.
+            message: "Calls a function that does not exist in this scope",
+            messageNamed: "Calls {name}, which does not exist in this scope",
+        },
         blueprintUnreachableNode: {
             title: "Unreachable node",
             description: "A node no entry point in its graph can reach",

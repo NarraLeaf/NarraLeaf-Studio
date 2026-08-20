@@ -253,8 +253,8 @@ export async function importForeignGraphAssets(source: GraphPasteSource): Promis
  *
  * Counts only: which files came across, and how many references still need the author. Every
  * unresolved reference is also reported per site - `assets/missing` for a file,
- * `blueprint/element-ref-missing` for a widget, `fn.call_target_not_found` in the graph editor for
- * a call - and those are the reports that can jump to the node holding it.
+ * `blueprint/element-ref-missing` for a widget, `blueprint/fn-target-missing` for a call - and
+ * those are the reports that can jump to the node holding it.
  */
 export function reportForeignGraphPaste(source: GraphPasteSource, report: ForeignGraphPasteReport): void {
     const { environment, payload } = source;
