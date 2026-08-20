@@ -164,6 +164,13 @@ export const lint = {
             description: "Two rows creating one stage name; the second reuses the first",
             message: "{object} is already created above, so this row acts on that one",
         },
+        storyCharacterMissing: {
+            title: "Missing character",
+            description: "A row naming a character the project does not have",
+            // No subject in the sentence: an unresolved reference leaves only its stored id, which
+            // is a UUID, and a UUID in a report is a word nobody can search a project for.
+            message: "This row names a character the project does not have, so it acts on nothing",
+        },
         storyTransitionUnavailable: {
             title: "Unavailable transition",
             description: "A row naming a transition this version cannot play",

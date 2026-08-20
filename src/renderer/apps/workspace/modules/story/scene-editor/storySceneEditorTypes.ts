@@ -1,3 +1,4 @@
+import type { AssetTransferManifestEntry } from "@shared/types/assetTransfer";
 import type { StoryBlock, StoryBlockId, StoryCharacterTagSelection, StoryRichRun } from "@shared/types/story";
 
 export type StoryBlockTarget = {
@@ -154,8 +155,58 @@ export type SerializedStoryBlock = {
     children: SerializedStoryBlock[];
 };
 
+/**
+ * The project a clipboard payload was copied out of.
+ *
+ * `path` is the identity and the only field ever compared: it is the key `normalizeProjectPath`
+ * produces, which is what every project-path comparison in Studio agrees on. `identifier` is not an
+ * identity - two projects can carry the same one - and both it and `name` exist only so a paste can
+ * say where the rows came from.
+ */
+export type StoryClipboardSource = {
+    path: string;
+    identifier: string;
+    name: string;
+};
+
+/**
+ * The files the copied rows reference, and the grant that reaches their bytes.
+ *
+ * Absent whenever the rows reference nothing importable, or the main process refused the offer - a
+ * copy never fails over its assets. See `@shared/types/assetTransfer` for what the token stands for
+ * and why an unknown one is an ordinary outcome.
+ */
+export type StoryClipboardAssets = {
+    token: string;
+    entries: AssetTransferManifestEntry[];
+};
+
+/**
+ * Story rows on the system clipboard.
+ *
+ * The MIME type is custom, but the clipboard is the system's: a payload written in one workspace
+ * window is readable in every other one, and in another Studio instance. Everything a paste needs
+ * to decide what the rows mean somewhere else therefore has to be *in here*.
+ *
+ * Version 1 payloads carry rows and nothing else. One is read as same-project - which is what it
+ * was, on the Studio that wrote it - so a payload copied before an update still pastes the way it
+ * always did.
+ */
 export type StoryClipboardPayload = {
-    version: 1;
+    version: 1 | 2;
     kind: "narraleaf.story.actions";
     roots: SerializedStoryBlock[];
+    /** Absent on version 1. See {@link StoryClipboardSource}. */
+    source?: StoryClipboardSource;
+    /**
+     * `characterId` → display name, for every character the copied rows speak as.
+     *
+     * Degradation material, and nothing else: a display name is neither total nor injective over
+     * characters, so it can never be used to *find* one. Two characters may share a name, and a
+     * name that matched a stranger in the pasting project would bind a line to somebody the author
+     * never wrote it for. Only an explicit gesture by the author turns a name back into an identity.
+     */
+    characterNames?: Record<string, string>;
+    /** Absent when the copied rows reference no importable file. See {@link StoryClipboardAssets}. */
+    assets?: StoryClipboardAssets;
 };

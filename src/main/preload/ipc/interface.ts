@@ -37,6 +37,7 @@ import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
 import type { PrivilegedActor } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
+import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
@@ -766,6 +767,12 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),
         exportToFolder: (entries: AssetExportEntry[]) =>
             ipcClient.invoke(IPCEventType.assetExportToFolder, { entries }),
+        transfer: {
+            offer: (entries: AssetTransferEntry[]) =>
+                ipcClient.invoke(IPCEventType.assetTransferOffer, { entries }),
+            redeem: (token: string) =>
+                ipcClient.invoke(IPCEventType.assetTransferRedeem, { token }),
+        },
     },
 
     puppetRuntimes: {

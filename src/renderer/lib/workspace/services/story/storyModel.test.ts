@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument, StoryExpr, StoryVariableRef } from "@shared/types/story";
 import { isStoryExpressionEvaluable, storyVariableRefKey, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
+    bindRowsToCharacter,
     collectInvalidBlocks,
+    collectRowsSpokenBy,
     collectTempSpeakers,
+    collectUnresolvedSpeakerRows,
+    narrowToOneUnresolvedSpeaker,
     createEmptyStoryAnimationIndex,
     createEmptyStoryDocument,
     createEmptyStoryLibraryIndex,
@@ -17,6 +21,8 @@ import {
     normalizeStoryDocument,
     normalizeStoryLibraryIndex,
     promoteTempSpeaker,
+    rebindSpeakersInBlocks,
+    setRowsSpeakerName,
     storyAnimationDocumentRelativePath,
     storyDocumentRelativePath,
     updateBlockPayload,
@@ -780,6 +786,189 @@ describe("temp speakers", () => {
 
         expect(promoteTempSpeaker(document, "Alice", "char-new")).toBe(0);
         expect((scene.blocks["a"].payload as Record<string, unknown>).characterId).toBe("char-existing");
+    });
+});
+
+describe("repairing a row's speaker", () => {
+    const KNOWN = new Set(["char-alice", "char-bob"]);
+
+    function dialogue(id: string, payload: { characterId?: string; speakerName?: string }): StoryBlock {
+        return {
+            id,
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "dialogue",
+                ...payload,
+                text: { textId: `t-${id}`, role: "dialogue", value: "Hi" },
+            },
+        };
+    }
+
+    /** A character's stage row, which carries an id and has no bare-name arm to degrade to. */
+    function characterEnter(id: string, characterId: string): StoryBlock {
+        return {
+            id,
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: { action: "character", operation: "enter", characterId },
+        };
+    }
+
+    /** One document, one scene per array of blocks, in the order given. */
+    function documentWithScenes(...sceneBlocks: StoryBlock[][]): StoryDocument {
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_1,
+            name: "My Story",
+            now: "2026-08-20T00:00:00.000Z",
+            generateId: idFactory(),
+        });
+        const [first] = Object.values(document.scenes);
+        sceneBlocks.forEach((blocks, index) => {
+            const scene = index === 0 ? first : { ...first, id: `scene-${index + 1}`, blocks: {}, rootBlockIds: [] };
+            document.scenes[scene.id] = scene;
+            for (const block of blocks) {
+                scene.blocks[block.id] = block;
+                scene.rootBlockIds.push(block.id);
+            }
+        });
+        return document;
+    }
+
+    function payloadOf(document: StoryDocument, blockId: string): Record<string, unknown> {
+        for (const scene of Object.values(document.scenes)) {
+            if (scene.blocks[blockId]) {
+                return scene.blocks[blockId].payload as Record<string, unknown>;
+            }
+        }
+        throw new Error(`No block ${blockId}`);
+    }
+
+    /** What `StoryService.updateBlocks` does, so a test can assert on the document rather than the plan. */
+    function applyEdits(document: StoryDocument, edits: readonly { sceneId: string; blockId: string; payload: StoryBlock["payload"] }[]): void {
+        for (const edit of edits) {
+            document.scenes[edit.sceneId].blocks[edit.blockId].payload = edit.payload;
+        }
+    }
+
+    // Two unresolved speakers in one selection is the ordinary shape of a chapter pasted in from
+    // another project. Binding them together would make two people one, so the anchor decides.
+    it("repairs only the anchored speaker when a selection holds more than one", () => {
+        const document = documentWithScenes([
+            dialogue("a", { speakerName: "Kaede" }),
+            dialogue("b", { characterId: "char-gone" }),
+            dialogue("c", { speakerName: "Kaede" }),
+        ]);
+        const rows = collectUnresolvedSpeakerRows(document, ["a", "b", "c"], KNOWN);
+
+        expect(narrowToOneUnresolvedSpeaker(rows, "a").map(row => row.blockId)).toEqual(["a", "c"]);
+        expect(narrowToOneUnresolvedSpeaker(rows, "b").map(row => row.blockId)).toEqual(["b"]);
+    });
+
+    it("offers nothing when the anchor is not itself broken and the rows disagree", () => {
+        const document = documentWithScenes([
+            dialogue("a", { speakerName: "Kaede" }),
+            dialogue("b", { characterId: "char-gone" }),
+            dialogue("resolved", { characterId: "char-alice" }),
+        ]);
+        const rows = collectUnresolvedSpeakerRows(document, ["a", "b", "resolved"], KNOWN);
+
+        expect(narrowToOneUnresolvedSpeaker(rows, "resolved")).toEqual([]);
+    });
+
+    // The common case: one broken speaker, and the author right-clicked a row that is not a
+    // dialogue row at all. The rows agree, so the repair is still offered.
+    it("falls back to the rows' own agreement when the anchor says nothing", () => {
+        const document = documentWithScenes([
+            dialogue("a", { speakerName: "Kaede" }),
+            dialogue("b", { speakerName: "Kaede" }),
+        ]);
+        const rows = collectUnresolvedSpeakerRows(document, ["a", "b"], KNOWN);
+
+        expect(narrowToOneUnresolvedSpeaker(rows, undefined).map(row => row.blockId)).toEqual(["a", "b"]);
+    });
+
+    // A bare name and an unresolvable id are different speakers even when the name on screen is
+    // the same one - nothing says the id belonged to a character called "Kaede".
+    it("does not treat a bare name and an unresolvable id as one speaker", () => {
+        const document = documentWithScenes([
+            dialogue("a", { speakerName: "Kaede" }),
+            dialogue("b", { characterId: "char-gone" }),
+        ]);
+        const rows = collectUnresolvedSpeakerRows(document, ["a", "b"], KNOWN);
+
+        expect(narrowToOneUnresolvedSpeaker(rows, undefined)).toEqual([]);
+    });
+
+    it("binds a bare name on the rows it was given, and on no others", () => {
+        const document = documentWithScenes([
+            dialogue("a", { speakerName: "Alice" }),
+            dialogue("b", { speakerName: "Alice" }),
+        ]);
+
+        applyEdits(document, rebindSpeakersInBlocks(document, ["a"], "char-alice", KNOWN));
+
+        expect(payloadOf(document, "a")).toMatchObject({ characterId: "char-alice" });
+        expect(payloadOf(document, "a")).not.toHaveProperty("speakerName");
+        // The row outside the set speaks the same name and must be untouched: the gesture is scoped to
+        // the rows the author selected, which is the whole reason it is not `promoteTempSpeaker`.
+        expect(payloadOf(document, "b").speakerName).toBe("Alice");
+        expect(payloadOf(document, "b")).not.toHaveProperty("characterId");
+    });
+
+    it("binds a character id that names nothing in this project", () => {
+        const document = documentWithScenes([dialogue("a", { characterId: "char-from-another-project" })]);
+
+        const edits = rebindSpeakersInBlocks(document, ["a"], "char-alice", KNOWN);
+
+        expect(edits).toHaveLength(1);
+        expect(edits[0].payload).toMatchObject({ characterId: "char-alice" });
+    });
+
+    it("leaves a row whose character resolves, and one with no speaker at all", () => {
+        const document = documentWithScenes([
+            dialogue("bound", { characterId: "char-bob" }),
+            dialogue("silent", {}),
+        ]);
+
+        expect(collectUnresolvedSpeakerRows(document, ["bound", "silent"], KNOWN)).toEqual([]);
+        expect(rebindSpeakersInBlocks(document, ["bound", "silent"], "char-alice", KNOWN)).toEqual([]);
+    });
+
+    it("finds every line a character speaks, in every scene, and no stage row", () => {
+        const document = documentWithScenes(
+            [dialogue("a", { characterId: "char-alice" }), characterEnter("enter", "char-alice")],
+            [dialogue("b", { characterId: "char-alice" }), dialogue("c", { characterId: "char-bob" })],
+        );
+
+        expect(collectRowsSpokenBy(document, "char-alice").map(row => row.blockId)).toEqual(["a", "b"]);
+    });
+
+    it("degrades a character's lines to its name and takes the id off", () => {
+        const document = documentWithScenes(
+            [dialogue("a", { characterId: "char-alice" })],
+            [dialogue("b", { characterId: "char-alice" })],
+        );
+
+        const edits = setRowsSpeakerName(document, collectRowsSpokenBy(document, "char-alice"), "Alice");
+
+        expect(edits.map(edit => edit.blockId)).toEqual(["a", "b"]);
+        for (const edit of edits) {
+            expect(edit.payload).toMatchObject({ speakerName: "Alice" });
+            expect(edit.payload).not.toHaveProperty("characterId");
+        }
+    });
+
+    it("takes a degraded line back to its character, which is what undoing the deletion does", () => {
+        const document = documentWithScenes([dialogue("a", { speakerName: "Alice" })]);
+        const rows = collectUnresolvedSpeakerRows(document, ["a"], KNOWN);
+
+        const edits = bindRowsToCharacter(document, rows, "char-alice");
+
+        expect(edits[0].payload).toMatchObject({ characterId: "char-alice" });
+        expect(edits[0].payload).not.toHaveProperty("speakerName");
     });
 });
 

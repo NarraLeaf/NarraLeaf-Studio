@@ -23,6 +23,10 @@ import { STORY_LINT_RULES } from "./story";
  *
  * Without it the two would drift apart silently and in the worst possible way: each surface would
  * look correct on its own, and the only symptom would be a build that refuses what a preview allows.
+ *
+ * `story/character-missing` is covered here too. It reads the same character rows and asks the one
+ * question the two above take for granted - whether the id on the row still names a character the
+ * project has - so the fixtures are the same fixtures.
  */
 
 // --- fixtures ---------------------------------------------------------------
@@ -37,6 +41,35 @@ function actionBlock(id: string, payload: StoryActionPayload, disabled = false):
         childrenIds: [],
         payload,
         ...(disabled ? { disabled: true } : {}),
+    } as StoryBlock;
+}
+
+/**
+ * A dialogue row, optionally carrying reveal-time expression tokens.
+ *
+ * Two token slots rather than a list, because the only thing any test here asks of a second one is
+ * that a row with two unresolved references is still one finding.
+ */
+function dialogueBlock(
+    id: string,
+    options: { characterId?: string; speakerName?: string; event?: { characterId: string }; secondEvent?: { characterId: string } },
+): StoryBlock {
+    const rich = [
+        { text: "Hello" },
+        ...(options.event ? [{ event: { expression: options.event } }] : []),
+        ...(options.secondEvent ? [{ event: { expression: options.secondEvent } }] : []),
+    ];
+    return {
+        id,
+        kind: "nodeAction",
+        parentId: null,
+        childrenIds: [],
+        payload: {
+            action: "dialogue",
+            ...(options.characterId ? { characterId: options.characterId } : {}),
+            ...(options.speakerName ? { speakerName: options.speakerName } : {}),
+            text: { textId: `text-${id}`, value: "Hello", role: "dialogue", rich },
+        },
     } as StoryBlock;
 }
 
@@ -295,6 +328,113 @@ describe("story/stage-object-duplicate", () => {
             actionBlock("enter", { action: "character", operation: "enter", characterId: "char-1" }),
             actionBlock("exit", { action: "character", operation: "exit", characterId: "char-1" }),
             actionBlock("again", { action: "character", operation: "enter", characterId: "char-1" }),
+        ])).toEqual([]);
+    });
+});
+
+// --- story/character-missing ------------------------------------------------
+
+describe("story/character-missing", () => {
+    /** A project with exactly one character, so an id other than this one resolves to nothing. */
+    const characters = [{ id: "char-alice", name: "Alice", assetIds: [] }];
+
+    /** The rows the rule reported, read against that project. */
+    async function reported(blocks: StoryBlock[]): Promise<string[]> {
+        const findings = await run(
+            "story/character-missing",
+            createTestLintContext({ characters, stories: [storyEntry(blocks)] }),
+        );
+        return findings.map(finding => (finding.location.kind === "story" ? finding.location.blockId ?? "" : ""));
+    }
+
+    it("is an error, because every remaining reading of the row is a wrong one", () => {
+        expect(rule("story/character-missing").defaultSeverity).toBe("error");
+    });
+
+    it("reports a character row naming an id no character in the project has", async () => {
+        const findings = await run(
+            "story/character-missing",
+            createTestLintContext({
+                characters,
+                stories: [storyEntry([actionBlock("enter", { action: "character", operation: "enter", characterId: "char-bob" })])],
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyCharacterMissing.message");
+        // The stored id is a UUID, so it is in neither the sentence nor its parameters; the jump to
+        // the row is what the author acts on.
+        expect(findings[0].messageParams).toBeUndefined();
+        expect(findings[0].location).toMatchObject({ kind: "story", sceneId: SCENE_ID, blockId: "enter" });
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "enter" });
+    });
+
+    it("says nothing when the same row names a character the project has", async () => {
+        expect(await reported([
+            actionBlock("enter", { action: "character", operation: "enter", characterId: "char-alice" }),
+        ])).toEqual([]);
+    });
+
+    it("reports every operation a character row can carry", async () => {
+        // Including the three the stage rules stay silent on and the speaker rename, which touches no
+        // portrait at all: whichever operation the row carries, the character it names is not there.
+        expect(await reported([
+            actionBlock("enter", { action: "character", operation: "enter", characterId: "char-bob" }),
+            actionBlock("move", { action: "character", operation: "move", characterId: "char-bob" }),
+            actionBlock("face", { action: "character", operation: "expression", characterId: "char-bob" }),
+            actionBlock("exit", { action: "character", operation: "exit", characterId: "char-bob" }),
+            actionBlock("rename", { action: "character", operation: "setName", characterId: "char-bob", displayName: "Bob" }),
+            actionBlock("motion", { action: "character", operation: "setMotion", characterId: "char-bob", puppetName: "run" }),
+            actionBlock("skin", { action: "character", operation: "setSkin", characterId: "char-bob", puppetName: "winter" }),
+            actionBlock("params", { action: "character", operation: "setParams", characterId: "char-bob", params: { ParamAngleX: 1 } }),
+        ])).toEqual(["enter", "move", "face", "exit", "rename", "motion", "skin", "params"]);
+    });
+
+    it("says nothing about a row that names no character at all", async () => {
+        // A stage object addressed by name is an ordinary row; there is no reference to resolve.
+        expect(await reported([
+            actionBlock("exit", { action: "character", operation: "exit", objectName: "Alice" }),
+        ])).toEqual([]);
+    });
+
+    it("leaves a dialogue speaker alone, resolving or not", async () => {
+        // A speaker with no character record is a shippable line rather than a defect: the dialogue
+        // box displays whatever name it is given, so an unresolved id degrades to `speakerName`.
+        expect(await reported([
+            dialogueBlock("named", { characterId: "char-bob", speakerName: "Bob" }),
+            dialogueBlock("bare", { characterId: "char-bob" }),
+        ])).toEqual([]);
+    });
+
+    it("reports an inline expression event naming a character the project does not have", async () => {
+        // The reveal-time portrait switch stores an id on its own and has no bare-name arm, so an
+        // id that resolves to nothing is a swap that never happens.
+        expect(await reported([
+            dialogueBlock("line", { characterId: "char-alice", event: { characterId: "char-bob" } }),
+        ])).toEqual(["line"]);
+    });
+
+    it("says nothing about an inline expression event whose character resolves", async () => {
+        expect(await reported([
+            dialogueBlock("line", { characterId: "char-alice", event: { characterId: "char-alice" } }),
+        ])).toEqual([]);
+    });
+
+    it("reports a row once however many references it carries", async () => {
+        const findings = await run(
+            "story/character-missing",
+            createTestLintContext({
+                characters,
+                stories: [storyEntry([
+                    dialogueBlock("line", { event: { characterId: "char-bob" }, secondEvent: { characterId: "char-carol" } }),
+                ])],
+            }),
+        );
+        expect(findings).toHaveLength(1);
+    });
+
+    it("says nothing about a disabled row, which is authored but not in the runtime", async () => {
+        expect(await reported([
+            actionBlock("enter", { action: "character", operation: "enter", characterId: "char-bob" }, true),
         ])).toEqual([]);
     });
 });

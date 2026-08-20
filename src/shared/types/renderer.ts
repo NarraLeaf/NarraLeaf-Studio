@@ -58,6 +58,7 @@ import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThem
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
 import type {
     AvailableSpellcheckDictionary,
     InstalledSpellcheckDictionary,
@@ -1094,6 +1095,21 @@ export interface RendererPreloadedInterface {
          * the dialog is a success carrying `canceled: true`, not a failure.
          */
         exportToFolder(entries: AssetExportEntry[]): Promise<RequestStatus<AssetExportResult>>;
+
+        /**
+         * Moving an asset's bytes between two workspace windows of one Studio process.
+         *
+         * A window may read only its own project, so a paste into another project cannot open the
+         * files the copied rows reference. `offer` asks main to vouch for a manifest the copying
+         * window can read and hands back a token to put on the clipboard; `redeem` trades that token
+         * for read access to exactly those files. Bytes and paths never cross on the clipboard, and
+         * a token main did not mint answers `available: false` rather than failing - see
+         * `@shared/types/assetTransfer`.
+         */
+        transfer: {
+            offer(entries: AssetTransferEntry[]): Promise<RequestStatus<AssetTransferOfferResult>>;
+            redeem(token: string): Promise<RequestStatus<AssetTransferRedeemResult>>;
+        };
     };
 
     /**
