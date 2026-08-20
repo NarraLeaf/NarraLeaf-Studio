@@ -252,12 +252,11 @@ export const settings = {
         },
         versionControlAuthor: {
             label: "作者名",
-            description: "コミットとチェックポイントに記録される。空のままなら NarraLeaf Studio と記録する",
-            fromServer: "このインストールがサインインしているサーバーから取得されます。自分の名前を記録するにはサインアウトしてください。",
+            description: "サーバーに接続していないプロジェクトで記録される。空のままなら NarraLeaf Studio と記録する",
         },
         versionControlAuthorEmail: {
             label: "作者のメールアドレス",
-            description: "作者名の隣に「Name <email>」の形で記録される。空のままならアドレスを記録しない",
+            description: "サーバーに接続していないプロジェクトで、作者名の隣に「Name <email>」の形で記録される。空のままならアドレスを記録しない",
         },
         confirmBeforeClose: {
             label: "ワークスペースを閉じる前に確認",

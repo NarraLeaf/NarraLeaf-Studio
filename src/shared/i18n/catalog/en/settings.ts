@@ -257,15 +257,11 @@ export const settings = {
         },
         versionControlAuthor: {
             label: "Author name",
-            description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
-            // Replaces the description above while the field is closed, so the row says why
-            // rather than merely refusing to be typed in. Shown on both author fields.
-            fromServer:
-                "Comes from the server this installation is signed in to. Sign out to record a name entered here again.",
+            description: "Recorded on projects that are not connected to a server. Leave empty to record NarraLeaf Studio instead.",
         },
         versionControlAuthorEmail: {
             label: "Author email",
-            description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
+            description: "Recorded next to the author name, as \"Name <email>\", on projects that are not connected to a server. Leave empty to record no address.",
         },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",

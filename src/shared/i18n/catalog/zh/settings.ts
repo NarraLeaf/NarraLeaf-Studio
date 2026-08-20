@@ -238,12 +238,11 @@ export const settings = {
         },
         versionControlAuthor: {
             label: "作者名",
-            description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
-            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录此处填写的名字。",
+            description: "在未连接服务器的项目上记录，留空则记为 NarraLeaf Studio",
         },
         versionControlAuthorEmail: {
             label: "作者邮箱",
-            description: "与作者名一起记录，形如「作者名 <邮箱>」，留空则不记录地址",
+            description: "在未连接服务器的项目上与作者名一起记录，形如「作者名 <邮箱>」，留空则不记录地址",
         },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",
