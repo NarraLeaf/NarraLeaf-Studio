@@ -1,4 +1,4 @@
-import type { StoryAnimationAsset, StoryDocument } from "@shared/types/story";
+import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
 import type { BlueprintDocument, BlueprintGraphEdge, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
@@ -338,6 +338,69 @@ export interface StoryAssetReferenceScan {
     setReferences: AssetReference[];
 }
 
+/** One field on a row that can name an asset, and whatever that field currently holds. */
+export interface StoryBlockAssetSite {
+    /** Dotted field path, rendered verbatim as the references panel's "where" column. */
+    field: string;
+    /** An asset id, a set id, or nothing - the caller decides what a value is worth. */
+    assetId: unknown;
+}
+
+/**
+ * Every field on one row that can name an asset.
+ *
+ * The single statement of which fields those are, read from two ends: the reference index asks so
+ * it can record what uses a file, and a row copied to the clipboard asks so the files it needs can
+ * be offered to whichever project it is pasted into. Stating it twice would let a new
+ * asset-carrying action be added to one and be silently invisible to the other.
+ */
+export function listBlockAssetSites(block: StoryBlock): StoryBlockAssetSite[] {
+    if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
+        return [{ field: "dialogue.voiceAssetId", assetId: block.payload.voiceAssetId }];
+    }
+    // A jump is its own block kind, not an action, so the switch below never sees it - and it
+    // carries a transition, which since 0.30.0 can name a rule image.
+    if (block.kind === "jump") {
+        return [{ field: "transition.ruleAssetId", assetId: block.payload.transition?.ruleAssetId }];
+    }
+    if (block.kind !== "action") {
+        return [];
+    }
+    const payload = block.payload;
+    const sites: StoryBlockAssetSite[] = [];
+    // Every transition-carrying payload can name a rule image, and it is the one asset a row uses
+    // without the id sitting on the payload itself. Collected before the switch so a new
+    // transition-carrying action cannot forget it.
+    // `nvl` is excluded because its `transition` is a StoryTransformRef and not a transition at all
+    // - the panel animates through its own transform, and it has no kind.
+    if ("transition" in payload && payload.action !== "nvl") {
+        sites.push({ field: "transition.ruleAssetId", assetId: payload.transition?.ruleAssetId });
+    }
+    switch (payload.action) {
+        case "setBackground":
+            sites.push({ field: "background.assetId", assetId: payload.assetId });
+            break;
+        case "character":
+            sites.push({ field: "character.assetId", assetId: payload.assetId });
+            break;
+        case "audio":
+            sites.push({ field: "audio.assetId", assetId: payload.assetId });
+            break;
+        case "image":
+            sites.push({ field: "image.assetId", assetId: payload.assetId });
+            break;
+        case "video":
+            sites.push({ field: "video.assetId", assetId: payload.assetId });
+            break;
+        case "displayable":
+            sites.push({ field: "displayable.maskAssetId", assetId: payload.transform?.to?.maskAssetId ?? undefined });
+            break;
+        default:
+            break;
+    }
+    return sites;
+}
+
 export function extractStoryAssetReferences(
     document: StoryDocument,
     storyName: string,
@@ -464,49 +527,8 @@ export function scanStoryAssetReferences(
         // Depth first, so the "used by" list under an asset reads down the scene the way the author
         // wrote it. The record's key order would be UUID order once it has been rewritten once.
         for (const block of listSceneBlocksInDocumentOrder(scene)) {
-            if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-                pushBlockReference(block.id, "dialogue.voiceAssetId", block.payload.voiceAssetId);
-                continue;
-            }
-            // A jump is its own block kind, not an action, so the switch below never sees it -
-            // and it carries a transition, which since 0.30.0 can name a rule image.
-            if (block.kind === "jump") {
-                pushBlockReference(block.id, "transition.ruleAssetId", block.payload.transition?.ruleAssetId);
-                continue;
-            }
-            if (block.kind !== "action") {
-                continue;
-            }
-            const payload = block.payload;
-            // Every transition-carrying payload can name a rule image, and it is the one asset a
-            // row uses without the id sitting on the payload itself. Walked before the switch so a
-            // new transition-carrying action cannot forget it.
-            // `nvl` is excluded because its `transition` is a StoryTransformRef and not a
-            // transition at all - the panel animates through its own transform, and it has no kind.
-            if ("transition" in payload && payload.action !== "nvl") {
-                pushBlockReference(block.id, "transition.ruleAssetId", payload.transition?.ruleAssetId);
-            }
-            switch (payload.action) {
-                case "setBackground":
-                    pushBlockReference(block.id, "background.assetId", payload.assetId);
-                    break;
-                case "character":
-                    pushBlockReference(block.id, "character.assetId", payload.assetId);
-                    break;
-                case "audio":
-                    pushBlockReference(block.id, "audio.assetId", payload.assetId);
-                    break;
-                case "image":
-                    pushBlockReference(block.id, "image.assetId", payload.assetId);
-                    break;
-                case "video":
-                    pushBlockReference(block.id, "video.assetId", payload.assetId);
-                    break;
-                case "displayable":
-                    pushBlockReference(block.id, "displayable.maskAssetId", payload.transform?.to?.maskAssetId ?? undefined);
-                    break;
-                default:
-                    break;
+            for (const site of listBlockAssetSites(block)) {
+                pushBlockReference(block.id, site.field, site.assetId);
             }
         }
     }

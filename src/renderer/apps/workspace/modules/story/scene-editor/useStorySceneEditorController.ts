@@ -21,7 +21,9 @@ import { storySceneHistoryScope } from "@/lib/workspace/services/history/history
 import { isRowTextEditable } from "./storySceneReadOnly";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
+import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -40,7 +42,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
-import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
+import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeaker, rebindSpeakersInBlocks } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
@@ -121,6 +123,29 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // Per-project persistent store for the editor's view state (focus/selection/scroll). Available on
     // the first render - the workspace only mounts editors once services (incl. this one) are ready.
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
+    /** Reads the bytes of a file a pasted asset manifest granted this window access to. */
+    const fileSystemService = useMemo(() => (context && isInitialized ? context.services.get<FileSystemService>(Services.FileSystem) : null), [context, isInitialized]);
+    /**
+     * This window's own project, as the clipboard describes it.
+     *
+     * The path is the identity a pasted payload is compared against - rows carrying another
+     * project's UUIDs are treated differently from rows coming home - and the name and identifier
+     * travel with a copy so the window it lands in can say where its rows came from.
+     */
+    const projectPath = useMemo(() => (context ? context.project.getConfig().projectPath : ""), [context]);
+    const projectIdentity = useMemo(() => {
+        if (!context || !isInitialized) {
+            return { name: "", identifier: "" };
+        }
+        try {
+            const config = context.services.get<ProjectService>(Services.Project).getProjectConfig();
+            return { name: config.name ?? "", identifier: config.identifier ?? "" };
+        } catch {
+            // Only the display half of a copy. A scene that cannot be edited because the manifest
+            // has not loaded would be a far worse trade than a clipboard payload with no name on it.
+            return { name: "", identifier: "" };
+        }
+    }, [context, isInitialized]);
     /** Owner of the persistent-variable declarations the story's `persistent` scope points at. */
     const blueprintService = useMemo(() => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null), [context, isInitialized]);
     /** What a puppet character's model says it contains - the source of every motion / expression / skin the editor offers. */
@@ -440,6 +465,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const tempSpeakers = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
     const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterRevision, characterService]);
+    /**
+     * The cast as a membership test, which is what tells a working `characterId` from one that names
+     * nothing in this project - the state rows carried in from another project arrive in.
+     */
+    const knownCharacterIds = useMemo(
+        () => new Set(characters.map(character => character.profile.getId())),
+        [characters],
+    );
 
     /**
      * The puppet characters, and whichever of their models have already described themselves.
@@ -2115,6 +2148,47 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
     }, [characterService, document, setDialogueSpeaker, uiService]);
 
+    /**
+     * The rows among `blockIds` that speak as ONE unresolved speaker, and which speaker that is.
+     *
+     * Narrowing to a single speaker is what keeps the repair from merging people. A selection may
+     * hold lines by several speakers none of whom resolve - a chapter pasted in from another
+     * project usually does - and binding all of them to one character would silently make them the
+     * same person. `anchorBlockId` is the row the menu was opened on: if it is itself broken its
+     * speaker decides, which is what makes the gesture read as "this speaker". Otherwise the rows
+     * have to agree among themselves, and a selection spanning two broken speakers offers nothing
+     * rather than guessing which one was meant.
+     */
+    const unresolvedSpeakerRowIds = useCallback((
+        blockIds: readonly StoryBlockId[],
+        anchorBlockId?: StoryBlockId | null,
+    ): StoryBlockId[] => {
+        if (!document || blockIds.length === 0) {
+            return [];
+        }
+        const rows = collectUnresolvedSpeakerRows(document, blockIds, knownCharacterIds);
+        return narrowToOneUnresolvedSpeaker(rows, anchorBlockId).map(row => row.blockId);
+    }, [document, knownCharacterIds]);
+
+    /**
+     * Bind the unresolved speakers on an explicit set of rows to a character that already exists.
+     *
+     * The counterpart to {@link createCharacterFromSpeaker}, and the scope is where they differ:
+     * creating a character is the author naming someone new, so every line already speaking as that
+     * name follows it. A repair is not - it reaches lines the author is looking at and no others,
+     * which after pasting a chapter in from another project is the difference between fixing that
+     * chapter and rewriting the ones around it.
+     */
+    const bindSpeakerForRows = useCallback((blockIds: readonly StoryBlockId[], characterId: string) => {
+        if (!document || !sceneId) {
+            return;
+        }
+        const edits = rebindSpeakersInBlocks(document, blockIds, characterId, knownCharacterIds)
+            .filter(edit => edit.sceneId === sceneId)
+            .map(edit => ({ blockId: edit.blockId, payload: edit.payload }));
+        updateBlockPayloads(edits);
+    }, [document, knownCharacterIds, sceneId, updateBlockPayloads]);
+
     const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent) => {
         // Bumped on every select gesture, including one that lands on the row already active. The right
         // rail follows the selection, and something else in the app (clicking an asset) may have taken
@@ -2230,11 +2304,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         storyService,
         uuidService,
         uiService,
+        assetsService,
+        fileSystemService,
         storyId,
         sceneId,
         scene,
         scenes: document?.scenes,
         characters,
+        knownCharacterIds,
+        projectPath,
+        projectName: projectIdentity.name,
+        projectIdentifier: projectIdentity.identifier,
         selectedBlockIds,
         activeBlockId,
         visibleRows,
@@ -2740,6 +2820,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
+        unresolvedSpeakerRowIds, bindSpeakerForRows,
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
         recordHistory, undoEdit, redoEdit,
