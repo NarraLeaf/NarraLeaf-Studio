@@ -248,6 +248,7 @@ export const storyInspector = {
         sway: "揺れ",
         streak: "尾の長さ",
         wind: "風向き（度）",
+        fallSpeed: "落下速度",
         depthSpread: "奥行き差",
     },
 

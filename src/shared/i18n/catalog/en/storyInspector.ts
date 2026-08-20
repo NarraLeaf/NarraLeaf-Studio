@@ -246,6 +246,7 @@ export const storyInspector = {
         sway: "Drift",
         streak: "Streak",
         wind: "Wind (deg)",
+        fallSpeed: "Fall speed",
         depthSpread: "Depth spread",
     },
 
