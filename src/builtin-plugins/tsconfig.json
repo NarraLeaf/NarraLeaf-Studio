@@ -15,11 +15,13 @@
         "module": "ESNext",
         "moduleResolution": "bundler",
         "jsx": "react-jsx",
-        "baseUrl": ".",
         "strict": true,
         "noEmit": true,
         "skipLibCheck": true,
         "esModuleInterop": true,
+        // No `baseUrl`: TypeScript 7 removed the option
+        // (oxc-project/tsgolint#351) and every mapping below is already
+        // relative to this file, which is all `baseUrl: "."` meant here.
         "paths": {
             "narraleaf-studio/plugin": ["../renderer/plugin/index.ts"],
             "narraleaf-studio/runtime": ["../renderer/lib/ui-editor/runtime/plugins/runtimePluginApi.ts"],
