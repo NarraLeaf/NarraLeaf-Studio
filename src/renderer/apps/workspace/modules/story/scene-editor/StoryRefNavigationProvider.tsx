@@ -3,6 +3,7 @@ import type { StoryDocument, StorySceneId } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useRegistry } from "@/apps/workspace/registry/Registry";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { Services } from "@/lib/workspace/services/services";
 /**
@@ -80,6 +81,11 @@ export function StoryRefNavigationProvider(props: {
                     }
                     return null;
                 },
+                // Asked only when the library did not answer - see `isAssetSet`. Read live for the
+                // same reason as the table above it.
+                isAssetSet: assetId => Boolean(
+                    context?.services.get<AssetSetService>(Services.AssetSets).getSet(assetId),
+                ),
             });
         return {
             canOpen: (ref: Parameters<typeof storyRefJumpTarget>[0]) => resolve(ref) !== null,
