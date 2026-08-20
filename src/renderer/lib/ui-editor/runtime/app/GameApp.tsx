@@ -43,6 +43,7 @@ import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import {
@@ -406,6 +407,23 @@ export function GameApp(props: GameAppProps): ReactNode {
             subscribe: listener => core.scopeBridge.subscribePersistence(listener),
         };
     }, [bundle.localization, core]);
+    /**
+     * The same answer, for readers that are not components.
+     *
+     * The blueprint evaluator resolves an asset set on a node the moment a pin is read, which
+     * happens inside synchronous graph execution - no React context to reach and no promise to
+     * await. See `runtimeLocale.ts` for why that is a module-level holder rather than another field
+     * threaded through the resolve runtime.
+     */
+    useEffect(() => {
+        if (!gameLocalizationRuntime) {
+            return;
+        }
+        return setRuntimeLocaleSource({
+            getLocale: gameLocalizationRuntime.getLocale,
+            sourceLocale: gameLocalizationRuntime.bundle.sourceLocale,
+        });
+    }, [gameLocalizationRuntime]);
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
     // Localized character nametag: NLR reports the authored (source-language)
     // name; map it back to its character and translate the `char:<id>` unit for
