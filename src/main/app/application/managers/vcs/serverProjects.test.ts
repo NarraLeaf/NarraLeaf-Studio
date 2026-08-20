@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createServerProject,
+    deleteServerProject,
     getServerProject,
     listServerProjectHistory,
     listServerProjects,
@@ -227,6 +228,63 @@ describe("publishing a project that already exists", () => {
         });
 
         expect(result).toMatchObject({ ok: true });
+    });
+});
+
+describe("taking a project off a server", () => {
+    it("asks for the one project by DELETE, and expects the answer with no body", async () => {
+        // 204 is what the server answers, and `expect` is what makes anything else a
+        // refusal: a server too old for this route answers 404, and one that answered
+        // 200 with a document has not done what was asked.
+        answers(undefined);
+
+        const result = await deleteServerProject({ ...CREDENTIALS, projectId: PROJECT_ID });
+
+        expect(askServer).toHaveBeenCalledWith({
+            ...CREDENTIALS,
+            path: `/api/studio/v1/projects/${PROJECT_ID}`,
+            method: "DELETE",
+            expect: 204,
+        });
+        expect(result).toEqual({ ok: true });
+    });
+
+    it("carries nothing back on success, because there is nothing to carry", async () => {
+        // The server sends no document, so there is no shape to read and nothing that
+        // could be read wrongly. What a reader wants next is the list, fetched again.
+        answers(undefined);
+
+        await expect(deleteServerProject({ ...CREDENTIALS, projectId: PROJECT_ID }))
+            .resolves.toEqual({ ok: true });
+    });
+
+    it("sends no body, so there is no argument that could ask for more than the row", async () => {
+        answers(undefined);
+
+        await deleteServerProject({ ...CREDENTIALS, projectId: PROJECT_ID });
+
+        expect(askServer.mock.calls[0]?.[0]).not.toHaveProperty("body");
+    });
+
+    it("escapes the id into the path rather than pasting it in", async () => {
+        answers(undefined);
+
+        await deleteServerProject({ ...CREDENTIALS, projectId: "a/b" });
+
+        expect(askServer).toHaveBeenCalledWith(expect.objectContaining({
+            path: "/api/studio/v1/projects/a%2Fb",
+        }));
+    });
+
+    it("hands a refusal straight back, coded as it came", async () => {
+        // Including the 404 a server too old for the route answers with, which arrives
+        // as `rejected` like any other status this does not expect. The sentence an
+        // author reads for it is written in the renderer.
+        for (const problem of [{ kind: "refused" }, { kind: "unreachable" }] as const) {
+            askServer.mockResolvedValue({ ok: false, problem });
+            await expect(deleteServerProject({ ...CREDENTIALS, projectId: PROJECT_ID }))
+                .resolves.toEqual({ ok: false, problem });
+        }
     });
 });
 

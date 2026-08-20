@@ -19,6 +19,7 @@ import type {
     VcsPasswordSignInOutcome,
     VcsPublishOutcome,
     VcsServerMembersOutcome,
+    VcsServerProjectDeleteOutcome,
     VcsServerProjectDetailOutcome,
     VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome,
@@ -601,6 +602,26 @@ export class VcsGetServerProjectHandler extends IPCHandler<IPCEventType.vcsGetSe
     ): Promise<RequestStatus<VcsServerProjectDetailOutcome>> {
         return this.tryUse(async () =>
             window.app.getVcsManager().getServerProject(remoteOrigin, projectId));
+    }
+}
+
+/**
+ * Take one project off a server.
+ *
+ * The one call in this group that changes what a server holds. What it changes is the
+ * list: the repository keeps its store and every revision in it, and a project taken off
+ * by mistake is published again under the same repository id.
+ */
+export class VcsDeleteServerProjectHandler extends IPCHandler<IPCEventType.vcsDeleteServerProject> {
+    readonly name = IPCEventType.vcsDeleteServerProject;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { remoteOrigin, projectId }: IPCEvents[IPCEventType.vcsDeleteServerProject]["data"],
+    ): Promise<RequestStatus<VcsServerProjectDeleteOutcome>> {
+        return this.tryUse(async () =>
+            window.app.getVcsManager().deleteServerProject(remoteOrigin, projectId));
     }
 }
 

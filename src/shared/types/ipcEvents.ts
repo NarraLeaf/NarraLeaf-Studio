@@ -95,7 +95,8 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsPublishOutcome,
-    VcsServerMembersOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome,
+    VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome,
+    VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
@@ -378,6 +379,7 @@ export enum IPCEventType {
     vcsForgetServer = "vcs.forgetServer",
     vcsListServerProjects = "vcs.listServerProjects",
     vcsGetServerProject = "vcs.getServerProject",
+    vcsDeleteServerProject = "vcs.deleteServerProject",
     vcsListServerProjectHistory = "vcs.listServerProjectHistory",
     vcsListServerMembers = "vcs.listServerMembers",
     vcsSignInWithPassword = "vcs.signInWithPassword",
@@ -1392,6 +1394,20 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { remoteOrigin: string; projectId: string },
         response: VcsServerProjectDetailOutcome;
+    };
+    /**
+     * Take one project off a server.
+     *
+     * **Goes to the network**, and it is the one call here that changes what a server
+     * holds rather than reading it. What it changes is the list: the server stops
+     * carrying the project, and the repository keeps its store and every revision in it.
+     * Nothing here destroys an author's work, and no argument to it would.
+     */
+    [IPCEventType.vcsDeleteServerProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string },
+        response: VcsServerProjectDeleteOutcome;
     };
     /**
      * The latest revisions on one of a server's projects, newest first.

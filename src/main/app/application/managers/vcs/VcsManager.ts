@@ -26,6 +26,7 @@ import type {
     VcsServerDescription,
     VcsServerMembersOutcome,
     VcsServerProbe,
+    VcsServerProjectDeleteOutcome,
     VcsServerProjectDetailOutcome,
     VcsServerProjectHistoryOutcome,
     VcsServerReach,
@@ -82,6 +83,7 @@ import { listServerMembers } from "./serverMembers";
 import { signInWithPassword } from "./serverPassword";
 import {
     createServerProject,
+    deleteServerProject,
     getServerProject,
     listServerProjectHistory,
     listServerProjects,
@@ -1932,6 +1934,35 @@ export class VcsManager extends Manager {
             );
         }
         return { ok: true, detail: read.detail };
+    }
+
+    /**
+     * Take one project off a server.
+     *
+     * **The project stops being on the server; the repository keeps everything in it.**
+     * Nothing an author wrote is destroyed here, and there is no argument to this that
+     * would destroy any of it: the server drops the project from its list, and the store
+     * behind it is untouched. A project removed by mistake is published again under the
+     * same repository id and comes back with its history.
+     *
+     * Nothing local is touched either. A copy of the project on this machine goes on
+     * opening, and its remote goes on pointing where it pointed - the project is no
+     * longer on the server's list, which is a different thing from being disconnected
+     * from it.
+     */
+    public async deleteServerProject(
+        remoteOrigin: string,
+        projectId: string,
+    ): Promise<VcsServerProjectDeleteOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+
+        const removed = await deleteServerProject({ ...credentials, projectId });
+        this.app.logger.info(
+            "[Vcs]", remoteOrigin, "delete", projectId,
+            removed.ok ? "removed" : removed.problem.kind,
+        );
+        return removed;
     }
 
     /** The latest revisions on one of a server's projects, newest first. */
