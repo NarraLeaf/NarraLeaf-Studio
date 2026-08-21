@@ -39,6 +39,7 @@ export const widgets = {
         wrapNone: "折り返さない",
         autoFit: "自動縮小",
         autoFitMinFontSize: "最小の文字サイズ",
+        autoFitTip: "文字を小さくして全体を枠内に収めます。最小の文字サイズでも収まらない文字は切り取られます。",
         alignment: "揃え",
         verticalAlignment: "縦の揃え",
         alignLeft: "左揃え",

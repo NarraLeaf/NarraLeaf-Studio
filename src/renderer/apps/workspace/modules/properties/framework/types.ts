@@ -40,6 +40,14 @@ export interface BaseFieldDefinition<TData = any> {
     label?: string;
     /** Help text shown below the field */
     helpText?: string;
+    /**
+     * What the field does, shown on hover rather than on the panel.
+     *
+     * For a setting whose name cannot carry its whole meaning. It costs no space, which is why it is
+     * the way to explain a field: `helpText` prints under the control and is for the rare line the
+     * reader needs before they can answer at all.
+     */
+    tip?: string;
     /** Placeholder text */
     placeholder?: string;
     /** Whether the field is read-only */

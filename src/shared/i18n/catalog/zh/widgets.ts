@@ -38,6 +38,7 @@ export const widgets = {
         wrapNone: "不换行",
         autoFit: "自动缩小",
         autoFitMinFontSize: "最小字号",
+        autoFitTip: "缩小文本，直到整体放进盒子，最小到最小字号。到该字号仍放不下的文本会被裁切。",
         alignment: "对齐",
         verticalAlignment: "垂直对齐",
         alignLeft: "左对齐",

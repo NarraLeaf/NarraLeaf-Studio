@@ -37,6 +37,7 @@ export const widgets = {
         wrapNone: "No wrap",
         autoFit: "Auto fit",
         autoFitMinFontSize: "Smallest size",
+        autoFitTip: "Sets the text smaller until the whole of it fits the box, down to the smallest size. Text that still does not fit is clipped.",
         alignment: "Alignment",
         verticalAlignment: "Vertical alignment",
         alignLeft: "Align left",

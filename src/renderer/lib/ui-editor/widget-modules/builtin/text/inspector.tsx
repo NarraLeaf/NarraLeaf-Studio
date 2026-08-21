@@ -453,6 +453,7 @@ export function createTextInspector(ctx: InspectorContext) {
                 id: "text.autoFit",
                 type: "toggle",
                 label: t("widgets.typography.autoFit"),
+                tip: t("widgets.typography.autoFitTip"),
                 getValue: (d: D) => getTextProps(d.element).textAutoFit,
                 setValue: (_d: D, value: boolean) => patchProps({ textAutoFit: value }),
               }),
