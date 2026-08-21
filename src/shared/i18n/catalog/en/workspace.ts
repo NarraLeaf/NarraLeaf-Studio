@@ -302,6 +302,31 @@ export const workspace = {
         },
     },
     shell: {
+    /**
+     * NarraLeaf Team, in the corner of the window.
+     *
+     * The panel behind the cell owns two questions the version rail used to carry: which server
+     * this project's versions go to, and who this machine is when they get there. Everything it
+     * says about a server it says in the words the rail already uses - those keys are shared - so
+     * only what is new to this panel is here.
+     */
+    team: {
+        // The product name, said in full, because this is where an author meets it. Every other
+        // line in the panel calls a server a server.
+        title: "NarraLeaf Team",
+        // Title Case like every other command, and named after what it opens rather than
+        // after the corner it opens from.
+        command: {
+            open: "Open NarraLeaf Team",
+        },
+        // The eyebrow over the destination. "Server" and not "Team server": the dialog is
+        // already titled with the product, and repeating it in the label under it reads as
+        // branding rather than as a name for the row.
+        destination: "Server",
+        // Opens Settings, where a server is added to this machine and signed out of. The ellipsis
+        // is this catalog's mark for a control that opens somewhere else.
+        manage: "Manage servers…",
+    },
         errorTitle: "Failed to initialize workspace",
         showStackTrace: "Show stack trace",
         retry: "Retry",
@@ -482,6 +507,9 @@ export const workspace = {
             // Names for the registered entries, shown only in the bar's right-click toggle menu -
             // the cells themselves are icon-first and label their own state.
             entries: {
+                // The brand, not a description of the cell: it is where an author learns the
+                // name of the thing their project is shared through.
+                team: "NarraLeaf Team",
                 runStatus: "Run status",
         studioTasks: "Background work",
                 unsavedChanges: "Unsaved changes",

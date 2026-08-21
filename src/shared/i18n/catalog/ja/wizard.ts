@@ -62,7 +62,7 @@ export const wizard = {
         },
         clone: {
             label: "サーバーからクローン",
-            description: "バージョン管理サーバー上のプロジェクトを複製する",
+            description: "NarraLeaf Team サーバー上のプロジェクトを複製する",
             next: "次のページでプロジェクトのアドレスと、手元の複製を置く場所を指定する",
         },
     },
@@ -83,7 +83,7 @@ export const wizard = {
         browseLocation: "フォルダを選ぶ",
         validatingDirectory: "フォルダを確認している…",
         directoryWillBeCreated: "このフォルダはプロジェクトと一緒に作られる",
-        versionControlLoreHint: "プロジェクトフォルダの中にバージョン履歴が作られ、この時点のプロジェクトが最初のバージョンとして記録される",
+        versionControlLoreHint: "プロジェクトフォルダの中にバージョン履歴が作られ、この時点のプロジェクトが最初のバージョンとして記録される。作成後に Team サーバーへ送ることができる",
         versionControlUnavailablePlatform: "この端末ではバージョン管理を使えない。バージョン管理なしでプロジェクトを作る",
         versionControlUnavailableInstallation: "この Studio ビルドではバージョン管理を使えない。バージョン管理なしでプロジェクトを作る",
         moreDetails: "詳細",

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VcsServerSession } from "@shared/types/vcs";
 import { CommitForm, ServerPickerDialog, ServerSection } from "./VersionRail";
+import { registerTeamPresenceBridge } from "../../modules/team/teamPresenceController";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 
 /**
@@ -18,8 +19,8 @@ import type { VersionSurface } from "../../hooks/useVersionSurface";
  * The rail section that reaches this dialog is pinned in the same file, for the same reason: the
  * two are one decision about how much weight a once-a-year act is given, and the drift is always
  * in the direction of giving it more. So the section's own suite below holds the shape - Send and
- * Get a press away, everything rare behind the menu, and the server line reading as a line rather
- * than as the button that covers the rail.
+ * Get a press away, the server line reading as a line, and everything that CHANGES the destination
+ * living in the Team panel rather than creeping back into the column beside them.
  *
  * Between them are the two suites about the author name, one per place the rail asks for it. They
  * are one rule read twice, and the rule is that nobody is asked a question the destination is about
@@ -156,13 +157,6 @@ function seam(name: string): HTMLElement {
     const node = document.querySelector<HTMLElement>(`[data-vcs-seam='${name}']`);
     if (node === null) throw new Error(`no [data-vcs-seam='${name}'] on screen`);
     return node;
-}
-
-/** What the overflow menu offers, in the order it offers it. Separators read as nothing. */
-function menuRows(): string[] {
-    const menu = document.querySelector("[data-context-menu='true']");
-    if (menu === null) return [];
-    return [...menu.children].map(row => row.textContent ?? "").filter(text => text !== "");
 }
 
 /** The rows, in the order they are drawn, so "at the end of the list" is a real assertion. */
@@ -515,26 +509,27 @@ describe("the author name in the commit form", () => {
 /**
  * The rail's server section, and the weights in it.
  *
- * Send and Get are pressed every working day; choosing a server is decided about once per project.
- * The section used to give them the same weight - the host line WAS the control that opened the
- * change-server dialog, one line above Send - so the whole point of the suite is that the rare acts
- * stay behind the menu and the daily two stay a press away, at full size, on one row.
+ * Send and Get are pressed every working day; choosing a server, signing in to it and disconnecting
+ * are decided a handful of times in a project's life. This section used to hold all of them - the
+ * host line WAS the control that opened the change-server dialog, with an overflow menu beside it
+ * and a token box underneath. They live in the Team panel now, and what this suite pins is that
+ * none of them came back: the section is a destination read as a fact and the two presses that use
+ * it, and the way to everything else is one control that opens the panel which owns it.
  */
 describe("the rail's server section", () => {
-    it("holds exactly the rare acts in its overflow menu", () => {
+    it("keeps nothing in it that changes where the work goes", () => {
         section();
 
-        expect(menuRows()).toEqual([]);
-        fireEvent.click(seam("server-menu"));
-
-        expect(menuRows()).toEqual([
-            "workspace.shell.versionControl.server.check",
-            "workspace.shell.versionControl.server.change",
-            "workspace.shell.versionControl.server.disconnect",
-        ]);
+        // The three that moved. Each of them was a control in this section, and each reads as a
+        // convenience to put back exactly where it used to be.
+        expect(document.querySelector("[data-vcs-seam='server-menu']")).toBeNull();
+        expect(document.querySelector("[data-vcs-seam='sign-in-form']")).toBeNull();
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
+        // And the dialog they reached, which covers the rail.
+        expect(document.querySelector("[data-vcs-seam='server-picker']")).toBeNull();
     });
 
-    it("keeps sending and getting a press away, at full width, with no menu in between", () => {
+    it("keeps sending and getting a press away, at full width, with nothing in between", () => {
         const surface = section();
 
         expect(document.querySelector("[data-context-menu='true']")).toBeNull();
@@ -543,8 +538,8 @@ describe("the rail's server section", () => {
 
         expect(surface.pushToRemote).toHaveBeenCalledTimes(1);
         expect(surface.syncFromRemote).toHaveBeenCalledTimes(1);
-        // Both on the control scale's `sm` step and sharing the row equally: the menu was added
-        // above them, not squeezed in beside them, and this is what says so.
+        // Both on the control scale's `sm` step and sharing the row equally: nothing was squeezed
+        // in beside them, and this is what says so.
         for (const control of [seam("server-push"), seam("server-sync")]) {
             expect(control.className).toContain("h-7");
             expect(control.className).toContain("flex-1");
@@ -582,38 +577,26 @@ describe("the rail's server section", () => {
             .toBe("workspace.shell.versionControl.server.localAhead");
     });
 
-    it("reaches the change-server dialog from the menu, and from nowhere in front of it", () => {
+    it("draws the server line as a line rather than as the control that covers the rail", () => {
         section();
 
-        // The line that names the server is a line. It used to be the button that covered the
-        // rail with this dialog, which is the regression this pins.
+        // It used to be the button that opened the change-server dialog, one line above Send, so
+        // the rarest act in the feature was the easiest thing in the panel to hit.
         expect(seam("server-name").tagName).toBe("SPAN");
+        expect(seam("server-state").tagName).toBe("SPAN");
+    });
+
+    it("sends a project on no server to the panel that owns the question", () => {
+        const open = vi.fn();
+        const forget = registerTeamPresenceBridge({ open });
+        section({ remote: null });
+
+        fireEvent.click(seam("server-connect"));
+
+        // The dialog is opened by the Team panel, not from here: one door to a decision made once
+        // per project, and it is the same door it is changed through afterwards.
+        expect(open).toHaveBeenCalledTimes(1);
         expect(document.querySelector("[data-vcs-seam='server-picker']")).toBeNull();
-
-        fireEvent.click(seam("server-menu"));
-        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
-            .find(row => row.textContent === "workspace.shell.versionControl.server.change")!);
-
-        expect(document.querySelector("[data-vcs-seam='server-picker']")).not.toBeNull();
-    });
-
-    it("asks the server where things stand from the menu", () => {
-        const surface = section();
-
-        fireEvent.click(seam("server-menu"));
-        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
-            .find(row => row.textContent === "workspace.shell.versionControl.server.check")!);
-
-        expect(surface.checkRemote).toHaveBeenCalledTimes(1);
-    });
-
-    it("disconnects from the menu", () => {
-        const surface = section();
-
-        fireEvent.click(seam("server-menu"));
-        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
-            .find(row => row.textContent === "workspace.shell.versionControl.server.disconnect")!);
-
-        expect(surface.setRemote).toHaveBeenCalledWith(null);
+        forget();
     });
 });

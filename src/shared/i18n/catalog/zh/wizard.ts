@@ -47,7 +47,7 @@ export const wizard = {
         },
         clone: {
             label: "从服务器克隆",
-            description: "复制版本控制服务器上的项目",
+            description: "复制 NarraLeaf Team 服务器上的项目",
             next: "下一页填写项目地址与本机存放位置",
         },
     },
@@ -68,7 +68,7 @@ export const wizard = {
         browseLocation: "选择文件夹",
         validatingDirectory: "正在检查该文件夹…",
         directoryWillBeCreated: "创建项目时一并创建该文件夹",
-        versionControlLoreHint: "在项目文件夹内建立版本历史，创建时的状态记为第一个版本",
+        versionControlLoreHint: "在项目文件夹内建立版本历史，创建时的状态记为第一个版本。之后可以发送到 Team 服务器",
         versionControlUnavailablePlatform: "本机不支持版本控制，项目不带版本控制创建",
         versionControlUnavailableInstallation: "当前安装的 Studio 不含版本控制，项目不带版本控制创建",
         moreDetails: "更多信息",

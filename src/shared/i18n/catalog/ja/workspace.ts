@@ -301,6 +301,23 @@ export const workspace = {
         },
     },
     shell: {
+    /**
+     * ウィンドウの隅に置かれた NarraLeaf Team。
+     *
+     * セルの背後にあるパネルは、これまでバージョンレールが抱えていた二つの問い、つまり
+     * このプロジェクトのバージョンをどのサーバーへ送るのか、そこでこの端末が誰であるのかを扱う。
+     * サーバーに関する語はレールと同じキーを共有しているため、ここにはこのパネル固有のものだけを置く。
+     */
+    team: {
+        // 製品名。作者がこの名前に出会う場所なので省略しない。パネル内の他の行はサーバーをサーバーと呼ぶ。
+        title: "NarraLeaf Team",
+        command: {
+            open: "NarraLeaf Team を開く",
+        },
+        destination: "サーバー",
+        // 設定を開く。サーバーの追加とサインアウトはそこで行う。
+        manage: "サーバーを管理…",
+    },
         errorTitle: "ワークスペースを初期化できなかった",
         showStackTrace: "スタックトレースを表示",
         retry: "再試行",
@@ -478,6 +495,9 @@ export const workspace = {
             // 登録された各セルの名前。帯の右クリックの表示切り替えメニューにだけ出る。
             // セル自身はアイコンが主で、自分の状態を自分で示す。
             entries: {
+                // The brand, not a description of the cell: it is where an author learns the
+                // name of the thing their project is shared through.
+                team: "NarraLeaf Team",
                 runStatus: "実行状態",
         studioTasks: "バックグラウンド処理",
                 unsavedChanges: "未保存の変更",
