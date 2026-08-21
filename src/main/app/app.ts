@@ -33,6 +33,7 @@ import { UpdateManager } from "./application/managers/updateManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
+import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -53,6 +54,16 @@ const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
  * a second window rather than the same frame with different contents.
  */
 const WINDOW_CASCADE_STEP = 32;
+
+/** How a launcher window is to be brought up. See `App.holdLauncherBack`. */
+interface LauncherStartupOptions {
+    /**
+     * Build the window but leave it off screen, for a launch that expects to open a project from
+     * it. Only the startup asks for this, and only it can: every other caller is a request to see
+     * the home screen.
+     */
+    deferShow?: boolean;
+}
 
 /**
  * Why a workspace is going away.
@@ -281,7 +292,10 @@ export class App extends BaseApp {
         return needsOnboarding(this.globalState.get(ONBOARDING_STATE_KEY));
     }
 
-    async launchLauncher(options: Partial<Electron.BrowserWindowConstructorOptions>): Promise<AppWindow<WindowAppType.Launcher>> {
+    async launchLauncher(
+        options: Partial<Electron.BrowserWindowConstructorOptions>,
+        { deferShow = false }: LauncherStartupOptions = {},
+    ): Promise<AppWindow<WindowAppType.Launcher>> {
         const config: WindowConfig<WindowAppType.Launcher> = {
             windowType: WindowAppType.Launcher,
             isolated: true,
@@ -308,7 +322,11 @@ export class App extends BaseApp {
         });
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
-        window.showWhenReady();
+        if (deferShow) {
+            this.holdLauncherBack(window);
+        } else {
+            window.showWhenReady();
+        }
 
         try {
             await window.loadFile(this.getAppEntry(WindowAppType.Launcher));
@@ -340,22 +358,105 @@ export class App extends BaseApp {
     private launcherStartup: Promise<void> | null = null;
 
     /**
+     * The launcher that was built without being put on screen, until something reveals it.
+     *
+     * Null whenever there is no such window - which is every launch that starts on the home screen,
+     * and every moment after a held-back one was either revealed or retired.
+     */
+    private heldBackLauncher: DeferredWindowShow | null = null;
+
+    /**
+     * Build the launcher without putting it on screen, and hold on to the way to change our mind.
+     *
+     * A launch that is going to land in a project still opens the launcher first - the project is
+     * opened *from* it, which is how a startup inherits every failure path the home screen has -
+     * but showing it means the author watches their home screen appear and disappear on the way to
+     * the project they asked for. Held back, the same chain runs with nothing on screen until the
+     * workspace itself is up.
+     *
+     * The latch and the reason it has to be one are in {@link createDeferredWindowShow}.
+     */
+    private holdLauncherBack(window: AppWindow<WindowAppType.Launcher>): void {
+        const held = createDeferredWindowShow({
+            isClosed: () => window.isClosed(),
+            show: () => void window.show(),
+        });
+        this.heldBackLauncher = held;
+        window.onReady(() => held.markReady());
+
+        // A held-back launcher that was retired has nothing left to reveal, and leaving it here
+        // would make every later `revealHeldBackLauncher` a no-op on a dead window rather than
+        // whatever the caller does when there is no launcher at all.
+        window.onEvent("closed", () => {
+            if (this.heldBackLauncher === held) {
+                this.heldBackLauncher = null;
+            }
+        });
+    }
+
+    /**
+     * Put a launcher that was held back on screen. Does nothing when none is.
+     *
+     * Every way back to the home screen goes through this, because to `focus()` a hidden window is
+     * indistinguishable from no window at all - while `hasAliveLauncher` already counts it as the
+     * home everything else falls back to.
+     */
+    private revealHeldBackLauncher(): void {
+        const held = this.heldBackLauncher;
+        this.heldBackLauncher = null;
+        held?.reveal();
+    }
+
+    /**
+     * Show the held-back launcher if it is the only thing left alive.
+     *
+     * The backstop for a startup whose project never got as far as reporting an outcome - a
+     * renderer that crashed on load, a window terminated by its own error handling. The workspace
+     * is gone, the home screen behind it was never shown, and an app whose only window is hidden
+     * is an app that looks like it died on launch.
+     *
+     * Called from the `window-closed` handler, where the window that is going away has usually not
+     * been unregistered yet - hence `!isClosed()` rather than a count.
+     */
+    public revealLauncherIfNothingElseIsUp(): void {
+        // Windows going away is what a quit looks like from here. Raising the home screen in the
+        // middle of one would put a window on screen on the way out.
+        if (!this.heldBackLauncher || this.isQuitting()) {
+            return;
+        }
+        const somethingElseIsUp = this.windowManager.getWindows().some(window =>
+            !window.isClosed() && window.getWindowType() !== WindowAppType.Launcher
+        );
+        if (!somethingElseIsUp) {
+            this.revealHeldBackLauncher();
+        }
+    }
+
+    /**
      * Bring back the launcher, unless one is already open. Resolves once its window exists, so
      * callers can close whatever they are leaving without the app ever running windowless.
      *
      * Concurrent callers share one startup: `hasAliveLauncher` only turns true once the window
      * has been built, so two workspaces closing at the same time would otherwise each open a
      * launcher of their own.
+     *
+     * `deferShow` is the startup's business alone (see {@link holdLauncherBack}). Every other
+     * caller wants the home screen *seen*, so they also reveal one that is being held back - a
+     * launcher exists either way, and without this they would return happily having shown nothing.
      */
-    async ensureLauncher(): Promise<void> {
+    async ensureLauncher({ deferShow = false }: LauncherStartupOptions = {}): Promise<void> {
         if (this.hasAliveLauncher()) {
+            if (!deferShow) {
+                this.revealHeldBackLauncher();
+            }
             return;
         }
         if (this.launcherStartup) {
-            return this.launcherStartup;
+            const startup = this.launcherStartup;
+            return deferShow ? startup : startup.then(() => this.revealHeldBackLauncher());
         }
 
-        this.launcherStartup = this.launchLauncher({}).then(launcher => {
+        this.launcherStartup = this.launchLauncher({}, { deferShow }).then(launcher => {
             launcher.onKeyUp("F12", () => {
                 launcher.toggleDevTools();
             });
@@ -379,6 +480,10 @@ export class App extends BaseApp {
     public async revealLauncher(): Promise<void> {
         const existing = this.findLauncher();
         if (existing) {
+            // It may be one that was held back for a project that never came up - hidden, and so
+            // deaf to focus(). Asking for the home screen is the plainest way of changing our mind
+            // about that.
+            this.revealHeldBackLauncher();
             if (existing.win.isMinimized()) {
                 existing.win.restore();
             }
@@ -587,6 +692,13 @@ export class App extends BaseApp {
      * the workspace reports a working project. Every way this can fail therefore lands on the home
      * screen with a line in the log, rather than on a windowless app or a dead end.
      *
+     * It is opened *hidden* when a project is what this launch is for, which is why the decision is
+     * made before the window is built rather than after. The chain above is unchanged - the
+     * launcher is still there to be opened from, still there to fall back to, and still retires
+     * itself when the workspace comes up - but a startup that lands in a project no longer shows
+     * the home screen for the second it takes to get there. Every path that ends anywhere other
+     * than in a loaded workspace reveals it again; see {@link revealHeldBackLauncher}.
+     *
      * That last part is what keeps the reopen from being a way to lose the app: a project deleted,
      * moved or corrupted since is not a failed launch, it is a home screen with a message - and the
      * author is one click from opening something else.
@@ -601,15 +713,25 @@ export class App extends BaseApp {
         // through: `openLaunchRequest` queues everything until this flag is set, and a queue that
         // is never drained is a Studio that silently ignores every document dropped on it.
         try {
-            await this.ensureLauncher();
+            // Both answers are wanted before the launcher is built, because between them they say
+            // whether it is to be shown at all. A path handed to this launch outranks the standing
+            // preference below it: the author double-clicked something, which is more specific
+            // than anything they once said about where to resume.
+            this.queueLaunchOpensFromArgv();
+            const startup = this.queuedLaunchOpens.length > 0 ? null : this.resolveSessionStartupProject();
 
-            // A path handed to this launch outranks everything below it: the author double-clicked
-            // something, which is more specific than any standing preference about where to resume.
-            if (await this.drainQueuedLaunchOpens()) {
+            await this.ensureLauncher({ deferShow: this.startupOpensProject(startup) });
+
+            if (this.queuedLaunchOpens.length > 0) {
+                if (await this.drainQueuedLaunchOpens()) {
+                    return;
+                }
+                // Nothing Studio was pointed at could be acted on, so the home screen is where
+                // this launch ends after all.
+                this.revealHeldBackLauncher();
                 return;
             }
 
-            const startup = this.resolveSessionStartupProject();
             if (!startup) {
                 return;
             }
@@ -627,6 +749,7 @@ export class App extends BaseApp {
                 await this.openProject(launcher, startup.projectPath);
             } catch (error) {
                 this.logger.error(`[Startup] Could not open "${startup.projectPath}":`, error);
+                this.revealHeldBackLauncher();
             }
         } finally {
             this.startupSettled = true;
@@ -684,12 +807,37 @@ export class App extends BaseApp {
         return this.applyLaunchOpenRequest(request);
     }
 
-    /** Act on everything that arrived before there was a window. Answers whether anything did. */
-    private async drainQueuedLaunchOpens(): Promise<boolean> {
+    /**
+     * Queue the path this process was started with, if it was started with one Studio recognises.
+     *
+     * Separate from the drain so the queue is complete *before* the launcher is built:
+     * {@link openStartupWindow} has to know whether this launch ends in a project to know whether
+     * to show the home screen on the way. Only argv is narrowed to one path (see
+     * `resolveFirstLaunchOpenRequest`).
+     */
+    private queueLaunchOpensFromArgv(): void {
         const fromArgv = resolveFirstLaunchOpenRequest(this.getLaunchOpenPaths(), this.launchOpenLookup());
         if (fromArgv) {
             this.queuedLaunchOpens.push(fromArgv);
         }
+    }
+
+    /**
+     * Whether this launch is headed straight into a project window, and can therefore keep the
+     * home screen off the screen on the way (see {@link holdLauncherBack}).
+     *
+     * A package is not one: it opens the import wizard, which hangs off the launcher and can be
+     * cancelled, and cancelling it back to a hidden home screen would leave nothing on screen.
+     */
+    private startupOpensProject(startup: { projectPath: string } | null): boolean {
+        if (this.queuedLaunchOpens.length > 0) {
+            return this.queuedLaunchOpens.every(request => request.kind === "project");
+        }
+        return startup !== null;
+    }
+
+    /** Act on everything that arrived before there was a window. Answers whether anything did. */
+    private async drainQueuedLaunchOpens(): Promise<boolean> {
         if (this.queuedLaunchOpens.length === 0) {
             return false;
         }
@@ -1367,6 +1515,11 @@ export class App extends BaseApp {
             workspaceWindow.onLoadResult(ok => {
                 if (ok) {
                     void retireOpener();
+                } else if (openerIsLauncher) {
+                    // The workspace came up on its error screen, so the home screen it was opened
+                    // from is the only way on from here - and a startup that was headed into this
+                    // project has been holding that home screen back for exactly this answer.
+                    this.revealHeldBackLauncher();
                 }
             });
         }
