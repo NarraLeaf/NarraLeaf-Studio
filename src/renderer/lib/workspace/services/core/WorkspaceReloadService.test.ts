@@ -112,7 +112,7 @@ async function createHarness(seed?: string): Promise<Harness> {
             // A refused write answers success without moving a byte. That is not test convenience, it
             // is what the freeze latch does (`FROZEN_NO_OP`), and it is the reason the value stayed in
             // memory in the first place.
-            write: async (path: string, data: string) => {
+            writeFileNoFollowOrCreate: async (path: string, data: string) => {
                 if (!frozen) {
                     files.set(path, data);
                 }

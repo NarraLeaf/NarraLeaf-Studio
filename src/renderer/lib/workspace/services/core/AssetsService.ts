@@ -233,6 +233,13 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             if (!result.ok) {
                 this.dirtyOrderCategories.add(category);
                 console.warn(`[AssetsService] failed to write ${category} asset order: ${result.error.message}`);
+            } else if (result.refused === true) {
+                // A refusal is not a failure and is not reported as one - the freeze latch has its
+                // own notice - but the bytes did not leave either, so the debt is still owed. The
+                // first open of a project that predates the order file is exactly when a freeze can
+                // be armed (a revision view, an open merge, recovery mode), and that is the one open
+                // on which the row order is still recoverable from shard key order.
+                this.dirtyOrderCategories.add(category);
             }
         }
     }
