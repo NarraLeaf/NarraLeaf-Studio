@@ -259,6 +259,13 @@ export class FileFormatValidator {
             return 'eot';
         }
 
+        // TrueType/OpenType collection. Recognised only so that a collection carrying a `.ttf` name
+        // is refused as a mismatch: a file named `.ttc` never reaches here, having been turned away
+        // by UNDECODABLE_EXTENSIONS first.
+        if (buffer[0] === 0x74 && buffer[1] === 0x74 && buffer[2] === 0x63 && buffer[3] === 0x66) {
+            return 'ttc';
+        }
+
         return 'unknown';
     }
 
@@ -392,6 +399,9 @@ const UNDECODABLE_VERB: Partial<Record<AssetType, string>> = {
     [AssetType.Image]: "display",
     [AssetType.Audio]: "play",
     [AssetType.Video]: "play",
+    // "use" rather than "read": a collection is perfectly readable, and saying otherwise would send
+    // an author looking for a corrupt file. What it cannot be is *loaded as a typeface*.
+    [AssetType.Font]: "use",
 };
 
 export const UNDECODABLE_EXTENSIONS: Partial<Record<AssetType, Record<string, string>>> = {
@@ -402,4 +412,19 @@ export const UNDECODABLE_EXTENSIONS: Partial<Record<AssetType, Record<string, st
         ['avi', 'flv', 'wmv', 'asf', 'mpg', 'mpeg', 'mpe', 'mpv', 'm2v', 'ts', 'm2ts', 'mts', 'm2t', 'vob'],
         '.mp4 or .webm',
     ),
+    /**
+     * TrueType and OpenType **collections**, which hold several faces in one file.
+     *
+     * Not a decoder gap like the rows above - the format is fine and Studio can read it. The gap is
+     * in the loader: `FontFace` takes one file to mean one typeface and rejects a collection
+     * outright, so an imported `.ttc` is a font that renders nothing, in the editor and in the
+     * shipped game alike. Measured 2026-08-21 against `msgothic.ttc` and `simsun.ttc`: the specimen
+     * on Project -> Design fell back to the interface font, while single-face `.ttf` cuts of the
+     * same typefaces loaded normally.
+     *
+     * Which face the author wanted is the reason this is a refusal rather than an extraction: a
+     * `.ttc` typically carries a proportional, a fixed-pitch and a UI cut of one family, and picking
+     * the first would silently hand them one of three.
+     */
+    [AssetType.Font]: convertTo(['ttc', 'otc'], 'a single-face .ttf or .otf'),
 };

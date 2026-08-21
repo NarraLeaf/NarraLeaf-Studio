@@ -3,7 +3,8 @@ import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import type { FontCoverage } from "@shared/typography/fontCoverage";
 import type { LocalizationDocument } from "@shared/types/localization";
 import type { UIDocument } from "@shared/types/ui-editor/document";
-import type { LintContext } from "../context";
+import { AssetType } from "../../workspace/services/assets/assetTypes";
+import type { LintAssetEntry, LintContext } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintFinding, LintRuleId } from "../types";
 import { dialogueBlock, sceneOf, storyEntryOf, textSegment } from "./text/testFixtures";
@@ -27,6 +28,11 @@ function runRule(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
         : {}));
 }
 
+/** A library entry, so a message about a font can name it. */
+function fontAsset(id: string, name: string): LintAssetEntry {
+    return { id, type: AssetType.Font, name, ext: "ttf", meta: {}, tags: [] };
+}
+
 /** A font that draws exactly these code points and nothing else. */
 function drawing(...codePoints: number[]): FontCoverage {
     const ranges = [...codePoints].sort((a, b) => a - b).map(point => [point, point] as const);
@@ -47,12 +53,17 @@ function contextSaying(text: string, overrides: Partial<LintContext> = {}): Lint
 }
 
 /** An io whose font probe answers from a table, and refuses anything not in it. */
-function ioWith(coverage: Record<string, FontCoverage | "unreadable">): Partial<LintContext["io"]> {
+function ioWith(
+    coverage: Record<string, FontCoverage | "unreadable" | "collection">,
+): Partial<LintContext["io"]> {
     return {
         probeFontCoverage: async assetId => {
             const found = coverage[assetId];
             if (found === "unreadable") {
                 return { ok: false, reason: "malformed" };
+            }
+            if (found === "collection") {
+                return { ok: false, reason: "unloadable-container" };
             }
             return found
                 ? { ok: true, coverage: found }
@@ -141,16 +152,46 @@ describe("typography/glyph-coverage", () => {
     /** The character might be in exactly that font, so nothing below can be trusted - and it says so. */
     it("reports a font it could not read instead of checking without it", async () => {
         setActiveProjectFonts([{ assetId: "broken" }]);
-        const ctx = contextSaying("こ", { io: ioWith({ broken: "unreadable" }) as LintContext["io"] });
+        const ctx = contextSaying("こ", {
+            assets: [fontAsset("broken", "Wrecked Serif")],
+            io: ioWith({ broken: "unreadable" }) as LintContext["io"],
+        });
 
         const findings = await runRule("typography/glyph-coverage", ctx);
 
         expect(findings).toEqual([{
             ruleId: "typography/glyph-coverage",
             messageKey: "lint.rule.typographyGlyphCoverage.messageUnreadable",
-            messageParams: { font: "broken" },
+            // The library's name, not the asset id: these findings are filed under the project, so
+            // the locator column prints nothing and this is all the author gets to identify it by.
+            messageParams: { font: "Wrecked Serif" },
             location: { kind: "project" },
         }]);
+    });
+
+    /**
+     * The opposite of the unreadable case. A collection parses and is known to render nothing, so
+     * the useful sentence is that the file cannot be used - said once - and the rest of the check is
+     * more accurate without it rather than untrustworthy.
+     */
+    it("reports a font collection once and keeps checking without it", async () => {
+        setActiveProjectFonts([{ assetId: "collection" }, { assetId: "latin" }]);
+        const ctx = contextSaying("Hi こ", {
+            assets: [fontAsset("collection", "MS Gothic.ttc")],
+            io: ioWith({ collection: "collection", latin: LATIN }) as LintContext["io"],
+        });
+
+        const findings = await runRule("typography/glyph-coverage", ctx);
+
+        expect(findings).toHaveLength(2);
+        expect(findings[0]).toEqual({
+            ruleId: "typography/glyph-coverage",
+            messageKey: "lint.rule.typographyGlyphCoverage.messageUnloadable",
+            messageParams: { font: "MS Gothic.ttc" },
+            location: { kind: "project" },
+        });
+        // The Latin face still answers for the rest, so the kana is still reported.
+        expect(findings[1]!.messageParams).toMatchObject({ character: "こ" });
     });
 
     it("states the cap rather than truncating in silence", async () => {
