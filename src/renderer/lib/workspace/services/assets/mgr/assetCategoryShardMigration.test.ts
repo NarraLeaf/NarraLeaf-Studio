@@ -67,13 +67,15 @@ function emptyMetadataShards(): Record<string, string> {
  *
  * `refuseWrites` is the freeze latch, and it is the reason the merge cannot be built on a write:
  * `FileSystemService` answers a write refused by the freeze - or by a working tree being re-read
- * after a version restore - as a no-op success, so the file never appears and nothing in the result
- * says so. Modelled on the three verbs that carry the guard.
+ * after a version restore - as a no-op success, so the file never appears and the only thing in the
+ * result that says so is `refused`. Modelled on the four verbs that carry the guard, `refused` flag
+ * and all: a harness that answered a bare `{ok: true}` would model a route that had lost the flag as
+ * if it were working.
  */
 function createHarness(files: Record<string, string> = {}, options: { refuseWrites?: boolean } = {}) {
     const writes: { path: string; data: string }[] = [];
     const present = { ...files };
-    const refused = { ok: true as const, data: undefined };
+    const refused = { ok: true as const, data: undefined, refused: true as const };
 
     const suffixOf = (path: string): string | undefined =>
         Object.keys(present).find(candidate => path.endsWith(candidate));
@@ -131,6 +133,13 @@ function createHarness(files: Record<string, string> = {}, options: { refuseWrit
             }
             if (readText(path) === undefined) {
                 return { ok: false as const, error: { code: "ENOENT", message: `lstat '${path}'` } };
+            }
+            return record(path, data);
+        },
+        /** Creates as well as replaces - the difference from `writeFileNoFollow` above. */
+        async writeFileNoFollowOrCreate(path: string, data: string) {
+            if (options.refuseWrites) {
+                return refused;
             }
             return record(path, data);
         },

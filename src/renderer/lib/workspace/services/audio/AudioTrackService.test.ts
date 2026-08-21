@@ -51,7 +51,7 @@ async function createHarness(
                     ? { ok: false, error: { code: FsRejectErrorCode.NOT_FOUND, message: "missing" } }
                     : ok(value);
             },
-            write: async (path: string, data: string) => {
+            writeFileNoFollowOrCreate: async (path: string, data: string) => {
                 files.set(path, data);
                 return ok(undefined);
             },
