@@ -40,7 +40,7 @@ import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isListItemContextElement } from "@shared/types/ui-editor/listItemContext";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -168,22 +168,6 @@ function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | nu
 
 function isTypingInField(): boolean {
     return isEditableKeyboardTarget(document.activeElement);
-}
-
-function isListItemContextElement(document: UIDocument, element: UIElement | undefined): boolean {
-    let child = element;
-    while (child?.parentId) {
-        const parent = document.elements[child.parentId];
-        if (!parent) {
-            return false;
-        }
-        if (isListLikeWidgetType(parent.type)) {
-            const slot = getUIListChildSlot(child.extra);
-            return slot == null || slot === "itemTemplate";
-        }
-        child = parent;
-    }
-    return false;
 }
 
 type BlueprintEditorMemberPanelState = {
