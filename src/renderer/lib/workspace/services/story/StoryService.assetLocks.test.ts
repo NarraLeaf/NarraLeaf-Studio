@@ -65,7 +65,9 @@ function createHarness() {
     const uuid = () => `00000000-0000-4000-8000-${(++nextId).toString(16).padStart(12, "0")}`;
 
     const fs = {
-        write: vi.fn(async (path: string, data: string) => {
+        // The verb the story writers actually take; `write` (grant + protocol PUT) is not one of
+        // their routes any more. See `StoryService.writeStoryFile`.
+        writeFileNoFollowOrCreate: vi.fn(async (path: string, data: string) => {
             files.set(path, data);
             return { ok: true as const, data: undefined };
         }),

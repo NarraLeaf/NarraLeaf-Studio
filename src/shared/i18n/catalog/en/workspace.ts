@@ -332,6 +332,33 @@ export const workspace = {
         // Opens Settings, where a server is added to this machine and signed out of. The ellipsis
         // is this catalog's mark for a control that opens somewhere else.
         manage: "Manage servers…",
+        // What the server was asked and answered, drawn only where there is something to do
+        // about it. A project that checks out is silent: a line saying everything is fine,
+        // every working day, is a line nobody reads.
+        notThere: "That server does not hold this project.",
+        // A server that answered and holds this project. Said where the sync state has
+        // nothing to report yet, because the chip beside the address is read as being
+        // about the server, and "not checked" stopped being true the moment the
+        // workspace began checking on its own.
+        connected: "Connected",
+        unreachable: "That server is not answering.",
+        // The eyebrow over who is here and what is open.
+        presence: "Collaboration",
+        // How many installations have this project open, this one included.
+        hereAlone: "Only this machine",
+        hereMany: "{count} machines",
+        // A room somebody opened on this project. `liveOpen` is the only deliberate act in
+        // this panel: everything else follows from a window being open.
+        liveOpen: "Start a live session",
+        liveUntitled: "Live session",
+        liveMembers: "{count} in",
+        liveJoin: "Join",
+        liveLeave: "Leave",
+        liveEnd: "End",
+        // What is attached to the project without being in it, and how much of it was
+        // written against a version that is no longer the current one.
+        attached: "{count} attached",
+        attachedOutdated: "{count} outdated",
     },
         errorTitle: "Failed to initialize workspace",
         showStackTrace: "Show stack trace",

@@ -1,5 +1,6 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
+import { SCREEN_EFFECT_QUALITY_DEFAULT, SCREEN_EFFECT_QUALITY_KEY } from "@shared/constants/screenEffects";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
@@ -63,6 +64,13 @@ export interface GlobalStateType extends Record<string, any> {
      * makes the notice show. See `@shared/constants/update`.
      */
     "app.trayResidencyNoticeShown": boolean;
+    /**
+     * How good the screen effects baked for a Dev Mode session have to be.
+     *
+     * Dev Mode only. Previews and builds are always `final` and no setting reaches them: what they
+     * produce is what a player receives. See `@shared/constants/screenEffects`.
+     */
+    [SCREEN_EFFECT_QUALITY_KEY]: "draft" | "final" | string;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -361,6 +369,33 @@ export interface GlobalStateType extends Record<string, any> {
      * **Never leaves the main process.** Nothing over IPC reads it.
      */
     "versionControl.serverTokens": Record<string, string>;
+    /**
+     * What this installation of Studio calls itself to a Team server.
+     *
+     * A random id, minted the first time a session is opened and never again, and the
+     * only thing on this machine that says "the same Studio came back". A server needs
+     * that to tell one installation from another - one person is routinely a desktop and
+     * a laptop - and nothing already stored answers it: an account is a person, and a
+     * connection is new every time.
+     *
+     * **Deliberately without a default.** A default here would be written to every
+     * profile on disk the first time the store was read (see the note on the defaults
+     * below), which would give every installation the same id. It is minted on first use
+     * instead - see `managers/team/clientInstance.ts`.
+     *
+     * Not a credential and not a name: it identifies nothing outside the servers this
+     * machine is signed in to, and it is not what a collaborator sees - that is the
+     * account, and the label beside it.
+     */
+    "team.installationId": string;
+    /**
+     * What a collaborator sees this machine called, or empty for the machine's own name.
+     *
+     * Empty is the ordinary case and reads as the host name. It is a setting rather than
+     * a fact so that somebody who would rather not publish their host name to their
+     * team's server has somewhere to say so.
+     */
+    "team.machineLabel": string;
 }
 
 export type GlobalStateKeys = string;
@@ -379,6 +414,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.developerMode": false,
     "app.updateCheckOnLaunch": true,
     "app.confirmQuit": CONFIRM_QUIT_DEFAULT,
+    [SCREEN_EFFECT_QUALITY_KEY]: SCREEN_EFFECT_QUALITY_DEFAULT,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
@@ -423,6 +459,10 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.authorEmail": "",
     "versionControl.serverSessions": [],
     "versionControl.serverTokens": {},
+    // `team.installationId` deliberately has no default; see its declaration above. A
+    // default would be written to disk on first read and every installation would then
+    // be calling itself the same thing.
+    "team.machineLabel": "",
 };
 
 /**

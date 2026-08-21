@@ -5,7 +5,7 @@ import type {
     WeatherWorkerInboundMessage,
     WeatherWorkerOutboundMessage,
 } from "@/buildWorker/weatherWorkerProtocol";
-import type { WeatherBakeSpec } from "@shared/weather/model";
+import type { WeatherBakeQuality, WeatherBakeSpec } from "@shared/weather/model";
 import type { WeatherBakeHandle, WeatherBakeProgress, WeatherBakeResult } from "./weatherBake";
 
 export type WeatherBakeWorkerHostApp = Pick<App, "getDistDir">;
@@ -36,7 +36,7 @@ export function startWeatherBakeInWorker(
     binaryPath: string,
     spec: WeatherBakeSpec,
     targetPath: string,
-    options: { onProgress?: (progress: WeatherBakeProgress) => void } = {},
+    options: { quality: WeatherBakeQuality; onProgress?: (progress: WeatherBakeProgress) => void },
 ): WeatherBakeHandle {
     let settle: (result: WeatherBakeResult) => void = () => undefined;
     const result = new Promise<WeatherBakeResult>(resolve => {
@@ -80,7 +80,7 @@ export function startWeatherBakeInWorker(
     }));
 
     const post = (message: WeatherWorkerInboundMessage): void => worker.postMessage(message);
-    post({ type: "bake", binaryPath, spec, targetPath });
+    post({ type: "bake", binaryPath, spec, quality: options.quality, targetPath });
 
     return {
         result,
