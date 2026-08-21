@@ -32,7 +32,10 @@ import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { useTranslation } from "@/lib/i18n";
-import { buildBreakpointContextMenu } from "@/lib/ui-editor/blueprint-debug/breakpointContextMenu";
+import {
+    buildBreakpointContextMenu,
+    BREAKPOINT_MENU_ROW_IDS,
+} from "@/lib/ui-editor/blueprint-debug/breakpointContextMenu";
 import { useBlueprintBreakpointScope } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
     BLUEPRINT_NODE_PARAM_FN_REF,
@@ -59,7 +62,8 @@ import {
     type BlueprintDragConnectEnablement,
     type BlueprintDragConnectSource,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintDragConnect";
-import { useFreezeGuard } from "../../../components/ui/freezeGuard";
+import { freezeContextMenuRows, useFreezeGuard } from "../../../components/ui/freezeGuard";
+import { editableTextTarget } from "../../../components/EditableTextContextMenu";
 import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
@@ -1153,6 +1157,30 @@ function BlueprintFlowCanvasInner({
         [commitBlueprintIr],
     );
 
+    /**
+     * The single way a node leaves the graph: the Delete key, and the node menu's Delete row.
+     *
+     * Both hand over ids, so neither has to know that a node takes its wiring with it. The
+     * placement ghost is filtered out here rather than at each caller - it is a React Flow node
+     * with no counterpart in the IR, so removing it is the caller's `cancelPendingPlacement`, not a
+     * document edit.
+     */
+    const deleteNodeIds = useCallback(
+        (ids: readonly string[]) => {
+            const real = ids.filter(id => id !== BP_PLACEMENT_PREVIEW_ID);
+            if (real.length === 0) {
+                return;
+            }
+            const next = cloneBlueprintIr(irRef.current);
+            for (const id of real) {
+                removeBlueprintNodeFromIr(next, id);
+            }
+            onSelectNodeIds([]);
+            commitBlueprintIr(next);
+        },
+        [commitBlueprintIr, onSelectNodeIds],
+    );
+
     const onNodesDelete = useCallback(
         (deleted: Node[]) => {
             if (deleted.length === 0) {
@@ -1161,19 +1189,9 @@ function BlueprintFlowCanvasInner({
             if (deleted.some(n => n.id === BP_PLACEMENT_PREVIEW_ID)) {
                 cancelPendingPlacement();
             }
-            const real = deleted.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
-            if (real.length === 0) {
-                return;
-            }
-            const snap = irRef.current;
-            const next = cloneBlueprintIr(snap);
-            for (const n of real) {
-                removeBlueprintNodeFromIr(next, n.id);
-            }
-            onSelectNodeIds([]);
-            commitBlueprintIr(next);
+            deleteNodeIds(deleted.map(n => n.id));
         },
-        [cancelPendingPlacement, commitBlueprintIr, onSelectNodeIds],
+        [cancelPendingPlacement, deleteNodeIds],
     );
 
     const onPaneClick = useCallback(
@@ -1228,57 +1246,101 @@ function BlueprintFlowCanvasInner({
         commitPendingPlacementRef.current();
     }, []);
 
-    // Breakpoints are debugger state, not document state: they are readable and settable on a
-    // frozen project, and this menu is deliberately outside the freeze guard that withholds the
-    // pane's creation menu.
     const breakpointScope = useBlueprintBreakpointScope();
-    const [nodeMenu, setNodeMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+    /**
+     * The open node menu, plus the nodes it will act on.
+     *
+     * `targetIds` is fixed when the menu opens rather than read back off the selection when a row
+     * is clicked: the retarget below travels out to the owning tab and back as a prop, so at click
+     * time the selection may still be one beat behind what the author is looking at.
+     */
+    const [nodeMenu, setNodeMenu] = useState<
+        { x: number; y: number; nodeId: string; targetIds: string[] } | null
+    >(null);
     const onNodeContextMenu = useCallback(
         (event: ReactMouseEvent, node: Node) => {
-            if (!breakpointScope) {
+            // The placement ghost is not a node of the graph yet; right-clicking it has nothing to
+            // offer, and the click falls through to the pane the ghost is floating over.
+            if (node.id === BP_PLACEMENT_PREVIEW_ID) {
+                return;
+            }
+            // A card is not all card: its literal values are text fields, and a right click in one
+            // is a text gesture. Left alone (no `preventDefault`), it reaches the window's editable
+            // menu and comes back as cut/copy/paste - rather than a menu about the node, with a
+            // Delete row sitting over the field the author was typing in.
+            if (editableTextTarget(event.target)) {
                 return;
             }
             event.preventDefault();
             event.stopPropagation();
-            setNodeMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+            // Right-click inside a multi-selection keeps the set - deleting five nodes should not
+            // need five menus. Right-click outside it moves the selection onto the node under the
+            // cursor first, so what the menu acts on is what the author can see is picked.
+            const selected = selectedNodeIdsRef.current;
+            const inSelection = selected.includes(node.id);
+            const targetIds = inSelection ? [...selected] : [node.id];
+            if (!inSelection) {
+                onSelectNodeIds(targetIds);
+            }
+            setNodeMenu({ x: event.clientX, y: event.clientY, nodeId: node.id, targetIds });
         },
-        [breakpointScope],
+        [onSelectNodeIds],
     );
     const nodeMenuItems = useMemo<ContextMenuDef>(() => {
-        if (!breakpointScope || !nodeMenu) {
+        if (!nodeMenu) {
             return [];
         }
-        const { nodeId } = nodeMenu;
-        const existing = breakpointScope.byKey.get(
-            blueprintBreakpointKey({
-                blueprintId: breakpointScope.blueprintId,
-                graphId: breakpointScope.graphId,
-                nodeId,
-            }),
-        );
-        return buildBreakpointContextMenu({
-            existing,
-            onToggle: () => {
-                breakpointScope.toggle(nodeId);
-                setNodeMenu(null);
+        const { nodeId, targetIds } = nodeMenu;
+        const items: ContextMenuDef = [
+            {
+                id: "blueprint.node.delete",
+                label: t("common.delete"),
+                onClick: () => {
+                    setNodeMenu(null);
+                    deleteNodeIds(targetIds);
+                },
             },
-            onSetEnabled: enabled => {
-                breakpointScope.setEnabled(nodeId, enabled);
-                setNodeMenu(null);
-            },
-            onEdit: () => {
-                breakpointScope.edit(nodeId);
-                setNodeMenu(null);
-            },
-            labels: {
-                add: t("blueprint.breakpoint.add"),
-                remove: t("blueprint.breakpoint.remove"),
-                enable: t("blueprint.breakpoint.enable"),
-                disable: t("blueprint.breakpoint.disable"),
-                edit: t("blueprint.breakpoint.edit"),
-            },
-        });
-    }, [breakpointScope, nodeMenu, t]);
+        ];
+        if (breakpointScope) {
+            const existing = breakpointScope.byKey.get(
+                blueprintBreakpointKey({
+                    blueprintId: breakpointScope.blueprintId,
+                    graphId: breakpointScope.graphId,
+                    nodeId,
+                }),
+            );
+            items.push(
+                { separator: true, id: "blueprint.node.sep-breakpoint" },
+                ...buildBreakpointContextMenu({
+                    existing,
+                    onToggle: () => {
+                        breakpointScope.toggle(nodeId);
+                        setNodeMenu(null);
+                    },
+                    onSetEnabled: enabled => {
+                        breakpointScope.setEnabled(nodeId, enabled);
+                        setNodeMenu(null);
+                    },
+                    onEdit: () => {
+                        breakpointScope.edit(nodeId);
+                        setNodeMenu(null);
+                    },
+                    labels: {
+                        add: t("blueprint.breakpoint.add"),
+                        remove: t("blueprint.breakpoint.remove"),
+                        enable: t("blueprint.breakpoint.enable"),
+                        disable: t("blueprint.breakpoint.disable"),
+                        edit: t("blueprint.breakpoint.edit"),
+                    },
+                }),
+            );
+        }
+        // Delete writes the document, so a frozen project greys it and says why. The breakpoint
+        // rows are debugger state - readable and settable while frozen - so they are exempt, and
+        // the menu stays open on a frozen project instead of being withheld whole the way the
+        // pane's creation menu is.
+        return freezeContextMenuRows(items, freeze.frozen, BREAKPOINT_MENU_ROW_IDS, freeze.reason);
+    }, [breakpointScope, deleteNodeIds, freeze.frozen, freeze.reason, nodeMenu, t]);
 
     const onAddMenuPickEntry = useCallback(
         (

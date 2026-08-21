@@ -8,6 +8,25 @@
 
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 
+const ROW_ID_ADD = "breakpoint.add";
+const ROW_ID_REMOVE = "breakpoint.remove";
+const ROW_ID_ENABLED = "breakpoint.enabled";
+const ROW_ID_EDIT = "breakpoint.edit";
+
+/**
+ * Every row id this builder can emit.
+ *
+ * A breakpoint is debugger state, not document state, so a frozen project keeps these rows live.
+ * Menus that fold them in beside rows which do write the document hand this set to
+ * `freezeContextMenuRows` as the exemption list.
+ */
+export const BREAKPOINT_MENU_ROW_IDS: ReadonlySet<string> = new Set([
+    ROW_ID_ADD,
+    ROW_ID_REMOVE,
+    ROW_ID_ENABLED,
+    ROW_ID_EDIT,
+]);
+
 export type BreakpointContextMenuLabels = {
     add: string;
     remove: string;
@@ -27,15 +46,15 @@ export function buildBreakpointContextMenu(input: {
 }): ContextMenuDef {
     const { existing, onToggle, onSetEnabled, onEdit, labels } = input;
     if (!existing) {
-        return [{ id: "breakpoint.add", label: labels.add, onClick: onToggle }];
+        return [{ id: ROW_ID_ADD, label: labels.add, onClick: onToggle }];
     }
     return [
-        { id: "breakpoint.remove", label: labels.remove, onClick: onToggle },
+        { id: ROW_ID_REMOVE, label: labels.remove, onClick: onToggle },
         {
-            id: "breakpoint.enabled",
+            id: ROW_ID_ENABLED,
             label: existing.enabled ? labels.disable : labels.enable,
             onClick: () => onSetEnabled(!existing.enabled),
         },
-        { id: "breakpoint.edit", label: labels.edit, onClick: onEdit },
+        { id: ROW_ID_EDIT, label: labels.edit, onClick: onEdit },
     ];
 }
