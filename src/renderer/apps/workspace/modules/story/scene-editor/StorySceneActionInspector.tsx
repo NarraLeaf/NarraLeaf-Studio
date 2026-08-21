@@ -1642,7 +1642,11 @@ function WeatherSeedFields(props: {
  * 2.4 against a step of 1, or anything typed into the box - would otherwise leave the thumb
  * standing at 2 while the box read 2.4, so the track goes continuous for exactly as long as that is
  * true and the row snaps each move itself. Typing stays unsnapped: the box is the way to a value
- * between two increments, which the renderer takes for every parameter but `fallSpeed`.
+ * between two increments, and the renderer takes one for every parameter there is. `fallSpeed` used
+ * to be the exception - it was rounded before the field was laid out - and that was the bug behind
+ * "the slider does nothing until it does everything": rounding the BASE made the smallest possible
+ * change a doubling. Only each particle's own count of fall-lengths has to be whole, and it is
+ * rounded where it is derived.
  *
  * The snap belongs to the MOVE, not to the commit. `Slider` also commits on `keyup`, and a `Tab`
  * that lands on the track releases its key there - so snapping at commit time would rewrite a

@@ -72,6 +72,7 @@ export type WeatherParamKey =
     | "streak"
     | "wind"
     | "fallSpeed"
+    | "flutter"
     | "depthSpread";
 
 /**
@@ -95,19 +96,48 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
     /** Fall direction, in degrees off straight down. Negative leans left. */
     wind: { min: -60, max: 60, step: 1, default: 0 },
     /**
-     * How fast the field falls, as whole fall-lengths crossed per loop by the FARTHEST particles.
+     * How fast the field falls, as fall-lengths crossed per loop by the FARTHEST particles.
      *
-     * Whole ones because that is what closes the loop: a particle has to be exactly where it started
-     * when the last frame hands over to the first, and any fraction of a length is a jump. The near
-     * field scales up from this by {@link depthSpread}, so raising the speed keeps the depth reading
-     * it already had instead of flattening it.
+     * ## Why the figure the author types is not itself a whole number
+     *
+     * What the seam requires is that each PARTICLE cross a whole number of fall-lengths per loop -
+     * anything else leaves it somewhere other than where it started when the last frame hands over
+     * to the first. It does not require this value to be whole: a particle's own count is this
+     * figure scaled by its depth and then rounded, so a base of 2.5 produces a field of whole 3s, 4s
+     * and 5s and closes exactly like any other.
+     *
+     * The first round rounded this value too, which made the increment 100% of the value at the
+     * bottom of the range: there was no speed between "crosses the screen in eleven seconds" and
+     * "crosses it in five", and a whole seed's depth collapsed to two distinct rates. Half-steps
+     * cost the seam nothing and are the difference between a control and a pair of buttons.
+     *
+     * The near field scales up from this by {@link depthSpread}, so raising the speed keeps the
+     * depth reading it already had instead of flattening it.
      *
      * ⚠ Faster rain wants a longer {@link streak}: the smear is a shutter length in pixels, and it
      * does not follow the speed on its own. Nothing enforces this — a short streak at high speed is
      * a legitimate look (hail rather than drizzle) — but it is the first thing to reach for when
      * fast rain reads as a field of dashes.
      */
-    fallSpeed: { min: 1, max: 12, step: 1, default: 1 },
+    fallSpeed: { min: 1, max: 12, step: 0.5, default: 2 },
+    /**
+     * How often a particle completes one flutter - one sway across its fall line, one turn of its
+     * face - stated in TIMES PER SECOND.
+     *
+     * ## Why a rate in seconds rather than the harmonic the renderer wants
+     *
+     * The renderer needs a whole number of cycles per loop, and for three rounds that number was
+     * drawn straight from `1..3`. Nothing marked it wrong, because nothing in the expression says how
+     * long a loop IS - and a loop is {@link WEATHER_LOOP_SECONDS}, twelve seconds. So every petal in
+     * the catalogue turned once every four to twelve seconds: 0.08 to 0.25 Hz, which is not a
+     * flutter at all. It is a drift, and a drifting pale blob is a snowflake whatever shape it was
+     * drawn from.
+     *
+     * Stating the rate in the unit an eye judges - cycles a second - and converting against the loop
+     * length is what stops that returning. The conversion rounds to a whole number, so the seam is
+     * exactly as safe as it was when the whole number was the input.
+     */
+    flutter: { min: 0.1, max: 3, step: 0.1, default: 0.8 },
     /** How much faster the near field falls than the far field. 1 = everything falls together. */
     depthSpread: { min: 1, max: 8, step: 1, default: 3 },
 };
@@ -131,6 +161,18 @@ export type WeatherSeedDefinition = {
      */
     tumbles: boolean;
     /**
+     * How much of a frame's interval the shutter is open for, in `[0, 1]`.
+     *
+     * Not one answer for every seed, because the seeds want opposite things of it. A rain streak IS
+     * the smear - open the shutter for less than the whole frame and the streaks come apart into
+     * dashes with gaps between them. A petal is a SHAPE, and a shape smeared over its own body
+     * length is a smudge: measured at the top of the speed range, a fully open shutter costs the
+     * sakura seed 28% of its edge energy and 44% of its peak brightness, so the faster an author
+     * asks it to fall the less it looks like a petal. Half a frame is the film convention - a 180
+     * degree shutter - and keeps the motion continuous without dissolving what is moving.
+     */
+    shutter: number;
+    /**
      * Particles are drawn from the petal bitmap rather than as an ellipse of light.
      *
      * Snow and rain are lights, and an ellipse with a soft falloff is not an approximation of them:
@@ -151,30 +193,38 @@ export type WeatherSeedDefinition = {
 export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     snow: {
         id: "snow",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "depthSpread"],
-        defaults: { density: 160, sizeNear: 17, sizeFar: 2, sway: 52, depthSpread: 3 },
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "depthSpread"],
+        defaults: { density: 160, sizeNear: 17, sizeFar: 2, sway: 52, fallSpeed: 2, flutter: 0.35, depthSpread: 3 },
         tint: [255, 255, 255],
         streaked: false,
         tumbles: false,
+        shutter: 0.5,
     },
     rain: {
         id: "rain",
         params: ["density", "sizeNear", "sizeFar", "streak", "wind", "fallSpeed", "depthSpread"],
-        // No sway: rain falls in straight parallel lines, which is also why `wind` reads as a tilt of
-        // the whole field rather than as a wobble.
-        defaults: { density: 170, sizeNear: 2.4, sizeFar: 1, streak: 30, sway: 0, depthSpread: 7 },
+        // No sway and no flutter: rain falls in straight parallel lines, which is also why `wind`
+        // reads as a tilt of the whole field rather than as a wobble. A drop has no face to turn.
+        defaults: { density: 170, sizeNear: 2.4, sizeFar: 1, streak: 30, sway: 0, fallSpeed: 3, depthSpread: 7 },
         tint: [198, 214, 255],
         streaked: true,
         tumbles: false,
+        // The whole frame. A streak with a gap in it is a dash, and a field of dashes is not rain.
+        shutter: 1,
     },
     sakura: {
         id: "sakura",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "depthSpread"],
-        defaults: { density: 90, sizeNear: 26, sizeFar: 5, sway: 110, depthSpread: 2 },
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "depthSpread"],
+        // Petals nearly twice the size the first rounds shipped. 26px of radius is 2.4% of a 1080p
+        // frame's height, and at that size the sprite's outline - the notch that says cherry rather
+        // than leaf - is below what the picture can carry, so it reads as a pale dot. A pale dot
+        // falling slowly is snow, which is what the finished clips in fact looked like.
+        defaults: { density: 90, sizeNear: 48, sizeFar: 11, sway: 110, fallSpeed: 3, flutter: 1.1, depthSpread: 2 },
         tint: [255, 206, 214],
         streaked: false,
         tumbles: true,
         sprite: true,
+        shutter: 0.5,
     },
 };
 

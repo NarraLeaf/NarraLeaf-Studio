@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { WEATHER_LOOP_SECONDS } from "./model";
 import {
     onWeatherParamGrid,
     resolveWeatherParams,
@@ -10,7 +11,7 @@ import {
     type WeatherParamKey,
     type WeatherSeedId,
 } from "./model";
-import { buildWeatherField, createWeatherRenderer } from "./field";
+import { buildWeatherField, createWeatherRenderer, scaleWeatherParams } from "./field";
 import { petalSprite, PETAL_SPRITE_SIZE } from "./petalSprite";
 import { weatherBakeDescriptor, weatherBakeKey } from "./bakeKey";
 
@@ -127,12 +128,28 @@ describe("the fall speed", () => {
         });
     }
 
-    it("leaves the field alone at its default", () => {
-        // The default is 1 because raising the floor would silently re-time every project that
-        // already ships weather: the far field crosses one length per loop, as it always has.
-        const falls = fallsOf("snow", 1, 6);
-        expect(Math.min(...falls)).toBeGreaterThanOrEqual(1);
-        expect(Math.max(...falls)).toBeLessThanOrEqual(6);
+    it("puts every seed's default clear of the floor of its own range", () => {
+        // The first round defaulted all three seeds to 1, the minimum, and the result was a sakura
+        // that crossed the frame more slowly than the snow next to it - which is most of why the
+        // baked clips read as snowfall. A default equal to a minimum is worth failing over.
+        for (const seed of WEATHER_SEED_IDS) {
+            const speed = resolveWeatherParams({ seed }).fallSpeed;
+            expect(speed).toBeGreaterThan(WEATHER_PARAMS.fallSpeed.min);
+        }
+    });
+
+    it("is a control rather than a pair of buttons: a half step moves the field", () => {
+        // The value the AUTHOR states is not rounded, only each particle's own count of lengths is.
+        // Rounding the base made the smallest change anyone could ask for a doubling of the whole
+        // field, and left no speed at all between two of them.
+        const mean = (speed: number) => {
+            const falls = fallsOf("sakura", speed);
+            return falls.reduce((sum, fall) => sum + fall, 0) / falls.length;
+        };
+        const steps = [2, 2.5, 3, 3.5, 4].map(mean);
+        for (let i = 1; i < steps.length; i++) {
+            expect(steps[i]).toBeGreaterThan(steps[i - 1]);
+        }
     });
 
     it("scales the whole field rather than flattening the depth it already had", () => {
@@ -151,6 +168,134 @@ describe("the fall speed", () => {
         const fast = fallsOf("rain", 3);
         expect(fast.length).toBe(slow.length);
         expect(fast.every((fall, index) => fall > slow[index])).toBe(true);
+    });
+});
+
+describe("the flutter", () => {
+    const fieldOf = (seed: WeatherSeedId, params: Partial<Record<WeatherParamKey, number>> = {}) =>
+        buildWeatherField(seed, resolveWeatherParams({ seed, params }), W, H);
+
+    it("is a rate in seconds rather than a harmonic of the loop", () => {
+        // The bug this exists to catch: harmonics drawn straight from 1..3 mean 1..3 cycles per
+        // TWELVE SECONDS, which is 0.08 to 0.25 Hz - a drift, not a flutter, and a slow pale blob is
+        // a snowflake whatever sprite it was drawn from. Nothing in the expression mentions how long
+        // a loop is, so nothing but this notices when the two are confused again.
+        for (const rate of [0.4, 1.1, 2.5]) {
+            const harmonics = fieldOf("sakura", { flutter: rate }).particles.map(p => p.swayHarm);
+            const wanted = rate * WEATHER_LOOP_SECONDS;
+            for (const harmonic of harmonics) {
+                expect(Number.isInteger(harmonic)).toBe(true);
+                // Each particle sits within a third of the seed's rate, so the field does not pulse
+                // in unison; anything wider would be two weathers in one picture.
+                expect(harmonic).toBeGreaterThanOrEqual(Math.floor(wanted * 0.7));
+                expect(harmonic).toBeLessThanOrEqual(Math.ceil(wanted * 1.3));
+            }
+        }
+    });
+
+    it("gives a petal a rate an eye reads as a flutter", () => {
+        const harmonics = fieldOf("sakura").particles.map(p => p.swayHarm / WEATHER_LOOP_SECONDS);
+        expect(Math.min(...harmonics)).toBeGreaterThan(0.5);
+    });
+
+    for (const seed of WEATHER_SEED_IDS) {
+        it(`${seed} keeps the seam exact at both ends of the rate`, () => {
+            // The hang displaces a particle along its own fall line, which looks like the one thing
+            // that could break the seam and does not: it is zero-mean and on an integer harmonic.
+            for (const flutter of [WEATHER_PARAMS.flutter.min, WEATHER_PARAMS.flutter.max]) {
+                const params = resolveWeatherParams({ seed, params: { flutter, fallSpeed: 4.5 } });
+                expect(frameAt(seed, 1, params)).toEqual(frameAt(seed, 0, params));
+            }
+        });
+    }
+
+    it("hangs without ever letting a particle climb", () => {
+        // The hang subtracts `bobAmp * sin(2 * flutter)` from the fall, so its steepest slope against
+        // phase is `bobAmp * 4pi * swayHarm`. Once that exceeds the particle's own fall rate the
+        // particle moves UPWARD at the top of its hang, which nothing falling does. The margin is
+        // set by a constant in the field builder; this is what holds that constant honest.
+        for (const seed of WEATHER_SEED_IDS) {
+            for (const fallSpeed of [WEATHER_PARAMS.fallSpeed.min, 4, WEATHER_PARAMS.fallSpeed.max]) {
+                const field = fieldOf(seed, { fallSpeed, flutter: WEATHER_PARAMS.flutter.max });
+                for (const p of field.particles) {
+                    const slowest = p.fall * field.fallSpan - p.bobAmp * 4 * Math.PI * p.swayHarm;
+                    expect(slowest).toBeGreaterThan(0);
+                }
+            }
+        }
+    });
+
+    it("does not reach rain, which falls at one speed", () => {
+        // A drop has no face to turn, so it has no drag cycle - and its streak is drawn for one
+        // speed, so a drop that slowed would be a smear that had come loose from its own motion.
+        expect(fieldOf("rain").particles.every(p => p.bobAmp === 0)).toBe(true);
+        expect(fieldOf("sakura").particles.some(p => p.bobAmp > 0)).toBe(true);
+    });
+});
+
+describe("the shutter", () => {
+    it("is stated by every seed, and open for the whole frame only where a streak needs it", () => {
+        for (const id of WEATHER_SEED_IDS) {
+            expect(WEATHER_SEEDS[id].shutter).toBeGreaterThan(0);
+            expect(WEATHER_SEEDS[id].shutter).toBeLessThanOrEqual(1);
+        }
+        // Rain's streak IS the smear: anything less leaves gaps between one frame's streak and the
+        // next, which is a field of dashes. A petal is a shape, and a shape smeared over its own
+        // body length is a smudge - measured, a fully open shutter costs sakura 28% of its edge
+        // energy and 44% of its peak brightness at the top of the speed range.
+        expect(WEATHER_SEEDS.rain.shutter).toBe(1);
+        expect(WEATHER_SEEDS.sakura.shutter).toBeLessThan(1);
+    });
+
+    it("reaches the renderer rather than being a constant beside it", () => {
+        const params = resolveWeatherParams({ seed: "sakura", params: { fallSpeed: 10 } });
+        const render = (shutter: number) => {
+            const field = { ...buildWeatherField("sakura", params, W, H), shutter };
+            const renderer = createWeatherRenderer(field, W, H, { frames: FRAMES, subSteps: 8 });
+            renderer.render(0.3);
+            return new Uint8ClampedArray(renderer.frame);
+        };
+        // A longer shutter integrates a longer arc, so it lights more pixels more faintly. If the
+        // renderer had gone on reading a module constant these two would be identical.
+        expect(litPixels(render(1))).toBeGreaterThan(litPixels(render(0.25)));
+    });
+});
+
+describe("the reduction the inspector's preview draws", () => {
+    // The preview shows the whole stage at panel size rather than a window onto it at 1:1. What
+    // makes that the same picture is this scaling, and what makes it worth a test is that the
+    // alternative is not obviously wrong: a window is honest about every LENGTH in it and still
+    // showed fourteen enormous petals where the clip has hundreds of small ones.
+    const scale = 320 / W;
+
+    for (const seed of WEATHER_SEED_IDS) {
+        it(`${seed} keeps the count, the timing and the flutter of the full-size field`, () => {
+            const params = resolveWeatherParams({ seed });
+            const full = buildWeatherField(seed, params, W, H);
+            const small = buildWeatherField(
+                seed,
+                scaleWeatherParams(params, scale),
+                Math.round(W * scale),
+                Math.round(H * scale),
+            );
+            // Within one: the two spans are rounded to whole pixels independently.
+            expect(Math.abs(small.particles.length - full.particles.length)).toBeLessThanOrEqual(1);
+            const count = Math.min(small.particles.length, full.particles.length);
+            for (let i = 0; i < count; i++) {
+                expect(small.particles[i].fall).toBe(full.particles[i].fall);
+                expect(small.particles[i].swayHarm).toBe(full.particles[i].swayHarm);
+                // A particle's share of the frame, not its pixel size.
+                expect(small.particles[i].radius / small.fallSpan).toBeCloseTo(
+                    full.particles[i].radius / full.fallSpan,
+                    3,
+                );
+            }
+        });
+    }
+
+    it("leaves a scaled density unclamped, because the range describes a stage-sized picture", () => {
+        const scaled = scaleWeatherParams(resolveWeatherParams({ seed: "sakura" }), 0.1);
+        expect(scaled.density).toBeGreaterThan(WEATHER_PARAMS.density.max);
     });
 });
 

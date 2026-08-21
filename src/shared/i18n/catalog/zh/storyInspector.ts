@@ -225,6 +225,7 @@ export const storyInspector = {
         streak: "拖影",
         wind: "风向（度）",
         fallSpeed: "落速",
+        flutter: "翻飞",
         depthSpread: "景深差",
     },
 

@@ -251,6 +251,7 @@ export const storyInspector = {
         streak: "尾の長さ",
         wind: "風向き（度）",
         fallSpeed: "落下速度",
+        flutter: "舞い",
         depthSpread: "奥行き差",
     },
 
