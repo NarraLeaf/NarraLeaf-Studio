@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { SelectFieldDefinition } from "../types";
 import { Select } from "@/lib/components/elements";
 
@@ -53,11 +54,7 @@ function SelectFieldInner<TData>({ field, data, onSaving }: SelectFieldProps<TDa
 
     return (
         <div className={field.className}>
-            {field.label && (
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {field.label}
-                </label>
-            )}
+            <FieldLabelRow field={field} />
             <Select
                 fullWidth
                 options={options}

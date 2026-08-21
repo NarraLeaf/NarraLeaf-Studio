@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { X, Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { TagsFieldDefinition } from "../types";
@@ -87,11 +88,7 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
 
     return (
         <div className={field.className}>
-            {field.label && (
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {field.label}
-                </label>
-            )}
+            <FieldLabelRow field={field} />
             <div className="space-y-2">
                 {/* No tags: no chip row. The "Add tag…" field below is the whole affordance. */}
                 {hasTags && (

@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { InfoFieldDefinition, InfoItem } from "../types";
 
 interface InfoFieldProps<TData> {
@@ -29,11 +30,7 @@ function InfoFieldInner<TData>({ field, data }: InfoFieldProps<TData>) {
 
     return (
         <div className={field.className}>
-            {field.label && (
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {field.label}
-                </label>
-            )}
+            <FieldLabelRow field={field} />
             <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
                 {visibleItems.map((item, index) => (
                     <div key={index} className="flex justify-between text-xs">

@@ -53,6 +53,23 @@ export const help = {
         engine: "narraleaf-react, the engine",
     },
     topics: {
+        // First in the list, so it is what the browser opens on and what `F1` reaches when
+        // nothing under the pointer has a topic of its own.
+        gettingHelp: {
+            title: "Getting help",
+            body:
+                "Press F1 for help on whatever has focus, or whatever the pointer is over. The topic "
+                + "opens beside it and closes on Escape.\n"
+                + "\n"
+                + "Panel headers and dialogs show a question mark under the pointer. It opens the topic "
+                + "for that panel.\n"
+                + "\n"
+                + "- See also moves to a related topic, and the back arrow in the header returns to the "
+                + "previous one.\n"
+                + "- This list holds every topic. The search field above it matches titles and bodies.\n"
+                + "- The command palette lists every topic by name under Help.\n"
+                + "- Where there is no topic, F1 opens this list.",
+        },
         workspaceLayout: {
             title: "Workspace layout",
             body:

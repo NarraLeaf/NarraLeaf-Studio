@@ -1,4 +1,5 @@
 import { memo, useMemo, type ReactElement } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { FieldDefinition } from "../types";
 import { BindablePropertyField } from "@/apps/workspace/modules/properties/blueprint/BindablePropertyField";
 import { isUIInspectorData, type PropertyFieldBindingMeta } from "@/apps/workspace/modules/properties/blueprint/bindingMeta";
@@ -212,11 +213,7 @@ function renderFieldBody<TData>(
             const CustomComponent = field.component;
             return (
                 <div className={field.className}>
-                    {field.label && (
-                        <label className="block text-xs font-medium text-fg-muted mb-1">
-                            {field.label}
-                        </label>
-                    )}
+                    <FieldLabelRow field={field} />
                     <CustomComponent
                         data={data}
                         onChange={() => {
