@@ -50,6 +50,10 @@ import { createListItemFieldBindingField } from "@/lib/ui-editor/widget-modules/
 const LayoutVisibleListItemFieldBinding = createListItemFieldBindingField({
     propPath: "layout.visible",
     valueType: "boolean",
+    // Its own name, because a widget in a row can carry two field pickers - one for what it shows
+    // and one for whether it shows at all - and two controls reading "Field" is two questions with
+    // one label.
+    labelKey: "struct.field.visiblePicker",
 });
 import type {
     FieldDefinition,

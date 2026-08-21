@@ -45,9 +45,12 @@ function ListItemFieldBindingRow(props: {
     liveElement: UIElement;
     propPath: string;
     valueType: UIElementValueBindingValueType;
+    /** Names what the field decides. Defaults to the value the prop holds. */
+    labelKey?: TranslationKey;
 }): ReactNode {
     const { t } = useTranslation();
     const { data, liveElement, propPath, valueType } = props;
+    const label = t(props.labelKey ?? "struct.field.picker");
     const document = data.documentService.getDocument();
     const context = findOwningListItemTemplate(document, liveElement);
     if (!context) {
@@ -66,7 +69,7 @@ function ListItemFieldBindingRow(props: {
 
     return (
         <div className="flex items-center gap-2">
-            <span className="shrink-0 text-xs font-medium text-fg-muted">{t("struct.field.picker")}</span>
+            <span className="shrink-0 text-xs font-medium text-fg-muted">{label}</span>
             <Select
                 size="sm"
                 className="min-w-0 flex-1"
@@ -74,7 +77,7 @@ function ListItemFieldBindingRow(props: {
                 options={options}
                 portalMenu
                 fullWidth
-                ariaLabel={t("struct.field.picker")}
+                ariaLabel={label}
                 onChange={value =>
                     data.documentService.setElementListItemFieldBinding(
                         liveElement.id,
@@ -96,6 +99,7 @@ function ListItemFieldBindingRow(props: {
 export function createListItemFieldBindingField(config: {
     propPath: string;
     valueType: UIElementValueBindingValueType;
+    labelKey?: TranslationKey;
 }) {
     return function ListItemFieldBindingField(props: CustomFieldProps<UIInspectorData>): ReactNode {
         const live =
@@ -106,6 +110,7 @@ export function createListItemFieldBindingField(config: {
                 liveElement={live}
                 propPath={config.propPath}
                 valueType={config.valueType}
+                labelKey={config.labelKey}
             />
         );
     };

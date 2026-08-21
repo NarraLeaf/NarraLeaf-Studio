@@ -16,6 +16,7 @@ export const struct = {
         none: "没有字段",
         engineOwned: "该列表的字段由引擎提供",
         picker: "字段",
+        visiblePicker: "显示字段",
         pickerEmpty: "不绑定字段",
     },
     row: {
