@@ -10,14 +10,28 @@ import type {
 } from "@shared/types/ui-editor/list";
 
 export type ListWidgetProps = {
-    /** Runtime data source. Workspace preview falls back to previewItems / previewCount. */
+    /** Runtime data source. With none, the list draws its authored items. */
     itemsBinding?: UIListItemsBinding | null;
-    /** Design-time sample items. Objects are exposed through listItem.* bindings. */
-    previewItems: unknown[];
-    /** Dot path used to produce stable per-row keys from item objects. */
-    itemKeyPath?: string;
-    /** Design-time number of preview rows/columns. */
-    previewCount: number;
+    /**
+     * The shape of one item, by id into the document's struct library.
+     *
+     * Everything an author touches about item data reads this: the content table's columns, the
+     * field picker on a child element's value binding, the typed pins on the item nodes. A list
+     * with none declared still runs - its items are whatever a graph wrote - but nothing can be
+     * offered in a dropdown, which is the state this model exists to get out of.
+     */
+    itemStructId?: string | null;
+    /**
+     * The content the author wrote, shaped by `itemStructId`.
+     *
+     * One list, not a preview copy and a shipped copy: what is drawn on the canvas is what the game
+     * starts with. A binding or a graph write replaces it at runtime; until then this is the list.
+     */
+    items: unknown[];
+    /** Field whose value keys a row, so a row keeps its identity across edits. Empty keys by index. */
+    itemKeyFieldId?: string | null;
+    /** How many empty rows to draw when there is no content at all - authored, bound or written. */
+    placeholderCount: number;
     /** Current selected item index. -1 means no selection. */
     selectedIndex: number;
     /** Gap between list items (main axis of repeat). */
@@ -84,9 +98,10 @@ export const defaultListScrollbarProps: UIListScrollbarProps = {
 
 export const defaultListWidgetProps: ListWidgetProps = {
     itemsBinding: null,
-    previewItems: [],
-    itemKeyPath: "id",
-    previewCount: 4,
+    itemStructId: null,
+    items: [],
+    itemKeyFieldId: null,
+    placeholderCount: 4,
     selectedIndex: -1,
     itemGap: 8,
     repeatDirection: "vertical",

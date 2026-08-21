@@ -60,6 +60,8 @@ import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/l
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { makeDefaultStructItem } from "@shared/types/ui-editor/struct";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
@@ -1210,10 +1212,13 @@ function readListItemsFallback(
     if (bound) {
         return cloneJson(bound);
     }
-    if (props.previewItems.length > 0) {
-        return cloneJson(props.previewItems);
+    if (props.items.length > 0) {
+        return cloneJson(props.items);
     }
-    return Array.from({ length: props.previewCount }, (_, index) => ({ index }));
+    // Placeholder rows in the declared shape, so a graph reading a list nobody has written to sees
+    // the fields it will see once there is content instead of a bag with an `index` in it.
+    const struct = resolveUIStruct(document, props.itemStructId);
+    return Array.from({ length: props.placeholderCount }, () => makeDefaultStructItem(struct));
 }
 
 function readListProperties(
