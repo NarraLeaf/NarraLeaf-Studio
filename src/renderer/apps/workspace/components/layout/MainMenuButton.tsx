@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Menu } from "lucide-react";
-import { useRegistry } from "../../registry";
+import { useTitleBarActionGroups } from "../../hooks/useTitleBarActionGroups";
 import { useWorkspace } from "../../context";
 import { ActionDropdown } from "../ui/ActionDropdown";
 import { ActionGroup, ActionMenuItem } from "../../registry/types";
@@ -40,7 +40,8 @@ const MAIN_MENU_GROUP_ID = "narraleaf-studio:main-menu";
  */
 export function MainMenuButton() {
     const { t } = useTranslation();
-    const { actionGroups } = useRegistry();
+    // The same folded list the bar draws side by side, so the two arrangements hold the same menus.
+    const actionGroups = useTitleBarActionGroups();
     const { context } = useWorkspace();
     const frozen = useWorkspaceFrozen();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
