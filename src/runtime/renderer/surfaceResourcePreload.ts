@@ -2,6 +2,8 @@ import { UI_FRAME_ELEMENT_TYPE, getUIFrameWidgetProps } from "@shared/types/ui-e
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import type { GameRuntimeAssetManifestEntry, GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import type { AssetVariantMap } from "@shared/types/assetSet";
+import { UI_ASSET_ID_PROPERTY_NAMES } from "@shared/build/uiAssetSlots";
 
 export const RUNTIME_SURFACE_PRELOAD_TIMEOUT_MS = 10_000;
 
@@ -25,11 +27,35 @@ type CollectContext = {
     visitedComponents: Set<string>;
 };
 
-function addAssetId(ctx: CollectContext, value: unknown): void {
-    const assetId = typeof value === "string" ? value.trim() : "";
-    if (!assetId) {
+/**
+ * The ids one record actually fetches, given the id it stores.
+ *
+ * A record that names an asset set keeps the set id in its props and carries the build's answer
+ * beside it (`assetVariants`). The set id names no bytes - fetching it is a guaranteed miss, and in
+ * a protected build, where there is no manifest to filter against, a miss that reaches the failure
+ * log. What the record can fetch is its members.
+ *
+ * **Every** member, not the one the current language resolves to: the language button on a title
+ * screen changes languages without restarting, so a preload keyed to the language at load would
+ * leave the picture the player just switched to arriving late. A runtime axis ships all of its
+ * variants for exactly this reason.
+ */
+function fetchableAssetIds(assetId: string, variants: AssetVariantMap | undefined): string[] {
+    const map = variants?.[assetId];
+    return map ? [...new Set(Object.values(map))] : [assetId];
+}
+
+function addAssetId(ctx: CollectContext, value: unknown, variants?: AssetVariantMap): void {
+    const stored = typeof value === "string" ? value.trim() : "";
+    if (!stored) {
         return;
     }
+    for (const assetId of fetchableAssetIds(stored, variants)) {
+        addResolvedAssetId(ctx, assetId);
+    }
+}
+
+function addResolvedAssetId(ctx: CollectContext, assetId: string): void {
     // A null set means the pack ships no manifest to check against (a protected build), so the
     // property name is the only evidence that a string is an asset id - which is what it was here
     // anyway: this walk is keyed on exact property names, and the manifest check only ever caught
@@ -42,27 +68,36 @@ function addAssetId(ctx: CollectContext, value: unknown): void {
 }
 
 /**
- * Literal property names that hold a library asset id. `posterAssetId` is here because the walk is
- * keyed on exact names, not a suffix: `nl.video`'s poster would otherwise be skipped and the still
- * shown before playback would pop in mid-scene rather than arriving with the Surface.
+ * Literal property names that hold a library asset id.
+ *
+ * The build's own walk over the same documents (`@shared/build/uiAssetSlots`) publishes this list,
+ * and reading it from there rather than keeping a copy is the point: a name only this walk knows is
+ * an asset the shipped game fetches and no build ever resolves, and a name only the build knows is
+ * an asset resolved into a package nothing preloads. Both failures are silent.
  */
-const ASSET_ID_PROPERTY_NAMES = new Set(["assetId", "fontAssetId", "posterAssetId"]);
+const ASSET_ID_PROPERTY_NAMES = UI_ASSET_ID_PROPERTY_NAMES;
 
-function collectAssetIdsFromValue(ctx: CollectContext, value: unknown, keyHint?: string): void {
+function collectAssetIdsFromValue(
+    ctx: CollectContext,
+    value: unknown,
+    keyHint?: string,
+    /** The answers the record being walked carries, so a set id becomes its members. */
+    variants?: AssetVariantMap,
+): void {
     if (keyHint !== undefined && ASSET_ID_PROPERTY_NAMES.has(keyHint)) {
-        addAssetId(ctx, value);
+        addAssetId(ctx, value, variants);
     }
     if (!value || typeof value !== "object") {
         return;
     }
     if (Array.isArray(value)) {
         for (const item of value) {
-            collectAssetIdsFromValue(ctx, item);
+            collectAssetIdsFromValue(ctx, item, undefined, variants);
         }
         return;
     }
     for (const [key, nextValue] of Object.entries(value as Record<string, unknown>)) {
-        collectAssetIdsFromValue(ctx, nextValue, key);
+        collectAssetIdsFromValue(ctx, nextValue, key, variants);
     }
 }
 
@@ -80,9 +115,9 @@ function collectElementTree(
         return;
     }
     ctx.visitedElements.add(visitKey);
-    collectAssetIdsFromValue(ctx, element.props);
-    collectAssetIdsFromValue(ctx, element.extra);
-    collectAssetIdsFromValue(ctx, element.valueBindings);
+    collectAssetIdsFromValue(ctx, element.props, undefined, element.assetVariants);
+    collectAssetIdsFromValue(ctx, element.extra, undefined, element.assetVariants);
+    collectAssetIdsFromValue(ctx, element.valueBindings, undefined, element.assetVariants);
 
     const link = getUIComponentLink(element);
     if (link && !ctx.visitedComponents.has(link.componentId)) {
@@ -136,7 +171,7 @@ function collectSurfaceAssetIds(ctx: CollectContext, surfaceId: string): void {
     }
     // The Surface's own settings, not just its widgets: a background picture is the largest thing on
     // the page and the first one an author would notice popping in a frame after the reveal.
-    collectAssetIdsFromValue(ctx, surface.settings);
+    collectAssetIdsFromValue(ctx, surface.settings, undefined, surface.settings?.assetVariants);
     collectElementTree(ctx, ctx.document.elements[surface.rootElementId], `surface:${surface.id}`);
 }
 

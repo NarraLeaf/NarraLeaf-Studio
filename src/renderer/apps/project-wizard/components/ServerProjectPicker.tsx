@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { getInterface } from "@/lib/app/bridge";
-import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { ServerRow, useServers } from "@/lib/vcs/servers";
 import type { TranslationKey } from "@shared/i18n";
 import type {
     VcsServerProject,
     VcsServerProjectsProblem,
-    VcsServerSession,
 } from "@shared/types/vcs";
 
 /** The sentence for each way a server can fail to say what it holds. */
@@ -17,13 +16,10 @@ const PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
     refused: "wizard.source.onServerRefused",
     unreachable: "wizard.source.onServerUnreachable",
     rejected: "wizard.source.onServerUnknown",
+    // Publishing is the only thing that answers this, and it happens in the workspace.
+    "wrong-repository": "wizard.source.onServerUnknown",
     unknown: "wizard.source.onServerUnknown",
 };
-
-/** The host and port, which is what identifies a server to whoever was given it. */
-function serverAddress(session: VcsServerSession): string {
-    return session.remoteOrigin.replace(/^lore:\/\//i, "");
-}
 
 export interface ServerProjectPickerProps {
     /** The address as it stands, so the chosen row can be drawn as chosen. */
@@ -51,23 +47,17 @@ export interface ServerProjectPickerProps {
  */
 export function ServerProjectPicker({ value, onPick }: ServerProjectPickerProps) {
     const { t } = useTranslation();
-    const [servers, setServers] = useState<VcsServerSession[]>([]);
+    const { servers } = useServers();
     const [chosen, setChosen] = useState<string | null>(null);
     const [projects, setProjects] = useState<VcsServerProject[] | null>(null);
     const [problem, setProblem] = useState<TranslationKey | null>(null);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        let alive = true;
-        void getInterface().vcs.listServers().catch(() => null).then(result => {
-            if (!alive) return;
-            const found = result?.success ? result.data.servers : [];
-            setServers(found);
-            // One server is not a choice, so it is not presented as one.
-            setChosen(found.length === 1 ? (found[0]?.remoteOrigin ?? null) : null);
-        });
-        return () => { alive = false; };
-    }, []);
+        // One server is not a choice, so it is not presented as one. A seed and never a
+        // correction: the list arriving again must not undo a choice made from it.
+        setChosen(current => current ?? (servers.length === 1 ? servers[0]?.remoteOrigin ?? null : null));
+    }, [servers]);
 
     const load = useCallback(async (remoteOrigin: string) => {
         setLoading(true);
@@ -105,16 +95,15 @@ export function ServerProjectPicker({ value, onPick }: ServerProjectPickerProps)
             {servers.length > 1 && (
                 <div className="flex flex-wrap gap-1">
                     {servers.map(session => (
-                        <Button
+                        <ServerRow
                             key={session.remoteOrigin}
+                            session={session}
                             size="sm"
-                            variant={chosen === session.remoteOrigin ? "secondary" : "ghost"}
-                            className="h-7"
+                            compact
+                            chosen={chosen === session.remoteOrigin}
+                            onChoose={() => setChosen(session.remoteOrigin)}
                             data-server-choice={session.remoteOrigin}
-                            onClick={() => setChosen(session.remoteOrigin)}
-                        >
-                            {serverAddress(session)}
-                        </Button>
+                        />
                     ))}
                 </div>
             )}

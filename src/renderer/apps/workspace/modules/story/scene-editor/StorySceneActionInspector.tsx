@@ -57,6 +57,8 @@ import type { Translator, TranslationKey } from "@shared/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, ExternalLink, Image as ImageIcon, Mic, Palette, Play, RefreshCw, Square, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -107,8 +109,10 @@ import {
     SelectField,
     Section,
     TextField,
+    ToggleField,
     type TFunc,
 } from "./inspectorFieldKit";
+import { WeatherSeedPreview } from "./WeatherSeedPreview";
 
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg-muted outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -235,7 +239,7 @@ function VariableValueField(props: {
     const { t } = useTranslation();
     const label = props.label ?? t("storyInspector.field.value");
     if (props.valueType === "boolean") {
-        return <CheckboxField label={label} checked={props.value === true} onChange={checked => props.onChange(checked)} />;
+        return <ToggleField label={label} checked={props.value === true} onChange={checked => props.onChange(checked)} />;
     }
     if (props.valueType === "number") {
         return (
@@ -410,6 +414,10 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
     // Listed so a `/front` row reads its own verb back here rather than showing an empty select. It
     // is the one entry with nothing to configure - see the transform editor's guard below.
     { value: "bringToFront", label: t("storyInspector.displayableOperation.bringToFront") },
+    // The pair that repeats. `loop` configures exactly like `transform` - it is the same bag, played
+    // over and over - while `stopLoop` states no bag at all, so it shares `bringToFront`'s guard.
+    { value: "loop", label: t("storyInspector.displayableOperation.loop") },
+    { value: "stopLoop", label: t("storyInspector.displayableOperation.stopLoop") },
 ];
 
 const displayableEffectHints = (t: TFunc): Record<string, string> => ({
@@ -502,19 +510,10 @@ export function ActionInspector(props: {
         [context, isInitialized],
     );
     /** Names, not ids: an asset id in the heading tells the author nothing about what they picked. */
-    const resolveAssetName = useCallback((assetId: string): string | null => {
-        const table = assetsService?.getAssets();
-        if (!table) {
-            return null;
-        }
-        for (const byId of Object.values(table)) {
-            const asset = (byId as Record<string, { name?: string }> | undefined)?.[assetId];
-            if (asset?.name) {
-                return asset.name;
-            }
-        }
-        return null;
-    }, [assetsService]);
+    const resolveAssetName = useCallback(
+        (assetId: string): string | null => resolveAssetDisplayName(context?.services, assetId),
+        [context],
+    );
     const resolveMotionName = useStoryMotionNames();
     const variableOptions = useStoryVariableOptions(props.document, props.sceneId);
     const subject = describeBlockSubject(
@@ -638,7 +637,7 @@ function InspectorFields(props: {
                     </FieldGrid>
                     <Section title={t("storyInspector.section.timing")}>
                         <FieldGrid cols={2}>
-                            <CheckboxField
+                            <ToggleField
                                 label={t("storyInspector.dialogue.pauseAfter")}
                                 checked={pauseEnabled}
                                 onChange={checked => props.onUpdatePayload({ ...payload, pauseAfter: checked ? true : undefined })}
@@ -946,8 +945,9 @@ function ActionPayloadFields(props: {
                         assetType={AssetType.Image}
                         assetId={payload.assetId}
                         onChange={assetId => props.onChange({ ...payload, assetId })}
+                        allowAssetSets
                     />
-                    <CheckboxField label={t("storyInspector.image.autoFit")} checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
+                    <ToggleField label={t("storyInspector.image.autoFit")} checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
                 </div>
                 <TransformPresetEditor
                     value={payload.transform}
@@ -987,8 +987,10 @@ function ActionPayloadFields(props: {
                     />
                 </FieldGrid>
                 {/* A raise carries no pose and no duration, so the bag editor is not shown for it -
-                    a transform authored here would be stored and then never reach the stage. */}
-                {payload.operation === "bringToFront" ? null : (
+                    a transform authored here would be stored and then never reach the stage. Ending a
+                    loop is the same case for the same reason: it goes back to the pose the element
+                    kept underneath, and there is nothing to state about where that is. */}
+                {payload.operation === "bringToFront" || payload.operation === "stopLoop" ? null : (
                     <TransformPresetEditor
                         value={payload.transform}
                         motionTargetKind={resolvedTarget.kind ?? "image"}
@@ -1108,8 +1110,9 @@ function ActionPayloadFields(props: {
                     assetType={AssetType.Video}
                     assetId={payload.assetId}
                     onChange={assetId => props.onChange({ ...payload, assetId })}
+                    allowAssetSets
                 />
-                <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                <ToggleField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
                 {payload.operation === "seek" ? (
                     <SecondsField
                         label={t("storyInspector.video.seekTime")}
@@ -1319,6 +1322,7 @@ function AudioActionEditor(props: {
                         label={payload.operation === "setBgm" ? t("storyInspector.audio.bgmAsset") : t("storyInspector.audio.soundAsset")}
                         assetType={AssetType.Audio}
                         assetId={payload.assetId}
+                        allowAssetSets
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
                 ) : null}
@@ -1354,7 +1358,7 @@ function AudioActionEditor(props: {
                     />
                 ) : null}
                 {has("loop") ? (
-                    <CheckboxField
+                    <ToggleField
                         label={t("storyInspector.audio.loop")}
                         // The resolved answer, not the raw field: a row on a non-looping track whose
                         // box read "on" because the field is empty would be lying about the game.
@@ -1363,7 +1367,7 @@ function AudioActionEditor(props: {
                     />
                 ) : null}
                 {has("muted") ? (
-                    <CheckboxField
+                    <ToggleField
                         label={t("storyInspector.field.muted")}
                         checked={Boolean(payload.muted)}
                         onChange={muted => props.onChange({ ...payload, muted })}
@@ -1419,6 +1423,9 @@ const vfxFitOptions = (t: TFunc): SelectOption[] => [
  * An ambience overlay's knobs. Two things the layout carries rather than explains:
  *  - the placement knobs (clip, blend, opacity, fit, z, loop) only appear on the row that CREATES the
  *    overlay - a later `/hide petals` row cannot change how it composites;
+ *  - blend is absent on a seed, which is not a knob withheld but a question with one answer: a baked
+ *    clip is lit particles on black and has to be screened. Offering the choice would let an author
+ *    pick the one setting that turns their weather into a black rectangle;
  *  - there is no transform section at all, because a `Vfx` is not a Displayable and has no transform
  *    pipeline to offer.
  */
@@ -1426,7 +1433,10 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
     const { t } = useTranslation();
     const payload = props.payload;
     const isCreate = payload.operation === "create";
-    const fades = payload.operation === "show" || payload.operation === "hide" || isCreate;
+    const isShow = payload.operation === "show";
+    // A create row reveals nothing, so it has no fade: the duration belongs to the rows that change
+    // the picture.
+    const fades = isShow || payload.operation === "hide";
     return (
         <Section title={t("storyInspector.section.vfx")}>
             <FieldGrid cols={2}>
@@ -1455,14 +1465,17 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                                 assetType={AssetType.Video}
                                 assetId={payload.assetId}
                                 onChange={assetId => props.onChange({ ...payload, assetId })}
+                                allowAssetSets
                             />
                         )}
-                        <SelectField
-                            label={t("storyInspector.vfx.blendMode")}
-                            options={vfxBlendOptions(t)}
-                            value={payload.blendMode ?? "normal"}
-                            onChange={blendMode => props.onChange({ ...payload, blendMode: blendMode as VfxActionPayload["blendMode"] })}
-                        />
+                        {payload.seed ? null : (
+                            <SelectField
+                                label={t("storyInspector.vfx.blendMode")}
+                                options={vfxBlendOptions(t)}
+                                value={payload.blendMode ?? "normal"}
+                                onChange={blendMode => props.onChange({ ...payload, blendMode: blendMode as VfxActionPayload["blendMode"] })}
+                            />
+                        )}
                         <NumberField
                             label={t("storyInspector.vfx.opacity")}
                             value={payload.opacity}
@@ -1479,16 +1492,30 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                             value={payload.zIndex}
                             onChange={zIndex => props.onChange({ ...payload, zIndex })}
                         />
-                        <CheckboxField
+                        <ToggleField
                             label={t("storyInspector.vfx.loop")}
                             checked={payload.loop !== false}
                             onChange={loop => props.onChange({ ...payload, loop })}
                         />
                     </>
                 ) : null}
+                {isShow ? (
+                    <NumberField
+                        label={t("storyInspector.vfx.showOpacity")}
+                        value={payload.opacity}
+                        onChange={opacity => props.onChange({ ...payload, opacity: opacity === undefined ? undefined : Math.min(1, Math.max(0, opacity)) })}
+                    />
+                ) : null}
                 {isCreate || payload.operation === "setRate" ? (
                     <NumberField
                         label={t("storyInspector.vfx.rate")}
+                        value={payload.rate}
+                        onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
+                    />
+                ) : null}
+                {isShow ? (
+                    <NumberField
+                        label={t("storyInspector.vfx.showRate")}
                         value={payload.rate}
                         onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
                     />
@@ -1574,16 +1601,19 @@ function WeatherSeedFields(props: {
         props.onChange(Object.keys(next).length > 0 ? next : undefined);
     };
     return (
-        <FieldGrid cols={2}>
-            {weatherParamsOf(props.seed).map(key => (
-                <NumberField
-                    key={key}
-                    label={t(`storyInspector.weather.${key}` as TranslationKey)}
-                    value={resolved[key]}
-                    onChange={value => set(key, value)}
-                />
-            ))}
-        </FieldGrid>
+        <>
+            <WeatherSeedPreview seed={props.seed} params={props.params} />
+            <FieldGrid cols={2}>
+                {weatherParamsOf(props.seed).map(key => (
+                    <NumberField
+                        key={key}
+                        label={t(`storyInspector.weather.${key}` as TranslationKey)}
+                        value={resolved[key]}
+                        onChange={value => set(key, value)}
+                    />
+                ))}
+            </FieldGrid>
+        </>
     );
 }
 
@@ -2084,6 +2114,7 @@ function CharacterActionEditor(props: {
                         assetType={AssetType.Image}
                         assetId={payload.assetId}
                         onChange={assetId => onChange({ ...payload, assetId })}
+                        allowAssetSets
                     />
                 </div>
             </Disclosure>
@@ -2455,7 +2486,7 @@ function TransitionEditor(props: {
                             onChange={ruleAssetId => props.onChange({ ...value, kind: realKind, ruleAssetId })}
                         />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
-                        <CheckboxField
+                        <ToggleField
                             label={t("storyInspector.field.inverted")}
                             checked={value.props?.inverted === true}
                             onChange={inverted => setParam({ inverted })}
@@ -2527,20 +2558,6 @@ function TransitionEditor(props: {
     );
 }
 
-function CheckboxField(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-    return (
-        <label className="flex h-full min-h-[34px] items-end gap-2 pb-1 text-sm text-fg-muted">
-            <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={props.checked}
-                onChange={event => props.onChange(event.target.checked)}
-            />
-            <span>{props.label}</span>
-        </label>
-    );
-}
-
 function ColorTextField(props: { label: string; value: string; onChange: (value: string) => void }) {
     const parsedColorValue = parseColorValue(props.value, {
         hex: "#ffffff",
@@ -2576,7 +2593,21 @@ function BackgroundActionEditor(props: {
     const selectedAsset = props.payload.assetId
         ? assetsService?.getAssets()[AssetType.Image]?.[props.payload.assetId] ?? null
         : null;
-    const imageAssetId = props.payload.assetId ?? null;
+    // A background is the field a set is most often wanted for - the same room in two languages, or
+    // an edition that ships different art - so the picker offers them here and the row stores the
+    // set's id. Assembly resolves it from the block's own `assetId`, which is where this writes.
+    const { virtualGroups, resolveAssetPreviewUrl, findSet } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
+    const selectedSet = props.payload.assetId && !selectedAsset ? findSet(props.payload.assetId) : null;
+    // What the set's fallback resolves to, because that is what the scene shows unless a variant
+    // says otherwise - and a picture is what tells an author they picked the right set.
+    const imageAssetId = selectedSet
+        ? selectedSet.contents.cells.find(cell => cell.value === selectedSet.set.axis.fallback)?.assetId ?? null
+        : props.payload.assetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(imageAssetId);
     const [mode, setMode] = useState<"image" | "color">(() => props.payload.assetId ? "image" : "color");
     const [selectorOpen, setSelectorOpen] = useState(false);
@@ -2637,7 +2668,9 @@ function BackgroundActionEditor(props: {
         alpha: 1,
     });
     const colorValue: ColorValue = { hex: parsedColorValue.hex, alpha: 1 };
-    const imageLabel = selectedAsset?.name ?? (props.payload.assetId ? t("storyInspector.background.missing") : t("storyInspector.background.none"));
+    const imageLabel = selectedAsset?.name
+        ?? selectedSet?.set.name
+        ?? (props.payload.assetId ? t("storyInspector.background.missing") : t("storyInspector.background.none"));
 
     return (
         <div className="grid grid-cols-1 gap-3">
@@ -2711,7 +2744,9 @@ function BackgroundActionEditor(props: {
                                 className="h-8 rounded-md border border-edge bg-fill-subtle px-3 text-xs text-fg hover:border-primary/40 hover:text-primary"
                                 onClick={() => setSelectorOpen(true)}
                             >
-                                {selectedAsset ? t("storyInspector.background.change") : t("storyInspector.background.select")}
+                                {selectedAsset || selectedSet
+                                    ? t("storyInspector.background.change")
+                                    : t("storyInspector.background.select")}
                             </button>
                             <button
                                 type="button"
@@ -2758,6 +2793,7 @@ function BackgroundActionEditor(props: {
                 anchorRef={imageButtonRef}
                 title={t("storyInspector.background.selectImageTitle")}
                 multiple={false}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </div>
     );

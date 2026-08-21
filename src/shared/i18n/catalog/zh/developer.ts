@@ -9,7 +9,7 @@ export const developer = {
     copyId: {
         surface: "复制{label} ID",
         element: "复制元素 ID",
-        asset: "复制素材 ID",
+        asset: "复制资产 ID",
         assetGroup: "复制分组 ID",
         character: "复制角色 ID",
         characterGroup: "复制分组 ID",

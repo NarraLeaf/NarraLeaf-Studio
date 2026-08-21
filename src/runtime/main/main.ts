@@ -22,6 +22,11 @@ import {
 } from "@shared/types/gameRuntime";
 import { getMimeType } from "@shared/utils/fs";
 import {
+    DEFAULT_SAVE_LOCATION_CONFIGURATION,
+    normalizeSaveLocationConfiguration,
+    type SaveLocationConfiguration,
+} from "@shared/utils/userDataLocation";
+import {
     buildGameRuntimeAssetVersionArg,
     buildGameRuntimeCrashPolicyArg,
     buildGameRuntimeLogPathArg,
@@ -58,7 +63,7 @@ import {
     sweepAbandonedTempFiles,
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
-import { resolveRuntimeUserDataDir } from "./userDataDir";
+import { resolveGameRootDir, resolvePlayerFilesDir, resolveRuntimeUserDataDir } from "./userDataDir";
 import {
     readGameProgressFile,
     writeGameProgressFile,
@@ -80,20 +85,27 @@ const appDir = __dirname;
 function readShellManifest(): {
     mode: "preview" | "production";
     userDataDirName: string | null;
+    saveLocation: SaveLocationConfiguration;
     debuggable: boolean;
 } {
     try {
         const manifest = JSON.parse(fsSync.readFileSync(path.join(appDir, "package.json"), "utf-8")) as {
-            narraleaf?: { mode?: unknown; userDataDir?: unknown; debuggable?: unknown };
+            narraleaf?: { mode?: unknown; userDataDir?: unknown; saveLocation?: unknown; debuggable?: unknown };
         };
         const userDataDir = manifest.narraleaf?.userDataDir;
         return {
             mode: manifest.narraleaf?.mode === "production" ? "production" : "preview",
             userDataDirName: typeof userDataDir === "string" && userDataDir.trim() ? userDataDir.trim() : null,
+            saveLocation: normalizeSaveLocationConfiguration(manifest.narraleaf?.saveLocation),
             debuggable: manifest.narraleaf?.debuggable === true,
         };
     } catch {
-        return { mode: "preview", userDataDirName: null, debuggable: false };
+        return {
+            mode: "preview",
+            userDataDirName: null,
+            saveLocation: { ...DEFAULT_SAVE_LOCATION_CONFIGURATION },
+            debuggable: false,
+        };
     }
 }
 
@@ -137,6 +149,38 @@ const userDataDir = useSiblingUserData
         move: (from, to) => { fsSync.renameSync(from, to); },
         warn: message => { console.warn(`[GameRuntime] ${message}`); },
     });
+
+/**
+ * The folder holding the player's copy of this game: where a patch is looked for, and - when the
+ * author said so - where the player's files are kept.
+ *
+ * One answer for both, because they are the same question to the person asking it. A player who
+ * moves an installed game to another drive expects their progress to travel with the folder, and
+ * looks in that folder first for anywhere to put a patch.
+ */
+const gameRootDir = resolveGameRootDir({
+    platform: process.platform,
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appDir,
+    ...(process.env.APPIMAGE ? { appImagePath: process.env.APPIMAGE } : {}),
+});
+
+/**
+ * Where the save and persistence stores write.
+ *
+ * Only these two follow the author's setting: everything else under {@link userDataDir} belongs to
+ * the shell rather than to the player. A preview never follows it at all - it has no installation
+ * to sit beside, and its saves are the author's own working copies.
+ */
+const playerFilesDir = shellMode === "production" && !useSiblingUserData
+    ? resolvePlayerFilesDir({
+        platform: process.platform,
+        config: shellManifest.saveLocation,
+        gameRootDir,
+        userDataDir,
+    })
+    : userDataDir;
 
 /**
  * Where the progress document lives, which is deliberately not under {@link userDataDir}.
@@ -279,13 +323,11 @@ void app.whenReady().then(async () => {
         return;
     }
     resources = await createRuntimeResources(appDir, {
-        // Where a player puts a patch. `resourcesPath` rather than `__dirname`
-        // because this module lives inside the archive: its own directory is not
-        // a place anybody can drop a file. One level above the resources folder is
-        // the folder that holds the executable, which is the folder a player has.
-        // Unpackaged runs (preview, a compiled app dir started by hand) have no
-        // such layout, so they take the app dir's parent.
-        gameRootDir: app.isPackaged ? path.dirname(process.resourcesPath) : path.resolve(appDir, ".."),
+        // Where a player puts a patch: the folder their copy of the game sits in,
+        // which is the first place anyone looks for one. The same folder the
+        // player's files may sit in, resolved by the same function, so a player
+        // told where their saves are has been told where a patch goes.
+        gameRootDir,
         // Searched as well, so a patch can outlive reinstalling the game.
         userDataDir,
         // What applied, and what did not, is the only trace a patch leaves.
@@ -1026,16 +1068,16 @@ async function serveIndexDocument(
 
 function registerRuntimeIpc(): void {
     // Module-level refs so the before-quit handler can flush pending writes.
-    const saves = new RuntimeSaveStore(userDataDir);
-    const persistence = new RuntimePersistenceStore(userDataDir);
+    const saves = new RuntimeSaveStore(playerFilesDir);
+    const persistence = new RuntimePersistenceStore(playerFilesDir);
     saveStore = saves;
     persistenceStore = persistence;
     // Housekeeping, once, on the way up: a store write that was interrupted between its temp file
     // and the rename leaves the temp behind for good. Not awaited and never fatal - nothing here
     // is worth delaying a boot for, let alone failing one.
     void Promise.all([
-        sweepAbandonedTempFiles(userDataDir),
-        sweepAbandonedTempFiles(path.join(userDataDir, "saves")),
+        sweepAbandonedTempFiles(playerFilesDir),
+        sweepAbandonedTempFiles(path.join(playerFilesDir, "saves")),
     ]).catch(() => undefined);
 
     ipcMain.handle("runtime:read-pack", () => readPack());

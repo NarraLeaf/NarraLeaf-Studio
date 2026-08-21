@@ -215,6 +215,8 @@ enum Services {
     PuppetDescription = "puppetDescription",
     /** Which media assets already in the project will not play, and what to convert them into */
     MediaSupport = "mediaSupport",
+    /** Speculative weather bakes: watches the story documents and warms the clip cache */
+    WeatherPrebake = "weatherPrebake",
     /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
     ProjectDependency = "projectDependency",
     /** Accumulated authoring activity (writing curve, active time, build history) */

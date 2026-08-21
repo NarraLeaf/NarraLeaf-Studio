@@ -6,7 +6,7 @@ export const characters = {
     panel: {
         searchPlaceholder: "Search characters…",
         loading: "Loading characters…",
-        empty: "No characters match your filters.",
+        empty: "No characters match the current filters.",
         ungrouped: "Ungrouped",
         groupEmpty: "No characters in this group.",
         filterTags: "Tags",
@@ -23,10 +23,11 @@ export const characters = {
         namePlaceholder: "Enter character name",
         groupNamePlaceholder: "Enter group name",
         deleteCharacterConfirm: "Delete character \"{name}\"?",
-        // Was "This action cannot be undone." until deletion became undoable. What is worth
-        // weighing now is the consequence, not the finality: lines naming this character keep the
-        // reference and stop resolving.
-        deleteCharacterDetail: "Lines that name this character stop resolving until it is restored.",
+        // Was "This action cannot be undone." until deletion became undoable. What is worth weighing
+        // now is the consequence, not the finality - and the consequence is no longer the same for
+        // every row: dialogue keeps the name as a bare speaker, while a row that places the character
+        // on stage has no such form and keeps a reference that no longer resolves.
+        deleteCharacterDetail: "Its dialogue keeps the name. Rows that place it on stage stop resolving.",
         deleteGroupConfirm: "Delete group \"{name}\"?",
         deleteGroupDetail: "Characters in this group will be unassigned.",
     },
@@ -108,7 +109,7 @@ export const characters = {
         runtime: {
             title: "Install {product}",
             installed: "{product} is installed",
-            licenseTitle: "Before you install",
+            licenseTitle: "Before installing",
             licenseAgree: "I have read the terms above",
             vendorLink: "Open the {product} download page",
             docsLink: "Read the {product} guide",
@@ -125,7 +126,7 @@ export const characters = {
             building: "Building the runtime...",
             copying: "Installing...",
             builtFrom: "Built from SDK {version}",
-            renamed: "Installed as \"{backend}\". Use that name on your characters.",
+            renamed: "Installed as \"{backend}\". Use that name on characters.",
             remove: "Remove",
             removeConfirm: "Remove the \"{backend}\" runtime?",
             removeDetail: "Characters using it keep the name and draw an empty box until it is installed again.",
@@ -216,7 +217,7 @@ export const characters = {
             axisDefaultMissing: "{axis} has no default tag; {name} is used instead",
             occluded: "{name} is completely covered by the layers above it",
             avatarCombinations: "{count} dialogue avatars will be baked. Narrow the axes to reduce the count",
-            combinationNoArt: "{name} draws nothing at all",
+            combinationNoArt: "{name} draws nothing",
             snapshotStale: "{name} was saved with tags that no longer exist",
             poseNoImage: "{name} has no image",
             noPoses: "This character has no poses, so nothing draws",

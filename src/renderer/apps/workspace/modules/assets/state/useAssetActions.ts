@@ -1110,8 +1110,16 @@ export function useAssetActions({
      *
      * Answers whether the delete ran, so a caller that also has something of its own to remove -
      * the asset set whose files these are - drops it only once the author has confirmed.
+     *
+     * `confirmMessage` is the same seam in the other direction. The confirmation's default sentence
+     * says what a selected FOLDER takes with it, which is the wrong noun when the rows came from a
+     * set: the author is not looking at a folder and never selected one. Only the sentence differs -
+     * the reference check, the warning and the delete are the same for both.
      */
-    const handleDelete = useCallback(async (rows?: readonly AssetActionTarget[]): Promise<boolean> => {
+    const handleDelete = useCallback(async (
+        rows?: readonly AssetActionTarget[],
+        options?: { confirmMessage?: string },
+    ): Promise<boolean> => {
         notifyLoading(true);
         try {
             const ctx = contextRef.current;
@@ -1181,7 +1189,7 @@ export function useAssetActions({
 
             const confirmed = await uiService.showDestructiveConfirm(
                 tn("assets.delete.confirmTitle", targets.length),
-                t("assets.delete.confirmMessage"),
+                options?.confirmMessage ?? t("assets.delete.confirmMessage"),
                 t("assets.delete.action"),
             );
             if (!confirmed) {

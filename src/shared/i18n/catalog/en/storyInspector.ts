@@ -236,6 +236,8 @@ export const storyInspector = {
         zIndex: "Z-index",
         loop: "Loop",
         rate: "Speed (1 = normal)",
+        showOpacity: "Opacity (this showing)",
+        showRate: "Speed (this showing)",
         fade: "Fade (s)",
     },
 
@@ -246,6 +248,7 @@ export const storyInspector = {
         sway: "Drift",
         streak: "Streak",
         wind: "Wind (deg)",
+        fallSpeed: "Fall speed",
         depthSpread: "Depth spread",
     },
 
@@ -332,6 +335,8 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "Transform",
+        loop: "Loop",
+        stopLoop: "Stop loop",
         bringToFront: "Bring to front",
         mask: "Mask",
         clearMask: "Clear mask",

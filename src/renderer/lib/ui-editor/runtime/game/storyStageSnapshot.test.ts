@@ -326,6 +326,79 @@ describe("computeStoryStageSnapshot", () => {
         ]);
     });
 
+    it("leaves the pose alone for a loop and for the row that ends it", () => {
+        // The engine's own rule, and the reason this snapshot can honour it: a looping transform
+        // never writes the element's transform state, so the settled pose - what a save records and
+        // what "play from this row" starts from - stays the one the element had before it started.
+        const document = baseDocument({
+            show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { mode: "props", to: { zoom: 1.5 } } }),
+            breathe: block("breathe", "action", {
+                action: "displayable",
+                operation: "loop",
+                target: { name: "hero", kind: "image" },
+                transform: { mode: "props", to: { zoom: 3, scaleY: 1.2 }, durationMs: 900 },
+            }),
+            stop: block("stop", "action", {
+                action: "displayable",
+                operation: "stopLoop",
+                target: { name: "hero", kind: "image" },
+                transform: { durationMs: 300 },
+            }),
+            target: say("target"),
+        }, ["show", "breathe", "stop", "target"]);
+
+        const hero = snapshot(document, "target").displayables[0];
+        expect(hero.props.zoom).toBe(1.5);
+        expect(hero.props.scaleY).toBeUndefined();
+        // The binding is not the pose, and it IS state at this row - so it is remembered, which is
+        // what makes "play from this row" and "save at this row" describe the same stage. Here the
+        // row after the loop ended it, so there is nothing to carry.
+        expect(hero.loop).toBeUndefined();
+    });
+
+    it("carries a running loop so a launch reopens on it", () => {
+        const document = baseDocument({
+            show: block("show", "action", { action: "image", operation: "show", objectName: "hero" }),
+            breathe: block("breathe", "action", {
+                action: "displayable",
+                operation: "loop",
+                target: { name: "hero", kind: "image" },
+                transform: { mode: "props", to: { scaleY: 1.02 }, durationMs: 900, repeatType: "mirror" },
+            }),
+            target: say("target"),
+        }, ["show", "breathe", "target"]);
+
+        const hero = snapshot(document, "target").displayables[0];
+        expect(hero.loop).toMatchObject({ to: { scaleY: 1.02 }, durationMs: 900, repeatType: "mirror" });
+        // Still no pose: the loop's peak must not become the settled state.
+        expect(hero.props.scaleY).toBeUndefined();
+    });
+
+    it("drops the loop when a later transform takes the element back", () => {
+        // One transform at a time - the engine clears the binding on any authored transform, so a
+        // snapshot that kept it would restart a motion the row had just taken over from.
+        const document = baseDocument({
+            show: block("show", "action", { action: "image", operation: "show", objectName: "hero" }),
+            breathe: block("breathe", "action", {
+                action: "displayable",
+                operation: "loop",
+                target: { name: "hero", kind: "image" },
+                transform: { mode: "props", to: { scaleY: 1.02 }, durationMs: 900 },
+            }),
+            move: block("move", "action", {
+                action: "displayable",
+                operation: "transform",
+                target: { name: "hero", kind: "image" },
+                transform: { mode: "props", to: { zoom: 2 }, durationMs: 200 },
+            }),
+            target: say("target"),
+        }, ["show", "breathe", "move", "target"]);
+
+        const hero = snapshot(document, "target").displayables[0];
+        expect(hero.loop).toBeUndefined();
+        expect(hero.props.zoom).toBe(2);
+    });
+
     it("tracks residual effects and their clears", () => {
         const document = baseDocument({
             show: block("show", "action", { action: "image", operation: "show", objectName: "hero" }),

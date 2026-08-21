@@ -243,6 +243,40 @@ describe("runtime surface asset preload", () => {
         ]);
     });
 
+    /**
+     * A widget that names an asset set keeps the set id in its props and carries the build's answer
+     * beside it. The set id names no bytes, so preloading it is a guaranteed miss - and in a
+     * protected build, where there is no manifest to filter against, a miss that reaches the failure
+     * log. What has to be warmed is the members.
+     *
+     * Every member, not the one the current language names: the title screen's language button
+     * changes languages without restarting, so a preload keyed to the language at load would leave
+     * the picture the player just switched to arriving late.
+     */
+    it("warms an asset set's members rather than the set id the props still name", () => {
+        const pack = makePack();
+        const document = pack.bundle.ui.uidoc;
+        const root = document.elements["credits-root"]!;
+        root.props = { ...(root.props ?? {}), imageFill: { assetId: "title-set" } };
+        root.assetVariants = { "title-set": { en: "title-en", ja: "title-ja" } };
+        for (const id of ["title-en", "title-ja"]) {
+            pack.assets.items[id] = {
+                id,
+                type: "image",
+                name: id,
+                source: "local",
+                relativePath: `assets/${id}.png`,
+                ext: ".png",
+            } as (typeof pack.assets.items)[string];
+        }
+
+        const credits = document.surfaces.find(surface => surface.id === "credits")!;
+        const collected = collectRuntimeSurfaceAssetIds(pack, credits);
+
+        expect(collected.sort()).toEqual(["credits-bg", "title-en", "title-ja"]);
+        expect(collected).not.toContain("title-set");
+    });
+
     it("prioritizes first screen assets before the rest of the pack", () => {
         const pack = makePack();
         const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;

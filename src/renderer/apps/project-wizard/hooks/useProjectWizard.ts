@@ -80,6 +80,54 @@ export function useProjectWizard() {
     /** The server and repository name the address names, or null while it is not an address yet. */
     const remote = useMemo(() => parseVcsRemoteUrl(projectData.remoteUrl), [projectData.remoteUrl]);
 
+    /**
+     * Open on whatever this window was handed, when it was handed something.
+     *
+     * Two things can arrive that way, and both mean the first page has already been answered:
+     *
+     *  - a `.nlspkg` Studio was pointed at from outside - a double-click in the file manager, a
+     *    second launch handing one to the running instance - and there is exactly one thing to
+     *    do with a package, so the wizard starts on the import page with it chosen;
+     *  - a repository the author picked off a server's list in the launcher, or made there a
+     *    moment ago, which starts the clone flow on its source page with the address filled in.
+     *
+     * Both arrive on the window's props, set by the main process before the window loaded;
+     * nothing here resolves either. Runs once - a window is handed these when it is built or
+     * never, and re-running would drag an author who pressed Back straight forward again.
+     */
+    useEffect(() => {
+        let alive = true;
+        void (async () => {
+            try {
+                const props = await getInterface().getWindowProps<WindowAppType.ProjectWizard>();
+                if (!alive || !props.success) {
+                    return;
+                }
+                const packagePath = props.data?.packagePath;
+                if (packagePath) {
+                    setFlow("import");
+                    setCurrentStep("import");
+                    setProjectData(prev => ({ ...prev, packagePath }));
+                    return;
+                }
+                const remoteUrl = props.data?.remoteUrl;
+                if (remoteUrl) {
+                    setFlow("clone");
+                    // The source page, not the last one: where the copy lands is still the
+                    // author's to choose, and it is chosen through the native picker there.
+                    setCurrentStep("source");
+                    setProjectData(prev => ({ ...prev, remoteUrl }));
+                }
+            } catch {
+                // A wizard that cannot say how it was opened is still a wizard: it opens on its
+                // first page, which is where every other way in starts.
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, []);
+
     // Fetch the appropriate default directory for the user's platform
     useEffect(() => {
         const fetchDefaultDirectory = async () => {

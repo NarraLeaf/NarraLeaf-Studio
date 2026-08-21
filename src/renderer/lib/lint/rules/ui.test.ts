@@ -423,3 +423,96 @@ describe("ui/empty-behavior", () => {
         expect(findings.map(finding => (finding.location.kind === "surface" ? finding.location.elementId : null))).toEqual(["art"]);
     });
 });
+
+describe("ui/component-missing", () => {
+    /** A linked instance of `componentId`, as `getUIComponentLink` reads one. */
+    function instance(id: string, componentId: string, name?: string) {
+        return element({
+            id,
+            type: "nl.container",
+            ...(name ? { name } : {}),
+            extra: { componentLink: { componentId, linked: true } },
+        });
+    }
+
+    /** A definition with the one field the rule looks at, plus what the type requires. */
+    function definition(id: string, name: string) {
+        return { id, name, rootElementId: `${id}-root`, elements: {} };
+    }
+
+    it("reports every instance whose component the project does not have", async () => {
+        const document = onePage(instance("slot", "gone", "Save Slot"), instance("badge", "gone"));
+        document.components = [definition("kept", "Kept")];
+
+        const findings = await run("ui/component-missing", createTestLintContext({ uiDocument: document }));
+
+        expect(findings.map(finding => (finding.location.kind === "surface" ? finding.location.elementId : null)))
+            .toEqual(["slot", "badge"]);
+        expect(findings[0].ruleId).toBe("ui/component-missing");
+        expect(findings[0].messageKey).toBe("lint.rule.uiComponentMissing.message");
+    });
+
+    it("says nothing about an instance whose component is in the library", async () => {
+        const document = onePage(instance("slot", "save-slot"));
+        document.components = [definition("save-slot", "Save Slot")];
+
+        expect(await run("ui/component-missing", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("says nothing about an element that is not an instance at all", async () => {
+        // An `extra.componentLink` that has been unlinked is not a link: `getUIComponentLink`
+        // requires `linked: true`, and an unlinked copy holds its own elements.
+        const unlinked = element({
+            id: "detached",
+            type: "nl.container",
+            extra: { componentLink: { componentId: "gone", linked: false } },
+        });
+
+        expect(
+            await run("ui/component-missing", createTestLintContext({ uiDocument: onePage(unlinked, element({ id: "plain", type: "nl.text" })) })),
+        ).toEqual([]);
+    });
+});
+
+describe("ui/frame-target-missing", () => {
+    function frame(id: string, targetSurfaceId?: string) {
+        return element({
+            id,
+            type: UI_FRAME_ELEMENT_TYPE,
+            ...(targetSurfaceId ? { props: { targetSurfaceId } } : {}),
+        });
+    }
+
+    it("reports a Page widget embedding a page the project does not have", async () => {
+        const document = onePage(frame("embed", "gone"));
+
+        const findings = await run("ui/frame-target-missing", createTestLintContext({ uiDocument: document }));
+
+        expect(findings.map(finding => (finding.location.kind === "surface" ? finding.location.elementId : null)))
+            .toEqual(["embed"]);
+        expect(findings[0].messageKey).toBe("lint.rule.uiFrameTargetMissing.message");
+    });
+
+    it("says nothing about a frame embedding a page that exists", async () => {
+        const document = uiDocument({
+            surfaces: [
+                { id: MAIN_APP_SURFACE_ID, name: "Main Page", rootElementId: "root" },
+                { id: "settings", name: "Settings", rootElementId: "settings-root" },
+            ],
+            elements: [
+                element({ id: "root", type: "nl.root", childrenIds: ["embed"] }),
+                frame("embed", "settings"),
+                element({ id: "settings-root", type: "nl.root" }),
+            ],
+        });
+
+        expect(await run("ui/frame-target-missing", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("says nothing about a frame with no page picked yet", async () => {
+        // A frame the author has not finished placing is a page under construction, not a broken one.
+        expect(
+            await run("ui/frame-target-missing", createTestLintContext({ uiDocument: onePage(frame("embed")) })),
+        ).toEqual([]);
+    });
+});

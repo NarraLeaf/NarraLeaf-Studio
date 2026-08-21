@@ -46,6 +46,24 @@ export const blueprint = {
         selectLayer: "左でレイヤーを選ぶ",
         previewUnavailable: "プレビューを出せない",
     },
+    crossProject: {
+        pasted: {
+            one: "{count} 個のノードを貼り付けた",
+            other: "{count} 個のノードを貼り付けた",
+        },
+        pastedFrom: {
+            one: "{project} から {count} 個のノードを貼り付けた",
+            other: "{project} から {count} 個のノードを貼り付けた",
+        },
+        imported: {
+            one: "{count} 個のアセットを取り込んだ",
+            other: "{count} 個のアセットを取り込んだ",
+        },
+        unresolved: {
+            one: "{count} 件の参照が未解決",
+            other: "{count} 件の参照が未解決",
+        },
+    },
     addNode: {
         close: "ノード追加のメニューを閉じる",
         searchPlaceholder: "ノードを検索",
@@ -323,7 +341,7 @@ export const blueprint = {
         animationDelay: "アニメーションの遅延",
         variant: {
             connectElement: "バリアントを見るには Element の参照をつなぐ",
-            staticRequired: "バリアントの一覧には固定の Element が要る",
+            staticRequired: "バリアントの一覧には固定の Element が必要",
             noVariants: "対象にバリアントがない",
             unsupported: "対象はバリアントに対応していない",
             widgetUnavailable: "現在のウィジェットのバリアントを取得できない",

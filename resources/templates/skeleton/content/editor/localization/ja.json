@@ -137,6 +137,176 @@
       "status": "translated",
       "target": "廊下にはまだチョークとワックスの匂いが残っている。背後で、冷えていくロッカーがかすかに鳴った。"
     },
+    "key:config.autoForwardDelay": {
+      "sourceHash": "fnv1a:e727e3f0",
+      "status": "translated",
+      "target": "自動送りの待ち時間"
+    },
+    "key:config.bgm": {
+      "sourceHash": "fnv1a:e26859b1",
+      "status": "translated",
+      "target": "BGM"
+    },
+    "key:config.categorySound": {
+      "sourceHash": "fnv1a:b3ca9a34",
+      "status": "translated",
+      "target": "サウンド"
+    },
+    "key:config.categoryText": {
+      "sourceHash": "fnv1a:3e142d5e",
+      "status": "translated",
+      "target": "テキスト"
+    },
+    "key:config.fullscreen": {
+      "sourceHash": "fnv1a:3d2aca78",
+      "status": "translated",
+      "target": "フルスクリーン"
+    },
+    "key:config.fullscreenOff": {
+      "sourceHash": "fnv1a:0dc6b4aa",
+      "status": "translated",
+      "target": "オフ"
+    },
+    "key:config.fullscreenOn": {
+      "sourceHash": "fnv1a:60e47df0",
+      "status": "translated",
+      "target": "オン"
+    },
+    "key:config.masterVolume": {
+      "sourceHash": "fnv1a:55ee5043",
+      "status": "translated",
+      "target": "全体音量"
+    },
+    "key:config.secondsSuffix": {
+      "sourceHash": "fnv1a:f60c4582",
+      "status": "translated",
+      "target": "秒"
+    },
+    "key:config.skip": {
+      "sourceHash": "fnv1a:c197c7e2",
+      "status": "translated",
+      "target": "スキップ"
+    },
+    "key:config.skipAllText": {
+      "sourceHash": "fnv1a:9805954b",
+      "status": "translated",
+      "target": "すべて"
+    },
+    "key:config.skipDelay": {
+      "sourceHash": "fnv1a:37403aa9",
+      "status": "translated",
+      "target": "スキップ待ち時間"
+    },
+    "key:config.skipReadOnly": {
+      "sourceHash": "fnv1a:60c591e1",
+      "status": "translated",
+      "target": "既読のみ"
+    },
+    "key:config.soundEffects": {
+      "sourceHash": "fnv1a:d40ba662",
+      "status": "translated",
+      "target": "効果音"
+    },
+    "key:config.textSpeed": {
+      "sourceHash": "fnv1a:d6227bfd",
+      "status": "translated",
+      "target": "文字表示速度"
+    },
+    "key:config.title": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:config.voice": {
+      "sourceHash": "fnv1a:27d1a499",
+      "status": "translated",
+      "target": "ボイス"
+    },
+    "key:confirm.cancel": {
+      "sourceHash": "fnv1a:35afca3b",
+      "status": "translated",
+      "target": "キャンセル"
+    },
+    "key:confirm.deleteSave": {
+      "sourceHash": "fnv1a:8dd920c3",
+      "status": "translated",
+      "target": "このセーブデータを削除しますか？元に戻せません。"
+    },
+    "key:confirm.deleteSaveAnswer": {
+      "sourceHash": "fnv1a:5797ea6a",
+      "status": "translated",
+      "target": "削除"
+    },
+    "key:confirm.historyBack": {
+      "sourceHash": "fnv1a:e97e8c49",
+      "status": "translated",
+      "target": "この行まで戻りますか？それ以降は取り消されます。"
+    },
+    "key:confirm.historyBackAnswer": {
+      "sourceHash": "fnv1a:628e5a9e",
+      "status": "translated",
+      "target": "戻る"
+    },
+    "key:confirm.load": {
+      "sourceHash": "fnv1a:3ac0fe9a",
+      "status": "translated",
+      "target": "このセーブデータをロードしますか？セーブしていない進行状況は失われます。"
+    },
+    "key:confirm.loadAnswer": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:confirm.loadAuto": {
+      "sourceHash": "fnv1a:14c2706a",
+      "status": "translated",
+      "target": "このオートセーブをロードしますか？いま進めているゲームは失われます。"
+    },
+    "key:confirm.overwrite": {
+      "sourceHash": "fnv1a:72168a30",
+      "status": "translated",
+      "target": "このスロットにはすでにセーブデータがあります。上書きしますか？"
+    },
+    "key:confirm.overwriteAnswer": {
+      "sourceHash": "fnv1a:78ff0e92",
+      "status": "translated",
+      "target": "上書き"
+    },
+    "key:confirm.quit": {
+      "sourceHash": "fnv1a:f165e3fa",
+      "status": "translated",
+      "target": "ゲームを終了しますか？"
+    },
+    "key:confirm.quitAnswer": {
+      "sourceHash": "fnv1a:c7b3d356",
+      "status": "translated",
+      "target": "終了"
+    },
+    "key:confirm.toTitle": {
+      "sourceHash": "fnv1a:313d8223",
+      "status": "translated",
+      "target": "タイトル画面に戻りますか？セーブしていない進行状況は失われます。"
+    },
+    "key:confirm.toTitleAnswer": {
+      "sourceHash": "fnv1a:bdf9bb42",
+      "status": "translated",
+      "target": "タイトルへ"
+    },
+    "key:load.autoSaves": {
+      "sourceHash": "fnv1a:c13c80d4",
+      "status": "translated",
+      "target": "オートセーブ"
+    },
+    "key:load.title": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:log.title": {
+      "sourceHash": "fnv1a:a1dd7bf1",
+      "status": "translated",
+      "target": "バックログ"
+    },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",
       "status": "translated",
@@ -171,6 +341,76 @@
       "sourceHash": "fnv1a:0ae8097f",
       "status": "translated",
       "target": "はじめから"
+    },
+    "key:nav.back": {
+      "sourceHash": "fnv1a:c2954bc2",
+      "status": "translated",
+      "target": "戻る"
+    },
+    "key:nav.config": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:nav.load": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:nav.save": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:nav.title": {
+      "sourceHash": "fnv1a:24d471a9",
+      "status": "translated",
+      "target": "タイトル"
+    },
+    "key:save.title": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:scenes.sceneClubroom": {
+      "sourceHash": "fnv1a:2a32664b",
+      "status": "translated",
+      "target": "部室"
+    },
+    "key:scenes.sceneCorridor": {
+      "sourceHash": "fnv1a:a2523866",
+      "status": "translated",
+      "target": "廊下"
+    },
+    "key:scenes.sceneLastLight": {
+      "sourceHash": "fnv1a:63546e65",
+      "status": "translated",
+      "target": "最後の光"
+    },
+    "key:scenes.title": {
+      "sourceHash": "fnv1a:8c5a5640",
+      "status": "translated",
+      "target": "シーン"
+    },
+    "key:slot.empty": {
+      "sourceHash": "fnv1a:fd6263ee",
+      "status": "translated",
+      "target": "データなし"
+    },
+    "scene:5143dcd8-bebc-4468-b4e2-00f6d5781af6": {
+      "sourceHash": "fnv1a:2a32664b",
+      "status": "translated",
+      "target": "部室"
+    },
+    "scene:c083e0f3-8665-451a-800a-6d2cd5650d33": {
+      "sourceHash": "fnv1a:63546e65",
+      "status": "translated",
+      "target": "最後の光"
+    },
+    "scene:f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33": {
+      "sourceHash": "fnv1a:a2523866",
+      "status": "translated",
+      "target": "廊下"
     }
   }
 }

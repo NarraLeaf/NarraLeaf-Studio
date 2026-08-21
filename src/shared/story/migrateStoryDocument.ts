@@ -271,6 +271,10 @@ function expandLegacyScreenEffect(payload: Record<string, unknown>): Record<stri
  * `text`, `layer`, `character`, `displayable`, the NVL panel's `transition`, the camera's `motion`) and
  * a switch that missed one would leave a preset behind that nothing can read any more. The walk is
  * idempotent: a ref already carrying `to` is returned untouched.
+ *
+ * The walk is over keys, not over every object in the tree, and {@link transformRefKeys} says which
+ * keys those are - because `transition` names a transform ref on one payload and a transition ref on
+ * four others, and the two are not interchangeable.
  */
 function migrateStoryDocumentV17toV18(document: StoryDocument): StoryDocument {
     const scenes: Record<StorySceneId, StoryScene> = {};
@@ -310,14 +314,32 @@ function migrateTransformBlock(block: StoryBlock): StoryBlock {
             delete (next as Record<string, unknown>)[dropped];
         }
     }
-    // The `transform` / `transition` / `motion` refs, wherever they hang.
+    // The transform refs, wherever they hang - and only those.
     const migrated = { ...next };
-    for (const key of ["transform", "transition", "motion"]) {
+    for (const key of transformRefKeys(migrated)) {
         if (migrated[key] && typeof migrated[key] === "object") {
             migrated[key] = migrateLegacyTransformRef(migrated[key]);
         }
     }
     return { ...block, payload: migrated } as StoryBlock;
+}
+
+/**
+ * Which of a payload's keys hold a {@link StoryTransformRef}.
+ *
+ * `transform` and `motion` always do. `transition` is the one name two different types answer to: on
+ * the NVL panel it is a transform ref, and on `setBackground`, `character`, `image` and the `jump`
+ * block it is a `StoryTransitionRef` - a `kind` off the transition catalogue plus that kind's own
+ * `props`. Neither field exists on a transform, so running one through the transform migration
+ * returned `{mode: "props", to: {}}` and dropped the kind: the compiler then met a transition with
+ * nothing naming it, reported every such row as unsupported, and played the change as a cut.
+ *
+ * Keyed off `action` rather than sniffed off the ref's shape because the document's type already
+ * states the answer per payload, and a shape test would have to keep guessing for refs that carry
+ * only timing - which both kinds may.
+ */
+function transformRefKeys(payload: Record<string, unknown>): string[] {
+    return payload.action === "nvl" ? ["transition"] : ["transform", "motion"];
 }
 
 /**

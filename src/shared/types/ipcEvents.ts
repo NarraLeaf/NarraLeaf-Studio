@@ -48,6 +48,8 @@ import type {
     SpellcheckStatus,
 } from "./spellcheck";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
+import type { StudioClipboardKind } from "./studioClipboard";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -88,7 +90,13 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsLocalRepository,
+    VcsServerDescription,
     VcsServerProbe,
+    VcsPasswordSignInOutcome,
+    VcsPublishOutcome,
+    VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome,
+    VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
@@ -203,6 +211,7 @@ export enum IPCEventType {
     mediaConvertCancel = "media.convert.cancel",
     mediaConvertGetStatus = "media.convert.getStatus",
     studioTasksGetOverview = "studioTasks.getOverview",
+    studioTasksPrebakeWeather = "studioTasks.prebakeWeather",
     devModeResolveWeatherClip = "devMode.resolveWeatherClip",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
@@ -314,6 +323,11 @@ export enum IPCEventType {
 
     assetFetchRemote = "asset.fetchRemote",
     assetExportToFolder = "asset.exportToFolder",
+    assetTransferOffer = "asset.transfer.offer",
+    assetTransferRedeem = "asset.transfer.redeem",
+
+    clipboardWriteEditorSelection = "clipboard.editorSelection.write",
+    clipboardReadEditorSelection = "clipboard.editorSelection.read",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -361,9 +375,17 @@ export enum IPCEventType {
     vcsProbeServer = "vcs.probeServer",
     vcsListServers = "vcs.listServers",
     vcsAddServer = "vcs.addServer",
+    vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
     vcsListServerProjects = "vcs.listServerProjects",
+    vcsGetServerProject = "vcs.getServerProject",
+    vcsDeleteServerProject = "vcs.deleteServerProject",
+    vcsListServerProjectHistory = "vcs.listServerProjectHistory",
+    vcsListServerMembers = "vcs.listServerMembers",
+    vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsCreateServerProject = "vcs.createServerProject",
+    vcsPublishProject = "vcs.publishProject",
+    vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
@@ -1359,6 +1381,75 @@ export type IPCVcsEvents = {
         response: VcsServerProjectsOutcome;
     };
     /**
+     * What one server knows about one of its projects.
+     *
+     * **Goes to the network**, and only to a server that advertised `project-detail`.
+     * A `file` that is not readable is a complete answer rather than a failure, and the
+     * server's own explanation for it is deliberately not carried across: it is an
+     * English sentence about the server's internals, and Studio has its own line for
+     * this in every language it speaks.
+     */
+    [IPCEventType.vcsGetServerProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string },
+        response: VcsServerProjectDetailOutcome;
+    };
+    /**
+     * Take one project off a server.
+     *
+     * **Goes to the network**, and it is the one call here that changes what a server
+     * holds rather than reading it. What it changes is the list: the server stops
+     * carrying the project, and the repository keeps its store and every revision in it.
+     * Nothing here destroys an author's work, and no argument to it would.
+     */
+    [IPCEventType.vcsDeleteServerProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string },
+        response: VcsServerProjectDeleteOutcome;
+    };
+    /**
+     * The latest revisions on one of a server's projects, newest first.
+     *
+     * **Goes to the network**, and only to a server that advertised `project-history`.
+     * An answer with no `revisions` field at all is the ordinary one for a project the
+     * server has not read, and it is not an empty history.
+     */
+    [IPCEventType.vcsListServerProjectHistory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string; limit?: number; before?: string },
+        response: VcsServerProjectHistoryOutcome;
+    };
+    /**
+     * Who has an account on one server.
+     *
+     * **Goes to the network**, and only to a server that advertised `members`. Takes no
+     * project, like the calls above it: a roster belongs to the server.
+     */
+    [IPCEventType.vcsListServerMembers]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: VcsServerMembersOutcome;
+    };
+    /**
+     * Exchange a username and password for a token, on a server that offers it.
+     *
+     * **Goes to the network**, and it is the one call here that carries no token — this
+     * is where a token comes from. Takes the endpoint rather than a `remoteOrigin`,
+     * because it is asked before this installation has any record of that server.
+     *
+     * The password is used by the call and kept by nothing.
+     */
+    [IPCEventType.vcsSignInWithPassword]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { authUrl: string; username: string; password: string },
+        response: VcsPasswordSignInOutcome;
+    };
+    /**
      * Ask a server to make a project, and get back the one it made.
      *
      * The server records it and creates the repository together. Studio never asks
@@ -1372,17 +1463,72 @@ export type IPCVcsEvents = {
         response: VcsServerProjectOutcome;
     };
     /**
+     * Put the project that is open on to a server: register it, connect it, send it.
+     *
+     * **Goes to the network three times and writes on both ends.** The opposite act to
+     * the one above: that makes a new, empty repository on the server, and this puts the
+     * repository the author already has where everybody else can reach it.
+     *
+     * `name` is what the project is called on the server, which is the last segment of
+     * the address a collaborator clones by.
+     *
+     * The outcome answers for the first step alone; the other two refuse by throwing,
+     * with the same sentences `vcs.setRemote` and `vcs.push` already refuse with.
+     */
+    [IPCEventType.vcsPublishProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; remoteOrigin: string; name: string },
+        response: VcsPublishOutcome;
+    };
+    /**
      * Sign in to a server named by the token rather than by a project.
      *
      * The token carries the address of the endpoint that issued it and of the server it is
      * good for, so pasting one is the whole of adding a server. `authUrl` and `remoteUrl`
      * are the corrections for a token that names neither, and are empty otherwise.
+     *
+     * `description` is what the probe a moment ago answered, passed on so that adding a
+     * server does not reach the same address twice for the same sentence.
      */
     [IPCEventType.vcsAddServer]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { authUrl: string; remoteUrl: string; token: string },
+        data: { authUrl: string; remoteUrl: string; token: string; description?: VcsServerDescription },
         response: VcsAddServerOutcome;
+    };
+    /**
+     * Ask one server what it is now, and record the answer.
+     *
+     * **Goes to the network.** A session records what its server said the day it was
+     * added, and a session added before Studio kept any of that has nothing to show but an
+     * address; this is what fills it in. Nothing about the sign-in changes, and a server
+     * that does not answer leaves its record as it was.
+     */
+    [IPCEventType.vcsRefreshServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: { servers: VcsServerSession[] };
+    };
+    /**
+     * Which repositories this machine already holds, by id.
+     *
+     * A server lists its projects by repository id, and the only useful question about one
+     * is whether the author already has it. Names cannot answer that - two projects share a
+     * name, and a folder gets renamed - so this reports the id of every remembered project
+     * together with the server it is configured against.
+     *
+     * **Reads `.lore/id` and `.lore/config.toml` as plain files and opens no repository.**
+     * Lore's lock is exclusive and blocking, so a sweep that opened stores would hang on the
+     * first project the author has open and take every later call with it. A project with
+     * nothing readable is reported without an id rather than dropped.
+     */
+    [IPCEventType.vcsListLocalRepositories]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { repositories: VcsLocalRepository[] };
     };
     /**
      * Take a server off this machine: the stored token and Studio's record of it.
@@ -1667,10 +1813,18 @@ export type IPCEditorEvents = {
 };
 
 export type IPCProjectWizardEvents = {
+    /**
+     * Raise the project wizard and wait for what comes out of it.
+     *
+     * The props are the window's, and they are what lets a caller open the wizard on a
+     * question already answered - a package chosen in the file manager, a repository picked
+     * off a server's list. Passing none opens it on its first page, which is what every
+     * plain "New project" does.
+     */
     [IPCEventType.projectWizardLaunch]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: WindowProps[WindowAppType.ProjectWizard],
         response: {
             created: boolean;
             projectPath: string;
@@ -1838,6 +1992,15 @@ export type IPCWorkspaceEvents = {
         response: {
             overview: StudioTaskOverview;
         };
+    };
+    [IPCEventType.studioTasksPrebakeWeather]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            projectPath: string;
+            specs: WeatherBakeSpec[];
+        };
+        response: Record<string, never>;
     };
     [IPCEventType.mediaConvertGetStatus]: {
         type: IPCMessageType.request;
@@ -3090,6 +3253,68 @@ export type IPCAssetEvents = {
             entries: AssetExportEntry[];
         },
         response: AssetExportResult;
+    };
+    /**
+     * Offer the files behind a copy to whichever window pastes it, and take back the token that
+     * stands for them.
+     *
+     * Main checks the whole manifest against the calling window's own read access before minting
+     * anything, so nothing becomes reachable that the copying project could not already read. The
+     * token goes on the clipboard; the paths stay here.
+     */
+    [IPCEventType.assetTransferOffer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            entries: AssetTransferEntry[];
+        },
+        response: AssetTransferOfferResult;
+    };
+    /**
+     * Trade a token from a paste for read access to the files it stands for.
+     *
+     * A token this process did not mint - the offering window has closed, or the copy came from
+     * another running Studio - answers `available: false`, which is an ordinary outcome and not a
+     * failure. See `@shared/types/assetTransfer`.
+     */
+    [IPCEventType.assetTransferRedeem]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            token: string;
+        },
+        response: AssetTransferRedeemResult;
+    };
+    /**
+     * Put an editor selection on the platform clipboard under Studio's own private format.
+     *
+     * `stored: false` answers a payload main declined to write - an unknown kind, or one over the
+     * size ceiling. The copy still holds its in-window clipboard, so the gesture is not lost; only
+     * its reach into other windows is. See `@shared/types/studioClipboard`.
+     */
+    [IPCEventType.clipboardWriteEditorSelection]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            kind: StudioClipboardKind;
+            payload: string;
+        },
+        response: { stored: boolean };
+    };
+    /**
+     * Read back whatever an editor selection format currently holds.
+     *
+     * `payload: null` is the ordinary answer whenever the clipboard holds something else - text from
+     * another application, or nothing at all - and callers read it as "no editor selection here"
+     * rather than as a failure.
+     */
+    [IPCEventType.clipboardReadEditorSelection]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            kind: StudioClipboardKind;
+        },
+        response: { payload: string | null };
     };
 };
 

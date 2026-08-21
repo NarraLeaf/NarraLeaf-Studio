@@ -18,6 +18,8 @@ import { ControlBar } from "./ControlBar";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
+import { TitleBarMenus } from "../ui/titleBarMenus";
+import { HostVisibility } from "@/lib/components/layout";
 import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceUndoKeybindings } from "./WorkspaceUndoKeybindings";
 import { WorkspaceHistoryMenu } from "./WorkspaceHistoryMenu";
@@ -37,7 +39,9 @@ import { QuickOpenPicker } from "./QuickOpenPicker";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
 import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
+import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
+import { useDialogs } from "../../hooks/useUIService";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { RecoveryBanner } from "../../recovery/RecoveryBanner";
@@ -67,7 +71,8 @@ import { useVersionSurface } from "../../hooks/useVersionSurface";
 
 interface WorkspaceLayoutProps {
     title: string;
-    iconSrc: string;
+    /** See `TitleBarProps.iconSrc`: omit for the product mark, `""` for none. */
+    iconSrc?: string;
 }
 
 
@@ -127,6 +132,8 @@ function normalizeStoredPanelId(panelId: string | null | undefined): string | nu
 export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const { getPanelsByPosition, registerActionGroup, unregisterActionGroup } = useRegistry();
     const { context, recovery } = useWorkspace();
+    // Only whether one is up, for the title bar's menus; `DialogContainer` is what draws them.
+    const dialogs = useDialogs();
     const { t } = useTranslation();
 
     // Sidebar visibility states
@@ -609,6 +616,46 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
     }, [t, context, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
 
+    /**
+     * The dock toggles, by key.
+     *
+     * Registered from the same refs the commands above run through, so the keystroke and the palette
+     * row cannot drift apart. `catalogPrefix` composes each id below into the command id it runs
+     * (`narraleaf-studio:toggle-left-sidebar` and friends), which is what keeps the palette to one
+     * row per toggle showing its chord rather than listing the shortcut again under a second name.
+     *
+     * `allowInEditable`, unlike most workspace shortcuts: none of these three chords types anything,
+     * and an author whose caret is in a story line is exactly who wants the bottom panel out of the
+     * way without first clicking somewhere neutral.
+     */
+    useKeybindings({
+        keybindings: [
+            {
+                id: "left-sidebar",
+                key: "mod+shift+b",
+                description: "Show or hide the left sidebar",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleLeftSidebar(),
+            },
+            {
+                id: "bottom-panel",
+                key: "mod+j",
+                description: "Show or hide the bottom panel",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleBottomPanel(),
+            },
+            {
+                id: "right-sidebar",
+                key: "mod+alt+r",
+                description: "Show or hide the right sidebar",
+                allowInEditable: true,
+                handler: () => panelTogglesRef.current.toggleRightSidebar(),
+            },
+        ],
+        idPrefix: "workspace-dock",
+        catalogPrefix: "narraleaf-studio:toggle-",
+    });
+
     const activateLeftPanelForDrop = useCallback(
         (panelId: string) => {
             setActiveLeftPanelId(panelId);
@@ -781,11 +828,21 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 iconSrc={iconSrc}
                 center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
                 actionBar={
-                    /* Right-clicking this cluster offers where the main menu goes — the gesture is
+                    /* One bar, so only one of its menus is ever on screen, the pointer and the
+                       arrow keys walk between the action groups, and Alt reaches them directly.
+                       Its keyboard stands down while a dialog is up, which is the same gate
+                       `KeybindingService` puts on its own bindings.
+
+                       It is still one bar when the menus are collapsed: the hamburger is a member
+                       like any other, and it declares the accelerators of the groups it swallowed,
+                       so Alt+F reaches the File menu in either arrangement.
+
+                       Right-clicking the cluster offers where the main menu goes — the gesture is
                        on the strip the setting moves, which is the only way back for an author who
                        has just collapsed their File menu into the hamburger. */
-                    <div
+                    <TitleBarMenus
                         className="flex items-center gap-0.5"
+                        suspended={dialogs.length > 0}
                         onContextMenu={isMac ? undefined : menuBarModeMenu.openMenu}
                     >
                         {/* Every registered menu, collapsed into one button at the far left, where a
@@ -799,7 +856,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         <ProjectSwitcher versionSurface={versionSurface} />
                         <ActionBar hideAllGroups={isMac || menusInHamburger} />
                         {!isMac && menuBarModeMenu.menu}
-                    </div>
+                    </TitleBarMenus>
                 }
                 controlBar={
                     <ControlBar
@@ -836,15 +893,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     onSelectPanel={setActiveLeftPanelId}
                 />
 
-                {/* Left Sidebar - Always rendered, controlled by CSS visibility */}
+                {/* Left Sidebar - Always rendered, controlled by CSS visibility. Collapsing it
+                    hides the panel without unmounting it, so anything the panel portalled to the
+                    body would stay on screen; `HostVisibility` is what tells those layers. */}
                 <div 
                     className={leftSidebarVisible && activeLeftPanelId ? "flex" : "hidden"}
                 >
-                    <LeftSidebar
-                        panelId={activeLeftPanelId || ""}
-                        onClose={() => setLeftSidebarVisible(false)}
-                        width={effective.left}
-                    />
+                    <HostVisibility visible={!!(leftSidebarVisible && activeLeftPanelId)}>
+                        <LeftSidebar
+                            panelId={activeLeftPanelId || ""}
+                            onClose={() => setLeftSidebarVisible(false)}
+                            width={effective.left}
+                        />
+                    </HostVisibility>
                     <ResizableHandle direction="horizontal" onResize={handleLeftSidebarResize} />
                 </div>
 
@@ -869,11 +930,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
                     >
                         <ResizableHandle direction="vertical" onResize={handleBottomPanelResize} />
-                        <BottomPanel
-                            panelId={activeBottomPanelId || ""}
-                            onClose={() => setBottomPanelVisible(false)}
-                            height={effective.bottom}
-                        />
+                        <HostVisibility visible={!!(bottomPanelVisible && activeBottomPanelId)}>
+                            <BottomPanel
+                                panelId={activeBottomPanelId || ""}
+                                onClose={() => setBottomPanelVisible(false)}
+                                height={effective.bottom}
+                            />
+                        </HostVisibility>
                     </div>
                 </div>
 
@@ -882,11 +945,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
                 >
                     <ResizableHandle direction="horizontal" onResize={handleRightSidebarResize} />
-                    <RightSidebar
-                        panelId={activeRightPanelId || ""}
-                        onClose={() => setRightSidebarVisible(false)}
-                        width={effective.right}
-                    />
+                    <HostVisibility visible={!!(rightSidebarVisible && activeRightPanelId)}>
+                        <RightSidebar
+                            panelId={activeRightPanelId || ""}
+                            onClose={() => setRightSidebarVisible(false)}
+                            width={effective.right}
+                        />
+                    </HostVisibility>
                 </div>
 
                 {/* Right Sidebar Selector */}

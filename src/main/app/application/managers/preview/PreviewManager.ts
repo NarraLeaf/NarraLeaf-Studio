@@ -24,6 +24,7 @@ import { resolveRunVariant } from "../../utils/runVariant";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 type PreviewSession = {
     id: string;
@@ -196,6 +197,18 @@ export class PreviewManager {
      * `compileGameRuntimeArtifactInWorker` turns its exit into a rejection, so the launch unwinds
      * within milliseconds instead of at the end of the compile.
      */
+    /**
+     * Stop every preview, whichever project it belongs to. Used on the way out of the app.
+     *
+     * This one matters more than its Dev Mode twin: a preview is a **separate process**, not a
+     * window Electron takes down with the app. On Windows the job object happens to reap it; on
+     * macOS and Linux it is reparented and outlives Studio entirely.
+     */
+    public async stopAll(): Promise<void> {
+        const projects = [...this.sessions.values()].map(session => session.projectPath);
+        await Promise.allSettled(projects.map(projectPath => this.stop(projectPath)));
+    }
+
     private cancelLaunches(key: string): void {
         for (const attempt of this.launchAttempts.get(key) ?? []) {
             attempt.cancelled = true;
@@ -629,8 +642,14 @@ export class PreviewManager {
         return `story ${entry.storyId}:${entry.sceneId}`;
     }
 
+    /**
+     * The key a project's session is filed under.
+     *
+     * `normalizeProjectPath` rather than `path.resolve` alone, so this agrees with the window layer
+     * about what "the same project" is - on Windows that is a case fold as well as a separator one.
+     */
     private projectKey(projectPath: string): string {
-        return path.resolve(projectPath);
+        return normalizeProjectPath(path.resolve(projectPath));
     }
 }
 

@@ -1,0 +1,230 @@
+/**
+ * The sounds the starter template makes when a player works its menus.
+ *
+ * Three clips ship with the template and for a long time nothing played any of them, which is the
+ * failure mode a per-page assertion cannot catch: a screen with no cue reads, on its own, like a
+ * screen whose author had not got to it yet. So this sweeps every cue from one list and fails on the
+ * count as well as the wiring.
+ *
+ * What each one has to prove is not "a Play Sound exists in this graph" but that it is the first
+ * thing the interaction runs - a cue behind a `Go Page` is a cue the player never hears, because the
+ * page it belongs to is gone by then - and that whatever the interaction used to run still runs
+ * after it.
+ *
+ * Everything comes from the real catalogue and the real asset metadata, so renaming a node type or
+ * deleting a clip breaks this rather than leaving the template pointing at something that is no
+ * longer there.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
+    BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+} from "@shared/types/blueprint/graph";
+import { AUDIO_TRACK_ID_SOUND } from "@shared/types/audioTrack";
+
+type GraphNode = { id: string; type: string; params?: Record<string, unknown> };
+type GraphEdge = { from: { nodeId: string; port: string }; to: { nodeId: string; port: string } };
+type Graph = { nodes: Record<string, GraphNode>; edges: GraphEdge[] };
+type Blueprint = {
+    id: string;
+    owner: { kind: string; surfaceId?: string; elementId?: string };
+    program: { graphs: { events: Record<string, { graph: Graph }> } };
+};
+type Element = { id: string; name: string; type: string; childrenIds?: string[] };
+type Surface = { id: string; name: string; rootElementId: string };
+type UIDoc = { surfaces: Surface[]; elements: Record<string, Element> };
+type AudioAsset = { id: string; name: string };
+
+const TEMPLATE = path.join(process.cwd(), "resources/templates/skeleton/content");
+
+function readTemplate(...segments: string[]): unknown {
+    return JSON.parse(fs.readFileSync(path.join(TEMPLATE, ...segments), "utf-8"));
+}
+
+const document = readTemplate("editor", "ui", "uidoc.json") as UIDoc;
+const blueprints = Object.values(
+    (readTemplate("editor", "ui", "uigraphs.json") as {
+        blueprintDocument: { blueprints: Record<string, Blueprint> };
+    }).blueprintDocument.blueprints,
+);
+const audioAssets = readTemplate("assets", "assets.metadata.audio.json") as Record<string, AudioAsset>;
+
+/** Clip ids resolved by the name an author sees in the asset panel, not pasted in. */
+const CLIP = Object.fromEntries(
+    Object.values(audioAssets).map(asset => [asset.name, asset.id]),
+) as Record<string, string>;
+
+/** Elements of one type on a named page, by the name they carry in the layer tree. */
+function elementsOn(surfaceName: string, elementName: string, elementType: string): Element[] {
+    const surface = document.surfaces.find(candidate => candidate.name === surfaceName);
+    expect(surface, `no surface named ${surfaceName}`).toBeDefined();
+    const found: Element[] = [];
+    const walk = (id: string): void => {
+        const element = document.elements[id];
+        if (!element) {
+            return;
+        }
+        if (element.name === elementName && element.type === elementType) {
+            found.push(element);
+        }
+        for (const child of element.childrenIds ?? []) {
+            walk(child);
+        }
+    };
+    walk(surface!.rootElementId);
+    return found;
+}
+
+function oneOn(surfaceName: string, elementName: string, elementType = "nl.button"): Element {
+    const found = elementsOn(surfaceName, elementName, elementType);
+    expect(found, `${surfaceName} has ${found.length} ${elementType} named ${elementName}`).toHaveLength(1);
+    return found[0]!;
+}
+
+function graphFor(elementId: string): Graph {
+    const blueprint = blueprints.find(
+        candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === elementId,
+    );
+    expect(blueprint, `no blueprint answers for element ${elementId}`).toBeDefined();
+    const graphs = Object.values(blueprint!.program.graphs.events);
+    expect(graphs).toHaveLength(1);
+    return graphs[0]!.graph;
+}
+
+function only(graph: Graph, type: string): GraphNode {
+    const found = Object.values(graph.nodes).filter(node => node.type === type);
+    expect(found, `expected one ${type}, found ${found.length}`).toHaveLength(1);
+    return found[0]!;
+}
+
+/** The single node an exec output runs. */
+function next(graph: Graph, fromId: string, port: string): GraphNode {
+    const out = graph.edges.filter(edge => edge.from.nodeId === fromId && edge.from.port === port);
+    expect(out, `${fromId}.${port} leads to ${out.length} nodes`).toHaveLength(1);
+    return graph.nodes[out[0]!.to.nodeId]!;
+}
+
+function assertCue(cue: GraphNode, clipName: string): void {
+    expect(cue.type).toBe(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
+    expect(CLIP[clipName], `the template ships no clip named ${clipName}`).toBeDefined();
+    expect(cue.params?.soundAssetId).toBe(CLIP[clipName]);
+    // The SFX track, so the player's own effects slider and mute reach it. A cue the settings page
+    // cannot turn down is the one thing a UI sound must never be.
+    expect(cue.params?.audioTrackId).toBe(AUDIO_TRACK_ID_SOUND);
+}
+
+/** A cue answering a click, with the action it used to run still behind it. */
+function assertClickCue(graph: Graph, headType: string, clipName: string): void {
+    const head = only(graph, headType);
+    const cue = next(graph, head.id, "then");
+    assertCue(cue, clipName);
+    expect(next(graph, cue.id, "next").type).not.toBe(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
+}
+
+/** The five entries every in-game page rail carries, and the one the Scenes page carries. */
+const FULL_RAIL = ["Save", "Load", "Config", "Back", "Title"];
+
+/** Every button that answers a click, and the clip it uses. Back is the one that means undo. */
+const CLICKS: readonly { page: string; button: string; clip: string }[] = [
+    ...["Start", "Continue", "Load", "Config", "Quit", "Scenes"].map(button => ({
+        page: "Title",
+        button,
+        clip: "ui-confirm",
+    })),
+    ...["Save", "Load", "Config", "Title", "Text", "Sound", "All text", "Read only", "On", "Off"].map(button => ({
+        page: "Config",
+        button,
+        clip: "ui-confirm",
+    })),
+    // The Config page's other rail entries are in the block above, among its controls.
+    { page: "Config", button: "Back", clip: "ui-back" },
+    ...["Log", "Save", "Load"].flatMap(page =>
+        FULL_RAIL.map(button => ({ page, button, clip: button === "Back" ? "ui-back" : "ui-confirm" })),
+    ),
+    { page: "Scenes", button: "Back", clip: "ui-back" },
+];
+
+/** The entries that answer the pointer arriving. Rails only: a settings toggle is not a menu. */
+const HOVERS: readonly { page: string; button: string }[] = [
+    ...["Start", "Continue", "Load", "Config", "Quit", "Scenes"].map(button => ({ page: "Title", button })),
+    ...["Config", "Log", "Save", "Load"].flatMap(page => FULL_RAIL.map(button => ({ page, button }))),
+    { page: "Scenes", button: "Back" },
+];
+
+describe("the sounds the starter template makes", () => {
+    it("makes them in seventy-nine places and nowhere else", () => {
+        const cues = blueprints.flatMap(blueprint =>
+            Object.values(blueprint.program.graphs.events).flatMap(event =>
+                Object.values(event.graph.nodes)
+                    .filter(node => node.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY)
+                    .map(node => `${blueprint.owner.elementId ?? blueprint.id}:${node.id}`),
+            ),
+        );
+        // Counted rather than sampled: the cases below each know which of these they mean, and this
+        // is what says nobody sprinkled an eightieth somewhere outside them.
+        // 6 save slots + 6 load slots + 3 scene cards + 2 list rows + 2 dialog answers, plus the
+        // buttons below.
+        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 19);
+    });
+
+    it.each(CLICKS)("$page ▸ $button answers a click with $clip, before it acts", ({ page, button, clip }) => {
+        assertClickCue(graphFor(oneOn(page, button).id), BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK, clip);
+    });
+
+    it.each(HOVERS)("$page ▸ $button answers the pointer arriving", ({ page, button }) => {
+        const graph = graphFor(oneOn(page, button).id);
+        assertCue(next(graph, only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER).id, "then"), "ui-hover");
+    });
+
+    it.each(["Save", "Load"])("every slot on the %s page answers being picked", page => {
+        const slots = elementsOn(page, "Hit area", "nl.container");
+        expect(slots).toHaveLength(6);
+        for (const slot of slots) {
+            const graph = graphFor(slot.id);
+            assertClickCue(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK, "ui-confirm");
+            // Deleting a slot is a right-click, and it stays silent: it is not a selection, and the
+            // question it raises answers with a cue of its own.
+            const remove = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
+            expect(next(graph, remove.id, "then").type).not.toBe(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
+        }
+    });
+
+    it.each([
+        { page: "Log", list: "Entries" },
+        { page: "Load", list: "Auto saves" },
+    ])("a row of $page ▸ $list answers being picked", ({ page, list }) => {
+        assertClickCue(graphFor(oneOn(page, list, "nl.list").id), BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK, "ui-confirm");
+    });
+
+    it("a scene card answers only when it has a scene to open", () => {
+        const cards = elementsOn("Scenes", "Hit area", "nl.container");
+        expect(cards).toHaveLength(3);
+        for (const card of cards) {
+            const graph = graphFor(card.id);
+            const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+            // The cue sits past the visited gate rather than in front of it. A locked card's click
+            // ends at that gate, and a cue answering a press that does nothing is the one thing a UI
+            // sound must not teach.
+            const gate = next(graph, click.id, "then");
+            expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
+            assertCue(next(graph, gate.id, "true"), "ui-confirm");
+        }
+    });
+
+    it("the confirm dialog answers in two voices, one per kind of answer", () => {
+        const list = oneOn("Confirm", "Buttons", "nl.list");
+        const graph = graphFor(list.id);
+        const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        const branch = next(graph, click.id, "then");
+        expect(branch.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
+        // The first answer is the one that acts; anything after it is a way out.
+        assertCue(next(graph, branch.id, "false"), "ui-confirm");
+        assertCue(next(graph, branch.id, "true"), "ui-back");
+    });
+});

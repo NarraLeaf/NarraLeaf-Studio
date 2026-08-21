@@ -7,7 +7,7 @@ export const placeholders = {
     },
     localization: {
         title: "本地化",
-        description: "翻译表及语言素材将在此处管理",
+        description: "翻译表及语言资产将在此处管理",
     },
     moduleTitles: {
         welcome: "欢迎",
@@ -17,7 +17,7 @@ export const placeholders = {
         story: "故事",
         localization: "本地化",
         voice: "配音",
-        assets: "素材",
+        assets: "资产",
         console: "控制台",
         storyMotion: "故事动效",
         dashboard: "仪表盘",

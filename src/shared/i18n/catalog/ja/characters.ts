@@ -26,9 +26,9 @@ export const characters = {
         groupNamePlaceholder: "グループ名を入力",
         deleteCharacterConfirm: "キャラクター「{name}」を削除するか",
         // 削除を取り消せるようになるまでは「元に戻せない」と書いてあった。いま量るべきは
-        // 取り返しのつかなさではなく結果のほう。このキャラクターを指す行は参照を保ったまま、
-        // 解決できなくなる。
-        deleteCharacterDetail: "このキャラクターを指す行は、復元するまで解決できなくなる",
+        // 取り返しのつかなさではなく結果のほう。しかもその結果は行ごとに違う。セリフは名前だけを
+        // 残して話者になるが、キャラクターを舞台に出す行にはその形がなく、解決できない参照が残る。
+        deleteCharacterDetail: "セリフは名前のまま残る。舞台に出す行は解決できなくなる",
         deleteGroupConfirm: "グループ「{name}」を削除するか",
         deleteGroupDetail: "このグループのキャラクターは未分類になる",
     },
@@ -216,7 +216,7 @@ export const characters = {
             duplicateAxis: "{name} という名前の軸が 2 つある",
             axisDefaultMissing: "{axis} に既定のタグがないので、代わりに {name} を使う",
             occluded: "{name} は上のレイヤーに完全に隠れている",
-            avatarCombinations: "ダイアログのアバターを {count} 枚焼くことになる。軸を絞ると枚数が減る",
+            avatarCombinations: "ダイアログのアバターを {count} 枚生成する。軸を絞ると枚数が減る",
             combinationNoArt: "{name} は何も描かない",
             snapshotStale: "{name} は、もう存在しないタグで保存されている",
             poseNoImage: "{name} に画像がない",

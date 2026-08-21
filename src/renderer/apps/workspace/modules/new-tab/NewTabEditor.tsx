@@ -10,8 +10,7 @@ import { useTranslation } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
-
-const LOGO_MASK = "url(/img/narraleaf-studio/logo-icon-white.png)";
+import { ProductLogoWatermark } from "@/apps/workspace/components/layout/ProductLogoWatermark";
 
 /** The group hosting a tab; null when the tab is not in the layout (e.g. mid-close). */
 function findGroupIdOfTab(layout: EditorLayout, tabId: string): string | null {
@@ -60,21 +59,7 @@ export function NewTabEditor({ tabId }: EditorTabComponentProps) {
         >
             {!backgroundUrl && (
                 <div className="relative z-10 flex flex-col items-center text-center pointer-events-none">
-                    <div
-                        role="img"
-                        aria-label={t("workspace.shell.logoAlt")}
-                        className="w-64 h-64 mx-auto mb-8 bg-fg opacity-5"
-                        style={{
-                            maskImage: LOGO_MASK,
-                            WebkitMaskImage: LOGO_MASK,
-                            maskSize: "contain",
-                            WebkitMaskSize: "contain",
-                            maskRepeat: "no-repeat",
-                            WebkitMaskRepeat: "no-repeat",
-                            maskPosition: "center",
-                            WebkitMaskPosition: "center",
-                        }}
-                    />
+                    <ProductLogoWatermark className="mb-8" />
                     <h1 className="text-4xl font-light text-fg/5">NarraLeaf Studio</h1>
                 </div>
             )}

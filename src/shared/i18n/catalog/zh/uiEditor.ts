@@ -31,7 +31,9 @@ export const uiEditor = {
         globalBlueprintUnavailable: "全局蓝图不可用",
         openSurface: "打开{label}",
         renameSurface: "重命名{label}",
-        duplicateSurface: "复制{label}",
+        duplicateSurface: "创建{label}副本",
+        copySurface: "复制{label}",
+        pasteSurface: "粘贴界面",
         deleteSurface: "删除{label}",
         surfaceActions: "{label}操作",
         deleteConfirm: "删除{label}？",
@@ -157,6 +159,34 @@ export const uiEditor = {
             left: "左",
         },
     },
+    crossProject: {
+        pasted: {
+            one: "已粘贴 {count} 个元素",
+            other: "已粘贴 {count} 个元素",
+        },
+        pastedFrom: {
+            one: "已从 {project} 粘贴 {count} 个元素",
+            other: "已从 {project} 粘贴 {count} 个元素",
+        },
+        imported: {
+            one: "已导入 {count} 项资产",
+            other: "已导入 {count} 项资产",
+        },
+        unresolved: {
+            one: "{count} 处引用未解析",
+            other: "{count} 处引用未解析",
+        },
+        surfacePasted: {
+            one: "已粘贴 {count} 个界面",
+            other: "已粘贴 {count} 个界面",
+        },
+        surfacePastedFrom: {
+            one: "已从 {project} 粘贴 {count} 个界面",
+            other: "已从 {project} 粘贴 {count} 个界面",
+        },
+        slotTaken: "{slot} 槽位已有一个游戏界面",
+        surfaceNotAdded: "无法粘贴该界面",
+    },
     templateStore: {
         open: "从模板开始",
         title: "界面模板",
@@ -183,8 +213,8 @@ export const uiEditor = {
             other: "{count} 个界面",
         },
         assetsSkipped: {
-            one: "有 {count} 个资源导入失败",
-            other: "有 {count} 个资源导入失败",
+            one: "有 {count} 个资产导入失败",
+            other: "有 {count} 个资产导入失败",
         },
         componentsAdded: {
             one: "已向组件库添加 {count} 个组件",

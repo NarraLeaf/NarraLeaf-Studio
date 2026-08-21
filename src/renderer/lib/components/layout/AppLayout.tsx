@@ -7,7 +7,8 @@ import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/wi
 
 export interface AppLayoutProps {
     title: string;
-    iconSrc: string;
+    /** See `TitleBarProps.iconSrc`: omit for the product mark, `""` for none. */
+    iconSrc?: string;
     children: React.ReactNode;
     className?: string;
     initialControlAbility?: WindowControlAbility;

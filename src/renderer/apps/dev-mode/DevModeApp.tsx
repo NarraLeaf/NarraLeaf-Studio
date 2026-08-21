@@ -19,7 +19,7 @@ export function DevModeApp() {
     } = useDevModePayload();
 
     return (
-        <AppLayout title={t("devMode.title")} iconSrc="/favicon.ico">
+        <AppLayout title={t("devMode.title")}>
             <div className="h-full w-full min-h-0 bg-surface overflow-hidden">
                 <DevModeContent
                     bundle={bundle}

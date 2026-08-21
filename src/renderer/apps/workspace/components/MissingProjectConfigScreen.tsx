@@ -15,7 +15,7 @@ export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfig
 
     return (
         <div className="h-screen w-screen flex flex-col bg-surface text-fg">
-            <TitleBar title="NarraLeaf Studio" iconSrc="/favicon.ico" />
+            <TitleBar title="NarraLeaf Studio" />
             <main className="min-h-0 flex-1 flex items-center justify-center px-8">
                 <section className="w-full max-w-sm text-center">
                     <div className="mx-auto mb-5 grid h-11 w-11 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted">

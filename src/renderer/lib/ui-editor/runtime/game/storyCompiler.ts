@@ -39,7 +39,7 @@ import { weatherRefIdentity } from "@shared/weather/bakeKey";
 import type { WeatherSeedRef } from "@shared/weather/model";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
-import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
+import { resolvePoseEntry, resolveTagSelection } from "@shared/utils/characterVariant";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
 import {
     characterAvatarKeyFromTags,
@@ -963,6 +963,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
         : undefined;
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
+    // Built here rather than beside the variable tables further down: a scene's own background and
+    // music are resolved while the scenes are created, and a set named there needs the same reader a
+    // row's set reference uses.
+    const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string; assetId: string }>();
     /**
@@ -988,6 +992,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         audioTracks,
         characters: characterSummaries,
         backgroundMusic: sceneBackgroundMusic,
+        localization,
     });
     const allScenes = scenesBuild.scenes;
 
@@ -1014,7 +1019,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const persistentDefaults = collectPersistentDefaults(persistentView);
     const persistentKeys = mergedPersistentStorageKeys(persistentView);
     pushPersistentNameCollisionDiagnostics(diagnostics, persistentView);
-    const localization = input.localization ? createSceneLocalizationResolver(input.localization) : undefined;
 
     // Document order, so the Problems panel reads down the story instead of down a UUID sort.
     for (const scene of listScenesInDocumentOrder(input.document)) {
@@ -1225,7 +1229,13 @@ async function buildLaunchEntryScene(params: {
             diagnostics,
         })
         : snapshot.background?.color
-            ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
+            ?? await resolveSceneInitialBackground({
+                scene,
+                resolveAssetUrl,
+                assetUrlCache,
+                diagnostics,
+                ...(params.localization ? { localization: params.localization } : {}),
+            });
     // A row-precise launch replaces the scene, so it has to carry the scene's own music too -
     // otherwise "play from here" is the one way to enter a scene silently.
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
@@ -1236,6 +1246,7 @@ async function buildLaunchEntryScene(params: {
         resolveAssetUrl,
         assetUrlCache,
         diagnostics,
+        ...(params.localization ? { localization: params.localization } : {}),
     });
     const launchScene = new Scene(
         scene.runtimeName || scene.name || scene.id,
@@ -1384,6 +1395,31 @@ async function buildLaunchEntryScene(params: {
     // Camera darkness settles through the same `darken(d, 0)` channel `/camera darken` uses.
     if (snapshot.camera) {
         statements.push(...await compileSnapshotEffects(ctx, nlrStory.camera, snapshot.camera.effects));
+    }
+
+    // A loop is state at the target row, not a pose, so it is replayed as its own call rather than
+    // pre-posed. Without this a launch from a row after `/transform hero loop` would open on a
+    // character who has stopped breathing - while a SAVE taken at the same row restores the motion,
+    // which is the disagreement this closes.
+    for (const record of snapshot.displayables) {
+        if (!record.loop) {
+            continue;
+        }
+        const element = record.kind === "image"
+            ? ctx.images.get(normalizeObjectName(record.objectName))
+            : record.kind === "text"
+                ? ctx.texts.get(normalizeObjectName(record.objectName))
+                : ctx.layers.get(normalizeObjectName(record.objectName));
+        const statement = element && compileSnapshotLoop(ctx, element, record.loop, params.launch.targetBlockId ?? "");
+        if (statement) {
+            statements.push(statement);
+        }
+    }
+    if (snapshot.camera?.loop) {
+        const statement = compileSnapshotLoop(ctx, nlrStory.camera, snapshot.camera.loop, params.launch.targetBlockId ?? "");
+        if (statement) {
+            statements.push(statement);
+        }
     }
 
     // Play the real story forward from the target row, following jumps into the other scenes.
@@ -1775,6 +1811,8 @@ async function compileSnapshotEffects(ctx: SceneCompileContext, element: any, ef
 
 async function createNlrScenes(input: {
     document: StoryDocument;
+    /** For the sets a scene's own two asset fields may name. Absent in a project with no languages. */
+    localization?: SceneLocalizationResolver;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
@@ -1886,6 +1924,7 @@ async function createNlrScenes(input: {
             resolveAssetUrl: input.resolveAssetUrl,
             assetUrlCache: input.assetUrlCache,
             diagnostics: input.diagnostics,
+            ...(input.localization ? { localization: input.localization } : {}),
         });
         const config: {
             background?: string;
@@ -1909,6 +1948,7 @@ async function createNlrScenes(input: {
             resolveAssetUrl: input.resolveAssetUrl,
             assetUrlCache: input.assetUrlCache,
             diagnostics: input.diagnostics,
+            ...(input.localization ? { localization: input.localization } : {}),
         });
         if (music) {
             config.backgroundMusic = music.sound;
@@ -1935,13 +1975,21 @@ async function resolveSceneInitialBackground(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** Present once the story has been assembled; a scene naming a set needs it to pick a member. */
+    localization?: SceneLocalizationResolver;
 }): Promise<string | null> {
     const assetId = input.scene.defaultBackgroundAssetId?.trim();
     if (!assetId) {
         return null;
     }
     return resolveAssetUrlCached({
-        assetId,
+        assetId: resolveVariantReference({
+            variants: input.scene.assetVariants,
+            assetId,
+            blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
+            localization: input.localization,
+            diagnostics: input.diagnostics,
+        }),
         assetType: "image",
         blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
         resolveAssetUrl: input.resolveAssetUrl,
@@ -1969,14 +2017,23 @@ async function resolveSceneBackgroundMusic(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** Present once the story has been assembled; a scene naming a set needs it to pick a member. */
+    localization?: SceneLocalizationResolver;
 }): Promise<{ sound: Sound; fadeMs: number; trackId: string; assetId: string } | null> {
     const bgm = input.scene.bgm;
     const assetId = bgm?.assetId?.trim();
     if (!bgm || !assetId) {
         return null;
     }
-    const url = await resolveAssetUrlCached({
+    const member = resolveVariantReference({
+        variants: input.scene.assetVariants,
         assetId,
+        blockId: SCENE_BACKGROUND_MUSIC_BLOCK_ID,
+        localization: input.localization,
+        diagnostics: input.diagnostics,
+    });
+    const url = await resolveAssetUrlCached({
+        assetId: member,
         assetType: "audio",
         blockId: SCENE_BACKGROUND_MUSIC_BLOCK_ID,
         resolveAssetUrl: input.resolveAssetUrl,
@@ -1996,11 +2053,13 @@ async function resolveSceneBackgroundMusic(input: {
             src: url,
             loop: playback.loop,
             volume: playback.volume,
-            ...audioClipRegionToSoundConfig(input.audioClips?.[assetId]),
+            // The member, not the set: a clip region is authored against a file, and a set id would
+            // find none - the scene would play the whole track where the author trimmed it.
+            ...audioClipRegionToSoundConfig(input.audioClips?.[member]),
         }),
         fadeMs: bgm.fadeMs ?? 0,
         trackId: track.id,
-        assetId,
+        assetId: member,
     };
 }
 
@@ -2873,6 +2932,27 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     return [];
 }
 
+/**
+ * Restart one looping transform on a pre-posed element - the launch scene's half of
+ * {@link StageSnapshotDisplayable.loop}.
+ *
+ * The same two calls a `loop` row compiles to, so a launch and a normal play reach the same stage.
+ * An engine without the feature reports it once per element rather than throwing, exactly as the row
+ * itself does.
+ */
+function compileSnapshotLoop(
+    ctx: SceneCompileContext,
+    element: any,
+    ref: StoryTransformRef,
+    blockId: string,
+): NlrStatement | null {
+    if (!supportsLoop(element, ctx, blockId)) {
+        return null;
+    }
+    const loop = buildLoopTransform(ref, ctx, blockId);
+    return loop ? element.loop(loop, loopOptions(ref)) : null;
+}
+
 /** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
 const MIN_CAMERA_ZOOM = 0.05;
 
@@ -2910,6 +2990,18 @@ async function compileCameraAction(
         // call, and a bag of neutral values would put the filter and the pose in one transform again.
         const duration = Math.max(0, finiteOr(payload.durationMs, 0));
         return [recordStatement(ctx, camera.resetCamera(duration, parseStoryEasing(payload.easing) as any), block)];
+    }
+    if (payload.operation === "loop" || payload.operation === "stopLoop") {
+        // The camera is a Displayable like any other subject, so its half of the loop is the same
+        // two calls - see the displayable arm for why one is awaited and the other is not.
+        if (!supportsLoop(camera, ctx, block.id)) {
+            return [];
+        }
+        if (payload.operation === "stopLoop") {
+            return [recordStatement(ctx, camera.stopLoop(transformOptions(timingOf(payload.transform))), block)];
+        }
+        const loop = buildLoopTransform(clampCameraTransform(payload.transform) ?? {}, ctx, block.id);
+        return loop ? [recordStatement(ctx, camera.loop(loop, loopOptions(payload.transform)), block)] : [];
     }
     const transform = payload.transform;
     if (!transform) {
@@ -3535,8 +3627,11 @@ async function compileImageAction(
         diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
     }
 
+    // A create row DECLARES: it names the object, gives it a source and puts it where it starts, and
+    // nothing appears. `/show` is what reveals it. The pose still lands, so the object is already in
+    // position when something shows it - a declaration says where a thing IS, not that it is seen.
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
-        const operation = payload.operation === "hide" ? "hide" : "show";
+        const operation = payload.operation === "create" ? "transform" : payload.operation;
         const chain = await compileDisplayableOperation(image, operation, payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
@@ -3573,8 +3668,11 @@ async function compileTextAction(
     if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
         statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
+    // Declares, like `/image` create: the words, the size, the colour and the pose, all without
+    // showing anything. See there.
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
-        const chain = await compileDisplayableOperation(text, payload.operation === "hide" ? "hide" : "show", payload.transform, ctx, block.id);
+        const operation = payload.operation === "create" ? "transform" : payload.operation;
+        const chain = await compileDisplayableOperation(text, operation, payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
 
@@ -3619,7 +3717,13 @@ async function compileVideoAction(
     if (!video) {
         return [];
     }
-    if (payload.operation === "show" || payload.operation === "create") {
+    if (payload.operation === "create") {
+        // Declares rather than shows, like `/image`. `preload` is what makes that worth writing on
+        // its own row: the element mounts hidden and starts buffering, so the `/show` or `/play`
+        // that follows is not the first moment anything has been fetched.
+        return [recordStatement(ctx, video.preload(), block)];
+    }
+    if (payload.operation === "show") {
         return [recordStatement(ctx, video.show(), block)];
     }
     if (payload.operation === "hide") {
@@ -3647,8 +3751,14 @@ async function compileVideoAction(
 
 /**
  * `vfx` - the full-screen ambience overlay. Shaped like `compileVideoAction`, not like the displayable
- * ops, because a `Vfx` is an `Actionable`: it has `show`/`hide`/`pause`/`resume`/`setPlaybackRate` and
- * nothing else. `create` both constructs it and registers the name the later rows address.
+ * ops, because a `Vfx` is an `Actionable`: it has `preload`/`show`/`hide`/`pause`/`resume`/
+ * `setPlaybackRate` and nothing else.
+ *
+ * `create` DECLARES the overlay: it builds it, registers the name every later row addresses, and
+ * preloads the clip without showing anything. That is the whole shape of the feature - an overlay is
+ * defined once and then shown, hidden and shown again from anywhere in the story, and the definition
+ * is a place rather than a moment. `show` is the only row that puts it on screen, and it may carry an
+ * opacity and a rate for that showing alone.
  */
 async function compileVfxAction(
     ctx: SceneCompileContext,
@@ -3661,13 +3771,20 @@ async function compileVfxAction(
     if (!vfx) {
         return [];
     }
-    // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
-    // screen, exactly as `/image` and `/video` do.
     const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: parseStoryEasing(payload.easing) as any };
     switch (payload.operation) {
         case "create":
+            return [recordStatement(ctx, vfx.preload(), block)];
         case "show":
-            return [recordStatement(ctx, vfx.show(fade as any), block)];
+            // Opacity and rate on a SHOW row are that showing's own - the same rain reading faintly
+            // behind a memory and at full strength in the storm - so they are passed as options and
+            // never written into the overlay. On a create row the very same two fields ARE the
+            // overlay's configuration, which is why only this arm reads them as overrides.
+            return [recordStatement(ctx, vfx.show({
+                ...fade,
+                ...(payload.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(payload.opacity, 1))) } : {}),
+                ...(payload.rate !== undefined ? { rate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
+            } as any), block)];
         case "hide":
             return [recordStatement(ctx, vfx.hide(fade as any), block)];
         case "pause":
@@ -3716,7 +3833,12 @@ async function getVfx(
     }
     const vfx = new Vfx({
         src: url,
-        ...(payload.blendMode ? { blendMode: payload.blendMode } : {}),
+        // A seed's clip is lit particles on black, and it has exactly one correct compositing route:
+        // `screen`, which drops the black and keeps the light. It is not the author's choice because
+        // there is no alternative to choose - WebKit discards a WebM's alpha, so the clip cannot be
+        // transparent, and `normal` would cover the stage with a black rectangle. An imported clip
+        // still declares its own route, because only the author knows how theirs was rendered.
+        ...(payload.seed ? { blendMode: "screen" as const } : payload.blendMode ? { blendMode: payload.blendMode } : {}),
         ...(payload.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(payload.opacity, 1))) } : {}),
         ...(payload.loop !== undefined ? { loop: payload.loop } : {}),
         ...(payload.fit ? { fit: payload.fit } : {}),
@@ -4579,6 +4701,7 @@ type TransformTiming = {
     delayMs?: number;
     repeat?: number;
     repeatDelayMs?: number;
+    repeatType?: StoryTransformRef["repeatType"];
 };
 
 function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
@@ -4588,6 +4711,7 @@ function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
         delayMs: ref?.delayMs,
         repeat: ref?.repeat,
         repeatDelayMs: ref?.repeatDelayMs,
+        repeatType: ref?.repeatType,
     };
 }
 
@@ -4606,13 +4730,98 @@ function transformOptions(timing: TransformTiming | undefined): Record<string, u
 /** A Transform over one prop bag, carrying repeat only when a row asked for it. */
 function buildTransform(props: Record<string, unknown>, timing: TransformTiming | undefined): Transform {
     const options = transformOptions(timing);
-    if (timing?.repeat === undefined && timing?.repeatDelayMs === undefined) {
+    if (timing?.repeat === undefined && timing?.repeatDelayMs === undefined && timing?.repeatType === undefined) {
         return new Transform(props as any, options as any);
     }
     return new Transform([{ props, options }] as any, {
         repeat: timing.repeat,
         repeatDelay: timing.repeatDelayMs,
+        repeatType: timing.repeatType,
     } as any);
+}
+
+/**
+ * A looping transform: one Transform, and it must be ONE, because `Displayable.loop` takes a single
+ * one rather than a chain.
+ *
+ * That is the whole difference from {@link emitTransformProps}, and it is what decides the loop's
+ * vocabulary. The settled emitter may produce two statements - a discrete half that snaps and an
+ * eased half that moves - plus separate calls for a mask (which registers a preload) and for the clip
+ * generators. None of those can ride inside one Transform, so a loop carries the eased half and this
+ * reports the rest rather than storing a channel that would never move.
+ *
+ * `from` becomes a zero-duration first step, which is exactly what a two-ended loop is: snap to the
+ * trough, ease to the peak, repeat. With `repeatType: "mirror"` that is a breath.
+ */
+function buildLoopTransform(
+    ref: StoryTransformRef,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Transform | null {
+    if (ref.mode === "animation") {
+        // A Story Motion is already a whole keyframed shot; looping one is the shot repeating, and
+        // the engine takes any Transform. Its own timing lives in its keyframes.
+        return createAnimationTransform(ref, ctx, blockId, "none");
+    }
+    if (ref.clipReveal) {
+        diagnostic(ctx, "warning", blockId, "A looping transform cannot carry a clip reveal; the reveal is ignored.");
+    }
+    const to = foldStoryTransformLook(ref.to, resolveStoryCameraLook, preset =>
+        diagnostic(ctx, "warning", blockId, `Camera look "${preset}" is not a known grade.`));
+    const { cut, tween } = splitStoryTransformChange(ref.from, to);
+    if (!isEmptyStoryTransformProps(cut)) {
+        // Named, not swallowed: these are the channels that cannot be interpolated (a mask, a blend
+        // mode, a raw filter chain), so inside a loop they would sit at one value for ever while the
+        // author watched for a change that could never come.
+        diagnostic(ctx, "warning", blockId, "A looping transform can only animate channels that interpolate; the rest of this row will not change.");
+    }
+    if (isEmptyStoryTransformProps(tween)) {
+        diagnostic(ctx, "warning", blockId, "A looping transform states nothing to animate.");
+        return null;
+    }
+    // No repeat config on the Transform itself: `Displayable.loop` forces `repeat: Infinity` and reads
+    // the direction and the gap from its own options, so stating them twice would only give the two
+    // somewhere to disagree.
+    const options = transformOptions(timingOf(ref));
+    const steps: { props: Record<string, unknown>; options: Record<string, unknown> }[] = [];
+    if (ref.from && !isEmptyStoryTransformProps(ref.from)) {
+        steps.push({ props: storyTransformPropsToNlr(ref.from), options: { duration: 0 } });
+    }
+    steps.push({ props: storyTransformPropsToNlr(tween), options });
+    return new Transform(steps as any);
+}
+
+/**
+ * Whether the engine behind this build can play a looping transform at all.
+ *
+ * A feature detect rather than a version compare, for the reason the element-id one is: the engine is
+ * a normal dependency an author's machine may have pinned older, and a missing method would surface
+ * as `target.loop is not a function` from inside a compile - a stack trace about Studio, for a row
+ * the author wrote. Asking the object is both simpler and exactly the question.
+ */
+/**
+ * The engine's `LoopOptions` - how each round runs, not how many there are.
+ *
+ * The count is not here and cannot be: a loop repeats until something stops it, which is the whole
+ * difference between this and `transform.repeat(n)`. The spec refuses a row that states both.
+ */
+function loopOptions(ref: StoryTransformRef | undefined): Record<string, unknown> {
+    const options: Record<string, unknown> = {};
+    if (ref?.repeatType) {
+        options.repeatType = ref.repeatType;
+    }
+    if (ref?.repeatDelayMs !== undefined) {
+        options.repeatDelay = Math.max(0, ref.repeatDelayMs);
+    }
+    return options;
+}
+
+function supportsLoop(target: any, ctx: SceneCompileContext, blockId: string): boolean {
+    if (typeof target?.loop === "function" && typeof target?.stopLoop === "function") {
+        return true;
+    }
+    diagnostic(ctx, "error", blockId, "This engine cannot play looping transforms. Update narraleaf-react to 0.32.0 or newer.");
+    return false;
 }
 
 /**
@@ -4845,11 +5054,23 @@ function emitClipReveal(
 
 async function compileDisplayableOperation(
     target: any,
-    operation: "show" | "hide" | "transform",
+    operation: "show" | "hide" | "transform" | "loop" | "stopLoop",
     transform: StoryTransformRef | undefined,
     ctx: SceneCompileContext,
     blockId: string,
 ): Promise<NlrStatement | null> {
+    if (operation === "loop" || operation === "stopLoop") {
+        if (!supportsLoop(target, ctx, blockId)) {
+            return null;
+        }
+        if (operation === "stopLoop") {
+            // The way back is finite even when it is instant, so this one IS awaited - unlike the
+            // loop it ends.
+            return target.stopLoop(transformOptions(timingOf(transform)));
+        }
+        const loop = buildLoopTransform(transform ?? {}, ctx, blockId);
+        return loop ? target.loop(loop, loopOptions(transform)) : null;
+    }
     if (transform?.mode === "animation") {
         const animationTransform = createAnimationTransform(transform, ctx, blockId, operation === "transform" ? "none" : operation);
         if (operation === "show") {
@@ -5050,10 +5271,48 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 from: Math.min(1, Math.max(0, numberProp(props, "from", 1))),
                 to: Math.min(1, Math.max(0, numberProp(props, "to", 0))),
             });
-        default:
-            diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports.`);
-            return undefined;
+        case "custom":
+            // The union's escape hatch: a transition that is nothing but its `props`, with no engine
+            // behind it to build. Nothing in Studio writes one and no script can name one, but a
+            // document is free to carry one, so it is routed here by hand rather than left to the
+            // `default` below. It has to be: it is a member of the union, so leaving it to `default`
+            // would narrow `kind` to `"custom"` there instead of `never`, and the exhaustiveness
+            // check below could not be written at all.
+            return reportUnplayableTransition(ctx, blockId, "custom");
+        default: {
+            // Exhaustiveness gate, and the reason this `default` is not just a runtime fallback.
+            // Every member of `StoryTransitionRef["kind"]` is either built above or routed by the
+            // `custom` case, so `kind` is `never` by the time it reaches here and this assignment
+            // fails to compile the moment a kind is added to the union without a branch. Adding a
+            // transition kind touches eleven places across the engine and Studio and this one had
+            // no compile-time guard at all; a forgotten branch used to reach an author as a console
+            // line nobody reads.
+            //
+            // The runtime path is still live, and is the only thing that reaches it: a `kind` the
+            // union does not contain - a document written by a newer Studio, or one carrying a kind
+            // that has since been retired. `unknownKind` holds that stored string.
+            const unknownKind: never = transition.kind;
+            return reportUnplayableTransition(ctx, blockId, unknownKind);
+        }
     }
+}
+
+/**
+ * Report a transition this build cannot play, and play the change as a cut.
+ *
+ * `error`, by the rule {@link diagnostic} states: the row names a transition, this compile can prove
+ * it holds none by that name, and the part of the row that name governs does not happen - the change
+ * still lands, but instantly, with nothing on stage saying why. That is the same shape as a Story
+ * Motion the project no longer holds, which is already an error. It is not a row left unfinished
+ * (the author picked something) and not state from outside this compile (the kind is right there in
+ * the document), so neither warning clause fits.
+ *
+ * `story/transition-unavailable` is the half of this that refuses a build; this half is what an author
+ * sees while writing.
+ */
+function reportUnplayableTransition(ctx: SceneCompileContext, blockId: string, kind: string): undefined {
+    diagnostic(ctx, "error", blockId, `Transition "${kind}" is not available; the change was played as a cut. Choose a transition on this row.`);
+    return undefined;
 }
 
 /** Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair. */
@@ -5422,8 +5681,8 @@ async function resolveCharacterImageUrl(
         return null;
     }
     const appearance = ctx.characterSummaries.get(characterId)?.appearance;
-    const assetId = resolvePoseAssetId(appearance, pose);
-    return assetId ? resolveAsset(ctx, assetId, "image", blockId) : null;
+    const entry = resolvePoseEntry(appearance, pose);
+    return entry?.assetId ? resolveAsset(ctx, entry.assetId, "image", blockId, entry.assetVariants) : null;
 }
 
 /**
@@ -5449,7 +5708,9 @@ async function resolveCharacterLayeredSrc(
     for (const layer of appearance.layers) {
         if (layer.hidden) continue;
         if (!layer.axisId) {
-            const url = layer.assetId ? await resolveAsset(ctx, layer.assetId, "image", blockId) : null;
+            const url = layer.assetId
+                ? await resolveAsset(ctx, layer.assetId, "image", blockId, layer.assetVariants)
+                : null;
             if (url) {
                 layers.push(url);
             }
@@ -5460,7 +5721,9 @@ async function resolveCharacterLayeredSrc(
         const variants: Record<string, string | null> = {};
         for (const tag of axis.tags) {
             const assetId = layer.options?.[tag.id] ?? null;
-            variants[tag.id] = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
+            variants[tag.id] = assetId
+                ? await resolveAsset(ctx, assetId, "image", blockId, layer.assetVariants)
+                : null;
         }
         layers.push(variants);
     }
@@ -5511,7 +5774,9 @@ async function compileCharacterAvatars(
     const avatarTable = summary.appearance.kind === "puppet" ? undefined : summary.appearance.avatars;
     for (const key of Object.keys(avatarTable ?? {})) {
         const assetId = resolveCharacterAvatarAssetId(summary, key);
-        const url = assetId ? await resolveAsset(ctx, assetId, "image", blockId) : null;
+        const url = assetId
+            ? await resolveAsset(ctx, assetId, "image", blockId, avatarTable?.[key]?.assetVariants)
+            : null;
         if (url && assetId) {
             byKey.set(key, url);
             ctx.avatarAssetIdByUrl.set(url, assetId);
@@ -5520,7 +5785,9 @@ async function compileCharacterAvatars(
 
     if (summary.appearance.kind === "preset") {
         for (const pose of summary.appearance.poses) {
-            const url = pose.assetId ? await resolveAsset(ctx, pose.assetId, "image", blockId) : null;
+            const url = pose.assetId
+                ? await resolveAsset(ctx, pose.assetId, "image", blockId, pose.assetVariants)
+                : null;
             // Two poses sharing one sprite are indistinguishable at runtime - the engine reports a
             // src, not a pose. First wins; their avatars would have to picture the same thing anyway.
             if (url && !poseByUrl.has(url)) {
@@ -5531,7 +5798,7 @@ async function compileCharacterAvatars(
 
     const defaultAvatarAssetId = summary.defaultAvatarAssetId?.trim();
     const fallback = defaultAvatarAssetId
-        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId)
+        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId, summary.assetVariants)
         : null;
     if (fallback && defaultAvatarAssetId) {
         ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
@@ -5671,12 +5938,37 @@ async function bindOffstageDefaultAvatars(params: {
  * of blank stage while the right one loaded.
  */
 function resolveSetReference(ctx: SceneCompileContext, assetId: string, blockId: string): string {
-    const variants = ctx.scene.blocks?.[blockId]?.assetVariants;
+    // The row's own map, and the scene's for the two fields that belong to no row (its opening
+    // background and its music). One lookup order, so a scene-level reference resolves by the same
+    // rule as a row's.
+    return resolveVariantReference({
+        variants: ctx.scene.blocks?.[blockId]?.assetVariants ?? ctx.scene.assetVariants,
+        assetId,
+        blockId,
+        localization: ctx.localization,
+        diagnostics: ctx.diagnostics,
+    });
+}
+
+/**
+ * The same reading for a scene's own fields, which have no row and therefore no context.
+ *
+ * Split out rather than duplicated: a second copy of "which member does this locale get" is a second
+ * place for the scene's background and its rows to disagree about what language they are in.
+ */
+function resolveVariantReference(input: {
+    variants: StoryAssetVariants | undefined;
+    assetId: string;
+    blockId: string;
+    localization: SceneLocalizationResolver | undefined;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): string {
+    const { variants, assetId, blockId, localization, diagnostics } = input;
     const map = variants?.[assetId];
     if (!map) {
         return assetId;
     }
-    const resolved = ctx.localization?.variant(variants, assetId);
+    const resolved = localization?.variant(variants, assetId);
     if (resolved) {
         return resolved;
     }
@@ -5686,7 +5978,7 @@ function resolveSetReference(ctx: SceneCompileContext, assetId: string, blockId:
     const [fallback] = Object.values(map);
     if (fallback) {
         pushDiagnostic(
-            ctx.diagnostics,
+            diagnostics,
             "warning",
             blockId,
             `Asset set ${assetId} was resolved without a language; the stage may show the wrong one.`,
@@ -5696,9 +5988,28 @@ function resolveSetReference(ctx: SceneCompileContext, assetId: string, blockId:
     return assetId;
 }
 
-async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {
+/**
+ * `variants` is for a reference that is not a row: a character's pose, layer or avatar carries its
+ * own answer on the record that names the set, so the caller hands that map in rather than this
+ * looking in the row and scene maps, which have nothing to say about it.
+ */
+async function resolveAsset(
+    ctx: SceneCompileContext,
+    assetId: string,
+    assetType: StoryAssetKind,
+    blockId: string,
+    variants?: StoryAssetVariants,
+): Promise<string | null> {
     return resolveAssetUrlCached({
-        assetId: resolveSetReference(ctx, assetId, blockId),
+        assetId: variants
+            ? resolveVariantReference({
+                variants,
+                assetId,
+                blockId,
+                localization: ctx.localization,
+                diagnostics: ctx.diagnostics,
+            })
+            : resolveSetReference(ctx, assetId, blockId),
         assetType,
         blockId,
         resolveAssetUrl: ctx.resolveAssetUrl,

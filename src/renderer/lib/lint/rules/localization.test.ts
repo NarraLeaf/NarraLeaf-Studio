@@ -190,6 +190,7 @@ describe("localization/orphan", () => {
                 "t-deleted": unit("消えた行", "a line that no longer exists"),
                 "key:menu.start": unit("はじめる", "Start"),
                 "char:char-1": unit("あおい", "Aoi"),
+                "scene:scene-1": unit("廊下", "The corridor"),
                 "ui:element-1.text": unit("設定", "Settings"),
             }),
         );

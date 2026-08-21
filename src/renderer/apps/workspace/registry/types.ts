@@ -59,6 +59,16 @@ export interface ActionSubmenu {
      * whole menu would have to claim one reason, and it would be wrong for every exempt group in it.
      */
     disabledReason?: string;
+    /**
+     * The letter Alt reaches this row by, shown on its label.
+     *
+     * Set by the hamburger main menu, where each row is a menu that had a button of its own with an
+     * accelerator on it. The menu holding the row declares the letter to the bar, so Alt+F opens the
+     * File menu whether it is a button on the strip or a row inside the hamburger. Nothing else sets
+     * it: an accelerator on an ordinary submenu would be a second claim on a letter the group above
+     * it already answers to.
+     */
+    mnemonic?: string;
 }
 
 export interface ActionSeparator {
@@ -98,6 +108,15 @@ export interface ActionGroup {
      * other platforms the group is only ever an in-app dropdown.
      */
     menuSlot?: NativeMenuSlot;
+    /**
+     * The letter Alt reaches this menu by, shown on the label. Studio's own menus declare theirs;
+     * plugins do not get one, because a package that could claim Alt+F would be taking a key off
+     * the File menu on every machine that installed it.
+     *
+     * Ignored on macOS, where these groups are not drawn at all and Option+letter types a
+     * character rather than reaching a menu.
+     */
+    mnemonic?: string;
 }
 
 /**
@@ -113,6 +132,12 @@ export interface ActionDefinition {
     /** i18n key; when set, it overrides `tooltip` at render time (falls back to `tooltip`). */
     tooltipKey?: TranslationKey;
     shortcut?: string;
+    /**
+     * The catalog entry whose chord this row prints, for a command whose key is registered
+     * elsewhere. Undo is the case it exists for: the chord belongs to whichever editor has focus,
+     * so the menu must not register one - but it should still say `Ctrl+Z`. Display only.
+     */
+    shortcutId?: string;
     onClick: (workspace: Workspace) => void;
     order?: number;
     disabled?: boolean;
