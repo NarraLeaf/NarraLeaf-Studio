@@ -6,6 +6,8 @@ export const devMode = {
     surfaceUnavailable: "界面不可用",
     waitingPayload: "正在等待开发模式数据…",
     surfaceNotFound: "未找到界面：{surfaceId}",
+    // See the English catalog: one sentence for both places that open a row in Studio.
+    openInStudioFailed: "该项目没有打开的工作区窗口",
     issues: {
         title: "问题",
         empty: "没有出错的地方",
@@ -16,7 +18,6 @@ export const devMode = {
         noLocation: "无法定位到具体的行",
         viaPlayHead: "播放到此处",
         openInStudio: "在 Studio 中打开",
-        openFailed: "该项目没有打开的工作区窗口",
         stack: "调用栈",
         dismissAll: "全部关闭（{count}）",
         summary: "{errors} 个错误 · {warnings} 个警告",
@@ -28,6 +29,7 @@ export const devMode = {
         openMenu: "打开预览调试工具菜单",
         closeMenu: "关闭预览调试工具菜单",
         panelsAria: "界面面板",
+        locateRow: "在 Studio 中打开此行",
         skipToNextChoice: "跳到下一个选项",
         skipToNextChoiceBusy: "跳转中…",
         hide: "隐藏此按钮",
