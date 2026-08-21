@@ -50,7 +50,15 @@ export async function bakeWeatherClipsForPack(
         return [];
     }
 
-    const outcome = await manager.ensure({ projectRoot: projectPath, specs, priority: "blocking" });
+    // `final`, and not from a setting. What this function produces is what a player receives, so the
+    // one tier a preference could offer it is the one it must never use - and a preview is on this
+    // path too, deliberately: a preview exists to show the author what they are about to ship.
+    const outcome = await manager.ensure({
+        projectRoot: projectPath,
+        specs,
+        priority: "blocking",
+        quality: "final",
+    });
     const clips: PackedWeatherClip[] = [];
     for (const spec of specs) {
         const key = weatherBakeKey(spec);

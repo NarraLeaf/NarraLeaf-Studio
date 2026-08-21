@@ -10,9 +10,14 @@ vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
  * A story service whose filesystem can be told what to do with each write.
  *
  * The whole point of per-file dirty tracking is that a save writes *less*, and the whole risk is
- * that it writes less than it owes. So the harness records every path handed to `fs.write`, and can
+ * that it writes less than it owes. So the harness records every path handed to the writer, and can
  * make one path fail or be refused - the two ways a write can end without the bytes reaching the
  * disk, and the two ways a debt-tracking writer can lose an author's work.
+ *
+ * The writer is `writeFileNoFollowOrCreate`, not `write`: these files go straight down the IPC call
+ * rather than through a write grant and a protocol `PUT`. `write` is still stubbed here so a
+ * regression back on to the grant route shows up as a missing recorded write rather than as a quiet
+ * pass; `StoryService.writeRoute.test.ts` asserts the route itself, against the real one.
  */
 function createHarness() {
     const history = new HistoryService();
@@ -31,7 +36,9 @@ function createHarness() {
     let duringWrite: (() => void) | null = null;
 
     const fs = {
-        write: vi.fn(async (path: string, data: string) => {
+        /** The grant-and-PUT route. Present so a regression on to it is visible, not silent. */
+        write: vi.fn(async () => ({ ok: true as const, data: undefined })),
+        writeFileNoFollowOrCreate: vi.fn(async (path: string, data: string) => {
             if (duringWrite) {
                 const hook = duringWrite;
                 duringWrite = null;
@@ -39,7 +46,8 @@ function createHarness() {
                 hook();
             }
             if (matches(refusing, path)) {
-                // Exactly what `BaseFileSystemService.write` answers for a frozen workspace.
+                // Exactly what `BaseFileSystemService.writeFileNoFollowOrCreate` answers for a frozen
+            // workspace - the same `FROZEN_NO_OP` the grant route answers with.
                 return { ok: true as const, data: undefined, refused: true as const };
             }
             if (matches(failing, path)) {
@@ -104,11 +112,11 @@ function createHarness() {
         refusing,
         setDuringWrite(hook: () => void) { duringWrite = hook; },
         /** Paths written since the last {@link reset}, in order. */
-        written: () => fs.write.mock.calls.map(call => call[0] as string),
+        written: () => fs.writeFileNoFollowOrCreate.mock.calls.map(call => call[0] as string),
         /** The library index only - `animations/index.json` shares the basename. */
         libraryIndexWrites: () =>
-            fs.write.mock.calls.map(call => call[0] as string).filter(path => path === "editor/story/index.json"),
-        reset: () => fs.write.mockClear(),
+            fs.writeFileNoFollowOrCreate.mock.calls.map(call => call[0] as string).filter(path => path === "editor/story/index.json"),
+        reset: () => fs.writeFileNoFollowOrCreate.mockClear(),
     };
 }
 

@@ -34,6 +34,7 @@ import type {
 } from "@shared/types/team";
 
 import { recallServerToken } from "../vcs/serverTokens";
+import { installationId, machineLabel, studioAgent } from "./clientInstance";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
 
 /**
@@ -114,7 +115,25 @@ export class TeamManager {
      */
     open(remoteOrigin: string): TeamConnection {
         const client = this.clientFor(remoteOrigin);
-        if (client === null) return this.connection(remoteOrigin);
+        if (client === null) {
+            // **Not `idle`.** Something asked and there will be no session: Studio has no
+            // record of that server, or cannot read the token it sealed. Neither reaches
+            // a socket, so there is no transport sentence and no amount of waiting that
+            // helps - and a screen left on "connecting" would wait for ever. The reason
+            // is carried as a problem rather than as prose because the two have different
+            // remedies and a screen has to say which.
+            const problem = this.whyNot(remoteOrigin);
+            return {
+                remoteOrigin,
+                state: "offline",
+                capabilities: [],
+                problem,
+                detail: problem.kind === "no-token"
+                    ? "this installation cannot read its token for that server"
+                    : "Studio has no record of that server",
+                since: Date.now(),
+            };
+        }
         client.connect();
         return client.connection();
     }
@@ -196,10 +215,19 @@ export class TeamManager {
         const token = this.tokenFor(remoteOrigin);
         if (token === null) return null;
 
+        const state = this.app.getGlobalState();
         const client = this.newClient({
             remoteOrigin,
             authUrl: server.authUrl,
             token,
+            // Read here rather than held on this manager, so that a label somebody
+            // changed in Settings reaches the next server they connect to rather than the
+            // next time Studio starts. The id is minted on the first read and kept.
+            identity: {
+                installation: installationId(state),
+                label: machineLabel(state),
+                agent: studioAgent(this.app.getAppInfo().version),
+            },
             userDataDir: this.app.getUserDataDir(),
             log: (line) => this.app.logger.info(line),
             onEvent: (event) => this.deliver(remoteOrigin, event),

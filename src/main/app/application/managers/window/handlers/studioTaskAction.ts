@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
+import { devModeScreenEffectQuality } from "../../weather/screenEffectQuality";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -59,6 +60,9 @@ export class StudioTasksPrebakeWeatherHandler extends IPCHandler<IPCEventType.st
                 projectRoot: projectPath,
                 specs,
                 priority: "idle",
+                // Whatever Dev Mode will ask for, because being ready for it is the only reason this
+                // exists. See `devModeScreenEffectQuality`.
+                quality: devModeScreenEffectQuality(window.getApp()),
                 claim: { owner: WeatherBakeOwner.prebake(projectPath), attempt: crypto.randomUUID() },
             });
         }
