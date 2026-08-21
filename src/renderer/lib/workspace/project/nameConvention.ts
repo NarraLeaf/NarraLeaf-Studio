@@ -99,6 +99,11 @@ export const ProjectNameConvention = {
     EditorServices: ["editor", "services/"],
     EditorRemoteAssetsCache: ["editor", "assets", "remote/"],
     EditorRemoteAssetShard: (id: string) => ["editor", "assets", "remote", ...splitId(id)],
+    /**
+     * Everything derived that this project can afford to lose. `@shared/vcs/workingSet` excludes
+     * this prefix from version control, which is what makes anything under it one copy per machine.
+     */
+    EditorCache: ["editor", "cache/"],
     EditorThumbnailCache: ["editor", "cache", "thumbnail/"],
     EditorThumbnailCacheShard: (id: string) => {
         const safeId = encodePathSegmentId(id);
@@ -135,6 +140,17 @@ export const ProjectNameConvention = {
      */
     EditorMediaSupportCache: ["editor", "cache", "media/"],
     EditorMediaSupportCacheFile: ["editor", "cache", "media", "support.json"],
+    /**
+     * The values the author last ran each test with, keyed by test id.
+     *
+     * A cache by the only criterion there is: deleting it costs the author one dropdown pick and
+     * loses no work, since nothing in the project refers to it and every run states its own
+     * parameters on its record. That is also why it sits under `editor/cache/` rather than beside
+     * the project's own editor documents - `@shared/vcs/workingSet` excludes that prefix, so this
+     * is never committed, never in a change list, and one copy per machine. Two people on one
+     * project each keep their own last ending without ever colliding over it.
+     */
+    EditorTestParameterCacheFile: ["editor", "cache", "test-parameters.json"],
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],

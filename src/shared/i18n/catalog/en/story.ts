@@ -306,8 +306,8 @@ export const story = {
             expand: "Show branches",
             collapse: "Hide branches",
         },
-        // The route rail: endings derived from the graph (a scene the story cannot leave) and
-        // every decision path that reaches one.
+        // The route rail: the story's endings - the `/ending` rows, or, in a story that marks none,
+        // the scenes it cannot leave - and every decision path that reaches one.
         route: {
             title: "Routes",
             show: "Show routes",
@@ -324,9 +324,12 @@ export const story = {
             noEntryScene: "No entry scene, so no routes.",
             noRoutes: "No routes.",
             noDecisions: "No decisions",
-            // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
+            // An ending row with no name yet. The row is real and its routes are real, so the list
+            // still has to have something to call it.
+            endingUnnamed: "Unnamed ending",
+            // A path can stop somewhere that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here without being an ending. It returned to a visited scene, or an option has nothing written after it",
+            stopsHereTitle: "A path stops here without reaching an ending. It returned to a visited scene, an option has nothing written after it, or the scene has no way out and no /ending row",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
