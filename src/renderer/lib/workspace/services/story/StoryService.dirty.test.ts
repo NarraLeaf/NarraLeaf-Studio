@@ -67,7 +67,7 @@ function createHarness() {
             return { ok: true as const, data: undefined };
         }),
         isFileExists: vi.fn(async (path: string) => ({ ok: true as const, data: files.has(path) })),
-        isDirExists: vi.fn(async () => ({ ok: true as const, data: true })),
+        isDirExists: vi.fn(async (_dir: string) => ({ ok: true as const, data: true })),
         createDir: vi.fn(async () => ({ ok: true as const, data: undefined })),
         mkdir: vi.fn(async () => ({ ok: true as const, data: undefined })),
     };
@@ -105,6 +105,9 @@ function createHarness() {
         setDuringWrite(hook: () => void) { duringWrite = hook; },
         /** Paths written since the last {@link reset}, in order. */
         written: () => fs.write.mock.calls.map(call => call[0] as string),
+        /** The library index only - `animations/index.json` shares the basename. */
+        libraryIndexWrites: () =>
+            fs.write.mock.calls.map(call => call[0] as string).filter(path => path === "editor/story/index.json"),
         reset: () => fs.write.mockClear(),
     };
 }
@@ -299,6 +302,159 @@ describe("StoryService per-file dirty tracking", () => {
 
         await (service as never as { flush: () => Promise<void> }).flush();
         expect(service.isDirty()).toBe(false);
+    });
+
+    it("asks the disk about each directory once, not once per save", async () => {
+        const { service, fs } = harness;
+        const story = await seedStory(service, "Repeat");
+        fs.isDirExists.mockClear();
+
+        for (let i = 0; i < 3; i++) {
+            service.renameScene(story.entry.id, story.sceneId, `Pass ${i}`);
+            await service.flushPendingChanges();
+        }
+
+        // Seven per save before this: three for the story tree, one for the document's own
+        // directory, then the same three again for the library index.
+        expect(fs.isDirExists).not.toHaveBeenCalled();
+    });
+
+    it("re-checks the directories after a write fails, so the retry can re-create them", async () => {
+        const { service, failing, fs } = harness;
+        const story = await seedStory(service, "Vanishing");
+        fs.isDirExists.mockClear();
+
+        // What a VCS checkout or another window removing the directory looks like from here: the
+        // write fails even though this service last saw the directory present.
+        failing.add(story.entry.id);
+        service.renameScene(story.entry.id, story.sceneId, "Into the void");
+        await expect(service.flushPendingChanges()).rejects.toThrow();
+
+        failing.clear();
+        fs.isDirExists.mockClear();
+        await (service as never as { flush: () => Promise<void> }).flush();
+
+        // A memo kept across a failure would make every rung of the retry ladder repeat the same
+        // doomed write against a directory nothing ever re-creates.
+        expect(fs.isDirExists).toHaveBeenCalled();
+        expect(service.isDirty()).toBe(false);
+    });
+
+    it("re-checks a restored story's directory, which its deletion removed", async () => {
+        const { service, history, fs } = harness;
+        const story = await seedStory(service, "Undeleted");
+        expect(await service.deleteStory(story.entry.id)).toBe(true);
+        await service.flushPendingChanges();
+        fs.isDirExists.mockClear();
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        await history.settled();
+
+        // The directory went with the story. Still believing in it here is how the restoring write
+        // lands in a directory that no longer exists - the one case a memo cannot be allowed to
+        // answer from, because this service is the thing that removed it.
+        const asked = fs.isDirExists.mock.calls.map(call => call[0]);
+        expect(asked.some(path => path.includes(story.entry.id))).toBe(true);
+    });
+
+    /**
+     * The library index carries two very different debts on one flag's worth of intent: what the
+     * author wrote (a story's name, its position, the default story) and a mirror of each document's
+     * `updatedAt`. Only the first is work that can be lost. These say so.
+     */
+    describe("library index", () => {
+        /**
+         * ISO timestamps have millisecond resolution. A test that edits inside the same millisecond
+         * as the save it follows produces a stamp that did not move, and `markStoryEntrySaved`
+         * correctly does nothing - which would make every assertion below pass for the wrong reason.
+         */
+        const nextMillisecond = () => new Promise(resolve => setTimeout(resolve, 2));
+        const stampOwed = (service: StoryService) =>
+            (service as never as { libraryStampsDirty: boolean }).libraryStampsDirty;
+
+        it("leaves the index alone while the author is still typing, and does not call that dirty", async () => {
+            const { service, setDuringWrite, reset, libraryIndexWrites } = harness;
+            const story = await seedStory(service, "Typing");
+            await nextMillisecond();
+            reset();
+
+            service.renameScene(story.entry.id, story.sceneId, "One");
+            // A keystroke landing while the write is in flight. It re-arms the auto-saver, which is
+            // exactly the signal that another save is coming and the mirror can wait for it.
+            setDuringWrite(() => {
+                service.renameScene(story.entry.id, story.sceneId, "Two");
+            });
+            await service.flushPendingChanges();
+
+            expect(libraryIndexWrites()).toHaveLength(0);
+            // Owed, not absent: the deferral is what is under test, not a stamp that never moved.
+            expect(stampOwed(service)).toBe(true);
+
+            // Write the document the mid-write edit re-owed, still mid-streak. Nothing is owed to
+            // the disk after it: an unwritten timestamp is not unsaved work, and reporting it as
+            // such would light the indicator over a project that has none.
+            await (service as never as { flush: () => Promise<void> }).flush();
+            expect(libraryIndexWrites()).toHaveLength(0);
+            expect(service.isDirty()).toBe(false);
+        });
+
+        it("settles the index on the first save after the edits stop", async () => {
+            const { service, files, reset, libraryIndexWrites } = harness;
+            const story = await seedStory(service, "Settling");
+            await nextMillisecond();
+            reset();
+
+            service.renameScene(story.entry.id, story.sceneId, "Done typing");
+            await service.flushPendingChanges();
+
+            expect(libraryIndexWrites()).toHaveLength(1);
+            expect(stampOwed(service)).toBe(false);
+            const index = JSON.parse(files.get("editor/story/index.json")!);
+            const document = JSON.parse(files.get([...files.keys()].find(key => key.includes(story.entry.id))!)!);
+            expect(index.stories.find((entry: { id: string }) => entry.id === story.entry.id).updatedAt)
+                .toBe(document.meta.updatedAt);
+        });
+
+        it("writes the index mid-streak anyway when the library itself changed", async () => {
+            const { service, setDuringWrite, reset, libraryIndexWrites } = harness;
+            const story = await seedStory(service, "Renamed");
+            reset();
+
+            // A name lives in the index and nowhere else. Deferring this is losing it.
+            expect(service.renameStory(story.entry.id, "New name")).toBe(true);
+            setDuringWrite(() => {
+                service.renameScene(story.entry.id, story.sceneId, "Still typing");
+            });
+            await service.flushPendingChanges();
+
+            expect(libraryIndexWrites()).toHaveLength(1);
+        });
+
+        it("re-owes a refused index write unconditionally, so it cannot be deferred away", async () => {
+            const { service, refusing, setDuringWrite, reset, libraryIndexWrites } = harness;
+            const story = await seedStory(service, "Refused");
+            await nextMillisecond();
+            reset();
+
+            refusing.add("editor/story/index.json");
+            expect(service.renameStory(story.entry.id, "Named while frozen")).toBe(true);
+            await service.flushPendingChanges();
+            expect(libraryIndexWrites()).toHaveLength(1);
+            expect(service.isDirty()).toBe(true);
+
+            // The refusal put the debt back. It has to come back as the *authored* kind: downgrading
+            // it to a deferrable stamp is how a story's new name never reaches the disk.
+            refusing.clear();
+            reset();
+            service.renameScene(story.entry.id, story.sceneId, "Typing again");
+            setDuringWrite(() => {
+                service.renameScene(story.entry.id, story.sceneId, "And again");
+            });
+            await service.flushPendingChanges();
+
+            expect(libraryIndexWrites()).toHaveLength(1);
+            expect(JSON.parse(harness.files.get("editor/story/index.json")!).stories[0].name).toBe("Named while frozen");
+        });
     });
 
     it("writes a motion asset only when that motion changed", async () => {

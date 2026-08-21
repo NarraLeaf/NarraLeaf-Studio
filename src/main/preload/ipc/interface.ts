@@ -35,7 +35,7 @@ import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
-import type { PrivilegedActor } from "@shared/types/privileged";
+import type { PrivilegedActor, PrivilegedWriteBatchEntry } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
 import type { AssetTransferEntry } from "@shared/types/assetTransfer";
@@ -98,6 +98,8 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }),
             requestWriteRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }),
+            requestWriteBatch: (actor: PrivilegedActor, entries: PrivilegedWriteBatchEntry[]) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWriteBatch", entries }),
             ensureRegularFile: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "ensureRegularFile", path, data, encoding }),
             writeFileNoFollow: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>

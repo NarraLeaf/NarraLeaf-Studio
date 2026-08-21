@@ -50,7 +50,23 @@ export interface FileStorageInfo {
     lifetime?: FileStorageLifetime;
     /** webContents id whose destruction revokes this grant (session lifetime only). */
     ownerWebContentsId?: number;
+    /**
+     * When set, this grant covers N files written together through one `PUT`, and `path` is only the
+     * first of them (kept as a real path so a log line still names something).
+     *
+     * Write grants only, one-shot like every other write grant. The entries are in the order the
+     * requester named them, and that order is the *only* thing that binds a payload in the body to a
+     * file on disk - see `writeBatchFrame.ts`.
+     */
+    batch?: FileStorageBatchEntry[];
 }
+
+/** One file inside a batched write grant; see {@link FileStorageInfo.batch}. */
+export type FileStorageBatchEntry = {
+    path: string;
+    raw: boolean;
+    encoding?: FsTextEncoding;
+};
 
 export type SecurityScopedResourceLifetime = "window" | "session";
 type SecurityScopedBookmarkGrant = {
@@ -92,6 +108,26 @@ export class StorageManager extends Manager {
     public allocateHash(path: string, raw: boolean, operation: FileSystemAccessMode, encoding?: FsTextEncoding): string {
         const hash = crypto.randomBytes(32).toString("base64url");
         this.storage.set(hash, { path, raw, operation, encoding, status: "allocated" });
+        return hash;
+    }
+
+    /**
+     * Allocate one write grant covering several files at once.
+     *
+     * Deliberately not a loop over {@link allocateHash}: N grants would be N URLs and therefore N
+     * `PUT`s, which is the cost this exists to remove. The caller has already authorized every path
+     * (see `PrivilegedFsCallHandler`), and this records them in order so the protocol handler can
+     * bind payload `i` to entry `i` without the renderer naming a path again.
+     */
+    public allocateWriteBatchHash(entries: FileStorageBatchEntry[]): string {
+        const hash = crypto.randomBytes(32).toString("base64url");
+        this.storage.set(hash, {
+            path: entries[0]?.path ?? "",
+            raw: true,
+            operation: "write",
+            status: "allocated",
+            batch: entries,
+        });
         return hash;
     }
 
