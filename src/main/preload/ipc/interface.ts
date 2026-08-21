@@ -17,7 +17,7 @@ import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
-import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
+import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "@shared/types/gameBuild";
 import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
@@ -467,6 +467,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameTestLaunch, request) as Promise<RequestStatus<GameTestLaunchResult>>,
         stop: (projectPath: string, sessionId: string) =>
             ipcClient.invoke(IPCEventType.gameTestStop, { projectPath, sessionId }) as Promise<RequestStatus<void>>,
+        sendCommand: (projectPath: string, sessionId: string, command: GameTestCommand) =>
+            ipcClient.invoke(IPCEventType.gameTestSendCommand, { projectPath, sessionId, command }) as
+                Promise<RequestStatus<{ delivered: boolean }>>,
         onEvent: (handler: (payload: GameTestEventPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceGameTestEvent, handler),
     },

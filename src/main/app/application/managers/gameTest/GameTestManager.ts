@@ -7,6 +7,8 @@ import { WebSocket } from "ws";
 import type { App } from "@/app/app";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type {
+    GameTestChoiceOption,
+    GameTestCommand,
     GameTestEvent,
     GameTestExit,
     GameTestLaunchRequest,
@@ -44,7 +46,8 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
  *
  *  - **The control socket is held open** for the life of the session. Studio has only ever opened it
  *    for the milliseconds of a shutdown dial; a subscribed socket is what carries the game's uncaught
- *    errors and its `game-end` back.
+ *    errors and its `game-end` back, and what a test writes its moves onto (see {@link
+ *    GameTestManager.sendCommand}).
  *  - **The exit is classified.** See {@link classifyGameTestExit}.
  *  - **A separate artifact directory** (`.nlstudio/test`, not `.nlstudio/preview`), so a test never
  *    overwrites the artifact the author's live preview is running out of.
@@ -69,6 +72,14 @@ const CONTROL_CONNECT_RETRY_DELAY_MS = 150;
 
 /** Studio -> game. `shutdown` predates the test pipeline and is unchanged. */
 const CONTROL_SUBSCRIBE_COMMAND = "test:subscribe";
+/**
+ * Studio -> game, on the socket the session already holds.
+ *
+ * Spelled here rather than imported from the runtime's own `testControlProtocol`: this project does
+ * not compile `src/runtime` (see `src/main/tsconfig.json`), which is the same reason the shutdown
+ * frame below is written out too.
+ */
+const CONTROL_COMMAND_FRAME = "test:command";
 /** game -> Studio, unsolicited, only on a socket that has already subscribed. */
 const CONTROL_EVENT_FRAME = "test:event";
 
@@ -237,9 +248,44 @@ export function normalizeGameTestFrameEvent(raw: unknown): GameTestEvent | null 
         }
         case "game-end":
             return { kind: "game-end" };
+        case "ending": {
+            // A blank id names no ending, and a test comparing it against the one the author picked
+            // would match on the empty string.
+            if (typeof event.endingId !== "string" || event.endingId === "") {
+                return null;
+            }
+            return {
+                kind: "ending",
+                endingId: event.endingId,
+                name: typeof event.name === "string" ? event.name : "",
+            };
+        }
+        case "choice": {
+            if (!Array.isArray(event.options)) {
+                return null;
+            }
+            // A row with no readable index is dropped rather than renumbered: the index is the
+            // handle a caller picks by, and inventing one would send the game somewhere nobody named.
+            return { kind: "choice", options: event.options.flatMap(normalizeChoiceOption) };
+        }
         default:
             return null;
     }
+}
+
+function normalizeChoiceOption(raw: unknown): GameTestChoiceOption[] {
+    if (typeof raw !== "object" || raw === null) {
+        return [];
+    }
+    const option = raw as Record<string, unknown>;
+    if (typeof option.index !== "number" || !Number.isInteger(option.index) || option.index < 0) {
+        return [];
+    }
+    return [{
+        index: option.index,
+        text: typeof option.text === "string" ? option.text : "",
+        disabled: option.disabled === true,
+    }];
 }
 
 const LOG_LEVELS: readonly GameTestLogLevel[] = ["verbose", "info", "success", "warning", "error"];
@@ -341,6 +387,48 @@ export class GameTestManager {
         session.compileWorker?.kill();
         session.compileWorker = null;
         return this.enqueue(key, () => this.teardown(session));
+    }
+
+    /**
+     * Ask a live session's game to do something - start the story, advance, pick an option.
+     *
+     * Written on the socket the session already holds rather than on a fresh dial, which is the
+     * whole reason that socket is kept open: a per-command connect would cost a handshake per step
+     * of a playthrough, and the game answers a subscriber on the same connection anyway.
+     *
+     * Outside the per-project queue on purpose. Commands are sent *while* a game is running, and the
+     * queue is held for the length of a launch's artifact compile; queueing them would deliver a
+     * playthrough's moves after it had finished.
+     *
+     * Answers `false` rather than throwing when there is nothing to write to - a session that has
+     * already exited, or one whose game never opened its control channel. The caller is driving a
+     * process it does not own, and "the game is not listening" is a fact about the run rather than a
+     * programming error.
+     */
+    public sendCommand(projectPath: string, sessionId: string, command: GameTestCommand): boolean {
+        const session = this.sessions.get(this.projectKey(projectPath));
+        if (!session || session.id !== sessionId || session.stopRequested) {
+            return false;
+        }
+        const socket = session.control;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            return false;
+        }
+        try {
+            socket.send(JSON.stringify({
+                type: CONTROL_COMMAND_FRAME,
+                token: session.controlToken,
+                command,
+            }));
+            return true;
+        } catch (error) {
+            this.emitConsole(
+                session,
+                "warning",
+                `could not send ${command.kind} to the game: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            return false;
+        }
     }
 
     /**

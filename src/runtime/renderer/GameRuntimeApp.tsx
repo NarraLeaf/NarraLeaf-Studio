@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
@@ -11,7 +11,7 @@ import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRenderer
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
-import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
+import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
@@ -20,7 +20,7 @@ import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
-import { readRuntimeTestSignalReporter } from "../gameTestSignal";
+import { readRuntimeTestCommandSource, readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import type { WeatherBakeSpec } from "@shared/weather/model";
 import { weatherClipAssetId } from "@shared/weather/stage";
@@ -345,13 +345,14 @@ export function GameRuntimeApp() {
     );
     useEffect(() => pluginHost.bindShellEvents(), [pluginHost]);
     /**
-     * The engine reaching an ending, on its way out of the process.
+     * What the game witnesses, on its way out of the process.
      *
-     * `event:state.end` is already observed - the plugin host maps it to `gameEnd` and re-binds it
-     * for every relaunch and hot reload - but it had no exit from this renderer, so "does this game
-     * reach an ending" was unanswerable from outside. Riding the existing hub rather than binding
-     * the engine event a second time keeps one subscription per session and means a relaunch does
-     * not need remembering here.
+     * All three already exist on the plugin event hub - the host maps the engine's `event:state.end`
+     * to `gameEnd`, emits `endingReached` where an `/ending` row runs, and `choiceShown` where a
+     * menu registers its runtime - but none of them had an exit from this renderer, so "does this
+     * game reach *that* ending, and what was it offered on the way" was unanswerable from outside.
+     * Riding the existing hub rather than binding each source a second time keeps one subscription
+     * per session and means a relaunch does not need remembering here.
      *
      * Inert unless a test is watching: the reporter is absent on the web export and on any pack
      * with no control server, which is every shipped game.
@@ -362,10 +363,63 @@ export function GameRuntimeApp() {
         if (!report || !events) {
             return;
         }
-        return events.on("gameEnd", () => {
-            report({ kind: "game-end" });
-        });
+        const tokens = [
+            events.on("gameEnd", () => {
+                report({ kind: "game-end" });
+            }),
+            // Beside `gameEnd` rather than instead of it: a story that ends by running out of rows
+            // fires the first and not this, and a test that has to know *which* ending was reached
+            // can only read this one.
+            events.on("endingReached", ending => {
+                report({ kind: "ending", endingId: ending.endingId, name: ending.name });
+            }),
+            events.on("choiceShown", ({ options }) => {
+                report({ kind: "choice", options });
+            }),
+        ];
+        return () => {
+            for (const dispose of tokens) {
+                dispose();
+            }
+        };
     }, [bridge, pluginHost]);
+
+    /**
+     * The other direction: what a test asks this game to do.
+     *
+     * The handle is published by `GameApp` while it is mounted and withdrawn when it is not, so a
+     * command that arrives before the game app exists is refused here rather than queued - a queue
+     * would replay a Start into a session that has since been replaced. Refusals are logged and go
+     * no further: the socket was answered when the frame was understood, and what actually happened
+     * is told by the observations above.
+     */
+    const testControlsRef = useRef<GameAppTestControls | null>(null);
+    const onTestControlsChanged = useCallback((controls: GameAppTestControls | null) => {
+        testControlsRef.current = controls;
+    }, []);
+    useEffect(() => {
+        const subscribe = readRuntimeTestCommandSource(bridge);
+        if (!subscribe) {
+            return;
+        }
+        return subscribe(command => {
+            const controls = testControlsRef.current;
+            if (!controls) {
+                bridge?.log("warning", `[Runtime] test command "${command.kind}" arrived before the game was up`);
+                return;
+            }
+            const acted = command.kind === "start"
+                ? controls.startStory({ storyId: command.storyId, sceneId: command.sceneId })
+                : command.kind === "advance"
+                    ? controls.advance()
+                    : controls.choose(command.index);
+            // A command the game refuses is a real answer about the game, not a harness fault: the
+            // line says which one, and the test sees the observation it was waiting for never come.
+            void acted.catch((error: unknown) => {
+                bridge?.log("warning", `[Runtime] test command "${command.kind}" failed: ${normalizeError(error)}`);
+            });
+        });
+    }, [bridge]);
     // Before useRuntimePlugins' effect, which is what makes `available()` a real
     // answer by the time any plugin's setup() can ask: effects run in the order
     // their hooks were called, and this hook is declared above that one.
@@ -701,6 +755,7 @@ export function GameRuntimeApp() {
             renderFrame={renderFrame}
             renderPlaceholder={renderPlaceholder}
             pluginHost={pluginHost}
+            onTestControlsChanged={onTestControlsChanged}
         />
     );
 }

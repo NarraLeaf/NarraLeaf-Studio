@@ -34,6 +34,7 @@ import {
     type TestDefinition,
     type TestFinding,
     type TestFindingSeverity,
+    type TestGameCommand,
     type TestGameEvent,
     type TestGameExit,
     type TestGameHandle,
@@ -143,6 +144,7 @@ class HostedGameSession implements TestGameSession {
     public constructor(
         public readonly id: string,
         private readonly requestStop: (sessionId: string) => Promise<void>,
+        private readonly requestCommand: (sessionId: string, command: TestGameCommand) => Promise<boolean>,
     ) { }
 
     public accept(event: TestGameEvent): void {
@@ -170,6 +172,25 @@ class HostedGameSession implements TestGameSession {
         return () => {
             this.listeners.delete(listener);
         };
+    }
+
+    /**
+     * Drive the game, or answer `false` because there is nothing to drive.
+     *
+     * A session that has already exited is answered here rather than sent to main: the process is
+     * gone, and a test still stepping through one has to see that as a `false` it can act on rather
+     * than as a call that appeared to work.
+     */
+    public async sendCommand(command: TestGameCommand): Promise<boolean> {
+        if (this.exit) {
+            return false;
+        }
+        try {
+            return await this.requestCommand(this.id, command);
+        } catch (error) {
+            console.warn(`[TestRunService] sending ${command.kind} to game session ${this.id} failed`, error);
+            return false;
+        }
     }
 
     public waitForExit(): Promise<TestGameExit> {
@@ -348,6 +369,25 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
      * exist), and the picker is the only caller that opens often enough to care - it asks once per
      * open, which is exactly the contract `options` is documented under.
      */
+    /**
+     * Bring into memory whatever the parameter lists are drawn from, before the picker opens.
+     *
+     * `options(ctx)` is synchronous by contract, so a list built from the project can only report
+     * what is already loaded - and story documents load lazily, one per editor that opens one.
+     * Without this, a project nobody has browsed this session would offer a dropdown holding the
+     * endings of whichever story happened to be open, and grey the test out entirely if none was.
+     *
+     * Never rejects. A story that will not read is one story missing from a list, not a picker that
+     * refuses to open.
+     */
+    public async prepareParameterSources(): Promise<void> {
+        try {
+            await this.getContext().services.get<StoryService>(Services.Story).loadAllStories();
+        } catch (error) {
+            console.warn("[TestRunService] could not load the project's stories for the picker", error);
+        }
+    }
+
     public listParameters(id: TestId): ResolvedTestParameter[] {
         this.ensureBuiltInTestsRegistered();
         const registered = testRegistry.get(id);
@@ -667,7 +707,11 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
                 throw new Error(`Could not launch a game for the test: ${result.data.reason}`);
             }
 
-            const session = new HostedGameSession(result.data.sessionId, sessionId => this.stopSession(sessionId));
+            const session = new HostedGameSession(
+                result.data.sessionId,
+                sessionId => this.stopSession(sessionId),
+                (sessionId, command) => this.sendSessionCommand(sessionId, command),
+            );
             if (this.active !== active) {
                 // The run ended while the launch was in flight (a cancel, most likely). Do not hand
                 // back a window nothing will ever close.
@@ -686,6 +730,17 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         } finally {
             active.launching = false;
         }
+    }
+
+    /**
+     * Hand one command to main, and report only whether it reached the game.
+     *
+     * A refused IPC call is `false` rather than a throw: the caller is stepping a process it does
+     * not own, and "the game is not listening" is the same fact whichever side noticed it.
+     */
+    private async sendSessionCommand(sessionId: string, command: TestGameCommand): Promise<boolean> {
+        const result = await getInterface().gameTest.sendCommand(this.projectPath(), sessionId, command);
+        return result.success && result.data.delivered;
     }
 
     private async stopSession(sessionId: string): Promise<void> {
