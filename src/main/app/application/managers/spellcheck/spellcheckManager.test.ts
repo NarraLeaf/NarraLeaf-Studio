@@ -181,6 +181,33 @@ describe("SpellcheckManager", () => {
         expect((await spellcheck.check(windowA, "aleth", "en-GB")).ranges).toEqual([]);
     });
 
+    it("does not mark a contraction, though the word list holds none", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+
+        // The shipped list is built from a SCOWL merge that left the contractions out: 24,619 of its
+        // apostrophe forms are possessives and not one is a contraction, so every line of dialogue
+        // came back underlined. `WORDS` above is the same shape - it holds `fox`, and nothing that
+        // `fox` can be written with an apostrophe as.
+        const text = "The fox'll met the fox's brown fox, and the foxn't fox'd fox've";
+        expect((await spellcheck.check(windowA, text, "en-GB")).ranges.map(range => range.word))
+            .toEqual(["and"]);
+
+        // What is still wrong is still marked: no apostrophe, and an apostrophe in the wrong place.
+        expect((await spellcheck.check(windowA, "the'xe", "en-GB")).ranges.map(range => range.word))
+            .toEqual(["the'xe"]);
+    });
+
+    it("accepts the possessive of a name the project taught it", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+
+        expect((await spellcheck.check(windowA, "Elysia's fox", "en-GB")).ranges).toEqual([]);
+        // And a name it was never taught still is not a word, possessive or not.
+        expect((await spellcheck.check(windowA, "Brannoc's fox", "en-GB")).ranges.map(range => range.word))
+            .toEqual(["Brannoc's"]);
+    });
+
     it("holds one project's words against one window only", async () => {
         const spellcheck = manager();
         await spellcheck.download("en-GB");
