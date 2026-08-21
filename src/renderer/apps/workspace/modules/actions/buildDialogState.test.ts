@@ -52,7 +52,6 @@ describe("initialDialogState", () => {
             formats: { macos: ["dmg"], windows: ["nsis"] },
             archs: {},
             outputDir: "",
-            compression: "maximum",
             openWhenDone: true,
         };
         const targets = stateToRequest(initialDialogState(stored, "windows", "x64")).targets;
@@ -73,7 +72,6 @@ describe("initialDialogState", () => {
             formats: { macos: ["dmg"] },
             archs: { macos: "universal" },
             outputDir: "",
-            compression: "maximum",
             openWhenDone: true,
         };
         expect(initialDialogState(stored, "macos", "arm64").archs.macos).toBe("universal");
@@ -85,7 +83,6 @@ describe("initialDialogState", () => {
             formats: { web: ["zip"] },
             archs: {},
             outputDir: "",
-            compression: "maximum",
             openWhenDone: true,
         };
         const targets = stateToRequest(initialDialogState(stored, "windows", "x64")).targets;
@@ -135,7 +132,7 @@ describe("draft round trip", () => {
     it("restores the exact selection a parked draft held", () => {
         let state = initialDialogState(null, "macos", "arm64");
         state = togglePlatform(state, "windows", true);
-        state = { ...state, archs: { ...state.archs, windows: "arm64" }, compression: "store", openWhenDone: false };
+        state = { ...state, archs: { ...state.archs, windows: "arm64" }, openWhenDone: false };
         const restored = stateFromRequest(stateToRequest(state), "macos", "arm64");
         expect(stateToRequest(restored)).toEqual(stateToRequest(state));
     });
@@ -152,7 +149,7 @@ describe("requestToBuildConfiguration", () => {
 
     it("round trips back through initialDialogState", () => {
         let state = initialDialogState(null, "macos", "arm64");
-        state = { ...state, compression: "store", openWhenDone: false, outputDir: "/tmp/out" };
+        state = { ...state, openWhenDone: false, outputDir: "/tmp/out" };
         const config = requestToBuildConfiguration(stateToRequest(state));
         const reopened = initialDialogState(config, "macos", "arm64");
         expect(stateToRequest(reopened)).toEqual(stateToRequest(state));

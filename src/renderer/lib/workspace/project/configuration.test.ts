@@ -27,7 +27,6 @@ describe("normalizeBuildConfiguration", () => {
             },
             archs: {},
             outputDir: "/tmp/out",
-            compression: "maximum",
             openWhenDone: true,
         });
     });
@@ -45,7 +44,6 @@ describe("normalizeBuildConfiguration", () => {
             formats: { windows: ["nsis"] },
             archs: {},
             outputDir: "",
-            compression: "maximum",
             openWhenDone: true,
         });
     });
@@ -80,8 +78,8 @@ describe("normalizeBuildConfiguration", () => {
         expect(result?.outputDir).toBe("");
     });
 
-    // Projects built before arch/compression/openWhenDone existed have none of
-    // these keys; each must fall back to what that build already did.
+    // Projects built before arch/openWhenDone existed have neither key; each must
+    // fall back to what that build already did.
     it("falls back for a selection stored before the new fields existed", () => {
         const result = normalizeBuildConfiguration({
             platforms: ["windows"],
@@ -89,7 +87,6 @@ describe("normalizeBuildConfiguration", () => {
             outputDir: "/tmp/out",
         });
         expect(result?.archs).toEqual({});
-        expect(result?.compression).toBe("maximum");
         expect(result?.openWhenDone).toBe(true);
     });
 
@@ -112,23 +109,17 @@ describe("normalizeBuildConfiguration", () => {
         expect(result?.archs).toEqual({});
     });
 
-    it("drops a junk compression level", () => {
+    it("keeps openWhenDone, and carries no compression level forward", () => {
         const result = normalizeBuildConfiguration({
             platforms: ["linux"],
             formats: { linux: ["appimage"] },
-            compression: "ultra",
-        });
-        expect(result?.compression).toBe("maximum");
-    });
-
-    it("keeps a valid stored compression and openWhenDone", () => {
-        const result = normalizeBuildConfiguration({
-            platforms: ["linux"],
-            formats: { linux: ["appimage"] },
+            // Written by a Studio that let the author pick a level. Every build takes
+            // the smallest artifact now, so the key is read by nothing and does not
+            // survive the next write.
             compression: "store",
             openWhenDone: false,
         });
-        expect(result?.compression).toBe("store");
+        expect(result).not.toHaveProperty("compression");
         expect(result?.openWhenDone).toBe(false);
     });
 });

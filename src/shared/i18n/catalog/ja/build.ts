@@ -218,10 +218,6 @@ export const build = {
         artifacts: "成果物",
         artifactsEmpty: "作られるファイルを見るには対象を選ぶ",
         openWhenDone: "終わったら出力フォルダを開く",
-        compression: "圧縮",
-        compressionMaximum: "最大（最小サイズ）",
-        compressionNormal: "標準",
-        compressionStore: "なし（最速）",
     },
     /**
      * ビルドが終わったあと、成果物の一覧の下に出す大きさの読み。数字そのものは訳さない。

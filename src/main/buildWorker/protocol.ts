@@ -1,6 +1,5 @@
 import type {
     GameBuildArch,
-    GameBuildCompression,
     GameBuildDesktopPlatform,
     GameBuildFormat,
 } from "@shared/types/gameBuild";
@@ -365,8 +364,6 @@ export type GameBuildWorkerConfig = {
      * a player is meant to read cannot live inside an archive. Unset when the project has none.
      */
     copyrightFile?: string;
-    /** Payload compression; unset uses electron-builder's default ("maximum"). */
-    compression?: GameBuildCompression;
     /** Download mirror for Electron dists (cross builds); empty = official. */
     electronMirror?: string;
     /**
