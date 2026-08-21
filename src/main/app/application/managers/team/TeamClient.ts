@@ -186,7 +186,13 @@ export class TeamClient {
 
     private dropped(closed: TeamSocketClosed): void {
         this.socket = null;
-        this.hello = null;
+        // **What the server said it serves is kept.** A dropped socket does not un-say
+        // it: the capabilities describe the deployment, and the state describes the
+        // connection. Clearing them made every screen drawn from a capability vanish the
+        // moment a server restarted, which reads as "this server never offered that"
+        // rather than "it is not answering just now" - measured on a real one, and it
+        // took the whole conversations section off the page. A new opening frame replaces
+        // this, so a server that really has changed corrects itself on reconnect.
 
         // Every call still waiting was asked of a session that no longer exists. Failing
         // them now is what stops a screen spinning until its own timeout.

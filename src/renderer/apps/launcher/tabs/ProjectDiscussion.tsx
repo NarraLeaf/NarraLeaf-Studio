@@ -37,13 +37,26 @@ export interface ProjectDiscussionProps {
 
 export function ProjectDiscussion({ remoteOrigin, projectId }: ProjectDiscussionProps) {
     const connection = useTeamConnection(remoteOrigin);
+    // What the server said it serves, which it goes on having said while the session is
+    // down - see `TeamClient.dropped`. A section that disappeared when a server restarted
+    // would be saying "this deployment does not do that", which is a different thing.
     if (!connection.capabilities.includes("comments")) {
         return null;
     }
-    return <Discussion remoteOrigin={remoteOrigin} projectId={projectId} />;
+    return (
+        <Discussion
+            remoteOrigin={remoteOrigin}
+            projectId={projectId}
+            settled={connection.state === "ready" || connection.state === "offline"}
+        />
+    );
 }
 
-function Discussion({ remoteOrigin, projectId }: ProjectDiscussionProps) {
+function Discussion({
+    remoteOrigin,
+    projectId,
+    settled,
+}: ProjectDiscussionProps & { settled: boolean }) {
     const { t } = useTranslation();
     const [draft, setDraft] = useState("");
     const [busy, setBusy] = useState(false);
@@ -54,9 +67,16 @@ function Discussion({ remoteOrigin, projectId }: ProjectDiscussionProps) {
         [remoteOrigin, projectId],
     );
     const topics = useMemo(() => [teamProjectThreadsTopic(projectId)], [projectId]);
-    const { value, refresh } = useTeamTopics(remoteOrigin, topics, read);
+    const { value, problem, refresh } = useTeamTopics(remoteOrigin, topics, read);
 
-    const threads = value?.ok === true ? value.value.threads : [];
+    // The last answer that worked, which stays on screen while the server is not
+    // answering. What a reader is shown is what was true, plus a line saying it could not
+    // be refreshed - never the empty state, which means something else entirely.
+    const threads = value?.threads ?? [];
+    // Said once the connection has settled either way, so that the moment between opening
+    // a session and its first answer does not claim anything. A list that is on screen
+    // stays on screen beside it: what was read was true, and it is only out of date.
+    const unread = problem !== null && settled;
 
     const add = async (): Promise<void> => {
         const body = draft.trim();
@@ -90,7 +110,7 @@ function Discussion({ remoteOrigin, projectId }: ProjectDiscussionProps) {
         <section className="mt-4" data-project-discussion>
             <FieldLabel as="div">{t("launcher.servers.discussion.title")}</FieldLabel>
 
-            {threads.length === 0 && (
+            {!unread && threads.length === 0 && (
                 <p className="text-xs text-fg-subtle">{t("launcher.servers.discussion.empty")}</p>
             )}
 
@@ -105,6 +125,12 @@ function Discussion({ remoteOrigin, projectId }: ProjectDiscussionProps) {
                         />
                     ))}
                 </ul>
+            )}
+
+            {unread && (
+                <p className="mt-1 text-xs text-fg-subtle" data-discussion-unread>
+                    {t("launcher.servers.discussion.unavailable")}
+                </p>
             )}
 
             <div className="mt-2 flex items-center gap-2">

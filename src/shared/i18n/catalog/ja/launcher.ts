@@ -160,6 +160,7 @@ export const launcher = {
             reopen: "再度開く",
             resolved: "解決済み",
             failed: "メモを送信できませんでした。",
+            unavailable: "このプロジェクトのディスカッションを読み取れません。",
         },
         forget: {
             action: "このサーバーから取り除く",
