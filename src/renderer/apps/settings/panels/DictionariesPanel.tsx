@@ -88,7 +88,7 @@ export function DictionariesPanel() {
         .filter(row => !row.installed || digests.get(row.entry.code) !== row.entry.sha256);
 
     return (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3" data-help-topic="spellcheck">
             <SectionCard title={t("settings.dictionaries.installed.title")} bodyClassName="p-2">
                 {installed === null ? (
                     <p className="px-1 py-1 text-xs text-fg-subtle">{t("settings.dictionaries.loading")}</p>

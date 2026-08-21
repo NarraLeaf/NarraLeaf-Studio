@@ -1,6 +1,8 @@
 import {
     SCREEN_EFFECT_QUALITY_DEFAULT,
     SCREEN_EFFECT_QUALITY_KEY,
+    SCREEN_EFFECT_THREADS_KEY,
+    screenEffectThreadsOf,
 } from "@shared/constants/screenEffects";
 import { WEATHER_BAKE_QUALITIES, type WeatherBakeQuality } from "@shared/weather/model";
 
@@ -27,4 +29,18 @@ export function devModeScreenEffectQuality(app: ScreenEffectQualityHost): Weathe
     return WEATHER_BAKE_QUALITIES.includes(stored as WeatherBakeQuality)
         ? stored as WeatherBakeQuality
         : SCREEN_EFFECT_QUALITY_DEFAULT;
+}
+
+/**
+ * How many threads a bake may draw on, or `null` for "read the machine".
+ *
+ * Every bake asks - Dev Mode, preview and build alike - which is the difference between this and the
+ * quality above: the quality decides what the file IS and so may only be relaxed for the copy nobody
+ * ships, while this decides only how the machine is spent getting there.
+ *
+ * A stored value that is not one of the stops is treated as absent, for the same reason as above: it
+ * reaches a thread count and a worker's argument list, and global state is a file on disk.
+ */
+export function screenEffectBakeThreads(app: ScreenEffectQualityHost): number | null {
+    return screenEffectThreadsOf(app.globalState.get(SCREEN_EFFECT_THREADS_KEY));
 }

@@ -7,7 +7,7 @@ import {
     type WeatherBakeHandle,
     type WeatherFrameSequence,
 } from "@/app/application/managers/weather/weatherBake";
-import { createWeatherRenderPool, WEATHER_RENDER_THREAD_DATA } from "./weatherRenderPool";
+import { createWeatherRenderPool, resolveWeatherRenderThreads, WEATHER_RENDER_THREAD_DATA } from "./weatherRenderPool";
 import type { WeatherWorkerInboundMessage, WeatherWorkerOutboundMessage } from "./weatherWorkerProtocol";
 
 /**
@@ -76,7 +76,7 @@ function runBakeHost(): void {
         }
         handle = startWeatherBake(message.binaryPath, message.spec, message.targetPath, {
             quality: message.quality,
-            frameSource: frameSourceFor(message.spec),
+            frameSource: frameSourceFor(message.spec, message.threads),
             onProgress: progress => send({ type: "progress", frames: progress.frames, total: progress.total }),
         });
         if (cancelled) {
@@ -105,9 +105,11 @@ function runBakeHost(): void {
  * every bake, and a clip drawn slowly is worth immeasurably more than no clip at all. It says so on
  * stderr, which the manager already forwards to the log.
  */
-function frameSourceFor(spec: WeatherBakeSpec): WeatherFrameSequence {
+function frameSourceFor(spec: WeatherBakeSpec, threads: number | null): WeatherFrameSequence {
     try {
-        return createWeatherRenderPool(spec);
+        // Resolved here rather than inside the pool so the clamps - memory, cores, the clip's own
+        // length - are applied to the author's choice exactly once, where the choice arrives.
+        return createWeatherRenderPool(spec, { threads: resolveWeatherRenderThreads(spec, threads) });
     } catch (error) {
         process.stderr.write(
             `[WeatherBake] drawing this clip on one thread: ${error instanceof Error ? error.message : String(error)}\n`,
