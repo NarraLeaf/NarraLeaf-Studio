@@ -36,7 +36,6 @@ import {
     isDesktopBuildPlatform,
     normalizeGameBuildArch,
     type GameBuildArch,
-    type GameBuildCompression,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildPlatform,
@@ -269,19 +268,9 @@ export type BuildConfiguration = {
     archs: Partial<Record<GameBuildDesktopPlatform, GameBuildArch>>;
     /** Absolute output directory chosen last time; empty means the default. */
     outputDir: string;
-    compression: GameBuildCompression;
     /** Reveal the output folder when a build finishes. */
     openWhenDone: boolean;
 };
-
-/** Compression levels offered, in display order (slowest/smallest first). */
-export const BUILD_COMPRESSIONS: GameBuildCompression[] = ["maximum", "normal", "store"];
-
-/**
- * electron-builder's own default compression, and the level every build used
- * before the setting existed.
- */
-export const DEFAULT_BUILD_COMPRESSION: GameBuildCompression = "maximum";
 
 /**
  * Which signing credential the project uses for each platform, by credential
@@ -636,8 +625,10 @@ export function normalizeBuildConfiguration(value: unknown): BuildConfiguration 
     if (platforms.length === 0) {
         return null;
     }
-    // Projects built before arch/compression/openWhenDone existed have none of
-    // these keys; each falls back to the behaviour that build would have had.
+    // Projects built before arch/openWhenDone existed have neither key; each falls
+    // back to the behaviour that build would have had. A stored compression level
+    // is read by nothing and dropped on the next write: every build takes the
+    // smallest artifact now, and that was never a choice a player could notice.
     const rawArchs = (record.archs && typeof record.archs === "object")
         ? record.archs as Record<string, unknown>
         : {};
@@ -658,7 +649,6 @@ export function normalizeBuildConfiguration(value: unknown): BuildConfiguration 
         formats,
         archs,
         outputDir: typeof record.outputDir === "string" ? record.outputDir.trim() : "",
-        compression: BUILD_COMPRESSIONS.find(level => level === record.compression) ?? DEFAULT_BUILD_COMPRESSION,
         openWhenDone: typeof record.openWhenDone === "boolean" ? record.openWhenDone : true,
     };
 }

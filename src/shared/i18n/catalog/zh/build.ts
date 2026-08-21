@@ -216,10 +216,6 @@ export const build = {
         artifacts: "产物",
         artifactsEmpty: "选择一个目标后这里会列出产物",
         openWhenDone: "构建完成后打开输出目录",
-        compression: "压缩",
-        compressionMaximum: "最大（体积最小）",
-        compressionNormal: "标准",
-        compressionStore: "不压缩（最快）",
     },
     // 构建完成后打印在产物清单下方的体积读数。数字本身不翻译：共用的字节格式化在所有语言里
     // 都是同样那几个字母，这里只放数字周围的词。

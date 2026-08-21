@@ -222,10 +222,6 @@ export const build = {
         artifacts: "Artifacts",
         artifactsEmpty: "Select a target to list the files it produces.",
         openWhenDone: "Open the output folder when done",
-        compression: "Compression",
-        compressionMaximum: "Maximum (smallest)",
-        compressionNormal: "Normal",
-        compressionStore: "None (fastest)",
     },
     /**
      * What a finished build came to on disk, printed under the list of artifacts in the console.

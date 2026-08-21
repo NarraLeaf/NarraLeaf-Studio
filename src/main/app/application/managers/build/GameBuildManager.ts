@@ -1545,7 +1545,6 @@ export class GameBuildManager {
             electronVersion: process.versions.electron,
             ...(identity.copyright ? { copyright: identity.copyright } : {}),
             ...(copyrightFile ? { copyrightFile } : {}),
-            ...(request.compression ? { compression: request.compression } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
             asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
