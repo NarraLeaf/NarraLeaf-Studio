@@ -101,6 +101,8 @@ export type NarralangIssueReason =
     | "effectProps"
     /** An id that resolves to no name - the text has nothing to call it by. */
     | "unresolvedRef"
+    /** An ending row that names its own page. The script form carries the name and nothing else. */
+    | "endingPage"
     /** A payload shape this extractor does not know. Defensive: a new action kind lands here first. */
     | "unknownPayload";
 
@@ -1220,6 +1222,15 @@ function controlShape(ctx: NarralangExtractContext, block: StoryBlock, payload: 
                 return { form: "statement", verb: "cut", slots: {} };
             }
             return { form: "statement", verb: "cut", slots: { variant: asName(name) } };
+        }
+        case "ending": {
+            // The name round trips; the page does not. Reported rather than dropped, on the same
+            // terms as a custom transform: a script written back into the scene would otherwise put
+            // this ending back on the project's page with nothing having said so.
+            if (payload.page) {
+                ctx.report(block.id, "endingPage");
+            }
+            return { form: "statement", verb: "ending", slots: { ending: asName(payload.name) } };
         }
         default:
             ctx.report(block.id, "unknownPayload");

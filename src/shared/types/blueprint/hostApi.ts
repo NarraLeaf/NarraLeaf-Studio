@@ -74,6 +74,20 @@ export const BLUEPRINT_GAME_TEXT_READ_STATE_KEY = "game.dialog.textRead" as cons
 export const BLUEPRINT_TEXT_READ_PERSISTENCE_KEY = "nlr.textRead" as const;
 
 /**
+ * Project-persistence key holding the ids of the endings the player has reached (string[]).
+ *
+ * The **project** store, not the save file, and that is the whole decision. An endings screen exists
+ * to say what this player has ever seen: a record kept inside a save would rewind the moment they
+ * loaded an earlier one, so a gallery would lock entries back up in front of them and a "5 of 8"
+ * count would go down. The visited record next door (`__nlr_story_visited__`) is deliberately the
+ * other way round, because it answers a different question - "have I been down this route in *this*
+ * playthrough" - and has to rewind.
+ *
+ * Ids are `ending` rows' block ids, so renaming an ending keeps every unlock.
+ */
+export const BLUEPRINT_ENDINGS_PERSISTENCE_KEY = "nlr.endings" as const;
+
+/**
  * Project-persistence key holding the title's total playtime in seconds (number).
  *
  * Title-level rather than per-save, so it is deliberately outside every save file: loading an old

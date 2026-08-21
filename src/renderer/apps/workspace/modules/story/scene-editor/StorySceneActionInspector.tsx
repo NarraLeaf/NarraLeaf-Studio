@@ -9,6 +9,7 @@ import type {
     StoryDeclarationPayload,
     StoryDocument,
     StoryDisplayableTargetKind,
+    StoryEndingPage,
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
@@ -54,6 +55,7 @@ import {
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
+import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
@@ -2926,6 +2928,9 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     if (props.payload.control === "cut") {
         return <CutPointFields payload={props.payload} onChange={props.onChange} />;
     }
+    if (props.payload.control === "ending") {
+        return <EndingFields payload={props.payload} onChange={props.onChange} />;
+    }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
         const isRepeat = groupPayload.control === "repeat";
@@ -3073,6 +3078,82 @@ function CutPointFields(props: {
             <div className="text-2xs text-fg-subtle">{t("storyInspector.control.cutHint")}</div>
         </div>
     );
+}
+
+/**
+ * The two values an ending row carries: its name, and the page the player lands on.
+ *
+ * The page is three-valued and the select says so in words, because the two non-inheriting answers
+ * are real decisions an author makes for one ending and not for the others - a bad end that simply
+ * stops on its last frame is a choice, not an unset field. The stored shape is a discriminated union
+ * for exactly that reason (see `StoryEndingPage`), so nothing downstream has to guess which falsy
+ * value meant which.
+ *
+ * A page this project no longer has stays selectable rather than being silently dropped: switching
+ * rows must not rewrite a value, and an author renaming pages needs to see which ending still points
+ * at the one they deleted.
+ */
+function EndingFields(props: {
+    payload: Extract<StoryControlPayload, { control: "ending" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const surfaces = useProjectSurfaces();
+    const page = props.payload.page;
+    const selected = !page
+        ? ENDING_PAGE_INHERIT
+        : page.kind === "none"
+            ? ENDING_PAGE_NONE
+            : `${ENDING_PAGE_SURFACE_PREFIX}${page.surfaceId}`;
+
+    const options = useMemo<SelectOption[]>(() => {
+        const known = surfaces.map(surface => ({
+            value: `${ENDING_PAGE_SURFACE_PREFIX}${surface.id}`,
+            label: surface.name,
+        }));
+        const missing = page?.kind === "surface" && !surfaces.some(surface => surface.id === page.surfaceId)
+            ? [{ value: selected, label: page.surfaceId }]
+            : [];
+        return [
+            { value: ENDING_PAGE_INHERIT, label: t("storyInspector.control.endingPageInherit") },
+            { value: ENDING_PAGE_NONE, label: t("storyInspector.control.endingPageNone") },
+            ...known,
+            ...missing,
+        ];
+    }, [page, selected, surfaces, t]);
+
+    return (
+        <div className="flex max-w-sm flex-col gap-2">
+            <TextField
+                label={t("storyInspector.control.endingName")}
+                value={props.payload.name}
+                onChange={name => props.onChange({ ...props.payload, name })}
+            />
+            <SelectField
+                label={t("storyInspector.control.endingPage")}
+                options={options}
+                value={selected}
+                onChange={next => props.onChange({ ...props.payload, page: parseEndingPageOption(String(next)) })}
+            />
+        </div>
+    );
+}
+
+/** The select's own vocabulary. Prefixed so a page id can never collide with either sentinel. */
+const ENDING_PAGE_INHERIT = "inherit";
+const ENDING_PAGE_NONE = "none";
+const ENDING_PAGE_SURFACE_PREFIX = "surface:";
+
+function parseEndingPageOption(value: string): StoryEndingPage | undefined {
+    if (value === ENDING_PAGE_NONE) {
+        return { kind: "none" };
+    }
+    if (value.startsWith(ENDING_PAGE_SURFACE_PREFIX)) {
+        return { kind: "surface", surfaceId: value.slice(ENDING_PAGE_SURFACE_PREFIX.length) };
+    }
+    // Undefined, not a `{kind:"inherit"}` arm: absence is what "the build decides" is stored as, and
+    // a third arm would be a second spelling of it.
+    return undefined;
 }
 
 function TextSegmentEditor(props: {

@@ -103,6 +103,7 @@ const STORY_ROW_FACET_BY_BADGE: Record<StoryBlockBadgeId, StoryRowFacetId> = {
     goto: "flow",
     break: "flow",
     cut: "flow",
+    ending: "flow",
     variable: "data",
     declaration: "data",
     blueprint: "utils",

@@ -133,6 +133,18 @@ export const lint = {
             description: "该行比较的构建变体在工程中不存在",
             message: "工程中没有名为「{name}」的构建变体，该行不会进入任何构建",
         },
+        storyRowsAfterEnding: {
+            title: "结局之后的行",
+            description: "写在同一层 /ending 行之后、永远不会播放的行",
+            // 说的是结果而不是错误：这些行已经不在构建里了，作者要先知道这一点。
+            message: "该行位于结局之后，永远不会播放。可移到结局之前，或删除",
+        },
+        storyEndingNameDuplicate: {
+            title: "同名的两个结局",
+            description: "多个结局使用了同一个显示名称",
+            // 说清楚它显示在哪里，因为剧情本身没有任何问题。
+            message: "另有一个结局同样叫「{name}」。列出结局的界面会出现两次同一个名称",
+        },
         storyCutPointOrphan: {
             title: "没有对应变体的截断点",
             description: "工程中没有构建变体时写下的截断点",

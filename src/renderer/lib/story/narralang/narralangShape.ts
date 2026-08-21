@@ -142,7 +142,8 @@ export type NarralangVerb =
     | "label"
     | "goto"
     | "break"
-    | "cut";
+    | "cut"
+    | "ending";
 
 // --- Slots ----------------------------------------------------------------------------------------
 
@@ -169,6 +170,7 @@ export type NarralangSlot =
     | "layer"
     | "scene"
     | "label"
+    | "ending"
     | "variant"
     | "motion"
     | "mask"
