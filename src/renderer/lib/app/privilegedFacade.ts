@@ -3,7 +3,7 @@ import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { RequestStatus } from "@shared/types/ipcEvents";
 import type { PluginIdentity, PluginPermissionRequest, PluginPermissionPromptResult } from "@shared/types/pluginPermissions";
-import type { PrivilegedBashExecuteResult } from "@shared/types/privileged";
+import type { PrivilegedBashExecuteResult, PrivilegedWriteBatchEntry } from "@shared/types/privileged";
 import { getPrivilegedInterface } from "./bridge";
 import {
     createPluginFacadeToken,
@@ -92,6 +92,20 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
                 refuseFrozenWrite(path)
                     ? frozenRejection(path)
                     : privileged().fs.requestWriteRaw(actor(), path),
+            /**
+             * One grant for N files. Refused whole when the latch objects to *any* of them: like the
+             * two verbs above there is no URL that writes nothing, and a batch that quietly dropped
+             * its frozen members would report the rest as a complete write.
+             *
+             * `BaseFileSystemService.writeBatch` sifts frozen paths out before it gets here, so the
+             * whole-batch refusal is the backstop for direct callers, plugins included.
+             */
+            requestWriteBatch: (entries: PrivilegedWriteBatchEntry[]): Promise<RequestStatus<FsRequestResult<string>>> => {
+                const frozen = entries.find(entry => refuseFrozenWrite(entry.path));
+                return frozen
+                    ? frozenRejection(frozen.path)
+                    : privileged().fs.requestWriteBatch(actor(), entries);
+            },
             ensureRegularFile: (path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>> =>
                 refuseFrozenWrite(path)
                     ? frozenNoOp()
