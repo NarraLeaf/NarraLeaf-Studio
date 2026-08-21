@@ -139,6 +139,13 @@ app.whenReady().then(async () => {
                 app.logger.warn("[Vcs] Failed to release session on window close", error);
             });
         }
+        // A launch that went straight into a project keeps the home screen hidden behind it, and
+        // relies on the workspace reporting how its load went to decide what happens to it. A
+        // workspace that goes away without ever answering - a renderer that crashed on load, a
+        // window closed by its own error handling - would leave that hidden launcher as the only
+        // window there is, which on screen is indistinguishable from Studio having died on launch.
+        app.revealLauncherIfNothingElseIsUp();
+
         if (!app.windowManager.hasWindows()) {
             app.handleLastWindowClosed();
         }
