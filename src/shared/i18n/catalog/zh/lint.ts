@@ -326,6 +326,7 @@ export const lint = {
             messageMore: "另有 {count} 个字符工程字体画不出",
             messageMoreInLanguage: "{language}中另有 {count} 个字符工程字体画不出",
             messageUnreadable: "{font} 读不出来，未检查字形覆盖",
+            messageUnloadable: "{font} 是多字体合集文件，游戏无法使用",
         },
         typographyLocaleNoFont: {
             title: "语言没有字体",
