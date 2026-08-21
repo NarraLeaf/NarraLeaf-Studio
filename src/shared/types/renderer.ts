@@ -400,7 +400,7 @@ export interface RendererPreloadedInterface {
         pickBackgroundImage(): Promise<RequestStatus<{ file: string | null }>>;
         /** Read a stored background image's bytes (basename lookup only). */
         readBackgroundImage(file: string): Promise<RequestStatus<{ data: Uint8Array | null }>>;
-        launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{ created: boolean; projectPath: string } | null>>;
+        launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<WindowCloseResults[WindowAppType.ProjectWizard]>>;
         /**
          * Ask the author whether a server is trusted, and answer with what the machine
          * believes afterwards.
@@ -924,17 +924,12 @@ export interface RendererPreloadedInterface {
             username: string,
             password: string,
         ): Promise<RequestStatus<VcsPasswordSignInOutcome>>;
-        /** Ask a server to make a project. **Goes to the network, and writes there.** */
-        createServerProject(
-            remoteOrigin: string,
-            name: string,
-            description?: string,
-        ): Promise<RequestStatus<VcsServerProjectOutcome>>;
         /**
          * Put this project on a server: register it, connect it, send it.
          *
-         * **Goes to the network, and writes on both ends.** The opposite act to the one
-         * above, which makes a new and empty repository.
+         * **Goes to the network, and writes on both ends.** It is the only way a project
+         * reaches a server: a repository made there and never filled is one that cannot be
+         * fetched, so Studio writes the project first and registers what it wrote.
          */
         publishProject(
             projectPath: string,

@@ -25,6 +25,10 @@ export const wizard = {
         source: "Address",
         clone: "Clone",
         import: "Import",
+        // The first page's label for a project being made for a server. The origin is
+        // settled by what opened the window, so the column that page is otherwise named
+        // after is not on it, and what is left is what the project is made from.
+        template: "Template",
     },
     nav: {
         createProject: "Create Project",
@@ -160,6 +164,9 @@ export const wizard = {
     review: {
         template: "Template",
         notSpecified: "Not specified",
+        // Replaces the version-control row for a project being made for a server: sending a
+        // project is what puts it under version control, so both rows would be one answer.
+        server: "Server",
     },
     // User-facing errors surfaced by the wizard validation/creation services.
     validation: {
