@@ -20,7 +20,7 @@ import {isJsonObject, parameterFromPath, requireDocumentObject} from "./parseHel
  * independent additions**, not a conflict. Nothing here aligns anything positionally, so nothing
  * here can decide that two unrelated imports touched the same thing.
  *
- * **Read-side only, like the story spec.** `AssetsService.writeAssetsMetadata` still owns writing
+ * **Read-side only, as the story spec used to be.** `AssetsService.writeAssetsMetadata` still owns writing
  * (`AssetsService.ts:551`, `JSON.stringify` with no indent), and the asset services still carry
  * unaudited `undefined` assignments (`RemoteAssetsManager.ts:38`
  * and `LocalAssetsManager.ts:283`), which the canonical encoder rejects by name. So `serialize`
@@ -92,7 +92,7 @@ export const assetsMetadataSpec = defineDocumentSpec<AssetsMetadataShard>({
         }
         return {type, assets};
     },
-    /** Refused for the same reason the story spec refuses; see the note at the top of this module. */
+    /** Refused; see the note at the top of this module for what has to land before it can write. */
     serialize: () => {
         throw new Error(
             "The assets-metadata spec is read-only in this build: AssetsService owns writing the shard, "

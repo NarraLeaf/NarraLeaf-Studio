@@ -28,8 +28,10 @@ import {countConflicts, KeyedMergeRow, mergeKeyed} from "./mergeHelpers";
  *    back to being taken from one side. See {@link StoryMergeRefusalReason}.
  *
  * Pure, total, and non-mutating, per the `DocumentSpec.merge3` contract - it runs in the main
- * process, where one throw takes out the entire change list. Every field is read defensively:
- * `storySpec.parse` does not migrate, so these documents may predate anything named here.
+ * process, where one throw takes out the entire change list. Every field is still read defensively
+ * even though `storySpec.parse` now migrates and normalizes both sides before they reach here: this
+ * function is exported and called directly with hand-built documents, and a defensive read costs
+ * nothing.
  */
 
 /**
@@ -44,8 +46,14 @@ import {countConflicts, KeyedMergeRow, mergeKeyed} from "./mergeHelpers";
  *    `blocks` unreferenced, i.e. present in the file and invisible in the editor.
  *  - `schema-version-split` - the two sides are at different story schema versions. Merging them by
  *    id yields a document whose rows are half one schema and half another, stamped with one version
- *    number, and nothing downstream would ever be told. The older side migrates on open; taking one
- *    side whole is the only answer that keeps a document self-consistent.
+ *    number, and nothing downstream would ever be told.
+ *
+ *    **Unreachable through `storySpec` now, and kept anyway.** `parse` runs the schema ladder on
+ *    every side and asserts the result is at the current version, so two sides that arrive here
+ *    through the spec are always at the same one - and a v18 partner's document merges against a
+ *    v20 one row by row, because both were fully migrated first. The premise dissolved rather than
+ *    being bypassed. The guard stays because this function is exported and callable directly, and
+ *    because it costs one comparison to keep the refusal honest for a caller that skips the spec.
  */
 export type StoryMergeRefusalReason =
     | "scene-restructured"
