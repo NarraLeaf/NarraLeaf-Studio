@@ -383,7 +383,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // `.nl-reduce-motion` class on the root element neutralizes CSS transitions and
         // animations (styles.css), and the MotionConfig in `lib/renderApp` does the same for
         // framer-motion, which animates from JS where no CSS rule applies. Game content — the
-        // story preview's stage, Dev Mode — is exempt from both.
+        // story preview's stage, the UI editor's canvas, Dev Mode — is exempt from both.
         key: "ui.reduceMotion",
         category: "appearance",
         scope: SettingScope.Global,
