@@ -109,6 +109,12 @@ import type {
     VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "./vcs";
+import type {
+    TeamCallOutcome,
+    TeamConnection,
+    TeamEventMessage,
+    TeamSubscribeOutcome,
+} from "./team";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -389,6 +395,36 @@ export enum IPCEventType {
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
     vcsClone = "vcs.clone",
+
+    /**
+     * The whole of the Team protocol's surface, and it is meant to stay this size.
+     *
+     * Everything the version-control side of a server needed arrived here as its own
+     * event: a list of projects, one project, its history, the members, deleting one.
+     * Five features, five events, and each of them an enum entry, a shape below, a
+     * handler, a line of preload and a renderer type - roughly eight places for one
+     * question. A protocol that is going to grow real features cannot be paid for at
+     * that rate.
+     *
+     * So these five carry all of them. `teamCall` names a method the server declared and
+     * hands back what it answered; `teamSubscribe` asks to be told about a topic and
+     * `teamEvent` is how being told arrives. Adding a feature is a method on the server
+     * and a hook in the renderer, and nothing in this file changes.
+     *
+     * What is deliberately given up: the shapes are not checked here. A call's parameters
+     * and its answer are typed where the protocol is - see `@shared/types/team` - and
+     * that is the trade. The alternative is this list growing a member per verb, which is
+     * the thing being replaced.
+     */
+    teamOpen = "team.open",
+    teamConnections = "team.connections",
+    teamCall = "team.call",
+    teamSubscribe = "team.subscribe",
+    teamUnsubscribe = "team.unsubscribe",
+    /** Pushed: something happened on a topic this window asked about. */
+    teamEvent = "team.event",
+    /** Pushed: a session opened, dropped, or was refused. */
+    teamConnectionChanged = "team.connectionChanged",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -1009,7 +1045,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCServerTrustEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1547,6 +1583,58 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { url: string; destination: string },
         response: { root: string; branch: string; fileCount: number };
+    };
+};
+
+/**
+ * The Team protocol, as it crosses to a window.
+ *
+ * One pair of shapes for asking and one for being told, whatever the question is. See the
+ * note on {@link IPCEventType.teamCall} for why this is five members rather than one per
+ * feature, and `@shared/types/team` for what a method takes and answers.
+ */
+export type IPCTeamEvents = {
+    [IPCEventType.teamOpen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: TeamConnection;
+    };
+    [IPCEventType.teamConnections]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { connections: TeamConnection[] };
+    };
+    [IPCEventType.teamCall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; method: string; params?: unknown },
+        response: TeamCallOutcome;
+    };
+    [IPCEventType.teamSubscribe]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; topic: string },
+        response: TeamSubscribeOutcome;
+    };
+    [IPCEventType.teamUnsubscribe]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; topic: string },
+        response: void;
+    };
+    [IPCEventType.teamEvent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: TeamEventMessage,
+        response: never;
+    };
+    [IPCEventType.teamConnectionChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { connection: TeamConnection },
+        response: never;
     };
 };
 

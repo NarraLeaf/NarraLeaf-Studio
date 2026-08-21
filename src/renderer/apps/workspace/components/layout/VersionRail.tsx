@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
     ArchiveRestore,
     Check,
@@ -30,7 +30,7 @@ import {
     X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { VcsChangeKind, VcsFileChange, VcsServerAuthority, VcsServerReach, VcsServerSession, VcsSignInProblem, VcsSyncState } from "@shared/types/vcs";
+import type { VcsChangeKind, VcsFileChange, VcsServerAuthority, VcsServerProject, VcsServerReach, VcsServerSession, VcsSignInProblem, VcsSyncState } from "@shared/types/vcs";
 import { parseVcsRemoteUrl, vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
@@ -39,11 +39,12 @@ import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
-import { IconButton } from "@/lib/components/elements/Button";
+import { Button, IconButton } from "@/lib/components/elements/Button";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ServerRow, serverDisplayName, serverHost, useServers } from "@/lib/vcs/servers";
 import { getInterface } from "@/lib/app/bridge";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
+import { SERVER_PROBLEM_KEYS } from "@/apps/launcher/tabs/serverProblemKeys";
 import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
@@ -1326,6 +1327,102 @@ function describeReach(reach: VcsServerReach): TranslationKey {
  * That same address field is the only place the author's name is asked for here (see the
  * comment beside it): every other destination in this dialog answers that question itself.
  */
+/**
+ * What a repository may be called on a server.
+ *
+ * **Not a house rule: it is what the two ends will accept.** A remote is
+ * `lore://host:port/<name>`, which has no room for a space, and a Team server refuses
+ * outright anything that is not letters, digits and these separators. A name that breaks
+ * either rule is refused by the server with a bare status and by the address parser with
+ * nothing at all, so it is refused here instead, while the author is still looking at it.
+ */
+const SERVER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * A folder name turned into something a server will take, or nothing.
+ *
+ * A seed for the field rather than an answer: it is what the project is already called,
+ * with the parts an address cannot carry taken out. A name written entirely in characters
+ * that cannot survive that - which is every Chinese or Japanese project name - comes back
+ * empty, and the field is then a question rather than a wrong suggestion.
+ */
+function serverRepositoryName(raw: string): string {
+    const cleaned = raw.trim().toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^[-._]+|[-._]+$/g, "");
+    return SERVER_NAME_PATTERN.test(cleaned) ? cleaned : "";
+}
+
+/** What one server holds, while the dialog is asking about it. */
+interface HeldProjects {
+    /** Whether the answer is still on its way. */
+    reading: boolean;
+    /** What the server listed, or null for a server that would not say. */
+    projects: VcsServerProject[] | null;
+    /** Why it would not say, as a sentence the author can act on. */
+    problem: TranslationKey | null;
+}
+
+/**
+ * What one server already holds, asked once per server the author opens.
+ *
+ * **This is the step the dialog was missing.** Choosing a server used to be the whole
+ * question, and what the project became on it was a text field seeded from the folder name:
+ * typing a name nobody had used made a project, typing one somebody had used collided, and
+ * neither outcome was said out loud before the button was pressed. The list is what makes
+ * those two different acts on screen.
+ *
+ * Null projects and a problem are not the same state as an empty list. A server that
+ * answered "nothing here" is one this project can be the first thing on; a server that
+ * would not answer is one the dialog knows nothing about, and it falls back to asking for a
+ * name the way it always did rather than refusing to connect at all.
+ */
+function useServerProjects(remoteOrigin: string | null): HeldProjects {
+    const [held, setHeld] = useState<HeldProjects>({ reading: false, projects: null, problem: null });
+    /**
+     * The read that is out, and which server it is for.
+     *
+     * One read per server however many times the effect runs: React mounts every effect
+     * twice outside a packaged build, and this one can mount with a server already chosen -
+     * the dialog opens on the server the project uses. Same shape as the launcher's project
+     * page, and for the same reason.
+     */
+    const outstanding = useRef<{ key: string; answer: Promise<unknown> } | null>(null);
+
+    useEffect(() => {
+        if (remoteOrigin === null) {
+            setHeld({ reading: false, projects: null, problem: null });
+            return;
+        }
+        let live = true;
+        setHeld({ reading: true, projects: null, problem: null });
+
+        const answer = outstanding.current?.key === remoteOrigin
+            ? outstanding.current.answer
+            : getInterface().vcs.listServerProjects(remoteOrigin).catch(() => null);
+        outstanding.current = { key: remoteOrigin, answer };
+
+        void answer.then(result => {
+            if (!live) return;
+            const read = result as Awaited<ReturnType<ReturnType<typeof getInterface>["vcs"]["listServerProjects"]>> | null;
+            if (read === null || !read.success) {
+                setHeld({ reading: false, projects: null, problem: "launcher.servers.problem.unknown" });
+                return;
+            }
+            if (!read.data.ok) {
+                setHeld({ reading: false, projects: null, problem: SERVER_PROBLEM_KEYS[read.data.problem.kind] });
+                return;
+            }
+            setHeld({ reading: false, projects: read.data.projects, problem: null });
+        });
+
+        return () => { live = false; };
+    }, [remoteOrigin]);
+
+    return held;
+}
+
 export function ServerPickerDialog({ surface, isOpen, onClose }: {
     surface: VersionSurface;
     isOpen: boolean;
@@ -1359,7 +1456,9 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
             // nearly every time, so it is filled in rather than asked for - but it is a
             // field rather than a fact, because it is what a collaborator clones by and
             // two projects in one folder tree can be called the same thing locally.
-            setName(vcsRemoteName(surface.remote) || projectFolderName(context) || "");
+            setName(vcsRemoteName(surface.remote)
+                || serverRepositoryName(projectFolderName(context))
+                || "");
         });
         return () => {
             cancelled = true;
@@ -1368,8 +1467,44 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
 
     /** The server chosen out of the list, as opposed to the address field or nothing yet. */
     const picked = choice === NO_SERVER || choice === MANUAL_SERVER ? null : choice;
+    const held = useServerProjects(isOpen ? picked : null);
+
+    /**
+     * The project on that server that IS this project, or null because it is not there yet.
+     *
+     * **Matched on the repository id and never on the name.** The id is written once when
+     * the repository is made and survives every rename on both ends; a name match would
+     * connect this project to somebody else's work because the two folders happened to be
+     * called the same thing. It is what separates the two acts this dialog can perform:
+     * pointing a project at the copy of itself a server already holds, and putting a project
+     * on a server that has never seen it.
+     */
+    const mine = useMemo(() => {
+        const wanted = (surface.repositoryId ?? "").trim().toLowerCase();
+        if (wanted === "" || held.projects === null) return null;
+        return held.projects.find(project => project.id.trim().toLowerCase() === wanted) ?? null;
+    }, [held.projects, surface.repositoryId]);
+
+    /**
+     * Why the name typed for a new project cannot be used, or null.
+     *
+     * Both refusals are the server's, said here instead of there. A name it cannot spell is
+     * refused with a bare status code, and one already taken is refused after the dialog has
+     * closed - which is how a publish ends up half done with nothing on screen to say so.
+     */
+    const wanted = name.trim();
+    const nameProblem: TranslationKey | null = picked === null || mine !== null || wanted === ""
+        ? null
+        : !SERVER_NAME_PATTERN.test(wanted)
+            ? "workspace.shell.versionControl.server.picker.nameInvalid"
+            : (held.projects ?? []).some(project => project.name.toLowerCase() === wanted.toLowerCase())
+                ? "workspace.shell.versionControl.server.picker.nameTaken"
+                : null;
+
+    /** What this project will answer to on the destination, whichever of the two acts it is. */
+    const chosenName = mine !== null ? mine.name : wanted;
     const chosen = picked !== null
-        ? (name.trim() === "" ? "" : `${picked}/${name.trim()}`)
+        ? (chosenName === "" || nameProblem !== null || held.reading ? "" : `${picked}/${chosenName}`)
         : choice === MANUAL_SERVER ? address.trim() : "";
 
     /**
@@ -1388,7 +1523,11 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
     const connect = () => {
         if (!chosen) return;
         const done = picked !== null
-            ? surface.publish(picked, name.trim())
+            // The server's own name for it where it already holds this project, and the
+            // typed one where it does not. Passing the folder name in the first case would
+            // point the project at an address that server does not answer to - it registers
+            // nothing, so nothing corrects it, and every send and get afterwards misses.
+            ? surface.publish(picked, chosenName)
             : surface.setRemote(chosen);
         void done.then(saved => {
             if (saved) onClose();
@@ -1422,12 +1561,20 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                         type="button"
                         onClick={connect}
                         disabled={running || chosen === ""}
+                        data-vcs-seam="picker-connect"
                         className={dialogFooterButtonClass({
                             variant: "primary",
                             disabled: running || chosen === "",
                         })}
                     >
-                        {t("workspace.shell.versionControl.server.save")}
+                        {/* Named after what pressing it does. Putting a project on a server
+                            that has never seen it records it, points at it AND sends every
+                            version on this machine; a server that already holds this project
+                            is only being pointed at. Both used to say "Connect", which is
+                            true of one of them. */}
+                        {t(picked !== null && mine === null
+                            ? "workspace.shell.versionControl.server.picker.createAndSend"
+                            : "workspace.shell.versionControl.server.save")}
                     </button>
                 </div>
             )}
@@ -1458,23 +1605,57 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                     </button>
                 </div>
 
+                {/* What this project becomes on the server that was chosen. Two different
+                    acts, and which one it is was the question this dialog never asked: a
+                    server that already holds this project is being pointed at, and one that
+                    does not is being given it. The answer is read off the id rather than
+                    offered as a choice, because it is a fact about the two repositories
+                    rather than a preference. */}
                 {picked !== null && (
-                    <div>
-                        <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
-                        <Input
-                            size="sm"
-                            value={name}
-                            onChange={event => setName(event.target.value)}
-                            onKeyDown={event => {
-                                if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    connect();
-                                }
-                            }}
-                            disabled={running}
-                            placeholder={t(`${key}.namePlaceholder`)}
-                            className="mt-1"
-                        />
+                    <div data-vcs-seam="picker-destination" className="space-y-1">
+                        {held.reading && (
+                            <p className="text-xs text-fg-subtle">{t(`${key}.reading`)}</p>
+                        )}
+
+                        {!held.reading && held.problem !== null && (
+                            // The list could not be read, so the dialog knows nothing about
+                            // what is on that server - and asks for a name the way it did
+                            // before there was a list. Refusing to connect over a list that
+                            // is only there to help would be the worse answer.
+                            <p className="text-xs text-fg-subtle">{t(held.problem)}</p>
+                        )}
+
+                        {!held.reading && mine !== null && (
+                            <p className="text-sm text-fg" data-vcs-seam="picker-already">
+                                {t(`${key}.already`, { name: mine.name })}
+                            </p>
+                        )}
+
+                        {!held.reading && mine === null && (
+                            <>
+                                <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
+                                <Input
+                                    size="sm"
+                                    value={name}
+                                    onChange={event => setName(event.target.value)}
+                                    onKeyDown={event => {
+                                        if (event.key === "Enter") {
+                                            event.preventDefault();
+                                            connect();
+                                        }
+                                    }}
+                                    disabled={running}
+                                    variant={nameProblem === null ? "default" : "error"}
+                                    placeholder={t(`${key}.namePlaceholder`)}
+                                />
+                                <p className={cn(
+                                    "text-xs",
+                                    nameProblem === null ? "text-fg-subtle" : "text-danger",
+                                )}>
+                                    {t(nameProblem ?? `${key}.nameHint`)}
+                                </p>
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -1606,15 +1787,23 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
                 <p className="text-2xs text-fg-subtle">
                     {t("workspace.shell.versionControl.server.none")}
                 </p>
-                <button
-                    type="button"
+                {/* A control rather than a line of text that answers a click. This is the only
+                    way a project ever reaches a server, and it was drawn at the size of the
+                    sentence above it - the smallest type in the panel, in the muted colour
+                    everything unimportant is drawn in, between a state line and a text box.
+                    It is the one thing to do in this section, so it is drawn as one. */}
+                <Button
+                    size="sm"
+                    variant="secondary"
+                    fullWidth
                     onClick={open}
                     disabled={running}
-                    className="mt-1.5 flex items-center gap-1.5 text-2xs text-fg-muted transition-colors cursor-default hover:text-fg disabled:opacity-50"
+                    className="mt-1.5"
+                    data-vcs-seam="server-connect"
                 >
-                    <Cloud className="h-3 w-3" />
+                    <Cloud className="h-3.5 w-3.5" />
                     {t("workspace.shell.versionControl.server.connect")}
-                </button>
+                </Button>
                 {/* A server that demands a token refuses to be pointed at until this
                     installation has one, so the address is never written and the row that
                     normally offers a sign-in - the one beside a configured server - is

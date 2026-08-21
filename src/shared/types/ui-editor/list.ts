@@ -1,5 +1,6 @@
 import type { GradientFill } from "./gradientFill";
 import type { ImageFill } from "./imageFill";
+import type { UIStructDef } from "./struct";
 import { isWidgetTypeOf, listWidgetTypesOf } from "./widgetInheritance";
 
 /**
@@ -47,6 +48,22 @@ export type UIListItemScope = {
     index: number;
     count: number;
     key: string;
+    /**
+     * Whether this is the selected row.
+     *
+     * On the scope because it belongs to the row rather than to any one widget in it: everything in
+     * a selected row reads as selected, and each widget decides for itself whether it has an
+     * appearance row that says so.
+     */
+    selected?: boolean;
+    /**
+     * The shape the owning list declared, carried rather than looked up.
+     *
+     * A field binding is resolved deep inside the element merge, which holds an element and a scope
+     * and no document. Putting the struct on the scope keeps that read a read - the list already
+     * resolved it once for its own columns and keys.
+     */
+    struct?: UIStructDef | null;
 };
 
 export type UIListScrollbarVisibility = "auto" | "always" | "hidden";

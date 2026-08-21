@@ -237,6 +237,11 @@ export const lint = {
             description: "页面控件嵌入了工程中不存在的页面",
             message: "该页面控件嵌入的页面在此工程中不存在",
         },
+        uiListItemFieldMissing: {
+            title: "条目字段不存在",
+            description: "控件绑定的条目字段，在画它的列表里没有声明",
+            message: "这里绑定的条目字段列表没有声明，每一行都会显示同样的内容",
+        },
         blueprintSaveFieldEmpty: {
             title: "未填写的存档字段",
             description: "会执行的 Save Game 节点上，声明过的存档字段未填写",

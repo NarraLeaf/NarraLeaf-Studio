@@ -19,6 +19,7 @@ import type {
     VcsServerProjectHistoryPage,
     VcsServerRevision,
 } from "@shared/types/vcs";
+import { ProjectDiscussion } from "./ProjectDiscussion";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -312,6 +313,12 @@ export function ServerProjectDetailView({
                     where the line above has not already said it: on a project the server has
                     not read, the versions are missing for the reason already on screen, and
                     a panel that gives one absence two sentences is a panel nobody finishes. */}
+                {/* What people have said about this project. Drawn only where the server
+                    holds a session and offers conversations, which is what the component
+                    itself checks: a deployment that does not is a page with no such
+                    section rather than one with an empty one. */}
+                <ProjectDiscussion remoteOrigin={remoteOrigin} projectId={known.id} />
+
                 {versionsUnavailable && !fileUnread && !empty && (
                     <section className="mt-4" data-project-versions-unavailable>
                         <FieldLabel as="div">{t("launcher.servers.detail.versions")}</FieldLabel>

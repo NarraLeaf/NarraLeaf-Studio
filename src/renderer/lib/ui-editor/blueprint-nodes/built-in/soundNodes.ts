@@ -38,6 +38,8 @@ import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutio
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
+import { BLUEPRINT_SOUND_ASSET_PARAM_KEY } from "@shared/build/blueprintAssetSlots";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -45,7 +47,15 @@ const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "e
 /** Sound needs a running game to route through, i.e. event / macro graphs. */
 const SOUND_GRAPH_KINDS = ["event", "macro"] as const;
 
-export const BLUEPRINT_SOUND_PARAM_ASSET = "soundAssetId";
+/**
+ * Where the clip an author picked is stored.
+ *
+ * Re-exported from the build's own walk rather than spelled here, because both have to name the
+ * same param: that walk is what writes this node's answer for an asset set, and it runs in the main
+ * process where this module cannot be loaded. Two spellings would not fail - the picker would
+ * simply offer sets the package never resolved, and the game would be handed a set id.
+ */
+export const BLUEPRINT_SOUND_PARAM_ASSET = BLUEPRINT_SOUND_ASSET_PARAM_KEY;
 
 /**
  * The project audio track this play lands on, and the picker that offers it.
@@ -216,14 +226,22 @@ function readOptionalNumber(value: unknown): number | undefined {
     return typeof value === "string" && value.trim() && Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** The wired pin wins over the inspector picker; see assetIdIn. */
+/**
+ * The clip to play. The wired pin wins over the inspector picker; see assetIdIn.
+ *
+ * The picked clip may be an asset set, which is a name for a family of files that vary one way -
+ * a jingle sung in each language the game ships. The build writes what that set resolves to onto
+ * this node, and the member the player's language asks for is chosen here, at the moment the clip
+ * is asked for. The wired pin needs no such step: a value arriving over an edge has already passed
+ * through the data-pin resolver, which asks the same question of whichever node stored it.
+ */
 function resolveAssetId(ctx: SoundExecuteCtx): string {
     const wired = readPin(ctx, "assetId");
     const fromPin = typeof wired === "string" ? wired.trim() : "";
     if (fromPin) {
         return fromPin;
     }
-    const param = ctx.params[BLUEPRINT_SOUND_PARAM_ASSET];
+    const param = resolveNodeStoredAssetSet(ctx.node, ctx.params[BLUEPRINT_SOUND_PARAM_ASSET]);
     return typeof param === "string" ? param.trim() : "";
 }
 
@@ -284,7 +302,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, assetIdIn, loopIn, volumeIn, fadeInIn, execNext, handleOut],
         inspectorParams: [
-            { key: BLUEPRINT_SOUND_PARAM_ASSET, label: "Clip", kind: "audioAsset" },
+            { key: BLUEPRINT_SOUND_PARAM_ASSET, label: "Audio Clip", kind: "audioAsset" },
             audioTrackParam,
         ],
         async execute(ctx) {

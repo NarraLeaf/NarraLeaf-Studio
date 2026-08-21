@@ -59,6 +59,27 @@ vi.mock("@/lib/app/bridge", () => ({
             launchProjectWizard: bridge.launchProjectWizard,
         },
         workspace: { launch: bridge.launchWorkspace },
+        // A session that offers nothing, because nothing on this tab is about one. A
+        // capability is checked rather than probed, so an empty list is a section that
+        // is not drawn.
+        team: {
+            open: () => Promise.resolve({
+                success: true,
+                data: { remoteOrigin: "", state: "idle", capabilities: [], since: 0 },
+            }),
+            connections: () => Promise.resolve({ success: true, data: { connections: [] } }),
+            call: () => Promise.resolve({
+                success: true,
+                data: { ok: false, problem: { kind: "unsupported" } },
+            }),
+            subscribe: () => Promise.resolve({
+                success: true,
+                data: { ok: false, problem: { kind: "unsupported" } },
+            }),
+            unsubscribe: () => Promise.resolve({ success: true, data: undefined }),
+            onEvent: () => ({ cancel: () => undefined }),
+            onConnectionChanged: () => ({ cancel: () => undefined }),
+        },
     }),
 }));
 

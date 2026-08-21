@@ -115,6 +115,10 @@ export function renderNarralangShape(shape: NarralangShape, dialect: NarralangDi
             // Doubled so the line cannot be confused with an ordinary disabled row: it is not a row an
             // author switched off, it is one nothing was ever able to read.
             return `${dialect.prefix.disabled}${dialect.prefix.disabled} ${shape.source}`;
+        case "blank":
+            // The empty string, not null: null is "this row prints no line at all", and an empty
+            // row prints one.
+            return "";
         case "silent":
         case "transparent":
             return null;

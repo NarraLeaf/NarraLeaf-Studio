@@ -4,6 +4,7 @@ import type { BlueprintGraphIr } from "../types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "../types/blueprint/graph";
 import type { GameLocalizationBundle } from "../types/localization";
 import { collectReferencedIds } from "./variantPayload";
@@ -21,6 +22,9 @@ const EN = "aaaaaaaa-1111-4111-8111-111111111111";
 const JA = "bbbbbbbb-1111-4111-8111-111111111111";
 const MAIN = "cccccccc-1111-4111-8111-111111111111";
 const DEMO = "dddddddd-1111-4111-8111-111111111111";
+const CLIP_SET_ID = "33333333-3333-4333-8333-333333333333";
+const CLIP_EN = "eeeeeeee-1111-4111-8111-111111111111";
+const CLIP_JA = "ffffffff-1111-4111-8111-111111111111";
 
 const SETS: AssetSet[] = [
     {
@@ -37,6 +41,13 @@ const SETS: AssetSet[] = [
         filter: ["cg:cover"],
         axis: { kind: "release", key: "release", residency: "build", values: ["release", "demo"], fallback: "release" },
     },
+    {
+        id: CLIP_SET_ID,
+        name: "Jingle",
+        type: "audio",
+        filter: ["bgm:jingle"],
+        axis: { kind: "locale", key: "locale", residency: "runtime", values: ["en", "ja"], fallback: "en" },
+    },
 ];
 
 const CANDIDATES: AssetSetCandidate[] = [
@@ -44,6 +55,8 @@ const CANDIDATES: AssetSetCandidate[] = [
     { id: JA, type: "image", tags: ["cg:badge", "locale:ja"] },
     { id: MAIN, type: "image", tags: ["cg:cover", "release:release"] },
     { id: DEMO, type: "image", tags: ["cg:cover", "release:demo"] },
+    { id: CLIP_EN, type: "audio", tags: ["bgm:jingle", "locale:en"] },
+    { id: CLIP_JA, type: "audio", tags: ["bgm:jingle", "locale:ja"] },
 ];
 
 const LOCALIZATION: Pick<GameLocalizationBundle, "sourceLocale" | "locales"> = {
@@ -137,6 +150,28 @@ describe("attachBlueprintAssetSetVariants", () => {
         expect(result.referencedAssetIds.size).toBe(0);
     });
 
+    /**
+     * A clip is answered for the reason a picture is: the host is handed the member's bytes and
+     * nothing downstream derives an identity from the id, which is what rules the typeface out.
+     *
+     * Stored bare, and it stays bare - the envelope belongs to the picture alone, because only the
+     * picture is also a value that travels along an edge.
+     */
+    it("answers the clip a Play Sound stores", () => {
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                play: { id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY, params: { soundAssetId: CLIP_SET_ID } },
+            },
+        };
+
+        const result = run(graph);
+
+        expect(result.problems).toEqual([]);
+        expect(graph.nodes!.play!.assetVariants).toEqual({ [CLIP_SET_ID]: { en: CLIP_EN, ja: CLIP_JA } });
+        expect(graph.nodes!.play!.params!.soundAssetId).toBe(CLIP_SET_ID);
+        expect(result.referencedAssetIds).toEqual(new Set([CLIP_EN, CLIP_JA]));
+    });
+
     it("puts both languages' ids where the existing trimmer already looks", () => {
         const graph: BlueprintGraphIr = {
             nodes: { n1: { id: "n1", type: "nl.setImageAsset", params: { asset: SET_ID } } },
@@ -190,6 +225,19 @@ describe("blueprintsNameUnresolvedSet", () => {
         expect(blueprintsNameUnresolvedSet([graph], new Set([SET_ID]))).toBe(true);
         run(graph);
         expect(blueprintsNameUnresolvedSet([graph], new Set([SET_ID]))).toBe(false);
+    });
+
+    /** The gate covers the clip too, or a package could be written with a set id in a Play Sound. */
+    it("sees a clip a Play Sound still names", () => {
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                play: { id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY, params: { soundAssetId: CLIP_SET_ID } },
+            },
+        };
+
+        expect(blueprintsNameUnresolvedSet([graph], new Set([CLIP_SET_ID]))).toBe(true);
+        run(graph);
+        expect(blueprintsNameUnresolvedSet([graph], new Set([CLIP_SET_ID]))).toBe(false);
     });
 });
 

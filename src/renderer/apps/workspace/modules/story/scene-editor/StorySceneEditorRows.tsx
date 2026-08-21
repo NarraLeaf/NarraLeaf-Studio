@@ -1218,7 +1218,7 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
     const { block } = props;
     // Rows with no runtime behaviour have no meaningful "play from here" — starting there would
     // silently begin somewhere else.
-    if (block.kind === "note" || block.kind === "invalid") {
+    if (block.kind === "note" || block.kind === "invalid" || block.kind === "empty") {
         return null;
     }
     const branchEntry = (block.kind === "nodeAction" && block.payload.action === "choiceOption")
@@ -3384,6 +3384,7 @@ function BlockPreview(props: {
     const block = props.block;
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
+    const { t } = useTranslation();
     if (text) {
         const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
@@ -3435,6 +3436,29 @@ function BlockPreview(props: {
         // wrong, so the row reads as a to-do; the BUILD is where it turns into an error. Click
         // re-opens the line in place, candidates and all.
         return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
+    }
+    if (block.kind === "empty") {
+        // A blank line reads blank. Every other empty row carries its "double-click to enter …" in the
+        // line itself, because each is waiting for one particular kind of content and saying so is how
+        // the author knows which; this row is waiting for nothing, and a caption sitting in it would be
+        // the one thing on screen contradicting the word blank.
+        //
+        // So the invitation is on hover only: at rest the line is empty, and the moment the pointer is
+        // over the row it says what a double-click there would do. Nothing else in the row moves - the
+        // hint occupies the line box it fades into.
+        //
+        // Deliberately NOT a {@link TextClickTarget}: that marks a row as carrying text the mouseup
+        // gesture can put a caret in, and this row carries none - so the double-click handler above
+        // would hand the gesture to a caret that never arrives and the row would not open at all.
+        // Without the mark it is an ordinary non-text row: click selects it, double-click opens it,
+        // which is the same pair every action row answers to.
+        return (
+            <span className="flex min-w-0 flex-1 items-center self-stretch" style={textStyle}>
+                <span className="select-none text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100">
+                    {t("story.emptyPlaceholder.blank")}
+                </span>
+            </span>
+        );
     }
     // One overview path for every action row: the command line that would produce it, with any
     // quick-edit params clickable inside it — and the old `describeBlock` sentence for the rows no

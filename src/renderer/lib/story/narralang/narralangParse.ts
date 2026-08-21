@@ -151,7 +151,7 @@ type LineNode = {
     readonly id: StoryBlockId;
     readonly line: number;
     readonly column: number;
-    readonly prefix: "none" | "disabled" | "raw" | "note";
+    readonly prefix: "none" | "disabled" | "raw" | "note" | "blank";
     /** The line with its indent removed and nothing else - what the printer emitted for this row. */
     readonly source: string;
     /** The line's content, with indent and prefix removed. */
@@ -186,6 +186,51 @@ function stripPrefix(body: string, marker: string): string | null {
  * dialect that also closes a block with a brace still indents its body (the printer emits both), so a
  * line that is only the closing marker carries nothing and is dropped.
  */
+/**
+ * The depth each blank line reads as, indexed like the lines it was computed from.
+ *
+ * A blank line is the one row whose indentation says nothing - there is none to measure - so it
+ * borrows the level of the next line that has one. That is the reading that puts a blank typed inside
+ * a container inside it, and it is the only one that keeps a blank line before an `else` from closing
+ * the branch above. With nothing after it, a blank takes the level of the line before; a text of
+ * nothing but blanks sits at the root.
+ *
+ * A dialect's closing marker is skipped on the way forward for the same reason the tree reader drops
+ * it: it is structure the indentation has already stated, and it sits outside the levels.
+ */
+function blankLineDepths(
+    lines: readonly string[],
+    unit: string,
+    base: number,
+    close: string | null,
+): number[] {
+    const isClose = (line: string): boolean => close !== null && close !== "" && line.trim() === close.trim();
+    const contentDepth = (line: string): number => Math.max(0, indentDepth(line, unit) - base);
+    const depths = new Array<number>(lines.length).fill(0);
+    let previous = 0;
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        if (line.trim() !== "" && !isClose(line)) {
+            previous = contentDepth(line);
+            continue;
+        }
+        if (line.trim() !== "") {
+            continue;
+        }
+        let ahead = -1;
+        for (let scan = index + 1; scan < lines.length; scan += 1) {
+            const next = lines[scan];
+            if (next.trim() === "" || isClose(next)) {
+                continue;
+            }
+            ahead = contentDepth(next);
+            break;
+        }
+        depths[index] = ahead >= 0 ? ahead : previous;
+    }
+    return depths;
+}
+
 function readLineTree(
     text: string,
     dialect: NarralangDialect,
@@ -197,14 +242,45 @@ function readLineTree(
     const unit = dialect.indent === "" ? "  " : dialect.indent;
     const close = dialect.block.close;
     const lines = text.split("\n");
+    // The terminating newline, not a row. Every printed script ends with one, so `split` hands back a
+    // final empty element that is the end of the text rather than a line in it - and since a blank
+    // line IS a row (schema v20), reading it as one appended an empty row to every scene that went
+    // through a round trip. Exactly one goes, so a blank line an author really did leave at the end of
+    // a scene still counts as the row it is.
+    if (lines.length > 1 && lines[lines.length - 1] === "") {
+        lines.pop();
+    }
     // A scene's rows sit one level in, under their header. The first content line sets the level
     // everything else is measured against, so a body that was extracted from a header - or one an
     // author pasted with its indentation - reads the same as one that starts at the margin.
     const base = indentDepth(lines.find((line) => line.trim() !== "") ?? "", unit);
 
+    // Where a blank line belongs. A blank carries no indentation to read, so it takes the level of
+    // the next line that has one - which is what puts a blank line inside the container it was typed
+    // in, and what keeps one before an `else` from closing the branch above it. A blank with nothing
+    // after it takes the level of the line before, and a text of nothing but blanks sits at the root.
+    const blankDepths = blankLineDepths(lines, unit, base, close);
+
     lines.forEach((raw, index) => {
         const lineNumber = index + 1;
         if (raw.trim() === "") {
+            const depth = blankDepths[index];
+            while (stack.length > 1 && stack[stack.length - 1].depth >= depth) {
+                stack.pop();
+            }
+            stack[stack.length - 1].children.push({
+                id: createId(lineNumber),
+                line: lineNumber,
+                column: 1,
+                prefix: "blank",
+                source: "",
+                body: "",
+                bodyInBlock: "",
+                hadBlockMarker: false,
+                children: [],
+            });
+            // Deliberately not pushed onto the stack: a blank line takes no children, and pushing it
+            // would make the line after it a child of a row that holds nothing.
             return;
         }
         // A dialect that closes a block with a brace still indents its body, so the closing line is
@@ -630,6 +706,14 @@ function parseLine(state: ParseState, node: LineNode, parentVerb: NarralangVerb 
         // it means, which is the whole reason the printer doubles the marker on the way out.
         return {
             block: { id: node.id, kind: "invalid", parentId: null, childrenIds: [], payload: { source: node.body }, ...disabled },
+            verb: null,
+        };
+    }
+    if (node.prefix === "blank") {
+        // A blank line is a blank row. No `disabled`: there is nothing on the line to switch off, and
+        // the printer does not spell one (see its own note).
+        return {
+            block: { id: node.id, kind: "empty", parentId: null, childrenIds: [], payload: {} },
             verb: null,
         };
     }

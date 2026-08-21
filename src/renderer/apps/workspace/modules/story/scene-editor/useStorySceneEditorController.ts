@@ -875,6 +875,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // switches the ticks holding it back on, so the target is actually visible and selected rather
         // than an invisible selection on a hidden row.
         revealRowInFilter(block);
+        // And over a fold, which hides a row just as completely. A choice the author collapsed is the
+        // likeliest thing standing between a navigation and its target, and leaving it shut made this
+        // function claim a reveal it had not performed.
+        setCollapsedBlockIds(previous => {
+            if (previous.size === 0) {
+                return previous;
+            }
+            let next: Set<StoryBlockId> | null = null;
+            const walked = new Set<StoryBlockId>();
+            let parentId = block.parentId;
+            // Guarded rather than trusted: a corrupted `parentId` cycle would otherwise hang the tab.
+            while (parentId && !walked.has(parentId)) {
+                walked.add(parentId);
+                if (previous.has(parentId)) {
+                    next ??= new Set(previous);
+                    next.delete(parentId);
+                }
+                parentId = scene?.blocks[parentId]?.parentId ?? null;
+            }
+            return next ?? previous;
+        });
         setActiveBlockId(blockId);
         setSelectedBlockIds(new Set([blockId]));
         selectionAnchorRef.current = blockId;
@@ -1622,6 +1643,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
             return;
         }
+        if (block.kind === "empty") {
+            // The whole content of a blank line is the line the author has not written yet, so opening
+            // it means opening the editor for that line - in place, and empty. Committing replaces the
+            // blank row; Escape leaves it exactly where it was. Same slot the Backspace demote opens,
+            // reached by Enter or a double-click instead.
+            if (!frozen) {
+                startLineEdit(block, "");
+            }
+            return;
+        }
         if (hasInspector(block)) {
             setEditorMode({ kind: "inspector", blockId });
             return;
@@ -2015,9 +2046,41 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock, slashAtAlias]);
 
     /**
+     * Enter on a line with nothing on it: the author is asking for the blank line itself.
+     *
+     * Enter has always meant "this line is finished, open the next one", and it means the same here -
+     * an empty line finished is a blank row (schema v20), and the slot that opens after it is where
+     * the next one goes. Holding Enter down therefore walks a column of blank lines, the way it does
+     * in every text editor. It used to close the slot and write nothing, which left Escape and Enter
+     * saying the same thing and no way at all to type an empty line on purpose.
+     *
+     * A slot standing over a row that is ALREADY blank adds the next one after it rather than
+     * rewriting it: the line this keystroke would write is the line the slot is sitting on.
+     *
+     * Blur is deliberately NOT this path (see {@link commitNarrationFromInsert}, which still writes
+     * nothing for an empty draft). Clicking away from a slot the author never typed in has to leave
+     * the scene as it was, or every abandoned slot in a session would leave a blank row behind.
+     */
+    const commitBlankRowFromInsert = useCallback(() => {
+        if (editorMode.kind !== "insert" || !uuidService) {
+            return;
+        }
+        const slot = editorMode.slot;
+        const covered = slot.replaceBlockId ? scene?.blocks[slot.replaceBlockId] : null;
+        const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
+        if (covered && covered.kind === "empty") {
+            insertBlock(block, covered.id, false);
+        } else {
+            insertBlock(block, slot.afterBlockId, false, { target: slot.target, replaceBlockId: slot.replaceBlockId });
+        }
+        startInsertAfter(block.id, true);
+    }, [editorMode, insertBlock, scene, startInsertAfter, uuidService]);
+
+    /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
-     * The line has to stand on its own now: prose commits, a resolvable command commits, and anything
-     * still wearing a `/` or `#` becomes an invalid row rather than silently becoming prose.
+     * The line has to stand on its own now: prose commits, a resolvable command commits, an empty line
+     * commits as a blank row, and anything still wearing a `/` or `#` becomes an invalid row rather
+     * than silently becoming prose.
      */
     const resolveInsertLine = useCallback(() => {
         if (editorMode.kind !== "insert") {
@@ -2025,7 +2088,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const value = insertDraftRef.current;
         if (!value.trim()) {
-            setEditorMode({ kind: "idle" });
+            commitBlankRowFromInsert();
             return;
         }
         if (isActionCommandLine(value, slashAtAlias)) {
@@ -2041,7 +2104,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         commitNarrationFromInsert(true);
-    }, [commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
+    }, [commitBlankRowFromInsert, commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
 
     /**
      * Pick a speaker that no Studio character backs. Valid, not a fallback: NLR's dialogue box only
@@ -2494,28 +2557,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [activeBlockId, deleteRows, selectedBlockIds]);
 
     /**
-     * `Backspace` on a selected row that is not being edited: the row becomes a blank line with the
-     * caret in it, rather than being deleted. Pressing Backspace again on that blank line removes the
-     * row for good ({@link handleInsertBackspaceEmpty}), so an action row degrades to "blank line →
-     * gone" over two presses - the closure a text editor trained the author to expect. `Delete` is
-     * untouched and still removes the row outright: the two keys stay two paths.
+     * `Backspace` on a selected row that is not being edited: the row becomes a blank line, rather
+     * than being deleted. Pressing Backspace again on that blank line removes it for good, so a row
+     * degrades to "blank line → gone" over two presses - the closure a text editor trained the author
+     * to expect. `Delete` is untouched and still removes the row outright: the two keys stay two paths.
      *
-     * The blank line is a slot standing *in place of* the row ({@link startLineEdit}), not a committed
-     * narration row: it is the same empty line the empty-dialogue rung drops to, so both ladders land
-     * on one thing - a line that can still become anything the author types next (prose, the action
-     * trigger, `#` for a speaker). A narration row there would have answered the Backspace by naming
-     * the line before the author had, and every author who wanted an action back had to clear it again.
+     * **The blank line is committed, in place, immediately** (schema v20's `empty` row). That is the
+     * whole point of it being a row rather than an open editor: the author gets a caret in it for free,
+     * but Escape, a click elsewhere, closing the tab and reopening the project all leave the line
+     * standing where the row was. A slot alone would have vanished on the first of those, and an empty
+     * narration row - what stood here before - answered "clear this line" by naming it narration.
      *
-     * Nothing is written until something commits: the row waits underneath the slot, so Escape hands
-     * it straight back, and a commit swaps it out under `insertBlock`'s single `recordHistory`. One
-     * `Mod+Z` brings the original row back with its payload - the point of the whole closure, since
-     * two-step undo would hand the author a blank line and call it a restore.
+     * The insert and the delete run under one `recordHistory` (`insertBlock`'s own), so a single
+     * `Mod+Z` brings the original row back with its payload; the caret then sits in a slot that stands
+     * in place of the blank row, so typing replaces it under one more entry rather than adding a
+     * second line below it.
      *
      * Returns false when the rule does not apply (see {@link planRowBackspaceReplacement}), leaving
      * the caller to run the plain delete.
      */
     const replaceRowWithBlankLine = useCallback((): boolean => {
-        if (!scene || editorMode.kind === "text" || editorMode.kind === "insert") {
+        if (!scene || !uuidService || editorMode.kind === "text" || editorMode.kind === "insert") {
             return false;
         }
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
@@ -2523,14 +2585,31 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!plan) {
             return false;
         }
-        const block = scene.blocks[plan.replaceBlockId];
-        if (!block) {
-            return false;
-        }
-        // Empty, whatever the row held: this is the author clearing the line, not re-opening it.
-        startLineEdit(block, "");
+        // Read before the document moves: the row that will sit above the blank line is the one the
+        // ladder's next Backspace steps back onto.
+        const previousSiblingId = findPreviousSibling(scene, plan.replaceBlockId)?.id ?? null;
+        const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
+        insertBlock(block, null, false, { target: plan.target, replaceBlockId: plan.replaceBlockId });
+        selectionAnchorRef.current = block.id;
+        // A slot standing in place of the row that was just written, so the author can type straight
+        // into the line they cleared. Escape closes the slot and leaves the row: `replaceBlockId` only
+        // deletes on commit, which is what makes "type something" replace the blank line instead of
+        // stacking a second one under it.
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = "";
+        setEditorMode({
+            kind: "insert",
+            slot: {
+                afterBlockId: previousSiblingId,
+                focusToken: Date.now(),
+                target: { parentId: plan.target.parentId, beforeBlockId: block.id },
+                replaceBlockId: block.id,
+            },
+            initialValue: "",
+        });
+        window.requestAnimationFrame(() => insertInputRef.current?.focus());
         return true;
-    }, [activeBlockId, editorMode, scene, selectedBlockIds, startLineEdit]);
+    }, [activeBlockId, editorMode, insertBlock, scene, selectedBlockIds, uuidService]);
 
     const indentSelection = useCallback((direction: "in" | "out") => {
         if (!storyService || !storyId || !sceneId || !scene) {
