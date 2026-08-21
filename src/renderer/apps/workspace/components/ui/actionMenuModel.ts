@@ -14,6 +14,18 @@ export function isActionMenuSubmenu(item: ActionMenuItem): item is ActionSubmenu
     return !isActionMenuSeparator(item) && !isActionMenuAction(item);
 }
 
+/**
+ * Is the row at `index`, on the panel `level` deep, one the open menus hang from?
+ *
+ * Passing THROUGH a row counts. Asking instead whether the row is the END of the open path meant a
+ * row stopped counting as open the moment something inside it opened - so the panel a second-level
+ * submenu had just been opened from unmounted, taking the submenu with it. Reachable by pointer and
+ * by Enter alike, and it read as the whole menu vanishing.
+ */
+export function isRowOnOpenPath(openPath: readonly number[], level: number, index: number): boolean {
+    return openPath.length > level && openPath[level] === index;
+}
+
 export function getActionGroupItems(group: ActionGroup): ActionMenuItem[] {
     return (group.items ?? group.actions ?? []) as ActionMenuItem[];
 }
@@ -22,7 +34,7 @@ export function getVisibleActionMenuItems(
     items: ActionMenuItem[],
     focusContext: FocusContext | null = null,
 ): ActionMenuItem[] {
-    return (items || [])
+    const visible = (items || [])
         .filter((item) => {
             if (isActionMenuSeparator(item)) {
                 return true;
@@ -39,6 +51,32 @@ export function getVisibleActionMenuItems(
             return getVisibleActionMenuItems(item.items, focusContext).length > 0;
         })
         .sort(byActionMenuOrder);
+    return withoutStrandedSeparators(visible);
+}
+
+/**
+ * Separators only mean something between two rows.
+ *
+ * A separator divides what is around it, so one at either end of a menu, or one following another,
+ * is a line drawn under nothing. That happens whenever the rows it was written between turn out to
+ * be hidden - a `when` that does not match the focus, or a panel's editing commands folded into the
+ * Edit menu while that panel is not the one in front.
+ */
+function withoutStrandedSeparators(items: ActionMenuItem[]): ActionMenuItem[] {
+    const kept: ActionMenuItem[] = [];
+    for (const item of items) {
+        if (!isActionMenuSeparator(item)) {
+            kept.push(item);
+            continue;
+        }
+        if (kept.length > 0 && !isActionMenuSeparator(kept[kept.length - 1])) {
+            kept.push(item);
+        }
+    }
+    while (kept.length > 0 && isActionMenuSeparator(kept[kept.length - 1])) {
+        kept.pop();
+    }
+    return kept;
 }
 
 export function findActionMenuItemById(
