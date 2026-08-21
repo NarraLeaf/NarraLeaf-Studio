@@ -61,6 +61,11 @@ import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appear
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
+    BLUEPRINT_COMMENT_COLORS,
+    blueprintCommentColorLabel,
+    resolveBlueprintCommentColorKey,
+} from "../blueprintCommentColors";
+import {
     resolveBlueprintCategoryLabel,
     resolveBlueprintLabel,
     resolveBlueprintNodeTitle,
@@ -406,67 +411,6 @@ function ImageAssetPickerCard({
             />
         </div>
     );
-}
-
-const COMMENT_COLORS: Record<
-    string,
-    {
-        border: string;
-        selectedBorder: string;
-        background: string;
-        header: string;
-        text: string;
-        swatch: string;
-    }
-> = {
-    amber: {
-        border: "rgba(245, 158, 11, 0.55)",
-        selectedBorder: "rgba(251, 191, 36, 0.95)",
-        background: "rgba(120, 78, 18, 0.28)",
-        header: "rgba(245, 158, 11, 0.2)",
-        text: "#fde68a",
-        swatch: "#f59e0b",
-    },
-    cyan: {
-        border: "rgba(34, 211, 238, 0.55)",
-        selectedBorder: "rgba(103, 232, 249, 0.95)",
-        background: "rgba(8, 85, 102, 0.28)",
-        header: "rgba(34, 211, 238, 0.18)",
-        text: "#a5f3fc",
-        swatch: "#06b6d4",
-    },
-    violet: {
-        border: "rgba(167, 139, 250, 0.55)",
-        selectedBorder: "rgba(196, 181, 253, 0.95)",
-        background: "rgba(76, 29, 149, 0.26)",
-        header: "rgba(167, 139, 250, 0.18)",
-        text: "#ddd6fe",
-        swatch: "#8b5cf6",
-    },
-    slate: {
-        border: "rgba(148, 163, 184, 0.5)",
-        selectedBorder: "rgba(203, 213, 225, 0.92)",
-        background: "rgba(51, 65, 85, 0.32)",
-        header: "rgba(148, 163, 184, 0.13)",
-        text: "#e2e8f0",
-        swatch: "#64748b",
-    },
-};
-
-/** Localized swatch labels for comment colors, keyed by the same ids as {@link COMMENT_COLORS}. */
-function commentColorLabel(key: string, t: UseTranslation["t"]): string {
-    switch (key) {
-        case "amber":
-            return t("blueprint.comment.color.amber");
-        case "cyan":
-            return t("blueprint.comment.color.cyan");
-        case "violet":
-            return t("blueprint.comment.color.violet");
-        case "slate":
-            return t("blueprint.comment.color.slate");
-        default:
-            return key;
-    }
 }
 
 type CatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number] & { removable?: boolean };
@@ -2105,8 +2049,20 @@ function BlueprintCommentNodeCard({
     // handle that refuses to move is the half-gesture that reads as a broken editor.
     const freeze = useFreezeGuard();
     const { getZoom } = useReactFlow();
-    const colorKey = typeof params.color === "string" && COMMENT_COLORS[params.color] ? params.color : "amber";
-    const color = COMMENT_COLORS[colorKey] ?? COMMENT_COLORS.amber;
+    /**
+     * A group: the same card drawn as a frame around other cards rather than as a note.
+     *
+     * Two things change and nothing else. The name moves into the title row, because the body is
+     * where the author's nodes are; and the body stops taking the pointer, because a frame whose
+     * middle swallowed clicks would make every card it encloses unreachable and every marquee
+     * inside it impossible. Comments written before groups existed carry no `frame` and are
+     * untouched by either.
+     */
+    const isFrame = params.frame === true;
+    const [renaming, setRenaming] = useState(false);
+    const text = typeof params.text === "string" ? params.text : "";
+    const colorKey = resolveBlueprintCommentColorKey(params.color);
+    const color = BLUEPRINT_COMMENT_COLORS[colorKey]!;
     const backgroundEnabled = params.background !== false;
     const width = readPositiveNumberParam(params, "width", COMMENT_DEFAULT_WIDTH);
     const height = readPositiveNumberParam(params, "height", COMMENT_DEFAULT_HEIGHT);
@@ -2178,20 +2134,51 @@ function BlueprintCommentNodeCard({
             }}
         >
             <div
-                className="relative flex shrink-0 items-center border-b px-3 py-2"
+                className={`relative flex shrink-0 items-center border-b px-3 py-2${isFrame ? " pointer-events-auto" : ""}`}
                 style={{ borderColor: color.border, background: color.header }}
             >
-                <div
-                    className="min-w-0 flex-1 truncate text-2xs font-semibold"
-                    style={{ color: color.text }}
-                >
-                    {displayName}
-                </div>
+                {isFrame && renaming ? (
+                    <Input
+                        size="sm"
+                        fullWidth
+                        autoFocus
+                        // `nodrag` so the pointer selects text here instead of towing the frame; the
+                        // rest of the title row is still the handle the frame is dragged by.
+                        className="nodrag !min-h-0 border-0 bg-transparent px-0 py-0 text-2xs font-semibold"
+                        style={{ color: color.text }}
+                        aria-label={t("blueprint.group.rename")}
+                        value={text}
+                        // A rename opens on the whole name, the way every other rename in Studio
+                        // does - the author double-clicked to replace it, not to append to it.
+                        onFocus={e => e.currentTarget.select()}
+                        onPointerDown={stopFlowNodePointerBubble}
+                        onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === "Enter" || e.key === "Escape") {
+                                e.preventDefault();
+                                setRenaming(false);
+                            }
+                        }}
+                        onBlur={() => setRenaming(false)}
+                    />
+                ) : (
+                    <div
+                        className="min-w-0 flex-1 truncate text-2xs font-semibold"
+                        style={{ color: color.text }}
+                        // Double-click to rename, the way the frame is named everywhere else this
+                        // gesture appears. A permanently open box here would cost the frame its
+                        // drag handle, since the title row is the only part of it that takes a
+                        // pointer at all.
+                        onDoubleClick={isFrame && onPatchNodeParam ? () => setRenaming(true) : undefined}
+                    >
+                        {isFrame ? text || t("blueprint.group.untitled") : displayName}
+                    </div>
+                )}
                 <div
                     className="nodrag pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
                     onPointerDown={stopFlowNodePointerBubble}
                 >
-                    {Object.entries(COMMENT_COLORS).map(([key, item]) => (
+                    {Object.entries(BLUEPRINT_COMMENT_COLORS).map(([key, item]) => (
                         <button
                             key={key}
                             type="button"
@@ -2199,8 +2186,8 @@ function BlueprintCommentNodeCard({
                                 key === colorKey ? "border-white/85" : "border-edge-strong"
                             }`}
                             style={{ background: item.swatch }}
-                            data-tip={commentColorLabel(key, t)}
-                            aria-label={commentColorLabel(key, t)}
+                            data-tip={blueprintCommentColorLabel(key, t)}
+                            aria-label={blueprintCommentColorLabel(key, t)}
                             onClick={e => {
                                 e.stopPropagation();
                                 onPatchNodeParam?.(nodeId, "color", key);
@@ -2228,18 +2215,22 @@ function BlueprintCommentNodeCard({
                     </button>
                 </div>
             </div>
-            <TextArea
-                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-fg placeholder-fg-subtle focus:border-transparent"
-                value={typeof params.text === "string" ? params.text : ""}
-                rows={4}
-                placeholder={displayName}
-                onMouseDown={stopFlowNodePointerBubble}
-                onPointerDown={stopFlowNodePointerBubble}
-                onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
-            />
+            {isFrame ? null : (
+                <TextArea
+                    className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-fg placeholder-fg-subtle focus:border-transparent"
+                    value={text}
+                    rows={4}
+                    placeholder={displayName}
+                    onMouseDown={stopFlowNodePointerBubble}
+                    onPointerDown={stopFlowNodePointerBubble}
+                    onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
+                />
+            )}
             {freeze.frozen ? null : (
                 <div
-                    className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle"
+                    className={`nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle${
+                        isFrame ? " pointer-events-auto" : ""
+                    }`}
                     data-tip={t("blueprint.comment.resize")}
                     onPointerDown={startResize}
                 >

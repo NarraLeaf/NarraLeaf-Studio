@@ -322,6 +322,12 @@ export const blueprint = {
         restoreLayer: "恢复正常注释层级",
         resize: "调整注释大小",
     },
+    group: {
+        create: "创建分组",
+        color: "分组颜色",
+        untitled: "分组",
+        rename: "分组名称",
+    },
     displayable: {
         propertyLabel: "属性",
         valueLabel: "值",
@@ -393,6 +399,13 @@ export const blueprint = {
     tsPane: {
         importHint: "允许的导入：\"narraleaf-studio\"",
         sourceLabel: "TypeScript 蓝图源代码",
+    },
+    tool: {
+        select: "选择工具",
+        pan: "平移画布",
+    },
+    format: {
+        graph: "格式化蓝图",
     },
     zoom: {
         label: "缩放",

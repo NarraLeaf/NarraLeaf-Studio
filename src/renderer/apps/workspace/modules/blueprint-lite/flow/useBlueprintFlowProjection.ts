@@ -29,6 +29,21 @@ function isBackgroundLayerComment(node: Node<BlueprintFlowNodeData>): boolean {
     return node.data.catalog.role === "comment" && node.data.params.background === false;
 }
 
+/**
+ * A group frame is a comment card stretched around other cards, so its middle is exactly where the
+ * author's nodes are. React Flow gives every node wrapper `pointer-events: all`, which over that
+ * area would mean a frame that quietly ate every click aimed at what it encloses - and every
+ * marquee started inside it. Switching the wrapper off hands those pixels back; the card itself
+ * turns the pointer on again for the two parts a frame is actually operated by, its title row and
+ * its resize corner.
+ */
+export function blueprintFlowNodeStyle(
+    role: string,
+    params: Record<string, unknown>,
+): { pointerEvents: "none" } | undefined {
+    return role === "comment" && params.frame === true ? { pointerEvents: "none" } : undefined;
+}
+
 function readBlueprintFlowNodeZIndex(node: Node<BlueprintFlowNodeData>): number {
     if (isBackgroundLayerComment(node)) {
         return 0;
@@ -87,6 +102,7 @@ export function blueprintIrToFlowNodes(
             type: "blueprint",
             position: readNodeEditorLayout(n),
             zIndex: catalog.role === "comment" && !backgroundEnabled ? 0 : 1,
+            style: blueprintFlowNodeStyle(catalog.role ?? "", inferredParams),
             data: {
                 catalog,
                 nodeId: n.id,

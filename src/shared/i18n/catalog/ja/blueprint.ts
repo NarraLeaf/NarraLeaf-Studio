@@ -322,6 +322,12 @@ export const blueprint = {
         restoreLayer: "コメントを通常の重なりに戻す",
         resize: "コメントの大きさを変える",
     },
+    group: {
+        create: "選択をグループ化",
+        color: "グループの色",
+        untitled: "グループ",
+        rename: "グループ名",
+    },
     displayable: {
         propertyLabel: "プロパティ",
         valueLabel: "値",
@@ -395,6 +401,13 @@ export const blueprint = {
     tsPane: {
         importHint: "読み込めるのは \"narraleaf-studio\" だけ",
         sourceLabel: "TypeScript のブループリントのソース",
+    },
+    tool: {
+        select: "選択ツール",
+        pan: "キャンバスを動かす",
+    },
+    format: {
+        graph: "グラフを整列",
     },
     zoom: {
         label: "拡大縮小",

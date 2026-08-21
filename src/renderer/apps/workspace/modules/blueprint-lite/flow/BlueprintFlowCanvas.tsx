@@ -55,6 +55,7 @@ import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
     isValidBlueprintIrExecConnection,
+    writeNodeEditorLayout,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import {
     pickBlueprintDragConnectTargetPin,
@@ -78,6 +79,15 @@ import {
 } from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
+import { BlueprintCanvasToolbar, type BlueprintCanvasTool } from "./components/BlueprintCanvasToolbar";
+import { BLUEPRINT_COMMENT_DEFAULT_COLOR } from "./blueprintCommentColors";
+import { layoutBlueprintGraph } from "./blueprintAutoLayout";
+import {
+    blueprintGroupMemberIds,
+    computeBlueprintGroupFrame,
+    refitBlueprintGroupFrames,
+    type BlueprintFrameBox,
+} from "./blueprintGroupFrame";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
 import { SaveSchemaFieldsModal } from "../components/SaveSchemaFieldsModal";
 import {
@@ -104,6 +114,51 @@ import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
+
+/**
+ * Which mouse buttons drag the canvas itself.
+ *
+ * Middle-drag pans under either tool - that gesture predates the toolbar and nothing about it
+ * changes. The hand tool adds the left button, which is the whole of what "hand" means here: a drag
+ * on empty canvas moves the view instead of drawing a marquee. `selectionOnDrag` has to come off at
+ * the same time, because React Flow gives the marquee priority whenever both are on.
+ *
+ * Module constants, not inline arrays: React Flow compares this prop by identity, and a fresh array
+ * every render would tear down and rebuild d3-zoom's handlers on every keystroke in a node card.
+ */
+const PAN_BUTTONS_SELECT_TOOL = [1];
+const PAN_BUTTONS_HAND_TOOL = [0, 1];
+
+/** A node the way the group and layout geometry sees it: where it is and how big it measured. */
+type BlueprintCanvasBox = BlueprintFrameBox & { isComment: boolean; isFrame: boolean };
+
+/**
+ * Measured boxes for every real node on the canvas.
+ *
+ * Unmeasured nodes are left out rather than defaulted to zero: a card React Flow has not sized yet
+ * would read as a point, which is inside every frame and takes no room in a layer.
+ */
+function readBlueprintCanvasBoxes(nodes: readonly Node<BlueprintFlowNodeData>[]): BlueprintCanvasBox[] {
+    const out: BlueprintCanvasBox[] = [];
+    for (const node of nodes) {
+        const width = node.measured?.width ?? 0;
+        const height = node.measured?.height ?? 0;
+        if (node.id === BP_PLACEMENT_PREVIEW_ID || width <= 0 || height <= 0) {
+            continue;
+        }
+        const isComment = node.data.catalog.role === "comment";
+        out.push({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+            width,
+            height,
+            isComment,
+            isFrame: isComment && node.data.params.frame === true,
+        });
+    }
+    return out;
+}
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 
@@ -244,6 +299,22 @@ type BlueprintFlowCanvasInnerProps = {
     currentBlueprintId?: string;
     /** Resolves a callable fn signature (cross-blueprint) when a Call Fn picks a fnRef. */
     resolveCallableFnSignature?: (fnRef: string) => BlueprintFnSignatureSnapshot | null;
+    /**
+     * Adds the frame the toolbar's Group button draws around the current selection, and answers
+     * with its node id so the canvas can select what it just made.
+     *
+     * The canvas works out the rectangle, because only it knows how big the selected cards measured
+     * on screen; the owning tab makes the node, because only it can mint an id and reach the
+     * blueprint document. Withheld (undefined) where grouping is not offered at all.
+     */
+    onCreateGroupFrame?: (frame: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        color: string;
+        name: string;
+    }) => string | undefined;
 };
 
 export type BlueprintFlowViewport = {
@@ -353,6 +424,7 @@ function BlueprintFlowCanvasInner({
     onViewportChange,
     currentBlueprintId,
     resolveCallableFnSignature,
+    onCreateGroupFrame,
 }: BlueprintFlowCanvasInnerProps) {
     // React Flow derives document-wide ids from this (the dot-grid `<pattern>`, edge
     // markers, handle element ids, ARIA descriptions) and falls back to a literal "1"
@@ -369,6 +441,16 @@ function BlueprintFlowCanvasInner({
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport, setCenter } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    /**
+     * Which tool the toolbar has selected, and which colour the next group takes.
+     *
+     * Both are view state and stay out of the document on purpose: the tool is where the author's
+     * hand is right now, not something about the blueprint, and a colour the toolbar remembers for
+     * the session is the difference between one click and two without writing a preference nobody
+     * asked to set.
+     */
+    const [tool, setTool] = useState<BlueprintCanvasTool>("select");
+    const [groupColor, setGroupColor] = useState<string>(BLUEPRINT_COMMENT_DEFAULT_COLOR);
     const nodeDiagnosticsByNodeId = useMemo(
         () => buildNodeDiagnosticsByNodeId(diagnostics, graphKey),
         [diagnostics, graphKey],
@@ -1011,16 +1093,166 @@ function BlueprintFlowCanvasInner({
         [onSelectNodeIds],
     );
 
-    const onNodeDragStart = useCallback(() => {
-        isNodeDragActiveRef.current = true;
-    }, []);
+    /**
+     * What a frame is carrying, fixed the moment the drag starts.
+     *
+     * Membership has to be settled once and then left alone: recomputing it mid-drag would let a
+     * frame pick up every card it swept over and drop the ones it left behind, so the group would
+     * change shape while the author was only moving it. `origin` is where the frame stood at the
+     * start, which is what the live offset is measured from.
+     */
+    const groupDragRef = useRef<{
+        start: Map<string, { x: number; y: number }>;
+        origin: { x: number; y: number };
+    } | null>(null);
+
+    const onNodeDragStart = useCallback(
+        (_event: MouseEvent | TouchEvent, node: Node, dragged: Node[]) => {
+            isNodeDragActiveRef.current = true;
+            groupDragRef.current = null;
+
+            const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]);
+            const draggedIds = new Set(dragged.map(n => n.id));
+            const frames = boxes.filter(box => box.isFrame && draggedIds.has(box.id));
+            if (frames.length === 0) {
+                return;
+            }
+            // React Flow already moves everything in the selection. Anything it is moving is left
+            // out here, or a card that is both selected and inside the frame would travel twice.
+            const start = new Map<string, { x: number; y: number }>();
+            for (const frame of frames) {
+                for (const id of blueprintGroupMemberIds(frame.id, frame, boxes)) {
+                    if (draggedIds.has(id) || start.has(id)) {
+                        continue;
+                    }
+                    const member = boxes.find(box => box.id === id);
+                    if (member) {
+                        start.set(id, { x: member.x, y: member.y });
+                    }
+                }
+            }
+            if (start.size > 0) {
+                groupDragRef.current = { start, origin: { x: node.position.x, y: node.position.y } };
+            }
+        },
+        [getNodes],
+    );
+
+    const onNodeDrag = useCallback(
+        (_event: MouseEvent | TouchEvent, node: Node) => {
+            const carried = groupDragRef.current;
+            if (!carried) {
+                return;
+            }
+            const dx = node.position.x - carried.origin.x;
+            const dy = node.position.y - carried.origin.y;
+            setNodes(nds =>
+                nds.map(n => {
+                    const from = carried.start.get(n.id);
+                    return from ? { ...n, position: { x: from.x + dx, y: from.y + dy } } : n;
+                }),
+            );
+        },
+        [setNodes],
+    );
 
     const onNodeDragStop = useCallback(() => {
         isNodeDragActiveRef.current = false;
+        groupDragRef.current = null;
         const next = cloneBlueprintIr(irRef.current);
         applyFlowPositionsToIr(next, getNodes() as Node[]);
         commitBlueprintIr(next);
     }, [commitBlueprintIr, getNodes]);
+
+    /**
+     * Draw a frame around what is selected.
+     *
+     * The rectangle is worked out here because only the canvas knows how big the selected cards
+     * measured; the node itself is made by the owning tab, which is where ids and the blueprint
+     * document are. The colour is remembered so the next group costs one click rather than two.
+     */
+    const createGroupFromSelection = useCallback(
+        (color: string) => {
+            if (!onCreateGroupFrame) {
+                return;
+            }
+            setGroupColor(color);
+            const selected = new Set(selectedNodeIdsRef.current);
+            const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]).filter(box =>
+                selected.has(box.id),
+            );
+            const frame = computeBlueprintGroupFrame(boxes);
+            if (!frame) {
+                return;
+            }
+            const id = onCreateGroupFrame({ ...frame, color, name: t("blueprint.group.untitled") });
+            if (id) {
+                onSelectNodeIds([id]);
+            }
+        },
+        [getNodes, onCreateGroupFrame, onSelectNodeIds, t],
+    );
+
+    /**
+     * Lay the whole graph out again, left to right along the way its wires run.
+     *
+     * Group frames do not take part in the layout - they have no pins, so they would each be an
+     * island of one and end up stacked below the graph. They are re-fitted around wherever their
+     * members landed instead, which is what keeps a group a group. Plain comment notes are left
+     * exactly where the author put them: they annotate a region rather than enclose it, and
+     * resizing somebody's note to fit whatever now happens to sit under it would be worse than
+     * leaving it behind.
+     */
+    const formatGraph = useCallback(() => {
+        const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]);
+        const cards = boxes.filter(box => !box.isComment);
+        if (cards.length === 0) {
+            return;
+        }
+        const frames = boxes.filter(box => box.isFrame);
+        // Read before anything moves: afterwards the frames still stand where they were, so the
+        // same containment test would be answering about a graph that no longer exists.
+        const membersByFrameId = new Map(
+            frames.map(frame => [frame.id, blueprintGroupMemberIds(frame.id, frame, boxes)] as const),
+        );
+
+        const snap = irRef.current;
+        const positions = layoutBlueprintGraph(
+            cards,
+            (snap.edges ?? []).map(edge => ({ from: edge.from.nodeId, to: edge.to.nodeId })),
+        );
+        const moved = new Map(
+            cards
+                .filter(card => positions[card.id])
+                .map(card => [
+                    card.id,
+                    { ...positions[card.id]!, width: card.width, height: card.height },
+                ] as const),
+        );
+        const refitted = refitBlueprintGroupFrames(frames, membersByFrameId, moved);
+
+        const next = cloneBlueprintIr(snap);
+        for (const [id, rect] of moved) {
+            const node = next.nodes?.[id];
+            if (node) {
+                writeNodeEditorLayout(node, { x: rect.x, y: rect.y });
+            }
+        }
+        for (const [id, rect] of Object.entries(refitted)) {
+            const node = next.nodes?.[id];
+            if (node) {
+                node.params = { ...(node.params ?? {}), width: rect.width, height: rect.height };
+                writeNodeEditorLayout(node, { x: rect.x, y: rect.y });
+            }
+        }
+        commitBlueprintIr(next);
+    }, [commitBlueprintIr, getNodes]);
+
+    /** Nothing to arrange on an empty graph, or on one that holds only comments. */
+    const canFormat = useMemo(
+        () => nodes.some(node => node.id !== BP_PLACEMENT_PREVIEW_ID && node.data.catalog.role !== "comment"),
+        [nodes],
+    );
 
     const isValidConnection = useCallback((connection: Connection | Edge) => {
         if (
@@ -1412,6 +1644,7 @@ function BlueprintFlowCanvasInner({
                 onConnect={onConnect}
                 onConnectEnd={onConnectEnd}
                 onNodeDragStart={onNodeDragStart}
+                onNodeDrag={onNodeDrag}
                 onNodeDragStop={onNodeDragStop}
                 onEdgesDelete={onEdgesDelete}
                 // Double-clicking an edge deletes it, so it goes with the rest of the write gestures.
@@ -1426,15 +1659,19 @@ function BlueprintFlowCanvasInner({
                 // Selection stays on - reading a frozen graph is the point - so only the two gestures
                 // that change it are switched off. React Flow keeps the handles drawn either way, so
                 // the pins the author is inspecting still look like pins.
-                nodesDraggable={!freeze.frozen}
+                // The hand tool is navigation, so nothing moves under it: a drag that started on a
+                // card would otherwise edit the graph while the author believed they were only
+                // travelling across it. With node dragging off, that press reaches the pane and
+                // pans like every other one, so the hand has no dead spots either.
+                nodesDraggable={!freeze.frozen && tool === "select"}
                 nodesConnectable={!freeze.frozen}
                 deleteKeyCode={freeze.frozen ? null : deleteKeyCode ?? null}
                 onNodeClick={onPlacementPreviewNodeClick}
                 onSelectionChange={onSelectionChange}
-                selectionOnDrag={!pendingPlacementEntry}
+                selectionOnDrag={!pendingPlacementEntry && tool === "select"}
                 selectionMode={SelectionMode.Partial}
                 multiSelectionKeyCode="Shift"
-                panOnDrag={[1]}
+                panOnDrag={tool === "pan" ? PAN_BUTTONS_HAND_TOOL : PAN_BUTTONS_SELECT_TOOL}
                 panOnScroll
                 panOnScrollMode={PanOnScrollMode.Free}
                 panOnScrollSpeed={1}
@@ -1456,6 +1693,15 @@ function BlueprintFlowCanvasInner({
                 zIndexMode="manual"
             >
                 <Background color="rgb(var(--nl-fg-subtle))" gap={20} size={1} />
+                <BlueprintCanvasToolbar
+                    tool={tool}
+                    onToolChange={setTool}
+                    groupColor={groupColor}
+                    onCreateGroup={createGroupFromSelection}
+                    canGroup={Boolean(onCreateGroupFrame) && selectedNodeIds.length > 0}
+                    onFormat={formatGraph}
+                    canFormat={canFormat}
+                />
                 <BlueprintFlowZoomControls memberPanelCollapsed={memberPanelCollapsed} />
                 <MiniMap
                     // Dragging the minimap pans the viewport — the quickest way to
