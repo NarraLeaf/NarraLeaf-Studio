@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { MotionConfig } from "motion/react";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
@@ -418,11 +419,16 @@ function ElementLiteralSurfacePreview({
             },
         };
     }, [document, element, height, previewSurfaceId, surface, width]);
+    // `nl-motion-keep` for the same reason the UI editor's canvas carries it (see the exemption note
+    // in styles.css): what is drawn here is the game's own widget, and `ui.reduceMotion` is a
+    // promise about Studio's chrome rather than about the thing being authored. It costs no calm —
+    // this preview is inert (`editorChrome: false`, `pointer-events-none`, nothing changes state on
+    // it), so the tag holds the rule rather than restarting any motion.
     const rendered = runtimeBridge.renderDocumentSurface({
         document: previewDocument,
         surfaceId: previewSurfaceId,
         hostAdapter: { host: surface.host },
-        className: "pointer-events-none select-none",
+        className: "nl-motion-keep pointer-events-none select-none",
         style: { backgroundColor: "transparent" },
         editorChrome: false,
     });
@@ -460,7 +466,9 @@ function ElementLiteralSurfacePreview({
                         pointerEvents: "none",
                     }}
                 >
-                    {rendered}
+                    {/* The other half of the exemption: the widget renderers animate from
+                        framer-motion, which no CSS rule reaches. Renders no node of its own. */}
+                    <MotionConfig reducedMotion="never">{rendered}</MotionConfig>
                 </div>
             </div>
         </div>
