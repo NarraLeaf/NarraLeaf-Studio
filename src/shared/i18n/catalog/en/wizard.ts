@@ -132,7 +132,7 @@ export const wizard = {
         // Choosing beats typing: the address is on the server already, and an author who
         // types one is an author who can mistype one.
         onServerLabel: "Projects on connected servers",
-        onServerHint: "Choose one, or type an address below for a server that has not been added.",
+        onServerHint: "Choose one, or type a project address below.",
         onServerEmpty: "This server holds no projects yet.",
         onServerLoading: "Asking the server...",
         onServerNoToken: "Studio cannot ask this server what it holds. Add it again with its token.",
@@ -154,9 +154,8 @@ export const wizard = {
         error: {
             failedTitle: "Clone failed",
             generic: "The project could not be fetched from the server.",
-            // A Lore server holds repositories, and a repository is not necessarily a Studio
-            // project. The files are named because they are real, and they are why this folder
-            // cannot be reused.
+            // A repository on a Team server is not necessarily a Studio project. The files are
+            // named because they are real, and they are why this folder cannot be reused.
             notAProjectTitle: "This is not a NarraLeaf Studio project",
             notAProject: "The copy finished, but it holds no Studio project file. The copied contents are in {path}",
         },

@@ -64,20 +64,22 @@ function cell(overrides: Partial<VersionSurface> = {}) {
     render(<TeamStatusEntry />);
 }
 
+function signedIn(): VcsServerSession {
+    return {
+        remoteOrigin: ONE,
+        authUrl: "https://one.example.lan",
+        account: { userId: "ada", username: "ada", displayName: "Ada", identity: "ada@one" },
+        name: "Blackwood Studio",
+    } as VcsServerSession;
+}
+
 function cellNode(): HTMLElement | null {
     return document.querySelector<HTMLElement>("[data-team-cell]");
 }
 
 describe("the Team cell", () => {
     it("names the server this project's versions go to", () => {
-        cell({
-            serverSession: {
-                remoteOrigin: ONE,
-                authUrl: "https://one.example.lan",
-                account: { userId: "ada", username: "ada", displayName: "Ada", identity: "ada@one" },
-                name: "Blackwood Studio",
-            } as VcsServerSession,
-        });
+        cell({ serverSession: signedIn() });
 
         expect(cellNode()?.getAttribute("data-team-cell")).toBe("connected");
         expect(cellNode()?.textContent).toBe("Blackwood Studio");
@@ -108,6 +110,33 @@ describe("the Team cell", () => {
         fireEvent.click(cellNode()!);
 
         expect(document.querySelector("[data-team-panel]")).not.toBeNull();
+    });
+
+    it("raises its voice only for the states somebody acts on", () => {
+        const ink = () => cellNode()?.className ?? "";
+        const upToDate = {
+            remoteAvailable: true,
+            remoteAuthorized: true,
+            remoteBranchExists: true,
+            localAhead: false,
+            remoteAhead: false,
+        } as VersionSurface["syncState"];
+
+        // Signed in and up to date: the ordinary state, and the ordinary ink. A cell that went
+        // coloured here would be coloured all working day, which is a colour that means nothing.
+        cell({ serverSession: signedIn(), syncState: upToDate });
+        expect(ink()).not.toContain("text-warning");
+        cleanup();
+
+        // Nothing answered. The rail still draws Send and Get, so this cell is the only thing
+        // that says the press will be refused.
+        cell({ serverSession: signedIn(), syncState: { ...upToDate!, remoteAvailable: false } });
+        expect(ink()).toContain("text-warning");
+        cleanup();
+
+        // No account on that server, which is refused the same way and fixed in the panel.
+        cell({ serverSession: null });
+        expect(ink()).toContain("text-warning");
     });
 
     it("registers the bridge the rail opens it through, and only while it is drawn", () => {

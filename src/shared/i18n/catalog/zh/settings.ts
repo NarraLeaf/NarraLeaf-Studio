@@ -355,7 +355,7 @@ export const settings = {
         usePassword: "改用用户名和密码",
         signInRefused: "服务器未接受该用户名和密码",
         signInUnavailable: "本机无法使用密码登录",
-        noAccount: "{name} 不要求身份验证，无需添加",
+        noAccount: "{name} 不签发账号，无法添加。请向其管理员索取账号",
         joined: {
             signedInAs: "已以 {name} 的身份登录",
             projects: {

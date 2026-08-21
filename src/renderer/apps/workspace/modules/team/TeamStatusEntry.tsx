@@ -54,14 +54,29 @@ export function TeamStatusEntry() {
     const name = remote === null
         ? null
         : serverSession ? serverDisplayName(serverSession) : serverHost(remote);
+    const face = serverFace(surface.syncState);
     const tooltip = remote === null
         ? t("workspace.shell.versionControl.server.none")
-        : `${name} - ${t(serverFace(surface.syncState).detail)}`;
+        : `${name} - ${t(face.detail)}`;
+    /**
+     * The one state the cell raises its voice for: something is standing between this project and
+     * its server, and nothing else on screen says so.
+     *
+     * **Only the two answers a person acts on**, never "up to date" - a green cell in the corner
+     * all working day is a colour that has stopped meaning anything. A missing account is here for
+     * the same reason as the refusals: Send and Get are refused until one is added, and the rail
+     * draws both buttons regardless.
+     */
+    const wrong = remote !== null
+        && (serverSession === null
+            || face.tone === "text-danger"
+            || face.tone === "text-warning");
 
     return (
         <>
             <StatusEntry
                 onClick={() => setOpen(true)}
+                tone={wrong ? "text-warning" : undefined}
                 tooltip={tooltip}
                 ariaLabel={t("workspace.shell.team.title")}
                 dataAttributes={{ "data-team-cell": remote === null ? "none" : "connected" }}
