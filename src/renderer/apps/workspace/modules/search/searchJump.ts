@@ -178,22 +178,5 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
             context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "asset", data: asset });
             return true;
         }
-        case "assetSet": {
-            const context = deps.context;
-            if (!context) {
-                return false;
-            }
-            // A set has no preview editor - it is a row in the assets panel with an inspector, so
-            // this is the `asset` case's second arm and nothing more. Resolved live for the same
-            // reason that one is: the declaration may be gone, and a jump that reveals the panel
-            // with nothing selected is worse than one that declines.
-            const set = context.services.get<AssetSetService>(Services.AssetSets).getSet(target.assetSetId);
-            if (!set) {
-                return false;
-            }
-            deps.setPanelVisibility(ASSETS_PANEL_ID, true);
-            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "assetSet", data: set });
-            return true;
-        }
     }
 }
