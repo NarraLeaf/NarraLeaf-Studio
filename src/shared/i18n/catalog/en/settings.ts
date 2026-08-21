@@ -483,6 +483,10 @@ export const settings = {
                     label: "Spelling dictionaries",
                     description: "Word lists downloaded for spellchecking. The project's own terms are not here.",
                 },
+                optimizedImages: {
+                    label: "Optimized build images",
+                    description: "Images re-encoded for a build. Produced again the next time one runs.",
+                },
                 psdImports: {
                     label: "PSD import leftovers",
                     description: "Layer images written while importing a PSD.",

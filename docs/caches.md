@@ -26,6 +26,7 @@
 | `cache/build-deps/` | 游戏构建拉的依赖 | ✅ `buildDependencies` |
 | `cache/ui-template-posters/` | 模板商店的主题海报，键 `<themeId>@<version>` | ✅ `uiTemplatePosters` |
 | `cache/spellcheck-dictionaries/` | 拼写词表，每种语言一对 `<code>.txt.gz` + `<code>.json`（含 sha256） | ✅ `spellcheckDictionaries` |
+| `cache/optimized-images/` | 构建重新编码过的图像，键 `<源字节 sha256>-<模式>-v<版本>`，两级分片；`.webp` 是留用的结果，`.rejected` 是「转过、不划算」的记号 | ✅ `optimizedImages` |
 | `plugin-icons/` | 插件商店缩略图，键 `<pluginId>@<version>` | ✅ `pluginIcons` |
 | `logs/` | 日志 | ✅ `logs` |
 | Chromium 自己的 `Cache` / `Code Cache` / `GPUCache` … | 界面缓存 | ✅ `browser` |

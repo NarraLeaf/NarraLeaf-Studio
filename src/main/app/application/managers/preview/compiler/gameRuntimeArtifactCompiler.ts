@@ -300,6 +300,31 @@ export type GameRuntimeArtifactCompileInput = {
         key: string;
         titleId: string;
     };
+    /**
+     * Images this artifact ships re-encoded, keyed by asset id.
+     *
+     * The build re-encodes before it compiles, once, and hands every compile the
+     * same table - so the desktop pack, the site the browser and both mobile
+     * shells are built from, and any patch made later all carry the identical
+     * bytes for an asset. Absent for the preview, Dev Mode and the tests: none of
+     * them is what a player receives, and re-encoding artwork nobody will keep is
+     * time an author is waiting through.
+     */
+    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+};
+
+/**
+ * One image the build already re-encoded: the file to copy in place of the
+ * project's, and what those bytes are.
+ *
+ * Declared here rather than imported from the build manager because this module
+ * runs in a utility process, and the value arrives across that boundary as
+ * plain data.
+ */
+export type OptimizedAssetImageInput = {
+    path: string;
+    ext: string;
+    mimeType: string;
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -493,6 +518,7 @@ export async function compileGameRuntimeArtifact(
             assetsDir,
             target,
             include: shipped?.include ?? null,
+            ...(input.assetImages ? { assetImages: input.assetImages } : {}),
         });
         // Baked character avatars are derived project files, not library assets, so the walk
         // above never sees them. Without this pass a packaged game resolves every avatar to
@@ -503,6 +529,7 @@ export async function compileGameRuntimeArtifact(
             target,
             manifest: assetManifest,
             characterIds: shipped?.characterIds ?? null,
+            ...(input.assetImages ? { assetImages: input.assetImages } : {}),
         });
         // Weather clips are derived the same way and are invisible to the sweep for a stronger
         // reason: the id that addresses one is COMPUTED by the running game rather than written in
@@ -1162,6 +1189,7 @@ async function copyProjectAssets(input: {
      * can have lost its last reference, and narrowing there could only ever take something away.
      */
     include: ReadonlySet<string> | null;
+    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
     for (const type of ASSET_TYPES) {
@@ -1187,24 +1215,33 @@ async function copyProjectAssets(input: {
                 continue;
             }
             const sourceLabel = normalized.source === "remote" ? "remote asset" : "local asset";
+            // An image the build re-encoded ships from Studio's cache, under the
+            // extension and media type of what it was re-encoded into. Nothing
+            // else about it moves: `hash` and `originalRelativePath` describe the
+            // file in the author's project this asset came from, which is exactly
+            // as true afterwards, and they are the only trail from a shipped
+            // asset back to its source. See `optimizeProjectImages`.
+            const optimized = input.assetImages?.[normalized.id];
+            const payloadPath = optimized?.path ?? sourcePath;
+            const ext = optimized?.ext ?? normalized.ext;
             // The MIME type is derived from the extension, not from where the
             // bytes land, so it is available even when the store keeps the item
             // under an extension-free name.
-            const mimeType = getMimeType(`${normalized.id}.${normalized.ext}`);
+            const mimeType = optimized?.mimeType ?? getMimeType(`${normalized.id}.${normalized.ext}`);
             let relativePath: string;
             try {
                 if (input.target.kind === "sealed") {
                     // Extension-free entry name: an item's media type is not
                     // recoverable from the store.
                     relativePath = gameRuntimeBundleAssetEntry(normalized.id);
-                    await input.target.writer.add(relativePath, await fs.readFile(sourcePath));
+                    await input.target.writer.add(relativePath, await fs.readFile(payloadPath));
                 } else {
-                    relativePath = path.join("assets", `${normalized.id}.${normalized.ext}`).replace(/\\/g, "/");
-                    await fs.copyFile(sourcePath, path.join(input.assetsDir, `${normalized.id}.${normalized.ext}`));
+                    relativePath = path.join("assets", `${normalized.id}.${ext}`).replace(/\\/g, "/");
+                    await fs.copyFile(payloadPath, path.join(input.assetsDir, `${normalized.id}.${ext}`));
                 }
             } catch (error) {
                 throw new Error(
-                    `Failed to copy ${sourceLabel} "${normalized.name}" (${normalized.id}) from ${sourcePath}: ` +
+                    `Failed to copy ${sourceLabel} "${normalized.name}" (${normalized.id}) from ${payloadPath}: ` +
                     `${error instanceof Error ? error.message : String(error)}`,
                 );
             }
@@ -1216,7 +1253,7 @@ async function copyProjectAssets(input: {
                 relativePath,
                 originalRelativePath: path.relative(input.projectPath, sourcePath).replace(/\\/g, "/"),
                 hash: normalized.hash,
-                ext: normalized.ext,
+                ext,
                 mimeType,
             };
         }
@@ -1381,6 +1418,7 @@ async function copyBakedCharacterAvatars(input: {
      * sits on disk, and this walk would copy every one of them into a demo.
      */
     characterIds: ReadonlySet<string> | null;
+    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
 }): Promise<void> {
     const root = path.join(input.projectPath, "resources", "characters", "avatars");
     let characterDirs: string[];
@@ -1402,16 +1440,21 @@ async function copyBakedCharacterAvatars(input: {
             const key = fileName.slice(0, -".png".length);
             const id = characterAvatarAssetId(characterId, key);
             const sourcePath = path.join(dir, fileName);
+            // Re-encoded like any other image, and by the same pass: a bake is a
+            // PNG shown on almost every line of dialogue.
+            const optimized = input.assetImages?.[id];
+            const payloadPath = optimized?.path ?? sourcePath;
+            const ext = optimized?.ext ?? "png";
             let relativePath: string;
             if (input.target.kind === "sealed") {
                 relativePath = gameRuntimeBundleAssetEntry(id);
-                input.target.writer.add(relativePath, await fs.readFile(sourcePath));
+                input.target.writer.add(relativePath, await fs.readFile(payloadPath));
             } else {
                 // The synthetic id carries characters (`:`) a file name may not, so the copy is
                 // named after the bake path it came from rather than after the id.
-                const flatName = `character-avatar-${characterId}-${fileName}`;
+                const flatName = `character-avatar-${characterId}-${key}.${ext}`;
                 relativePath = path.join("assets", flatName).replace(/\\/g, "/");
-                await fs.copyFile(sourcePath, path.join(input.assetsDir, flatName));
+                await fs.copyFile(payloadPath, path.join(input.assetsDir, flatName));
             }
             input.manifest[id] = {
                 id,
@@ -1420,8 +1463,8 @@ async function copyBakedCharacterAvatars(input: {
                 source: "local",
                 relativePath,
                 originalRelativePath: path.relative(input.projectPath, sourcePath).replace(/\\/g, "/"),
-                ext: "png",
-                mimeType: "image/png",
+                ext,
+                mimeType: optimized?.mimeType ?? "image/png",
             };
         }
     }
