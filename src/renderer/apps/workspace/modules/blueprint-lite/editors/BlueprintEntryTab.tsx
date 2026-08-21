@@ -90,6 +90,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
@@ -1039,6 +1040,52 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         targetHandle: entry.magicElementRef.targetPortId,
                     });
                 }
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            } else {
+                localBp.updateFunctionGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            }
+            return id;
+        },
+        [editor.graphView, localBp, payload.blueprintId, uuid],
+    );
+
+    /**
+     * The node behind a group: a comment card in frame mode, at the rectangle the canvas measured
+     * around the selection.
+     *
+     * `background: false` is what puts it behind its members - a frame drawn on the node layer
+     * would tint every card it encloses. There is no group record anywhere; a frame and the cards
+     * that happen to sit inside it are all a group ever is, which is why creating one is a single
+     * ordinary node write and undoes like one.
+     */
+    const onCreateGroupFrame = useCallback(
+        (frame: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            color: string;
+            name: string;
+        }): string | undefined => {
+            if (!editor.graphView) {
+                return undefined;
+            }
+            const id = uuid.generate();
+            const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_FLOW_COMMENT, id);
+            node.params = {
+                ...(node.params ?? {}),
+                text: frame.name,
+                color: frame.color,
+                background: false,
+                frame: true,
+                width: frame.width,
+                height: frame.height,
+            };
+            writeNodeEditorLayout(node, { x: frame.x, y: frame.y });
+            const mut = (draft: BlueprintGraphIr) => {
+                draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
             };
             if (editor.graphView.kind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
@@ -2000,6 +2047,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         onViewportChange={onFlowViewportChange}
                         currentBlueprintId={payload.blueprintId}
                         resolveCallableFnSignature={resolveCallableFnSignature}
+                        onCreateGroupFrame={onCreateGroupFrame}
                     />
                 </div>
             </div>

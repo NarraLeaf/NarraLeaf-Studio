@@ -11,6 +11,12 @@ export interface ToolbarButtonProps extends Omit<React.ButtonHTMLAttributes<HTML
     /** Draw a hairline border (some toolbars use bordered controls). */
     bordered?: boolean;
     "aria-label": string;
+    /**
+     * Declared rather than inherited, exactly as on `Button`: `ButtonHTMLAttributes` carries no
+     * `ref`, so a caller that has to measure the button - anchoring a popover to it - is turned
+     * away by the type even though React 19 passes the ref straight through to the element below.
+     */
+    ref?: React.Ref<HTMLButtonElement>;
 }
 
 /**

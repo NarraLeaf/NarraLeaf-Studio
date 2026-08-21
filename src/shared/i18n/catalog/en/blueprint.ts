@@ -328,6 +328,12 @@ export const blueprint = {
         restoreLayer: "Restore normal comment layer",
         resize: "Resize comment",
     },
+    group: {
+        create: "Group selection",
+        color: "Group color",
+        untitled: "Group",
+        rename: "Group name",
+    },
     displayable: {
         propertyLabel: "Property",
         valueLabel: "Value",
@@ -401,6 +407,13 @@ export const blueprint = {
     tsPane: {
         importHint: "Allowed import: \"narraleaf-studio\"",
         sourceLabel: "TypeScript blueprint source",
+    },
+    tool: {
+        select: "Select tool",
+        pan: "Pan the canvas",
+    },
+    format: {
+        graph: "Format graph",
     },
     zoom: {
         label: "Zoom",
