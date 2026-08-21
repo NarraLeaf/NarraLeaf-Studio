@@ -63,10 +63,11 @@ export const settings = {
             description: "Checkpoints and the identity recorded on them.",
         },
         servers: {
-            // The product, not the machinery. An author meets this name in the project wizard and
-            // in the corner of the workspace; the panel under it still calls each machine a server.
-            label: "Team",
-            description: "Team servers this installation is signed in to, and the accounts it uses.",
+            // The product, and under its full name: "Team" on its own reads as a word nobody
+            // translated. An author meets the same name in the project wizard and in the corner of
+            // the workspace; the panel under it still calls each machine a server.
+            label: "NarraLeaf Team",
+            description: "NarraLeaf Team servers this installation is signed in to, and the accounts it uses.",
         },
         network: {
             label: "Network",

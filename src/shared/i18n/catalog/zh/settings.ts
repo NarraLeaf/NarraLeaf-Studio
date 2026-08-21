@@ -55,10 +55,11 @@ export const settings = {
             description: "提交版本的记录频率，以及记在上面的身份",
         },
         servers: {
-            // 产品名。作者在新建项目和工作区角落里遇到的是同一个名字；
+            // 产品名，且写全：单写 Team 会被读成没翻译的英文单词。
+            // 作者在新建项目和工作区角落里遇到的是同一个名字；
             // 面板内部仍然把每一台机器称作服务器。
-            label: "Team",
-            description: "本安装已登录的 Team 服务器，以及登录所用的账号",
+            label: "NarraLeaf Team",
+            description: "本安装已登录的 NarraLeaf Team 服务器，以及登录所用的账号",
         },
         network: {
             label: "网络",
