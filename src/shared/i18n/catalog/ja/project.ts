@@ -17,7 +17,7 @@ export const project = {
         // 文字組みなどプロジェクトの見た目はここに合流していく。
         design: {
             title: "デザイン",
-            description: "色と、その色で塗られるコントロール",
+            description: "色、フォント、そしてそれらで塗られるコントロール",
         },
         project: {
             title: "プロジェクト",
@@ -50,6 +50,7 @@ export const project = {
         // このページの残りの言葉は、id の元になるモデルの隣、`brand` 名前空間にある。
         brandColors: "色",
         brandControls: "コントロール",
+        typography: "フォント",
         distribution: "配布キー",
         linting: "プロジェクトチェック",
         security: "セキュリティ",

@@ -12,14 +12,16 @@ import { MnemonicLabel, TitleBarMenus, useMnemonicReveal, useTitleBarMenu } from
  * accelerator quietly taking a key off a binding an author had rebound on purpose.
  */
 
-function Menu({ id, label, hotTrack = false, mnemonic, onKeyDown }: {
+function Menu({ id, label, hotTrack = false, mnemonic, innerMnemonics, onInnerMnemonic, onKeyDown }: {
     id: string;
     label: string;
     hotTrack?: boolean;
     mnemonic?: string;
+    innerMnemonics?: readonly string[];
+    onInnerMnemonic?: (mnemonic: string) => void;
     onKeyDown?: (event: KeyboardEvent) => boolean;
 }) {
-    const menu = useTitleBarMenu(id, { hotTrack, mnemonic, onKeyDown });
+    const menu = useTitleBarMenu(id, { hotTrack, mnemonic, innerMnemonics, onInnerMnemonic, onKeyDown });
     const reveal = useMnemonicReveal();
     return (
         <div ref={menu.ref}>
@@ -247,6 +249,77 @@ describe("the keyboard", () => {
         await pressAccelerator("e", { ctrlKey: true });
 
         expect(onScreen()).toEqual([]);
+    });
+
+    it("reaches a menu that has been collapsed into another one, by the letter it always had", async () => {
+        // The hamburger arrangement: File is a row inside one button rather than a button of its
+        // own. Alt+F is the same key it has always been, and it has to arrive somewhere.
+        const reached: string[] = [];
+        render(
+            <TitleBarMenus>
+                <Menu
+                    id="main"
+                    label="Menu"
+                    hotTrack
+                    innerMnemonics={["F", "E", "H"]}
+                    onInnerMnemonic={letter => reached.push(letter)}
+                />
+            </TitleBarMenus>,
+        );
+
+        await pressAccelerator("f");
+
+        expect(onScreen()).toEqual(["Menu menu"]);
+        // Which row to open on, told to the menu before it appeared rather than after.
+        expect(reached).toEqual(["F"]);
+    });
+
+    it("keeps reporting the letter when that menu is already the open one", async () => {
+        // Alt+E after Alt+F. Nothing the bar holds changes - same member, still open - so the letter
+        // is all the menu has to go on, and it has to arrive every time or the second accelerator
+        // silently leaves the first one's menu on screen.
+        const reached: string[] = [];
+        render(
+            <TitleBarMenus>
+                <Menu
+                    id="main"
+                    label="Menu"
+                    hotTrack
+                    innerMnemonics={["F", "E"]}
+                    onInnerMnemonic={letter => reached.push(letter)}
+                />
+            </TitleBarMenus>,
+        );
+
+        await pressAccelerator("f");
+        await pressAccelerator("e");
+
+        expect(onScreen()).toEqual(["Menu menu"]);
+        expect(reached).toEqual(["F", "E"]);
+    });
+
+    it("leaves the letter to a menu that is still a menu of its own", async () => {
+        // Both arrangements can declare F. A menu on the bar owns the letter it names itself by, so
+        // a collapsed one holding the same letter must not take it - which is what would happen if
+        // the two were matched in one pass and the hamburger happened to register first.
+        const reached: string[] = [];
+        render(
+            <TitleBarMenus>
+                <Menu
+                    id="main"
+                    label="Menu"
+                    hotTrack
+                    innerMnemonics={["F"]}
+                    onInnerMnemonic={letter => reached.push(letter)}
+                />
+                <Menu id="file" label="File" hotTrack mnemonic="F" />
+            </TitleBarMenus>,
+        );
+
+        await pressAccelerator("f");
+
+        expect(onScreen()).toEqual(["File menu"]);
+        expect(reached).toEqual([]);
     });
 
     it("shows what Alt reaches only while Alt is down", () => {

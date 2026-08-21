@@ -7,6 +7,7 @@ import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogService";
 import { VoiceService } from "../voice/VoiceService";
 import { CharacterService } from "../core/CharacterService";
+import { BrandService } from "../brand/BrandService";
 import { AssetsService } from "../core/AssetsService";
 import { AssetSetService } from "../assets/AssetSetService";
 import { resolveAssetSetContents, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
@@ -14,6 +15,7 @@ import {
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
+    extractProjectFontReferences,
     extractStoryAnimationAssetReferences,
     scanStoryAssetReferences,
     splitAssetSetReferences,
@@ -55,6 +57,8 @@ const REBUILD_DEBOUNCE_MS = 300;
 const BLUEPRINT_SLICE_LOCATION = "Blueprints";
 const UI_SLICE_LOCATION = "Interface";
 const CHARACTER_SLICE_LOCATION = "Characters";
+/** Project -> Design. One per project, named for the sub-page an author would go to. */
+const DESIGN_SLICE_LOCATION = "Default fonts";
 
 /**
  * Reference Service — the asset reverse-lookup index ("what uses this file?").
@@ -71,6 +75,7 @@ const CHARACTER_SLICE_LOCATION = "Characters";
  *  - ui: `UIDocumentService.onDocumentChanged`
  *  - voice (per locale): `VoiceService.onDocumentChanged`
  *  - character: `CharacterService.subscribe`
+ *  - design: `BrandService.onFontsChanged` (the project's default font stack)
  *
  * This supersedes `AssetLockManager` as the answer to "is this referenced". The lock manager only
  * ever covered story blocks and character variants, so an image used solely from a widget or a
@@ -106,6 +111,7 @@ export class ReferenceService extends Service<ReferenceService> {
      * their references can name a set.
      */
     private sliceSetReferences = new Map<string, AssetReference[]>();
+    private designReferences: AssetReference[] = [];
 
     /**
      * Coverage gaps keyed the same way the reference slices are, so a rebuild replaces the gaps its
@@ -140,6 +146,7 @@ export class ReferenceService extends Service<ReferenceService> {
             ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog),
             ctx.services.get<VoiceService>(Services.Voice),
             ctx.services.get<CharacterService>(Services.Character),
+            ctx.services.get<BrandService>(Services.Brand),
         ]);
     }
 
@@ -258,7 +265,12 @@ export class ReferenceService extends Service<ReferenceService> {
             for (const slice of this.voiceReferences.values()) {
                 all.push(...slice);
             }
-            all.push(...this.blueprintReferences, ...this.uiReferences, ...this.characterReferences);
+            all.push(
+                ...this.blueprintReferences,
+                ...this.uiReferences,
+                ...this.characterReferences,
+                ...this.designReferences,
+            );
             this.indexCache = buildReferenceIndex(all);
         }
         return this.indexCache;
@@ -288,6 +300,7 @@ export class ReferenceService extends Service<ReferenceService> {
         this.blueprintReferences = [];
         this.uiReferences = [];
         this.characterReferences = [];
+        this.designReferences = [];
         this.sliceGaps.clear();
         this.indexCache = null;
         this.readyPromise = null;
@@ -427,6 +440,7 @@ export class ReferenceService extends Service<ReferenceService> {
         this.rebuildBlueprintSlice();
         this.rebuildUISlice();
         this.rebuildCharacterSlice();
+        this.rebuildDesignSlice();
         this.subscribe();
         this.emitChanged();
     }
@@ -441,6 +455,7 @@ export class ReferenceService extends Service<ReferenceService> {
         const uiDocumentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
         const voiceService = ctx.services.get<VoiceService>(Services.Voice);
         const characterService = ctx.services.get<CharacterService>(Services.Character);
+        const brandService = ctx.services.get<BrandService>(Services.Brand);
 
         this.unsubs.push(
             storyService.onDocumentChanged(({ storyId }) => {
@@ -482,6 +497,12 @@ export class ReferenceService extends Service<ReferenceService> {
                 });
             }),
             ...this.subscribeToAssetSetResolution(),
+            brandService.onFontsChanged(() => {
+                this.scheduleRebuild("design", () => {
+                    this.rebuildDesignSlice();
+                    this.emitChanged();
+                });
+            }),
         );
     }
 
@@ -781,6 +802,29 @@ export class ReferenceService extends Service<ReferenceService> {
             this.characterReferences = [];
             this.sliceSetReferences.set("character", []);
             this.setSliceGaps("character", [{ reason: "sliceFailed", slice: "character", location: CHARACTER_SLICE_LOCATION }]);
+        }
+    }
+
+    private rebuildDesignSlice(): void {
+        try {
+            // Inside the guard, unlike its siblings: this slice was added to an index that had five,
+            // and a host that does not register a brand service at all must degrade to a reported
+            // gap rather than take the whole build down with it.
+            const brandService = this.getContext().services.get<BrandService>(Services.Brand);
+            this.designReferences = extractProjectFontReferences(brandService.listFonts(), DESIGN_SLICE_LOCATION);
+            this.setSliceGaps("design", []);
+        } catch (error) {
+            console.warn("[ReferenceService] Failed to scan the project design:", error);
+            this.designReferences = [];
+            // `affects` narrowed to fonts: this slice can only ever hold typefaces, so a failure here
+            // says nothing about whether a picture or a sound is used — and without the narrowing one
+            // unreadable design document would make the whole library undeletable.
+            this.setSliceGaps("design", [{
+                reason: "sliceFailed",
+                slice: "design",
+                location: DESIGN_SLICE_LOCATION,
+                affects: ["font"],
+            }]);
         }
     }
 

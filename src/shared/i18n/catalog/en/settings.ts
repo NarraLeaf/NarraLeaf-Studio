@@ -88,7 +88,6 @@ export const settings = {
         confirmQuit: {
             label: "Confirm before quitting with ⌘Q",
             description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
-            unsupportedPlatform: "Not available on this operating system.",
         },
         themeMode: {
             label: "Theme",
@@ -118,6 +117,11 @@ export const settings = {
                 rose: "Rose",
                 slate: "Slate",
             },
+        },
+        uiFontFamily: {
+            label: "Interface font",
+            description: "Typeface used for the Studio interface. Any font installed on this computer can be chosen.",
+            // Shares the story editor font's option labels — same four preset ids, same four words.
         },
         tooltipDelay: {
             label: "Tooltip delay",
@@ -285,6 +289,11 @@ export const settings = {
         statusBarVisible: {
             label: "Show status bar",
             description: "The strip along the bottom of the workspace.",
+        },
+        menuBarMode: {
+            label: "Main menu",
+            description: "Where the File, Help and panel menus live in the title bar.",
+            unsupportedPlatform: "On macOS these menus are on the system menu bar.",
         },
         titleBarSearchVisible: {
             label: "Show title bar search box",

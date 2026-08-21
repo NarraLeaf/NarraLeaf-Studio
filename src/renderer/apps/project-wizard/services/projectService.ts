@@ -124,7 +124,11 @@ export class ProjectService {
             // first revision is the project the author received rather than an empty
             // one that grew its content in a second commit.
             if (projectData.contentTemplateId) {
-                const templateLocales = await this.applyProjectTemplate(basePath, projectData.contentTemplateId);
+                const templateLocales = await this.applyProjectTemplate(
+                    basePath,
+                    projectData.contentTemplateId,
+                    projectData.sourceLocale.trim(),
+                );
                 await this.registerTemplateLocales(projectConfigPath, projectConfig, templateLocales);
             }
 
@@ -164,9 +168,19 @@ export class ProjectService {
      * project wearing the name of a template — nothing on screen would say so, and
      * the recovery is to delete the directory and start again. Better to say it now,
      * while the wizard is still open and the message can name what went wrong.
+     *
+     * The script language goes with it. A template that writes its content in that language hands
+     * over that copy — so an author writing in Chinese opens a skeleton whose story, screens and
+     * layer names are Chinese, rather than an English one with a Chinese translation attached. The
+     * question was already asked on the Stage step and already defaults to the language Studio is
+     * being read in; this is what makes the answer mean something.
      */
-    private static async applyProjectTemplate(projectPath: string, templateId: string): Promise<string[]> {
-        const result = await getInterface().projectTemplates.scaffold(templateId, projectPath);
+    private static async applyProjectTemplate(
+        projectPath: string,
+        templateId: string,
+        locale: string,
+    ): Promise<string[]> {
+        const result = await getInterface().projectTemplates.scaffold(templateId, projectPath, locale);
         if (!result.success) {
             throw new Error(result.error || translate("wizard.validation.templateFailed"));
         }
@@ -174,14 +188,16 @@ export class ProjectService {
     }
 
     /**
-     * Register the languages the template shipped translations for.
+     * Register the languages the scaffolded project ended up with translations for.
      *
      * A template's `content/` is copied verbatim, but the list of a project's languages is not in
      * there - it lives in the `.nlproj`, which is generated per project and which a template is
      * never allowed to carry. So a template that ships `editor/localization/zh-CN.json` used to
      * hand the author a complete translation and no way to reach it: the localization panel showed
      * the source language alone, and the game had no second language to play in. The files were on
-     * disk the whole time.
+     * disk the whole time. Which files those are depends on the language the content itself is
+     * written in — a template's Chinese copy ships an English translation, not a Chinese one — so
+     * the codes are read off the project after the copy rather than assumed from the template.
      *
      * This is a second write of a file written moments ago rather than a reordering of the
      * creation, because the config has to exist before the template lands (it is what makes the
