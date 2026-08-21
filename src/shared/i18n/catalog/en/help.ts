@@ -541,6 +541,8 @@ export const help = {
                 + "\n"
                 + "- The list contains Studio's own tests and the tests added by plugins. A windowed test opens "
                 + "a game window, a headless test runs without one.\n"
+                + "- A test can ask for a value before it starts, such as which ending to play to. It opens on "
+                + "what that test was last run with in this project.\n"
                 + "- A test that cannot start remains in the list, disabled, with the reason beside it.\n"
                 + "- Starting a test closes this dialog. The output appears in the console, and the report "
                 + "opens when the run finishes.\n"

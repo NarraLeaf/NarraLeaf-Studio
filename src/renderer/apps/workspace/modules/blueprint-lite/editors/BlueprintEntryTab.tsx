@@ -37,7 +37,7 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
-import { listSceneIdsInDocumentOrder } from "@shared/types/story";
+import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
@@ -1683,6 +1683,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         // VALUE is the option row's block id - a rewrite of the text must not invalidate a graph
         // that already points at it, which is the same reason the scene picker stores scene ids.
         const storyChoiceOptions: BlueprintInspectorParamSelectOption[] = [];
+        // The ending picker, for `Is Ending Reached` / `Get Endings` / `Clear Ending State`.
+        //
+        // Built from `listStoryEndings` - the one scan the compiler emits from - rather than a
+        // second walk of the blocks, so the picker can never offer an ending that is not in the
+        // build. It skips disabled rows for the same reason.
+        //
+        // Labelled "<scene> / <ending>" like the option picker above: an ending's own name is rarely
+        // unique across a story ("Bad End" appears more than once by design), so the scene it sits
+        // in is what makes the row identifiable. The value is the ending row's block id, so
+        // renaming an ending leaves every graph and every unlock pointing at it.
+        const storyEndings: BlueprintInspectorParamSelectOption[] = [];
         for (const story of storyEntries) {
             const storyDocument = storyDocumentsById[story.id];
             if (!storyDocument) {
@@ -1717,6 +1728,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     });
                 }
             }
+            // Document order too, but from the scan rather than this walk: an ending is a fact about
+            // the whole story, and the scan is what decides which rows the build actually emits.
+            for (const ending of listStoryEndings(storyDocument)) {
+                const endingSceneLabel = ending.sceneName || t("blueprint.options.untitledScene");
+                storyEndings.push({
+                    value: ending.endingId,
+                    label: `${endingSceneLabel} / ${ending.name || t("blueprint.options.untitledEnding")}`,
+                    meta: { storyId: story.id },
+                });
+            }
         }
         // Named localization keys: pick by source text, key name as context.
         let localizationKeyOptions: BlueprintInspectorParamSelectOption[] = [];
@@ -1744,6 +1765,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             stories: storyOptions,
             storyScenes: storySceneOptions,
             storyChoiceOptions,
+            storyEndings,
             characters: characterOptions,
             localizationKeys: localizationKeyOptions,
             // The `Play Sound` Track picker. Author order, built-ins first - the same order the

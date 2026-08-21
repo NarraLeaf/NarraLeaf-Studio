@@ -7,8 +7,17 @@
  * soft falloff is not an approximation of them, it is what they look like. A petal is not. It has an
  * outline (ovate, notched at the tip) and it has *tone* across that outline - the tip catches more
  * light than the base, the edge thins, the midrib runs down it. The tone is the half a formula does
- * not give you, and at the sizes sakura renders at (52px across in the near layer at 1080p, 10px in
- * the far one) it is the half that reads.
+ * not give you, and at the sizes sakura renders at it is the half that reads.
+ *
+ * ## What its size costs, now that petals can be larger than it
+ *
+ * 64px square was chosen against a near layer 52px across, where the bitmap is always minified and
+ * the bilinear tap is free. The seed's near radius is 48 now (96px across) and its range reaches 96,
+ * so the near layer MAGNIFIES this - 1.5x at the default - and a magnified bilinear ramp is a soft
+ * ramp. That softness is real and mostly paid off elsewhere: `solidity` above 1 clips the core flat,
+ * which puts the edge back. Doubling the bitmap would buy the rest, and is not free - there is no
+ * generator in the repository, so these bytes are the only copy of the artwork, and a redraw is a
+ * redraw rather than a resample.
  *
  * ## Why it is bytes in a source file
  *

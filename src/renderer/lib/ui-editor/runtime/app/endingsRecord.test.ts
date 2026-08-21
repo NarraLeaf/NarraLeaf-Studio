@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     clearReachedEndings,
     ENDINGS_PERSISTENCE_KEY,
+    forgetEndingReached,
     isEndingReached,
     markEndingReached,
     normalizeEndingIds,
@@ -89,6 +90,36 @@ describe("isEndingReached", () => {
         // An empty id is "not reached", never an error: a half-wired gallery row stays locked
         // instead of taking the page down.
         expect(isEndingReached(persistence, "")).toBe(false);
+    });
+});
+
+describe("forgetEndingReached", () => {
+    it("removes one id and leaves the rest of the record standing", async () => {
+        const { persistence } = store(["ending-1", "ending-2"]);
+        await forgetEndingReached(persistence, "ending-1");
+        expect(readReachedEndings(persistence)).toEqual(["ending-2"]);
+    });
+
+    it("reads the stored record before writing, so the other unlocks survive", async () => {
+        // Same trap as `markEndingReached`: a filter applied to a cold session map would write back
+        // an empty list and take every other ending with it.
+        const map = new Map<string, unknown>();
+        const persistence = {
+            get: (key: string) => map.get(key),
+            getAsync: async () => ["ending-1", "ending-2"],
+            set: (key: string, value: unknown) => {
+                map.set(key, value);
+            },
+        };
+        await forgetEndingReached(persistence, "ending-1");
+        expect(readReachedEndings(persistence)).toEqual(["ending-2"]);
+    });
+
+    it("writes nothing for an id the record does not hold, or for none at all", async () => {
+        const { persistence, writes } = store(["ending-1"]);
+        await forgetEndingReached(persistence, "ending-2");
+        await forgetEndingReached(persistence, "");
+        expect(writes).toEqual([]);
     });
 });
 

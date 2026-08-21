@@ -42,6 +42,9 @@ export const test = {
         title: "Run a test",
         start: "Start",
         empty: "No tests are registered",
+        // Names the row of controls the selected test asks the author to fill in. Not drawn as a
+        // heading - it is there so the group reaches assistive tech with a name.
+        parameters: "Parameters",
     },
     status: {
         running: "Running",
@@ -72,6 +75,9 @@ export const test = {
     reason: {
         frozen: "Not available while the workspace is frozen",
         alreadyRunning: "Another run is in progress",
+        // A test that asks which one, in a project that has none yet. `parameter` is the
+        // parameter's own label, so the row reads "Ending has no values in this project".
+        parameterEmpty: "{parameter} has no values in this project",
     },
     console: {
         channel: "Test",

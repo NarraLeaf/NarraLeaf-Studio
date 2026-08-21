@@ -198,6 +198,7 @@ export const lint = {
             messageStory: "开始的故事已不存在",
             messageScene: "指向的场景已不存在",
             messageChoice: "指向的选项已不存在",
+            messageEnding: "指向的结局已不存在",
             messageCharacter: "指向的角色已不存在",
             messageTextKey: "指向的文本键在工程中未声明",
         },

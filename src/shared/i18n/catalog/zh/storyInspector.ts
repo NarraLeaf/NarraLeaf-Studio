@@ -226,6 +226,7 @@ export const storyInspector = {
         wind: "风向（度）",
         fallSpeed: "落速",
         flutter: "翻飞",
+        solidity: "浓度",
         depthSpread: "景深差",
     },
 

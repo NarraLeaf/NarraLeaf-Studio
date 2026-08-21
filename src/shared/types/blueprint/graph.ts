@@ -1037,6 +1037,32 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED = "blueprint.game.isOptio
 /** Wipe the running game's visited record. The `Clear Text Read` of this family. */
 export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisited" as const;
 /**
+ * The endings record - which of a story's `/ending` rows this player has ever reached.
+ *
+ * A different domain from the visited record above, and deliberately so. Visited lives in the save
+ * and rewinds when an older one is loaded, because it answers "have I been down this route in *this*
+ * playthrough". An endings screen asks what the player has ever seen, so its record sits in project
+ * persistence and nothing rewinds it - a gallery that re-locked entries in front of a player who
+ * loaded an old save would be reporting the wrong fact.
+ *
+ * Keyed by the `ending` row's block id, so renaming an ending keeps every unlock. Neither reader
+ * needs a running story: a title screen asks both before any game exists.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED = "blueprint.game.isEndingReached" as const;
+/**
+ * Every ending a story declares, each row already carrying whether it was reached.
+ *
+ * One array output rather than a count and a getter, which is the convention `Get History` follows:
+ * `Set List Content` takes the array whole, and `Get List Item Props` reads a row's fields inside the
+ * item template, so a grid of endings is drawn without an author writing a loop. Carrying `isReached`
+ * on the row is what keeps the template from having to ask a second question per cell.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS = "blueprint.game.getEndings" as const;
+/** Forget one ending. What a debug menu calls to check an unlock actually locks again. */
+export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_ENDING_STATE = "blueprint.game.clearEndingState" as const;
+/** Wipe the whole endings record. What a "reset progress" control calls. */
+export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_ENDINGS = "blueprint.game.clearEndings" as const;
+/**
  * The build variant this package is, as its name - the blueprint spelling of the story language's
  * `AppTag`.
  *

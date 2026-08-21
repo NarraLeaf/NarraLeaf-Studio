@@ -28,7 +28,7 @@ import { resolveWeatherParams, WEATHER_PARAMS, type WeatherParamKey, type Weathe
  * Cached clips keyed at an older version are simply never asked for again; nothing has to clean them
  * up for correctness, and a cache sweep removes them the same way it removes anything else there.
  */
-export const WEATHER_BAKE_VERSION = 5;
+export const WEATHER_BAKE_VERSION = 6;
 
 export type WeatherBakeIdentity = {
     ref: WeatherSeedRef;

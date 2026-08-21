@@ -1,9 +1,12 @@
 import type { Service } from "@/lib/workspace/services/Service";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import type { TestParameterMemory } from "@/lib/testing/parameterCache";
+import type { ResolvedTestParameter } from "@/lib/testing/parameters";
 import type {
     RegisteredTest,
     TestAvailability,
     TestId,
+    TestParameterValues,
     TestRunRecord,
 } from "@/lib/testing/types";
 
@@ -12,15 +15,21 @@ import type {
  *
  * Written as an intersection with `Service` rather than imported from the run controller's own
  * module: `ServiceRegistry.get` is constrained to `T extends Service`, and the UI genuinely only
- * needs these eight members. Everything the run controller owns beyond them (the registry's write
- * half, the console channel, the capability handles) is deliberately out of reach from here - the
+ * needs these members. Everything the run controller owns beyond them (the registry's write half,
+ * the console channel, the capability handles) is deliberately out of reach from here - the
  * interface starts runs and reads records, it does not register tests.
  */
 export type TestRunServiceHandle = Service & {
     listTests(): RegisteredTest[];
     getAvailability(id: TestId): TestAvailability;
+    /** What a test asks the author for, with every `select`'s option list already evaluated. */
+    listParameters(id: TestId): ResolvedTestParameter[];
+    /** The values each test was last run with. Never rejects: a missing cache is the ordinary state. */
+    readRememberedParameters(): Promise<TestParameterMemory>;
+    /** Keep what a test was just started with, for the next time the picker opens. */
+    rememberParameters(testId: TestId, values: TestParameterValues): Promise<void>;
     /** Resolves the new run's id. */
-    start(testId: TestId): Promise<string>;
+    start(testId: TestId, parameters?: TestParameterValues): Promise<string>;
     cancel(runId: string): void;
     getActiveRun(): TestRunRecord | null;
     getRun(runId: string): TestRunRecord | null;

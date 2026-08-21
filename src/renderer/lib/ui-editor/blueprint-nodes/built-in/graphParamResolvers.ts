@@ -167,6 +167,8 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
     BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
@@ -1702,6 +1704,41 @@ function resolveVisitedNodeOutput(
     if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED && portId === "isPicked") {
         const optionId = String(params.optionId ?? "").trim();
         return optionId ? game?.isOptionPicked(optionId) === true : false;
+    }
+    return undefined;
+}
+
+/**
+ * `Is Ending Reached` / `Get Endings` - the endings record's readers.
+ *
+ * Here for exactly the reason the visited pair above is: both are pure, and a pure node's output is
+ * never produced by running `execute()` - the executor only walks exec flow, so the value exists in
+ * this file or nowhere, and a pure node nobody registered here resolves to `undefined` downstream
+ * with no error and no diagnostic.
+ *
+ * Both read a `params` id, which {@link resolveGameNodeOutput}'s bare port-id lookup never sees.
+ *
+ * Nothing picked, or no host, reads as `false` / `[]` rather than `undefined`: the pins are a
+ * non-nullable boolean and a non-nullable array, and an endings screen that is not wired yet should
+ * lay out empty and locked rather than fault.
+ *
+ * `Is Ending Reached` ignores its `storyId` param on purpose - the record is keyed by the row's
+ * block id alone, and the story is only there to narrow the picker.
+ */
+function resolveEndingNodeOutput(
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const game = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game;
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED && portId === "isReached") {
+        const endingId = String(params.endingId ?? "").trim();
+        return endingId ? game?.isEndingReached(endingId) === true : false;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS && portId === "endings") {
+        const storyId = String(params.storyId ?? "").trim();
+        return storyId ? game?.listEndings(storyId) ?? [] : [];
     }
     return undefined;
 }
@@ -3368,6 +3405,15 @@ function resolveSelfOutput(
     );
     if (visitedOutput !== undefined) {
         return visitedOutput;
+    }
+    const endingOutput = resolveEndingNodeOutput(
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        runtime,
+    );
+    if (endingOutput !== undefined) {
+        return endingOutput;
     }
     const layerMountedOutput = resolveLayerMountedNodeOutput(
         graph,

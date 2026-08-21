@@ -34,6 +34,7 @@ export const test = {
         title: "テストを実行",
         start: "開始",
         empty: "登録されているテストはない",
+        parameters: "パラメーター",
     },
     status: {
         running: "実行中",
@@ -64,6 +65,7 @@ export const test = {
     reason: {
         frozen: "ワークスペースの凍結中は実行できない",
         alreadyRunning: "別の実行が進行中",
+        parameterEmpty: "このプロジェクトに{parameter}の選択肢がない",
     },
     console: {
         channel: "テスト",

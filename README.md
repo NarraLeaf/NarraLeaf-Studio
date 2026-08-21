@@ -21,11 +21,19 @@ Unlike traditional lightweight editors, NarraLeaf Studio does not require users 
 - An easy-to-learn, command-based story editing system that requires no knowledge of external programming languages
 - WYSIWYG application previews, along with cross-platform production and packaging capabilities
 
+## Features
+
+- **Story editor.** A scene is a list of rows. Typing writes dialogue, a slash at the start of a row writes one of fifty-one commands, and every value is checked as the row is typed. The flow view draws the paths the story can take. Chinese spellings of every command parse.
+- **Screens and blueprints.** The game's own screens are built by placing widgets on a surface, and over six hundred blueprint nodes decide what they do. Widgets can be saved as reusable components, and their properties bound to values that change while the game runs.
+- **Version control.** History is kept inside the project folder, and differences are reported as content rather than as files: which scenes, rows, characters and assets changed. Built on [Lore](https://github.com/EpicGames/lore), with Studio's own difference view and conflict interface.
+- **[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team).** A collaboration server deployed on your own network or a remote container, holding the projects a team works on together. Nothing is sent or fetched except by an explicit action. Real-time collaboration is in development.
+- **Asset sets.** One library entry standing for several files that differ by language or by build variant. A story row names the set, and the game uses the file that matches.
+- **Build variants.** One project, several editions. A cut point row ends a variant's story there, and everything written after it, including the assets only those rows used, is left out of that variant's package.
+- **Patches.** Later changes to the story, the pages, the translations, the voice lines and the assets, delivered to an installed game without reinstalling it.
+- **Builds.** Windows, macOS, Linux, Web, Android and iOS, in eight formats, with each platform's icons generated from one image. Studio also builds [without an interface](#building-from-the-command-line).
+- **Plugins.** Story commands, blueprint nodes, widgets, tests and panels, appearing in the same places as the built-in equivalents. What a plugin needs is approved when it is installed.
+
 ## Studio
-
-### NarraLeaf Team
-
-[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team) is the collaboration solution for NarraLeaf Studio. It deploys easily onto a device on your own network or a remote container, and gives everyone on the team central version management and real-time collaboration (in development). With Team, creators sync the team's projects and start working right away.
 
 ### Game Compatibility
 
