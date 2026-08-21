@@ -1,4 +1,5 @@
 import { FsRequestResult } from "@shared/types/os";
+import type { FsWriteBatchEntry, FsWriteBatchOutcome } from "./core/FileSystem";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
@@ -297,6 +298,8 @@ interface IFileSystemService extends IService {
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
     write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
     writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
+    /** N files, one grant, one result each. See `BaseFileSystemService.writeBatch`. */
+    writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]>;
     ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
