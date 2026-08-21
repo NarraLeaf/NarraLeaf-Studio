@@ -23,7 +23,7 @@ import {
     isLinkedUIComponentElement,
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
-import { FsRejectErrorCode } from "@shared/types/os";
+import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -733,7 +733,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             },
         };
         const data = JSON.stringify(updated, null, 2);
-        const result = await fs.write(documentPath, data, "utf-8");
+        const result = await this.writeDocumentFile(fs, documentPath, data);
         if (!result.ok) {
             throw new RendererError(result.error.message);
         }
@@ -741,6 +741,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
         this.events.emit("documentChanged", this.document);
+    }
+
+    /**
+     * The one route `uidoc.json` goes out by.
+     *
+     * **Not `fs.write`.** That verb mints a write grant over IPC and then `PUT`s the payload back
+     * through the app protocol; the pair costs about the same whatever the payload weighs, and this
+     * document is written on every auto-save while the author drags things around a surface. The
+     * direct call is the same atomic temp-fsync-rename core reached in one structured-clone IPC
+     * call. `BaseFileSystemService.writeFileNoFollowOrCreate` carries the measurement.
+     *
+     * The shape this service needs is exactly the one that verb was added for: the file has to be
+     * *created* on the first open of a project that has never had an interface document (see
+     * {@link load}, which saves a freshly built empty document) and *replaced* on every save after
+     * that. `writeFileNoFollow` can only overwrite and `ensureRegularFile` writes nothing when the
+     * file is already there.
+     *
+     * What changes for the author: a `uidoc.json` that is a symlink, a non-regular file or has a
+     * hard link is now refused with `INVALID_PATH` instead of being written through. Nothing in
+     * Studio creates any of those, and a symlinked or junctioned `editor/ui/` *directory* still
+     * works - only the final path component is inspected.
+     *
+     * What does not change is what this method reads back: a real failure is still `ok: false` with
+     * a code, still reported to `SaveStatusService` through `observeWrites`, and still thrown from
+     * {@link save}. A refused write still answers `ok` with `refused`; this service, like every
+     * document service other than `StoryService`, does not read that flag and clears its dirty state
+     * on `ok` alone - unchanged by the swap, and announced to the author on the latch's own channel.
+     */
+    private writeDocumentFile(fs: FileSystemService, path: string, data: string): Promise<FsRequestResult<void>> {
+        return fs.writeFileNoFollowOrCreate(path, data, "utf-8");
     }
 
     /**

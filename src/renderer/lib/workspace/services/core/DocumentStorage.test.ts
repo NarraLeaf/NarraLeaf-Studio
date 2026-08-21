@@ -36,7 +36,7 @@ function createHarness(): Harness {
             const value = files.get(path);
             return value === undefined ? fail(FsRejectErrorCode.NOT_FOUND) : ok(value);
         },
-        write: async (path, data) => {
+        writeFileNoFollowOrCreate: async (path, data) => {
             calls.push(`write ${path}`);
             // The real writer creates a temp sibling in the target's directory, so a missing parent
             // is a failed write rather than an implicitly created tree. Modelled, or the test would

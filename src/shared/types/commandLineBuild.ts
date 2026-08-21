@@ -1,4 +1,5 @@
 import type { DevModeConsoleLogLevel } from "./devMode";
+import type { ExperimentalConditionId } from "./experimental";
 import type {
     BuildPreflightFinding,
     GameBuildArch,
@@ -113,6 +114,71 @@ export type CommandLineBuildReportRequest = {
 };
 
 /**
+ * What experimental mode did to this run.
+ *
+ * Three values rather than a boolean, for the reason `signing` below has three fields rather than
+ * one: "nothing asked for it" and "it was asked for and did not happen" are different news, and a
+ * single flag would make them indistinguishable. The artifact cannot be inspected to tell them
+ * apart - a debuggable build looks like any other build - so this field is the only place a job
+ * that archived one can find out which it has.
+ */
+export type CommandLineBuildExperimentalState =
+    /** Nothing asked for the mode and nothing is on. An ordinary artifact. */
+    | "off"
+    /**
+     * The mode is open. {@link CommandLineBuildReportExperimental.conditions} is what it changed
+     * about this build - empty when `--experimental` was given with no condition, which changes
+     * nothing about the artifact.
+     */
+    | "on"
+    /**
+     * The launch asked for the mode, or for one of its conditions, and did not get it. No artifact
+     * was produced: see `CommandLineBuildRun` for why this refuses rather than warns.
+     */
+    | "refused";
+
+/**
+ * Why a `"refused"` run was refused, as an identifier rather than the sentence on the log.
+ *
+ * A job acts on them differently: two are mistakes in the line it was given, and one is a Studio
+ * that cannot do this at all, however the line is written.
+ */
+export type CommandLineBuildExperimentalRefusal =
+    /**
+     * This Studio cannot enter experimental mode at all. A packaged Studio never does - see
+     * `BaseApp.getExperimentalState` - which is what keeps an installed Studio from ever producing
+     * a build the mode changed.
+     */
+    | "unavailable"
+    /** Condition flags were given without `--experimental`, so none of them would have applied. */
+    | "mode-not-opened"
+    /** A `--x-` flag names no registered condition, so what it asked for was never going to happen. */
+    | "unknown-condition";
+
+/** The report's account of experimental mode. Present for every outcome, like `signing`. */
+export type CommandLineBuildReportExperimental = {
+    state: CommandLineBuildExperimentalState;
+    /** Why, when `state` is `"refused"`. Absent otherwise. */
+    refusal?: CommandLineBuildExperimentalRefusal;
+    /**
+     * Conditions active for this build, in registry order. Empty unless `state` is `"on"`.
+     *
+     * This is the field that says what the artifact is. A build whose list holds `debuggable-build`
+     * ships without asar integrity validation and is not one to distribute.
+     */
+    conditions: ExperimentalConditionId[];
+    /**
+     * Every registered condition the launch named, honoured or not.
+     *
+     * The same list as {@link conditions} on an honoured run, and the thing a refusal report is
+     * read for: it says what the caller believed it was getting.
+     */
+    requestedConditions: ExperimentalConditionId[];
+    /** `--x-` flags that name no registered condition, exactly as they were typed. */
+    unknownConditionFlags: string[];
+};
+
+/**
  * The file `--build-report` writes.
  *
  * Written for every outcome including the ones that never opened a window, so a job that reads the
@@ -152,6 +218,14 @@ export type CommandLineBuildReport = {
         /** Whether the launch passed `--build-allow-unsigned`. */
         unsignedAccepted: boolean;
     };
+    /**
+     * What experimental mode did to this run.
+     *
+     * Here rather than left to the log, for the same reason `signing` is: the console says it in
+     * sentences, and a job that had to grep English to find out whether it just archived a
+     * debuggable artifact has no contract at all.
+     */
+    experimental: CommandLineBuildReportExperimental;
     /** Everything the build reported about the project's configuration, blocking or not. */
     findings: BuildPreflightFinding[];
     artifacts: Array<{ path: string; bytes?: number }>;
