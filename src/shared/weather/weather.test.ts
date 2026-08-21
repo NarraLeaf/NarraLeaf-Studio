@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WEATHER_LOOP_SECONDS } from "./model";
+import { weatherFrameCountOf, weatherLoopSecondsOf, WEATHER_LOOP_SECONDS } from "./model";
 import {
     onWeatherParamGrid,
     resolveWeatherParams,
@@ -53,6 +53,25 @@ describe("weather seeds", () => {
             for (const key of WEATHER_SEEDS[id].params) {
                 expect(WEATHER_PARAMS[key], `${id} exposes unknown parameter ${key}`).toBeDefined();
             }
+        }
+    });
+
+    it("exposes every parameter it states a default for, apart from the ones it pins deliberately", () => {
+        // `resolveWeatherParams` pins a parameter the seed does not expose, which is right for a
+        // value the seed means to switch OFF and silent for one it merely forgot to list. Sakura
+        // shipped a thirty-six second loop it could not show or change for exactly that reason: the
+        // default was read, the slider never appeared, and every override was discarded.
+        const pinned: Partial<Record<WeatherSeedId, readonly WeatherParamKey[]>> = {
+            // Rain falls in straight parallel lines. A sway control on it would be a control for
+            // something rain is defined by not having.
+            rain: ["sway"],
+        };
+        for (const seed of WEATHER_SEED_IDS) {
+            const exposed = new Set<string>(weatherParamsOf(seed));
+            const allowed = new Set<string>(pinned[seed] ?? []);
+            const unreachable = Object.keys(WEATHER_SEEDS[seed].defaults)
+                .filter(key => !exposed.has(key) && !allowed.has(key));
+            expect({ seed, unreachable }).toEqual({ seed, unreachable: [] });
         }
     });
 
@@ -147,7 +166,7 @@ describe("the fall speed", () => {
         }
     });
 
-    it("is a control rather than a pair of buttons: a half step moves the field", () => {
+    it("is a control rather than a pair of buttons", () => {
         // The value the AUTHOR states is not rounded, only each particle's own count of lengths is.
         // Rounding the base made the smallest change anyone could ask for a doubling of the whole
         // field, and left no speed at all between two of them.
@@ -155,7 +174,7 @@ describe("the fall speed", () => {
             const falls = fallsOf("sakura", speed);
             return falls.reduce((sum, fall) => sum + fall, 0) / falls.length;
         };
-        const steps = [2, 2.5, 3, 3.5, 4].map(mean);
+        const steps = [0.2, 0.25, 0.3, 0.35, 0.4].map(mean);
         for (let i = 1; i < steps.length; i++) {
             expect(steps[i]).toBeGreaterThan(steps[i - 1]);
         }
@@ -191,7 +210,10 @@ describe("the flutter", () => {
         // a loop is, so nothing but this notices when the two are confused again.
         for (const rate of [0.4, 1.1, 2.5]) {
             const harmonics = fieldOf("sakura", { flutter: rate }).particles.map(p => p.swayHarm);
-            const wanted = rate * WEATHER_LOOP_SECONDS;
+            // Against the loop THIS seed asks for. Reaching for the shared constant here is the
+            // exact mistake the constant's own comment warns about, and it would pass on a seed that
+            // happened to use twelve seconds while silently failing to check anything.
+            const wanted = rate * weatherLoopSecondsOf({ seed: "sakura" });
             for (const harmonic of harmonics) {
                 expect(Number.isInteger(harmonic)).toBe(true);
                 // Each particle sits within a third of the seed's rate, so the field does not pulse
@@ -238,8 +260,12 @@ describe("the flutter", () => {
 });
 
 describe("the solidity", () => {
-    const frameOf = (solidity: number) =>
-        frameAt("sakura", 0.25, resolveWeatherParams({ seed: "sakura", params: { solidity } }), 4);
+    // Density stated rather than the seed's own: sakura ships fifteen per megapixel, and this
+    // canvas is an eighth of one, so a field at the default would be two petals and every assertion
+    // below would be a question about where those two happened to land.
+    const paramsAt = (solidity: number) =>
+        resolveWeatherParams({ seed: "sakura", params: { solidity, density: 400 } });
+    const frameOf = (solidity: number) => frameAt("sakura", 0.25, paramsAt(solidity), 4);
 
     const saturated = (buf: Uint8ClampedArray) => {
         let n = 0;
@@ -259,18 +285,45 @@ describe("the solidity", () => {
         return sum;
     };
 
-    it("scales the depth ramp rather than replacing it", () => {
-        // Multiplying keeps the near particle the same multiple of the far one at every setting,
-        // which is what stops this control from flattening the depth the seed was built on.
-        const at = (solidity: number) =>
-            buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura", params: { solidity } }), W, H)
-                .particles.map(p => p.gain);
-        const one = at(1);
-        const three = at(3);
-        expect(three.length).toBe(one.length);
+    const gainsAt = (solidity: number) =>
+        buildWeatherField("sakura", paramsAt(solidity), W, H).particles.map(p => p.gain);
+
+    it("leaves the depth ramp exactly as it was at 1, and below", () => {
+        // The neutral point. Everything at or under 1 is the classic ramp times the number, so an
+        // author who never touches this control gets the picture the seed was designed around.
+        const one = gainsAt(1);
+        const half = gainsAt(0.5);
+        // Inside the ramp's own ends rather than on them: depth is drawn at random, and a finite
+        // field never contains a particle at exactly 0 or exactly 1.
+        expect(Math.min(...one)).toBeGreaterThanOrEqual(0.28);
+        expect(Math.max(...one)).toBeLessThanOrEqual(0.95);
+        expect(Math.max(...one) / Math.min(...one)).toBeGreaterThan(2.5);
         for (let i = 0; i < one.length; i++) {
-            expect(three[i]).toBeCloseTo(one[i] * 3, 6);
+            expect(half[i]).toBeCloseTo(one[i] * 0.5, 6);
         }
+    });
+
+    it("flattens the depth ramp on the way up, which is what lets the FAR field reach opaque", () => {
+        // A plain multiple cannot: the far end starts at 0.28 of the near end and stays there, so
+        // the mid-field - most of what an author is looking at - never arrives. Measured before the
+        // lift existed: 55% of the lit area opaque at 4, still under 90% at 32. So the ramp is
+        // lerped toward flat in proportion to how far up the range the control has been pushed, and
+        // the cost is stated where the parameter is: depth keeps its size cue and loses its
+        // brightness one.
+        const spread = (solidity: number) => {
+            const g = gainsAt(solidity);
+            return Math.max(...g) / Math.min(...g);
+        };
+        const neutral = spread(1);
+        const top = spread(WEATHER_PARAMS.solidity.max);
+        // Near the ramp's own 0.95/0.28, loosely: the sample's extremes are not the ramp's.
+        expect(neutral).toBeGreaterThan(2.5);
+        expect(neutral).toBeLessThanOrEqual(0.95 / 0.28);
+        expect(top).toBeLessThan(1.05);
+        // Monotone in between, so the control never reverses under the author's hand.
+        const mid = spread((1 + WEATHER_PARAMS.solidity.max) / 2);
+        expect(mid).toBeLessThan(neutral);
+        expect(mid).toBeGreaterThan(top);
     });
 
     it("is allowed past 1, where it buys an edge rather than a glow", () => {
@@ -278,11 +331,13 @@ describe("the solidity", () => {
         // CLIPS the falloff: the particle gains a flat core and a narrower rim. If this were merely
         // a brightness the lit area would grow with it and the edges would not sharpen.
         const dull = frameOf(1);
-        const solid = frameOf(3);
-        expect(saturated(solid)).toBeGreaterThan(saturated(dull) * 4);
+        const solid = frameOf(WEATHER_PARAMS.solidity.max);
+        // Not "none at 1": a dense field saturates by OVERLAP wherever two particles cross, because
+        // the accumulator adds them. What the control buys is that the shapes themselves saturate.
+        expect(saturated(solid)).toBeGreaterThan(saturated(dull) * 8);
         expect(edgeEnergy(solid)).toBeGreaterThan(edgeEnergy(dull));
         // And it is not simply covering more of the frame with light.
-        expect(litPixels(solid)).toBeLessThan(litPixels(dull) * 1.3);
+        expect(litPixels(solid)).toBeLessThan(litPixels(dull) * 1.6);
     });
 
     // One `it` per seed, like the flutter block above. Six seam frames in a single case ran seven
@@ -297,6 +352,27 @@ describe("the solidity", () => {
         });
     }
 
+    it("reaches opaque at the top of its range, which a multiple alone never did", () => {
+        // The complaint this range was widened for: at the old ceiling of 4 the field still read as
+        // a wash. Measured on the shape's interior rather than on a luminance floor, because a
+        // luminance floor grows with the gain and would flatter the answer.
+        const buf = frameOf(WEATHER_SEEDS.sakura.params.includes("solidity") ? WEATHER_PARAMS.solidity.max : 1);
+        let inside = 0;
+        let opaque = 0;
+        for (let i = 0; i < buf.length; i += 4) {
+            const luminance = buf[i] * 0.299 + buf[i + 1] * 0.587 + buf[i + 2] * 0.114;
+            if (luminance > 24) {
+                inside++;
+                if (Math.min(buf[i], buf[i + 1], buf[i + 2]) >= 250) {
+                    opaque++;
+                }
+            }
+        }
+        expect(inside).toBeGreaterThan(0);
+        // Not 100%: what is left is the antialiased rim, and a rim is what an edge IS.
+        expect(opaque / inside).toBeGreaterThan(0.8);
+    });
+
     it("is a seed parameter because it changes the file, not how loudly the file is played", () => {
         // The payload's own `opacity` scales the finished overlay and cannot pass 1, so it can never
         // produce this. Two different questions, and the bake key has to be able to tell them apart.
@@ -304,6 +380,60 @@ describe("the solidity", () => {
         const solid = weatherBakeKey({ ref: { seed: "sakura", params: { solidity: 3 } }, width: W, height: H, fps: 30, frames: FRAMES });
         expect(solid).not.toBe(dull);
     });
+});
+
+describe("the loop length", () => {
+    const spansOf = (over: Partial<Record<WeatherParamKey, number>>) =>
+        buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura", params: over }), W, H).particles.map(p => p.fall);
+
+    it("is what decides the slowest possible fall, because the seam does", () => {
+        // A particle crosses a WHOLE number of fall-lengths per loop or it is not where it started
+        // when the last frame hands over to the first. So one length per loop is the floor, and the
+        // only way under it is a longer loop. This is the mechanism behind "the slowest setting is
+        // still too fast" and there is no other lever for it.
+        const floorAt = (loopSeconds: number) => {
+            const spans = Math.min(...spansOf({ fallSpeed: WEATHER_PARAMS.fallSpeed.min, loopSeconds }));
+            return spans / loopSeconds; // fall-lengths per second
+        };
+        const short = floorAt(12);
+        const long = floorAt(60);
+        expect(short).toBeCloseTo(1 / 12, 5);
+        expect(long).toBeCloseTo(1 / 60, 5);
+        expect(long).toBeLessThan(short / 4);
+    });
+
+    it("does not re-time the effect, which is why the speed is stated per second", () => {
+        // It used to be per loop, and then lengthening a clip silently slowed everything in it - so
+        // "how long before it repeats" and "how fast it falls" could not be set independently. The
+        // rounding to whole lengths means this is close rather than exact, and close within one
+        // step of the grid is the most a seamless loop can offer.
+        const perSecond = (loopSeconds: number) => {
+            const spans = spansOf({ fallSpeed: 0.25, loopSeconds });
+            return spans.reduce((sum, s) => sum + s, 0) / spans.length / loopSeconds;
+        };
+        const twelve = perSecond(12);
+        for (const loopSeconds of [24, 36, 60, 90]) {
+            expect(perSecond(loopSeconds)).toBeGreaterThan(twelve * 0.85);
+            expect(perSecond(loopSeconds)).toBeLessThan(twelve * 1.15);
+        }
+    });
+
+    it("decides the frame count, and every caller has to ask the ref rather than the constant", () => {
+        // A caller holding the old constant while the author had asked for sixty would address a
+        // clip nothing ever bakes: a valid package, a story that plays, and no weather at all.
+        expect(weatherFrameCountOf({ seed: "sakura" }, 30)).toBe(weatherLoopSecondsOf({ seed: "sakura" }) * 30);
+        expect(weatherFrameCountOf({ seed: "sakura", params: { loopSeconds: 60 } }, 48)).toBe(60 * 48);
+        // Whole, whatever it is asked: a fractional phase grid is the one way to get a stutter out
+        // of a field that is mathematically exact.
+        expect(Number.isInteger(weatherFrameCountOf({ seed: "rain", params: { loopSeconds: 37 } }, 120))).toBe(true);
+    });
+
+    for (const seed of WEATHER_SEED_IDS) {
+        it(`${seed} keeps the seam exact at a long loop`, () => {
+            const params = resolveWeatherParams({ seed, params: { loopSeconds: WEATHER_PARAMS.loopSeconds.max } });
+            expect(frameAt(seed, 1, params)).toEqual(frameAt(seed, 0, params));
+        });
+    }
 });
 
 describe("the shutter", () => {

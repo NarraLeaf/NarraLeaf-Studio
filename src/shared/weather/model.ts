@@ -82,6 +82,7 @@ export type WeatherParamKey =
     | "fallSpeed"
     | "flutter"
     | "solidity"
+    | "loopSeconds"
     | "depthSpread";
 
 /**
@@ -113,20 +114,30 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
     /** Fall direction, in degrees off straight down. Negative leans left. */
     wind: { min: -60, max: 60, step: 1, default: 0 },
     /**
-     * How fast the field falls, as fall-lengths crossed per loop by the FARTHEST particles.
+     * How fast the field falls, as fall-lengths crossed **per second** by the FARTHEST particles.
      *
-     * ## Why the figure the author types is not itself a whole number
+     * ## Why per second and not per loop
      *
-     * What the seam requires is that each PARTICLE cross a whole number of fall-lengths per loop -
-     * anything else leaves it somewhere other than where it started when the last frame hands over
-     * to the first. It does not require this value to be whole: a particle's own count is this
-     * figure scaled by its depth and then rounded, so a base of 2.5 produces a field of whole 3s, 4s
-     * and 5s and closes exactly like any other.
+     * It was per loop until the loop stopped being a constant. Both readings give the same picture
+     * while {@link loopSeconds} is twelve, and they part company the moment an author lengthens it:
+     * per-loop, a longer clip is a slower one, so the control for "how long before it repeats"
+     * silently doubles as a control for "how fast it falls" and neither can be set without the
+     * other. Per second, lengthening the loop leaves the motion exactly where it was and buys only
+     * what it should — a later repeat, and a slower floor.
      *
-     * The first round rounded this value too, which made the increment 100% of the value at the
-     * bottom of the range: there was no speed between "crosses the screen in eleven seconds" and
-     * "crosses it in five", and a whole seed's depth collapsed to two distinct rates. Half-steps
-     * cost the seam nothing and are the difference between a control and a pair of buttons.
+     * ## What the seam still costs here
+     *
+     * Each PARTICLE has to cross a whole number of fall-lengths per loop, or it is somewhere other
+     * than where it started when the last frame hands over to the first. So its count is
+     * `round(fallSpeed x loopSeconds)`, floored at one, and two consequences follow that no wording
+     * can remove:
+     *
+     *  - **the slowest possible fall is one length per loop.** At a twelve-second loop that is
+     *    1/12 of a length a second whatever this says; asking for less means asking for a longer
+     *    loop. That is not a limitation of the control, it is what a seamless loop IS.
+     *  - **the achievable speeds are a grid of 1/loopSeconds,** so a long loop is also a finer
+     *    control. At twelve seconds this dial moves in twelfths however small its step is; at sixty
+     *    it moves in sixtieths.
      *
      * The near field scales up from this by {@link depthSpread}, so raising the speed keeps the
      * depth reading it already had instead of flattening it.
@@ -136,7 +147,7 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
      * a legitimate look (hail rather than drizzle) — but it is the first thing to reach for when
      * fast rain reads as a field of dashes.
      */
-    fallSpeed: { min: 1, max: 12, step: 0.5, default: 2 },
+    fallSpeed: { min: 0.02, max: 1.5, step: 0.01, default: 0.17 },
     /**
      * How often a particle completes one flutter - one sway across its fall line, one turn of its
      * face - stated in TIMES PER SECOND.
@@ -177,11 +188,63 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
      * by a fifteenth — so it is read as a sharper petal rather than a bigger glow. That is what
      * answers "the petals look transparent AND blurry", which are one complaint and not two.
      *
-     * ⚠ It buys that sharpness by throwing away tone inside the core, which is what the bitmap
-     * exists to carry. Far past the point where the core is saturated there is nothing left to
-     * clip and the shape stops improving, so the range ends where it stops paying.
+     * ## Why it also lifts the depth floor, and why it has to
+     *
+     * A plain multiplier cannot make the field opaque, and the reason is arithmetic rather than
+     * taste. The depth ramp starts at 0.28, the sprite peaks at 216 of 255, so the brightest pixel
+     * a FAR particle can produce is `0.28 x s x 0.847` — it needs an `s` of 4.2 just to reach white
+     * at its very centre, and the mid-field is most of what an author is looking at. Measured: at
+     * `s` 4 the lit area was 55% opaque, at 16 it was 82%, at 32 it was 87% and still climbing by
+     * halves. So above 1 this also lerps the depth ramp toward 1, in proportion to how far up the
+     * range it has been pushed. At the top every particle is equally solid and the petal is a
+     * hard-edged cut-out.
+     *
+     * ⚠ Two things are spent to get there, and both are spent knowingly.
+     *
+     *  - **Depth's brightness cue.** At the top of the range the far field is as bright as the near
+     *    one and only SIZE still says which is which. That is the price of the far field being able
+     *    to reach opaque at all, and it is why the lift is proportional rather than switched on.
+     *  - **The colour.** The clip is light on black composited with `screen`, and `screen` leaves the
+     *    background alone in any channel where the source is not full. A pixel that covers what is
+     *    behind it is therefore white in every channel BY DEFINITION - "opaque" and "pink" are
+     *    mutually exclusive here, and no setting can have both. Around 8 a petal reads as solid with
+     *    a pink rim; at the top it is a white cut-out.
+     *
+     * ⚠ It buys its sharpness by throwing away tone inside the core, which is what the bitmap
+     * exists to carry.
      */
-    solidity: { min: 0.2, max: 4, step: 0.1, default: 1 },
+    solidity: { min: 0.2, max: 20, step: 0.1, default: 1 },
+    /**
+     * How long the clip runs before it repeats, in seconds.
+     *
+     * ## Why this is the author's and not a constant
+     *
+     * It was a constant at twelve, chosen because length is the cheapest way to buy a less obvious
+     * repeat (a sixteen-second loop measured 1.44x an eight-second one rather than 2x). Two things
+     * make it a control instead.
+     *
+     * The first is that it is the ONLY way to fall slowly. A particle must cross a whole number of
+     * fall-lengths per loop for the seam to close, so one length per loop is the floor, and at
+     * twelve seconds that floor is a screen every twelve seconds however low {@link fallSpeed} is
+     * set. Asking for a drift half that speed is asking for a twenty-four second loop. There is no
+     * other lever.
+     *
+     * The second is that the right answer differs per effect. Rain crossing the frame twice a
+     * second has nothing recognisable to repeat and twelve seconds is generous; forty petals
+     * drifting past over three seconds each are individually memorable, and the same twelve seconds
+     * is a visible cycle.
+     *
+     * ## What it costs
+     *
+     * Bytes and bake time, both roughly linear in it, and neither is the constraint they used to be
+     * — see the numbers beside the seeds. What it does NOT cost is memory: the renderer's
+     * accumulator is sized by pixels, not by frames.
+     *
+     * A whole number of seconds so that `loopSeconds x fps` is a whole number of frames at every
+     * rate offered. The seam guarantee is that the renderer is asked for phases `i / frames`, and a
+     * fractional frame count is the one way to get a stutter out of a mathematically exact field.
+     */
+    loopSeconds: { min: 4, max: 90, step: 1, default: 12 },
     /** How much faster the near field falls than the far field. 1 = everything falls together. */
     depthSpread: { min: 1, max: 8, step: 1, default: 3 },
 };
@@ -237,8 +300,8 @@ export type WeatherSeedDefinition = {
 export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     snow: {
         id: "snow",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "depthSpread"],
-        defaults: { density: 160, sizeNear: 17, sizeFar: 2, sway: 52, fallSpeed: 2, flutter: 0.35, depthSpread: 3 },
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "loopSeconds", "depthSpread"],
+        defaults: { density: 160, sizeNear: 17, sizeFar: 2, sway: 52, fallSpeed: 0.17, flutter: 0.35, depthSpread: 3 },
         tint: [255, 255, 255],
         streaked: false,
         tumbles: false,
@@ -246,10 +309,14 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     },
     rain: {
         id: "rain",
-        params: ["density", "sizeNear", "sizeFar", "streak", "wind", "fallSpeed", "solidity", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "streak", "wind", "fallSpeed", "solidity", "loopSeconds", "depthSpread"],
         // No sway and no flutter: rain falls in straight parallel lines, which is also why `wind`
         // reads as a tilt of the whole field rather than as a wobble. A drop has no face to turn.
-        defaults: { density: 170, sizeNear: 2.4, sizeFar: 1, streak: 30, sway: 0, fallSpeed: 3, depthSpread: 7 },
+        //
+        // Twelve seconds is generous for this one and is left alone. A drop crosses the frame twice
+        // a second and looks like every other drop; there is nothing here an eye could recognise
+        // coming round again, which is exactly what loop length buys.
+        defaults: { density: 170, sizeNear: 2.4, sizeFar: 1, streak: 30, sway: 0, fallSpeed: 0.25, depthSpread: 7 },
         tint: [198, 214, 255],
         streaked: true,
         tumbles: false,
@@ -258,7 +325,7 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     },
     sakura: {
         id: "sakura",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "loopSeconds", "depthSpread"],
         // Petals nearly twice the size the first rounds shipped. 26px of radius is 2.4% of a 1080p
         // frame's height, and at that size the sprite's outline - the notch that says cherry rather
         // than leaf - is below what the picture can carry, so it reads as a pale dot. A pale dot
@@ -269,13 +336,27 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
         // as an object rather than as texture - which is also why this is the seed that needs
         // `solidity` above 1. At 1 a petal of this size is a muddy wash with no edge.
         //
-        // 2 rather than higher because the two things it buys run out at different rates. The edge
-        // is nearly all bought by 2; the colour keeps being spent after that. Measured across the
-        // lit area: at 1 none of it is a blown white core and mean saturation is 19%, at 2 it is
-        // 15% white and 15% saturated, at 2.5 it is 30% white and 12%, at 4 it is 55% white and 8%.
-        // A petal whose middle is white is still a petal, but it stops being a PINK one, and pink
-        // is the half of "sakura" the shape does not carry.
-        defaults: { density: 15, sizeNear: 48, sizeFar: 11, sway: 110, fallSpeed: 3, flutter: 0.3, solidity: 2, depthSpread: 2 },
+        // `solidity` 6 rather than 2. At 2 the core is solid and everything outside it is still a
+        // gradient, because a plain multiple cannot lift the far field's 0.28 floor - see the
+        // parameter. 6 puts about seventy per cent of a petal's interior at full, which is an object
+        // rather than a wash, and stops short of the top of the range, which is a bare white cut-out.
+        //
+        // ⚠ It is also past the point where this seed is still PINK, and no default can avoid that.
+        // `screen` leaves the background alone in any channel the source does not fill, so a pixel
+        // that covers what is behind it is white by definition - and this tint's green sits at 81%
+        // of its red, so the three channels arrive at full almost together. Measured across the lit
+        // area: solidity 1 is 19% saturated, 3 is 11%, 6 is 6%. The only lever that widens the band
+        // where a petal is both solid and coloured is a more saturated `tint` (at 255,150,178 the
+        // same solidity 5 measures 17% rather than 7%), and that is a decision about what this seed
+        // LOOKS like rather than about how it is rendered.
+        //
+        // A thirty-six second loop rather than twelve. This seed is forty individually memorable
+        // petals, so twelve seconds is a cycle an eye can learn - and, more to the point, the loop
+        // length IS the floor on how slowly anything can fall (one fall-length per loop, or the
+        // seam does not close). At twelve, dragging `fallSpeed` to the bottom still gives a screen
+        // every twelve seconds; at thirty-six the same drag gives a screen every thirty-six, which
+        // is the slow drift this seed is for. It costs about 2 MiB instead of 0.6.
+        defaults: { density: 15, sizeNear: 48, sizeFar: 11, sway: 110, fallSpeed: 0.25, flutter: 0.3, solidity: 6, loopSeconds: 36, depthSpread: 2 },
         tint: [255, 206, 214],
         streaked: false,
         tumbles: true,
@@ -386,14 +467,29 @@ export type WeatherBakeSpec = {
 };
 
 /**
- * How long a loop runs, in seconds.
+ * How long a loop runs by default, in seconds.
  *
  * Twelve rather than eight. Measured: a sixteen-second loop costs 1.44x an eight-second one rather
  * than 2x, because the cost is dominated by the first frames of the sequence — so length is the
  * cheapest way to buy a less obvious repeat, and eight seconds is short enough to be noticed during
  * a long conversation.
+ *
+ * ⚠ **This is the default, not the answer.** The length is {@link WEATHER_PARAMS.loopSeconds}, per
+ * effect, and every caller that needs a frame count must resolve it from the ref rather than reach
+ * for this. A caller that used this constant while the author had asked for sixty would address a
+ * clip nothing ever bakes, which is a valid package with no weather in it.
  */
 export const WEATHER_LOOP_SECONDS = 12;
+
+/** The loop length one seed ref asks for, resolved and clamped. The one way to get a frame count. */
+export function weatherLoopSecondsOf(ref: WeatherSeedRef): number {
+    return resolveWeatherParams(ref).loopSeconds;
+}
+
+/** Frames in the clip one seed ref asks for at a given rate. Whole, because a phase grid must be. */
+export function weatherFrameCountOf(ref: WeatherSeedRef, fps: number): number {
+    return Math.max(1, Math.round(weatherLoopSecondsOf(ref) * fps));
+}
 
 /*
  * There is deliberately no frame-rate constant here.

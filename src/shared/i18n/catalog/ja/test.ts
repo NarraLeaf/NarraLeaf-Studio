@@ -125,5 +125,28 @@ export const test = {
                 passed: "{ending} に到達",
             },
         },
+        reachableEndings: {
+            title: "エンディングへの到達",
+            description: "物語のどの道もエンディング（/ending）に届くかどうか",
+            // 実行できないのは異常ではなく普通の状態。作者の落ち度ではなくプロジェクトの現状を述べ、
+            // 走らせるために足りていない一点だけを名指しする。
+            skipped: {
+                noEndings: "開始地点のあるストーリーに /ending が一つも無い",
+                noEntryPoint: "どのストーリーにも開始地点が設定されていない",
+                undecidableEntry: "Start Story ノードが実行時にシーンを決めるので、開始地点を読み取れない",
+                storiesUnread: "読み込めないストーリーがある",
+            },
+            finding: {
+                pathRunsOut: "ここで進行が止まり、エンディングに届かない",
+                optionRunsOut: "「{option}」はエンディングに届かないまま止まる",
+                endingUnreached: "「{name}」に届く道が無い",
+                endingUnreachedUnnamed: "このエンディングに届く道が無い",
+            },
+            // 数を先に置かず件数として読ませる。合格した実行でも、届かないエンディングは伝える価値がある。
+            summary: {
+                passed: "どの道もエンディングに届く。届かないエンディング {unreached} / {endings}",
+                failed: "止まってしまう道 {errors} 件。届かないエンディング {unreached} / {endings}",
+            },
+        },
     },
 } satisfies LocaleNamespace<"test">;
