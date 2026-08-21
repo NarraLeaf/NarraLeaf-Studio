@@ -39,6 +39,21 @@ export interface ChangeIndexRow {
      * than "Added". `changeIndexRowSummary` already words all three that way.
      */
     readonly wholeDocument: boolean;
+    /**
+     * Files this ONE row stands for, when the document is stored as several files.
+     *
+     * Zero for the ordinary document, which is one file and has nothing to add. Above zero for a
+     * document set (`@shared/documents/documentSet.ts`), where {@link path} is the manifest and the
+     * files that changed are its members - so the name on the row is sometimes a file that did not
+     * itself change.
+     *
+     * **The row still stays one line.** The count belongs in the tooltip beside the path, not on a
+     * second line and not as a nested list: the moment a row can grow with what it stands for the
+     * index is a report again, which is the failure this layout is a fix for. It is carried at all
+     * because the alternative is silence, and an author who believes one file changed when forty
+     * did will stop trusting every other number on this surface.
+     */
+    readonly memberCount: number;
     /** The entry itself, for the detail pane. Carried rather than re-looked-up by path. */
     readonly entry: DocumentDiffEntry;
 }
@@ -115,8 +130,9 @@ export interface BuildChangeIndexOptions {
      * Files the index will list before it stops adding them.
      *
      * The index is not virtualised, and this is what makes that safe rather than lucky: a comparison
-     * may carry up to `DIFF_PATH_LIMIT` (2000) documents, which is a first commit or a bulk import
-     * rather than an edit.
+     * may carry up to `DIFF_UNIT_LIMIT` (2000) documents, which is a first commit or a bulk import
+     * rather than an edit. **Documents rather than files**, since one of them can be several files -
+     * which is what keeps a project made of chunked stories from arriving here as one row per scene.
      */
     readonly rowBudget: number;
     /** Overrides {@link GROUP_COLLAPSE_THRESHOLD}; the tests set it, the tab does not. */
@@ -218,6 +234,7 @@ function indexRow(entry: DocumentDiffEntry): ChangeIndexRow {
         kind: entry.kind,
         changeCount: entry.diff.total,
         wholeDocument: isWholeDocumentChange(entry.kind),
+        memberCount: entry.members?.length ?? 0,
         entry,
     };
 }

@@ -1,17 +1,27 @@
 import type { DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
+import {
+    documentSetAt,
+    documentSetPathsAmong,
+    foldDocumentSetPaths,
+    type DocumentSetLookup,
+    type DocumentUnit,
+} from "@shared/documents/documentSet";
 import type { RevisionId, VcsRevisionDiffResult } from "@shared/types/vcs";
 import { contentClassOf } from "@shared/vcs/contentClass";
 import { LABEL_MOVED, pairMoves, type ContentProbe, type ContentSide } from "./contentDiff";
 import {
     classOfReadSides,
-    DIFF_PATH_LIMIT,
     DIFF_TOTAL_BYTE_BUDGET,
+    DIFF_UNIT_LIMIT,
     diffDocumentBytes,
     diffDocumentContent,
+    diffDocumentSet,
     DOCUMENT_DIFF_CHANGE_LIMIT,
+    DOCUMENT_SET_MEMBER_LIMIT,
     planPathRead,
     specForDocumentPath,
     unreadDocumentDiff,
+    type DocumentSetSide,
 } from "./documentDiff";
 
 /**
@@ -79,6 +89,15 @@ export interface RevisionDiffOptions {
     readonly limit?: number;
     /** Where a document that came back at a lower tier than expected is reported. */
     readonly onDegrade?: (reason: string) => void;
+    /**
+     * Which paths belong to a document that is stored as several files.
+     *
+     * A port, defaulting to the registry Studio uses - which claims nothing today, so a
+     * comparison behaves exactly as it did before. It is injectable because the layer must be
+     * provable without registering a real set, and registering one is the change that must not
+     * land before the story is actually chunked.
+     */
+    readonly sets?: DocumentSetLookup;
 }
 
 export async function diffRevisions(
@@ -91,17 +110,20 @@ export async function diffRevisions(
     // list is the order the budget is spent in, so an unstable one would make WHICH
     // documents get compared depend on tree-walk order.
     const paths = [...new Set(await source.changedPaths(from, to))].sort();
+    // Before anything is read, and before the budget is spent: the fold is path arithmetic, and
+    // a comparison that folded afterwards would already have paid for what folding avoids.
+    const units = foldDocumentSetPaths(paths, options.sets ?? documentSetAt);
 
-    if (paths.length > DIFF_PATH_LIMIT) {
+    if (units.length > DIFF_UNIT_LIMIT) {
         options.onDegrade?.(
-            `${paths.length} paths differ between ${from} and ${to}, over the ${DIFF_PATH_LIMIT} path limit,`
-            + " so they are listed without being read",
+            `${units.length} documents differ between ${from} and ${to}, over the ${DIFF_UNIT_LIMIT}`
+            + " document limit, so they are listed without being read",
         );
         return {
             from,
             to,
-            documents: paths.slice(0, DIFF_PATH_LIMIT).map((path) => unreadEntry(path)),
-            pathCount: paths.length,
+            documents: units.slice(0, DIFF_UNIT_LIMIT).map((unit) => unreadEntry(unit.path, "changed", unit)),
+            pathCount: units.length,
             complete: false,
             readFailure: null,
         };
@@ -121,21 +143,42 @@ export async function diffRevisions(
         return {
             from,
             to,
-            documents: paths.map((path) => unreadEntry(path)),
-            pathCount: paths.length,
+            documents: units.map((unit) => unreadEntry(unit.path, "changed", unit)),
+            pathCount: units.length,
             complete: false,
             readFailure,
         };
     }
 
+    // A set's files are settled against the two TREES, not against the changed list: the document
+    // is read whole or not at all, so the scenes nobody touched are part of this comparison too.
+    // The listing is already in memory from the two walks, so this costs no read.
+    const listing = new Set([...baseEntries.keys(), ...headEntries.keys()]);
+    const setFiles = new Map<string, readonly string[]>();
+    for (const unit of units) {
+        if (unit.kind === "set") {
+            setFiles.set(unit.path, documentSetPathsAmong(unit.spec, unit.key, listing));
+        }
+    }
+
     // Renames are settled before anything is planned, so a file that only moved costs no read
-    // on either side - which is the whole point of pairing them.
+    // on either side - which is the whole point of pairing them. **Only over standalone files:** a
+    // member that moved inside its own set is a change to that document, and pairing it would put
+    // a per-file "moved" row beside the one row the set is entitled to.
+    const filePaths = units.filter((unit) => unit.kind === "file").map((unit) => unit.path);
     const moves = pairMoves(
-        presenceProbes(paths, baseEntries, headEntries),
-        presenceProbes(paths, headEntries, baseEntries),
+        presenceProbes(filePaths, baseEntries, headEntries),
+        presenceProbes(filePaths, headEntries, baseEntries),
     );
     const paired = new Set([...moves.keys(), ...moves.values()]);
-    const plan = planReads(paths.filter((path) => !paired.has(path)), baseEntries, headEntries);
+    const plan = planReads(
+        [
+            ...filePaths.filter((path) => !paired.has(path)),
+            ...[...setFiles.values()].filter((files) => files.length <= DOCUMENT_SET_MEMBER_LIMIT).flat(),
+        ],
+        baseEntries,
+        headEntries,
+    );
     const planned = new Set(plan.read);
 
     let base: ReadonlyMap<string, Buffer | null> = new Map();
@@ -159,7 +202,31 @@ export async function diffRevisions(
     const documents: DocumentDiffEntry[] = [];
     const complete = plan.complete && !readFailure;
 
-    for (const path of paths) {
+    for (const unit of units) {
+        if (unit.kind === "set") {
+            const files = setFiles.get(unit.path) ?? [];
+            if (files.length === 0) {
+                // Neither tree holds a single file of it, which is the set-shaped version of the
+                // directory case below: the backend reports a changed directory in its own right,
+                // and a path that matched a member pattern without being a file is not a document.
+                continue;
+            }
+            documents.push(setEntry({
+                unit,
+                files,
+                baseEntries,
+                headEntries,
+                planned,
+                base,
+                head,
+                readFailure,
+                limit,
+                onDegrade: options.onDegrade,
+            }));
+            continue;
+        }
+
+        const path = unit.path;
         const before = baseEntries.get(path);
         const after = headEntries.get(path);
         if (!before && !after) {
@@ -235,6 +302,88 @@ export async function diffRevisions(
     }
 
     return { from, to, documents, pathCount: documents.length, complete, readFailure };
+}
+
+interface SetEntryRequest {
+    readonly unit: Extract<DocumentUnit, { kind: "set" }>;
+    /** Every file of the set that either tree holds - what has to be read to assemble it. */
+    readonly files: readonly string[];
+    readonly baseEntries: ReadonlyMap<string, RevisionEntry>;
+    readonly headEntries: ReadonlyMap<string, RevisionEntry>;
+    readonly planned: ReadonlySet<string>;
+    readonly base: ReadonlyMap<string, Buffer | null>;
+    readonly head: ReadonlyMap<string, Buffer | null>;
+    readonly readFailure: string | null;
+    readonly limit: number;
+    readonly onDegrade?: (reason: string) => void;
+}
+
+/**
+ * One row for one document that is stored as several files.
+ *
+ * **All or nothing, and that is the design rather than a shortcut.** A set's `diff` is a
+ * whole-document function, so a set with one member missing from the read cannot be compared at a
+ * lesser tier - it can only be compared with a member silently absent, which would report the
+ * author's scene as deleted. So every reason the read fell short lands on the same answer: one row
+ * saying the document changed and was not inspected, with the reason in `onDegrade`.
+ */
+function setEntry(request: SetEntryRequest): DocumentDiffEntry {
+    const { unit, files } = request;
+    const kind = presenceKind(request.baseEntries.get(unit.path), request.headEntries.get(unit.path));
+    const common = {
+        path: unit.path,
+        kind,
+        documentKind: unit.spec.kind,
+        // The changed files this one row stands for, so a surface can say how many there were
+        // rather than implying the document is one file.
+        members: unit.paths,
+        contentClass: contentClassOf(unit.path),
+    };
+
+    if (files.length > DOCUMENT_SET_MEMBER_LIMIT) {
+        request.onDegrade?.(
+            `${unit.path} is one document made of ${files.length} files, over the ${DOCUMENT_SET_MEMBER_LIMIT}`
+            + " a comparison will assemble, so it is listed without being read",
+        );
+        return { ...common, diff: unreadDocumentDiff(kind) };
+    }
+    if (request.readFailure) {
+        return { ...common, diff: unreadDocumentDiff(kind) };
+    }
+    const unplanned = files.filter((path) => !request.planned.has(path));
+    if (unplanned.length > 0) {
+        request.onDegrade?.(
+            `${unit.path} could not be assembled because ${unplanned.length} of its ${files.length} files`
+            + " were outside the read budget, so it is listed without being read",
+        );
+        return { ...common, diff: unreadDocumentDiff(kind) };
+    }
+
+    return {
+        ...common,
+        diff: diffDocumentSet(
+            {
+                path: unit.path,
+                spec: unit.spec,
+                key: unit.key,
+                base: setSide(files, request.base),
+                head: setSide(files, request.head),
+            },
+            { limit: request.limit, onDegrade: request.onDegrade },
+        ),
+    };
+}
+
+/** One side's files, from the bytes that were read. Null when that side holds none of them. */
+function setSide(files: readonly string[], bytes: ReadonlyMap<string, Buffer | null>): DocumentSetSide | null {
+    const parts = new Map<string, Buffer>();
+    for (const path of files) {
+        const buffer = bytes.get(path);
+        if (buffer) {
+            parts.set(path, buffer);
+        }
+    }
+    return parts.size > 0 ? { parts } : null;
 }
 
 /**
@@ -317,13 +466,21 @@ function presenceKind(base: unknown, head: unknown): DocumentChangeKind {
     return "changed";
 }
 
-/** A path that is known to have changed and was deliberately not read. See {@link unreadDocumentDiff}. */
-function unreadEntry(path: string, kind: DocumentChangeKind = "changed"): DocumentDiffEntry {
-    const spec = specForDocumentPath(path);
+/**
+ * A document that is known to have changed and was deliberately not read. See
+ * {@link unreadDocumentDiff}.
+ *
+ * `unit` is passed where the caller has already folded, which is also the only way this can name
+ * the document's kind for a set: nothing has been read, so the manifest path is all there is, and
+ * the fold is what turned it into a document.
+ */
+function unreadEntry(path: string, kind: DocumentChangeKind = "changed", unit?: DocumentUnit): DocumentDiffEntry {
+    const spec = unit?.kind === "set" ? unit.spec : specForDocumentPath(path);
     return {
         path,
         kind,
         ...(spec ? { documentKind: spec.kind } : {}),
+        ...(unit?.kind === "set" ? { members: unit.paths } : {}),
         contentClass: contentClassOf(path),
         diff: unreadDocumentDiff(kind),
     };

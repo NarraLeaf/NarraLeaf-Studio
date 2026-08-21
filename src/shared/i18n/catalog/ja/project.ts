@@ -39,6 +39,7 @@ export const project = {
         appTags: "ビルドバリアント",
         userData: "プレイヤーのファイル",
         icons: "アイコン",
+        screenEffects: "画面エフェクト",
         dependencies: "依存関係",
         saving: "セーブ",
         olderSaves: "以前のセーブ",
@@ -431,6 +432,11 @@ export const project = {
             center: "中央",
             right: "右",
         },
+    },
+    screenEffects: {
+        frameRateTitle: "天候のフレームレート",
+        frameRateDescription: "雪・雨・桜に適用される。読み込んだクリップは元のフレームレートのまま",
+        frameRateOption: "{rate} fps",
     },
     dependencies: {
         rescan: "調べ直す",

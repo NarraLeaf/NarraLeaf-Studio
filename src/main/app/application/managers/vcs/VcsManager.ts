@@ -2473,19 +2473,21 @@ export class VcsManager extends Manager {
             // auto-save; writing them after the settle would write into a path the backend has
             // already recorded.
             const perChange = decisions.filter(isPerChangeDecision);
+            // **The paths that were settled, not the paths that were asked about.** One document
+            // can be stored as several files (`@shared/documents/documentSet.ts`), and settling it
+            // change by change writes to every one of them - so the resolve below has to name them
+            // all. Settling only the path the author clicked would leave the rest in conflict, the
+            // commit would be refused naming one of them (§4.23-§4.32), and the ones that DID
+            // settle would already have lost their sidecars to the failed commit's stage.
+            const settled: string[] = [];
             for (const decision of perChange) {
-                await backend.resolveDocumentChanges(session.root, decision.path, decision.changes);
+                settled.push(...await backend.resolveDocumentChanges(session.root, decision.path, decision.changes));
             }
-            if (perChange.length > 0) {
+            if (settled.length > 0) {
                 // One call for all of them, for the reason the two side groups are grouped: each
                 // resolve flushes the repository and a flush waits out the keep-alive window
                 // (§4.22).
-                await backend.resolveConflicts(
-                    globals,
-                    session.root,
-                    perChange.map((decision) => decision.path),
-                    "working-tree",
-                );
+                await backend.resolveConflicts(globals, session.root, [...new Set(settled)], "working-tree");
             }
 
             for (const choice of MERGE_SIDES) {

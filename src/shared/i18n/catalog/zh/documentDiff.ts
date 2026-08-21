@@ -50,7 +50,8 @@ export const documentDiff = {
         root: "文档本身",
     },
     count: {
-        appTags: "变体",
+        appTags: "变体",
+
         assetSets: "资产集",
         assets: "资产",
         audioTracks: "音轨",
@@ -316,6 +317,11 @@ export const documentDiff = {
         fileAdded: "新增",
         fileRemoved: "删除",
         fileMoved: "移动",
+        /** 一份文档由多个文件组成时，在行的悬浮提示里说一次。 */
+        setFiles: {
+            one: "本文档有 {count} 个文件发生改动",
+            other: "本文档有 {count} 个文件发生改动",
+        },
         /** 每组只说一次，不逐行重复；具体是哪一种，写在该文件自己的详情里。 */
         partial: {
             one: "本组有 {count} 个文件未被完整比较",
@@ -332,8 +338,8 @@ export const documentDiff = {
         empty: "两个版本之间没有差异",
         emptyWorkingTree: "自上一个版本以来没有改动",
         readFailure: "无法读取本次对比所需的数据：{error}",
-        incomplete: "{total} 条变更路径里比较了 {shown} 条，其余被略过",
-        documentsOmitted: "另有 {count} 个文件没有列出",
+        incomplete: "{total} 份变更文档里比较了 {shown} 份，其余被略过",
+        documentsOmitted: "另有 {count} 份文档没有列出",
         unavailable: "该工程没有可用的版本控制",
     },
     /**
