@@ -3,8 +3,8 @@ import fs from "fs/promises";
 import path from "path";
 import { spawn } from "child_process";
 import { buildWeatherField, createWeatherRenderer } from "@shared/weather/field";
-import { resolveWeatherParams, type WeatherBakeSpec } from "@shared/weather/model";
-import { VP9_ARGS } from "../media/mediaTranscode";
+import { resolveWeatherParams, type WeatherBakeQuality, type WeatherBakeSpec } from "@shared/weather/model";
+import { vp9Args } from "../media/mediaTranscode";
 
 /**
  * Producing the clip a weather seed describes.
@@ -94,6 +94,15 @@ export type WeatherFrameSequence = {
 };
 
 export type WeatherBakeOptions = {
+    /**
+     * How hard the encoder is asked to work. Stated by every caller, never defaulted.
+     *
+     * There is no sensible default: the two callers want opposite things - a build wants the file a
+     * player will get, a Dev Mode session wants to stop waiting - and a default would silently give
+     * one of them the other's answer. The manager writes the two tiers to different files for the
+     * same reason, so a wrong answer here is a wrong file rather than a slow one.
+     */
+    quality: WeatherBakeQuality;
     onProgress?: (progress: WeatherBakeProgress) => void;
     /** Injected in tests; defaults to a real `child_process.spawn`. */
     spawnProcess?: BakeSpawn;
@@ -137,8 +146,16 @@ const STDERR_TAIL_BYTES = 16 * 1024;
  *
  * `-an` because a weather overlay has no audio: leaving the encoder to decide would let a future
  * default add an empty track, and WebM's audio codec is a decision made elsewhere.
+ *
+ * The quality decides the encoder's speed and nothing else. Everything that makes the file playable
+ * on the targets this project ships to - the codec, profile 0, the CRF - is the same in both tiers,
+ * so a draft clip is a legal answer to a request for the picture; it is simply a bigger one.
  */
-export function weatherBakeArgs(spec: WeatherBakeSpec, outputPath: string): string[] {
+export function weatherBakeArgs(
+    spec: WeatherBakeSpec,
+    quality: WeatherBakeQuality,
+    outputPath: string,
+): string[] {
     return [
         "-hide_banner",
         "-nostdin",
@@ -154,7 +171,7 @@ export function weatherBakeArgs(spec: WeatherBakeSpec, outputPath: string): stri
         "-s", `${spec.width}x${spec.height}`,
         "-r", String(spec.fps),
         "-i", "pipe:0",
-        ...VP9_ARGS,
+        ...vp9Args(quality === "draft" ? "realtime" : "good"),
         "-an",
         // Named rather than inferred: the file this writes is a `.part`, and ffmpeg picks its muxer
         // from the extension unless told. Without this it refuses the output outright - the same
@@ -191,7 +208,7 @@ export function startWeatherBake(
     binaryPath: string,
     spec: WeatherBakeSpec,
     targetPath: string,
-    options: WeatherBakeOptions = {},
+    options: WeatherBakeOptions,
 ): WeatherBakeHandle {
     let cancelled = false;
     let child: BakeChildProcess | null = null;
@@ -229,7 +246,7 @@ export function startWeatherBake(
         let pipeBroken = false;
 
         try {
-            child = spawnProcess(binaryPath, weatherBakeArgs(spec, tempPath));
+            child = spawnProcess(binaryPath, weatherBakeArgs(spec, options.quality, tempPath));
         } catch (error) {
             return { status: "error", detail: describe(error), stderr: "" };
         }

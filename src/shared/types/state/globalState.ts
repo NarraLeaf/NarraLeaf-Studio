@@ -1,5 +1,6 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
+import { SCREEN_EFFECT_QUALITY_DEFAULT, SCREEN_EFFECT_QUALITY_KEY } from "@shared/constants/screenEffects";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
@@ -63,6 +64,13 @@ export interface GlobalStateType extends Record<string, any> {
      * makes the notice show. See `@shared/constants/update`.
      */
     "app.trayResidencyNoticeShown": boolean;
+    /**
+     * How good the screen effects baked for a Dev Mode session have to be.
+     *
+     * Dev Mode only. Previews and builds are always `final` and no setting reaches them: what they
+     * produce is what a player receives. See `@shared/constants/screenEffects`.
+     */
+    [SCREEN_EFFECT_QUALITY_KEY]: "draft" | "final" | string;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -406,6 +414,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.developerMode": false,
     "app.updateCheckOnLaunch": true,
     "app.confirmQuit": CONFIRM_QUIT_DEFAULT,
+    [SCREEN_EFFECT_QUALITY_KEY]: SCREEN_EFFECT_QUALITY_DEFAULT,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,

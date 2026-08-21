@@ -86,6 +86,14 @@ export const settings = {
             label: "開発者オプション",
             description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わる",
         },
+        screenEffectQuality: {
+            label: "開発モードでの画面エフェクト",
+            description: "下書きは生成時間がおよそ 3 分の 1 になる。プレビューとビルドは常に最終品質を使う",
+            options: {
+                draft: "下書き",
+                final: "最終品質",
+            },
+        },
         confirmQuit: {
             label: "⌘Q で終了するときに確認する",
             description: "⌘Q を続けて 2 回押すと終了する。1 回だけでは終了しない",

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
+import type { GameBuildRequest } from "@shared/types/gameBuild";
 import { throwException } from "@shared/utils/error";
 import { getInterface } from "@/lib/app/bridge";
 import { setCrashRecoveryFlush } from "@/lib/app/errorHandling/crashRecovery";
@@ -44,6 +45,14 @@ interface WorkspaceContextValue {
      * steps, and a window that stays blank through all of them is the thing being fixed.
      */
     startupStage: WorkspaceStartupStage;
+    /**
+     * The build this window was opened by `--build` to run, or null for an ordinary workspace.
+     *
+     * Read from the window's props alongside `recovery` and settled for the same reason: it decides
+     * what this window is before the first service starts, so nothing has to be told twice and no
+     * editor is mounted on the way. See `runCommandLineBuild`.
+     */
+    commandLineBuild: GameBuildRequest | null;
     /**
      * Start the whole initialization over.
      *
@@ -108,6 +117,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     const [attempt, setAttempt] = useState(0);
     const [recovery, setRecovery] = useState(false);
     const [recoveryReason, setRecoveryReason] = useState<string | null>(null);
+    const [commandLineBuild, setCommandLineBuild] = useState<GameBuildRequest | null>(null);
     const contextRef = useRef<WorkspaceCtx | null>(null);
     contextRef.current = context;
 
@@ -151,6 +161,11 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     // the precise failure this whole feature exists to end. A failure that happened
                     // stays a fact about this session; repeats collapse in the log itself.
                     const props = throwException(await getInterface().getWindowProps<WindowAppType.Workspace>());
+                    // Before the recovery branch, so a window that is both is at least honest about
+                    // it: recovery wins - a project somebody is here to repair is not one to build -
+                    // and the run is told so when the build never starts.
+                    const buildRequest = props.commandLineBuild?.request ?? null;
+                    setCommandLineBuild(buildRequest);
                     if (props.recovery) {
                         setRecovery(true);
                         setRecoveryReason(props.recoveryReason ?? null);
@@ -251,11 +266,16 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     setWorkspace(ws);
                     setIsInitialized(true);
 
-                    // Add to recent projects only when successfully loaded
-                    const projectService = ctx.services.get<ProjectService>(Services.Project);
-                    const projectConfig = projectService.getProjectConfig();
-                    const projectPath = ctx.project.getConfig().projectPath;
-                    getInterface().app.addRecentProject(projectConfig.name, projectPath);
+                    // Add to recent projects only when successfully loaded - and not at all for a
+                    // command-line build. That is a machine producing a package, not an author
+                    // working here, and writing it to the history would change which project the
+                    // operator's next Studio reopens.
+                    if (!buildRequest) {
+                        const projectService = ctx.services.get<ProjectService>(Services.Project);
+                        const projectConfig = projectService.getProjectConfig();
+                        const projectPath = ctx.project.getConfig().projectPath;
+                        getInterface().app.addRecentProject(projectConfig.name, projectPath);
+                    }
 
                     // Replace-style launches wait on this before retiring the opener window.
                     getInterface().workspace.reportLoadResult(true);
@@ -360,7 +380,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     }, [context]);
 
     return (
-        <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error, startupStage, retry, recovery, recoveryReason }}>
+        <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error, startupStage, retry, recovery, recoveryReason, commandLineBuild }}>
             {children}
         </WorkspaceContext.Provider>
     );

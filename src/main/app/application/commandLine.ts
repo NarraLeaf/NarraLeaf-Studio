@@ -38,6 +38,52 @@ export interface StartupProjectCommandLineOptions {
     error: string | null;
 }
 
+/**
+ * What `--build` and its companion flags asked for.
+ *
+ * Every value is kept as the raw string it was typed as. Whether "windows" is a platform, whether
+ * this host can build for it and whether the project has a variant by that name are all decided
+ * later - parsing has no business knowing the platform table, and none of it may touch the disk
+ * (the same rule `--project` follows).
+ */
+export interface BuildCommandLineOptions {
+    /**
+     * `--build` appeared, whatever else was wrong with the line.
+     *
+     * Separate from {@link selector} because the two failures are different: a launch that asked
+     * for a build and got the flags wrong must exit as a bad invocation, not quietly open the home
+     * screen. Nothing else on the command line can turn this off.
+     */
+    requested: boolean;
+    /**
+     * What `--build` named: a project directory, or a name to look up in the recently-opened list.
+     * Resolved by `resolveStartupProject`, exactly as `--project`'s value is.
+     */
+    selector: string | null;
+    /** `--build-variant`: which build variant to produce. Null means the release variant. */
+    variantId: string | null;
+    /** `--build-target`: one platform. Null means the host's own. */
+    platform: string | null;
+    /** `--build-format`: one format of that platform. Null means the platform's first. */
+    format: string | null;
+    /** `--build-arch`: desktop only. Null means the host's arch for a host build, x64 otherwise. */
+    arch: string | null;
+    /** `--build-output`: absolute or relative to the working directory. Null means `<project>/dist`. */
+    outputDir: string | null;
+    /** `--build-report`: where to write the JSON report. Null means no report file. */
+    reportPath: string | null;
+    /**
+     * `--build-allow-unsigned`: this launch accepts an artifact with no code signature.
+     *
+     * Without it a build whose target could carry a signature and has no credential configured is
+     * refused. The Build dialog shows that as a finding an author reads before they commit; a
+     * command line has nobody reading, so the acceptance has to be stated.
+     */
+    allowUnsigned: boolean;
+    /** The first thing wrong with the build flags, in the words the launch prints. */
+    error: string | null;
+}
+
 export interface ExperimentalCommandLineOptions {
     /**
      * `--experimental` was given. Whether it is honoured is a second question - a packaged Studio
@@ -96,6 +142,20 @@ export interface MainCommandLineOptions {
      * restore one.
      */
     launcher: boolean;
+    /**
+     * Produce a build of this project and exit, with no interface at all.
+     *
+     * **NOT dev-gated**, unlike `--project`, and the difference is the whole point: this exists for
+     * a machine that has installed Studio and has nobody at the keyboard. The reasoning that gates
+     * `--project` does not reach it. That flag redirects the interface, so a shortcut or a file
+     * association carrying it would put an author somewhere they did not ask to be; this one opens
+     * no interface, takes no positional path, and ends in the process exiting. Studio registers no
+     * association and writes no shortcut that passes it, so a launch carrying it was written by
+     * somebody who meant it.
+     *
+     * See `commandLineBuild.ts` for what the flags come to and `runCommandLineBuild` for the run.
+     */
+    build: BuildCommandLineOptions;
     cdp: CdpCommandLineOptions;
     devReload: DevReloadCommandLineOptions;
     /**
@@ -152,15 +212,82 @@ function takeValue(value: string | undefined): string | null {
 }
 
 /**
+ * The `--build` flags that take a value, and the field each one fills.
+ *
+ * A table rather than a branch per flag, so the seven of them cannot drift apart in how they read
+ * a value, how they report a missing one, or whether their value is mistaken for a path to open.
+ * {@link VALUE_TAKING_FLAGS} is built from these keys for that last reason.
+ */
+type BuildValueField = "selector" | "variantId" | "platform" | "format" | "arch" | "outputDir" | "reportPath";
+
+const BUILD_VALUE_FLAGS = {
+    "--build": "selector",
+    "--build-variant": "variantId",
+    "--build-target": "platform",
+    "--build-format": "format",
+    "--build-arch": "arch",
+    "--build-output": "outputDir",
+    "--build-report": "reportPath",
+} as const satisfies Record<string, BuildValueField>;
+
+type BuildValueFlag = keyof typeof BUILD_VALUE_FLAGS;
+
+function isBuildValueFlag(candidate: string): candidate is BuildValueFlag {
+    return Object.prototype.hasOwnProperty.call(BUILD_VALUE_FLAGS, candidate);
+}
+
+/**
+ * Read one argument as a build flag, in either the `--flag value` or the `--flag=value` form.
+ *
+ * Answers null for anything that is not one, so the caller's branch reads like the branches around
+ * it. `consumedNext` says whether the following argument was the value, which is what the caller
+ * skips - the `=` form is one argument and skips nothing.
+ */
+function readBuildFlag(
+    arg: string,
+    next: string | undefined,
+): { flag: BuildValueFlag; value: string | null; consumedNext: boolean } | null {
+    if (isBuildValueFlag(arg)) {
+        const value = takeValue(next);
+        return { flag: arg, value, consumedNext: value !== null };
+    }
+    const separator = arg.indexOf("=");
+    if (separator === -1) {
+        return null;
+    }
+    const flag = arg.slice(0, separator);
+    if (!isBuildValueFlag(flag)) {
+        return null;
+    }
+    const value = arg.slice(separator + 1).trim();
+    return { flag, value: value === "" ? null : value, consumedNext: false };
+}
+
+/** `--build-allow-unsigned`, which carries no value. */
+const BUILD_ALLOW_UNSIGNED_FLAG = "--build-allow-unsigned";
+
+/** What each build flag says it wants, for the "missing value" message. */
+const BUILD_VALUE_DESCRIPTIONS: Record<BuildValueFlag, string> = {
+    "--build": "a project path or a recent project's name",
+    "--build-variant": "a build variant id",
+    "--build-target": "a platform",
+    "--build-format": "a format",
+    "--build-arch": "an architecture",
+    "--build-output": "an output folder",
+    "--build-report": "a file to write the report to",
+};
+
+/**
  * Flags whose *next* argument is a value rather than a path.
  *
  * Without this list, `--project demo` would offer "demo" to the open-request resolver as well.
  * Only the separated forms need it; `--flag=value` is one argument and never looks positional.
  */
-const VALUE_TAKING_FLAGS = new Set([
+const VALUE_TAKING_FLAGS = new Set<string>([
     "--project",
     "--cdp-port",
     "--dev-reload-port",
+    ...Object.keys(BUILD_VALUE_FLAGS),
 ]);
 
 /**
@@ -173,6 +300,17 @@ const VALUE_TAKING_FLAGS = new Set([
  */
 function isAppScriptArgument(argument: string | undefined): boolean {
     return argument !== undefined && /\.(?:js|mjs|cjs)$/i.test(argument);
+}
+
+/** Whether anything but `--build` itself asked for something about a build. */
+function hasBuildCompanionFlag(build: BuildCommandLineOptions): boolean {
+    return build.variantId !== null
+        || build.platform !== null
+        || build.format !== null
+        || build.arch !== null
+        || build.outputDir !== null
+        || build.reportPath !== null
+        || build.allowUnsigned;
 }
 
 export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOptions {
@@ -188,6 +326,19 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     const experimentalConditions = new Set<ExperimentalConditionId>();
     const unknownConditionFlags = new Set<string>();
     const openPaths: string[] = [];
+    const build: BuildCommandLineOptions = {
+        requested: false,
+        selector: null,
+        variantId: null,
+        platform: null,
+        format: null,
+        arch: null,
+        outputDir: null,
+        reportPath: null,
+        allowUnsigned: false,
+        error: null,
+    };
+    const buildFlagErrors = new Map<BuildValueFlag, string>();
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -205,6 +356,36 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
 
         if (arg === "--dev" || arg === "--onboarding" || arg === "--skip-onboarding"
             || arg === "--launcher") {
+            continue;
+        }
+
+        if (arg === BUILD_ALLOW_UNSIGNED_FLAG) {
+            build.allowUnsigned = true;
+            continue;
+        }
+
+        // One branch for all seven value-taking build flags. `--build` additionally records that a
+        // build was asked for at all, before its value is read: the launch has to exit as a bad
+        // invocation rather than open the home screen even when the value is the thing missing.
+        const buildFlag = readBuildFlag(arg, argv[i + 1]);
+        if (buildFlag) {
+            if (buildFlag.flag === "--build") {
+                build.requested = true;
+            }
+            if (buildFlag.value === null) {
+                // Kept per flag, so a `--build-format` given twice - once wrong, once right - is
+                // forgiven, while a `--build-target` that was never given a value is not.
+                buildFlagErrors.set(
+                    buildFlag.flag,
+                    `Missing ${buildFlag.flag} value: expected ${BUILD_VALUE_DESCRIPTIONS[buildFlag.flag]}`,
+                );
+            } else {
+                build[BUILD_VALUE_FLAGS[buildFlag.flag]] = buildFlag.value;
+                buildFlagErrors.delete(buildFlag.flag);
+            }
+            if (buildFlag.consumedNext) {
+                i += 1;
+            }
             continue;
         }
 
@@ -314,10 +495,24 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         }
     }
 
+    // The first flag still missing a value, in the order the table lists them rather than the order
+    // they were typed, so two launches with the same mistakes print the same sentence.
+    build.error = (Object.keys(BUILD_VALUE_FLAGS) as BuildValueFlag[])
+        .map(flag => buildFlagErrors.get(flag))
+        .find((message): message is string => message !== undefined) ?? null;
+    // A companion flag without `--build` names a build that was never asked for. Refusing rather
+    // than ignoring it: the alternative is a launch that opens the editor while the script that
+    // wrote the line believes it is building.
+    if (!build.requested && (build.error !== null || hasBuildCompanionFlag(build))) {
+        build.requested = true;
+        build.error ??= "Missing --build: the build flags name a build nothing asked for";
+    }
+
     return {
         dev: argv.includes("--dev"),
         onboarding: argv.includes("--onboarding"),
         skipOnboarding: argv.includes("--skip-onboarding"),
+        build,
         project: {
             selector: projectSelector,
             error: projectError,

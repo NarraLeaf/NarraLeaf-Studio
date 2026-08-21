@@ -90,6 +90,20 @@ export class Fs {
         return this.wrap(this.writeFileAtomicCore(path, data, true));
     }
 
+    /**
+     * Make sure a plain regular file exists at `path`, writing `data` **only if it is not there**.
+     *
+     * An existing file is inspected and left exactly as it is - this is the verb that puts a blank
+     * shard next to a project that predates it (`AssetsMetadataManager.initAssetsMetadata`), and one
+     * that overwrote would reset every asset shard in the project on the next open. A caller that
+     * wants the bytes on disk whatever was there before wants
+     * {@link writeFileNoFollowOrCreate} instead.
+     *
+     * **Only one of the two branches is atomic.** The create branch is a plain `fs.writeFile` with
+     * `wx`, not the temp-and-rename of {@link writeFileAtomicCore}: a crash inside it can leave a
+     * truncated file. That is deliberate and safe *here*, where the payload is a placeholder
+     * measured in bytes, and it is not a property to lean on from a caller writing a document.
+     */
     public static ensureRegularFile(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
         return this.wrap((async () => {
             try {
@@ -121,6 +135,48 @@ export class Fs {
     public static writeFileNoFollow(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
         return this.wrap((async () => {
             this.assertSafeFileStat(path, await fs.lstat(path));
+
+            await this.writeFileAtomicCore(path, Buffer.from(data, encoding), false);
+        })());
+    }
+
+    /**
+     * Atomically write a file that may or may not exist yet, without following a symlink.
+     *
+     * This is the gap between the two verbs above, and it exists because a document service falls
+     * straight into it. {@link writeFileNoFollow} carries the rejection contract but can only ever
+     * *overwrite* - `lstat` on a missing path is `ENOENT` - while {@link ensureRegularFile} can
+     * create but deliberately writes nothing when the file is already there. A service that creates
+     * its file on the first open of a project that predates it and then rewrites it on every save
+     * needs both behaviours from **one** call: composing them out of a probe and a write is two IPC
+     * round trips, and it is a race whose losing side reports success having dropped its payload.
+     *
+     * For a path that already exists the contract is {@link writeFileNoFollow}'s, unchanged: a
+     * symlink, a non-regular file or a hard-linked file is refused with `INVALID_PATH` rather than
+     * written through. The only thing this verb additionally accepts is a path that is not there.
+     *
+     * Unlike {@link ensureRegularFile}, **both** branches go through {@link writeFileAtomicCore}, so
+     * a create is as crash-safe as a replacement. That matters here and does not there: the file
+     * being created is a whole document, and a half-written one on first save is the same loss as a
+     * half-written one on the thousandth.
+     *
+     * A missing *parent directory* still fails, and fails loudly: the `lstat` reports `ENOENT`, the
+     * create branch is taken, and `createTempSibling` then cannot open a file in a directory that is
+     * not there - so the caller gets `NOT_FOUND`, which is the same answer the write-grant route
+     * gave when it stat'd the parent itself.
+     */
+    public static writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
+        return this.wrap((async () => {
+            try {
+                this.assertSafeFileStat(path, await fs.lstat(path));
+            } catch (error) {
+                // "Not there yet" is the one failure this verb absorbs. `assertSafeFileStat`'s own
+                // `EINVAL` and every other stat error propagate, which is what keeps the rejection
+                // contract a rejection rather than a reason to create a second file beside it.
+                if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+                    throw error;
+                }
+            }
 
             await this.writeFileAtomicCore(path, Buffer.from(data, encoding), false);
         })());

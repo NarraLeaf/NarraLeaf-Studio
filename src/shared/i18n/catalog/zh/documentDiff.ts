@@ -59,7 +59,7 @@ export const documentDiff = {
         brandFonts: "默认字体",
         characterGroups: "角色分组",
         characters: "角色",
-        dictionaryWords: "词典词条",
+        dictionaryTerms: "词典词条",
         localizationKeys: "本地化键",
         saveFields: "存档字段",
         storyBlocks: "故事行",

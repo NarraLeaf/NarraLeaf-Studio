@@ -75,6 +75,7 @@ function runBakeHost(): void {
             return;
         }
         handle = startWeatherBake(message.binaryPath, message.spec, message.targetPath, {
+            quality: message.quality,
             frameSource: frameSourceFor(message.spec),
             onProgress: progress => send({ type: "progress", frames: progress.frames, total: progress.total }),
         });

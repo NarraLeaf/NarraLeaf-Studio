@@ -1094,6 +1094,50 @@ input[type="radio"]:focus {
 }
 
 /*
+ * The project dictionary's two marks, in the same layer and over the same ranges as the squiggle
+ * above (see `storyDictionary.ts`).
+ *
+ * They are deliberately quieter than a misspelling, and quieter than each other. A misspelling is a
+ * word that is wrong; a variant is a word this project writes differently, which is worth showing
+ * but is not an error the build cares about; a reading is an offer, and an offer that shouted would
+ * be unreadable on a page where the term appears in every other line.
+ *
+ * The same mask carries the wave, so the colour stays a token and follows the theme.
+ */
+.story-rt-variant {
+    position: absolute;
+    height: 3px;
+    pointer-events: none;
+    background-color: rgb(var(--nl-warning));
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3' viewBox='0 0 6 3'%3E%3Cpath d='M0 2.5 Q1.5 0.5 3 2.5 T6 2.5' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E");
+    mask-repeat: repeat-x;
+    mask-size: 6px 3px;
+    mask-position: 0 100%;
+}
+
+/*
+ * A dotted rule rather than a wave: nothing is wrong with the words under it, there is simply a
+ * reading on file for them. Drawn on the baseline the wave sits under, so a line carrying both
+ * kinds keeps one underline height.
+ *
+ * The foreground ramp rather than the accent, and at full opacity. The accent is one colour for both
+ * themes - it has no light override, because everything else that uses it sits on a fill of its own -
+ * so a rule painted with it measured 2.6:1 against the light surface and 2.5:1 against the tint a
+ * selected row lays behind it. `fg-muted` clears 3:1 in both themes over both, and grey is the more
+ * honest colour anyway: nothing here is wrong, there is only something on file.
+ */
+.story-rt-reading {
+    position: absolute;
+    height: 3px;
+    pointer-events: none;
+    background-color: rgb(var(--nl-fg-muted));
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3' viewBox='0 0 4 3'%3E%3Crect x='0' y='2' width='2' height='1' fill='black'/%3E%3C/svg%3E");
+    mask-repeat: repeat-x;
+    mask-size: 4px 3px;
+    mask-position: 0 100%;
+}
+
+/*
  * Speaker colours for the story editor's gutter (gutter 规范 §4).
  *
  * One hue per character, carried in from JS as `--nl-speaker-h` (see storySpeakerIdentity.ts) and

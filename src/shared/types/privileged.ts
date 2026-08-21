@@ -41,6 +41,14 @@ export type PrivilegedFileSystemCall =
     | { operation: "requestWriteBatch"; entries: PrivilegedWriteBatchEntry[] }
     | { operation: "ensureRegularFile"; path: string; data: string; encoding?: BufferEncoding }
     | { operation: "writeFileNoFollow"; path: string; data: string; encoding?: BufferEncoding }
+    /**
+     * Write, creating the file if it is absent. See `Fs.writeFileNoFollowOrCreate`.
+     *
+     * Deliberately absent from the plugin-facing `app.fs` bridge (`IPCEventType.fs*`), which carries
+     * the other two: this is here for Studio's own document services, and every verb added to that
+     * surface is one more thing a plugin can be written against forever.
+     */
+    | { operation: "writeFileNoFollowOrCreate"; path: string; data: string; encoding?: BufferEncoding }
     | { operation: "recoverCorruptedJsonFile"; path: string; replacement: string; encoding?: BufferEncoding }
     | { operation: "createDir"; path: string }
     | { operation: "deleteFile"; path: string }

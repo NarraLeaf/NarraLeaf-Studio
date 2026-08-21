@@ -54,9 +54,11 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import type { StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { StoryCandidateSpeakerMark } from "./storyCandidateMark";
-import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle, type SpellingClickInfo } from "./RichTextInput";
+import { RichTextInput, type ActiveMarks, type DictionaryClickInfo, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle, type SpellingClickInfo } from "./RichTextInput";
 import { SpellSuggestionPopover } from "./SpellSuggestionPopover";
 import { useStorySpellcheck } from "./useStorySpellcheck";
+import { DictionaryMarkPopover } from "./DictionaryMarkPopover";
+import { useStoryDictionary } from "./useStoryDictionary";
 import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
@@ -859,9 +861,11 @@ function TextEditBox(props: {
     const lastToolbarInteractRef = useRef(0);
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
     const [spellEdit, setSpellEdit] = useState<SpellingClickInfo | null>(null);
+    const [dictionaryEdit, setDictionaryEdit] = useState<DictionaryClickInfo | null>(null);
     const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false });
     const textStyle = useStoryEditorTextStyle();
     const spellcheck = useStorySpellcheck();
+    const dictionary = useStoryDictionary();
 
     useEffect(() => {
         const onPointerDown = (event: PointerEvent) => {
@@ -902,6 +906,18 @@ function TextEditBox(props: {
     const closeSpelling = () => {
         commitGuardRef.current = false;
         setSpellEdit(null);
+        props.editorRef.current?.focus();
+    };
+
+    const openDictionary = (info: DictionaryClickInfo) => {
+        // Guarded like every other popover opened from inside the field: the panel takes focus off
+        // the contentEditable, and an unguarded blur commits the row and closes the editor under it.
+        commitGuardRef.current = true;
+        setDictionaryEdit(info);
+    };
+    const closeDictionary = () => {
+        commitGuardRef.current = false;
+        setDictionaryEdit(null);
         props.editorRef.current?.focus();
     };
 
@@ -1007,6 +1023,8 @@ function TextEditBox(props: {
                 onEventClick={openEvent}
                 spellcheck={spellcheck}
                 onSpellingClick={openSpelling}
+                dictionary={dictionary}
+                onDictionaryClick={openDictionary}
                 resolveInterpolationLabel={resolveInterpolationLabel}
                 resolveAppearanceLabel={resolveAppearanceLabel}
                 onActiveMarksChange={setActiveMarks}
@@ -1035,6 +1053,27 @@ function TextEditBox(props: {
                         closeSpelling();
                     }}
                     onClose={closeSpelling}
+                />
+            ) : null}
+            {dictionaryEdit ? (
+                <DictionaryMarkPopover
+                    target={dictionaryEdit}
+                    onReplace={replacement => {
+                        props.editorRef.current?.replaceSpelling(
+                            dictionaryEdit.mark.unitStart,
+                            dictionaryEdit.mark.unitEnd,
+                            replacement,
+                        );
+                        closeDictionary();
+                    }}
+                    onApplyReading={reading => {
+                        props.editorRef.current?.setRuby(reading, {
+                            start: dictionaryEdit.mark.unitStart,
+                            end: dictionaryEdit.mark.unitEnd,
+                        });
+                        closeDictionary();
+                    }}
+                    onClose={closeDictionary}
                 />
             ) : null}
             {interpEdit ? (
