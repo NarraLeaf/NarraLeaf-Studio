@@ -37,6 +37,8 @@ import type { AutoSaveConfiguration } from "@shared/types/saves";
 import { normalizeAutoSaveConfiguration } from "@shared/types/saves";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
 import { normalizeSaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
+import type { VfxConfiguration } from "@shared/types/vfx";
+import { normalizeVfxConfiguration } from "@shared/types/vfx";
 import { computeStoryContentHash } from "@shared/utils/storyContentHash";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
@@ -168,6 +170,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
     const dialogue = await loadDialogueConfiguration(context.projectPath);
+    const vfx = await loadVfxConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
     const brand = await loadProjectBrand(context.projectPath);
@@ -194,6 +197,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         languageChange,
         saveCompatibility,
         dialogue,
+        vfx,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
         // drop, so two editions that carry different chapters do not claim the same story.
@@ -1199,6 +1203,17 @@ export async function loadDialogueConfiguration(projectPath: string): Promise<Di
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeDialogueConfiguration(app?.dialogue);
+}
+
+/**
+ * Load the frame rate screen effects are baked at from `.nlproj` `app.vfx`. Dense like the ones
+ * above, and load-bearing rather than informational: this is what the running game computes a clip
+ * id from, and the packer computed the ids it shipped from the same file. Exported for tests.
+ */
+export async function loadVfxConfiguration(projectPath: string): Promise<VfxConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeVfxConfiguration(app?.vfx);
 }
 
 /**

@@ -37,6 +37,7 @@ export const project = {
         appTags: "变体",
         userData: "玩家文件",
         icons: "图标",
+        screenEffects: "屏幕效果",
         dependencies: "依赖",
         saving: "存档",
         olderSaves: "旧存档",
@@ -414,6 +415,11 @@ export const project = {
             center: "居中",
             right: "右侧",
         },
+    },
+    screenEffects: {
+        frameRateTitle: "天气帧率",
+        frameRateDescription: "作用于雪、雨、樱花；导入的素材保持原有帧率",
+        frameRateOption: "{rate} fps",
     },
     dependencies: {
         rescan: "重新扫描",

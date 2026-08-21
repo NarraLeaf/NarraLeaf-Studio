@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WEATHER_FPS, type WeatherBakeSpec } from "@shared/weather/model";
+import type { WeatherBakeSpec } from "@shared/weather/model";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
 import {
     parseBakeFrame,
@@ -15,12 +15,18 @@ import {
 import { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
 import { WeatherBakeManager, type WeatherBakeStarter } from "./WeatherBakeManager";
 
-/** Small and short: these tests are about the plumbing, and every frame is really rendered. */
+/**
+ * Small and short: these tests are about the plumbing, and every frame is really rendered.
+ *
+ * The rate is deliberately not the project default. The rate is the author's now, so a baker that
+ * went back to a constant would still agree with a spec that stated 30 - and would then encode every
+ * project's effects at the wrong speed while these tests stayed green.
+ */
 const SPEC: WeatherBakeSpec = {
     ref: { seed: "snow" },
     width: 64,
     height: 36,
-    fps: WEATHER_FPS,
+    fps: 48,
     frames: 4,
 };
 
@@ -107,7 +113,8 @@ describe("weatherBakeArgs", () => {
         // same buffer, and a mismatch here would encode a sheared picture rather than fail.
         expect(args[args.indexOf("-pix_fmt") + 1]).toBe("rgba");
         expect(args).toContain("64x36");
-        expect(args[args.indexOf("-r") + 1]).toBe(String(WEATHER_FPS));
+        // The spec's rate, not a constant: `SPEC.fps` is 48 precisely so this cannot pass by accident.
+        expect(args[args.indexOf("-r") + 1]).toBe("48");
     });
 
     it("encodes with the project's own VP9 settings", () => {
