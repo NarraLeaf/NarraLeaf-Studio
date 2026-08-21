@@ -4,6 +4,7 @@ import React, { type ClipboardEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
+import type { VoiceUnit } from "@shared/types/voice";
 import { STORY_PASTE_CONFIRM_THRESHOLD } from "@/lib/story/paste/storyPasteTypes";
 import { STORY_ACTIONS_MIME } from "./storySceneClipboard";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
@@ -37,7 +38,10 @@ function setup(options: {
     editorMode?: EditorMode;
     showConfirm?: () => Promise<boolean>;
     scene?: StoryScene;
+    /** Where the rows land. A second editor on a second scene is what moving a line looks like. */
+    sceneId?: string;
     localizationService?: unknown;
+    voiceService?: unknown;
 } = {}) {
     const storyService = { insertBlock: vi.fn() };
     const frozen = { value: false };
@@ -60,8 +64,9 @@ function setup(options: {
         assetsService: null,
         fileSystemService: null,
         localizationService: (options.localizationService ?? null) as never,
+        voiceService: (options.voiceService ?? null) as never,
         storyId: "story-1",
-        sceneId: "scene-1",
+        sceneId: options.sceneId ?? "scene-1",
         scene: options.scene ?? SCENE,
         scenes: undefined,
         characters: [],
@@ -277,5 +282,163 @@ describe("translations travelling with copied rows", () => {
 
         const payload = JSON.parse(copied.written.get(STORY_ACTIONS_MIME) ?? "{}") as Record<string, unknown>;
         expect(payload).not.toHaveProperty("translations");
+    });
+});
+
+/**
+ * A recorded line moved into another scene, driven end to end - which is the shape the loss actually
+ * had.
+ *
+ * There is no operation that moves rows between scenes, so restructuring a script means copying the
+ * rows, pasting them where they now belong, and deleting the originals. The paste mints a fresh
+ * `textId` for every line it writes, and a take is keyed by exactly that id, so an already-recorded
+ * script silently lost every take on the lines that moved: the voice table put them back to
+ * `missing` and the imported audio became an orphan. Nothing on screen said so - a moved line looks
+ * the same either way, and the loss surfaces in a language nobody is reading at the time.
+ */
+describe("takes travelling with moved rows", () => {
+    const VOICED_LINE: StoryBlock = {
+        id: "block-1",
+        kind: "nodeAction",
+        parentId: null,
+        childrenIds: [],
+        payload: {
+            action: "dialogue",
+            characterId: "char-1",
+            text: { textId: "text-1", role: "dialogue", value: "Hi" },
+        },
+    };
+    const CHAPTER_ONE = {
+        id: "scene-1",
+        name: "One",
+        blocks: { "block-1": VOICED_LINE },
+        rootBlockIds: ["block-1"],
+    } as unknown as StoryScene;
+    const CHAPTER_TWO = {
+        id: "scene-2",
+        name: "Two",
+        blocks: {},
+        rootBlockIds: [],
+    } as unknown as StoryScene;
+
+    const JA_TAKE: VoiceUnit = { assetId: "clip-1", sourceHash: "fnv1a:older", status: "approved", note: "softer" };
+
+    /** A voice service holding one approved take, in a library nothing has opened yet. */
+    function voiceStub(units: Record<string, VoiceUnit> = { "text-1": JA_TAKE }) {
+        const adopted: { locale: string; units: Record<string, VoiceUnit> }[] = [];
+        const loaded = new Set<string>();
+        return {
+            adopted,
+            loaded,
+            service: {
+                getConfiguration: () => ({ voicedLocales: [{ code: "ja", displayName: "日本語" }] }),
+                getDocumentIfLoaded: (locale: string) =>
+                    (loaded.has(locale) ? { schemaVersion: 1 as const, locale, units } : undefined),
+                loadDocument: async (locale: string) => {
+                    loaded.add(locale);
+                    return { schemaVersion: 1 as const, locale, units };
+                },
+                adoptUnits: (locale: string, adoptedUnits: Record<string, VoiceUnit>) => {
+                    adopted.push({ locale, units: adoptedUnits });
+                },
+            },
+        };
+    }
+
+    function copyEvent() {
+        const written = new Map<string, string>();
+        return {
+            written,
+            event: {
+                preventDefault: () => undefined,
+                clipboardData: { setData: (mime: string, value: string) => void written.set(mime, value) },
+            } as unknown as ClipboardEvent<HTMLDivElement>,
+        };
+    }
+
+    function blocksPasteEvent(payload: string): ClipboardEvent<HTMLDivElement> {
+        return {
+            target: document.body,
+            preventDefault: () => undefined,
+            nativeEvent: { shiftKey: false },
+            clipboardData: { getData: (mime: string) => (mime === STORY_ACTIONS_MIME ? payload : "") },
+        } as unknown as ClipboardEvent<HTMLDivElement>;
+    }
+
+    function pastedTextId(storyService: { insertBlock: { mock: { calls: unknown[][] } } }): string {
+        const block = storyService.insertBlock.mock.calls[0][2] as StoryBlock;
+        return (block.payload as unknown as { text: { textId: string } }).text.textId;
+    }
+
+    it("keeps a voiced line's take when the line is pasted into another scene", async () => {
+        const voice = voiceStub();
+        const source = setup({ scene: CHAPTER_ONE, voiceService: voice.service });
+        const destination = setup({ scene: CHAPTER_TWO, sceneId: "scene-2", voiceService: voice.service });
+
+        const copied = copyEvent();
+        source.result.current.copySelectionToClipboard(copied.event);
+        destination.result.current.handlePaste(blocksPasteEvent(copied.written.get(STORY_ACTIONS_MIME) ?? ""));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const textId = pastedTextId(destination.storyService);
+        expect(textId).not.toBe("text-1");
+        // The library was opened by the paste: nothing had read it, because the destination scene has
+        // no voiced row for the indicator to ask about.
+        expect(voice.loaded.has("ja")).toBe(true);
+        expect(voice.adopted).toEqual([{
+            locale: "ja",
+            // The clip, the anchor and the sign-off all as they were: the same recording, of the same
+            // text, in a different place. A stale take still reads as stale; an approved one is not
+            // sent back to a director with nothing new to listen to.
+            units: { [textId]: { assetId: "clip-1", sourceHash: "fnv1a:older", status: "approved", note: "softer" } },
+        }]);
+    });
+
+    it("writes no take for a line that was never recorded", async () => {
+        const voice = voiceStub({});
+        const source = setup({ scene: CHAPTER_ONE, voiceService: voice.service });
+        const destination = setup({ scene: CHAPTER_TWO, sceneId: "scene-2", voiceService: voice.service });
+
+        const copied = copyEvent();
+        source.result.current.copySelectionToClipboard(copied.event);
+        destination.result.current.handlePaste(blocksPasteEvent(copied.written.get(STORY_ACTIONS_MIME) ?? ""));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(voice.adopted).toEqual([]);
+    });
+
+    /**
+     * A take names a clip in the audio library of the project that recorded it. This window can
+     * neither read that library nor be handed the file, so rows from elsewhere arrive unvoiced - and
+     * nothing of this project's voice libraries is read on their behalf either.
+     */
+    it("carries no take for rows pasted out of another project", async () => {
+        const voice = voiceStub();
+        const source = setup({ scene: CHAPTER_ONE, voiceService: voice.service });
+        const destination = setup({ scene: CHAPTER_TWO, sceneId: "scene-2", voiceService: voice.service });
+
+        const copied = copyEvent();
+        source.result.current.copySelectionToClipboard(copied.event);
+        const payload = JSON.parse(copied.written.get(STORY_ACTIONS_MIME) ?? "{}") as Record<string, unknown>;
+        payload.source = { path: "D:/projects/elsewhere", identifier: "com.example.elsewhere", name: "Elsewhere" };
+        destination.result.current.handlePaste(blocksPasteEvent(JSON.stringify(payload)));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(destination.storyService.insertBlock).toHaveBeenCalledTimes(1);
+        expect(voice.adopted).toEqual([]);
+        expect(voice.loaded.size).toBe(0);
+    });
+
+    it("puts no take on the clipboard at all", () => {
+        const voice = voiceStub();
+        const source = setup({ scene: CHAPTER_ONE, voiceService: voice.service });
+
+        const copied = copyEvent();
+        source.result.current.copySelectionToClipboard(copied.event);
+
+        // Whatever reads the system clipboard learns nothing about this project's audio library.
+        const payload = copied.written.get(STORY_ACTIONS_MIME) ?? "";
+        expect(payload).not.toContain("clip-1");
+        expect(JSON.parse(payload) as Record<string, unknown>).not.toHaveProperty("voice");
     });
 });

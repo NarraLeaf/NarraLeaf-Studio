@@ -23,6 +23,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -79,6 +80,7 @@ import {
 import { cloneSerializedBlock, insertSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
 import { collectSubtreeBlocks } from "./storyForeignPaste";
 import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
+import { carryVoiceWithinProject } from "./storyVoiceTransfer";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
@@ -130,6 +132,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const fileSystemService = useMemo(() => (context && isInitialized ? context.services.get<FileSystemService>(Services.FileSystem) : null), [context, isInitialized]);
     /** Holds the translations a copy carries with its rows, and takes them back on a paste. */
     const localizationService = useMemo(() => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null), [context, isInitialized]);
+    /** Holds the recordings, so a line that is duplicated or pasted elsewhere keeps its take. */
+    const voiceService = useMemo(() => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null), [context, isInitialized]);
     /**
      * This window's own project, as the clipboard describes it.
      *
@@ -714,9 +718,65 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * only ever open at its end - jsdom implements neither `user-select` nor native selection, so
      * nothing but driving the real app can catch a regression here.
      */
+    /**
+     * Re-open a row as an editable line, seeded with its source - or with `seed`, when the caller
+     * brings its own text for the line. `""` is the Backspace demote's blank line, which is the same
+     * slot standing in the same place, only empty (see {@link replaceRowWithBlankLine}).
+     *
+     * The slot lands *where the row is* (after its previous sibling, inside its parent) and carries
+     * `replaceBlockId`, so committing swaps the row in place and Escape leaves it exactly as it was.
+     * An invalid row is what the unseeded call is for: it is the one kind whose whole content is raw
+     * text the author still needs to fix.
+     *
+     * `caret` is where the click landed, in characters from the start of the line - a blank row and a
+     * draft row open from a single click like any other line of text, and a caret that ignored the
+     * click point would be the one place in the editor where pointing at a word does not put the
+     * caret in it. Omitted, the caret sits where focus leaves it (offset 0).
+     *
+     * Declared up here, above the gesture that needs it: the mouseup handler is registered in an
+     * effect further down, and an effect's dependency list is read during render.
+     */
+    const startLineEdit = useCallback((block: StoryBlock, seed?: string, caret?: number) => {
+        if (!scene) {
+            return;
+        }
+        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
+        const index = siblings.indexOf(block.id);
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = seed ?? (block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "");
+        setEditorMode({
+            kind: "insert",
+            slot: {
+                afterBlockId: index > 0 ? siblings[index - 1] : null,
+                focusToken: Date.now(),
+                target: { parentId: block.parentId, beforeBlockId: block.id },
+                replaceBlockId: block.id,
+            },
+            initialValue: insertDraftRef.current,
+            // Reopening a draft row lands with its completion menu open: the author is here
+            // to fix the line, so the candidates it needs are what should greet them - not the suppressed
+            // slot the old `chooserDismissed: true` left, which gave a returned-to line no menu at all.
+        });
+        setActiveBlockId(block.id);
+        window.requestAnimationFrame(() => {
+            const input = insertInputRef.current;
+            if (!input) {
+                return;
+            }
+            input.focus();
+            if (caret === undefined) {
+                return;
+            }
+            // Clamped, because the offset is measured over the whole rendered row: a draft row prints
+            // the reason for its refusal beside the line, and a click on that lands past the text.
+            const at = Math.max(0, Math.min(caret, input.value.length));
+            input.setSelectionRange(at, at);
+        });
+    }, [scene]);
+
     const finishTextSelectGesture = useCallback((pending: { blockId: StoryBlockId; textEl: HTMLElement }) => {
         const block = scene?.blocks[pending.blockId];
-        if (!block || !isTextEditableBlock(block)) {
+        if (!block) {
             return;
         }
         // Frozen: the row stays selected (the mousedown already did that) and the native text selection
@@ -727,10 +787,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const range = getSelectionUnitRange(pending.textEl);
+        // The two rows whose content is a LINE rather than a payload open the same way a line of prose
+        // does - one click, caret where the pointer was - but into the line editor rather than into the
+        // rich-text one, because what they hold is a line to be written, not text to be marked up. A
+        // blank row opens empty whatever else it might carry; a draft row opens on its own source.
+        if (block.kind === "empty" || block.kind === "invalid") {
+            startLineEdit(block, block.kind === "empty" ? "" : undefined, range?.start);
+            return;
+        }
+        if (!isTextEditableBlock(block)) {
+            return;
+        }
         const segment = getTextSegment(block);
         const caret: StoryCaretTarget = range ? { start: range.start, end: range.end } : "end";
         setEditorMode({ kind: "text", blockId: pending.blockId, value: segment?.value ?? "", rich: segment?.rich, caret });
-    }, [frozen, scene]);
+    }, [frozen, scene, startLineEdit]);
 
     const runDragSelectAutoScroll = useCallback(() => {
         const container = scrollContainerRef.current;
@@ -1140,41 +1211,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (focus) {
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
-    }, [scene]);
-
-    /**
-     * Re-open a row as an editable line, seeded with its source - or with `seed`, when the caller
-     * brings its own text for the line. `""` is the Backspace demote's blank line, which is the same
-     * slot standing in the same place, only empty (see {@link replaceRowWithBlankLine}).
-     *
-     * The slot lands *where the row is* (after its previous sibling, inside its parent) and carries
-     * `replaceBlockId`, so committing swaps the row in place and Escape leaves it exactly as it was.
-     * An invalid row is what the unseeded call is for: it is the one kind whose whole content is raw
-     * text the author still needs to fix.
-     */
-    const startLineEdit = useCallback((block: StoryBlock, seed?: string) => {
-        if (!scene) {
-            return;
-        }
-        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
-        const index = siblings.indexOf(block.id);
-        slotDiscardedRef.current = false;
-        insertDraftRef.current = seed ?? (block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "");
-        setEditorMode({
-            kind: "insert",
-            slot: {
-                afterBlockId: index > 0 ? siblings[index - 1] : null,
-                focusToken: Date.now(),
-                target: { parentId: block.parentId, beforeBlockId: block.id },
-                replaceBlockId: block.id,
-            },
-            initialValue: insertDraftRef.current,
-            // Reopening a draft row lands with its completion menu open: the author is here
-            // to fix the line, so the candidates it needs are what should greet them - not the suppressed
-            // slot the old `chooserDismissed: true` left, which gave a returned-to line no menu at all.
-        });
-        setActiveBlockId(block.id);
-        window.requestAnimationFrame(() => insertInputRef.current?.focus());
     }, [scene]);
 
     /**
@@ -2045,13 +2081,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * Enter on a line with nothing on it: the author is asking for the blank line itself.
      *
      * Enter has always meant "this line is finished, open the next one", and it means the same here -
-     * an empty line finished is a blank row (schema v20), and the slot that opens after it is where
-     * the next one goes. Holding Enter down therefore walks a column of blank lines, the way it does
-     * in every text editor. It used to close the slot and write nothing, which left Escape and Enter
-     * saying the same thing and no way at all to type an empty line on purpose.
+     * an empty line finished is a blank row (schema v20), and the caret moves down to the next one.
+     * Holding Enter therefore walks a column of blank lines, the way it does in every text editor. It
+     * used to close the slot and write nothing, which left Escape and Enter saying the same thing and
+     * no way at all to type an empty line on purpose.
      *
      * A slot standing over a row that is ALREADY blank adds the next one after it rather than
      * rewriting it: the line this keystroke would write is the line the slot is sitting on.
+     *
+     * The caret lands in a slot standing *over* the new row rather than in one below it, and that is
+     * what makes the keystroke read as one line. An open slot draws a blank line of its own, so
+     * committing a blank row and then opening a slot underneath it put THREE blank lines on screen
+     * where there had been one - the row the slot had been covering, the row just written, and the
+     * slot - and the press was reported as adding two. It also means typing into the line fills the
+     * line the caret is on, instead of leaving a blank row above the words.
      *
      * Blur is deliberately NOT this path (see {@link commitNarrationFromInsert}, which still writes
      * nothing for an empty draft). Clicking away from a slot the author never typed in has to leave
@@ -2062,15 +2105,34 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const slot = editorMode.slot;
-        const covered = slot.replaceBlockId ? scene?.blocks[slot.replaceBlockId] : null;
+        const covered = (slot.replaceBlockId ? scene?.blocks[slot.replaceBlockId] : null) ?? null;
         const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
-        if (covered && covered.kind === "empty") {
+        // Where the new line lands, and which row ends up above it - both read before the document
+        // moves, because the caret's slot has to be built against the place the row is going.
+        const addingAfterBlank = covered !== null && covered.kind === "empty";
+        const parentId = covered
+            ? covered.parentId
+            : slot.target?.parentId ?? (slot.afterBlockId ? scene?.blocks[slot.afterBlockId]?.parentId ?? null : null);
+        const above = addingAfterBlank ? covered.id : slot.afterBlockId;
+        if (addingAfterBlank) {
             insertBlock(block, covered.id, false);
         } else {
             insertBlock(block, slot.afterBlockId, false, { target: slot.target, replaceBlockId: slot.replaceBlockId });
         }
-        startInsertAfter(block.id, true);
-    }, [editorMode, insertBlock, scene, startInsertAfter, uuidService]);
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = "";
+        setEditorMode({
+            kind: "insert",
+            slot: {
+                afterBlockId: above,
+                focusToken: Date.now(),
+                target: { parentId, beforeBlockId: block.id },
+                replaceBlockId: block.id,
+            },
+            initialValue: "",
+        });
+        window.requestAnimationFrame(() => insertInputRef.current?.focus());
+    }, [editorMode, insertBlock, scene, uuidService]);
 
     /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
@@ -2388,6 +2450,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         assetsService,
         fileSystemService,
         localizationService,
+        voiceService,
         storyId,
         sceneId,
         scene,
@@ -2805,8 +2868,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const target = getInsertionTargetAfter(scene, anchorId);
         const insertedIds: StoryBlockId[] = [];
         // Duplicating mints fresh textIds exactly as a paste does, so the copies would arrive
-        // untranslated unless the units follow them. Collected before the clone, because the source
-        // ids are what the project's languages are keyed by.
+        // untranslated and unvoiced unless the units follow them. Collected before the clone, because
+        // the source ids are what the project's languages and voice libraries are keyed by.
         const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
         const textIdMap = new Map<string, string>();
         for (const rootId of orderedRoots) {
@@ -2821,13 +2884,23 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setEditorMode({ kind: "idle" });
         // After the rows are in, and not awaited: the duplicate is complete without it, and the
-        // translations land in documents of their own. Nothing here reports success - a duplicate
-        // that carried its languages is what the author already expected.
-        if (localizationService) {
-            void carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
-                .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
-        }
-    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
+        // translations and takes land in documents of their own. Nothing here reports success - a
+        // duplicate that carried its languages and its recordings is what the author already expected.
+        //
+        // Translations before takes, in one chain rather than two: a take is a recording of the line
+        // as the actor for that language reads it, which is the translation where there is one, so a
+        // take that landed first would read as stale until its translation caught up.
+        void (async () => {
+            if (localizationService) {
+                await carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
+                    .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
+            }
+            if (voiceService) {
+                await carryVoiceWithinProject(voiceService, isFrozenNow, sourceTextIds, textIdMap)
+                    .catch(error => console.warn("[storyEditor] could not carry takes for the duplicated rows", error));
+            }
+        })();
+    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows, voiceService]);
 
     /**
      * The block ids a row operation acts on: the selection (deduped to roots so a container carries its

@@ -3365,7 +3365,11 @@ function DraftRowPreview(props: { source: string; commandContext: StoryCommandCo
         ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: ct(reason.paramHintKey) } : reason.params)
         : t("story.rows.invalidHint");
     return (
-        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2">
+        // `data-story-row-text`, so the row opens from a single click with the caret where the pointer
+        // was - the line is raw text the author is in the middle of writing, and reaching a character
+        // in it should not cost a double-click. The offset is measured over this whole element, so a
+        // click on the reason lands past the source and `startLineEdit` clamps it to the line's end.
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 cursor-text items-center gap-2 nl-selectable-text" data-story-row-text="">
             <span className="min-w-0 truncate font-mono text-sm text-warning">{props.source}</span>
             <span className="shrink-0 truncate text-2xs text-warning/80">{reasonText}</span>
         </span>
@@ -3447,17 +3451,16 @@ function BlockPreview(props: {
         // over the row it says what a double-click there would do. Nothing else in the row moves - the
         // hint occupies the line box it fades into.
         //
-        // Deliberately NOT a {@link TextClickTarget}: that marks a row as carrying text the mouseup
-        // gesture can put a caret in, and this row carries none - so the double-click handler above
-        // would hand the gesture to a caret that never arrives and the row would not open at all.
-        // Without the mark it is an ordinary non-text row: click selects it, double-click opens it,
-        // which is the same pair every action row answers to.
+        // A {@link TextClickTarget} like any line of prose: one click opens it, which is what the
+        // mouseup gesture does with a row whose content is a line (see `finishTextSelectGesture`).
+        // The hint inside it is not selectable, so a drag across the row reads as the row-range drag
+        // it is rather than as selecting words the author did not write.
         return (
-            <span className="flex min-w-0 flex-1 items-center self-stretch" style={textStyle}>
+            <TextClickTarget style={textStyle} className="text-fg">
                 <span className="select-none text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100">
                     {t("story.emptyPlaceholder.blank")}
                 </span>
-            </span>
+            </TextClickTarget>
         );
     }
     // One overview path for every action row: the command line that would produce it, with any

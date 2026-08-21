@@ -1,4 +1,5 @@
 import { Dispatch, SetStateAction, DragEvent, useMemo, useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
@@ -11,7 +12,9 @@ import { AssetThumbnail } from "../components/AssetThumbnail";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { AssetSetIconTile } from "../components/AssetSetRow";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
+import { cn } from "@/lib/utils/cn";
 import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
+import type { AssetSetCell } from "@shared/types/assetSet";
 
 interface AssetsIconViewProps {
     dropTargetId: string | null;
@@ -29,6 +32,16 @@ interface AssetsIconViewProps {
 
 /** How many thumbnails a group tile stacks. Four fills a 2x2 cleanly; more would be unreadable at 120px. */
 const GROUP_PREVIEW_LIMIT = 4;
+
+/** The `gap-3` between tiles, in pixels. Read here because the column count is worked out by hand. */
+const TILE_GAP_PX = 12;
+
+/**
+ * What a tile costs above its square: the border, the padding, the gap and the name row.
+ *
+ * Only the first frame and the scrollbar depend on it - every mounted row of tiles measures itself.
+ */
+const TILE_CHROME_PX = 52;
 
 /** `groupId` plus every group nested under it, so a subtree can be counted or previewed in one pass. */
 function subtreeGroupIds(groups: readonly AssetGroup[], rootId: string): Set<string> {
@@ -84,7 +97,6 @@ export function AssetsIconView({
         filteredAssets,
         filteredGroups,
         draggedItem,
-        handleGroupFocus,
         showContextMenu,
         compactToolbar,
         setAssetsIconToolbarCenter,
@@ -93,14 +105,7 @@ export function AssetsIconView({
         assetSets,
         rootAssetSets,
         memberAssetIds,
-        assetSetNaming,
-        assets: libraryAssets,
-        handleAssetSetSelect,
-        showAssetSetValueContextMenu,
-        handleAssetSetDragStart,
-        handleDragEnd,
         draggedAssetSet,
-        showAssetSetContextMenu,
         publishRowOrder,
         assetSetReveal,
     } = useAssetsPanelContext();
@@ -285,6 +290,14 @@ export function AssetsIconView({
     const minIconSize = 120;
     const maxIconSize = 240;
     const step = 10;
+    /**
+     * Handed to every section: each one windows its rows of tiles against this scroller.
+     *
+     * State rather than a ref, for the reason the panel's own scroller gives: React attaches this
+     * element's ref after the sections below it have already run their layout effects, so a ref
+     * would still read null on the commit where each section's virtualiser first looks for it.
+     */
+    const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
 
     return (
         <div
@@ -317,7 +330,7 @@ export function AssetsIconView({
                     <div className="w-6 h-6" />
                 </div>
             )}
-            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+            <div ref={setScrollElement} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
                 {sections.map(({
                     category,
                     groups: categoryGroups,
@@ -409,105 +422,293 @@ export function AssetsIconView({
                                 buttons are the way in; a sentence saying there is nothing here is the
                                 thing this deliberately omits. */}
                             {hasItems && (
-                                <div
-                                    className="mt-3 grid gap-3"
-                                    style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${iconSize}px, 1fr))` }}
-                                >
-                                    {categorySets.map((entry) => (
-                                        <AssetSetIconTile
-                                            key={entry.set.id}
-                                            entry={entry}
-                                            selected={false}
-                                            dragging={draggedAssetSet?.setId === entry.set.id}
-                                            onSelect={() => handleAssetSetSelect(entry)}
-                                            onNavigate={() => handleEnterSet(entry)}
-                                            onContextMenu={(event) => showAssetSetContextMenu(event, entry)}
-                                            onDragStart={(event) => handleAssetSetDragStart?.(event, category, entry.set.id)}
-                                            onDragEnd={() => handleDragEnd?.()}
-                                        />
-                                    ))}
-                                    {setCells.map((cell) => {
-                                        const child = cell.childSetIds.length === 1
-                                            ? assetSets[category].find(entry => entry.set.id === cell.childSetIds[0])
-                                            : undefined;
-                                        const coordinate = formatAssetSetCoordinateReading(
-                                            readAssetSetCoordinate(insideSet!.set, cell.coordinate, assetSetNaming),
-                                        );
-                                        if (child) {
-                                            return (
-                                                <AssetSetIconTile
-                                                    key={cell.label}
-                                                    entry={child}
-                                                    caption={coordinate}
-                                                    selected={false}
-                                                    onSelect={() => handleAssetSetSelect(child)}
-                                                    onNavigate={() => handleEnterSet(child)}
-                                                    onContextMenu={(event) => showAssetSetContextMenu(event, child)}
-                                                />
-                                            );
-                                        }
-                                        const asset = cell.assetIds.length === 1
-                                            ? filteredAssets[category].find(entry => entry.id === cell.assetIds[0])
-                                                ?? libraryAssets[category].find(entry => entry.id === cell.assetIds[0])
-                                            : undefined;
-                                        return asset
-                                            ? (
-                                                <AssetIconTile
-                                                    key={cell.label}
-                                                    asset={asset}
-                                                    category={category}
-                                                    caption={coordinate}
-                                                    assetSetValue={{ setId: insideSet!.set.id, value: cell.value }}
-                                                />
-                                            )
-                                            : (
-                                                <AssetSetHoleTile
-                                                    key={cell.label}
-                                                    caption={coordinate}
-                                                    onContextMenu={(event) => showAssetSetValueContextMenu(event, insideSet!, cell.value)}
-                                                />
-                                            );
-                                    })}
-                                    {categoryGroups.map((group) => {
-                                        const childGroups = filteredGroups[category].filter((g) => g.parentGroupId === group.id);
-                                        const childAssets = filteredAssets[category]
-                                            .filter((a) => a.groupId === group.id && !memberAssetIds.has(a.id));
-                                        // Sets made in this folder are tiles in it. Their files are
-                                        // drawn inside the set, and dropped from the list above by
-                                        // the same rule, so nothing is counted twice.
-                                        const childSets = rootAssetSets[category]
-                                            .filter((entry) => entry.set.groupId === group.id);
-                                        const childCount = childGroups.length + childAssets.length + childSets.length;
-                                        // Nested groups count as content: `UI` holds four subgroups and
-                                        // no loose file, and a card for it that showed nothing would be
-                                        // the blank card this replaces.
-                                        const preview = assetsInSubtree(filteredAssets[category], filteredGroups[category], group.id)
-                                            .filter((asset) => asset.type === AssetType.Image)
-                                            .slice(0, GROUP_PREVIEW_LIMIT);
-
-                                        return (
-                                            <GroupIconTile
-                                                key={group.id}
-                                                group={group}
-                                                category={category}
-                                                childCount={childCount}
-                                                preview={preview}
-                                                onNavigate={() => {
-                                                    handleGroupFocus(group.id);
-                                                    handleEnterGroup(group);
-                                                }}
-                                            />
-                                        );
-                                    })}
-                                    {categoryAssets.map((asset) => (
-                                        <AssetIconTile key={asset.id} asset={asset} category={category} />
-                                    ))}
-                                </div>
+                                <IconSectionGrid
+                                    category={category}
+                                    iconSize={iconSize}
+                                    scrollElement={scrollElement}
+                                    insideSet={insideSet}
+                                    categorySets={categorySets}
+                                    setCells={setCells}
+                                    categoryGroups={categoryGroups}
+                                    categoryAssets={categoryAssets}
+                                    onEnterSet={handleEnterSet}
+                                    onEnterGroup={handleEnterGroup}
+                                />
                             )}
                         </section>
                     );
                 })}
             </div>
+        </div>
+    );
+}
+
+/** One tile of a section's grid, already decided. The row it lands in is arithmetic on top of this. */
+type IconTile =
+    | { key: string; kind: "set"; entry: ResolvedAssetSet; caption?: string; movable: boolean }
+    | { key: string; kind: "asset"; asset: Asset; caption?: string; assetSetValue?: { setId: string; value: string } }
+    | { key: string; kind: "hole"; caption: string; value: string }
+    | { key: string; kind: "group"; group: AssetGroup; childCount: number; preview: Asset[] };
+
+/**
+ * One section's tiles, windowed a row at a time.
+ *
+ * A grid is not a list, so the row is the unit: the tiles are chunked into rows of as many columns
+ * as the section is wide, and the virtualiser measures those. Which means the column count has to be
+ * worked out here rather than left to `auto-fill` - it is the one number that decides how many rows
+ * there are, and a grid that wraps by itself cannot say. The formula is the one `auto-fill` uses.
+ *
+ * A component per section rather than one virtualiser for the whole grid: the sections keep their
+ * frames and their headers, and the number of them changes as an author walks into a folder or a
+ * set, which a single fixed set of hooks could not follow.
+ */
+function IconSectionGrid({
+    category,
+    iconSize,
+    scrollElement,
+    insideSet,
+    categorySets,
+    setCells,
+    categoryGroups,
+    categoryAssets,
+    onEnterSet,
+    onEnterGroup,
+}: {
+    category: AssetCategory;
+    iconSize: number;
+    scrollElement: HTMLElement | null;
+    /** The set the grid has been walked into, when this section is drawing its values. */
+    insideSet: ResolvedAssetSet | null;
+    categorySets: readonly ResolvedAssetSet[];
+    setCells: readonly AssetSetCell[];
+    categoryGroups: readonly AssetGroup[];
+    categoryAssets: readonly Asset[];
+    onEnterSet: (entry: ResolvedAssetSet) => void;
+    onEnterGroup: (group: AssetGroup) => void;
+}) {
+    const {
+        assetSets,
+        assetSetNaming,
+        rootAssetSets,
+        memberAssetIds,
+        filteredAssets,
+        filteredGroups,
+        assets: libraryAssets,
+        draggedAssetSet,
+        handleAssetSetSelect,
+        handleAssetSetDragStart,
+        handleDragEnd,
+        showAssetSetContextMenu,
+        showAssetSetValueContextMenu,
+        handleGroupFocus,
+        assetSetReveal,
+    } = useAssetsPanelContext();
+    const listRef = useRef<HTMLDivElement | null>(null);
+    const [listMargin, setListMargin] = useState(0);
+    const [width, setWidth] = useState(0);
+
+    const tiles = useMemo<IconTile[]>(() => {
+        const out: IconTile[] = [];
+        for (const entry of categorySets) {
+            out.push({ key: "set:" + entry.set.id, kind: "set", entry, movable: true });
+        }
+        for (const cell of setCells) {
+            const child = cell.childSetIds.length === 1
+                ? assetSets[category].find(entry => entry.set.id === cell.childSetIds[0])
+                : undefined;
+            const caption = formatAssetSetCoordinateReading(
+                readAssetSetCoordinate(insideSet!.set, cell.coordinate, assetSetNaming),
+            );
+            if (child) {
+                out.push({ key: "cell:" + cell.label, kind: "set", entry: child, caption, movable: false });
+                continue;
+            }
+            const asset = cell.assetIds.length === 1
+                ? filteredAssets[category].find(entry => entry.id === cell.assetIds[0])
+                    ?? libraryAssets[category].find(entry => entry.id === cell.assetIds[0])
+                : undefined;
+            out.push(asset
+                ? {
+                    key: "cell:" + cell.label,
+                    kind: "asset",
+                    asset,
+                    caption,
+                    assetSetValue: { setId: insideSet!.set.id, value: cell.value },
+                }
+                : { key: "cell:" + cell.label, kind: "hole", caption, value: cell.value });
+        }
+        for (const group of categoryGroups) {
+            const childGroups = filteredGroups[category].filter((g) => g.parentGroupId === group.id);
+            const childAssets = filteredAssets[category]
+                .filter((a) => a.groupId === group.id && !memberAssetIds.has(a.id));
+            // Sets made in this folder are tiles in it. Their files are drawn inside the set, and
+            // dropped from the list above by the same rule, so nothing is counted twice.
+            const childSets = rootAssetSets[category].filter((entry) => entry.set.groupId === group.id);
+            // Nested groups count as content: `UI` holds four subgroups and no loose file, and a card
+            // for it that showed nothing would be the blank card this replaces.
+            const preview = assetsInSubtree(filteredAssets[category], filteredGroups[category], group.id)
+                .filter((asset) => asset.type === AssetType.Image)
+                .slice(0, GROUP_PREVIEW_LIMIT);
+            out.push({
+                key: "group:" + group.id,
+                kind: "group",
+                group,
+                childCount: childGroups.length + childAssets.length + childSets.length,
+                preview,
+            });
+        }
+        for (const asset of categoryAssets) {
+            out.push({ key: "asset:" + asset.id, kind: "asset", asset });
+        }
+        return out;
+    }, [
+        assetSetNaming, assetSets, category, categoryAssets, categoryGroups, categorySets, filteredAssets,
+        filteredGroups, insideSet, libraryAssets, memberAssetIds, rootAssetSets, setCells,
+    ]);
+
+    // What `repeat(auto-fill, minmax(iconSize, 1fr))` would have produced, worked out from the same
+    // numbers. One column before anything has been measured, which is also the honest answer for a
+    // section that has not been laid out yet.
+    const columns = Math.max(1, Math.floor((width + TILE_GAP_PX) / (iconSize + TILE_GAP_PX)));
+    const columnWidth = columns > 0 && width > 0
+        ? (width - TILE_GAP_PX * (columns - 1)) / columns
+        : iconSize;
+    const rowCount = Math.ceil(tiles.length / columns);
+
+    const virtualizer = useVirtualizer({
+        count: rowCount,
+        getScrollElement: () => scrollElement,
+        estimateSize: () => columnWidth + TILE_CHROME_PX + TILE_GAP_PX,
+        overscan: 6,
+        scrollMargin: listMargin,
+    });
+
+    // The section's start offset moves whenever anything above it does, and the width moves with the
+    // panel - which is not a React commit, so the observer is the only thing that sees it.
+    useLayoutEffect(() => {
+        const list = listRef.current;
+        const scroller = scrollElement;
+        if (!list || !scroller) {
+            return;
+        }
+        const rect = list.getBoundingClientRect();
+        const margin = rect.top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+        setListMargin(previous => (Math.abs(previous - margin) > 0.5 ? margin : previous));
+        setWidth(previous => (Math.abs(previous - rect.width) > 0.5 ? rect.width : previous));
+    });
+
+    useEffect(() => {
+        const list = listRef.current;
+        if (!list || typeof ResizeObserver === "undefined") {
+            return;
+        }
+        const observer = new ResizeObserver(() => {
+            const next = list.getBoundingClientRect().width;
+            setWidth(previous => (Math.abs(previous - next) > 0.5 ? next : previous));
+        });
+        observer.observe(list);
+        return () => observer.disconnect();
+    }, []);
+
+    // A column count that changes puts every tile in a different row, and the cache is keyed by row.
+    useLayoutEffect(() => {
+        virtualizer.measure();
+    }, [columns, virtualizer]);
+
+    /**
+     * Put a jumped-to set on screen even when its tile is not mounted.
+     *
+     * The tile marks itself once it exists, but a windowed grid may have nothing to scroll to: there
+     * is no node until it has been scrolled to. The panel has already opened the folder and the grid
+     * has already stepped into the enclosing sets; this is the row the target ended up in.
+     */
+    const revealNonce = assetSetReveal?.nonce ?? null;
+    const revealSetId = assetSetReveal?.setId ?? null;
+    useEffect(() => {
+        if (revealNonce === null || !revealSetId) {
+            return;
+        }
+        const index = tiles.findIndex(tile => tile.kind === "set" && tile.entry.set.id === revealSetId);
+        if (index >= 0) {
+            virtualizer.scrollToIndex(Math.floor(index / columns), { align: "center" });
+        }
+        // The request is the event; the tiles are read from the render it landed in.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [revealNonce]);
+
+    return (
+        <div ref={listRef} className="relative mt-3 w-full" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map(item => (
+                <div
+                    key={item.key}
+                    ref={virtualizer.measureElement}
+                    data-index={item.index}
+                    // `pb-3` stands in for the `gap-3` the single grid used to put between its rows.
+                    // The last one goes without, or the section would gain a band of empty space the
+                    // grid never had.
+                    className={cn("absolute left-0 top-0 grid w-full gap-3", item.index < rowCount - 1 && "pb-3")}
+                    style={{
+                        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                        transform: `translateY(${item.start - listMargin}px)`,
+                    }}
+                >
+                    {tiles.slice(item.index * columns, item.index * columns + columns).map(tile => {
+                        if (tile.kind === "set") {
+                            return (
+                                <AssetSetIconTile
+                                    key={tile.key}
+                                    entry={tile.entry}
+                                    {...(tile.caption ? { caption: tile.caption } : {})}
+                                    selected={false}
+                                    dragging={draggedAssetSet?.setId === tile.entry.set.id}
+                                    onSelect={() => handleAssetSetSelect(tile.entry)}
+                                    onNavigate={() => onEnterSet(tile.entry)}
+                                    onContextMenu={(event) => showAssetSetContextMenu(event, tile.entry)}
+                                    {...(tile.movable
+                                        ? {
+                                            onDragStart: (event: React.DragEvent) => handleAssetSetDragStart?.(event, category, tile.entry.set.id),
+                                            onDragEnd: () => handleDragEnd?.(),
+                                        }
+                                        : {})}
+                                />
+                            );
+                        }
+                        if (tile.kind === "asset") {
+                            return (
+                                <AssetIconTile
+                                    key={tile.key}
+                                    asset={tile.asset}
+                                    category={category}
+                                    {...(tile.caption ? { caption: tile.caption } : {})}
+                                    {...(tile.assetSetValue ? { assetSetValue: tile.assetSetValue } : {})}
+                                />
+                            );
+                        }
+                        if (tile.kind === "hole") {
+                            return (
+                                <AssetSetHoleTile
+                                    key={tile.key}
+                                    caption={tile.caption}
+                                    onContextMenu={(event) => showAssetSetValueContextMenu(event, insideSet!, tile.value)}
+                                />
+                            );
+                        }
+                        return (
+                            <GroupIconTile
+                                key={tile.key}
+                                group={tile.group}
+                                category={category}
+                                childCount={tile.childCount}
+                                preview={tile.preview}
+                                onNavigate={() => {
+                                    handleGroupFocus(tile.group.id);
+                                    onEnterGroup(tile.group);
+                                }}
+                            />
+                        );
+                    })}
+                </div>
+            ))}
         </div>
     );
 }
