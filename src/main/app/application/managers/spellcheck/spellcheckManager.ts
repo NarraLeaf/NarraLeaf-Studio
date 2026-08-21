@@ -252,6 +252,7 @@ export class SpellcheckManager {
                 name: entry.name,
                 bytes: entry.bytes,
                 license: entry.license,
+                sha256: entry.sha256,
             })),
         };
     }

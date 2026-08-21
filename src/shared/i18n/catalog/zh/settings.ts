@@ -330,6 +330,7 @@ export const settings = {
         refresh: "重新获取",
         browsing: "正在加载…",
         download: "下载",
+        update: "更新",
         downloading: "正在下载…",
         failed: "无法获取词典列表。请检查设置中的网络策略。",
         installed: {
