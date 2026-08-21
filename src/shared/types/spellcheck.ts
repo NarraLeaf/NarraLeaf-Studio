@@ -76,6 +76,14 @@ export type InstalledSpellcheckDictionary = {
     name: string;
     /** Bytes on disk, compressed. What the cache list shows and what removing it frees. */
     bytes: number;
+    /**
+     * The digest the registry published for these bytes, as it stood when they were downloaded.
+     *
+     * The only thing that can tell a corrected word list from the one on disk. Studio never fetches
+     * in the background, so this is compared against the registry exactly when the author asks to
+     * see what is on offer - and a language whose digest has moved is offered again there.
+     */
+    sha256: string;
 };
 
 /**
@@ -91,6 +99,8 @@ export type AvailableSpellcheckDictionary = {
     bytes: number;
     /** SPDX-style identifier, shown beside the entry. */
     license: string;
+    /** Digest of the offered bytes. Compared against what is installed; see {@link InstalledSpellcheckDictionary.sha256}. */
+    sha256: string;
 };
 
 /** What spellchecking is currently doing, as the main process last worked it out. */
