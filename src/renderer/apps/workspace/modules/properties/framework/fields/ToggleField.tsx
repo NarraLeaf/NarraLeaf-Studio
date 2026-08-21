@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, memo, useRef } from "react";
-import { Switch } from "@/lib/components/elements";
+import { HintPopover, Switch } from "@/lib/components/elements";
 import { ToggleFieldDefinition } from "../types";
 
 interface ToggleFieldProps<TData> {
@@ -55,6 +55,7 @@ function ToggleFieldInner<TData>({ field, data, onSaving }: ToggleFieldProps<TDa
                 aria-label={field.label}
             />
             {field.label && <span className="text-sm text-fg-muted">{field.label}</span>}
+            {field.tip && <HintPopover text={field.tip} />}
             {field.helpText && <p className="text-xs text-fg-subtle">{field.helpText}</p>}
         </div>
     );

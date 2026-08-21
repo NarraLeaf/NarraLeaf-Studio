@@ -96,6 +96,7 @@ import {
     compileStudioStoryToNlr,
     createEmptyCompiledNlrStory,
     type CompiledNlrStory,
+    type StoryEndingReach,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
     isStoryVisited,
@@ -171,6 +172,7 @@ import {
     createTextReadTracker,
     type TextReadTracker,
 } from "./textReadTracker";
+import { markEndingReached } from "./endingsRecord";
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
@@ -1911,6 +1913,53 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [endingSurfaceId, host, quitGame]);
 
     /**
+     * An `/ending` row ran: record it, tell the plugins, and land the player.
+     *
+     * All three belong here rather than in the compiled statement, because all three are the host's:
+     * the record outlives every save and lives in project persistence, the event hub is the host's,
+     * and the session about to be torn down is the host's. The compiled row's whole contribution is
+     * saying which ending it was.
+     *
+     * The record is written first and not awaited by the rest. An ending that opened its page before
+     * the write landed would be one a player could see and then find locked, and the navigation must
+     * not wait on a store write either - the page is what the player is owed immediately.
+     *
+     * With no page (`{kind:"none"}`, or nothing declared anywhere) the playthrough is left exactly
+     * where it is, which is what every build did before endings existed: the last frame stays. Rows
+     * written after the ending in the same list were dropped at compile time, so in the ordinary
+     * shape - an ending as the last row of a branch - there is nothing left to play either way.
+     */
+    const handleEndingReached = useCallback((ending: StoryEndingReach) => {
+        const bridge = core?.scopeBridge;
+        if (bridge) {
+            void markEndingReached({
+                getAsync: key => bridge.persistenceGetAsync(key),
+                get: key => bridge.persistenceGet(key),
+                set: (key, value) => bridge.persistenceSet(key, value),
+            }, ending.endingId).catch(error => {
+                // Reported, never thrown: the player has reached the ending whatever the store did,
+                // and a failed write must not take the window down on the last screen of the game.
+                host.log("error", `[${host.id}] the ending could not be recorded: ${normalizeError(error)}`);
+            });
+        }
+        pluginHost?.emitEndingReached({ endingId: ending.endingId, name: ending.name });
+
+        // The row decides, then the build. `none` is a decision and stops here; absent means the row
+        // did not decide, so the build's own ending page answers.
+        const page = ending.page?.kind === "none"
+            ? ""
+            : ending.page?.kind === "surface"
+                ? ending.page.surfaceId.trim()
+                : endingSurfaceId;
+        if (!page) {
+            return;
+        }
+        void quitGame(page).catch(error => {
+            host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
+        });
+    }, [core, endingSurfaceId, host, pluginHost, quitGame]);
+
+    /**
      * What this build stamps into the saves it writes, and compares the saves it is asked to load
      * against. One value for both halves: a stamp written by one rule and read by another would
      * make a build disagree with its own saves.
@@ -2694,6 +2743,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // — Dev Mode and the packaged game — so leaving it out meant a project-level saved variable
             // existed in the editor and nowhere else.
             savedVariables: bundle.ui.savedVariables,
+            onEndingReached: handleEndingReached,
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),

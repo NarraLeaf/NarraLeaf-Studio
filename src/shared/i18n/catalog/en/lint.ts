@@ -140,6 +140,19 @@ export const lint = {
             description: "A row compared with a variant the project does not have",
             message: "No build variant is named \"{name}\", so this row is in no build",
         },
+        storyRowsAfterEnding: {
+            title: "Rows after an ending",
+            description: "Rows written after an /ending row in the same list, which never play",
+            // States the consequence, not the mistake: the rows are already gone from the build, and
+            // an author reading this needs to know that before they know why.
+            message: "This row comes after an ending and is never played. Move it before the ending, or delete it",
+        },
+        storyEndingNameDuplicate: {
+            title: "Two endings with one name",
+            description: "More than one ending sharing a display name",
+            // Says where it shows, because nothing about the story itself is wrong.
+            message: "Another ending is also called \"{name}\". A screen listing endings shows the name twice",
+        },
         storyCutPointOrphan: {
             title: "Cut point with no variant",
             description: "A cut point written while the project has no build variant",

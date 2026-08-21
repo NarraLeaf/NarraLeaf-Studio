@@ -168,7 +168,16 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // optional: nearly every switch over `StoryBlockKind` is exhaustive, so a v19 Studio meeting an
 // `empty` row would crash in one and silently drop the row in the next, depending which it reached
 // first. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 20 as const;
+// v21 adds the `ending` control payload: the row that says the story has reached one of its endings,
+// records it, and hands the player back to a page. Endings were derived until now - a scene nothing
+// leaves was read as one - which meant a story could not tell a finished ending from a branch its
+// author had not written yet, and nothing could name one: no id to record, so no gallery could ask
+// whether it had been reached, and no test could ask whether every path arrives at one.
+// No migration. A v20 document cannot contain one, so the ladder gets no new step. The bump is not
+// optional, and unlike `cut` the reason is what a v20 Studio would *play*: it reads an unknown
+// control payload as an ordinary group and compiles it to nothing, so the story would run straight
+// past the ending into whatever follows it, recording nothing. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 21 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -1142,7 +1151,56 @@ export type StoryControlPayload =
            */
           control: "cut";
           appTagId: string;
+      }
+    | {
+          /**
+           * One of the story's endings: the row records that the player reached it and hands them
+           * back to a page (schema v21).
+           *
+           * Control flow, and single-instruction like the three rows above it: playback stops here.
+           * Rows written after it never run, which is what makes it an ending rather than a marker -
+           * a row that merely noted the ending and let the scene continue would be a `/set` with
+           * extra steps.
+           *
+           * **The ending IS the row.** Its identity is `StoryBlock.id`, the same convention a
+           * declaration row and a `choiceOption` row already follow, so {@link name} is display text
+           * an author may rewrite at any time without breaking a single reference - not least the
+           * unlock record, which a rename must never invalidate. There is deliberately no registry
+           * of endings anywhere in the project: the list is a scan (`listStoryEndings`), so an
+           * ending exists exactly as long as its row does and deleting the row deletes the ending.
+           */
+          control: "ending";
+          /**
+           * What this ending is called, for the author and for the player.
+           *
+           * Blank is legal while a line is being typed and is what the row's overview reports as
+           * unnamed; nothing resolves through it, so nothing breaks.
+           */
+          name: string;
+          /**
+           * Where the player lands afterwards, or absent to use the build's own ending page
+           * (`AppTagDocument.endingSurfaceId`).
+           *
+           * Three states rather than an optional id, because "the project's page" and "no page at
+           * all" are both real answers and an empty string cannot say which one an author meant. A
+           * `none` here overrides a project-level page - the last frame stays on screen, which is
+           * what a bad end that just stops wants.
+           */
+          page?: StoryEndingPage;
       };
+
+/**
+ * What an `ending` row shows once it has recorded itself.
+ *
+ * Shaped like {@link StoryLayerRef} rather than as a nullable id: the two non-inheriting answers are
+ * distinct decisions, and a reader that has to tell them apart should not have to know which falsy
+ * value means which.
+ */
+export type StoryEndingPage =
+    /** Show nothing. The last frame stays, overriding whatever page the build declares. */
+    | { kind: "none" }
+    /** A surface of this project's UI document. */
+    | { kind: "surface"; surfaceId: string };
 
 export type StoryJumpPayload = {
     targetSceneId: StorySceneId;

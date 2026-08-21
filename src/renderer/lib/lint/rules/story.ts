@@ -11,10 +11,12 @@ import {
     danglingStageObjectRefs,
     duplicateSceneLabels,
     duplicateStageObjectDeclarations,
+    duplicateStoryEndingNames,
     isPlayableStoryTransitionKind,
     listSceneBlocksInDocumentOrder,
     listSceneLabels,
     listScenesInDocumentOrder,
+    listStoryEndings,
     revealableStageObjectDeclarations,
     sceneLabelNames,
     shownStageObjectKeys,
@@ -85,6 +87,28 @@ function liveChildren(scene: StoryScene, block: StoryBlock): StoryBlock[] {
         }
     }
     return children;
+}
+
+/** Whether this row is an `/ending`. */
+function isEndingRow(block: StoryBlock): boolean {
+    return block.kind === "control" && block.payload.control === "ending";
+}
+
+/**
+ * Every sibling list in a scene: its root rows, then each container's children.
+ *
+ * A list is the unit a compile walks in order, so it is the unit "the rows after this one" means -
+ * which is exactly what `story/rows-after-ending` is about, and why this is a walk of lists rather
+ * than of blocks.
+ */
+function listsOfScene(scene: StoryScene): StoryBlockId[][] {
+    const lists: StoryBlockId[][] = [scene.rootBlockIds];
+    for (const block of Object.values(scene.blocks)) {
+        if (block.childrenIds.length > 0) {
+            lists.push(block.childrenIds);
+        }
+    }
+    return lists;
 }
 
 /** The live root-level rows of a scene, in authoring order. */
@@ -247,6 +271,12 @@ function blockTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBl
     }
     if (block.kind === "control") {
         if (block.payload.control === "goto") {
+            return true;
+        }
+        // The one row that ends the story rather than handing it on. Terminating in the sense this
+        // walk means it - the scene runs no further - which is why it belongs beside `goto` and not
+        // in the transfer scan below: an ending hands control to nothing at all.
+        if (block.payload.control === "ending") {
             return true;
         }
         if (block.payload.control === "condition") {
@@ -532,27 +562,29 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
         /**
          * A scene that transfers control on some paths and falls off the end on another.
          *
-         * **Why the transfer precondition, and not just "the tail does not terminate".** The story
-         * action union has no end-of-game row - quitting is the blueprint node `blueprint.game.quit` -
-         * so a story's *final* scene is structurally identical to a forgotten dead end: both simply
-         * stop. Without this guard the rule fires on every correct ending in every project, which is
-         * a rule an author switches off in the first five minutes, and a rule that is off finds
-         * nothing at all.
+         * **The transfer precondition is a fallback, and it used to be the whole rule.** The story
+         * action union had no end-of-game row, so a story's *final* scene was structurally identical
+         * to a forgotten dead end: both simply stopped. Reporting every one of them is a rule an
+         * author switches off in the first five minutes, and a rule that is off finds nothing at all
+         * - so a scene with no jump and no `/goto` anywhere in it was read as a deliberate terminal
+         * scene and stayed silent, at the cost of never reporting a wholly unfinished one.
          *
-         * So a scene with no jump and no `/goto` anywhere in it is read as a deliberate terminal
-         * scene and stays silent. A scene that *does* hand control on somewhere, yet still has a tail
-         * running off the end, is the forgotten branch worth a warning - the author has already
-         * demonstrated in this very scene that leaving is what they meant to do.
+         * `/ending` is what removes the ambiguity, and this rule gets sharper exactly as far as a
+         * project uses it. A scene ending in one terminates (see {@link blockTerminates}), so a
+         * marked ending is silent by the ordinary path rather than by the fallback. And once a story
+         * declares an ending anywhere, "no transfer" stops meaning "deliberate": the author has an
+         * unambiguous way to say where the story stops, so a tail that neither hands control on nor
+         * reaches an ending is a path that runs out, which is the finding this rule wanted to make
+         * all along.
          *
-         * **The trade-off, accepted deliberately:** a wholly unfinished scene - one nothing leaves
-         * and nothing follows - is not reported here. That case is covered from the other side by
-         * `story/unreachable-scene` (nothing can get to what it should have led to) and, in the end,
-         * by review. Reporting it would cost every legitimate ending in the project, which is the
-         * more expensive of the two mistakes.
+         * A story with no `/ending` row keeps the old bargain exactly - the same scenes are reported
+         * and the same ones are not - so adopting endings is what changes an existing project's
+         * report, not upgrading Studio.
          */
         run(ctx) {
             const findings: LintFinding[] = [];
             for (const { entry, scene } of eachScene(ctx)) {
+                const declaresEndings = listStoryEndings(entry.document).length > 0;
                 const roots = liveRootBlocks(scene);
                 const last = roots[roots.length - 1];
                 if (!last) {
@@ -562,8 +594,9 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                 if (blockTerminates(scene, last, new Set())) {
                     continue;
                 }
-                if (!hasOutgoingTransfer(scene)) {
-                    // A deliberate ending, not a dead end.
+                if (!declaresEndings && !hasOutgoingTransfer(scene)) {
+                    // A deliberate ending, not a dead end - as far as a story that names none of its
+                    // endings can be read.
                     continue;
                 }
                 findings.push({
@@ -759,6 +792,83 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         messageKey: "lint.rule.storyCutPointUnreachable.message",
                         location: storyLocation(entry, scene, cut.blockId),
                         target: blockTarget(entry, scene, cut.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A row written after an `/ending` in the same list.
+         *
+         * It never plays. The engine has no way to be stopped mid-story, so the compiler drops
+         * everything after an ending in the list that holds it - which is correct, and completely
+         * invisible on the page. This rule is what makes it visible.
+         *
+         * Anchored on the FIRST such row rather than on the ending, and one finding per list: the
+         * rows are the surprise, and repeating the same sentence for each of twelve of them buries
+         * the report.
+         *
+         * Deliberately narrow. A row after the `if` that contains an ending is not reported, because
+         * whether it plays depends on which arm ran - that is a live path, not a dead one.
+         */
+        id: "story/rows-after-ending",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyRowsAfterEnding",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const listIds of listsOfScene(scene)) {
+                    const live = listIds
+                        .map(id => scene.blocks[id])
+                        .filter((block): block is StoryBlock => Boolean(block) && !block!.disabled);
+                    const at = live.findIndex(isEndingRow);
+                    const orphan = at >= 0 ? live[at + 1] : undefined;
+                    if (!orphan) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/rows-after-ending",
+                        messageKey: "lint.rule.storyRowsAfterEnding.message",
+                        location: storyLocation(entry, scene, orphan.id),
+                        target: blockTarget(entry, scene, orphan.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * Two endings called the same thing.
+         *
+         * Not a defect - nothing breaks, and both endings keep their own identity, because every
+         * record and every reference keys on the row's id rather than on this name. It is reported
+         * because the name is the one part a *player* sees: an endings screen listing "Bad End"
+         * twice cannot say which of them is still missing.
+         *
+         * Anchored on the later row, which is the one to rename; the first keeps the name.
+         */
+        id: "story/ending-name-duplicate",
+        category: "story",
+        defaultSeverity: "info",
+        slug: "storyEndingNameDuplicate",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const entry of ctx.stories) {
+                for (const ending of duplicateStoryEndingNames(entry.document)) {
+                    const scene = entry.document.scenes[ending.sceneId];
+                    if (!scene) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/ending-name-duplicate",
+                        messageKey: "lint.rule.storyEndingNameDuplicate.message",
+                        messageParams: { name: ending.name },
+                        location: storyLocation(entry, scene, ending.endingId),
+                        target: blockTarget(entry, scene, ending.endingId),
                     });
                 }
             }

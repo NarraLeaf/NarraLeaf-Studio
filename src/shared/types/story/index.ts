@@ -6,4 +6,5 @@ export * from "./layerRef";
 export * from "./stageObjects";
 export * from "./declarations";
 export * from "./labels";
+export * from "./endings";
 export * from "./order";

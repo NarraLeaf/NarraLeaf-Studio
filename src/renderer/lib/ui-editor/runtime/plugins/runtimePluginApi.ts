@@ -152,8 +152,26 @@ export type RuntimePluginEventMap = {
      * with it idempotent.
      */
     audioPlayed: { assetId: string };
-    /** The action stack drained with a save context present. */
+    /**
+     * The story reached an ending: an `/ending` row ran, or the action stack drained with a save
+     * context present.
+     *
+     * Both, deliberately. An authored ending IS the game ending, so a plugin that watched only the
+     * drained stack would stop hearing about endings the moment a project started marking them.
+     * {@link endingReached} is the one that can name which ending it was.
+     */
     gameEnd: void;
+    /**
+     * An `/ending` row ran, naming the ending it declares.
+     *
+     * `endingId` is the row's own id and is stable across a rename, which is what a screen records
+     * against; `name` is the author's display text at the moment it was reached. Fires alongside
+     * {@link gameEnd} and before the player is put on whatever page the ending lands on.
+     *
+     * A story that ends by running out of rows fires `gameEnd` and not this: there is no ending to
+     * name.
+     */
+    endingReached: { endingId: string; name: string };
     beforeRestore: void;
     afterRestore: void;
     fullscreenChanged: boolean;

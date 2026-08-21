@@ -41,11 +41,11 @@ export interface BaseFieldDefinition<TData = any> {
     /** Help text shown below the field */
     helpText?: string;
     /**
-     * What the field does, shown on hover rather than on the panel.
+     * What the field does, revealed from an info icon beside the label.
      *
-     * For a setting whose name cannot carry its whole meaning. It costs no space, which is why it is
-     * the way to explain a field: `helpText` prints under the control and is for the rare line the
-     * reader needs before they can answer at all.
+     * For a setting whose name cannot carry its whole meaning. It costs a glyph rather than a line,
+     * which is why it is the way to explain a field: `helpText` prints under the control on every
+     * render and is for the rare line the reader needs before they can answer at all.
      */
     tip?: string;
     /** Placeholder text */

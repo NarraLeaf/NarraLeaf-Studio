@@ -328,7 +328,7 @@ export function getStoryContainerHeaderInfo(block: StoryBlock): StoryContainerHe
         }
         // Not containers, so they have no header at all - they render as ordinary rows.
         if (payload.control === "label" || payload.control === "goto" || payload.control === "break"
-            || payload.control === "cut") {
+            || payload.control === "cut" || payload.control === "ending") {
             return null;
         }
         if (payload.control === "repeat") {
@@ -400,7 +400,7 @@ export type StoryBlockBadgeId =
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
     | "blueprint" | "camera" | "effect" | "plugin"
-    | "label" | "goto" | "break" | "cut" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
+    | "label" | "goto" | "break" | "cut" | "ending" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
 
 export type StoryBlockBadge = {
     id: StoryBlockBadgeId;
@@ -470,6 +470,9 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // A cut point ends one edition's story at this line. Its own badge for the same reason again:
         // it holds nothing and is the last row a build has, which "Control" says nothing about.
         if (block.payload.control === "cut") return badge("cut", "story.badge.cut", "flow");
+        // The row the whole story arrives at. It reads as a destination rather than as a container,
+        // and it is the one row a player-facing screen ever names, so it gets a badge of its own.
+        if (block.payload.control === "ending") return badge("ending", "story.badge.ending", "flow");
         return badge("control", "story.badge.control", "flow");
     }
     if (block.kind === "jump") return badge("jump", "story.badge.jump", "scene");
@@ -817,6 +820,13 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             return name
                 ? translate("story.describe.cut", { name })
                 : translate("story.describe.cutUnknown");
+        }
+        // The name IS the row, exactly as it is for a label: an ending row reading only "Ending"
+        // would leave an author counting rows to find which of them is the true end.
+        if (block.payload.control === "ending") {
+            return translate("story.describe.ending", {
+                name: block.payload.name || translate("story.describe.unnamed"),
+            });
         }
         return block.payload.control;
     }

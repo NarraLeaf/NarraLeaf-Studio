@@ -990,6 +990,15 @@ function buildDraft(
             }
             return { kind: "control", payload: { control: "cut", appTagId: variant.value } };
         }
+        case "ending": {
+            const name = nameOf(slots, "ending");
+            if (name === undefined) {
+                return fail("missingValue", "ending");
+            }
+            // No `page`: absent is "the build's own ending page", which is what a script that never
+            // spelled one has to mean.
+            return { kind: "control", payload: { control: "ending", name } };
+        }
     }
 }
 

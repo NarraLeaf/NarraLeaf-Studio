@@ -3,7 +3,7 @@ import { BlurDissolve, Control, Darkness, DevTools, Exposure, Push, Reveal, Thro
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
-import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryTransitionRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryEndingPage, StoryTransitionRef } from "@shared/types/story";
 import {
     isPlayableStoryTransitionKind,
     STORY_DOCUMENT_SCHEMA_VERSION,
@@ -11,7 +11,7 @@ import {
     UNPLAYABLE_STORY_TRANSITION_KINDS,
 } from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
-import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS, type StoryEndingReach } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 
 /** A character with no sprites: enough to be a speaker, which is all these cases need. */
@@ -4112,6 +4112,102 @@ describe("cut point", () => {
         expect(compiled.diagnostics).toEqual([]);
         const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
         expect(boundBlocks).not.toContain("cut");
+        expect(boundBlocks).toContain("after");
+    });
+});
+
+/**
+ * `/ending` — the row that says the story is over.
+ *
+ * Two things it does and one it deliberately does not. It emits a statement bound to its own block,
+ * so a host can be told which ending was reached; it truncates the list that holds it, because the
+ * engine has no way to be stopped mid-story and rows after an ending would otherwise play with the
+ * stage already on its way out. It does NOT reach past that list: a row after the container the
+ * ending sits in depends on which arm ran and stays compiled.
+ */
+describe("ending", () => {
+    function endingBlock(id: string, name: string, page?: StoryEndingPage): StoryBlock {
+        return {
+            id,
+            kind: "control",
+            parentId: null,
+            childrenIds: [],
+            payload: { control: "ending", name, ...(page ? { page } : {}) },
+        };
+    }
+
+    it("tells the host which ending was reached, with the row's own id and page", async () => {
+        const reached: StoryEndingReach[] = [];
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                end: endingBlock("end", "  True End  ", { kind: "surface", surfaceId: "surface-credits" }),
+            }, ["end"]),
+            sceneId: "scene-1",
+            onEndingReached: ending => reached.push(ending),
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("end");
+        // Nothing has run yet: the statement carries the call, it does not make it at compile time.
+        expect(reached).toEqual([]);
+    });
+
+    it("drops the rows after it in the same list", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                end: endingBlock("end", "True End"),
+                after: narrationBlock("after", "text-after", "Never played"),
+            }, ["end", "after"]),
+            sceneId: "scene-1",
+            onEndingReached: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).toContain("end");
+        expect(boundBlocks).not.toContain("after");
+    });
+
+    it("keeps a row written after the container the ending sits in", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                group: { id: "group", kind: "control", parentId: null, childrenIds: ["end"], payload: { control: "sequence" } },
+                end: { ...endingBlock("end", "True End"), parentId: "group" },
+                after: narrationBlock("after", "text-after", "Depends on the arm"),
+            }, ["group", "after"]),
+            sceneId: "scene-1",
+            onEndingReached: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).toContain("end");
+        expect(boundBlocks).toContain("after");
+    });
+
+    it("emits nothing at all for a host that cannot act on an ending", async () => {
+        // The build sweeps and the stage preview compile the same document without playing it, so
+        // they pass no hook - and a row that reported an ending to nobody would be worse than one
+        // that compiled to nothing.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ end: endingBlock("end", "True End") }, ["end"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).not.toContain("end");
+    });
+
+    it("compiles nothing for a disabled ending, and lets the scene carry on past it", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                end: { ...endingBlock("end", "True End"), disabled: true },
+                after: narrationBlock("after", "text-after", "Still here"),
+            }, ["end", "after"]),
+            sceneId: "scene-1",
+            onEndingReached: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).not.toContain("end");
         expect(boundBlocks).toContain("after");
     });
 });

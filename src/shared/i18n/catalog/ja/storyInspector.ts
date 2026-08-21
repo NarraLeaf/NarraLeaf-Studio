@@ -573,6 +573,10 @@ export const storyInspector = {
         // 読み、リリースのビルドではカットポイントは何も終わらせない。
         cutMissingVariant: "削除されたバリアント。今は {name} として読む",
         cutNoVariants: "バリアントがない",
+        endingName: "エンディング名",
+        endingPage: "終了後に表示するページ",
+        endingPageInherit: "プロジェクトの設定と同じ",
+        endingPageNone: "何も表示しない",
         branch: "枝",
         elseHint: "前の枝がどれも当てはまらないとき、それ以外の枝が動く",
     },
