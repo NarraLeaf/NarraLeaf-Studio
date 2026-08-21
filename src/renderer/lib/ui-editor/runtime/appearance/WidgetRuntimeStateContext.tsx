@@ -12,6 +12,24 @@ import {
 
 const WidgetRuntimeStateContext = createContext<WidgetRuntimeStateStore | null>(null);
 const WidgetRuntimeScopeContext = createContext<string | null>(null);
+
+/**
+ * One drawn instance of a template, when the template is drawn more than once.
+ *
+ * A list draws the same elements once per row, so `elementId` stops identifying anything that can
+ * hold state: hovering row three used to light up all of them, because hover was recorded against
+ * the element and every row read it back. Everything that reads or writes widget runtime state does
+ * so through {@link useWidgetRuntimeElementKey}, so putting the row here is what makes hover, press,
+ * focus and the selected state belong to one row instead of to the template.
+ */
+export type WidgetRuntimeInstance = {
+    /** Distinguishes this drawing of the template from the others. */
+    key: string;
+    /** Whether the owning list has this row selected. */
+    selected: boolean;
+};
+
+const WidgetRuntimeInstanceContext = createContext<WidgetRuntimeInstance | null>(null);
 const EMPTY_UNSUBSCRIBE = () => () => {};
 const EMPTY_ELEMENT_SIGNATURE = "||0|0|0|0";
 const STATIC_WIDGET_RUNTIME_ELEMENT_STATE = Object.freeze({
@@ -48,13 +66,32 @@ export function WidgetRuntimeScopeProvider(props: {
     );
 }
 
+/**
+ * Marks its subtree as one drawn instance of a repeated template.
+ *
+ * The value is rebuilt only when one of its fields changes: it keys every widget runtime read
+ * below, so a fresh object each render would resubscribe the whole row.
+ */
+export function WidgetRuntimeInstanceProvider(props: {
+    instance: WidgetRuntimeInstance;
+    children: React.ReactNode;
+}): React.ReactElement {
+    const { key, selected } = props.instance;
+    const value = useMemo(() => ({ key, selected }), [key, selected]);
+    return (
+        <WidgetRuntimeInstanceContext.Provider value={value}>{props.children}</WidgetRuntimeInstanceContext.Provider>
+    );
+}
+
 export function useWidgetRuntimeStateStore(): WidgetRuntimeStateStore | null {
     return useContext(WidgetRuntimeStateContext);
 }
 
 export function useWidgetRuntimeElementKey(elementId: string): string {
     const runtimeScopeId = useContext(WidgetRuntimeScopeContext);
-    return runtimeScopeId ? `${runtimeScopeId}\0${elementId}` : elementId;
+    const instance = useContext(WidgetRuntimeInstanceContext);
+    const scoped = runtimeScopeId ? `${runtimeScopeId}\0${elementId}` : elementId;
+    return instance ? `${scoped}\0${instance.key}` : scoped;
 }
 
 /** Subscribe to any widget-runtime change (hover/active/focus/variant override). */
@@ -104,6 +141,18 @@ export function useWidgetRuntimeElementState(
 ): WidgetRuntimeElementState {
     const store = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(elementId);
+    const instance = useContext(WidgetRuntimeInstanceContext);
+    const runtimeScopeId = useContext(WidgetRuntimeScopeContext);
+    /**
+     * The key a writer that knows nothing about rows would have used.
+     *
+     * Kept as a fallback so a blueprint that sets a variant on a template still shows it on every
+     * row - which is what it does today, and what it should keep doing until the write side can
+     * name a row. A row-specific value, when one exists, wins.
+     */
+    const templateKey = instance
+        ? (runtimeScopeId ? `${runtimeScopeId}\0${elementId}` : elementId)
+        : null;
     const signature = useSyncExternalStore(
         store?.subscribe ?? EMPTY_UNSUBSCRIBE,
         () => buildElementSignature(store, runtimeElementKey, interactionDisabled),
@@ -115,10 +164,16 @@ export function useWidgetRuntimeElementState(
         if (!store) {
             return STATIC_WIDGET_RUNTIME_ELEMENT_STATE;
         }
+        const signals = store.getSignalsForElement(runtimeElementKey, interactionDisabled);
         return {
-            variantOverrideId: store.getVariantOverride(runtimeElementKey) ?? null,
-            signals: store.getSignalsForElement(runtimeElementKey, interactionDisabled),
-            displayableMotion: store.getDisplayableMotion(runtimeElementKey),
+            variantOverrideId:
+                store.getVariantOverride(runtimeElementKey)
+                ?? (templateKey ? store.getVariantOverride(templateKey) : undefined)
+                ?? null,
+            signals: instance?.selected ? { ...signals, selected: true } : signals,
+            displayableMotion:
+                store.getDisplayableMotion(runtimeElementKey)
+                ?? (templateKey ? store.getDisplayableMotion(templateKey) : null),
         };
-    }, [interactionDisabled, runtimeElementKey, signature, store]);
+    }, [instance?.selected, interactionDisabled, runtimeElementKey, signature, store, templateKey]);
 }

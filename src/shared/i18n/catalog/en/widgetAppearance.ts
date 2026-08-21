@@ -134,6 +134,7 @@ export const widgetAppearance = {
         active: "active",
         disabled: "disabled",
         focused: "focused",
+        selected: "selected",
         when: "When",
         toggleTitle: "Require {condition} = true (cycle: unset → true → false)",
         overridesTitle: "State overrides (advanced)",

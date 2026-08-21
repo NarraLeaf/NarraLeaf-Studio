@@ -7,6 +7,9 @@ import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/d
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import { getUIFrameWidgetProps, UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { findUIStructField } from "@shared/types/ui-editor/struct";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -583,6 +586,51 @@ function runFrameTargetMissing(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+/**
+ * A prop bound to an item field that the list drawing it no longer declares.
+ *
+ * The failure is silent and looks like authored content: the element keeps drawing whatever literal
+ * it was given, so a row that was showing a save's chapter name goes back to showing the word the
+ * template was drawn with, in every row, and nothing anywhere says the field is gone. It arises from
+ * removing a field, from renaming a widget's shape into one that no longer has it, and from pasting
+ * a row template into a list with a different shape.
+ *
+ * A binding on an element no list draws is the same finding: it also resolves to nothing.
+ */
+function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        const bindings = site.element.valueBindings;
+        if (!bindings) {
+            continue;
+        }
+        const fieldIds = Object.values(bindings)
+            .filter(binding => binding.kind === "listItemField")
+            .map(binding => (binding as { fieldId: string }).fieldId);
+        if (fieldIds.length === 0) {
+            continue;
+        }
+        const context = findOwningListItemTemplate(document, site.element);
+        const struct = context ? resolveUIStruct(document, context.structId) : null;
+        for (const fieldId of fieldIds) {
+            if (findUIStructField(struct, fieldId)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "ui/list-item-field-missing",
+                messageKey: "lint.rule.uiListItemFieldMissing.message",
+                location: surfaceLocation(site.surface, site.element),
+                target: surfaceTarget(site.surface),
+            });
+        }
+    }
+    return findings;
+}
+
 export const UI_LINT_RULES: readonly LintRule[] = [
     {
         id: "ui/unlocalized-text",
@@ -622,5 +670,15 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "error",
         slug: "uiFrameTargetMissing",
         run: ctx => runFrameTargetMissing(ctx),
+    },
+    {
+        id: "ui/list-item-field-missing",
+        category: "ui",
+        // A warning rather than an error: the widget still draws, with the value it was authored
+        // with, so the page is whole - it is just showing the same thing in every row. Refusing the
+        // build over it would stop an author who is mid-way through reshaping a list.
+        defaultSeverity: "warning",
+        slug: "uiListItemFieldMissing",
+        run: ctx => runListItemFieldMissing(ctx),
     },
 ];

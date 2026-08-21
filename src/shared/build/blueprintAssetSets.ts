@@ -20,8 +20,8 @@ import type { GameLocalizationBundle } from "../types/localization";
  *
  * # What is resolved and what is refused
  *
- * Image pins only. A typeface pin is refused for the reason `blueprintAssetSlots` gives, and it is
- * refused rather than ignored: the reference index declines to expand it too, so a set id there
+ * Pictures and clips. A typeface pin is refused for the reason `blueprintAssetSlots` gives, and it
+ * is refused rather than ignored: the reference index declines to expand it too, so a set id there
  * reaches `assets/missing` and stops the build.
  *
  * # A build axis leaves no map at all

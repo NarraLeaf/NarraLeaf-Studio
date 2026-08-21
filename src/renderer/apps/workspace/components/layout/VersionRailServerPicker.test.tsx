@@ -40,11 +40,17 @@ vi.mock("@/apps/workspace/context", () => ({ useWorkspace: () => ({ context: nul
 
 const bridge = vi.hoisted(() => ({
     servers: [] as VcsServerSession[],
+    /** What each server answers when the dialog asks what it holds, keyed by origin. */
+    projects: {} as Record<string, unknown[]>,
     launchSettings: vi.fn(),
+    listServerProjects: vi.fn(),
 }));
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
-        vcs: { listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }) },
+        vcs: {
+            listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
+            listServerProjects: bridge.listServerProjects,
+        },
         app: { launchSettings: bridge.launchSettings },
     }),
 }));
@@ -52,7 +58,10 @@ vi.mock("@/lib/app/bridge", () => ({
 afterEach(() => {
     cleanup();
     bridge.servers = [];
+    bridge.projects = {};
     bridge.launchSettings.mockClear();
+    bridge.listServerProjects.mockReset().mockImplementation((origin: string) =>
+        Promise.resolve({ success: true, data: { ok: true, projects: bridge.projects[origin] ?? [] } }));
 });
 
 function session(origin: string, displayName: string, name?: string): VcsServerSession {
@@ -86,10 +95,15 @@ function picker(remote: string | null, overrides: Partial<VersionSurface> = {}) 
     return { onClose, surface };
 }
 
-/** The dialog's own Connect button, which is in the modal's footer rather than its body. */
+/**
+ * The dialog's own primary button, which is in the modal's footer rather than its body.
+ *
+ * Found by its seam rather than by its words, because the words are the point: it says
+ * "Connect" for a server that already holds this project and "Create and send" for one that
+ * has never seen it, and a helper keyed on one of those would silently stop finding the other.
+ */
 function connectButton(): HTMLElement {
-    const button = [...document.querySelectorAll("button")]
-        .find(node => node.textContent === "workspace.shell.versionControl.server.save");
+    const button = document.querySelector<HTMLElement>("[data-vcs-seam='picker-connect']") ?? undefined;
     if (button === undefined) throw new Error("no Connect button on screen");
     return button;
 }
@@ -248,12 +262,129 @@ describe("what Connect does", () => {
 
         await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
         fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
-        fireEvent.change(document.querySelector("input")!, { target: { value: "driftwood" } });
+        // The name field is drawn once the server has said what it holds: whether this
+        // project is already one of them is what decides that there is a name to ask for.
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+        fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+            target: { value: "driftwood" },
+        });
         fireEvent.click(connectButton());
 
         expect(surface.publish).toHaveBeenCalledWith(ONE, "driftwood");
         expect(surface.setRemote).not.toHaveBeenCalled();
         await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    /**
+     * What this project becomes on the server, which is the question the dialog never asked.
+     *
+     * Choosing a server used to be the whole of it, and what the project was called there was
+     * a text box seeded from the folder name. Two acts hid behind that box: a name nobody had
+     * used made a project and sent it, and a name somebody had used was refused after the
+     * dialog had closed. Neither was said out loud before the button was pressed.
+     */
+    describe("what this project is on that server", () => {
+        const REPOSITORY = "019fda5ba4fe799096aaab7585aa4722";
+
+        function held(origin: string, projects: { id: string; name: string }[]) {
+            bridge.projects[origin] = projects.map(entry => ({
+                ...entry, description: "", createdAt: 0, remote: `${origin}/${entry.name}`,
+            }));
+        }
+
+        it("states the name a server already holds this project under, and points at that", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            // A colleague published it, or this author did from another machine. The folder
+            // here is called something else entirely, which is the case a name match breaks.
+            held(ONE, [{ id: REPOSITORY, name: "driftwood" }]);
+            const { surface } = picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+
+            // The name itself rides in the sentence's parameter, which this file's translator
+            // stub drops; what is asserted here is that the sentence is the one that names it,
+            // and the name it carries is asserted on the call below.
+            await waitFor(() => expect(seam("picker-already").textContent)
+                .toContain("workspace.shell.versionControl.server.picker.already"));
+            // Nothing left to decide, so nothing to type.
+            expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).toBeNull();
+
+            fireEvent.click(connectButton());
+            // The server's own name for it. The folder name would be an address that server
+            // does not answer to, and nothing downstream would correct it.
+            expect(surface.publish).toHaveBeenCalledWith(ONE, "driftwood");
+        });
+
+        it("matches on the repository id and never on the name", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            // Same name, different work: the case that would hand this project to somebody
+            // else's repository.
+            held(ONE, [{ id: "ffffffffffffffffffffffffffffffff", name: "driftwood" }]);
+            picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+
+            await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+            expect(document.querySelector("[data-vcs-seam='picker-already']")).toBeNull();
+        });
+
+        it("refuses a name that server already has, before anything is sent", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            held(ONE, [{ id: "ffffffffffffffffffffffffffffffff", name: "driftwood" }]);
+            const { surface } = picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+            await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+            fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+                target: { value: "Driftwood" },
+            });
+
+            await waitFor(() => expect(seam("picker-destination").textContent)
+                .toContain("workspace.shell.versionControl.server.picker.nameTaken"));
+            expect((connectButton() as HTMLButtonElement).disabled).toBe(true);
+            fireEvent.click(connectButton());
+            expect(surface.publish).not.toHaveBeenCalled();
+        });
+
+        it("refuses a name an address cannot carry", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            held(ONE, []);
+            const { surface } = picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+            await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+            fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+                target: { value: "My Game" },
+            });
+
+            await waitFor(() => expect(seam("picker-destination").textContent)
+                .toContain("workspace.shell.versionControl.server.picker.nameInvalid"));
+            expect((connectButton() as HTMLButtonElement).disabled).toBe(true);
+            fireEvent.click(connectButton());
+            expect(surface.publish).not.toHaveBeenCalled();
+        });
+
+        it("still asks for a name where the list could not be read", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            // The list is there to help. A server that would not answer is not a reason to
+            // refuse to connect - it is a reason to ask the way this dialog always asked.
+            bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: false, problem: { kind: "unreachable" } } });
+            const { surface } = picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+            await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+            fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+                target: { value: "driftwood" },
+            });
+            fireEvent.click(connectButton());
+
+            expect(surface.publish).toHaveBeenCalledWith(ONE, "driftwood");
+        });
     });
 
     it("writes the address alone for a server nobody signs in to, because there is nothing to ask", async () => {
@@ -280,7 +411,10 @@ describe("what Connect does", () => {
 
         await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
         fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
-        fireEvent.change(document.querySelector("input")!, { target: { value: "driftwood" } });
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+        fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+            target: { value: "driftwood" },
+        });
         fireEvent.click(connectButton());
 
         await waitFor(() => expect(seam("picker-failure").textContent)

@@ -32,7 +32,7 @@ export function createListDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
             id: "docker-list-preview",
             label: translate("widgetChrome.dockerItems.preview"),
             tooltip: translate("widgetChrome.dockerItems.previewHint"),
-            value: props.previewCount,
+            value: props.placeholderCount,
             min: 1,
             max: 32,
             step: 1,
@@ -40,7 +40,7 @@ export function createListDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
                 const clamped = Math.min(32, Math.max(1, Math.round(value)));
                 documentService.updateElementProps(element.id, {
                     ...element.props,
-                    previewCount: clamped,
+                    placeholderCount: clamped,
                 });
             },
         },
