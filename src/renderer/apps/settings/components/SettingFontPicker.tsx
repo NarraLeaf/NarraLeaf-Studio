@@ -7,10 +7,9 @@ import { Button } from "@/lib/components/elements/Button";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import {
+    EDITOR_FONT_FALLBACK_STACK,
     EDITOR_FONT_PRESET_STACKS,
-    editorFontCssFamily,
-    isEditorFontPreset,
-    type EditorFontFamilyPreset,
+    sanitizeFontFamilyName,
 } from "@/lib/settings/editorFontOptions";
 import { loadSystemFontFamilies, type SystemFontFamily, type SystemFontsResult } from "@/lib/settings/systemFonts";
 
@@ -52,6 +51,15 @@ interface SettingFontPickerProps {
     presets: readonly string[];
     /** Localized label per preset id; falls back to the id itself. */
     presetLabels?: Record<string, string>;
+    /**
+     * CSS `font-family` per preset id, for drawing a preset row in the face it names.
+     *
+     * Per row rather than one table in this file because the presets no longer mean one thing:
+     * "Default" in the story editor is `inherit` — the interface's own face — while "Default" for
+     * the interface is the base stack. With the table hardcoded here, choosing a face for Studio
+     * made the interface row's "Default" preview render in that face, i.e. as anything but default.
+     */
+    presetStacks?: Record<string, string>;
     onChange: (value: string) => void;
     disabled?: boolean;
     /** The settings row's title — the trigger's own text is the chosen font, not the question. */
@@ -74,6 +82,7 @@ export function SettingFontPicker({
     value,
     presets,
     presetLabels,
+    presetStacks,
     onChange,
     disabled = false,
     ariaLabel,
@@ -98,6 +107,29 @@ export function SettingFontPicker({
         [presetLabels],
     );
 
+    // Widened to a string index deliberately: the stored value is any family name, and the whole
+    // job here is to ask whether this particular one happens to be a preset.
+    const stacks: Record<string, string | undefined> = presetStacks ?? EDITOR_FONT_PRESET_STACKS;
+
+    /**
+     * The face to draw a row (or the trigger) in.
+     *
+     * The preset table decides what is a preset, rather than a membership test against `presets`:
+     * the two are the same list, and asking the table means a value it has no stack for is treated
+     * as a family name — which is what an id from a build with other presets in fact is now.
+     */
+    const cssFor = useCallback(
+        (value: string): string => {
+            const preset = stacks[value];
+            if (preset) {
+                return preset;
+            }
+            const family = sanitizeFontFamilyName(value);
+            return family ? `"${family}", ${EDITOR_FONT_FALLBACK_STACK}` : "inherit";
+        },
+        [stacks],
+    );
+
     const rows = useMemo<PickerRow[]>(() => {
         const needle = query.trim().toLowerCase();
         const result: PickerRow[] = [];
@@ -113,7 +145,7 @@ export function SettingFontPicker({
                     key: `preset:${preset}`,
                     value: preset,
                     label: presetLabel(preset),
-                    css: EDITOR_FONT_PRESET_STACKS[preset as EditorFontFamilyPreset] ?? "inherit",
+                    css: cssFor(preset),
                 });
             }
         }
@@ -125,7 +157,7 @@ export function SettingFontPicker({
         // It is only *labelled* missing once the list is known to be complete: with the enumeration
         // refused or unsupported, an absent row means we did not look, not that the font is gone.
         const unlisted =
-            !isEditorFontPreset(value) &&
+            !stacks[value] &&
             value.trim().length > 0 &&
             load.status !== "idle" &&
             load.status !== "loading" &&
@@ -136,7 +168,7 @@ export function SettingFontPicker({
                 key: `unlisted:${value}`,
                 value,
                 label: value,
-                css: editorFontCssFamily(value),
+                css: cssFor(value),
                 missing: load.status === "ok",
             });
         }
@@ -150,12 +182,12 @@ export function SettingFontPicker({
                     key: `font:${family.family}`,
                     value: family.family,
                     label: family.family,
-                    css: editorFontCssFamily(family.family),
+                    css: cssFor(family.family),
                 });
             }
         }
         return result;
-    }, [families, load.status, presetLabel, presets, query, t, value]);
+    }, [cssFor, families, load.status, presetLabel, presets, query, stacks, t, value]);
 
     const selectableIndexes = useMemo(
         () => rows.reduce<number[]>((acc, row, index) => (row.kind === "font" ? [...acc, index] : acc), []),
@@ -220,9 +252,9 @@ export function SettingFontPicker({
             return;
         }
         beginLoad();
-        setActiveKey(isEditorFontPreset(value) ? `preset:${value}` : `font:${value}`);
+        setActiveKey(stacks[value] ? `preset:${value}` : `font:${value}`);
         setOpen(true);
-    }, [beginLoad, close, disabled, open, value]);
+    }, [beginLoad, close, disabled, open, stacks, value]);
 
     // Dismiss on a click anywhere that is neither the trigger nor the panel. Capture phase, like
     // every other menu in Studio, so a click on a control underneath does not act before we close.
@@ -363,7 +395,7 @@ export function SettingFontPicker({
         [activeIndex, close, commit, moveActive, rows],
     );
 
-    const triggerLabel = isEditorFontPreset(value) ? presetLabel(value) : (value || presetLabel("Default"));
+    const triggerLabel = stacks[value] ? presetLabel(value) : (value || presetLabel(presets[0] ?? "Default"));
 
     const statusMessage = (() => {
         switch (load.status) {
@@ -536,7 +568,7 @@ export function SettingFontPicker({
             >
                 <span
                     className="min-w-0 flex-1 truncate text-left text-fg"
-                    style={{ fontFamily: editorFontCssFamily(value) }}
+                    style={{ fontFamily: cssFor(value) }}
                 >
                     {triggerLabel}
                 </span>

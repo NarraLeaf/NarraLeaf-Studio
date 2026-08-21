@@ -1,3 +1,4 @@
+import type { AssetVariantMap } from "../assetSet";
 import type { BlueprintDocument, BlueprintOwnerRef } from "../blueprint/document";
 
 export type UIGraphId = string;
@@ -55,6 +56,17 @@ export type UIGraphNode = {
     params?: Record<string, unknown>;
     ports?: Record<string, UIGraphPort>;
     meta?: Record<string, unknown>;
+    /**
+     * What each asset set this node's stored params name resolves to, per locale.
+     *
+     * The same field `BlueprintGraphNode` declares, and the same object: `adaptBlueprintGraphIr`
+     * hands the executor the bundle's own nodes rather than copies, so a node running here is
+     * carrying whatever the package wrote onto it. Declared on both because a node reads it from
+     * whichever of the two types its caller happens to hold.
+     *
+     * Never authored and never on disk under `editor/`.
+     */
+    assetVariants?: AssetVariantMap;
 };
 
 export type UIGraphPort = {

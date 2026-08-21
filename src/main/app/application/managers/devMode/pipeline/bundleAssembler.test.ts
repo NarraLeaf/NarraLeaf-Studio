@@ -28,6 +28,7 @@ import {
     loadGameLocalization,
     loadPlayerPreferences,
     loadProjectBrand,
+    loadProjectFonts,
     foldSharedBlueprints,
     planSceneDrop,
     resolveStoryDocumentPathForIndexEntry,
@@ -506,6 +507,28 @@ describe("bundleAssembler brand palette", () => {
     it("falls back to the seeds when the project cannot be read at all", async () => {
         expect(await loadProjectBrand(path.join(os.tmpdir(), "nls-missing-project")))
             .toEqual([...BUILTIN_BRAND_COLORS]);
+    });
+
+    /**
+     * The default font stack rides in the same document. Unlike the palette it has no seed: most
+     * projects have never chosen one, and text renders in the host's own family exactly as it did
+     * before the field existed - so every failure path here lands on an empty list rather than on
+     * something invented.
+     */
+    it("carries the project's default font stack, in the author's order", async () => {
+        const projectPath = await createProject(JSON.stringify({
+            schemaVersion: 2,
+            colors: [],
+            fonts: [{ assetId: "font-a" }, { assetId: "font-b" }],
+        }));
+        expect(await loadProjectFonts(projectPath)).toEqual([{ assetId: "font-a" }, { assetId: "font-b" }]);
+    });
+
+    it("reads a v1 document, an unreadable one and a missing project as no default font", async () => {
+        expect(await loadProjectFonts(await createProject())).toEqual([]);
+        expect(await loadProjectFonts(await createProject(JSON.stringify({ schemaVersion: 1, colors: [] })))).toEqual([]);
+        expect(await loadProjectFonts(await createProject("{not json"))).toEqual([]);
+        expect(await loadProjectFonts(path.join(os.tmpdir(), "nls-missing-project"))).toEqual([]);
     });
 });
 

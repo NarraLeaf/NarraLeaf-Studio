@@ -339,6 +339,13 @@ export const workspace = {
         toggleLeftSidebar: "左のサイドバーを切り替え",
         toggleRightSidebar: "右のサイドバーを切り替え",
         toggleBottomPanel: "下のパネルを切り替え",
+        mainMenu: {
+            label: "メインメニュー",
+            modes: {
+                hamburger: "ハンバーガーボタンにまとめる",
+                toolbar: "タイトルバーに個別に表示",
+            },
+        },
         // サイドバーのレールを右クリックしたときのメニュー。各パネルのアイコンの表示を切り替える
         // チェックリストと、右クリックしたパネルへの操作。
         panelMenu: {

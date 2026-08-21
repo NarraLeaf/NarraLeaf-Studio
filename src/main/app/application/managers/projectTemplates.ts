@@ -1,8 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
-import type { ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
+import { pickTemplateContentLocale, type ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
 import { isStageSizeUsable, stageSizesEqual, type StageSize } from "@shared/types/stageSize";
-import { PROJECT_TEMPLATE_CONTENT_DIR, PROJECT_TEMPLATE_MANIFEST } from "@shared/constants/projectTemplate";
+import {
+    PROJECT_TEMPLATE_CONTENT_DIR,
+    projectTemplateContentDirForLocale,
+    PROJECT_TEMPLATE_MANIFEST,
+} from "@shared/constants/projectTemplate";
 
 /**
  * Project templates that ship inside Studio.
@@ -18,6 +22,13 @@ import { PROJECT_TEMPLATE_CONTENT_DIR, PROJECT_TEMPLATE_MANIFEST } from "@shared
  * that rewrote them on the way in would have to understand every one of those file
  * formats. Two projects made from the same template share those ids and never meet,
  * exactly as with any project template.
+ *
+ * A template may also ship its content a second time, written in another language
+ * (`content.<locale>/`, declared as `contentLocales` in the manifest). That tree is
+ * copied over the first one when the author is writing in that language, so what
+ * they open is a project authored in it — story, screens and layer names alike -
+ * rather than an English project with a translation attached. It stays a verbatim
+ * copy of files prepared beforehand: nothing here reads a story or a surface.
  */
 
 /** `id` comes from the renderer, so it must not be able to name a directory elsewhere. */
@@ -45,6 +56,59 @@ function asString(value: unknown): string {
 }
 
 /**
+ * One language a template ships a whole second copy of its content in.
+ *
+ * `remove` names the base files the variant replaces rather than adds to. A copy is
+ * additive, and the one thing a translated variant needs to take away is a base
+ * translation file: the language the base content was translated INTO is the language
+ * the variant is written in, so left behind it would register a language whose every
+ * unit translates itself.
+ */
+type TemplateContentLocale = { remove: string[] };
+
+/**
+ * A path a variant may take out of a project: relative, and pointing downwards.
+ *
+ * These paths delete files inside a project that has just been created, so they are
+ * checked here as well as resolved against the project root later — a template is
+ * ours, but a template is also data, and data is the thing that gets edited.
+ */
+function isSafeContentPath(value: unknown): value is string {
+    return typeof value === "string"
+        && value.length > 0
+        && !path.isAbsolute(value)
+        && value.split(/[\\/]/).every(segment => segment !== "" && segment !== "." && segment !== "..");
+}
+
+function asContentLocales(value: unknown): Record<string, TemplateContentLocale> {
+    const locales: Record<string, TemplateContentLocale> = {};
+    if (!value || typeof value !== "object") {
+        return locales;
+    }
+    for (const [code, entry] of Object.entries(value as Record<string, unknown>)) {
+        if (!SAFE_LOCALE_CODE.test(code)) {
+            continue;
+        }
+        const remove = entry && typeof entry === "object" && Array.isArray((entry as Record<string, unknown>).remove)
+            ? ((entry as Record<string, unknown>).remove as unknown[]).filter(isSafeContentPath)
+            : [];
+        locales[code] = { remove };
+    }
+    return locales;
+}
+
+/** The manifest as parsed JSON, or `null` if the directory has no readable one. */
+async function readManifestRecord(templateDir: string): Promise<Record<string, unknown> | null> {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(await fs.readFile(path.join(templateDir, PROJECT_TEMPLATE_MANIFEST), "utf-8"));
+    } catch {
+        return null;
+    }
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
+}
+
+/**
  * Read one template's manifest, or `null` if the directory is not a template.
  * A malformed manifest costs its own template, never the list.
  */
@@ -52,17 +116,10 @@ async function readManifest(templatesDir: string, id: string): Promise<ProjectTe
     if (!SAFE_TEMPLATE_ID.test(id)) {
         return null;
     }
-    const manifestPath = path.join(templatesDir, id, PROJECT_TEMPLATE_MANIFEST);
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(await fs.readFile(manifestPath, "utf-8"));
-    } catch {
+    const record = await readManifestRecord(path.join(templatesDir, id));
+    if (!record) {
         return null;
     }
-    if (!parsed || typeof parsed !== "object") {
-        return null;
-    }
-    const record = parsed as Record<string, unknown>;
     const name = asString(record.name);
     if (!name) {
         return null;
@@ -80,6 +137,7 @@ async function readManifest(templatesDir: string, id: string): Promise<ProjectTe
         }
     }
     const designSizes = asStageSizes(record.designSizes);
+    const contentLocales = Object.keys(asContentLocales(record.contentLocales)).sort();
     return {
         id,
         name,
@@ -88,6 +146,7 @@ async function readManifest(templatesDir: string, id: string): Promise<ProjectTe
         locales,
         designSize: asStageSize(record.designSize),
         designSizes: designSizes.length > 0 ? designSizes : undefined,
+        contentLocales: contentLocales.length > 0 ? contentLocales : undefined,
     };
 }
 
@@ -170,12 +229,18 @@ async function copyTree(sourceDir: string, targetDir: string, relativePath = "")
  * Runs after the generated skeleton and before version control is enabled, so the
  * first revision records the project the author actually received rather than an
  * empty one that grew content in its second commit.
+ *
+ * `locale` is the language the author said they are writing the story in. When the
+ * template ships its content in that language too, that copy goes on top of the base
+ * one - the project is then authored in it, rather than being the English project with
+ * a translation attached, which is a different thing to open on the first morning.
  */
 export async function scaffoldProjectFromTemplate(
     templatesDir: string,
     templateId: string,
     projectPath: string,
-): Promise<{ filesCopied: number; locales: string[] }> {
+    locale?: string,
+): Promise<{ filesCopied: number; locales: string[]; contentLocale?: string }> {
     if (!SAFE_TEMPLATE_ID.test(templateId)) {
         throw new Error(`Unsafe project template id: ${templateId}`);
     }
@@ -193,12 +258,60 @@ export async function scaffoldProjectFromTemplate(
         // produces the plain skeleton rather than failing the author's creation.
         return { filesCopied: 0, locales: [] };
     }
-    const filesCopied = await copyTree(resolvedContent, projectPath);
-    return { filesCopied, locales: await readScaffoldedLocales(resolvedContent) };
+    let filesCopied = await copyTree(resolvedContent, projectPath);
+    const contentLocale = await applyContentLocale(templateDir, projectPath, locale);
+    if (contentLocale) {
+        filesCopied += contentLocale.filesCopied;
+    }
+    return {
+        // Read from the project rather than from the template: after a variant has landed,
+        // the languages the author can reach are the files in front of them, and those are
+        // not the ones the base content shipped.
+        locales: await readScaffoldedLocales(projectPath),
+        filesCopied,
+        ...(contentLocale ? { contentLocale: contentLocale.code } : {}),
+    };
 }
 
 /**
- * The locale codes a template's content actually ships a translation file for.
+ * Lay the variant written in `locale` over the content already copied, if there is one.
+ *
+ * Copying a second tree rather than editing the first: what the variant replaces are
+ * whole authored documents (the story, the interface, the translations), and a file is
+ * the only form of them that this module can carry across without reading them.
+ */
+async function applyContentLocale(
+    templateDir: string,
+    projectPath: string,
+    locale: string | undefined,
+): Promise<{ code: string; filesCopied: number } | null> {
+    if (!locale) {
+        return null;
+    }
+    const declared = asContentLocales((await readManifestRecord(templateDir))?.contentLocales);
+    const code = pickTemplateContentLocale(locale, Object.keys(declared));
+    if (!code) {
+        return null;
+    }
+    const variantDir = path.resolve(templateDir, projectTemplateContentDirForLocale(code));
+    const stat = await fs.stat(variantDir).catch(() => null);
+    if (!stat?.isDirectory()) {
+        // Declared and missing: the author gets the base content, which is the whole
+        // project minus its language. Failing here would cost them the project instead.
+        return null;
+    }
+    const filesCopied = await copyTree(variantDir, projectPath);
+    for (const relative of declared[code].remove) {
+        const target = path.resolve(projectPath, relative);
+        if (target.startsWith(path.resolve(projectPath) + path.sep)) {
+            await fs.rm(target, { force: true });
+        }
+    }
+    return { code, filesCopied };
+}
+
+/**
+ * The locale codes the scaffolded project now has a translation file for.
  *
  * The registry of a project's languages lives in its `.nlproj`, which is generated per project
  * and never copied out of a template - so a template that ships `editor/localization/zh-CN.json`
@@ -208,10 +321,11 @@ export async function scaffoldProjectFromTemplate(
  *
  * Derived from the files rather than declared in the manifest, so the two cannot disagree: the
  * languages a template offers ARE the ones it has translations for, and adding a language to a
- * template is adding its file.
+ * template is adding its file. Read after every copy for the same reason - a content variant
+ * brings its own set, and the base's are not it.
  */
-async function readScaffoldedLocales(contentDir: string): Promise<string[]> {
-    const localizationDir = path.join(contentDir, ...TEMPLATE_LOCALIZATION_DIR);
+async function readScaffoldedLocales(projectPath: string): Promise<string[]> {
+    const localizationDir = path.join(projectPath, ...TEMPLATE_LOCALIZATION_DIR);
     const entries = await fs.readdir(localizationDir, { withFileTypes: true }).catch(() => null);
     if (!entries) {
         return [];

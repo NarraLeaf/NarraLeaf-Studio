@@ -6,20 +6,21 @@ import {
     editorSurfaceAlpha,
 } from "@/lib/settings/editorSurfaceOptions";
 import { TOOLTIP_DELAY_KEY } from "@/lib/settings/tooltipOptions";
+import { UI_FONT_FAMILY_KEY, UI_FONT_VAR, uiFontCssFamily } from "@/lib/settings/uiFontOptions";
 import { setTooltipDelay } from "@/lib/tooltip";
 import { WINDOW_ICON_DEFAULT, WINDOW_ICON_KEY, resolveWindowIcon, windowIconUrl } from "@shared/constants/windowIcon";
 
 /**
  * Apply the appearance preferences CSS cannot resolve on its own: `ui.accentColor`,
- * `ui.reduceMotion`, `editor.surfaceOpacity` and `ui.tooltipDelay`.
+ * `ui.fontFamily`, `ui.reduceMotion`, `editor.surfaceOpacity` and `ui.tooltipDelay`.
  *
  * Unlike the theme — which is pure CSS, because Electron's nativeTheme drives
- * `prefers-color-scheme` in every renderer — neither of these has a media query
- * the main process can point at, so both follow the same pattern as the zoom
+ * `prefers-color-scheme` in every renderer — none of these has a media query
+ * the main process can point at, so they all follow the same pattern as the zoom
  * and the locale: read the stored value before the first paint, then follow the
  * main process's global-state broadcast.
  *
- * Both land on the root element, and both are therefore Studio-only in practice:
+ * They all land on the root element, and are therefore Studio-only in practice:
  * this module is part of the Studio renderer bootstrap (lib/renderApp), which a
  * shipped game never runs. A game keeps the brand accent and its author's motion
  * whatever the person who built it prefers locally.
@@ -54,6 +55,19 @@ function applyAccentColor(value: unknown): void {
  */
 function applyEditorSurfaceOpacity(value: unknown): void {
     document.documentElement.style.setProperty(EDITOR_SURFACE_OPACITY_VAR, editorSurfaceAlpha(value));
+}
+
+/**
+ * Publish `ui.fontFamily` as the custom property the interface is set from.
+ *
+ * A variable rather than a `font-family` written straight onto the root element, because the one
+ * rule that reads it is guarded (`html.nl-studio` in styles.css). This bootstrap runs in the Dev
+ * Mode window too — which hosts the game in-document — and an inline declaration there would set
+ * the author's game in the author's editor font. Publishing a value nothing in that document reads
+ * costs nothing and keeps the "Studio chrome only" decision in the one place that already makes it.
+ */
+function applyUIFontFamily(value: unknown): void {
+    document.documentElement.style.setProperty(UI_FONT_VAR, uiFontCssFamily(value));
 }
 
 /**
@@ -149,8 +163,9 @@ export async function initAppearance(): Promise<void> {
     const state = getInterface().app.state;
 
     try {
-        const [accent, motion, surfaceOpacity, tooltipDelay, productIcon] = await Promise.all([
+        const [accent, uiFont, motion, surfaceOpacity, tooltipDelay, productIcon] = await Promise.all([
             state.getGlobalState("ui.accentColor"),
+            state.getGlobalState(UI_FONT_FAMILY_KEY),
             state.getGlobalState("ui.reduceMotion"),
             state.getGlobalState(EDITOR_SURFACE_OPACITY_KEY),
             state.getGlobalState(TOOLTIP_DELAY_KEY),
@@ -158,6 +173,9 @@ export async function initAppearance(): Promise<void> {
         ]);
         if (accent.success) {
             applyAccentColor(accent.data.value);
+        }
+        if (uiFont.success) {
+            applyUIFontFamily(uiFont.data.value);
         }
         if (motion.success) {
             applyReduceMotion(motion.data.value);
@@ -180,6 +198,8 @@ export async function initAppearance(): Promise<void> {
         state.onGlobalStateChanged?.((change) => {
             if (change.key === "ui.accentColor") {
                 applyAccentColor(change.value);
+            } else if (change.key === UI_FONT_FAMILY_KEY) {
+                applyUIFontFamily(change.value);
             } else if (change.key === "ui.reduceMotion") {
                 applyReduceMotion(change.value);
             } else if (change.key === EDITOR_SURFACE_OPACITY_KEY) {

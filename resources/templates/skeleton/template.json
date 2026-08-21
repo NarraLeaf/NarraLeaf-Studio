@@ -12,5 +12,12 @@
             "name": "スケルトン",
             "description": "三つのシーンと一度の選択、そしてタイトル・シーン選択・セーブ・ロード・設定・履歴の六画面。ブループリントはすべて接続済みです。"
         }
+    },
+    "contentLocales": {
+        "zh": {
+            "remove": [
+                "editor/localization/zh-CN.json"
+            ]
+        }
     }
 }

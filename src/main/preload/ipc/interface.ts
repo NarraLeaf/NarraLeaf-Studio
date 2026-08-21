@@ -793,8 +793,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     projectTemplates: {
         list: () =>
             ipcClient.invoke(IPCEventType.projectTemplateList, {}),
-        scaffold: (templateId: string, projectPath: string) =>
-            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath }),
+        scaffold: (templateId: string, projectPath: string, locale?: string) =>
+            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath, locale }),
     },
 
     assets: {

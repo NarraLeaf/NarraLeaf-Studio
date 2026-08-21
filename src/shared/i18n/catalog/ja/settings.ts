@@ -87,7 +87,6 @@ export const settings = {
         confirmQuit: {
             label: "⌘Q で終了するときに確認する",
             description: "⌘Q を続けて 2 回押すと終了する。1 回だけでは終了しない",
-            unsupportedPlatform: "この項目はこのオペレーティングシステムでは使用できない",
         },
         themeMode: {
             label: "テーマ",
@@ -117,6 +116,10 @@ export const settings = {
                 rose: "ローズ",
                 slate: "スレート",
             },
+        },
+        uiFontFamily: {
+            label: "インターフェイスのフォント",
+            description: "Studio の画面に使う書体。この端末に入っているフォントならどれでも選べる",
         },
         tooltipDelay: {
             label: "ヒントの遅延",
@@ -280,6 +283,11 @@ export const settings = {
         statusBarVisible: {
             label: "ステータスバーを表示",
             description: "ワークスペースの下端に並ぶ帯",
+        },
+        menuBarMode: {
+            label: "メインメニュー",
+            description: "タイトルバーでファイル・ヘルプ・各パネルのメニューを置く場所",
+            unsupportedPlatform: "macOS ではこれらのメニューはシステムメニューバーにあります",
         },
         titleBarSearchVisible: {
             label: "タイトルバーの検索欄を表示",

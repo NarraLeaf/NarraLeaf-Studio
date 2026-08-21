@@ -7,6 +7,7 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import type { StoryDocument } from "@shared/types/story";
 import { createStorySceneEditorTab } from "./openStorySceneEditorTab";
+import { nextStoryRevealToken } from "./storySceneEditorTabId";
 
 /**
  * "Open this row in Studio", from the Dev Mode error banner: opens the scene editor on the row that
@@ -20,6 +21,10 @@ import { createStorySceneEditorTab } from "./openStorySceneEditorTab";
  * The deep link is the scene editor's own `activeBlockId` — the same affordance search jumps ride,
  * so an error lands the author exactly where a search hit would, and re-opening an already-open tab
  * replaces its payload and re-fires the link.
+ *
+ * Each request carries its own `revealToken` because this is the one caller that asks for the same
+ * row twice: the play head sits on a line for as long as the author reads it, and "take me back to
+ * the line that is playing" has to work the second time it is asked.
  */
 export function DevModeStoryRowOpenBridge(): null {
     const { openEditorTab } = useRegistry();
@@ -43,7 +48,7 @@ export function DevModeStoryRowOpenBridge(): null {
             }
             openEditorTab(
                 createStorySceneEditorTab(
-                    { storyId, sceneId, activeBlockId: blockId },
+                    { storyId, sceneId, activeBlockId: blockId, revealToken: nextStoryRevealToken() },
                     getStorySceneName(document.scenes, sceneId),
                 ),
             );
