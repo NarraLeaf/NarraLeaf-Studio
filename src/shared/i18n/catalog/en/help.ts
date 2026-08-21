@@ -540,7 +540,9 @@ export const help = {
                 + "- Send uploads submitted versions to the server.\n"
                 + "- Get downloads the versions on the server and merges them into the local project.\n"
                 + "- When both sides have new versions, Get first and Send afterwards.\n"
-                + "- Checking the current state contacts the server.",
+                + "- Checking the current state contacts the server.\n"
+                + "- The server, and the account versions are recorded under, are set from NarraLeaf Team "
+                + "in the bottom-left corner of the window.",
         },
         versionViewing: {
             title: "Viewing an old version",

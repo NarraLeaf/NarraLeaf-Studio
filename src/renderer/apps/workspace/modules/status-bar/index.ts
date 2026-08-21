@@ -11,6 +11,7 @@ import {
     WordCountEntry,
     ZoomEntry,
 } from "./entries";
+import { TeamStatusEntry } from "../team";
 import {
     TextEncodingEntry,
     TextFileNameEntry,
@@ -40,6 +41,15 @@ export { useActiveRunMode } from "./useActiveRunMode";
  * See {@link orderStatusBarEntries}.
  */
 export const builtInStatusBarEntries: StatusBarEntryModule[] = [
+    {
+        // First, and therefore in the bottom-left corner. It is the only cell that names something
+        // off this machine, and it is the way to everything about that - which server, which
+        // account. The corner is where a reader looks for "where am I", and this is that answer.
+        id: "narraleaf-studio:status-bar/team",
+        labelKey: "workspace.shell.statusBar.entries.team",
+        alignment: StatusBarAlignment.Left,
+        component: TeamStatusEntry,
+    },
     {
         id: "narraleaf-studio:status-bar/run-status",
         labelKey: "workspace.shell.statusBar.entries.runStatus",

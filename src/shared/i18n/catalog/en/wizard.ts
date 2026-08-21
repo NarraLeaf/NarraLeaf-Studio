@@ -65,7 +65,7 @@ export const wizard = {
         },
         clone: {
             label: "Clone from a server",
-            description: "Copy a project on a version-control server",
+            description: "Copy a project held on a NarraLeaf Team server",
             next: "The next page asks for the project address and where to keep the local copy.",
         },
     },
@@ -86,7 +86,7 @@ export const wizard = {
         browseLocation: "Choose folder",
         validatingDirectory: "Checking the folder…",
         directoryWillBeCreated: "This folder is created together with the project",
-        versionControlLoreHint: "A version history is created inside the project folder, recording the project as its first version.",
+        versionControlLoreHint: "A version history is created inside the project folder, recording the project as its first version. The project can be sent to a Team server afterwards.",
         versionControlUnavailablePlatform: "Version control is not available on this machine. The project is created without it.",
         versionControlUnavailableInstallation: "Version control is not available in this Studio build. The project is created without it.",
         moreDetails: "More details",
