@@ -87,6 +87,11 @@ export function exportBlockPlainText(block: StoryBlock, characters: Character[],
     if (block.kind === "note") {
         return block.payload.text.value;
     }
+    if (block.kind === "empty") {
+        // A blank line copies as a blank line. Falling through would put the words "Blank line" into
+        // the author's clipboard, which is a description of the row rather than the row.
+        return "";
+    }
     return `[${getBlockBadgeInfo(block).label}] ${describeBlock(block, characters, undefined, scenes)}`;
 }
 

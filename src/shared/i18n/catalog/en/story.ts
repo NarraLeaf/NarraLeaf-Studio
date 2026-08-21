@@ -766,6 +766,7 @@ export const story = {
                 data: "Variables",
                 utils: "Other",
                 invalid: "Invalid rows",
+                empty: "Blank lines",
             },
         },
     },
@@ -1175,6 +1176,7 @@ export const story = {
         jump: "Jump",
         note: "Note",
         invalid: "Invalid",
+        empty: "Blank line",
     },
     emptyPlaceholder: {
         narration: "Double-click to enter narration",
@@ -1182,6 +1184,8 @@ export const story = {
         choice: "Double-click to enter choice prompt",
         note: "Double-click to enter a note",
         text: "Double-click to enter text",
+        /** A blank row. Shown on hover only, so the line reads blank until it is pointed at. */
+        blank: "Double-click to write here",
     },
     characterName: {
         unassigned: "Unassigned character",
@@ -1247,6 +1251,7 @@ export const story = {
         jump: "Jump {scene}",
         note: "Note",
         invalid: "Invalid command",
+        empty: "Blank line",
         sceneUnassigned: "unassigned",
         sceneUnknown: "unknown scene",
         variableFallback: "variable",
