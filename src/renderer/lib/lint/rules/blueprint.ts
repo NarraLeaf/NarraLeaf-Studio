@@ -170,8 +170,9 @@ function buildReferenceUniverse(ctx: LintContext): BlueprintReferenceUniverse {
         universe.scene = scenes;
         universe.choice = choices;
     }
-    if (ctx.localizationKeyNames) {
-        universe.textKey = ctx.localizationKeyNames;
+    if (ctx.localizationKeys) {
+        // Only the names here: this rule asks whether a key exists, never what it says.
+        universe.textKey = new Set(ctx.localizationKeys.keys());
     }
     return universe;
 }

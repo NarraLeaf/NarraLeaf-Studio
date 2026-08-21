@@ -62,15 +62,17 @@ export type FontCoverageFailureReason =
     /** WOFF or WOFF2, and the host did not supply the decompressor that container needs. */
     | "needs-decompressor"
     /**
-     * A TrueType/OpenType **collection**, which nothing in Studio can render.
+     * A format nothing can draw with - see `@shared/typography/fontFormats`.
      *
-     * Parsing one is easy and the answer would be worthless: `FontFace` takes one file to mean one
-     * typeface and rejects a collection, so a `.ttc` on the project's stack draws nothing at all.
-     * Reporting coverage for it would be the one lie this module must not tell - it would let
-     * `typography` lint certify text that renders as boxes. Import refuses these
-     * (`FileFormatValidator`); this arm is what a library that took one in before that did answers.
+     * This module raises it for a **collection**, which it can parse perfectly and whose answer
+     * would be worthless: `FontFace` takes one file to mean one typeface and rejects a collection,
+     * so a `.ttc` on the project's stack draws nothing at all. Reporting coverage for it would be
+     * the one lie this module must not tell - it would let `typography` lint certify text that
+     * renders as boxes. The lint's own probe raises it for the rest of that table, by extension,
+     * without reading any bytes. Import refuses all of them; these arms are what a library that took
+     * one in beforehand answers.
      */
-    | "unloadable-container";
+    | "unrenderable";
 
 export type FontCoverageResult =
     | { ok: true; coverage: FontCoverage }
@@ -182,7 +184,7 @@ function openFont(bytes: Uint8Array, decompress: FontDecompressors): OpenResult 
         return openWoff2(bytes, decompress);
     }
     if (tag === "ttcf") {
-        return { ok: false, reason: "unloadable-container" };
+        return { ok: false, reason: "unrenderable" };
     }
     if (tag === "OTTO" || tag === "true" || tag === "typ1" || (bytes.length >= 4 && u32(bytes, 0) === 0x00010000)) {
         return openSfnt(bytes, 0);
@@ -290,7 +292,7 @@ function openWoff2(bytes: Uint8Array, decompress: FontDecompressors): OpenResult
     // Wrapping a collection in WOFF2 does not make it loadable; refused before the stream is even
     // decompressed, for the reason a bare `ttcf` is.
     if (ascii(bytes, 4, 4) === "ttcf") {
-        return { ok: false, reason: "unloadable-container" };
+        return { ok: false, reason: "unrenderable" };
     }
     const numTables = u16(bytes, 12);
     const totalCompressedSize = u32(bytes, 20);

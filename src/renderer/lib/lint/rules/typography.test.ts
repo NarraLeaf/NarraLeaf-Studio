@@ -29,8 +29,8 @@ function runRule(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
 }
 
 /** A library entry, so a message about a font can name it. */
-function fontAsset(id: string, name: string): LintAssetEntry {
-    return { id, type: AssetType.Font, name, ext: "ttf", meta: {}, tags: [] };
+function fontAsset(id: string, name: string, ext = "ttf"): LintAssetEntry {
+    return { id, type: AssetType.Font, name, ext, meta: {}, tags: [] };
 }
 
 /** A font that draws exactly these code points and nothing else. */
@@ -42,11 +42,17 @@ function drawing(...codePoints: number[]): FontCoverage {
 const LATIN = drawing(...Array.from({ length: 0x5f }, (_, i) => 0x20 + i));
 const KANA = drawing(0x3053, 0x3093, 0x306b, 0x3061, 0x306f);
 
-/** A context whose one scene holds one spoken line. */
+/**
+ * A context whose one scene holds one spoken line.
+ *
+ * The scene is left unnamed on purpose: a scene's name is part of the corpus now, and a named one
+ * would put its own letters into every case below - which is a real finding but not the one each of
+ * these is about. The two cases that *are* about scene names name theirs.
+ */
 function contextSaying(text: string, overrides: Partial<LintContext> = {}): LintContext {
     return createTestLintContext({
         stories: [storyEntryOf("s1", "Story", [
-            sceneOf("sc1", "Scene", [dialogueBlock("b1", textSegment("t1", text, "dialogue"))]),
+            sceneOf("sc1", "", [dialogueBlock("b1", textSegment("t1", text, "dialogue"))]),
         ])],
         ...overrides,
     });
@@ -63,7 +69,7 @@ function ioWith(
                 return { ok: false, reason: "malformed" };
             }
             if (found === "collection") {
-                return { ok: false, reason: "unloadable-container" };
+                return { ok: false, reason: "unrenderable" };
             }
             return found
                 ? { ok: true, coverage: found }
@@ -112,7 +118,7 @@ describe("typography/glyph-coverage", () => {
         setActiveProjectFonts([{ assetId: "latin" }]);
         const ctx = createTestLintContext({
             stories: [storyEntryOf("s1", "Story", [
-                sceneOf("sc1", "Scene", [
+                sceneOf("sc1", "", [
                     dialogueBlock("b1", textSegment("t1", "こ", "dialogue")),
                     dialogueBlock("b2", textSegment("t2", "こ", "dialogue")),
                 ]),
@@ -174,10 +180,10 @@ describe("typography/glyph-coverage", () => {
      * the useful sentence is that the file cannot be used - said once - and the rest of the check is
      * more accurate without it rather than untrustworthy.
      */
-    it("reports a font collection once and keeps checking without it", async () => {
+    it("reports a font in a format nothing can draw with, once, and keeps checking", async () => {
         setActiveProjectFonts([{ assetId: "collection" }, { assetId: "latin" }]);
         const ctx = contextSaying("Hi こ", {
-            assets: [fontAsset("collection", "MS Gothic.ttc")],
+            assets: [fontAsset("collection", "MS Gothic.ttc", "ttc")],
             io: ioWith({ collection: "collection", latin: LATIN }) as LintContext["io"],
         });
 
@@ -187,7 +193,7 @@ describe("typography/glyph-coverage", () => {
         expect(findings[0]).toEqual({
             ruleId: "typography/glyph-coverage",
             messageKey: "lint.rule.typographyGlyphCoverage.messageUnloadable",
-            messageParams: { font: "MS Gothic.ttc" },
+            messageParams: { font: "MS Gothic.ttc", format: "ttc" },
             location: { kind: "project" },
         });
         // The Latin face still answers for the rest, so the kana is still reported.
@@ -206,6 +212,58 @@ describe("typography/glyph-coverage", () => {
             messageKey: "lint.rule.typographyGlyphCoverage.messageMore",
             messageParams: { count: 5 },
         });
+    });
+});
+
+describe("typography/glyph-coverage / the whole corpus", () => {
+    /**
+     * A scene's name reaches a player through `scene:` references - a save slot's caption, a chapter
+     * list - so it is text the fonts have to draw, not editor chrome.
+     */
+    it("checks a scene's name, and sends the finding to the scene", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const ctx = createTestLintContext({
+            stories: [storyEntryOf("s1", "Story", [sceneOf("sc1", "こ", [])])],
+            io: ioWith({ latin: LATIN }) as LintContext["io"],
+        });
+
+        const findings = await runRule("typography/glyph-coverage", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0]!.messageParams).toMatchObject({ character: "こ" });
+        expect(findings[0]!.target).toEqual({
+            kind: "storyScene", storyId: "s1", storyName: "Story", sceneId: "sc1", sceneName: "こ",
+        });
+    });
+
+    /**
+     * The interface's own words - Save, Load, Continue. Left out of the first cut of this rule, and
+     * a real project showed the cost: six keys carrying nine characters that appeared nowhere else,
+     * so a font that could not draw them shipped a menu of boxes with nothing reported.
+     */
+    it("checks the named keys, and jumps to the key", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const ctx = createTestLintContext({
+            localizationKeys: new Map([["save", "保"], ["blank", "   "]]),
+            io: ioWith({ latin: LATIN }) as LintContext["io"],
+        });
+
+        const findings = await runRule("typography/glyph-coverage", ctx);
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0]!.messageParams).toMatchObject({ character: "保" });
+        // Filed under the project - a key belongs to no scene - but it still leads somewhere.
+        expect(findings[0]!.location).toEqual({ kind: "project" });
+        expect(findings[0]!.target).toEqual({ kind: "localizationKey", keyName: "save" });
+    });
+
+    it("says nothing about keys the project has not loaded yet", async () => {
+        setActiveProjectFonts([{ assetId: "latin" }]);
+        const ctx = createTestLintContext({
+            localizationKeys: null,
+            io: ioWith({ latin: LATIN }) as LintContext["io"],
+        });
+        expect(await runRule("typography/glyph-coverage", ctx)).toEqual([]);
     });
 });
 
