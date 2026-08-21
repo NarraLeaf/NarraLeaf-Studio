@@ -88,6 +88,7 @@ export const HELP_TOPIC_IDS = [
     "assetProtection",
     "networkAllowlist",
     "webOptimization",
+    "screenEffects",
     "plugins",
 ] as const;
 
@@ -441,6 +442,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "webOptimization",
         section: "ship",
         related: ["build", "assets"],
+    },
+    // Filed with shipping rather than with the story commands it is set for: what an author decides
+    // here is what the package carries and what a build spends making it, which is the question the
+    // topic above answers for images.
+    {
+        id: "screenEffects",
+        section: "ship",
+        related: ["build", "webOptimization", "storyCommands"],
     },
     {
         id: "plugins",

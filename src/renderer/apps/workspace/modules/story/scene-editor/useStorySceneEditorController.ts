@@ -36,6 +36,7 @@ import { createBlockForCommand, type ActionCommandId } from "./storyActionComman
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { buildStoryCommandContext } from "./storyCommandContext";
+import { useContentStable, useDocumentStableForRows } from "./storyRowIdentity";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
 import { getCommandSpec } from "./commands/registry";
@@ -472,7 +473,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * document rather than stored, so one goes away exactly when its last line does - and so a name
      * used earlier in the story is findable later without anyone maintaining a registry.
      */
-    const tempSpeakers = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
+    const tempSpeakersProjection = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
+    // Rebuilt per document change, changed far more rarely than that - and a prop on every row.
+    const tempSpeakers = useContentStable(tempSpeakersProjection);
     const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterRevision, characterService]);
     /**
      * The cast as a membership test, which is what tells a working `characterId` from one that names
@@ -548,6 +551,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }),
         [appTags, assetLibraryRevision, assetSetService, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
+    /**
+     * The same context, at the identity it had while it still names the same things.
+     *
+     * It is rebuilt on every document change because it is derived from the document, and it is a prop
+     * on every row — so without this, writing a line of prose re-rendered the whole visible window to
+     * hand each row a table that had not changed. See `storyRowIdentity`.
+     */
+    const stableCommandContext = useContentStable(commandContext);
+    /**
+     * The document wrapper the ROWS get: the live one, held at one identity for as long as everything
+     * a row reads out of it still says the same. The command context is that list — scene names,
+     * variables, choice options, stage objects — so it doubles as the signature.
+     */
+    const documentForRows = useDocumentStableForRows(document, stableCommandContext);
     // Each dialogue speaker's accumulated appearance, so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
     const dialogueAppearances = useMemo(() => (scene ? buildDialogueAppearances(scene) : null), [document, scene]);
@@ -3016,9 +3033,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [recordHistory, scene, sceneId, storyId, storyService]);
 
     return {
-        context, isInitialized, document, scene, loading,
+        context, isInitialized, document, documentForRows, scene, loading,
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused, selectionRevision,
-        characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
+        characters, commandContext: stableCommandContext, visibleRows, shouldRenderActiveInsertSlot,
         density, setDensity, rowFilter, setRowFilter, rowFilterTallies,
         // How many rows the page would hold with the filter off. The one thing that tells an empty
         // editor apart from an entirely filtered-out one, which read identically before.

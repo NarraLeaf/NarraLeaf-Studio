@@ -10,6 +10,7 @@ import type { AutoSaveConfiguration } from "./saves";
 import type { SaveCompatibilityConfiguration } from "./saveCompatibility";
 import type { SaveSchemaRuntimeTable } from "./saveSchema";
 import type { GameVoiceBundle } from "./voice";
+import type { VfxConfiguration } from "./vfx";
 import type { GameAudioBundle } from "./audio";
 import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
@@ -360,6 +361,18 @@ export type DevModeBundle = {
      * predate the section, which every consumer reads as the engine's own values.
      */
     dialogue?: DialogueConfiguration;
+    /**
+     * The frame rate this project's screen effects are baked at, from `.nlproj` `app.vfx`.
+     *
+     * Carried by the bundle because the game is what asks for a clip: a `/vfx snow` row is compiled
+     * inside the running game, and the id it computes has to be the id the build put in the package.
+     * The rate is half of that id (see `weatherBakeDescriptor`), so a bundle without it is a game
+     * that asks for a file its own build never made.
+     *
+     * Absent on bundles that predate the setting, which every consumer reads as 30 - the rate those
+     * builds were baked at, so an old bundle and a project that never opened the page agree.
+     */
+    vfx?: VfxConfiguration;
     /**
      * The author's own version for this build, copied from `.nlproj` `metadata.version`.
      *

@@ -2,11 +2,11 @@ import { useEffect, useRef } from "react";
 import { buildWeatherField, createWeatherRenderer } from "@shared/weather/field";
 import {
     resolveWeatherParams,
-    WEATHER_FPS,
     WEATHER_LOOP_SECONDS,
     type WeatherParamKey,
     type WeatherSeedId,
 } from "@shared/weather/model";
+import { useProjectVfxFrameRate } from "@/lib/workspace/hooks/useProjectVfxFrameRate";
 
 /**
  * The size of the window this preview is, in the finished picture's own pixels.
@@ -40,6 +40,14 @@ const PREVIEW_HEIGHT = 180;
  * the right thing to leave out: the blur is what makes the encoded file smaller and smoother, and it
  * is not a parameter anybody is here to tune.
  *
+ * ## Why it steps rather than sweeps
+ *
+ * The frame rate is the project's (Project -> App), and it is the one screen-effect value with
+ * nothing on the panel to read it off. So the loop advances on the clip's own frame grid instead of
+ * on the display's: at 30 the preview holds each picture for a thirtieth of a second exactly as the
+ * file will, and raising the rate is visible here rather than only after a run. Sweeping smoothly
+ * would show a motion the clip cannot produce, which is the one way this preview could mislead.
+ *
  * ## Why it draws on black rather than over the scene
  *
  * The clip is light on black and reaches the stage through `screen`, which drops the black. Showing
@@ -56,6 +64,9 @@ export function WeatherSeedPreview(props: {
     // on every keystroke, and restarting the loop for each one would drop the animation to a stutter.
     const resolved = resolveWeatherParams({ seed: props.seed, ...(props.params ? { params: props.params } : {}) });
     const paramsKey = JSON.stringify(resolved);
+    // The project's, and subscribed: an author can have this panel and Project -> App open together,
+    // so the rate can move while the preview is running.
+    const fps = useProjectVfxFrameRate();
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -65,7 +76,7 @@ export function WeatherSeedPreview(props: {
         }
 
         const field = buildWeatherField(props.seed, JSON.parse(paramsKey), PREVIEW_WIDTH, PREVIEW_HEIGHT);
-        const frames = WEATHER_LOOP_SECONDS * WEATHER_FPS;
+        const frames = WEATHER_LOOP_SECONDS * fps;
         const renderer = createWeatherRenderer(field, PREVIEW_WIDTH, PREVIEW_HEIGHT, { frames, subSteps: 1 });
         // The canvas's own buffer, filled from the renderer's each frame. Wrapping the renderer's
         // array directly would be one copy cheaper and is not worth the cast it needs: the renderer
@@ -76,6 +87,8 @@ export function WeatherSeedPreview(props: {
         let handle = 0;
         let running = false;
         let start = 0;
+        /** Which of the clip's frames the canvas is currently showing; -1 is "nothing drawn yet". */
+        let shown = -1;
 
         const draw = (now: number) => {
             if (!running) {
@@ -84,17 +97,26 @@ export function WeatherSeedPreview(props: {
             if (start === 0) {
                 start = now;
             }
-            // The clip's own loop, so the speed on screen is the speed on stage.
-            const phase = ((now - start) / (WEATHER_LOOP_SECONDS * 1000)) % 1;
-            renderer.render(phase);
-            image.data.set(renderer.frame);
-            context.putImageData(image, 0, 0);
+            // The clip's own loop and the clip's own frames, so both the speed and the smoothness on
+            // screen are what will be on stage. The display is polled at its own rate and the field
+            // is integrated only when the clip would have a new picture - a 30fps effect on a 165Hz
+            // panel is then a fifth of the work, not five renders of the same frame.
+            const index = Math.floor(((now - start) / 1000) * fps) % frames;
+            if (index !== shown) {
+                shown = index;
+                renderer.render(index / frames);
+                image.data.set(renderer.frame);
+                context.putImageData(image, 0, 0);
+            }
             handle = requestAnimationFrame(draw);
         };
 
         const stop = () => {
             running = false;
             start = 0;
+            // The loop restarts from the top, so frame 0 has to be drawn again rather than skipped
+            // as "already showing".
+            shown = -1;
             if (handle !== 0) {
                 cancelAnimationFrame(handle);
                 handle = 0;
@@ -135,7 +157,9 @@ export function WeatherSeedPreview(props: {
             document.removeEventListener("visibilitychange", onVisibility);
             stop();
         };
-    }, [props.seed, paramsKey]);
+        // `fps` restarts the loop, unlike the parameters above: it is the renderer's frame count, so a
+        // change to it is a different renderer. It moves once per deliberate act, never per keystroke.
+    }, [props.seed, paramsKey, fps]);
 
     return (
         <canvas
