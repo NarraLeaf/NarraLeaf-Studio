@@ -740,8 +740,9 @@ export class VersionControlService extends Service<VersionControlService> implem
      * Who this installation is signed in to this project's server as, or null.
      *
      * A LOCAL read, like {@link getRemote}: nothing is contacted, so the panel may ask it
-     * on open. Null on a bare server, which asks nobody who they are and needs no
-     * sign-in at all.
+     * on open. Null for a server this installation has no account on - a project copied
+     * from somebody else, or one whose server was signed out of - which is a state the
+     * Team panel names and offers the way out of.
      */
     public async getServerSession(): Promise<VcsServerSession | null> {
         if (!(await this.isAvailable())) return null;

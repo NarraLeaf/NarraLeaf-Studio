@@ -404,9 +404,10 @@ export const settings = {
         // stranger which usernames exist.
         signInRefused: "The server did not accept that username and password.",
         signInUnavailable: "This installation cannot sign in with a password.",
-        // A server with nothing to sign in to. Said rather than hidden, because the
-        // absence of an entry afterwards is otherwise indistinguishable from a failure.
-        noAccount: "{name} does not require authentication, so there is nothing to add.",
+        // The server answered but issues no accounts, and an account is what Studio stores.
+        // Said rather than hidden: the absence of an entry afterwards is otherwise
+        // indistinguishable from a failure.
+        noAccount: "{name} issues no accounts, so it cannot be added. Ask its administrator for one.",
         // The closing step. Facts about what was joined and nothing else: no
         // congratulation, and no count for a server that would not give one.
         joined: {

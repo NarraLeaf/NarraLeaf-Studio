@@ -41,6 +41,9 @@ vi.mock("@/lib/app/bridge", () => ({
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
             listServerProjects: bridge.listServerProjects,
+            // Reached only once the add row is pressed; a stub keeps the mount honest.
+            probeServer: () => Promise.resolve({ success: false }),
+            addServer: () => Promise.resolve({ success: false }),
         },
         app: { launchSettings: bridge.launchSettings },
     }),
@@ -76,9 +79,10 @@ function panel(overrides: Partial<VersionSurface> = {}) {
         remote: `${ONE}/my-game`,
         remoteNeedsSignIn: false,
         repositoryId: "abc",
+        // Signed in, which is the ordinary state: an account is what makes a server usable at
+        // all now, and the cases without one are their own below.
+        serverSession: session("ada", "Blackwood Studio"),
         syncState: null,
-        serverSession: null,
-        signIn: null,
         checkRemote: vi.fn(),
         setRemote: vi.fn(() => Promise.resolve(true)),
         publish: vi.fn(() => Promise.resolve(true)),
@@ -120,7 +124,7 @@ describe("what the Team panel holds", () => {
     });
 
     it("offers connecting, and nothing about a server, for a project on none", () => {
-        panel({ remote: null });
+        panel({ remote: null, serverSession: null });
 
         // Checking and disconnecting are acts on a destination that does not exist yet. Drawn
         // disabled they would be two controls for leaving a state nobody has entered.
@@ -131,14 +135,14 @@ describe("what the Team panel holds", () => {
     });
 
     it("names the server, with the address under it rather than instead of it", () => {
-        panel({ serverSession: session("ada", "Blackwood Studio") });
+        panel();
 
         expect(seam("server-name")?.textContent).toBe("Blackwood Studio");
         expect(seam("destination")?.textContent).toContain(`${ONE}/my-game`);
     });
 
     it("falls back to the address for a server that gave no name", () => {
-        panel();
+        panel({ serverSession: null });
 
         expect(seam("server-name")?.textContent).toBe("one.example.lan:41337");
     });
@@ -204,7 +208,7 @@ describe("what the Team panel holds", () => {
  */
 describe("the account the Team panel names", () => {
     it("states the account a session signs versions with, and offers leaving it", () => {
-        const { surface } = panel({ serverSession: session("ada", "Blackwood Studio") });
+        const { surface } = panel();
 
         expect(seam("account")?.textContent)
             .toContain("workspace.shell.versionControl.server.signIn.signedInAs");
@@ -223,25 +227,26 @@ describe("the account the Team panel names", () => {
         expect(field?.value).toBe("Ada Blackwood");
     });
 
-    it("offers the token form for a server nobody is signed in to", () => {
+    it("says so where this machine has no account on the project's server, and offers one", () => {
         panel({ serverSession: null });
 
-        // Behind a press rather than in front of one: most servers ask nobody who they are, and
-        // a token box drawn for every project is a mandatory-looking field most authors never
-        // need to answer.
-        expect(document.querySelector("[data-vcs-seam='sign-in-form']")).toBeNull();
-        fireEvent.click([...document.querySelectorAll<HTMLElement>("button")]
-            .find(node => node.textContent === "workspace.shell.versionControl.server.signIn.open")!);
+        // A pasted token used to be the answer here. It cannot say what the server is called,
+        // what it can do or where its data remote lives - all of which come from the
+        // `nlteam://` endpoint - so the row runs the same add sequence Settings runs.
+        expect(seam("needs-account")?.textContent).toBe("workspace.shell.team.noAccountHere");
+        expect(document.querySelector("[data-servers-seam='wizard-step-1']")).toBeNull();
 
-        expect(document.querySelector("[data-vcs-seam='sign-in-form']")).not.toBeNull();
+        fireEvent.click(action("workspace.shell.versionControl.server.picker.add"));
+
+        expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull();
     });
 
-    it("offers it too where a connect was refused for want of one, which has no other way out", () => {
-        // Nothing was written, so there is no server line to hang a sign-in beside - which is the
-        // state this case exists for. The refusal is said, and the form is under it.
-        panel({ remote: null, remoteNeedsSignIn: true });
+    it("says it too where a connect was refused for want of one, which has no other way out", () => {
+        // Nothing was written, so there is no server line to hang the offer beside - which is the
+        // state this case exists for.
+        panel({ remote: null, serverSession: null, remoteNeedsSignIn: true });
 
-        expect(seam("account")?.textContent)
-            .toContain("workspace.shell.versionControl.server.signIn.required");
+        expect(seam("needs-account")?.textContent).toBe("workspace.shell.team.noAccountHere");
+        expect(action("workspace.shell.versionControl.server.picker.add")).toBeTruthy();
     });
 });

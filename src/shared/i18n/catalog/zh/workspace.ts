@@ -302,6 +302,8 @@ export const workspace = {
             open: "打开 NarraLeaf Team",
         },
         destination: "服务器",
+        projectOnServer: "项目名：{name}",
+        noAccountHere: "本机在这台服务器上没有账号",
         // 打开设置。添加服务器与退出登录都在那里。
         manage: "管理服务器…",
     },
@@ -757,12 +759,10 @@ export const workspace = {
                     empty: "尚未添加服务器",
                     // 列表的最后一行。省略号是「会打开别处」的既有写法：它打开设置并关闭本对话框。
                     add: "添加服务器…",
-                    manual: "其他地址",
+                    unknownServer: "该项目使用 {host}，这台服务器还没有添加到本机",
                 },
                 // 只有这一个字段。实测：后端只保留 URL 的**源**，仓库靠它自己的 id 认，
                 // 所以真的没有第二样东西要填——旁边不需要「仓库名」。
-                addressLabel: "服务器地址",
-                addressPlaceholder: "lore://studio.example.lan:41337",
                 save: "连接",
                 cancel: "取消",
                 disconnect: "断开连接",
@@ -811,48 +811,10 @@ export const workspace = {
                     unknown: "这台服务器没有登记该项目。",
                 },
                 signIn: {
-                    required: "连接项目前需要先登录该服务器。",
-                    open: "登录此服务器",
+                    // 项目指向的服务器在本机没有账号时出现。
+                    required: "连接项目到这台服务器需要先在本机添加账号。",
                     signedInAs: "已登录为 {name}",
                     signOut: "退出登录",
-                    addressLabel: "登录地址",
-                    addressPlaceholder: "https://studio.example.lan:41402",
-                    tokenLabel: "访问令牌",
-                    tokenPlaceholder: "粘贴令牌",
-                    hint: "令牌由服务器的管理者签发。",
-                    trust: {
-                        open: "在这台电脑上信任该服务器",
-                        title: "信任该服务器？",
-                        vouched: "粘贴的令牌指向该证书颁发机构，在该地址上应答的正是它。",
-                        compare: "请通过该连接以外的途径，与服务器管理员提供的指纹核对。",
-                        authorityLabel: "颁发者",
-                        fingerprintLabel: "指纹",
-                        meaning: "持有该机构密钥的任何一方，都能为任意地址签发证书，而本账户会接受它。受影响的只有本机上的该账户。",
-                        manual: "该系统没有按账户的信任库。请运行以下命令，然后重新登录：",
-                        copy: "复制命令",
-                        confirm: "信任",
-                        cancel: "取消",
-                    },
-                    submit: "登录",
-                    cancel: "取消",
-                    reach: {
-                        ready: "此服务器与这份 Studio 可以协同工作。",
-                        notPermitted: "已登录，但该账号尚未获得此项目的访问权。请向服务器管理员申请。",
-                        dataPortSilent: "已登录，但服务器本身没有响应。",
-                    },
-                    problem: {
-                        scheme: "登录地址必须以 https:// 或 ucs-auth:// 开头。",
-                        token: "该令牌不是此服务器签发的。请粘贴完整的令牌。",
-                        address: "该令牌未写明登录地址，因此仍需填写地址。",
-                        certificate:
-                            "这台电脑不信任此服务器所用的证书颁发机构。它的指纹是 {fingerprint}。",
-                        mismatch:
-                            "该地址上的服务器不是此令牌对应的服务器。令牌指向 {expected}，"
-                            + "应答的是 {found}。请勿信任，并向服务器管理员核实。",
-                        unreachable: "该地址没有任何响应（{detail}）。",
-                        refused: "服务器不接受该令牌（{detail}）。",
-                        unknown: "登录未能完成（{detail}）。",
-                    },
                 },
             },
             // 同步时合不拢的文件。用常驻通知而不是行内错误：同步在收尾时会离开版本视图，
