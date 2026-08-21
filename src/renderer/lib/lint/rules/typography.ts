@@ -33,7 +33,8 @@ import { listLiveTextSegments, storyBlockTarget, storyLocation } from "./text/te
  *   the feature from lighting up.
  * - **A rung whose bytes could not be read.** The character might be in exactly that font. Reported
  *   rather than passed over, because a check that quietly did not run reads on screen as a check
- *   that passed.
+ *   that passed. A **collection** is not this case: it parses, and it is known to render nothing, so
+ *   it is reported once and the check goes on without it.
  * - **A language every rung was restricted away from.** Same argument one language down, and
  *   `typography/locale-no-font` is what says it - once, rather than once per character in the
  *   script.
@@ -250,28 +251,39 @@ type MissingCharacter = {
 };
 
 /**
- * Coverage for every rung a language's sites can reach, and the rungs that could not be read.
+ * Coverage for every rung a language's sites can reach, and the two ways a rung can fail to have any.
  *
  * One probe per asset per sweep, not per site: a scene has a thousand lines and they are all set in
  * the same two fonts.
+ *
+ * The two failures are kept apart because they point opposite ways:
+ *
+ * - **`unreadable`** - the bytes would not parse. The character might be in exactly that font, so
+ *   nothing computed without it can be trusted and the sweep stops.
+ * - **`unloadable`** - a font collection, which parses fine and which `FontFace` will not take. Here
+ *   "draws nothing" is not an unknown, it is the answer; the rest of the check is *more* accurate
+ *   without it, so it contributes no coverage and the sweep goes on.
  */
 async function readStacks(
     ctx: LintContext,
     ids: Iterable<string>,
-): Promise<{ coverage: Map<string, FontCoverage>; unreadable: string[] }> {
+): Promise<{ coverage: Map<string, FontCoverage>; unreadable: string[]; unloadable: string[] }> {
     const coverage = new Map<string, FontCoverage>();
     const unreadable: string[] = [];
+    const unloadable: string[] = [];
     for (const id of ids) {
         const result = await ctx.io.probeFontCoverage(id);
         if (result.ok) {
             coverage.set(id, result.coverage);
+        } else if (result.reason === "unloadable-container") {
+            unloadable.push(id);
         } else if (result.reason !== "not-a-font") {
             // `not-a-font` is what a built-in system stack and a deleted asset both answer, and
             // neither is a font that failed to be read - see the note at the top of this file.
             unreadable.push(id);
         }
     }
-    return { coverage, unreadable };
+    return { coverage, unreadable, unloadable };
 }
 
 /**
@@ -338,6 +350,18 @@ export function findMissingCharacters(input: {
     return [...found.values()].sort((a, b) => a.codePoint - b.codePoint);
 }
 
+/**
+ * What to call a font in a message.
+ *
+ * The library's name, never the asset id. Both of these findings are filed under the project, so the
+ * locator column beside them prints nothing and this string is the only thing that says *which* font
+ * - and a uuid says nothing an author can act on. Falls back to the id only for a rung whose asset
+ * has left the library, which `assets/missing` is already reporting by name.
+ */
+function fontName(ctx: LintContext, assetId: string): string {
+    return ctx.assets.find(asset => asset.id === assetId)?.name ?? assetId;
+}
+
 async function runGlyphCoverage(
     ctx: LintContext,
     entries: readonly ProjectFontEntry[],
@@ -362,11 +386,23 @@ async function runGlyphCoverage(
             referenced.add(site.fontAssetId);
         }
     }
-    const { coverage, unreadable } = await readStacks(ctx, referenced);
+    const { coverage, unreadable, unloadable } = await readStacks(ctx, referenced);
 
     const maxCharacters = Math.max(1, Number(options.maxCharacters) || 20);
     const findings: LintFinding[] = [];
     const named = Boolean(ctx.localization);
+
+    // A font that renders nothing at all, said once. Not folded into the per-character findings
+    // below, which it would otherwise turn into every character of the script: the single useful
+    // sentence about a collection is that the file cannot be used, not that it is missing an "a".
+    for (const assetId of unloadable) {
+        findings.push({
+            ruleId: "typography/glyph-coverage" as const,
+            messageKey: "lint.rule.typographyGlyphCoverage.messageUnloadable" as TranslationKey,
+            messageParams: { font: fontName(ctx, assetId) },
+            location: { kind: "project" as const },
+        });
+    }
 
     if (unreadable.length > 0) {
         // Said out loud rather than passed over: a font whose bytes would not parse might be exactly
@@ -376,7 +412,7 @@ async function runGlyphCoverage(
             findings.push({
                 ruleId: "typography/glyph-coverage" as const,
                 messageKey: "lint.rule.typographyGlyphCoverage.messageUnreadable" as TranslationKey,
-                messageParams: { font: assetId },
+                messageParams: { font: fontName(ctx, assetId) },
                 location: { kind: "project" as const },
             });
         }

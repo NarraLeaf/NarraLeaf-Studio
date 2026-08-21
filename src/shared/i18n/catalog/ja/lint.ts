@@ -332,6 +332,7 @@ export const lint = {
             messageMore: "他に {count} 文字、プロジェクトのフォントに無い",
             messageMoreInLanguage: "{language}で他に {count} 文字、プロジェクトのフォントに無い",
             messageUnreadable: "{font} を読み取れないため、グリフ確認を行わなかった",
+            messageUnloadable: "{font} は複数の書体を 1 ファイルに収めたもので、ゲームでは使えない",
         },
         typographyLocaleNoFont: {
             title: "フォントの無い言語",

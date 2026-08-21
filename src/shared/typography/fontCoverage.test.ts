@@ -271,10 +271,26 @@ describe("readFontCoverage / containers", () => {
         expect(result.ok && result.coverage.codePages).toEqual([932]);
     });
 
-    it("reads the first face of a collection", () => {
+    /**
+     * Not "cannot parse" - the bytes below are a perfectly good collection and reading the first
+     * face would be a few lines. It is refused because nothing downstream can render one, and a
+     * coverage answer for a font that draws nothing is what would let lint certify tofu.
+     */
+    it("refuses a collection rather than describing a face nothing can load", () => {
         const header = [...tag("ttcf"), ...u32(0x00010000), ...u32(1), ...u32(16)];
         const inner = sfnt([{ name: "cmap", data: cmapFormat4([{ start: 0x61, end: 0x7a, delta: 1 }]) }], 16);
-        expect(coverageOf(new Uint8Array([...header, ...inner])).ranges).toEqual([[0x61, 0x7a]]);
+        expect(readFontCoverage(new Uint8Array([...header, ...inner]))).toEqual({
+            ok: false,
+            reason: "unloadable-container",
+        });
+    });
+
+    it("refuses a collection wrapped in WOFF2, before decompressing anything", () => {
+        const woff2 = new Uint8Array(48);
+        woff2.set(tag("wOF2"), 0);
+        woff2.set(tag("ttcf"), 4);
+        expect(readFontCoverage(woff2, { brotli: () => { throw new Error("must not be reached"); } }))
+            .toEqual({ ok: false, reason: "unloadable-container" });
     });
 });
 
