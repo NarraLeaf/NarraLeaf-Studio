@@ -101,6 +101,13 @@ type GameTestSession = {
     /** Killed synchronously by {@link GameTestManager.stop}, so a stop lands during a compile. */
     compileWorker: UtilityProcess | null;
     /**
+     * Lets go of the weather bake this compile is sitting in, if it is.
+     *
+     * Separate from the worker above because it covers the window before that worker exists: the
+     * clips are produced first, and a cancel arriving then used to reach nothing at all.
+     */
+    abandonWeatherBake: (() => void) | null;
+    /**
      * The host asked for this to end - an explicit stop, or the run being cancelled. The single most
      * important bit on this record: it is what separates `stopped-by-host` from `crashed`, and main
      * is the only place that knows it.
@@ -289,6 +296,7 @@ export class GameTestManager {
             process: null,
             control: null,
             compileWorker: null,
+            abandonWeatherBake: null,
             stopRequested: false,
             startFailed: false,
             sawMainRuntimeError: false,
@@ -327,6 +335,9 @@ export class GameTestManager {
         session.stopRequested = true;
         // Turns the in-flight compile's own exit into a rejection within milliseconds, instead of at
         // the end of a compile the author has already abandoned.
+        // Before the worker: a run stopped while its clips are being made has no worker to kill yet.
+        session.abandonWeatherBake?.();
+        session.abandonWeatherBake = null;
         session.compileWorker?.kill();
         session.compileWorker = null;
         return this.enqueue(key, () => this.teardown(session));
@@ -396,6 +407,7 @@ export class GameTestManager {
                 downloadRewrites: currentDownloadRewrites(),
             }, {
                 onStart: worker => { session.compileWorker = worker; },
+                onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.stopRequested,
             });
             session.compileWorker = null;

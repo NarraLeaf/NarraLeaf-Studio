@@ -53,6 +53,10 @@ export const settings = {
             label: "ワークスペース",
             description: "起動時の動作、ワークスペースの履歴、自動保存",
         },
+        performance: {
+            label: "パフォーマンス",
+            description: "Studio がこのマシンをどれだけ使い、どれだけ待たせるか",
+        },
         shortcuts: {
             label: "ショートカット",
             description: "Studio 全体で各コマンドに割り当てたキー",
@@ -85,6 +89,13 @@ export const settings = {
         developerMode: {
             label: "開発者オプション",
             description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わる",
+        },
+        screenEffectThreads: {
+            label: "画面エフェクトのスレッド数",
+            description: "エンコーダーの実行中にフレームを描くスレッドの数。自動はこのマシンを見て決める",
+            options: {
+                auto: "自動",
+            },
         },
         screenEffectQuality: {
             label: "開発モードでの画面エフェクト",

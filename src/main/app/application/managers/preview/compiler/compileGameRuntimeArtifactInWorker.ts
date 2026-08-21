@@ -6,12 +6,16 @@ import type {
     ShippedContentAuditReport,
 } from "@/buildWorker/compileWorkerProtocol";
 import { bakeWeatherClipsForPack } from "../../weather/weatherClipsForPack";
+import { screenEffectBakeThreads } from "../../weather/screenEffectQuality";
 import type {
     GameRuntimeArtifactCompileInput,
     GameRuntimeArtifactCompileResult,
 } from "./gameRuntimeArtifactCompiler";
 
-type CompileWorkerHostApp = Pick<App, "getDistDir" | "getDefaultGameIconPath" | "getWeatherBakeManager">;
+type CompileWorkerHostApp = Pick<
+    App,
+    "getDistDir" | "getDefaultGameIconPath" | "getWeatherBakeManager" | "globalState"
+>;
 
 export type CompileWorkerHooks = {
     /**
@@ -20,6 +24,15 @@ export type CompileWorkerHooks = {
      * down automatically once the compile settles.
      */
     onStart?: (worker: UtilityProcess) => void;
+    /**
+     * Invoked before the weather bake begins, with a function that abandons it.
+     *
+     * The sibling of {@link onStart}, for the window {@link onStart} cannot cover. The clips are
+     * produced before the compile worker exists, so a caller whose only cancel is `worker.kill()`
+     * has nothing to kill for the length of a bake - which is how an author came to watch a build
+     * report itself cancelled while an encoder carried on to the end.
+     */
+    onWeatherBake?: (abandon: () => void) => void;
     /**
      * Lets the caller mark an early worker exit as an intentional cancel rather
      * than a crash, so the surfaced error matches the caller's cancel wording
@@ -60,7 +73,16 @@ export async function compileGameRuntimeArtifactInWorker(
     // Every artifact goes through this function - preview, test run and build alike - so doing it
     // here is what keeps a previewed scene and a shipped one showing the same weather.
     const weatherClips = input.weatherClips
-        ?? await bakeWeatherClipsForPack(app.getWeatherBakeManager(), input.projectPath);
+        ?? await bakeWeatherClipsForPack(app.getWeatherBakeManager(), input.projectPath, {
+            threads: screenEffectBakeThreads(app),
+            onStart: hooks?.onWeatherBake,
+        });
+    // Asked again on the way out of the bake, and not as a formality: a cancel that arrived while
+    // the clips were being made has already abandoned them, and forking a compile worker for a
+    // caller that has given up is a minute of a machine spent on an answer nobody will read.
+    if (hooks?.cancelled?.()) {
+        throw new Error("cancelled");
+    }
     const withDefaults: GameRuntimeArtifactCompileInput = {
         ...input,
         ...(weatherClips.length > 0 ? { weatherClips } : {}),

@@ -13,10 +13,10 @@ import {
     type WeatherBakeResult,
 } from "./weatherBake";
 import { VP9_ARGS } from "../media/mediaTranscode";
-import { devModeScreenEffectQuality } from "./screenEffectQuality";
-import { SCREEN_EFFECT_QUALITY_KEY } from "@shared/constants/screenEffects";
+import { devModeScreenEffectQuality, screenEffectBakeThreads } from "./screenEffectQuality";
+import { SCREEN_EFFECT_QUALITY_KEY, SCREEN_EFFECT_THREADS_KEY } from "@shared/constants/screenEffects";
 import { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
-import { WeatherBakeManager, type WeatherBakeStarter } from "./WeatherBakeManager";
+import { WeatherBakeManager, WeatherBakeOwner, type WeatherBakeStarter } from "./WeatherBakeManager";
 
 /**
  * Small and short: these tests are about the plumbing, and every frame is really rendered.
@@ -339,6 +339,13 @@ describe("WeatherBakeManager", () => {
      * answer 200x slower; a test has no main process to protect, and injecting at the seam keeps
      * these cases about what the MANAGER does - dedupe, cache, queue, cancel.
      */
+    /** Poll until something the scheduler is doing in the background has actually happened. */
+    const until = async (condition: () => boolean): Promise<void> => {
+        for (let i = 0; i < 400 && !condition(); i++) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+    };
+
     const inThisProcess = (spawnProcess: BakeSpawn): WeatherBakeStarter =>
         (binaryPath, spec, targetPath, options) =>
             startWeatherBake(binaryPath, spec, targetPath, { ...options, spawnProcess });
@@ -366,7 +373,7 @@ describe("WeatherBakeManager", () => {
         const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
         const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC, { ...SPEC }, { ...SPEC, ref: { seed: "snow", params: {} } }], priority: "blocking", quality: "final" },
+            { projectRoot: dir, specs: [SPEC, { ...SPEC }, { ...SPEC, ref: { seed: "snow", params: {} } }], priority: "blocking", quality: "final", threads: null },
             { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
@@ -384,7 +391,7 @@ describe("WeatherBakeManager", () => {
         await fs.writeFile(target, "already here");
 
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null },
             { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
@@ -415,7 +422,7 @@ describe("WeatherBakeManager", () => {
         await fs.writeFile(finalPath, "built earlier");
 
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "draft" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "draft", threads: null },
             { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
@@ -434,7 +441,7 @@ describe("WeatherBakeManager", () => {
         await fs.writeFile(draftPath, "made while editing");
 
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null },
             { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
@@ -461,21 +468,15 @@ describe("WeatherBakeManager", () => {
                 cancel: () => undefined,
             };
         };
-        const until = async (condition: () => boolean): Promise<void> => {
-            for (let i = 0; i < 400 && !condition(); i++) {
-                await new Promise(resolve => setTimeout(resolve, 5));
-            }
-        };
-
         const draft = manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "idle", quality: "draft" },
+            { projectRoot: dir, specs: [SPEC], priority: "idle", quality: "draft", threads: null },
             { startBake: starter, ...withTool() },
         );
         // The draft is running and cannot finish, so anything submitted after this either queues or
         // adopts - which is the question, with no race left in it.
         await until(() => started.includes("draft"));
         const built = manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null },
             { startBake: starter, ...withTool() },
         );
         await until(() => scheduler.getOverview().queued > 0);
@@ -485,6 +486,106 @@ describe("WeatherBakeManager", () => {
         expect((await built).paths.get(weatherBakeKey(SPEC))).toBe(manager.pathFor(dir, SPEC, "final"));
         expect((await draft).paths.get(weatherBakeKey(SPEC))).toBe(manager.pathFor(dir, SPEC, "draft"));
         expect(started).toEqual(["draft", "final"]);
+    });
+
+    it("cannot stop a bake nobody claimed, which is why a pack claims one", async () => {
+        // The defect this pins, stated as the scheduler states it: an unclaimed task is immune to
+        // `supersede` on purpose, because a caller saying it has moved on is not a caller speaking
+        // for everybody else. A build that submitted anonymously therefore had no way to be stopped
+        // at all - it reported itself cancelled while the encoder ran to the end.
+        const scheduler = new StudioTaskScheduler();
+        const manager = new WeatherBakeManager(app, scheduler);
+        let release = (): void => undefined;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        let started = false;
+        const starter: WeatherBakeStarter = (_binary, _spec, targetPath) => {
+            started = true;
+            return {
+                result: gate.then(() => ({ status: "done", path: targetPath, bytes: 1 }) as WeatherBakeResult),
+                cancel: () => undefined,
+            };
+        };
+        const claim = { owner: WeatherBakeOwner.pack(), attempt: "1" };
+
+        const anonymous = manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null },
+            { startBake: starter, ...withTool() },
+        );
+        // `ensure` reaches the scheduler only after it has looked at the disk and resolved a tool, so
+        // an abandon sent before that would prove nothing at all - it would find no task to act on.
+        await until(() => started);
+        manager.abandon(claim);
+        release();
+
+        expect((await anonymous).failures.size).toBe(0);
+    });
+
+    it("stops a bake the only caller waiting on it has abandoned", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const manager = new WeatherBakeManager(app, scheduler);
+        let started = false;
+        let stop = (): void => undefined;
+        const starter: WeatherBakeStarter = () => {
+            started = true;
+            // Settles only when cancelled, exactly as the real bake does - so the only way out of
+            // this test is the abandon reaching the handle.
+            return {
+                result: new Promise<WeatherBakeResult>(resolve => { stop = () => resolve({ status: "cancelled" }); }),
+                cancel: () => stop(),
+            };
+        };
+        const claim = { owner: WeatherBakeOwner.pack(), attempt: "1" };
+
+        const pending = manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null, claim },
+            { startBake: starter, ...withTool() },
+        );
+        await until(() => started);
+        manager.abandon(claim);
+
+        expect((await pending).failures.get(weatherBakeKey(SPEC))).toBe("cancelled");
+        expect(scheduler.getOverview().active).toBeNull();
+    });
+
+    it("keeps baking for whoever else is still waiting on the same clip", async () => {
+        // The negative control, and the reason this goes through claims rather than a plain kill: a
+        // build being cancelled is not a reason to take the weather away from the Dev Mode session
+        // watching the same scene.
+        const scheduler = new StudioTaskScheduler();
+        const manager = new WeatherBakeManager(app, scheduler);
+        let release = (): void => undefined;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        let claimed = 0;
+        const starter: WeatherBakeStarter = (_binary, _spec, targetPath) => {
+            claimed += 1;
+            return {
+                result: gate.then(() => ({ status: "done", path: targetPath, bytes: 1 }) as WeatherBakeResult),
+                cancel: () => release(),
+            };
+        };
+        const packClaim = { owner: WeatherBakeOwner.pack(), attempt: "1" };
+        const devClaim = { owner: WeatherBakeOwner.devMode(dir), attempt: "1" };
+
+        const pack = manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null, claim: packClaim },
+            { startBake: starter, ...withTool() },
+        );
+        const devMode = manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null, claim: devClaim },
+            { startBake: starter, ...withTool() },
+        );
+        // Both claims have to be on the task before one of them lets go, or this would be measuring
+        // an abandon that arrived before anyone else had asked.
+        await until(() => claimed === 1);
+        manager.abandon(packClaim);
+        release();
+
+        expect((await devMode).paths.get(weatherBakeKey(SPEC))).toBe(manager.pathFor(dir, SPEC, "final"));
+        // One bake, not two, and that is the guard rather than a detail: the two asks are the same
+        // clip, so they are one task. Had the abandon taken it away, Dev Mode's join would have
+        // started a second one - and this would read 2 while every other assertion still passed.
+        expect(claimed).toBe(1);
+        await pack;
     });
 
     it("puts every clip through the scheduler, where the progress is visible", async () => {
@@ -499,7 +600,7 @@ describe("WeatherBakeManager", () => {
         const manager = new WeatherBakeManager(app, scheduler);
 
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC, { ...SPEC, ref: { seed: "rain" } }], priority: "idle", quality: "final" },
+            { projectRoot: dir, specs: [SPEC, { ...SPEC, ref: { seed: "rain" } }], priority: "idle", quality: "final", threads: null },
             { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
@@ -527,7 +628,7 @@ describe("WeatherBakeManager", () => {
         };
 
         const pending = manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null },
             { startBake: starter, ...withTool() },
         );
         await startedOnce;
@@ -542,7 +643,7 @@ describe("WeatherBakeManager", () => {
     it("says a host without an encoder is missing a tool rather than broken", async () => {
         const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final", threads: null },
             // A directory with no binaries in it: the resolver looks, finds nothing, and says so.
             { env: { NLS_FFMPEG_DIR: path.join(dir, "no-ffmpeg-here") } },
         );
@@ -572,6 +673,25 @@ describe("devModeScreenEffectQuality", () => {
         // costs an encoder that refuses to start, and the symptom is "the weather stopped working".
         expect(devModeScreenEffectQuality(host("fastest"))).toBe("draft");
         expect(devModeScreenEffectQuality(host(4))).toBe("draft");
+    });
+
+    it("is auto by default, is whatever the author chose, and refuses nonsense", () => {
+        const threadHost = (value: unknown) => ({ globalState: { get: () => value } });
+
+        // Null is "read the machine", which is what auto means to the pool.
+        expect(screenEffectBakeThreads(threadHost(undefined))).toBeNull();
+        expect(screenEffectBakeThreads(threadHost("auto"))).toBeNull();
+        expect(screenEffectBakeThreads(threadHost("3"))).toBe(3);
+        // Reverse control on the stop list: a count outside the offered stops is not honoured just
+        // because it parses, or the setting would be a way to ask for sixty-four render threads.
+        expect(screenEffectBakeThreads(threadHost("64"))).toBeNull();
+        expect(screenEffectBakeThreads(threadHost(3))).toBeNull();
+    });
+
+    it("reads the keys the settings rows write", () => {
+        const seen: string[] = [];
+        screenEffectBakeThreads({ globalState: { get: key => { seen.push(key); return undefined; } } });
+        expect(seen).toEqual([SCREEN_EFFECT_THREADS_KEY]);
     });
 
     it("reads the key the settings row writes", () => {

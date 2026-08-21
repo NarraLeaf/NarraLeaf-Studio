@@ -28,22 +28,68 @@ import type { WeatherFrameSequence } from "@/app/application/managers/weather/we
  * comparing two bakes' hashes proves nothing about this pool. What the cache addresses is the
  * key - seed, parameters, size, renderer version - and every clip that key names looks the same.
  *
- * ## Why two threads and not the machine
+ * ## How many threads are worth having
  *
- * Because the encoder is the co-tenant, and it is not a polite one: libvpx runs `-row-mt` across
- * every core it can see. A bake is the two halves in a pipeline of roughly equal cost - measured on
- * this project's own clips, drawing a 4K frame takes about as long as encoding it - so threads are
- * only worth what they recover from the pipe stall, and every one past that is taken off the
- * encoder. Measured, one 12-second clip, 24-thread machine:
+ * The bake is a two-stage pipeline, and threads buy back **only the drawing half**:
  *
- * |            | 1 thread | 2 threads | 8 threads |
- * |------------|----------|-----------|-----------|
- * | 1080p snow | 10.3 s   | **6.6 s** | 12.8 s    |
- * | 4K snow    | 35.2 s   | **26.7 s**| 93.2 s    |
+ *     wall clock ~= max(draw one frame / threads, encode one frame) x frames
  *
- * Eight threads is not a smaller win, it is a rout: the drawing takes the machine away from the half
- * that was actually the wall. So the count is two, bounded further by memory (one thread at 4K holds
- * a 100 MB float accumulator) and by tiny machines.
+ * So the count that pays is the one where the drawing stops being the wall, and every thread past
+ * that is free and useless. That ratio is the whole rule, and it moves with both halves - a seed
+ * whose particles are expensive to draw wants more threads, and an encoder tier that is cheap
+ * (`draft`) makes the drawing the wall for longer.
+ *
+ * Measured on this machine (24 cores), one 12-second clip at 1080p60 - 720 frames - taking the
+ * faster of two passes, with a single-thread render benchmark before and after each row to prove the
+ * machine was not busy with something else:
+ *
+ * |                | 1     | 2     | 3     | 4        | 6     | 8     |
+ * |----------------|-------|-------|-------|----------|-------|-------|
+ * | snow, draft    | 10.2s | 6.8s  | 5.0s  | **4.4s** | 3.8s  | 3.8s  |
+ * | snow, final    | 11.9s | 10.2s | 10.0s | 9.9s     | 9.8s  | 9.7s  |
+ * | sakura, draft  | 22.8s | 12.5s | 8.9s  | 7.2s     | 5.3s  | 4.5s  |
+ * | sakura, final  | 23.5s | 13.7s | 10.5s | 10.8s    | 10.4s | 10.4s |
+ *
+ * Each row turns over exactly where the ratio says it should: `snow, final` is encoder-bound at one
+ * thread already (9.6 ms to draw against 13.5 ms to encode), `sakura, final` at two, `snow, draft`
+ * at between two and three, and `sakura, draft` - the expensive seed against the cheap encoder - not
+ * until about six.
+ *
+ * ## Why the old answer was two, and why it is not any more
+ *
+ * The previous constant was 2, on a measurement that had eight threads making a 4K clip take 93 s
+ * where two took 27 s. That was real, and it was a measurement of a **different encoder**: every
+ * bake then ran `-deadline good -cpu-used 2`, which spreads `-row-mt` across every core it can see,
+ * so a third drawing thread was taken directly off the encoder. Dev Mode now bakes at `draft`
+ * (`-deadline realtime -cpu-used 4`), which wants far fewer cores, and the contention that made the
+ * old number right is mostly gone: nothing in the table above is slower at 8 than at 2, including
+ * the two rows that still use the slow encoder.
+ *
+ * ## Why the automatic answer is four rather than six or eight
+ *
+ * Two reasons, and neither is the curve: the curve would say six.
+ *
+ * The first is that four is the largest stop the settings offer, so the automatic answer can never
+ * land somewhere the author cannot also choose. A setting whose automatic value is off the end of
+ * its own list is one nobody can reason about.
+ *
+ * The second is that the region past four is exactly where the old 4K rout lived, and the machine
+ * this was measured on is a large one. Four is inside every measurement anyone has taken here, and
+ * it is still most of the win: it is the whole of it for both `final` rows, and 4.4s against a best
+ * of 3.8s for `snow, draft`.
+ *
+ * Four was checked at 4K too, because that is the size the rout was found at - sakura, 240 frames,
+ * the expensive seed:
+ *
+ * |                | 1     | 2     | 4         |
+ * |----------------|-------|-------|-----------|
+ * | 4K, draft      | 31.9s | 17.4s | **10.4s** |
+ * | 4K, final      | 31.4s | 18.9s | **13.4s** |
+ *
+ * Strictly better at four than at two on both tiers, including the one that still runs the
+ * core-hungry encoder. Six and eight at 4K were not measured to a conclusion - a run at those counts
+ * was still going after forty minutes, which is itself worth knowing and is a reason to stay under
+ * them rather than a number to put in a table.
  */
 
 /** Bytes one render thread holds: the float accumulator, its own frame, and the copy in flight. */
@@ -62,22 +108,39 @@ export function weatherRenderThreadFootprint(width: number, height: number): num
 export const WEATHER_RENDER_MEMORY_BUDGET = 1024 * 1024 * 1024;
 
 /**
- * The number that measured fastest, on every size tried.
+ * The most threads the automatic answer will ask for. See the tables above for why it is this.
  *
- * Not a fraction of the machine: see the table above. One thread leaves the encoder waiting whenever
- * a frame is being drawn, and more than two take the cores the encoder needed.
+ * A ceiling rather than the answer: what a bake actually gets is this bounded by the machine's spare
+ * cores, by memory, and by the clip's own length.
  */
-export const WEATHER_RENDER_THREADS = 2;
+export const WEATHER_RENDER_THREADS = 4;
 
 export function weatherRenderThreadCount(
     spec: Pick<WeatherBakeSpec, "width" | "height" | "frames">,
     cpus: number,
     budget: number = WEATHER_RENDER_MEMORY_BUDGET,
 ): number {
+    return clampWeatherRenderThreads(WEATHER_RENDER_THREADS, spec, cpus, budget);
+}
+
+/**
+ * Bring a wanted count down to what this machine and this clip can actually take.
+ *
+ * Applied to an author's explicit choice as well as to the automatic one, and deliberately: the
+ * stops in the settings are small, but the clip is not - a project whose stage is 4K holds a 166 MB
+ * accumulator per thread, and a choice made once on a 1080p project follows the author to the next
+ * one.
+ */
+function clampWeatherRenderThreads(
+    wanted: number,
+    spec: Pick<WeatherBakeSpec, "width" | "height" | "frames">,
+    cpus: number,
+    budget: number,
+): number {
     const byMemory = Math.floor(budget / weatherRenderThreadFootprint(spec.width, spec.height));
     // A machine with two cores has no spare one to draw on while the encoder runs.
     const byCpu = Math.floor(cpus / 2);
-    return Math.max(1, Math.min(WEATHER_RENDER_THREADS, byCpu, byMemory, spec.frames));
+    return Math.max(1, Math.min(wanted, byCpu, byMemory, spec.frames));
 }
 
 /** One thread's worth of drawing: ask for a phase, get its pixels back. */
@@ -87,8 +150,13 @@ export type WeatherRenderThread = {
 };
 
 export type WeatherRenderPoolOptions = {
-    /** Overrides the computed count. `1` is the serial path with extra steps, which is the point. */
-    threads?: number;
+    /**
+     * What the author asked for: a count, or `null` for "read the machine".
+     *
+     * A count is still clamped by memory, cores and the clip's own length - see
+     * {@link clampWeatherRenderThreads}. `1` is the serial path with extra steps, which is the point.
+     */
+    threads?: number | null;
     /** Injected by tests. The default forks a real worker thread. */
     spawn?: (spec: WeatherBakeSpec) => WeatherRenderThread;
 };
@@ -100,10 +168,17 @@ export type WeatherRenderPoolOptions = {
  * bake once with `1` and once without, and compare. It is also the escape hatch if a host turns out
  * to be unable to fork threads at all.
  */
-export function resolveWeatherRenderThreads(spec: WeatherBakeSpec, env: NodeJS.ProcessEnv = process.env): number {
+export function resolveWeatherRenderThreads(
+    spec: WeatherBakeSpec,
+    requested: number | null = null,
+    env: NodeJS.ProcessEnv = process.env,
+): number {
     const override = Number.parseInt(env.NLS_WEATHER_BAKE_THREADS ?? "", 10);
     if (Number.isFinite(override) && override > 0) {
         return Math.min(override, spec.frames);
+    }
+    if (requested !== null) {
+        return clampWeatherRenderThreads(requested, spec, os.cpus().length, WEATHER_RENDER_MEMORY_BUDGET);
     }
     return weatherRenderThreadCount(spec, os.cpus().length);
 }
@@ -121,6 +196,8 @@ export function createWeatherRenderPool(
     options: WeatherRenderPoolOptions = {},
 ): WeatherFrameSequence {
     const spawn = options.spawn ?? spawnWeatherRenderThread;
+    // An explicit count wins outright, including over the environment override: it is what a caller
+    // that has already resolved the author's choice hands in, and what a test pins.
     const count = Math.max(1, Math.min(options.threads ?? resolveWeatherRenderThreads(spec), spec.frames));
     const threads = Array.from({ length: count }, () => spawn(spec));
     const idle = [...threads];
