@@ -40,7 +40,13 @@ import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { isListItemContextElement } from "@shared/types/ui-editor/listItemContext";
+import { findOwningListItemTemplate, isListItemContextElement } from "@shared/types/ui-editor/listItemContext";
+import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructFieldLabel } from "@shared/types/ui-editor/struct";
+import { BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -1485,10 +1491,45 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
         const currentDocument = blueprintDocumentService.getDocument();
         const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
+
+        /**
+         * Which list one field picker is asking about.
+         *
+         * Three shapes, in the order a node can carry them: a node wired to an Element follows that
+         * wire, a node on a list's own blueprint is asking about that list, and a node inside an
+         * item template is asking about the list drawing it. An unwired Element pin resolves to
+         * nothing, which leaves the picker empty rather than offering another list's fields.
+         */
+        const resolveFieldPickerList = (node: { id: string; type: string }): UIElement | undefined => {
+            const edge = activeIr.edges?.find(item => item.to.nodeId === node.id && item.to.port === "list");
+            if (edge) {
+                const sourceNode = activeIr.nodes?.[edge.from.nodeId];
+                const ref = sourceNode ? readBlueprintElementRefParams(sourceNode.params) : null;
+                return ref ? currentDocument.elements[ref.elementId] : undefined;
+            }
+            if (widgetElement && isListLikeWidgetType(widgetElement.type)) {
+                return widgetElement;
+            }
+            const context = findOwningListItemTemplate(currentDocument, widgetElement);
+            return context ? currentDocument.elements[context.listElementId] : undefined;
+        };
         // Built lazily: most graphs have no Get Character node, and listing the cast per projection
         // would be pure cost for them.
         let characterOptions: BlueprintInspectorParamSelectOption[] | null = null;
         for (const node of Object.values(activeIr.nodes ?? {})) {
+            const def = blueprintNodeRegistry.get(node.type);
+            if (def?.inspectorParams?.some((param: BlueprintInspectorParamDef) => param.dynamicOptionsSource === BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE)) {
+                const listElement = resolveFieldPickerList(node);
+                const structId = (listElement?.props as Record<string, unknown> | undefined)?.itemStructId;
+                const struct = resolveUIStruct(currentDocument, typeof structId === "string" ? structId : null);
+                out[node.id] = {
+                    [BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE]: (struct?.fields ?? []).map(field => ({
+                        value: field.id,
+                        label: uiStructFieldLabel(field),
+                    })),
+                };
+                continue;
+            }
             if (node.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER) {
                 const pickedId = String(node.params?.characterId ?? "").trim();
                 if (!pickedId) {
@@ -1539,6 +1580,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         revision,
         t,
         uiDocumentRevision,
+        widgetElement,
     ]);
 
     const contextTitle = useMemo(
