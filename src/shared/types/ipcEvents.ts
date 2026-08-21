@@ -2054,6 +2054,15 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host;
         data: {
             spec: WeatherBakeSpec;
+            /**
+             * Which compile is asking, so the one before it can be dropped.
+             *
+             * A reload is a new compile, and the game that wanted the previous clip no longer exists
+             * - which is exactly the case an author makes three of by typing three digits into a
+             * parameter. Carried from the renderer rather than read off the session in main, because
+             * only the renderer knows which bundle the rows being compiled came from.
+             */
+            attempt: string;
         };
         response: {
             url: string;

@@ -3,7 +3,7 @@ import path from "path";
 import { Logger } from "@shared/utils/logger";
 import { weatherBakeKey, type WeatherBakeIdentity } from "@shared/weather/bakeKey";
 import type { WeatherBakeSpec } from "@shared/weather/model";
-import type { StudioTaskPriority } from "@shared/types/studioTask";
+import type { StudioTaskClaim, StudioTaskPriority } from "@shared/types/studioTask";
 import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp } from "../media/ffmpegTool";
 import type { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
 import { startWeatherBake, type BakeSpawn, type WeatherBakeProgress } from "./weatherBake";
@@ -55,7 +55,33 @@ export type WeatherBakeRequest = {
      * to have the clip ready before it is asked for.
      */
     priority: StudioTaskPriority;
+    /**
+     * Who is asking, for a caller whose mind is made up only until the next keystroke.
+     *
+     * `specs` is then read as the WHOLE of what that owner wants: anything it asked for on an earlier
+     * attempt and does not name here stops being wanted, and is dropped unless somebody else wants it
+     * too. This is what keeps a parameter typed digit by digit from leaving a queue of bakes for the
+     * numbers it passed through - see {@link StudioTaskClaim}.
+     *
+     * Left out by callers that cannot abandon their ask. A build wants its clips until it has them.
+     */
+    claim?: StudioTaskClaim;
 };
+
+/**
+ * The weather callers that are allowed to change their minds, named in one place.
+ *
+ * An owner is a bare string, and the two sides of a supersession have to spell it identically or the
+ * retirement silently reaches nothing - a failure that looks exactly like the feature not existing.
+ * Per project rather than per window, because the scheduler is one per app: two windows open on the
+ * same project want the same clips, and it is the project that changed its mind about them.
+ */
+export const WeatherBakeOwner = {
+    /** Studio having the clips ready before anyone asks. One settle pass supersedes the last. */
+    prebake: (projectRoot: string): string => `weather:prebake:${projectRoot}`,
+    /** What a Dev Mode session's current compile needs. A reload makes that a different compile. */
+    devMode: (projectRoot: string): string => `weather:devMode:${projectRoot}`,
+} as const;
 
 export type WeatherBakeOutcome = {
     /** Absolute path per {@link weatherBakeKey}, for every clip that is now on disk. */
@@ -100,8 +126,17 @@ export class WeatherBakeManager {
     ): Promise<WeatherBakeOutcome> {
         const paths = new Map<string, string>();
         const failures = new Map<string, string>();
+        // Every path out of here retires the claim, including the ones that submit nothing. Asking
+        // for no clips at all is how deleting the last weather row arrives, and a bake for the row
+        // that is gone has to stop on that news rather than on the next one that happens to come.
+        const retire = (): void => {
+            if (request.claim) {
+                this.scheduler.supersede(request.claim);
+            }
+        };
         const wanted = dedupe(request.specs);
         if (wanted.length === 0) {
+            retire();
             return { paths, failures };
         }
 
@@ -119,6 +154,7 @@ export class WeatherBakeManager {
             }
         }
         if (missing.length === 0) {
+            retire();
             return { paths, failures };
         }
 
@@ -128,12 +164,15 @@ export class WeatherBakeManager {
             for (const item of missing) {
                 failures.set(item.key, tool.detail);
             }
+            retire();
             return { paths, failures };
         }
 
-        // Submitted together and awaited together. The scheduler runs them one at a time; what this
-        // caller needs is every clip it asked for, not the order they arrive in.
-        const results = await Promise.all(missing.map(item => this.scheduler.submit<string>({
+        // Submitted together and awaited together, as one ask rather than several. The scheduler
+        // runs them one at a time; what this caller needs is every clip it asked for, not the order
+        // they arrive in - and submitting the set in one call is also what lets a claim retire the
+        // previous ask without cutting into this one.
+        const outcomes = await this.scheduler.submitAll<string>(missing.map(item => ({
             kind: "weatherBake",
             // The clip IS the key, so two rows, two scenes or two windows asking for the same weather
             // are one task - and a speculative submission is the same task as the awaited one.
@@ -162,15 +201,16 @@ export class WeatherBakeManager {
                 logger.warn(result.stderr);
                 throw new Error(result.detail);
             },
-        }).then(outcome => ({ item, outcome }))));
+        })), request.claim);
 
-        for (const { item, outcome } of results) {
-            if (outcome.status === "done") {
+        missing.forEach((item, index) => {
+            const outcome = outcomes[index];
+            if (outcome?.status === "done") {
                 paths.set(item.key, outcome.value);
             } else {
-                failures.set(item.key, outcome.status === "error" ? outcome.error : "cancelled");
+                failures.set(item.key, outcome?.status === "error" ? outcome.error : "cancelled");
             }
-        }
+        });
         return { paths, failures };
     }
 

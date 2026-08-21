@@ -103,7 +103,13 @@ export class WeatherPrebakeService extends Service<WeatherPrebakeService> {
 
         // Nothing new to have ready. This is the common case by a wide margin: writing prose changes
         // the document constantly and changes the weather never.
-        if (specs.length === 0 || (keys.size === this.submitted.size && [...keys].every(key => this.submitted.has(key)))) {
+        //
+        // The test is whether the set CHANGED, not whether it is empty. An empty set that used to
+        // have something in it is the author deleting their last weather row, and the other side
+        // reads this message as the whole of what is wanted - so staying quiet about it would leave a
+        // bake running for a row that no longer exists. A project that never had weather still says
+        // nothing, because for it nothing changed.
+        if (keys.size === this.submitted.size && [...keys].every(key => this.submitted.has(key))) {
             return;
         }
         this.submitted = keys;

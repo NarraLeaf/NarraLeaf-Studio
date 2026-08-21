@@ -522,8 +522,14 @@ export interface RendererPreloadedInterface {
         /** Workspace side of {@link openStoryRowInWorkspace}. */
         onStoryRowOpen(handler: (payload: DevModeStoryRowOpenRequest) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
-        /** Produce the clip a weather seed describes, and grant this window a URL for it. */
-        resolveWeatherClip(spec: WeatherBakeSpec): Promise<RequestStatus<{ url: string }>>;
+        /**
+         * Produce the clip a weather seed describes, and grant this window a URL for it.
+         *
+         * `attempt` names the compile asking. Clips wanted by an earlier one and not by this are
+         * dropped rather than left to finish, which is what stops an edited parameter from queueing
+         * a bake per keystroke.
+         */
+        resolveWeatherClip(spec: WeatherBakeSpec, attempt: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },

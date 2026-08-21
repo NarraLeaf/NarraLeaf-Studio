@@ -174,6 +174,26 @@ describe("WeatherPrebakeService", () => {
         service.dispose();
     });
 
+    it("says so when the last weather row goes, because a bake for it may still be running", async () => {
+        // The other side reads a submission as the whole of what this project wants, so silence here
+        // reads as "the same as last time" - and the clip for a row the author has deleted goes on
+        // encoding. An empty ask is the only thing that stops it.
+        const service = await mount();
+        documents["story-1"] = storyWith("story-1", ["snow"]);
+        storyChanged?.();
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(submissions).toHaveLength(1);
+
+        documents["story-1"] = storyWith("story-1", []);
+        storyChanged?.();
+        await vi.advanceTimersByTimeAsync(6000);
+
+        expect(submissions).toHaveLength(2);
+        expect(submissions[1].specs).toEqual([]);
+
+        service.dispose();
+    });
+
     it("asks again after a stage resize, because the size is half of a clip's identity", async () => {
         const service = await mount();
         documents["story-1"] = storyWith("story-1", ["snow"]);

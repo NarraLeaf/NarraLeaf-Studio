@@ -1,5 +1,6 @@
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
+import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
@@ -220,14 +221,23 @@ export class DevModeResolveWeatherClipHandler extends IPCHandler<IPCEventType.de
 
     public async handle(
         window: AppWindow<WindowAppType.DevMode>,
-        { spec }: IPCEvents[IPCEventType.devModeResolveWeatherClip]["data"],
+        { spec, attempt }: IPCEvents[IPCEventType.devModeResolveWeatherClip]["data"],
     ): Promise<RequestStatus<{ url: string }>> {
         const projectPath = window.getProps().projectPath;
         if (!projectPath) {
             return { success: false, error: "No project is open" };
         }
         const manager = window.getApp().getWeatherBakeManager();
-        const outcome = await manager.ensure({ projectRoot: projectPath, specs: [spec], priority: "blocking" });
+        // Claimed for this compile. Every row of one compile arrives here separately and under the
+        // same attempt, so they never retire each other; a reload changes the attempt, and whatever
+        // the compile before it was still waiting for is dropped on the spot. That is the difference
+        // between an author who typed `120` waiting for one bake and waiting for three.
+        const outcome = await manager.ensure({
+            projectRoot: projectPath,
+            specs: [spec],
+            priority: "blocking",
+            claim: { owner: WeatherBakeOwner.devMode(projectPath), attempt },
+        });
         const key = weatherBakeKey(spec);
         const clipPath = outcome.paths.get(key);
         if (!clipPath) {

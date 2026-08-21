@@ -396,8 +396,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
         onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
-        resolveWeatherClip: (spec: WeatherBakeSpec) =>
-            ipcClient.invoke(IPCEventType.devModeResolveWeatherClip, { spec }) as Promise<RequestStatus<{ url: string }>>,
+        resolveWeatherClip: (spec: WeatherBakeSpec, attempt: string) =>
+            ipcClient.invoke(IPCEventType.devModeResolveWeatherClip, { spec, attempt }) as Promise<RequestStatus<{ url: string }>>,
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
