@@ -1437,6 +1437,20 @@ export interface VcsMergeDocument {
     decisions: DocumentMergeDecision[];
     /** How many of {@link decisions} are still the author's. */
     conflicts: number;
+    /**
+     * Every conflicted path this one answer settles, when the document is stored as several files.
+     *
+     * Present only for a document set (`@shared/documents/documentSet.ts`), where the decisions
+     * above span a manifest and its members and settling them writes to whichever of those files
+     * each change lives in. **A caller must hand ALL of these to the resolve verb**, not just
+     * {@link path}: the backend refuses a commit while any conflicted path is unsettled, naming it
+     * - and by then the paths that did settle have already been written and had their sidecars
+     * removed by the failed commit's stage (§4.32), so a partial settle is not recoverable by
+     * retrying.
+     *
+     * Absent for a single-file document, where {@link path} is the whole answer.
+     */
+    members?: readonly string[];
     /** Set when this path stays at tier one. {@link detail} carries the producer's own sentence. */
     blocked?: VcsMergeDocumentBlocker;
     /** Untranslated, from whatever refused. Shown beside the translated reason, never instead. */
@@ -1524,11 +1538,15 @@ export interface VcsRevisionDiffResult {
     to: RevisionId;
     documents: DocumentDiffEntry[];
     /**
-     * Changed paths this result stands for, including any `documents` does not carry.
+     * Changed DOCUMENTS this result stands for, including any `documents` does not carry.
      *
      * Equal to `documents.length` whenever `complete` is true. Directories are excluded
      * where they can be told apart from files, which is everywhere except a comparison
      * that was cut short before anything was read.
+     *
+     * Documents rather than files, because one document can be several files - a document set
+     * (`@shared/documents/documentSet.ts`) is one entry standing for a manifest and its members.
+     * With no set registered the two numbers are the same, which is why the name did not change.
      */
     pathCount: number;
     complete: boolean;
@@ -1544,7 +1562,10 @@ export interface VcsWorkingTreeDiffResult {
      */
     head?: RevisionId;
     documents: DocumentDiffEntry[];
-    /** Changed files this result stands for. Directories are never counted. */
+    /**
+     * Changed DOCUMENTS this result stands for. Directories are never counted, and a document
+     * stored as several files counts once - see the same field on {@link VcsRevisionDiffResult}.
+     */
     pathCount: number;
     complete: boolean;
     readFailure: string | null;

@@ -59,7 +59,14 @@ function walk(dir: string, out: string[] = []): string[] {
     for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
         const rel = `${dir}/${entry.name}`;
         if (entry.isDirectory()) {
-            walk(rel, out);
+            // `__fixtures__` is skipped for the reason tests are, one step further out: a fixture is
+            // a document format that does not ship (`documents/__fixtures__/syntheticDocumentSet.ts`
+            // is a document SET, proving that layer without registering one), so requiring its
+            // vocabulary here would put a phantom format's count keys into all three catalogues,
+            // where every later reader would have to work out which document they describe.
+            if (entry.name !== "__fixtures__") {
+                walk(rel, out);
+            }
         } else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
             // Tests are skipped: they name keys that are deliberately absent, to prove an unknown
             // producer key renders as itself rather than as nothing.

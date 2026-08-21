@@ -1,5 +1,9 @@
 import fs from "fs";
 import path from "path";
+import {
+    documentSetAt,
+    type DocumentSetLookup,
+} from "@shared/documents/documentSet";
 import type {
     VcsConflictChoice,
     VcsMergeResolveResult,
@@ -203,8 +207,10 @@ export async function resolveConflicts(
     root: string,
     relativePaths: readonly string[],
     choice: VcsConflictChoice,
+    sets: DocumentSetLookup = documentSetAt,
 ): Promise<VcsMergeResolveResult> {
-    const absolute = relativePaths.map((relative) => repositoryPath(root, relative));
+    const expanded = await expandDocumentSets(root, relativePaths, sets);
+    const absolute = expanded.map((relative) => repositoryPath(root, relative));
     if (choice !== "working-tree") {
         // Every path first, then one settle call: a copy that fails must not leave half the
         // selection settled and the other half not, which is a state nothing can read back.
@@ -213,6 +219,62 @@ export async function resolveConflicts(
     const result = await branchMergeResolve(globals, absolute);
     await flushRepository(globals);
     return { files: result.files, state: await readMergeState(globals, root) };
+}
+
+/**
+ * Replace any path that belongs to a multi-file document with every conflicted path of that
+ * document.
+ *
+ * **"Take one side" is a decision about a DOCUMENT, not about a file.** Half a story taken from
+ * one author and half from the other is a script neither of them wrote, which nevertheless
+ * compiles - the silent, late failure `DocumentMergeRefusal` exists to name. So a set is settled
+ * whole, and this is where "whole" is worked out.
+ *
+ * It changes nothing about how a side is taken: the copy is still `~mine`/`~theirs` over the
+ * conflicted file, and the settle is still the plain verb, for the reason set out above - the two
+ * verbs named after the sides mean the opposite of their names on a merge that came from a sync
+ * (§4.31), and Studio can only produce that kind.
+ *
+ * Costs a walk only when a path really belongs to a set. No set is registered today, so this is
+ * `relativePaths` unchanged and no `readdir` happens at all.
+ */
+async function expandDocumentSets(
+    root: string,
+    relativePaths: readonly string[],
+    sets: DocumentSetLookup,
+): Promise<readonly string[]> {
+    const manifests = new Set<string>();
+    for (const relative of relativePaths) {
+        try {
+            const location = sets(relative);
+            if (location) manifests.add(location.manifestPath);
+        } catch {
+            // A lookup is asked about paths the backend chose; one odd path must not stop a settle.
+        }
+    }
+    if (manifests.size === 0) {
+        return relativePaths;
+    }
+
+    // The conflicted paths are the ones with the merge's copies beside them - the same walk
+    // `readMergeState` reports from, so the expansion cannot name a path the surface never saw.
+    const conflicts = await findConflictedPaths(root);
+    const expanded = new Set(relativePaths.filter((relative) => !manifests.has(setOf(sets, relative) ?? "")));
+    for (const relative of conflicts) {
+        const manifest = setOf(sets, relative);
+        if (manifest && manifests.has(manifest)) {
+            expanded.add(relative);
+        }
+    }
+    return [...expanded];
+}
+
+function setOf(sets: DocumentSetLookup, relativePath: string): string | undefined {
+    try {
+        return sets(relativePath)?.manifestPath;
+    } catch {
+        return undefined;
+    }
 }
 
 /**
