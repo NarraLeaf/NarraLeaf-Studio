@@ -8,7 +8,13 @@ export interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
     onValueCommit?: (value: number) => void;
     min?: number;
     max?: number;
-    step?: number;
+    /**
+     * The increment the track moves on. `"any"` is the HTML keyword for a continuous track, and is
+     * how a caller shows a value that does not sit on its own grid: with a numeric step the browser
+     * rounds the thumb to the nearest allowed value, so a paired number box would read one figure
+     * while the thumb stood at another.
+     */
+    step?: number | "any";
     disabled?: boolean;
 }
 

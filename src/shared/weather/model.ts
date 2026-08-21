@@ -234,6 +234,37 @@ export function weatherParamsOf(id: WeatherSeedId): readonly WeatherParamKey[] {
 }
 
 /**
+ * The nearest value on a parameter's own increments: `min + n x step`, clamped to the range.
+ *
+ * This is the grid a CONTROL moves on, not one the renderer imposes - the renderer takes any value
+ * inside the range, and the box in the inspector is how an author reaches a figure between two
+ * increments. It lives here because the increments do: a slider that rounded to a step of its own
+ * invention would disagree with the command line's hints about the same parameter.
+ *
+ * The result is rounded at the step's own precision, so a grid of halves answers `2.5` rather than
+ * the `2.5000000000000004` the arithmetic leaves behind.
+ */
+export function snapWeatherParam(value: number, spec: WeatherParamSpec): number {
+    if (!Number.isFinite(value)) {
+        return spec.default;
+    }
+    const decimals = (String(spec.step).split(".")[1] ?? "").length;
+    const stepped = spec.min + Math.round((value - spec.min) / spec.step) * spec.step;
+    return Number(Math.min(spec.max, Math.max(spec.min, stepped)).toFixed(decimals));
+}
+
+/**
+ * Whether a value already sits on {@link snapWeatherParam}'s grid.
+ *
+ * A stored value need not: a seed's own default may fall between two increments (rain's `sizeNear`
+ * is 2.4 against a step of 1), and the inspector's box writes whatever was typed. A control that
+ * quantises has to know, or it shows a value it cannot represent.
+ */
+export function onWeatherParamGrid(value: number, spec: WeatherParamSpec): boolean {
+    return Math.abs(snapWeatherParam(value, spec) - value) < 1e-6;
+}
+
+/**
  * The clip a bake produces, described independently of how it is produced.
  *
  * `frames` and `fps` are stated rather than derived at the last moment because the whole seam

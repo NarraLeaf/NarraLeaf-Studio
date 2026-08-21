@@ -41,11 +41,14 @@ import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTr
 import { resolveAudioTrack } from "@shared/types/audioTrack";
 import { isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
 import {
+    onWeatherParamGrid,
     resolveWeatherParams,
+    snapWeatherParam,
     WEATHER_PARAMS,
     WEATHER_SEED_IDS,
     weatherParamsOf,
     type WeatherParamKey,
+    type WeatherParamSpec,
     type WeatherSeedId,
 } from "@shared/weather/model";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
@@ -64,7 +67,7 @@ import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
-import { Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
+import { FieldLabel, Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -1603,17 +1606,78 @@ function WeatherSeedFields(props: {
     return (
         <>
             <WeatherSeedPreview seed={props.seed} params={props.params} />
-            <FieldGrid cols={2}>
+            <div className="space-y-2">
                 {weatherParamsOf(props.seed).map(key => (
-                    <NumberField
+                    <WeatherParamRow
                         key={key}
                         label={t(`storyInspector.weather.${key}` as TranslationKey)}
+                        spec={WEATHER_PARAMS[key]}
                         value={resolved[key]}
                         onChange={value => set(key, value)}
                     />
                 ))}
-            </FieldGrid>
+            </div>
         </>
+    );
+}
+
+/**
+ * One tunable number of a seed: the figure, and the range it lives in.
+ *
+ * Two controls for one value because there are two questions. An author who knows the number types
+ * it; an author looking for it drags, and watches the preview above answer. Both read the same
+ * draft, so they cannot print different figures mid-gesture, and the document is written once when
+ * the drag settles ({@link useSliderDraft}) - hanging the write on every pointer move is the
+ * mistake that buried the undo stack three times before that hook existed.
+ *
+ * The track carries the seed table's own `step`, so a drag lands on the increments every other
+ * surface offers for this parameter. A value already off that grid - rain's `sizeNear` default of
+ * 2.4 against a step of 1, or anything typed into the box - would otherwise leave the thumb
+ * standing at 2 while the box read 2.4, so the track goes continuous for exactly as long as that is
+ * true and the row snaps each move itself. Typing stays unsnapped: the box is the way to a value
+ * between two increments, which the renderer takes for every parameter but `fallSpeed`.
+ *
+ * The snap belongs to the MOVE, not to the commit. `Slider` also commits on `keyup`, and a `Tab`
+ * that lands on the track releases its key there - so snapping at commit time would rewrite a
+ * stored 2.4 as 2 for an author who only tabbed past the control and never touched it.
+ */
+function WeatherParamRow(props: {
+    label: string;
+    spec: WeatherParamSpec;
+    value: number;
+    onChange: (value: number | undefined) => void;
+}) {
+    const spec = props.spec;
+    const onGrid = onWeatherParamGrid(props.value, spec);
+    const draft = useSliderDraft(props.value, props.onChange);
+    return (
+        <div className="flex items-center gap-2">
+            <FieldLabel as="span" className="mb-0 w-20 shrink-0 truncate">{props.label}</FieldLabel>
+            <NumericDraftEnhancedInput
+                committedDisplay={String(draft.value)}
+                onFiniteNumber={props.onChange}
+                onEmpty={() => props.onChange(undefined)}
+                type="text"
+                inputMode="decimal"
+                aria-label={props.label}
+                popoverWhenNarrow={false}
+                // Width only: the height, the border and the type scale are the shared input's, so
+                // the box sits at the same 36px as the fields above it in this section rather than
+                // opening a denser dialect halfway down one panel.
+                className="w-14 shrink-0"
+                inputClassName="px-1.5 text-right"
+            />
+            <Slider
+                className="min-w-0 flex-1"
+                min={spec.min}
+                max={spec.max}
+                step={onGrid ? spec.step : "any"}
+                value={draft.value}
+                aria-label={props.label}
+                onValueChange={value => draft.onValueChange(snapWeatherParam(value, spec))}
+                onValueCommit={draft.onValueCommit}
+            />
+        </div>
     );
 }
 

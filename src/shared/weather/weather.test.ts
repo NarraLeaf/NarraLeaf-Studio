@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+    onWeatherParamGrid,
     resolveWeatherParams,
+    snapWeatherParam,
     WEATHER_PARAMS,
     WEATHER_SEED_IDS,
     WEATHER_SEEDS,
@@ -366,5 +368,46 @@ describe("the petal sprite", () => {
         expect(buildWeatherField("sakura", params("sakura"), 320, 180).sprite).toBe(true);
         expect(buildWeatherField("snow", params("snow"), 320, 180).sprite).toBe(false);
         expect(buildWeatherField("rain", params("rain"), 320, 180).sprite).toBe(false);
+    });
+});
+
+/**
+ * The grid a control moves a parameter on.
+ *
+ * Asserted on the function rather than on any seed's numbers: a default that happens to sit between
+ * two increments today may be tidied tomorrow, and a test written against that coincidence would go
+ * red for a change that is not a regression.
+ */
+describe("weather parameter grid", () => {
+    it("snaps to increments counted from the floor of the range", () => {
+        const spec = { min: 2, max: 48, step: 5, default: 2 };
+        expect(snapWeatherParam(2, spec)).toBe(2);
+        expect(snapWeatherParam(9, spec)).toBe(7);
+        expect(snapWeatherParam(10, spec)).toBe(12);
+    });
+
+    it("keeps the increment's own precision", () => {
+        // 0.5 + 4 x 0.5 is 2.5000000000000004 before the rounding, which a number box would print.
+        const spec = WEATHER_PARAMS.sizeFar;
+        expect(spec.step).toBe(0.5);
+        expect(snapWeatherParam(2.4, spec)).toBe(2.5);
+    });
+
+    it("stays inside the range", () => {
+        const spec = WEATHER_PARAMS.wind;
+        expect(snapWeatherParam(-999, spec)).toBe(spec.min);
+        expect(snapWeatherParam(999, spec)).toBe(spec.max);
+    });
+
+    it("falls back to the parameter's default rather than emitting NaN", () => {
+        expect(snapWeatherParam(Number.NaN, WEATHER_PARAMS.density)).toBe(WEATHER_PARAMS.density.default);
+    });
+
+    it("reports a value between two increments as off the grid", () => {
+        const spec = { min: 2, max: 48, step: 1, default: 2 };
+        expect(onWeatherParamGrid(3, spec)).toBe(true);
+        expect(onWeatherParamGrid(2.4, spec)).toBe(false);
+        // Float dust from arithmetic on the grid is still on the grid.
+        expect(onWeatherParamGrid(2 + 0.1 * 3 * 10 / 3, spec)).toBe(true);
     });
 });
