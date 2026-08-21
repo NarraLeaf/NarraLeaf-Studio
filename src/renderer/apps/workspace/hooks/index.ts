@@ -11,6 +11,9 @@ export { useProjectDisplayName } from "./useProjectDisplayName";
 // Whether project data is frozen (drives disabled affordances, not correctness)
 export { useWorkspaceFrozen } from "./useWorkspaceFrozen";
 
+// The title bar's menus, with the ones naming the same standard menu folded into it
+export { useTitleBarActionGroups } from "./useTitleBarActionGroups";
+
 // UI Service hooks
 export {
     useUIService,
