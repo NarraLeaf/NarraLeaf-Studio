@@ -88,7 +88,7 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
         return null;
     }
 
-    const rendered = renderFieldBody(field, data, onSaving);
+    const rendered = withTip(field, renderFieldBody(field, data, onSaving));
     if (!freeze.frozen || !needsStructuralReadOnly(field)) {
         return rendered;
     }
@@ -115,6 +115,20 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
             {rendered}
         </fieldset>
     );
+}
+
+/**
+ * Hangs the field's hover card on the field.
+ *
+ * A real box rather than `display: contents`, because the card is placed against the rect of the
+ * element carrying the attribute and a contents box has none. Only a field that asked for a tip is
+ * wrapped, so nothing else changes shape.
+ */
+function withTip<TData>(field: FieldDefinition<TData>, rendered: React.ReactNode): React.ReactNode {
+    if (!field.tip) {
+        return rendered;
+    }
+    return <div data-tip={field.tip}>{rendered}</div>;
 }
 
 /** The switch itself, split out so the read-only clamp above has something to wrap. */
