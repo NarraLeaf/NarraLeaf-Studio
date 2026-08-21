@@ -82,7 +82,7 @@ export interface GlobalStateType extends Record<string, any> {
      * Every bake, not just Dev Mode's: this one is a statement about the machine rather than about
      * the file, and drawing a frame on another thread cannot change it.
      */
-    [SCREEN_EFFECT_THREADS_KEY]: "auto" | "2" | "3" | "4" | string;
+    [SCREEN_EFFECT_THREADS_KEY]: "auto" | "1" | "2" | "3" | "4" | string;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the

@@ -42,10 +42,16 @@ export const SCREEN_EFFECT_QUALITY_DEFAULT: WeatherBakeQuality = "draft";
  * The stops are small on purpose. Past four the curve flattens and then reverses (see
  * `weatherRenderPool.ts` for the measurements), so the choices past the knee would be choices to
  * make it worse, and an author cannot tell which side of the knee their machine is on.
+ *
+ * `1` is offered even though it is the slowest answer on every machine measured, and offered for a
+ * reason the timings cannot show: it is the only setting that leaves the rest of the machine alone.
+ * An author on a laptop, on battery, or with something else running wants a bake that takes twice as
+ * long over one that takes the machine, and one thread is also the shape a bug report needs when a
+ * clip comes out wrong and the pool has to be taken out of the question.
  */
 export const SCREEN_EFFECT_THREADS_KEY = "screenEffects.bakeThreads";
 
-export const SCREEN_EFFECT_THREAD_CHOICES = ["auto", "2", "3", "4"] as const;
+export const SCREEN_EFFECT_THREAD_CHOICES = ["auto", "1", "2", "3", "4"] as const;
 
 export type ScreenEffectThreadChoice = typeof SCREEN_EFFECT_THREAD_CHOICES[number];
 
