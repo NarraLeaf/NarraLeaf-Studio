@@ -14,6 +14,7 @@ import { initDeveloperMode } from "./developer";
 import { initZoom } from "./zoom";
 
 import "@/styles/styles.css";
+import { installScrollbarAutoHide } from "@/styles/scrollbarAutoHide";
 
 function validateEnv() {
     initializeRendererBridge();
@@ -64,6 +65,10 @@ async function renderApp(children: React.ReactNode) {
     // Before anything else can print: a window that fails to start still has to be able to say what
     // it printed on the way down. See `app/diagnostics/consoleBuffer`.
     installConsoleBuffer();
+
+    // The JS half of the scrollbar rules in styles.css: without it no scroller in this window ever
+    // draws a thumb. Ahead of every await, so the error screen a failed boot ends on has one too.
+    installScrollbarAutoHide();
 
     // Validate environment
     validateEnv();

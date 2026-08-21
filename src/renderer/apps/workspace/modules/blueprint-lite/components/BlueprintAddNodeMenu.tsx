@@ -408,7 +408,7 @@ export function BlueprintAddNodeMenu({
                     />
                     <div
                         ref={categoryListRef}
-                        className="mt-3 flex gap-1 overflow-x-auto pb-0.5"
+                        className="nl-no-scrollbar mt-3 flex gap-1 overflow-x-auto pb-0.5"
                         onWheel={event => {
                             if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
                                 return;
@@ -448,7 +448,7 @@ export function BlueprintAddNodeMenu({
                     ref={listRef}
                     role="listbox"
                     aria-label={t("blueprint.addNode.listLabel")}
-                    className="min-h-0 flex-1 overflow-y-auto px-2"
+                    className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto px-2"
                     style={{ maxHeight: listMaxHeight }}
                 >
                     {itemCount === 0 ? (
