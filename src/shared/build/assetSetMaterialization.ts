@@ -1,11 +1,12 @@
 import {
     childAssetSets,
     matchAssetSetCoordinate,
+    resolveAssetSetFallbackAsset,
     type AssetSet,
     type AssetSetCandidate,
 } from "../types/assetSet";
 import { resolveLocaleChain, type GameLocalizationBundle, type LocaleCode } from "../types/localization";
-import type { StoryAssetVariants, StoryBlock, StoryDocument } from "../types/story";
+import type { StoryAssetVariants, StoryBlock, StoryDocument, StoryScene } from "../types/story";
 
 /**
  * Filling in what a story's asset sets resolve to, once, while the package is being built.
@@ -57,8 +58,16 @@ type LocaleResolver = (locale: LocaleCode) => { id: string } | { ambiguous: true
 
 type ProblemSite = { storyId: string; sceneId: string; blockId: string };
 
-export type AssetSetMaterializationProblem =
-    | ({
+/**
+ * A fault in one set, before anything says where it was named.
+ *
+ * Split from the site because a set is now resolved for two kinds of content: a story row, which
+ * has a scene and a block, and everything else a package carries, which has neither. Both report
+ * the same four faults, and a second enumeration of them would be a second thing to keep in step
+ * with the resolver that raises them.
+ */
+export type AssetSetProblemDetail =
+    | {
           kind: "unfilled";
           setId: string;
           setName: string;
@@ -68,22 +77,22 @@ export type AssetSetMaterializationProblem =
            * build one. Named so the author knows which file to go and tag.
            */
           value: string;
-      } & ProblemSite)
+      }
     /** A set this build cannot resolve at all: no axes, or more than one. */
-    | ({
+    | {
           kind: "unsupported";
           setId: string;
           setName: string;
           reason: "noAxes" | "multipleAxes";
-      } & ProblemSite)
+      }
     /** Two files answer to one coordinate, so the set does not name a file there. */
-    | ({
+    | {
           kind: "ambiguous";
           setId: string;
           setName: string;
           axisKey: string;
           value: string;
-      } & ProblemSite)
+      }
     /**
      * A build axis this edition never took a position on.
      *
@@ -91,12 +100,14 @@ export type AssetSetMaterializationProblem =
      * an edition that has not said which side it is on is exactly the case where guessing ships the
      * wrong one.
      */
-    | ({
+    | {
           kind: "axisUnset";
           setId: string;
           setName: string;
           axisKey: string;
-      } & ProblemSite);
+      };
+
+export type AssetSetMaterializationProblem = AssetSetProblemDetail & ProblemSite;
 
 export type AssetSetMaterializationResult = {
     documents: Record<string, StoryDocument>;
@@ -128,21 +139,38 @@ function assetIdsInBlock(block: StoryBlock): string[] {
         return [];
     }
     const ids: string[] = [];
-    const direct = payload.assetId;
-    if (typeof direct === "string" && direct.trim()) {
-        ids.push(direct.trim());
-    }
-    // Dialogue rows carry their take under a different name, and a voiced line is as much an asset
-    // reference as a background is.
-    const voice = payload.voiceAssetId;
-    if (typeof voice === "string" && voice.trim()) {
-        ids.push(voice.trim());
-    }
-    const mask = payload.maskAssetId;
-    if (typeof mask === "string" && mask.trim()) {
-        ids.push(mask.trim());
+    for (const value of assetIdSlots(payload).map(slot => slot.read())) {
+        if (typeof value === "string" && value.trim()) {
+            ids.push(value.trim());
+        }
     }
     return ids;
+}
+
+/**
+ * Every place in a row's payload that names an asset, as a read and a write.
+ *
+ * Stated once because both halves of this module walk the same list and disagreeing about it is
+ * silent: a slot the collector misses gets no map written for it, and the set id reaches the shipped
+ * game as an id nothing answers - which is what the transform mask did until it was added here.
+ */
+function assetIdSlots(payload: Record<string, unknown>): Array<{
+    read: () => unknown;
+    write: (assetId: string) => void;
+}> {
+    const slots: Array<{ read: () => unknown; write: (assetId: string) => void }> = [];
+    // A row's own asset, and the two fields that are one under a different name: a voiced line's take
+    // and a mask image are as much asset references as a background is.
+    for (const field of ["assetId", "voiceAssetId", "maskAssetId"] as const) {
+        slots.push({ read: () => payload[field], write: value => { payload[field] = value; } });
+    }
+    // A transform's mask is written one level down, where the channel that owns it lives.
+    const transform = payload.transform as { to?: Record<string, unknown> } | undefined;
+    const to = transform?.to;
+    if (to && typeof to === "object") {
+        slots.push({ read: () => to.maskAssetId, write: value => { to.maskAssetId = value; } });
+    }
+    return slots;
 }
 
 /**
@@ -191,11 +219,16 @@ function collapseBuildAxis(
     if (matches.length > 1) {
         return { ambiguous: position };
     }
-    // No fallback of any kind. A runtime axis falls back because every variant is in the package
-    // anyway, so the worst case is a player seeing another language's art; here the fallback would
-    // decide which bytes ship, and an edition quietly taking a position it never declared is how an
-    // adult variant reaches an all-ages package.
-    return matches.length === 1 ? { id: matches[0] } : { unfilled: position };
+    if (matches.length === 1) {
+        return { id: matches[0] };
+    }
+    // The set's declared fallback, and only that. An edition that never said where it stands is
+    // still refused above (`unset`): that is the property this file protects, because an edition
+    // quietly taking a position it never declared is how an adult variant reaches an all-ages
+    // package. Taking the file the author named as the one everything else falls back to is not a
+    // guess, it is the declaration being carried out.
+    const fallback = resolveAssetSetFallbackAsset(set, candidates);
+    return fallback ? { id: fallback } : { unfilled: position };
 }
 
 /**
@@ -208,6 +241,8 @@ function collapseBuildAxis(
 function fillVariantMap(
     resolveForValue: LocaleResolver,
     localization: Pick<GameLocalizationBundle, "sourceLocale" | "locales">,
+    /** The set's declared fallback file, tried after the project's own chain has run out. */
+    fallbackAssetId: string | null = null,
 ): { map: Record<string, string> } | { unfilled: LocaleCode } | { ambiguous: LocaleCode } {
     const map: Record<string, string> = {};
     for (const entry of localization.locales) {
@@ -228,6 +263,10 @@ function fillVariantMap(
                 break;
             }
         }
+        // The project's chain first, the set's fallback last: a language that inherits from another
+        // through the project's own fallback chain reads that language's art, which is the same
+        // order its text follows.
+        resolved = resolved ?? fallbackAssetId;
         if (!resolved) {
             return { unfilled: entry.code };
         }
@@ -240,10 +279,11 @@ function fillVariantMap(
         if (match && "ambiguous" in match) {
             return { ambiguous: localization.sourceLocale };
         }
-        if (!match) {
+        const resolved = match?.id ?? fallbackAssetId;
+        if (!resolved) {
             return { unfilled: localization.sourceLocale };
         }
-        map[localization.sourceLocale] = match.id;
+        map[localization.sourceLocale] = resolved;
     }
     return { map };
 }
@@ -289,8 +329,8 @@ export function materializeStoryAssetSets(input: {
             let sceneChanged = false;
             const blocks: typeof scene.blocks = {};
             for (const [blockId, block] of Object.entries(scene.blocks ?? {})) {
-                const resolved = resolveBlockSets({
-                    block,
+                const resolved = resolveSetsForIds({
+                    assetIds: assetIdsInBlock(block),
                     setsById,
                     sets: input.sets,
                     candidates: input.candidates,
@@ -316,7 +356,34 @@ export function materializeStoryAssetSets(input: {
                 }
                 blocks[blockId] = next;
             }
-            scenes[sceneId] = sceneChanged ? { ...scene, blocks } : scene;
+            let nextScene = sceneChanged ? { ...scene, blocks } : scene;
+            // The scene's own two asset fields: the background it opens on and its music. They belong
+            // to no row, so they carry their map on the scene - the compiler resolves them while it
+            // builds the scene, before any block has run.
+            const sceneResolved = resolveSetsForIds({
+                assetIds: sceneAssetIds(scene),
+                setsById,
+                sets: input.sets,
+                candidates: input.candidates,
+                localization,
+                assetAxes: input.assetAxes,
+                storyId,
+                sceneId,
+                blockId: SCENE_FIELD_BLOCK_ID,
+                problems,
+                materializedAssetIds,
+            });
+            if (sceneResolved) {
+                sceneChanged = true;
+                collapsedBuildAxis = collapsedBuildAxis || sceneResolved.collapsed.size > 0;
+                if (sceneResolved.collapsed.size > 0) {
+                    nextScene = rewriteSceneAssetIds(nextScene, sceneResolved.collapsed);
+                }
+                if (sceneResolved.variants) {
+                    nextScene = { ...nextScene, assetVariants: sceneResolved.variants };
+                }
+            }
+            scenes[sceneId] = nextScene;
             documentChanged = documentChanged || sceneChanged;
         }
         documents[storyId] = documentChanged ? { ...document, scenes } : document;
@@ -332,21 +399,127 @@ export function materializeStoryAssetSets(input: {
  * that the package must not be able to name the variants it did not take.
  */
 function rewriteBlockAssetIds(block: StoryBlock, collapsed: ReadonlyMap<string, string>): StoryBlock {
-    const payload = { ...(block.payload as Record<string, unknown>) };
-    for (const field of ["assetId", "voiceAssetId", "maskAssetId"] as const) {
-        const current = payload[field];
+    // Deep enough to reach the nested slots without sharing them with the document this came from:
+    // a transform's `to` is rewritten in place below, and the original row must not change under a
+    // caller that is still reading it.
+    const payload = structuredClone(block.payload) as Record<string, unknown>;
+    for (const slot of assetIdSlots(payload)) {
+        const current = slot.read();
         if (typeof current === "string") {
             const member = collapsed.get(current.trim());
             if (member) {
-                payload[field] = member;
+                slot.write(member);
             }
         }
     }
     return { ...block, payload } as StoryBlock;
 }
 
-function resolveBlockSets(input: {
-    block: StoryBlock;
+/**
+ * Where a problem about a scene's own field is reported.
+ *
+ * The same word the reference index uses for a scene-level reference, so a fault about a scene's
+ * background reads the same wherever it surfaces.
+ */
+const SCENE_FIELD_BLOCK_ID = "__scene__";
+
+/** The set ids a scene names itself: the background it opens on, and its music. */
+function sceneAssetIds(scene: StoryScene): string[] {
+    const ids: string[] = [];
+    for (const value of [scene.defaultBackgroundAssetId, scene.bgm?.assetId]) {
+        if (typeof value === "string" && value.trim()) {
+            ids.push(value.trim());
+        }
+    }
+    return ids;
+}
+
+/** The scene half of {@link rewriteBlockAssetIds}, for the same reason. */
+function rewriteSceneAssetIds(scene: StoryScene, collapsed: ReadonlyMap<string, string>): StoryScene {
+    let next = scene;
+    const background = scene.defaultBackgroundAssetId?.trim();
+    const collapsedBackground = background ? collapsed.get(background) : undefined;
+    if (collapsedBackground) {
+        next = { ...next, defaultBackgroundAssetId: collapsedBackground };
+    }
+    const bgm = scene.bgm?.assetId?.trim();
+    const collapsedBgm = bgm ? collapsed.get(bgm) : undefined;
+    if (collapsedBgm && next.bgm) {
+        next = { ...next, bgm: { ...next.bgm, assetId: collapsedBgm } };
+    }
+    return next;
+}
+
+/**
+ * What one set resolves to for this build, or the fault that stops it resolving.
+ *
+ * The whole of "which file does this set mean", with nothing about where it was named. Stories write
+ * the answer into the row that named it; content that has no rows carries a table instead - and both
+ * have to agree, per set, about which member a locale gets and which one an edition keeps, or the
+ * same picture appears in two languages depending on whether a story or a widget asked for it.
+ */
+export type AssetSetBuildAnswer =
+    /** A runtime axis: every locale the project has, mapped to the member it resolves to. */
+    | { kind: "variants"; map: Record<string, string> }
+    /** A build axis: the one member this edition keeps. The others must not be nameable in the package. */
+    | { kind: "collapsed"; assetId: string }
+    | { kind: "problem"; problem: AssetSetProblemDetail };
+
+export function resolveAssetSetForBuild(input: {
+    set: AssetSet;
+    /** The whole document, so a set can be asked whether anything hangs under it. */
+    sets: readonly AssetSet[];
+    candidates: readonly AssetSetCandidate[];
+    localization: Pick<GameLocalizationBundle, "sourceLocale" | "locales"> | undefined;
+    assetAxes: Readonly<Record<string, string>> | undefined;
+}): AssetSetBuildAnswer {
+    const { set } = input;
+    const axis = soleAxis(set, input.sets);
+    if ("reason" in axis) {
+        return { kind: "problem", problem: { kind: "unsupported", setId: set.id, setName: set.name, reason: axis.reason } };
+    }
+    const axisKey = axis.axis.key;
+    if (axis.axis.residency === "build") {
+        const outcome = collapseBuildAxis(set, axisKey, input.assetAxes?.[axisKey], input.candidates);
+        if ("unset" in outcome) {
+            return { kind: "problem", problem: { kind: "axisUnset", setId: set.id, setName: set.name, axisKey } };
+        }
+        if ("ambiguous" in outcome) {
+            return { kind: "problem", problem: { kind: "ambiguous", setId: set.id, setName: set.name, axisKey, value: outcome.ambiguous } };
+        }
+        if ("unfilled" in outcome) {
+            return { kind: "problem", problem: { kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: outcome.unfilled } };
+        }
+        return { kind: "collapsed", assetId: outcome.id };
+    }
+    if (!input.localization || input.localization.locales.length === 0) {
+        // A set reference in a project with no languages: there is no coordinate to resolve it at,
+        // so it is reported as unfilled against the empty value rather than silently kept.
+        return { kind: "problem", problem: { kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: "" } };
+    }
+    const filled = fillVariantMap(
+        locale => {
+            const matches = matchAssetSetCoordinate(set, { [axisKey]: locale }, input.candidates);
+            if (matches.length > 1) {
+                return { ambiguous: true };
+            }
+            return matches.length === 1 ? { id: matches[0] } : null;
+        },
+        input.localization,
+        resolveAssetSetFallbackAsset(set, input.candidates),
+    );
+    if ("ambiguous" in filled) {
+        return { kind: "problem", problem: { kind: "ambiguous", setId: set.id, setName: set.name, axisKey, value: filled.ambiguous } };
+    }
+    if ("unfilled" in filled) {
+        return { kind: "problem", problem: { kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: filled.unfilled } };
+    }
+    return { kind: "variants", map: filled.map };
+}
+
+function resolveSetsForIds(input: {
+    /** The set ids named by one row, or by a scene's own two fields. */
+    assetIds: readonly string[];
     setsById: ReadonlyMap<string, AssetSet>;
     /** The whole document, so a set can be asked whether anything hangs under it. */
     sets: readonly AssetSet[];
@@ -361,58 +534,30 @@ function resolveBlockSets(input: {
 }): { variants?: StoryAssetVariants; collapsed: Map<string, string> } | undefined {
     let variants: StoryAssetVariants | undefined;
     const collapsed = new Map<string, string>();
-    for (const assetId of assetIdsInBlock(input.block)) {
+    for (const assetId of input.assetIds) {
         const set = input.setsById.get(assetId);
         if (!set) {
             continue;
         }
         const where = { storyId: input.storyId, sceneId: input.sceneId, blockId: input.blockId };
-        const axis = soleAxis(set, input.sets);
-        if ("reason" in axis) {
-            input.problems.push({ kind: "unsupported", setId: set.id, setName: set.name, reason: axis.reason, ...where });
+        const answer = resolveAssetSetForBuild({
+            set,
+            sets: input.sets,
+            candidates: input.candidates,
+            localization: input.localization,
+            assetAxes: input.assetAxes,
+        });
+        if (answer.kind === "problem") {
+            input.problems.push({ ...answer.problem, ...where });
             continue;
         }
-        const axisKey = axis.axis.key;
-        if (axis.axis.residency === "build") {
-            const outcome = collapseBuildAxis(set, axisKey, input.assetAxes?.[axisKey], input.candidates);
-            if ("unset" in outcome) {
-                input.problems.push({ kind: "axisUnset", setId: set.id, setName: set.name, axisKey, ...where });
-            } else if ("ambiguous" in outcome) {
-                input.problems.push({ kind: "ambiguous", setId: set.id, setName: set.name, axisKey, value: outcome.ambiguous, ...where });
-            } else if ("unfilled" in outcome) {
-                input.problems.push({ kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: outcome.unfilled, ...where });
-            } else {
-                collapsed.set(set.id, outcome.id);
-                input.materializedAssetIds.add(outcome.id);
-            }
+        if (answer.kind === "collapsed") {
+            collapsed.set(set.id, answer.assetId);
+            input.materializedAssetIds.add(answer.assetId);
             continue;
         }
-        if (!input.localization || input.localization.locales.length === 0) {
-            // A set reference in a project with no languages: there is no coordinate to resolve it
-            // at, so it is reported as unfilled against the empty value rather than silently kept.
-            input.problems.push({ kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: "", ...where });
-            continue;
-        }
-        const filled = fillVariantMap(
-            locale => {
-                const matches = matchAssetSetCoordinate(set, { [axis.axis.key]: locale }, input.candidates);
-                if (matches.length > 1) {
-                    return { ambiguous: true };
-                }
-                return matches.length === 1 ? { id: matches[0] } : null;
-            },
-            input.localization,
-        );
-        if ("ambiguous" in filled) {
-            input.problems.push({ kind: "ambiguous", setId: set.id, setName: set.name, axisKey, value: filled.ambiguous, ...where });
-            continue;
-        }
-        if ("unfilled" in filled) {
-            input.problems.push({ kind: "unfilled", setId: set.id, setName: set.name, axisKey, value: filled.unfilled, ...where });
-            continue;
-        }
-        variants = { ...(variants ?? {}), [set.id]: filled.map };
-        for (const memberId of Object.values(filled.map)) {
+        variants = { ...(variants ?? {}), [set.id]: answer.map };
+        for (const memberId of Object.values(answer.map)) {
             input.materializedAssetIds.add(memberId);
         }
     }

@@ -11,20 +11,24 @@ import {
     danglingStageObjectRefs,
     duplicateSceneLabels,
     duplicateStageObjectDeclarations,
+    isPlayableStoryTransitionKind,
     listSceneBlocksInDocumentOrder,
     listSceneLabels,
     listScenesInDocumentOrder,
+    revealableStageObjectDeclarations,
     sceneLabelNames,
+    shownStageObjectKeys,
     type StageObjectReference,
     type StoryBlock,
     type StoryBlockId,
     type StoryExpr,
+    type StoryInlineEvent,
     type StoryScene,
 } from "@shared/types/story";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
-import type { LintContext, LintStoryEntry } from "../context";
+import type { LintCharacterEntry, LintContext, LintStoryEntry } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 
 /**
@@ -127,6 +131,63 @@ export function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: S
 }
 
 /**
+ * The project's character for an id, or undefined when the project has no character with it.
+ *
+ * The single answer to "does this reference resolve", asked by the two rules that need it from
+ * opposite ends: {@link stageObjectLabel} asks so it can print the name an author would recognise,
+ * and `story/character-missing` asks because a miss is the whole finding. A second copy of the
+ * lookup would let the rule that stops a build disagree with the word the report prints.
+ *
+ * Deliberately returns the entry rather than its name: a character whose name is blank still exists,
+ * and a lookup that answered with the name alone would report it as missing.
+ */
+function findProjectCharacter(ctx: LintContext, characterId: string): LintCharacterEntry | undefined {
+    return ctx.characters.find(character => character.id === characterId);
+}
+
+/**
+ * The reveal-time event tokens a row carries.
+ *
+ * Read off the payload's text segment by name rather than by walking the payload structurally,
+ * because `event` is not a rare word in this schema and a loose scan would collect things that are
+ * not tokens at all. Four payloads hold a segment and the choice is the one that calls it `prompt`;
+ * a note is not among them, since an editor note reaches no player and its tokens never fire.
+ */
+function inlineEventRuns(block: StoryBlock): { event: StoryInlineEvent }[] {
+    if (block.kind !== "nodeAction") {
+        return [];
+    }
+    const payload = block.payload;
+    const segment = payload.action === "choice" ? payload.prompt : payload.text;
+    return (segment?.rich ?? []).filter((run): run is { event: StoryInlineEvent } => "event" in run);
+}
+
+/**
+ * Whether a row names a character id the project has nothing for. See `story/character-missing`,
+ * which states which of the three character-id sites are read and why the dialogue speaker is not.
+ *
+ * A blank id is not a miss. A character row that carries none addresses its portrait by stage name
+ * instead, which is an ordinary row and already `story/stage-object-missing`'s question: there is no
+ * reference to the character list to resolve, so there is nothing here to resolve it against.
+ */
+function namesMissingCharacter(ctx: LintContext, block: StoryBlock): boolean {
+    const named: string[] = [];
+    const collect = (id: string | undefined): void => {
+        const trimmed = id?.trim();
+        if (trimmed) {
+            named.push(trimmed);
+        }
+    };
+    if (block.kind === "action" && block.payload.action === "character") {
+        collect(block.payload.characterId);
+    }
+    for (const run of inlineEventRuns(block)) {
+        collect(run.event.expression?.characterId);
+    }
+    return named.some(id => !findProjectCharacter(ctx, id));
+}
+
+/**
  * The word to print for a stage object the scene never creates.
  *
  * The reference's LABEL, never its key: an unnamed sound keys on its asset id, and a UUID in a
@@ -140,7 +201,7 @@ export function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: S
  */
 function stageObjectLabel(ctx: LintContext, reference: StageObjectReference): string {
     if (reference.subject === "character") {
-        const name = ctx.characters.find(character => character.id === reference.name)?.name.trim();
+        const name = findProjectCharacter(ctx, reference.name)?.name.trim();
         if (name) {
             return name;
         }
@@ -742,6 +803,64 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
     },
     {
         /**
+         * Something declared and never shown.
+         *
+         * A `create` row names an object, sources it and poses it, and leaves it invisible - `/show`
+         * is what reveals it. So a declaration nothing ever shows is an object the player never sees,
+         * and the row that made it did nothing at all.
+         *
+         * `warning`, not error, on the criterion the whole set follows: an author part-way through a
+         * scene has declarations they have not shown yet, and refusing a build for a draft is how a
+         * rule gets switched off. What makes it worth reporting anyway is that this is the failure
+         * mode of documents written before the split, where `create` DID reveal - every one of those
+         * rows now declares and stops there, and nothing else in the project says so.
+         *
+         * Two spans, because the objects have two lifetimes. An image, a text or a video belongs to
+         * its scene and can only be shown inside it. An ambience overlay is game-level - rain started
+         * in one scene is still falling in the next - so its reveal may be in any scene, and reading
+         * one scene at a time would report every overlay declared in a prologue and shown later.
+         */
+        id: "story/declared-never-shown",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyDeclaredNeverShown",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const entry of ctx.stories) {
+                const scenes = listScenesInDocumentOrder(entry.document);
+                const shownByScene = new Map<string, ReadonlySet<string>>();
+                const shownAnywhere = new Set<string>();
+                for (const scene of scenes) {
+                    const shown = shownStageObjectKeys(scene);
+                    shownByScene.set(scene.id, shown);
+                    for (const key of shown) {
+                        shownAnywhere.add(key);
+                    }
+                }
+                for (const scene of scenes) {
+                    for (const declaration of revealableStageObjectDeclarations(scene)) {
+                        const key = `${declaration.kind}:${declaration.name}`;
+                        const shown = declaration.kind === "vfx"
+                            ? shownAnywhere.has(key)
+                            : shownByScene.get(scene.id)?.has(key) === true;
+                        if (shown) {
+                            continue;
+                        }
+                        findings.push({
+                            ruleId: "story/declared-never-shown",
+                            messageKey: "lint.rule.storyDeclaredNeverShown.message",
+                            messageParams: { object: declaration.label },
+                            location: storyLocation(entry, scene, declaration.blockId),
+                            target: blockTarget(entry, scene, declaration.blockId),
+                        });
+                    }
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
          * Two rows creating one stage name.
          *
          * `warning`, and deliberately not an error. The object exists and the engine's behaviour is
@@ -774,7 +893,125 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * A row naming a character the project does not have.
+         *
+         * `error`, because every remaining reading of the row is a wrong one. The story compiler's
+         * `getCharacter` falls back to a placeholder name so a preview still runs, and a portrait
+         * lookup against an id nothing answers to simply finds nothing - so what an unresolved id
+         * ships as is a speaker labelled with a word the author never wrote, or a character who
+         * never appears. Neither says anything about itself on screen.
+         *
+         * A character id is stored in three places and this rule reads two of them:
+         *
+         *  - A **character action** (`/show`, `/hide`, `/face`, `/setname`, the puppet channels) has
+         *    no field beside the id saying who the row is about, so an id that resolves to nothing
+         *    leaves the row addressing nobody.
+         *  - An **inline expression event** - the reveal-time portrait switch a line can carry - is
+         *    the same case one level down: the token stores an id alone.
+         *  - A **dialogue row's speaker is deliberately out of scope.** A speaker with no character
+         *    record behind it is a first-class shippable state rather than a defect: NarraLeaf's
+         *    dialogue box displays whatever name its `Character` carries, which is why the payload
+         *    has a `speakerName` field and why an unresolved speaker degrades to it. Reporting that
+         *    here would call a working line broken. An inline event inside such a row is still
+         *    reported, because it has no bare-name arm to degrade to.
+         *
+         * An id is the only thing a miss leaves behind, and an id is a UUID, so the sentence names
+         * no subject: printing the stored id would put a word in a report that nobody can search a
+         * project for. The row itself is the answer, and the finding carries the jump to it.
+         */
+        id: "story/character-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyCharacterMissing",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    if (!namesMissingCharacter(ctx, block)) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/character-missing",
+                        messageKey: "lint.rule.storyCharacterMissing.message",
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A row naming a transition this build will not play.
+         *
+         * `error`, and the same arrangement as `story/stage-object-missing`, for the same reason:
+         * the story compiler reaches the same verdict on the same row while building a preview, but
+         * a compile diagnostic reaches the Story console and stops nothing. A change that lands as a
+         * cut instead of the transition the author chose looks deliberate on screen and says nothing
+         * about itself, which is exactly the kind of thing that ships.
+         *
+         * The two halves reach that verdict by different roads and still cannot disagree.
+         * `createTransition` decides by its `switch`, which TypeScript holds exhaustive over the
+         * union; this rule decides by `isPlayableStoryTransitionKind`, which reads the tuple that
+         * union is derived from. A kind added to one is a compile error in the other.
+         *
+         * What reaches it is a stored `kind` this build has no engine for: a document written by a
+         * newer Studio, one carrying a kind that has since been retired, or the `custom` escape
+         * hatch, which the union has always allowed and nothing has ever built. No Studio surface
+         * can produce one - the inspector offers only kinds it knows and the script language cannot
+         * name one at all - so a clean project never sees this rule, and a project that does see it
+         * has a row whose transition is genuinely gone.
+         */
+        id: "story/transition-unavailable",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyTransitionUnavailable",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    const kind = transitionKindNamedByBlock(block);
+                    if (kind === null || isPlayableStoryTransitionKind(kind)) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/transition-unavailable",
+                        messageKey: "lint.rule.storyTransitionUnavailable.message",
+                        messageParams: { transition: kind },
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
 ];
+
+/**
+ * The transition kind a row names, or `null` for a row that names none.
+ *
+ * Read off `payload.transition` by name, unlike {@link appTagNamesNamedByBlock} below, which walks
+ * its payload structurally. `kind` is one of the most reused words in this schema - a layer
+ * reference, a displayable target and the row itself each carry one - so a structural scan for
+ * `kind` would report layers as transitions. Every payload that holds a `StoryTransitionRef` calls
+ * the field `transition` (`setBackground`, `character`, `displayable`, and a jump's), so the field
+ * name is the precise test and the structural one is the loose one.
+ *
+ * The `kind` must be a string, not merely present: the NVL panel's `transition` is a transform ref,
+ * which has no `kind` at all, and is not this rule's business.
+ */
+function transitionKindNamedByBlock(block: StoryBlock): string | null {
+    const transition = (block.payload as { transition?: unknown }).transition;
+    if (!transition || typeof transition !== "object") {
+        return null;
+    }
+    const kind = (transition as { kind?: unknown }).kind;
+    return typeof kind === "string" ? kind : null;
+}
 
 /**
  * Every variant name one row compares `AppTag` against.

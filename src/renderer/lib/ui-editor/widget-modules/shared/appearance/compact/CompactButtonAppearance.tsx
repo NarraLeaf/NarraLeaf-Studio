@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { Switch } from "@/lib/components/elements";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -322,15 +323,15 @@ export function CompactButtonAppearance({
                         </div>
                     </div>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer pt-1">
-                    <input
-                        type="checkbox"
+                <div className="flex items-center gap-2 pt-1 text-xs text-fg-muted">
+                    <Switch
+                        size="sm"
                         checked={Boolean(getSpacing("clipContent"))}
-                        onChange={e => patchSpacing("clipContent", e.target.checked)}
-                        className="rounded-sm border-edge-strong"
+                        onCheckedChange={next => patchSpacing("clipContent", next)}
+                        aria-label={t("widgetAppearance.spacing.clipContent")}
                     />
                     {t("widgetAppearance.spacing.clipContent")}
-                </label>
+                </div>
             </CompactModuleCard>
 
             <CompactModuleCard title={t("widgetAppearance.mouse.title")}>

@@ -1,4 +1,5 @@
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Input } from "@/lib/components/elements/Input";
 import { Select } from "@/lib/components/elements/Select";
@@ -183,13 +184,17 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
         return () => { cancelled = true; };
     }, [context, puppet?.backend, diskVersion]);
 
+    // Both lookups below read records the library mutates in place, so an import, a rename or a
+    // delete moves nothing else they key on.
+    const assetLibraryRevision = useAssetLibraryRevision();
+
     const modelAssetCount = useMemo(() => {
         if (!context) {
             return 0;
         }
         const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
         return Object.keys(assets[MODEL_ASSET_TYPE] ?? {}).length;
-    }, [context, diskVersion, puppet?.assetId]);
+    }, [assetLibraryRevision, context, diskVersion, puppet?.assetId]);
 
     const modelName = useMemo(() => {
         if (!context || !puppet?.assetId) {
@@ -203,7 +208,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
             }
         }
         return null;
-    }, [context, puppet?.assetId]);
+    }, [assetLibraryRevision, context, puppet?.assetId]);
 
     /**
      * Import a model bundle straight from here.

@@ -62,6 +62,22 @@ jobs:
       - name: Style ratchet
         run: yarn style:ratchet
 
+      # Oxlint, running its type-aware pass (oxlint-tsgolint), so this covers the
+      # same five projects the Typecheck step does and additionally applies ~100
+      # lint rules that nothing enforced before: eslint.config.mjs set them but
+      # eslint was never installed, so it has never once run in this repo.
+      #
+      # Advisory for now, and deliberately so: .oxlintrc.json puts the whole
+      # correctness category at `warn`, which oxlint does not fail on, and the
+      # first run finds several hundred of them - almost all React effect/ref/memo
+      # rules. The step still fails on a TypeScript error, because tsgolint
+      # reports those as errors regardless of the category setting. Raise the
+      # category to `error` (or add --deny-warnings here) once the backlog is
+      # worked down; until then this step exists to make the count visible and to
+      # stop it growing unnoticed.
+      - name: Oxlint
+        run: yarn lint:oxc
+
       # Regenerates the published plugin API declarations and fails if they no
       # longer compile on their own. Without this, a refactor that leaks an
       # unexportable internal type into the plugin surface would only be caught

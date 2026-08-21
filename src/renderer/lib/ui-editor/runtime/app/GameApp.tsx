@@ -43,6 +43,7 @@ import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import {
@@ -177,6 +178,7 @@ import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
+import { holdStageAdvance } from "./stageAdvanceHold";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -190,14 +192,8 @@ import type {
 import { useAutoSave } from "./useAutoSave";
 import { usePlaytime } from "./usePlaytime";
 import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
-import {
-    weatherBakeSize,
-    WEATHER_FPS,
-    WEATHER_LOOP_SECONDS,
-    type WeatherBakeSpec,
-    type WeatherSeedRef,
-} from "@shared/weather/model";
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { WeatherSeedRef } from "@shared/weather/model";
+import { weatherSpecForStage } from "@shared/weather/stage";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
 // rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
@@ -322,23 +318,6 @@ export type GameAppProps = {
  * Studio Dev Mode and the standalone game runtime render this component and
  * differ only in the injected GameAppHost.
  */
-/**
- * The clip to bake for one seed, at this project's stage size.
- *
- * The loop length and frame rate are the seed system's own constants; what varies per project is the
- * picture's size, and it is capped so a 4K stage does not bake a clip four times the size for content
- * that is high-frequency noise stretched over the frame anyway.
- */
-function weatherSpecForStage(ref: WeatherSeedRef, uidoc: UIDocument): WeatherBakeSpec {
-    // The stage surface's own design size, because that is the coordinate system a weather overlay
-    // covers. A document with no stage surface falls back to the first surface it has - the clip is
-    // `cover`-fitted either way, so a size that is merely close costs nothing an eye can find.
-    const stage = uidoc.surfaces.find(surface => surface.kind === "stageSurface") ?? uidoc.surfaces[0];
-    const design = stage?.designSize ?? { width: 1920, height: 1080 };
-    const { width, height } = weatherBakeSize(design.width, design.height);
-    return { ref, width, height, fps: WEATHER_FPS, frames: WEATHER_LOOP_SECONDS * WEATHER_FPS };
-}
-
 export function GameApp(props: GameAppProps): ReactNode {
     const {
         host,
@@ -428,6 +407,23 @@ export function GameApp(props: GameAppProps): ReactNode {
             subscribe: listener => core.scopeBridge.subscribePersistence(listener),
         };
     }, [bundle.localization, core]);
+    /**
+     * The same answer, for readers that are not components.
+     *
+     * The blueprint evaluator resolves an asset set on a node the moment a pin is read, which
+     * happens inside synchronous graph execution - no React context to reach and no promise to
+     * await. See `runtimeLocale.ts` for why that is a module-level holder rather than another field
+     * threaded through the resolve runtime.
+     */
+    useEffect(() => {
+        if (!gameLocalizationRuntime) {
+            return;
+        }
+        return setRuntimeLocaleSource({
+            getLocale: gameLocalizationRuntime.getLocale,
+            sourceLocale: gameLocalizationRuntime.bundle.sourceLocale,
+        });
+    }, [gameLocalizationRuntime]);
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
     // Localized character nametag: NLR reports the authored (source-language)
     // name; map it back to its character and translate the `char:<id>` unit for
@@ -619,15 +615,31 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [isInGame, layerStack, navigation]);
     /**
+     * The same question as `isStoryOnScreen`, asked of this render rather than of this instant.
+     *
+     * One predicate, two readers: the skip loop runs outside React and needs the answer for the
+     * moment it steps, while a suspension on the engine has to be taken and handed back as the
+     * answer changes, which is a dependency. Both read `isStageCovered` over the same four inputs -
+     * the states here are the reactive view of the stores the callback above reads.
+     */
+    const stageCovered = isStageCovered({
+        pageEntries: navStack,
+        pagesHiddenForGame: studioPageHiddenForGame,
+        gameHiddenKeys: gameHiddenNavKeys,
+        layers,
+    });
+    /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
      * below reads it, and a save has to record the time at the moment it is written.
      */
     const playtime = usePlaytime({
         isPlaying: isPlaythroughRunning,
-        // Optional-chained because the runtime core is null until the bundle mounts. A read that
-        // lands before it resolves to nothing, and the total simply starts this session from zero;
-        // a write that early has nothing to write, because nothing has been played yet.
+        // The store the two functions below reach, so the hook can wait for it and read again when
+        // it is replaced. Without it the stored total is read on the hook's first commit, when the
+        // core is still null, and never again.
+        persistenceSource: core?.scopeBridge ?? null,
+        // Optional-chained because the runtime core is null until the bundle mounts.
         persistenceGetAsync: async key => core?.scopeBridge.persistenceGetAsync(key),
         // Not awaited: the value is readable the moment this returns, the clock has already
         // counted the seconds, and a failed disk write only means the next flush carries them.
@@ -730,6 +742,16 @@ export function GameApp(props: GameAppProps): ReactNode {
      * `hostApi.sound.subscribeMixerChanges`, which is how the video widget follows a slider drag.
      */
     const preferenceListenersRef = useRef<Set<() => void>>(new Set());
+    /**
+     * Depth of a preference write Studio made to move the engine rather than to record a choice.
+     *
+     * There is one: re-arming auto-forward after a settings screen closes writes `autoForward` the
+     * value it already holds, because that write is the only way to schedule the line on screen
+     * again (see `stageAdvanceHold`). The engine's store emits on every write, changed or not, so
+     * without this the author's `On Preference Changed` would report a setting the player did not
+     * touch. Synchronous, like the emit it brackets.
+     */
+    const engineNudgeDepthRef = useRef(0);
     const subscribeGamePreferences = useCallback((listener: () => void) => {
         preferenceListenersRef.current.add(listener);
         return () => {
@@ -2787,6 +2809,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The `skipReadText` preference cannot be honoured from outside the engine's own skip
             // loop, so the game app runs its own; see the effect that builds `skipRunController`.
             hostOwnsSkipKey: true,
+            // The author's pause length, from the bundle. A bundle written before the setting
+            // carries nothing and gets the engine's own value, which is what those builds shipped.
+            ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
         });
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are
@@ -3937,6 +3962,49 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
 
+    /**
+     * Hold the story still while a page or a modal layer is drawn over the stage.
+     *
+     * The skip loop above stops itself, because Studio runs it. Auto-forward is the engine's own
+     * timer and reaches the dialog through a click the host never sees, so nothing a predicate can
+     * say will stop it - the engine's `suspendAdvance` is what does, and this is the one place
+     * Studio takes one. It covers the stage click and the advance key with it, which is the same
+     * answer for the same reason: the player is looking at the screen on top.
+     *
+     * Mount and cleanup are the two edges of "covered", so a suspension cannot survive the render
+     * that decided the stage was clear. See `stageAdvanceHold` for what releasing has to do besides
+     * releasing.
+     */
+    useEffect(() => {
+        if (!stageCovered) {
+            return;
+        }
+        const heldLiveGame = nlrLiveGameRef.current;
+        const preference = (nlrSession?.game as {
+            preference?: {
+                getPreference?: (key: string) => unknown;
+                setPreference?: (key: string, value: unknown) => void;
+            };
+        } | undefined)?.preference;
+        const hold = holdStageAdvance({
+            suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
+            isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
+            isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
+            rearmAutoForward: () => {
+                engineNudgeDepthRef.current += 1;
+                try {
+                    preference?.setPreference?.("autoForward", true);
+                } catch {
+                    // A session torn down between the check and the write; the line it would have
+                    // woken is gone with it.
+                } finally {
+                    engineNudgeDepthRef.current -= 1;
+                }
+            },
+        });
+        return hold.release;
+    }, [nlrSession, stageCovered]);
+
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
     useEffect(() => {
@@ -4166,6 +4234,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                     liveGame,
                     preferenceSnapshotRef,
                     (key, value, previousValue) => {
+                        // A write Studio made to nudge the engine is not a change to report: the
+                        // value on both sides of it is the player's own, untouched.
+                        if (engineNudgeDepthRef.current > 0) {
+                            return;
+                        }
                         dispatchPreferenceChangeRef.current?.(key, value, previousValue);
                         preferenceListenersRef.current.forEach(listener => listener());
                     },

@@ -233,6 +233,40 @@ export const story = {
         },
         bulkConfirmDetail: "This adds them below the current line as one undo step.",
         scriptFile: "This is a story script. Use Import Script to bring it back in.",
+        // Translations that travelled with copied rows. Part of the cross-project line; on their
+        // own, and only the second of them, after a paste back into the same project.
+        translationsCarried: {
+            one: "{count} translation carried",
+            other: "{count} translations carried",
+        },
+        translationsDropped: {
+            one: "{count} translation skipped",
+            other: "{count} translations skipped",
+        },
+    },
+    // Rows pasted into a project other than the one they were copied from. One line of counts,
+    // reported once, after the rows land.
+    crossProject: {
+        pasted: {
+            one: "{count} row pasted",
+            other: "{count} rows pasted",
+        },
+        pastedFrom: {
+            one: "{count} row pasted from {project}",
+            other: "{count} rows pasted from {project}",
+        },
+        speakerNames: {
+            one: "{count} line without a character",
+            other: "{count} lines without a character",
+        },
+        imported: {
+            one: "{count} asset imported",
+            other: "{count} assets imported",
+        },
+        unresolved: {
+            one: "{count} reference unresolved",
+            other: "{count} references unresolved",
+        },
     },
     flow: {
         tabTitle: "Scene Flow",
@@ -573,6 +607,8 @@ export const story = {
         delay: "Delay Seconds",
         repeat: "Repeat Times",
         repeatDelay: "Repeat Gap",
+        repeatType: "Repeat Direction",
+        stopLoop: "Stop Loop",
         fromProps: "Start Props",
         // Direction, which is what `/show` and `/hide` each say instead of the old "transition".
         conceal: "Conceal",
@@ -589,6 +625,10 @@ export const story = {
      * that merely echoes a canonical value, so these entries change nothing on their own.
      */
     enumValue: {
+        // How each repeat runs (`repeatType=`).
+        loop: "loop",
+        reverse: "reverse",
+        mirror: "mirror",
         // Weather seeds - reserved words in the `/vfx` source slot.
         snow: "snow",
         rain: "rain",
@@ -857,7 +897,7 @@ export const story = {
         noCandidates: "No matches.",
         setBackground: "Set background",
         transform: "Transform",
-        invalidHint: "won't build",
+        invalidHint: "will not build",
         // On a cut point row, beside the line that names the variant it ends. The short half is what
         // the row shows; the title is the whole sentence.
         cutPoint: "not in other builds",
@@ -1035,10 +1075,10 @@ export const story = {
         skin: { label: "Skin", detail: "Set the skin a runtime-drawn character wears" },
         rename: { label: "Rename", detail: "Change the name a character speaks under" },
         say: { label: "Say", detail: "A line of dialogue" },
-        image: { label: "Image", detail: "Put an image on stage" },
-        text: { label: "Text", detail: "Put text on stage" },
-        video: { label: "Video", detail: "Put a video on stage" },
-        vfx: { label: "Ambience", detail: "A looping full-screen overlay: petals, rain, dust, light" },
+        image: { label: "Image", detail: "Declare an image on stage; /show reveals it" },
+        text: { label: "Text", detail: "Declare text on stage; /show reveals it" },
+        video: { label: "Video", detail: "Declare a video on stage; /show reveals it" },
+        vfx: { label: "Ambience", detail: "Declare a looping full-screen overlay: petals, rain, dust, light" },
         layer: { label: "Layer", detail: "Create a render layer" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video" },
@@ -1227,6 +1267,15 @@ export const story = {
         duplicate: "Duplicate",
         disable: "Disable",
         enable: "Enable",
+        /**
+         * Bind the speaker on the selected rows to a character that already exists. Only offered when
+         * the selection holds rows whose speaker resolves to nothing, so the count is always the
+         * number of lines the character chosen from the submenu is about to take over.
+         */
+        bindSpeaker: {
+            one: "Link speaker on {count} line",
+            other: "Link speaker on {count} lines",
+        },
         playFromHere: "Play from here",
         openInspector: "Open inspector",
         delete: "Delete",

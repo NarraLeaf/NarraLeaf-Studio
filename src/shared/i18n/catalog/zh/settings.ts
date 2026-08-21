@@ -89,6 +89,15 @@ export const settings = {
                 dark: "暗色",
             },
         },
+        windowIcon: {
+            label: "窗口图标",
+            description: "Studio 窗口与任务栏按钮所用的图标。桌面与开始菜单的快捷方式仍使用安装时的图标",
+            options: {
+                default: "NarraLeaf",
+                narra: "Narra",
+            },
+            unsupportedPlatform: "此选项不适用于此操作系统",
+        },
         accentColor: {
             label: "强调色",
             description: "选中项、焦点框和主要按钮所用的颜色",
@@ -232,12 +241,11 @@ export const settings = {
         },
         versionControlAuthor: {
             label: "作者名",
-            description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
-            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录你自己的名字。",
+            description: "在未连接服务器的项目上记录，留空则记为 NarraLeaf Studio",
         },
         versionControlAuthorEmail: {
             label: "作者邮箱",
-            description: "与作者名一起记录，形如「作者名 <邮箱>」，留空则不记录地址",
+            description: "在未连接服务器的项目上与作者名一起记录，形如「作者名 <邮箱>」，留空则不记录地址",
         },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",
@@ -245,7 +253,7 @@ export const settings = {
         },
         reopenLastProject: {
             label: "启动时打开上次的项目",
-            description: "关闭此项则每次启动都停在启动器",
+            description: "打开上次所在的项目，而不是停在启动器",
         },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",
@@ -331,13 +339,27 @@ export const settings = {
         checking: "正在检查…",
         done: "完成",
         signOut: "退出登录",
+        signIn: "登录",
+        signingIn: "正在登录…",
         addressLabel: "服务器地址",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
-        reached: "{address} 响应的服务器为 {name}",
+        reached: "{address} 上的服务器是 {name}",
         tokenLabel: "访问令牌",
         tokenPlaceholder: "粘贴访问令牌",
         hint: "访问令牌由服务器管理员签发",
+        usernameLabel: "用户名",
+        passwordLabel: "密码",
+        useToken: "改用访问令牌",
+        usePassword: "改用用户名和密码",
+        signInRefused: "服务器未接受该用户名和密码",
+        signInUnavailable: "本机无法使用密码登录",
         noAccount: "{name} 不要求身份验证，无需添加",
+        joined: {
+            signedInAs: "已以 {name} 的身份登录",
+            projects: {
+                other: "{count} 个项目",
+            },
+        },
         probe: {
             unreachable: "该地址没有响应",
             notAServer: "该地址有响应，但它不是 NarraLeaf Team 服务器",

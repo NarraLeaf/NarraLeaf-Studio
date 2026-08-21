@@ -18,6 +18,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { FontAssetFieldDefinition } from "../types";
@@ -86,6 +87,7 @@ export function FontAssetField<TData extends UIInspectorData>({
         [field.readOnly, workspaceFreeze.reason],
     );
 
+    const assetLibraryRevision = useAssetLibraryRevision();
     const assetName = useMemo(() => {
         if (!assetId) {
             return null;
@@ -98,7 +100,9 @@ export function FontAssetField<TData extends UIInspectorData>({
             return null;
         }
         return assetsService.getAssets()[AssetType.Font]?.[assetId]?.name ?? null;
-    }, [assetId, assetsService]);
+        // `assetLibraryRevision`: the record is mutated in place, so a rename changes nothing this
+        // memo keys on. Without it the field keeps the name the font had when the panel opened.
+    }, [assetId, assetLibraryRevision, assetsService]);
 
     // Never "no font": a widget that has chosen nothing is set in the project's default, so naming
     // the state after what it does is the only reading that matches what is on screen beside it.

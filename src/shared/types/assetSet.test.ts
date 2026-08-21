@@ -5,6 +5,8 @@ import {
     collectAssetTagVocabulary,
     formatAssetTag,
     isAssetSetComplete,
+    resolveAssetSetFallbackAsset,
+    resolveAssetSetValue,
     childAssetSets,
     isLegalNesting,
     assetSetSubtree,
@@ -20,8 +22,13 @@ import {
     type AssetSetCandidate,
 } from "./assetSet";
 
-function axis(key: string, residency: AssetSetAxis["residency"], values: string[]): AssetSetAxis {
-    return { kind: key === "locale" ? "locale" : "release", key, residency, values };
+function axis(
+    key: string,
+    residency: AssetSetAxis["residency"],
+    values: string[],
+    fallback = values[0] ?? "",
+): AssetSetAxis {
+    return { kind: key === "locale" ? "locale" : "release", key, residency, values, fallback };
 }
 
 function set(overrides: Partial<AssetSet> = {}): AssetSet {
@@ -219,6 +226,55 @@ describe("nesting", () => {
     });
 });
 
+describe("the fallback", () => {
+    const library: AssetSetCandidate[] = [
+        candidate("a", ["char:alice", "mood:happy"]),
+    ];
+
+    it("answers a value with no file of its own", () => {
+        expect(resolveAssetSetValue(set(), "sad", library)).toBe("a");
+        expect(resolveAssetSetValue(set(), "happy", library)).toBe("a");
+    });
+
+    it("makes a set complete on one file, which is the whole point of it", () => {
+        expect(isAssetSetComplete(set(), library)).toBe(true);
+        const contents = resolveAssetSetContents(set(), library);
+        expect(contents.cells.map(cell => [cell.value, cell.assetId, cell.inherited]))
+            .toEqual([["happy", "a", false], ["sad", "a", true]]);
+    });
+
+    it("does not answer an ambiguous value, which stays a fault to fix", () => {
+        const ambiguous = [...library, candidate("b", ["char:alice", "mood:sad"]), candidate("c", ["char:alice", "mood:sad"])];
+        expect(resolveAssetSetValue(set(), "sad", ambiguous)).toBeNull();
+        expect(resolveAssetSetContents(set(), ambiguous).ambiguous.map(cell => cell.value)).toEqual(["sad"]);
+    });
+
+    it("leaves every value a hole when the fallback itself has no file", () => {
+        const withoutFallback = set({ axis: axis("mood", "build", ["happy", "sad"], "sad") });
+        expect(resolveAssetSetFallbackAsset(withoutFallback, library)).toBeNull();
+        expect(resolveAssetSetContents(withoutFallback, library).missing.map(cell => cell.value)).toEqual(["sad"]);
+    });
+
+    it("is refused as a declaration when it names no value of the axis", () => {
+        expect(validateAssetSet(set({ axis: axis("mood", "build", ["happy", "sad"], "nowhere") })))
+            .toContainEqual({ kind: "noFallback", axisKey: "mood" });
+    });
+
+    it("takes the first value when a record written before it says nothing", () => {
+        const document = normalizeProjectAssetSets({
+            version: 1,
+            sets: [{
+                id: "s",
+                name: "Alice",
+                type: "image",
+                filter: ["char:alice"],
+                axis: { kind: "locale", key: "locale", values: ["en", "ja"] },
+            }],
+        });
+        expect(document.sets[0].axis.fallback).toBe("en");
+    });
+});
+
 describe("validateAssetSet", () => {
     it("passes a set that declares an axis with values", () => {
         expect(validateAssetSet(set())).toEqual([]);
@@ -229,7 +285,7 @@ describe("validateAssetSet", () => {
             kind: "emptyAxisValues",
             axisKey: "mood",
         });
-        expect(validateAssetSet(set({ axis: { kind: "release", key: "", residency: "build", values: [] } }))).toContainEqual({ kind: "noAxes" });
+        expect(validateAssetSet(set({ axis: { kind: "release", key: "", residency: "build", values: [], fallback: "" } }))).toContainEqual({ kind: "noAxes" });
     });
 
     it("reports a repeated value on one axis", () => {
@@ -270,10 +326,13 @@ describe("normalizeProjectAssetSets", () => {
                 ],
             }],
         });
-        expect(document.sets.map(entry => entry.id)).toEqual(["a", "a:release", "a:demo"]);
+        // `a:main`, not `a:release`: the release edition's id was renamed, and an axis that promises
+        // edition ids is migrated on read, so the sub-set derived from that value is named after the
+        // edition it actually stands for.
+        expect(document.sets.map(entry => entry.id)).toEqual(["a", "a:main", "a:demo"]);
         expect(document.sets[0].axis).toMatchObject({ kind: "release", key: "release" });
         expect(document.sets[1]).toMatchObject({
-            filter: ["set:a", "release:release"],
+            filter: ["set:a", "release:main"],
             axis: { kind: "locale", key: "locale", residency: "runtime", values: ["en", "ja"] },
         });
         expect(childAssetSets(document.sets[0], "demo", document.sets).map(entry => entry.id)).toEqual(["a:demo"]);

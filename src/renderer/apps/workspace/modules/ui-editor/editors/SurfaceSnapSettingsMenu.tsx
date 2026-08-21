@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { Checkbox } from "@/lib/components/elements";
 import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { SurfaceEditorToolbarSegButton, SurfaceEditorToolbarSegSlot } from "./SurfaceEditorToolbarButtonGroup";
@@ -45,33 +46,27 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                     {t("uiEditor.snap.targets")}
                 </div>
                 <div className="pt-1">
-                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
-                        <input
-                            type="checkbox"
-                            className="h-3.5 w-3.5 rounded-sm border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
-                            checked={detail.snapCanvasLayout}
-                            onChange={() => patch({ snapCanvasLayout: !stateService.getSmartSnapDetailSettings().snapCanvasLayout })}
-                        />
-                        <span>{t("uiEditor.snap.canvasLayout")}</span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
-                        <input
-                            type="checkbox"
-                            className="h-3.5 w-3.5 rounded-sm border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
-                            checked={detail.snapElementBorder}
-                            onChange={() => patch({ snapElementBorder: !stateService.getSmartSnapDetailSettings().snapElementBorder })}
-                        />
-                        <span>{t("uiEditor.snap.elementBorders")}</span>
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-fg hover:bg-fill-subtle">
-                        <input
-                            type="checkbox"
-                            className="h-3.5 w-3.5 rounded-sm border border-edge-strong bg-surface-sunken text-primary focus:ring-primary/40"
-                            checked={detail.snapElementLayout}
-                            onChange={() => patch({ snapElementLayout: !stateService.getSmartSnapDetailSettings().snapElementLayout })}
-                        />
-                        <span>{t("uiEditor.snap.elementLayout")}</span>
-                    </label>
+                    <Checkbox
+                        className="px-3 py-1.5 text-fg hover:bg-fill-subtle"
+                        checked={detail.snapCanvasLayout}
+                        onCheckedChange={() => patch({ snapCanvasLayout: !stateService.getSmartSnapDetailSettings().snapCanvasLayout })}
+                    >
+                        {t("uiEditor.snap.canvasLayout")}
+                    </Checkbox>
+                    <Checkbox
+                        className="px-3 py-1.5 text-fg hover:bg-fill-subtle"
+                        checked={detail.snapElementBorder}
+                        onCheckedChange={() => patch({ snapElementBorder: !stateService.getSmartSnapDetailSettings().snapElementBorder })}
+                    >
+                        {t("uiEditor.snap.elementBorders")}
+                    </Checkbox>
+                    <Checkbox
+                        className="px-3 py-1.5 text-fg hover:bg-fill-subtle"
+                        checked={detail.snapElementLayout}
+                        onCheckedChange={() => patch({ snapElementLayout: !stateService.getSmartSnapDetailSettings().snapElementLayout })}
+                    >
+                        {t("uiEditor.snap.elementLayout")}
+                    </Checkbox>
                 </div>
             </SurfaceToolbarPopoverPanel>
         </>

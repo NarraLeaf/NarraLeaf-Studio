@@ -9,6 +9,7 @@ const CONTEXT: StoryCommandContext = {
     images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "forest_night" }, { id: "i3", name: "city rain" }],
     audio: [{ id: "a1", name: "theme" }],
     videos: [],
+    assetSets: [],
     // Doll is drawn by a runtime the author supplied and her model has answered; Ghost is a puppet too
     // but nobody could ask hers (no runtime on this machine) - the pair is what the puppet arms need.
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Bob" }, { id: "c3", name: "Doll" }, { id: "c4", name: "Ghost" }],
@@ -485,10 +486,14 @@ describe("candidate marks", () => {
             { kind: "asset", assetType: "image" },
             { kind: "number", duration: true },
         ]);
+        // The two trailing numbers are the overlay knobs `/show` carries for an ambience target;
+        // they are offered on every `/show`, and refused with a reason on anything else.
         expect(marks("/show Alice smile |")).toEqual([
             { kind: "options", lead: "left" },
             { kind: "options", lead: "fade" },
             { kind: "number", duration: true },
+            { kind: "number" },
+            { kind: "number" },
         ]);
     });
 

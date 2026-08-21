@@ -27,6 +27,11 @@ const MAIN_MENU_GROUP_ID = "narraleaf-studio:main-menu";
  * their keyboard navigation and their submenus are the same code in both modes rather than a second
  * menu implementation that could drift from the first.
  *
+ * The accelerators come with them. Each row keeps the letter its group had as a button
+ * (`buildMainMenuSubmenus`), the dropdown declares those letters to the bar, and Alt+F opens the
+ * File menu here exactly as it did when File was a button of its own - one arrangement of the same
+ * menu bar, not a place where the keyboard stops working.
+ *
  * **The freeze is applied here, per group, and the dropdown is told not to apply it again**
  * (`preFrozen`). A frozen workspace exempts File, Help and the image preview's zoom controls (see
  * `freezeActionPolicy`), and that decision is keyed by the group's own id - which the assembled

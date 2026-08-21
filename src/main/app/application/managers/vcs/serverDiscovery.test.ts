@@ -14,7 +14,12 @@ import type { VcsServerDiscovery } from "@shared/types/vcs";
 // certificate is the fixture here and node's crypto cannot mint one; the alternative was a
 // second DER encoder in a test file, or a key pasted into the repository and left to expire.
 import { buildSelfSignedCertificate } from "../../../../buildWorker/mobile/x509";
-import { parseServerAddress, probeVcsServer, readDiscoveryDocument } from "./serverDiscovery";
+import {
+    parseServerAddress,
+    probeVcsServer,
+    readDiscoveryDocument,
+    serverAddressForAuthUrl,
+} from "./serverDiscovery";
 
 /**
  * What one address comes to, against a server that is actually listening.
@@ -38,6 +43,7 @@ const DOCUMENT: VcsServerDiscovery = {
     data: { url: "lore://team.example.lan:41337" },
     authority: { sha256: "3D:38:9F:E6" },
     version: "0.1.0",
+    capabilities: ["projects"],
 };
 
 const DISCOVERY_PATH = "/.well-known/nlteam";
@@ -182,6 +188,22 @@ describe("reading an address", () => {
             expect(parseServerAddress(address), address).toBeNull();
         }
     });
+
+    it("writes back the address of a server that was added before, from where its tokens go", () => {
+        // A session records the sign-in endpoint and never the address that was typed, so
+        // asking that server anything again means putting the address back together. The
+        // result has to be one `parseServerAddress` accepts, or nothing can be asked.
+        const address = serverAddressForAuthUrl("https://Team.Example.LAN:41402");
+        expect(address).toBe("nlteam://team.example.lan:41402");
+        expect(parseServerAddress(address!)).not.toBeNull();
+    });
+
+    it("fills in the port for a sign-in address that leaves it out, and refuses what is not one", () => {
+        expect(serverAddressForAuthUrl("https://team.example.lan"))
+            .toBe("nlteam://team.example.lan:41402");
+        expect(serverAddressForAuthUrl("")).toBeNull();
+        expect(serverAddressForAuthUrl("team.example.lan:41402")).toBeNull();
+    });
 });
 
 describe("reading what came back", () => {
@@ -200,6 +222,22 @@ describe("reading what came back", () => {
             status: 200,
             body: JSON.stringify({ ...DOCUMENT, data: { url: "  " } }),
         })).toBe("that server's description does not say where its projects live");
+    });
+
+    it("reads a description that names no capabilities as offering none", () => {
+        // Every server written before the field says nothing here, and none of them is
+        // broken. Recording an empty list is what keeps them addable.
+        const { capabilities, ...rest } = DOCUMENT;
+        expect(capabilities.length).toBeGreaterThan(0);
+        expect(readDiscoveryDocument({ status: 200, body: JSON.stringify(rest) }))
+            .toEqual({ ...rest, capabilities: [] });
+    });
+
+    it("keeps the capability names it does not know, and drops what is not a name", () => {
+        expect(readDiscoveryDocument({
+            status: 200,
+            body: JSON.stringify({ ...DOCUMENT, capabilities: ["projects", 7, "", "  members  ", "projects"] }),
+        })).toEqual({ ...DOCUMENT, capabilities: ["projects", "members"] });
     });
 
     it("refuses a description that asks for a token and does not say where", () => {

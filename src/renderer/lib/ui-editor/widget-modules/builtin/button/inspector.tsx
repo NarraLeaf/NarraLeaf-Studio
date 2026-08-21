@@ -391,7 +391,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                         fields: [
                             defineField<D, any>({
                                 id: "button.interactionDisabled",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.button.interactionDisabled"),
                                 getValue: (d: D) => Boolean(getButtonProps(d.element).interactionDisabled),
                                 setValue: (_d: D, v: boolean) => patch({ interactionDisabled: v }),
@@ -407,7 +407,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                         fields: [
                             defineField<D, any>({
                                 id: "button.localizable",
-                                type: "checkbox",
+                                type: "toggle",
                                 label: t("widgets.button.localizeLabel"),
                                 getValue: (d: D) => Boolean(getButtonProps(d.element).localizable),
                                 setValue: (_d: D, v: boolean) => patch({ localizable: v }),

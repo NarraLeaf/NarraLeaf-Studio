@@ -9,7 +9,7 @@ import { WindowInstanceConfig, WindowInstance } from "./windowInstance";
 import { WindowIPC } from "./windowIPC";
 import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
-import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults, WindowControlPolicy } from "@shared/types/window";
+import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults, WindowControlPolicy, ChildWindowLifetime } from "@shared/types/window";
 import { getWindowBackgroundColor } from "@/app/application/theme";
 import { applyTrafficLightPositionForZoom, applyZoomFactorToWebContents, windowTypeUsesZoom } from "@/app/application/zoom";
 import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent, trafficLightPositionForZoom } from "@shared/constants/zoom";
@@ -44,7 +44,11 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     }
 
     private props: WindowProps[T];
-    private children: Set<AppWindow> = new Set();
+    /**
+     * Windows opened from this one, and what each of them is to it. See {@link ChildWindowLifetime}
+     * - the lifetime is the whole reason this is a map rather than the set it used to be.
+     */
+    private children: Map<AppWindow, ChildWindowLifetime> = new Map();
     private tokens: Map<AppWindow, AppEventToken> = new Map();
     private parent?: AppWindow;
     private closeResult?: WindowCloseResults[T];
@@ -316,11 +320,19 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         });
     }
 
-    public addChild(child: AppWindow): void {
+    /**
+     * Record that `child` was opened from this window.
+     *
+     * `lifetime` decides what happens to it when this window goes away, and defaults to
+     * `"dependent"` because that is what the prompts - which were the only callers when this was
+     * written - need. Anything the author is filling in rather than answering must say
+     * `"independent"`, or it is destroyed by a window closing for reasons of its own.
+     */
+    public addChild(child: AppWindow, lifetime: ChildWindowLifetime = "dependent"): void {
         if (this.children.has(child)) {
             return;
         }
-        this.children.add(child);
+        this.children.set(child, lifetime);
         child.parent = this;
 
         const token = child.getEvents().onEvent("closed", () => {
@@ -469,6 +481,52 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         });
     }
 
+    /**
+     * Cut every independent child loose, so this window closing does not take it with it.
+     *
+     * Both halves matter and they are separate mechanisms. `setParentWindow(null)` is Chromium's:
+     * a window constructed with `parent` is destroyed with its parent no matter what Studio thinks,
+     * and this is the only way to say otherwise. Dropping it from `children` is Studio's, and it is
+     * what keeps the `closed` handler below from destroying it a moment later.
+     *
+     * Must run while this window still exists, hence the call from `close` - by `closed` Chromium
+     * has already taken its children down. Repeated from `closed` anyway, for the windows that were
+     * `destroy()`ed and so never emitted `close` at all.
+     */
+    private releaseIndependentChildren(): void {
+        for (const [child, lifetime] of [...this.children]) {
+            if (lifetime !== "independent") {
+                continue;
+            }
+            try {
+                if (!child.isClosed()) {
+                    child.getBrowserWindow().setParentWindow(null);
+                }
+            } catch (error) {
+                this.getApp().logger.warn(`[Window] Could not detach a child window: ${String(error)}`);
+            }
+            this.removeChild(child);
+        }
+    }
+
+    /**
+     * Hand the close result to whoever is waiting for it, once.
+     *
+     * Called from `closed` as well as from `close` because a window can end without ever emitting
+     * `close` - `destroy()` skips straight to `closed`, which is how a wizard taken down with its
+     * parent used to leave the IPC request that opened it pending for the rest of the session.
+     */
+    private resolveCloseResult(): void {
+        if (!this.closeResultResolver) {
+            return;
+        }
+        const resolve = this.closeResultResolver;
+        this.closeResultResolver = undefined;
+        // `closeResult` is undefined when the window ended without reporting one, which every
+        // caller already reads as "cancelled".
+        resolve(this.closeResult ?? null as WindowCloseResults[T]);
+    }
+
     private prepareEvents(): void {
         const win = this.getInstance().getBrowserWindow();
         const webContents = win.webContents;
@@ -494,21 +552,27 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
                 }
             }
 
-            this.getEvents().emit("close", this);
+            // While both windows still exist, which is the only moment `setParentWindow` can be
+            // called: past this the children Chromium owns are already gone. See
+            // `releaseIndependentChildren`.
+            this.releaseIndependentChildren();
 
-            // Resolve close result if resolver is set
-            if (this.closeResultResolver) {
-                // If closeResult is undefined, pass null (window closed without result)
-                this.closeResultResolver(this.closeResult ?? null as WindowCloseResults[T]);
-                this.closeResultResolver = undefined;
-            }
+            this.getEvents().emit("close", this);
+            this.resolveCloseResult();
 
             this.getApp().windowManager.unregisterWindow(this);
         });
 
         win.on("closed", () => {
-            this.children.forEach(child => {
-                child.getBrowserWindow().destroy();
+            // A window that was `destroy()`ed rather than closed never ran the handler above, so
+            // both of these have to be repeated here. Both are idempotent.
+            this.releaseIndependentChildren();
+            this.resolveCloseResult();
+
+            this.children.forEach((lifetime, child) => {
+                if (lifetime === "dependent") {
+                    child.getBrowserWindow().destroy();
+                }
             });
 
             this.getEvents().emit("closed", this);

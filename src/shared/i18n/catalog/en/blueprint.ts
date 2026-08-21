@@ -44,6 +44,31 @@ export const blueprint = {
         selectLayer: "Select a layer on the left.",
         previewUnavailable: "Preview unavailable",
     },
+    /**
+     * A paste of nodes copied in another project.
+     *
+     * Counts only: what came across, and what still needs the author. Each unresolved reference is
+     * named again where it sits - by the project lint for a file or a widget, by the graph editor's
+     * own diagnostics for a call - and those are the reports that can be jumped to.
+     */
+    crossProject: {
+        pasted: {
+            one: "{count} node pasted",
+            other: "{count} nodes pasted",
+        },
+        pastedFrom: {
+            one: "{count} node pasted from {project}",
+            other: "{count} nodes pasted from {project}",
+        },
+        imported: {
+            one: "{count} asset imported",
+            other: "{count} assets imported",
+        },
+        unresolved: {
+            one: "{count} reference unresolved",
+            other: "{count} references unresolved",
+        },
+    },
     addNode: {
         close: "Close add node menu",
         searchPlaceholder: "Search nodes",

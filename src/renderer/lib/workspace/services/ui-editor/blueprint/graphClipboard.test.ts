@@ -8,8 +8,11 @@ import {
 } from "@shared/types/blueprint/graph";
 import { createBlueprintFnRef, parseBlueprintFnRef } from "./fnCatalog";
 import {
+    BLUEPRINT_GRAPH_CLIPBOARD_KIND,
+    BLUEPRINT_GRAPH_CLIPBOARD_VERSION,
     buildBlueprintGraphClipboardPayload,
     pasteBlueprintGraphClipboardPayload,
+    readBlueprintGraphClipboardPayload,
 } from "./graphClipboard";
 
 function testIr(): BlueprintGraphIr {
@@ -184,5 +187,82 @@ describe("blueprint graph clipboard", () => {
         });
 
         expect(result?.ir.nodes?.callCopy?.params?.[BLUEPRINT_NODE_PARAM_FN_REF]).toBe(fnRef);
+    });
+});
+
+/**
+ * The payload as it survives a trip through the platform clipboard.
+ *
+ * Everything here is about a payload written by *another process*: the JSON has to be rebuilt
+ * rather than trusted, and every id inside it has to arrive exactly as it left - a paste that
+ * silently emptied a param would trade a reported broken reference for an unreported empty one.
+ */
+describe("blueprint graph clipboard payload transport", () => {
+    const source = { path: "D:/Projects/Other", identifier: "com.example.other", name: "Other" };
+
+    it("round-trips a stamped payload through JSON", () => {
+        const payload = buildBlueprintGraphClipboardPayload(testIr(), ["a", "b"], { copyId: "copy-1", source });
+
+        const parsed = readBlueprintGraphClipboardPayload(JSON.stringify(payload));
+
+        expect(parsed).toEqual(payload);
+        expect(parsed?.source).toEqual(source);
+        expect(parsed?.copyId).toBe("copy-1");
+    });
+
+    it("keeps every param verbatim, foreign ids included", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                n: {
+                    id: "n",
+                    type: "plugin.contributed",
+                    params: { assetId: "asset-from-elsewhere", nested: { keep: ["me", 1, true] } },
+                },
+            },
+            edges: [],
+        };
+        const payload = buildBlueprintGraphClipboardPayload(ir, ["n"], { copyId: "copy-2", source });
+
+        const parsed = readBlueprintGraphClipboardPayload(JSON.stringify(payload));
+
+        expect(parsed?.nodes.n?.params).toEqual({
+            assetId: "asset-from-elsewhere",
+            nested: { keep: ["me", 1, true] },
+        });
+    });
+
+    it("refuses anything that is not one of its own payloads", () => {
+        expect(readBlueprintGraphClipboardPayload("not json at all")).toBeNull();
+        expect(readBlueprintGraphClipboardPayload(JSON.stringify({ v: 1, nodeIds: ["a"] }))).toBeNull();
+        expect(
+            readBlueprintGraphClipboardPayload(
+                JSON.stringify({ kind: "narraleaf.ui.elements", v: 1, nodeIds: ["a"], nodes: {}, edges: [] }),
+            ),
+        ).toBeNull();
+    });
+
+    it("drops nodes and edges a foreign payload cannot account for", () => {
+        const json = JSON.stringify({
+            kind: BLUEPRINT_GRAPH_CLIPBOARD_KIND,
+            v: BLUEPRINT_GRAPH_CLIPBOARD_VERSION,
+            nodeIds: ["a", "ghost"],
+            nodes: {
+                a: { id: "a", type: "source" },
+                // No `type`: nothing downstream can look this up, so it cannot be placed.
+                shapeless: { id: "shapeless" },
+            },
+            edges: [
+                { from: { nodeId: "a", port: "next" }, to: { nodeId: "ghost", port: "in" } },
+                { from: { nodeId: "a", port: "next" }, to: { nodeId: "a", port: "in" } },
+            ],
+        });
+
+        const parsed = readBlueprintGraphClipboardPayload(json);
+
+        expect(parsed?.nodeIds).toEqual(["a"]);
+        expect(Object.keys(parsed?.nodes ?? {})).toEqual(["a"]);
+        expect(parsed?.edges).toEqual([
+            { from: { nodeId: "a", port: "next" }, to: { nodeId: "a", port: "in" } },
+        ]);
     });
 });

@@ -11,6 +11,12 @@ import { Character } from "../character/Character";
 import { CharacterProfile } from "../character/CharacterProfile";
 import { CharacterAppearanceKind, CharacterGroup, StoredCharacter } from "../character/types";
 import { CHARACTER_STORE_VERSION, isNewerCharacterStore, migrateCharacterStore } from "../character/migrateAppearance";
+import {
+    applyCharacterSpeakerFallback,
+    planCharacterSpeakerFallback,
+    revertCharacterSpeakerFallback,
+} from "../story/characterSpeakerFallback";
+import type { StoryService } from "../story/StoryService";
 import { UuidService } from "./UuidService";
 import { AssetsService } from "./AssetsService";
 import { createProjectDocumentStorage } from "./DocumentStorage";
@@ -111,10 +117,19 @@ export class CharacterService extends Service<CharacterService> implements IChar
      * stack already caps how many can be held. An asset can be a 200 MB video, which is why the
      * asset case (still open) needs somewhere on disk to put it.
      *
-     * What deliberately does NOT come back into scope: the story lines that referenced this
-     * character. They keep the id and dangle, exactly as they do today - deleting a referenced thing
-     * warns rather than rewrites, so undo only has to put the thing back for the references to
-     * resolve again.
+     * The dialogue lines this character spoke come along, in the one direction that loses nothing:
+     * each keeps speaking, under this character's name, as a bare `speakerName`
+     * (`characterSpeakerFallback`). A player reads the line exactly as before, and the author can bind
+     * it to another character afterwards. Left as they were, those rows would hold an id that resolves
+     * to nothing and the compiler would render them as "Unknown".
+     *
+     * Character *stage* rows are deliberately untouched: they have no bare-name arm, so they keep the
+     * id and the project lint reports them.
+     *
+     * Both halves ride in one history entry, because they are one gesture. This service owns that
+     * entry - only it can reconstruct the record, the cast position and the avatar's bytes - so it is
+     * also the thing that drives the story sweep, rather than each caller of this method remembering
+     * to.
      */
     public async deleteCharacter(id: string): Promise<boolean> {
         const character = this.characters[id];
@@ -126,8 +141,13 @@ export class CharacterService extends Service<CharacterService> implements IChar
         const index = this.characterOrder.indexOf(id);
         const thumbnailId = character.profile.getThumbnail() ?? undefined;
         const thumbnailBytes = thumbnailId ? await this.readServiceFile(thumbnailId) : null;
+        const speakerName = stored.profile.name;
+        // Settled while the character still exists, because the rows are found by the id that is about
+        // to stop resolving. Both directions of the entry below work from this one list.
+        const spokenRows = await planCharacterSpeakerFallback(this.getStoryService(), id);
 
         this.removeCharacter(id, character, thumbnailId);
+        applyCharacterSpeakerFallback(this.getStoryService(), spokenRows, speakerName);
 
         this.getHistoryService().pushCommand(projectHistoryScope(), {
             label: {
@@ -143,12 +163,16 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 this.lockCharacterAssets(restored);
                 this.markDirty();
                 this.emitChange();
+                // After the character is back, so the rows are pointed at something that resolves.
+                revertCharacterSpeakerFallback(this.getStoryService(), spokenRows, id, speakerName);
             },
             redo: () => {
                 const current = this.characters[id];
-                if (current) {
-                    this.removeCharacter(id, current, thumbnailId);
+                if (!current) {
+                    return;
                 }
+                this.removeCharacter(id, current, thumbnailId);
+                applyCharacterSpeakerFallback(this.getStoryService(), spokenRows, speakerName);
             },
         });
 
@@ -580,6 +604,14 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private getUuidService(): UuidService {
         return this.getContext().services.get<UuidService>(Services.Uuid);
+    }
+
+    /**
+     * Resolved per call rather than at init: the cast is readable long before any story document is,
+     * and the only thing that needs the story library here is a deletion.
+     */
+    private getStoryService(): StoryService {
+        return this.getContext().services.get<StoryService>(Services.Story);
     }
 
     private registerGroup(group: CharacterGroup): void {

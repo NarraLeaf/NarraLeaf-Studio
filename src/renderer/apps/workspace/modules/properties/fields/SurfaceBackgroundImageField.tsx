@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
+import { useWorkspace } from "@/apps/workspace/context";
 import { IconButton } from "@/lib/components/elements/Button";
 import { Select } from "@/lib/components/elements/Select";
 import { useTranslation } from "@/lib/i18n";
@@ -42,6 +44,16 @@ export function SurfaceBackgroundImageField({ data }: CustomFieldProps<SceneEdit
     const anchorRef = useRef<HTMLButtonElement | null>(null);
     const background = getSurfaceBackgroundImage(data.surface);
     const { url } = useAssetObjectUrl(background?.assetId ?? null);
+    const { context, isInitialized } = useWorkspace();
+    // A page's background is one picture with one job, which is exactly the kind of thing that
+    // changes with the language it is read in. The build writes the answer onto this Surface's own
+    // settings, so the shipped game resolves it without any table - see `@shared/build/uiAssetSets`.
+    const { virtualGroups, resolveAssetPreviewUrl } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
 
     const modeOptions = useMemo(
         () => UI_SURFACE_BACKGROUND_FILL_MODES.map(mode => ({
@@ -118,6 +130,7 @@ export function SurfaceBackgroundImageField({ data }: CustomFieldProps<SceneEdit
                 anchorRef={anchorRef}
                 title={t("properties.scene.backgroundImage")}
                 multiple={false}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </div>
     );

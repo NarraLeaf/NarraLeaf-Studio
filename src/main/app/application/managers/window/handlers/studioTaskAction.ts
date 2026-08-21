@@ -20,3 +20,31 @@ export class StudioTasksGetOverviewHandler extends IPCHandler<IPCEventType.studi
         return this.success({ overview: window.getApp().getTaskScheduler().getOverview() });
     }
 }
+
+/**
+ * Have the weather a project's stories name ready before anyone asks for it.
+ *
+ * Answers as soon as the work is submitted rather than when it finishes: nobody is waiting on this,
+ * and a caller that awaited it would turn speculation into a stall. What makes it free is the two
+ * priorities - a bake started here at `idle` yields to a run, and if the author presses Run while it
+ * is half done the same submission arrives at `blocking` and adopts the work in flight rather than
+ * restarting it.
+ *
+ * Never reports a failure. A clip that could not be produced is produced again, blockingly, the
+ * moment something actually needs it, and that is where an author gets told.
+ */
+export class StudioTasksPrebakeWeatherHandler extends IPCHandler<IPCEventType.studioTasksPrebakeWeather> {
+    readonly name = IPCEventType.studioTasksPrebakeWeather;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { projectPath, specs }: IPCEvents[IPCEventType.studioTasksPrebakeWeather]["data"],
+    ): RequestStatus<IPCEvents[IPCEventType.studioTasksPrebakeWeather]["response"]> {
+        if (projectPath && specs.length > 0) {
+            void window.getApp().getWeatherBakeManager()
+                .ensure({ projectRoot: projectPath, specs, priority: "idle" });
+        }
+        return this.success({});
+    }
+}

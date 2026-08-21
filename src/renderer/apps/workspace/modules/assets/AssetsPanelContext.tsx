@@ -13,6 +13,22 @@ export interface AssetsIconViewToolbarCenter {
     onBack: () => void;
 }
 
+/**
+ * The set a jump asked this panel to put on screen.
+ *
+ * The panel opens the section, the folders and the enclosing sets itself, because those are its own
+ * state. What the views take from here is the last step, which only they can do: scrolling the row
+ * into view and marking it, and - for the grid, which walks into one level at a time rather than
+ * opening them in place - which sets to step into first.
+ */
+export interface AssetSetRevealState {
+    setId: string;
+    /** The sets the grid steps into before the target is a tile in it. Outermost first, target excluded. */
+    ancestorSetIds: readonly string[];
+    /** Bumped per request, so asking for the same set twice marks it twice. */
+    nonce: number;
+}
+
 interface AssetsPanelContextType {
     /**
      * Keyed by sidebar section. The assets inside still carry their own `type`; what a section, a
@@ -55,11 +71,27 @@ interface AssetsPanelContextType {
     /** Sets drawn open, listing one row per variant. Kept apart from folders: different ids, different rows. */
     expandedAssetSets: Set<string>;
     setExpandedAssetSets: React.Dispatch<React.SetStateAction<Set<string>>>;
+    /**
+     * Non-null while a jump is landing on a set's row. See {@link AssetSetRevealState}.
+     *
+     * Optional like the drag fields above: a surface that draws the library without a panel around it
+     * is never jumped into, and marking a row is the one thing it has nothing to say about.
+     */
+    assetSetReveal?: AssetSetRevealState | null;
     /** What lets a variant row name its axis in the project's words instead of in tags. */
     assetSetNaming: AssetSetAxisNaming;
 
     // Handlers
     handleItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
+    /**
+     * The selection keys of the rows this view is drawing, in the order it draws them.
+     *
+     * A shift range is a slice of this list. The view is the only thing that knows what is on
+     * screen - which section is open, which folder is walked into, which set is stepped inside - and
+     * a range sliced out of the library records instead marks rows the author cannot see. Published
+     * from a layout effect, and cleared when the view goes away.
+     */
+    publishRowOrder: (keys: readonly string[]) => void;
     handleAssetClick: (asset: Asset, isMultiSelectMode: boolean) => void;
     handleGroupFocus: (groupId: string) => void;
     /** Puts a set in the properties panel, which is where its axes are edited. */

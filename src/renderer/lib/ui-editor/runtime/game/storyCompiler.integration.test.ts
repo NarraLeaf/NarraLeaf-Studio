@@ -4,7 +4,12 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
 import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryTransitionRef } from "@shared/types/story";
-import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import {
+    isPlayableStoryTransitionKind,
+    STORY_DOCUMENT_SCHEMA_VERSION,
+    STORY_TRANSITION_KINDS,
+    UNPLAYABLE_STORY_TRANSITION_KINDS,
+} from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
 import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
@@ -536,8 +541,12 @@ describe("compileStudioStoryToNlr", () => {
             },
         };
         const blocks: Record<string, StoryBlock> = {
-            text: {
-                id: "text",
+            // Declared on its own row, because a create row no longer reveals anything: the animation
+            // belongs to the row that SHOWS the caption, which is also what keeps the opacity
+            // assertion below meaningful (a reveal ends at opacity 1; a bare transform says nothing
+            // about opacity at all).
+            textCreate: {
+                id: "textCreate",
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
@@ -546,6 +555,17 @@ describe("compileStudioStoryToNlr", () => {
                     operation: "create",
                     objectName: "caption",
                     text: "Hello",
+                },
+            },
+            text: {
+                id: "text",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "text",
+                    operation: "show",
+                    objectName: "caption",
                     transform: { mode: "animation", animationId: animation.id },
                 },
             },
@@ -573,7 +593,7 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["text", "layerCreate", "layer"]),
+            document: baseDocument(blocks, ["textCreate", "text", "layerCreate", "layer"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
         });
@@ -1513,14 +1533,62 @@ describe("compileStudioStoryToNlr", () => {
         });
     });
 
-    it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
-        // Each new kind must be handled by createTransition; an unmapped kind
-        // falls through to a "not supported" diagnostic, which this guards against.
-        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "slide", "softIris", "blurDissolve", "throughColor", "darkness", "exposure"];
-        for (const kind of kinds) {
+    it("builds every playable kind in the union, with nothing to report", async () => {
+        // Derived from the shared tuple rather than listed here, and that is the point: this is the
+        // half that keeps `UNPLAYABLE_STORY_TRANSITION_KINDS` honest. `createTransition`'s switch is
+        // exhaustive, so a kind added to the union must get a branch - but a branch that merely
+        // routes it to `reportUnplayableTransition` would satisfy the compiler while leaving the
+        // author with a cut. Then this fails, unless the tuple above it says so out loud.
+        const playable = STORY_TRANSITION_KINDS.filter(kind => kind !== "none" && isPlayableStoryTransitionKind(kind));
+        expect(playable.length).toBe(STORY_TRANSITION_KINDS.length - 1 - UNPLAYABLE_STORY_TRANSITION_KINDS.length);
+
+        for (const kind of playable) {
             const compiled = await compileBackgroundTransition(kind);
             expect(compiled.diagnostics, `kind=${kind}`).toEqual([]);
+            expect(findTransition(compiled), `kind=${kind}`).toBeInstanceOf(Transition);
         }
+    });
+
+    it("plays `none` as a cut and says nothing about it", async () => {
+        // `none` is the author asking for a cut, not a transition that went missing - it returns
+        // before the switch and must never reach the report the other two cases below do.
+        const compiled = await compileBackgroundTransition("none");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(findTransition(compiled)).toBeUndefined();
+    });
+
+    it("reports a kind outside the union as an error and plays the change as a cut", async () => {
+        // The bug this file's `default` branch used to hide. A stored `kind` is a string on disk, so
+        // a document written by a newer Studio - or one carrying a kind since retired - reaches the
+        // compiler with a word no build here can play. `as never` is how a test writes what only a
+        // document can: the union has no room for it, which is exactly the situation.
+        const compiled = await compileBackgroundTransition("maskFade" as never);
+
+        expect(compiled.diagnostics).toEqual([
+            {
+                level: "error",
+                blockId: "bg",
+                message: "Transition \"maskFade\" is not available; the change was played as a cut. Choose a transition on this row.",
+            },
+        ]);
+        expect(findTransition(compiled)).toBeUndefined();
+    });
+
+    it("reports `custom` the same way, though the union does contain it", async () => {
+        // The escape hatch nothing builds. It is a member of the union, so the exhaustiveness check
+        // cannot speak for it and it is routed by hand - but the author sees what they see either
+        // way, so it is the same verdict and the same sentence.
+        const compiled = await compileBackgroundTransition("custom");
+
+        expect(compiled.diagnostics).toEqual([
+            {
+                level: "error",
+                blockId: "bg",
+                message: "Transition \"custom\" is not available; the change was played as a cut. Choose a transition on this row.",
+            },
+        ]);
+        expect(findTransition(compiled)).toBeUndefined();
     });
 
     it("builds each whole-screen kind out of the engine's own transitions", async () => {
@@ -1675,6 +1743,9 @@ describe("compileStudioStoryToNlr", () => {
                 transition: {
                     kind,
                     durationMs: 400,
+                    // `ruleReveal` is the one kind that reads an asset, and reports the row as
+                    // unfinished without one. Supplied for every kind because only that one looks.
+                    ruleAssetId: "asset-bg",
                     // Superset of every custom transition's params; each kind reads only its own.
                     props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%", ...overrides },
                 },
@@ -2355,7 +2426,47 @@ describe("compileStudioStoryToNlr voice", () => {
         ]);
     });
 
-    it("compiles /vfx onto one Vfx, showing on create and clamping its knobs", async () => {
+    it("declares on a create row and reveals only on a show row", async () => {
+        // The rule for every stage object except a layer: `create` names it, sources it and poses it,
+        // and nothing is on screen until something shows it. A layer is exempt because a layer is a
+        // container - one that mounted invisible would take its contents with it.
+        const blocks: Record<string, StoryBlock> = {
+            image: {
+                id: "image", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "image", operation: "create", objectName: "poster", assetId: "asset-poster" },
+            },
+            video: {
+                id: "video", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "video", operation: "create", objectName: "opening", assetId: "asset-opening" },
+            },
+            reveal: {
+                id: "reveal", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "image", operation: "show", objectName: "poster" },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["image", "video", "reveal"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const typesOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .map(action => action.type);
+
+        expect(compiled.diagnostics).toEqual([]);
+        // The source lands and nothing else: no transform, so nothing raises the element's opacity
+        // off the zero it mounts at.
+        expect(typesOf("image")).toContain("image:setSrc");
+        expect(typesOf("image")).not.toContain("displayable:applyTransform");
+        // A declared video is on stage and buffering, which is the whole reason the row is worth
+        // writing early - but it is not visible and it is not playing.
+        expect(typesOf("video")).toContain("video:preload");
+        expect(typesOf("video")).not.toContain("video:show");
+        expect(typesOf("reveal")).toContain("displayable:applyTransform");
+    });
+
+    it("compiles /vfx onto one Vfx, declaring on create and clamping its knobs", async () => {
         const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
             id, kind: "action", parentId: null, childrenIds: [], payload,
         });
@@ -2367,9 +2478,12 @@ describe("compileStudioStoryToNlr voice", () => {
             rate: vfxBlock("rate", { action: "vfx", operation: "setRate", objectName: "rain", rate: -1 }),
             freeze: vfxBlock("freeze", { action: "vfx", operation: "pause", objectName: "rain" }),
             hide: vfxBlock("hide", { action: "vfx", operation: "hide", objectName: "rain", durationMs: 400 }),
+            show: vfxBlock("show", {
+                action: "vfx", operation: "show", objectName: "rain", durationMs: 300, opacity: 0.4, rate: 2,
+            }),
         };
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["create", "rate", "freeze", "hide"]),
+            document: baseDocument(blocks, ["create", "rate", "freeze", "hide", "show"]),
             sceneId: "scene-1",
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
@@ -2377,8 +2491,12 @@ describe("compileStudioStoryToNlr voice", () => {
         const actionOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
 
         expect(compiled.diagnostics).toEqual([]);
-        // A create puts the overlay on screen - the row an author writes to "start the rain" must.
-        expect(actionOf("create")?.type).toBe("vfx:show");
+        // A create DECLARES the overlay and warms its clip; nothing appears until a row shows it.
+        expect(actionOf("create")?.type).toBe("vfx:preload");
+        expect(actionOf("show")?.type).toBe("vfx:show");
+        // Opacity and rate on a show row belong to that showing, so they travel as options - and are
+        // clamped on the way, like every other knob the compiler passes through.
+        expect(actionOf("show")?.contentNode?.getContent?.()[0]).toMatchObject({ duration: 300, opacity: 0.4, rate: 2 });
         expect(actionOf("freeze")?.type).toBe("vfx:pause");
         expect(actionOf("hide")?.type).toBe("vfx:hide");
         expect(actionOf("hide")?.contentNode?.getContent?.()[0]).toMatchObject({ duration: 400 });
@@ -2387,6 +2505,62 @@ describe("compileStudioStoryToNlr voice", () => {
         // Every row addresses the SAME overlay - `create` is what registers the name.
         expect(actionOf("hide")?.callee).toBe(actionOf("create")?.callee);
         expect(actionOf("create")?.callee?.config).toMatchObject({ blendMode: "screen", opacity: 1, zIndex: 3, fit: "cover" });
+    });
+
+    it("composites a weather seed's clip with screen, whatever the row says", async () => {
+        const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: vfxBlock("create", {
+                action: "vfx", operation: "create", objectName: "snow",
+                seed: { seed: "snow" },
+                // An author cannot reach this on a seed row through the inspector, but a document
+                // written by an older Studio - or by hand - can carry it, and honouring it would put
+                // an opaque black rectangle over the stage.
+                blendMode: "normal",
+            }),
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            resolveWeatherClip: async ref => `nlr://weather/${ref.seed}`,
+        });
+
+        const create = compiled.actionIdBindings.find(binding => binding.blockId === "create")?.action as any;
+        expect(compiled.diagnostics).toEqual([]);
+        expect(create?.callee?.config).toMatchObject({ src: "nlr://weather/snow", blendMode: "screen" });
+    });
+
+    it("leaves out a weather overlay the host cannot produce, and says so", async () => {
+        const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
+            id, kind: "action", parentId: null, childrenIds: [], payload,
+        });
+        const blocks: Record<string, StoryBlock> = {
+            create: vfxBlock("create", { action: "vfx", operation: "create", objectName: "snow", seed: { seed: "snow" } }),
+        };
+        // A `Vfx` with no src throws inside the engine, so "no clip" has to mean "no overlay".
+        const noHost = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(noHost.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
+        expect(noHost.diagnostics).toEqual([
+            { level: "warning", blockId: "create", message: 'Ambience effect "snow" needs its weather produced, which this compile cannot do.' },
+        ]);
+
+        const failedBake = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["create"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            resolveWeatherClip: async () => null,
+        });
+        expect(failedBake.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
+        expect(failedBake.diagnostics).toEqual([
+            { level: "warning", blockId: "create", message: 'Weather for ambience effect "snow" could not be produced.' },
+        ]);
     });
 
     it("compiles the video transport operations, converting seek to seconds", async () => {

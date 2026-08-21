@@ -16,6 +16,7 @@ import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 type DevModeSession = {
     id: string;
@@ -98,6 +99,17 @@ export class DevModeManager {
             await this.terminateSession(session);
             return "idle";
         });
+    }
+
+    /**
+     * End every session, whichever project it belongs to. Used on the way out of the app.
+     *
+     * Never throws: a session that cannot be torn down is not a reason to refuse to quit, and the
+     * window it owns is closing anyway.
+     */
+    public async stopAll(): Promise<void> {
+        const projects = [...this.sessions.values()].map(session => session.projectPath);
+        await Promise.allSettled(projects.map(projectPath => this.stop(projectPath)));
     }
 
     /**
@@ -605,8 +617,16 @@ export class DevModeManager {
         return next;
     }
 
+    /**
+     * The key a project's session is filed under.
+     *
+     * `normalizeProjectPath` rather than `path.resolve` alone, so this agrees with the window layer
+     * about what "the same project" is - on Windows that is a case fold as well as a separator one,
+     * and a session keyed by one spelling could not be found by the other. See the note on
+     * `normalizeProjectPath`; every project-path comparison in Studio goes through it.
+     */
     private projectKey(projectPath: string): string {
-        return path.resolve(projectPath);
+        return normalizeProjectPath(path.resolve(projectPath));
     }
 
     private disposeWatcher(session: DevModeSession): void {
@@ -636,16 +656,16 @@ export class DevModeManager {
         });
     }
 
+    /**
+     * The workspace window this session reports into.
+     *
+     * Path identity through `normalizeProjectPath`, like everything else that compares project
+     * paths. It used to be `path.normalize`, which agrees about separators and not about case - so a
+     * project reached under a differently-cased path had a live session whose console output went
+     * nowhere at all, which reads as "Dev Mode prints nothing" rather than as a lookup miss.
+     */
     private findWorkspaceWindow(projectPath: string): AppWindow<WindowAppType.Workspace> | undefined {
-        return this.app.windowManager
-            .getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    path.normalize(w.getProps().projectPath) === path.normalize(projectPath),
-            ) as AppWindow<WindowAppType.Workspace> | undefined;
+        return this.app.findWorkspaceForProject(projectPath);
     }
 
     private describeEntry(entry: DevModeEntry): string {

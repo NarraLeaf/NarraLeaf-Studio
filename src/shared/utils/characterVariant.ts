@@ -13,6 +13,21 @@ export function resolvePoseAssetId(
     appearance: CharacterAppearanceSummary | undefined,
     poseId: string | undefined,
 ): string | null {
+    return resolvePoseEntry(appearance, poseId)?.assetId ?? null;
+}
+
+/**
+ * The pose record a selection lands on, rather than just the id it holds.
+ *
+ * The compiler needs the record: a pose may name an asset SET, and the answer for it is written on
+ * that pose (see `@shared/build/characterAssetSets`) rather than in any table. Split out so the
+ * selection rule - named pose, then the default, then the first - is stated once and both readings
+ * land on the same pose.
+ */
+export function resolvePoseEntry(
+    appearance: CharacterAppearanceSummary | undefined,
+    poseId: string | undefined,
+): (CharacterAppearanceSummary & { kind: "preset" })["poses"][number] | null {
     if (appearance?.kind !== "preset") {
         return null;
     }
@@ -20,7 +35,7 @@ export function resolvePoseAssetId(
     if (!wanted) {
         return null;
     }
-    return appearance.poses.find(pose => pose.id === wanted)?.assetId ?? null;
+    return appearance.poses.find(pose => pose.id === wanted) ?? null;
 }
 
 /**

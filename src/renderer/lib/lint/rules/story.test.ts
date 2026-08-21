@@ -854,3 +854,95 @@ describe("story/cut-point-unreachable", () => {
         )).toEqual([]);
     });
 });
+
+// --- story/transition-unavailable -------------------------------------------
+
+describe("story/transition-unavailable", () => {
+    /** A background row whose stored transition names `kind`, which is a string on disk, not a union. */
+    const background = (id: string, kind: string, disabled = false): BlockSpec => ({
+        id,
+        kind: "action",
+        payload: { action: "setBackground", assetId: "asset-bg", transition: { kind, durationMs: 400 } },
+        ...(disabled ? { disabled: true } : {}),
+    });
+
+    it("reports a kind the union no longer contains", () => {
+        // The shape the bug arrived in: a document holding a transition word retired out of the
+        // union. Nothing in Studio can write one, so only a document outlives it - which is exactly
+        // why the compiler alone could not be trusted to catch it before a release.
+        const findings = run(
+            "story/transition-unavailable",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [background("b1", "maskFade")])])),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyTransitionUnavailable.message");
+        expect(findings[0].messageParams).toEqual({ transition: "maskFade" });
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "b1" });
+    });
+
+    it("reports `custom`, which is in the union and still has nothing behind it", () => {
+        // The half of this rule the type system cannot express: `custom` is a legal `kind` that no
+        // build plays. A rule keyed on union membership alone would wave it through.
+        const findings = run(
+            "story/transition-unavailable",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [background("b1", "custom")])])),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ transition: "custom" });
+    });
+
+    it("reads a jump's transition as well as a background's", () => {
+        // Four payloads carry a `StoryTransitionRef` and a jump's is the one that is not an action,
+        // so a rule that walked only action rows would pass a broken scene change.
+        const findings = run(
+            "story/transition-unavailable",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Prologue", [{
+                    id: "j1",
+                    kind: "jump",
+                    payload: { targetSceneId: "sc2", transition: { kind: "irisOut" } },
+                }]),
+                scene("sc2", "Chapter", [narration("n1")]),
+            ])),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].target).toMatchObject({ kind: "storyBlock", blockId: "j1" });
+    });
+
+    it("says nothing about the kinds a build can play", () => {
+        const findings = run(
+            "story/transition-unavailable",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [
+                // `none` included on purpose: it is the author asking for a cut and getting one.
+                background("b1", "none"),
+                background("b2", "dissolve"),
+                background("b3", "ruleReveal"),
+            ])])),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a row that names no transition at all", () => {
+        // Includes the NVL panel's `transition`, which is a transform ref and carries no `kind` -
+        // the reason this rule tests for a string rather than for the field's presence.
+        expect(run(
+            "story/transition-unavailable",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [
+                narration("n1"),
+                { id: "b1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg" } },
+                { id: "b2", kind: "action", payload: { action: "nvl", transition: { mode: "props", to: {} } } },
+            ])])),
+        )).toEqual([]);
+    });
+
+    it("stays quiet about a disabled row", () => {
+        expect(run(
+            "story/transition-unavailable",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [background("b1", "maskFade", true)])])),
+        )).toEqual([]);
+    });
+});

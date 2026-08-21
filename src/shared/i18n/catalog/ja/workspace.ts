@@ -22,7 +22,7 @@ export const workspace = {
             removeConfirmDetail: "翻訳はディスクに残り、この言語を追加し直すと復元される",
             openTable: "翻訳の表を開く",
             progress: "{total} 件中 {completed} 件が翻訳済み",
-            staleCount: "確認が要るもの {count} 件",
+            staleCount: "確認が必要なもの {count} 件",
             importSummary: "翻訳 {applied} 件を読み込んだ（変更なし {unchanged}、対応不明 {unknown}、空のため飛ばした {skippedEmpty}）",
         },
         settings: {
@@ -74,6 +74,8 @@ export const workspace = {
             reviewFilterUnreviewed: "未確認",
             charactersGroup: "キャラクター",
             characterSpeaker: "キャラクター",
+            scenesGroup: "シーン",
+            sceneSpeaker: "シーン",
             addKey: "追加",
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",
@@ -124,7 +126,7 @@ export const workspace = {
             exportPickup: "追加収録の台本を書き出す（古いものだけ）",
             importAudio: "音声を読み込む…",
             exportDone: "{path} に書き出した",
-            pickupEmpty: "録り直しが要る行はない",
+            pickupEmpty: "録り直しが必要な行はない",
             importSummary: "テイク {linked} 件を結びつけた（対応不明 {unmatched}、失敗 {failed}）",
             importFailed: "音声ファイルを読み込めなかった",
             importScript: "収録台本を読み込む…",
@@ -173,7 +175,7 @@ export const workspace = {
             statusApproved: "承認済み",
             statusOutdated: "古い",
             notePlaceholder: "メモ…",
-            dropHint: "音声を落とすと割り当てる",
+            dropHint: "音声をドロップすると割り当てる",
         },
     },
     // 復旧モード。プロジェクトが読み込めない、あるいは正しく読み込めないワークスペースを、
@@ -187,7 +189,7 @@ export const workspace = {
             state: "復旧モード：読み取り専用、プラグインは読み込んでいない",
             exit: "復旧モードを出る",
         },
-        intro: "検査を走らせると、その部分だけを読み込んで結果を報告する。読めたものは普段どおり見て回れる",
+        intro: "検査を走らせると、その部分だけを読み込んで結果を報告する。読み込めた部分は通常どおり閲覧できる",
         problems: {
             title: "見つかった問題",
             count: "{count}",
@@ -382,7 +384,6 @@ export const workspace = {
             categoryVersionControl: "バージョン管理",
             editor: {
                 closeTab: "タブを閉じる",
-                closeSelectedTabs: "選択中のタブを閉じる",
                 closeOthers: "ほかのタブを閉じる",
                 closeToRight: "右側のタブを閉じる",
                 closeAll: "すべてのタブを閉じる",
@@ -454,11 +455,12 @@ export const workspace = {
             /**
              * What a long task is called while it runs.
              *
-             * Names the thing being made, never the machinery that makes it: an author asked
-             * for weather, not for an encode.
+             * Names the author's own object and the work being done to it, never the machinery
+             * that does it. "Baking" is what the wait is; the encoder and the file format the
+             * clip ends up in are not the author's business and never appear here.
              */
             task: {
-                weatherBake: "天候を生成中",
+                weatherBake: "画面エフェクトを焼き込み中",
             },
             openConsole: "コンソールを開く",
             unsavedChanges: "未保存の変更",
@@ -735,11 +737,16 @@ export const workspace = {
             // レールのサーバーの節。「リモート」ではなく「サーバー」。バージョン管理を使ったことの
             // ない作者もサーバーなら分かるが、「リモート」はその仕組みを知っていて初めて意味を持つ。
             server: {
-                title: "サーバー",
                 // サーバーにつながっていないプロジェクト。誰かがそうしない限り、どのプロジェクトもこれ。
                 // 1 行と 1 つのボタン。つなぐのは既定ではなく判断だから。
                 none: "サーバーにつながっていない",
                 connect: "サーバーにつなぐ",
+                // すでにサーバーを持つプロジェクトを、別のサーバーへ向け直す。「つなぐ」ではなく
+                // 「変更」。三点リーダーは、その場で実行せず別の場所を開くコントロールの印。
+                change: "サーバーを変更…",
+                // サーバー行のあふれコントロール。この奥にあるのはプロジェクトの一生で数回決めること、
+                // その手前にあるのは毎日押すもの。
+                more: "その他の操作",
                 picker: {
                     title: "サーバーに接続",
                     nameLabel: "サーバー上での名前",
@@ -773,6 +780,19 @@ export const workspace = {
                 unreachable: "このサーバーに届かない",
                 // サーバーは応答したが、こちらを受け入れなかった。資格情報の入力欄が出る唯一の状態。
                 unauthorized: "このサーバーはアクセスを拒否した",
+                // 同じ 7 つの状態を、サーバー名の隣に置ける長さで。上の文はその状態が何を意味するかで、
+                // ホバーで出るのは今もそちら。こちらは 320px の列に名前と状態とメニューを 1 行で
+                // 収めるための、ひと目で読める言い方。真下のボタンと同じ語で言う。
+                state: {
+                    notChecked: "未確認",
+                    upToDate: "最新",
+                    localAhead: "未送信",
+                    remoteAhead: "サーバーに新着",
+                    diverged: "両方が進行",
+                    // 悪いことではなく起きたことを言う。ネットワークを離れた端末でも同じ。
+                    unreachable: "応答なし",
+                    unauthorized: "拒否された",
+                },
                 push: "サーバーへ送る",
                 pushing: "サーバーへ送っている…",
                 // 「すでにある」は成功。これを 2 回押すのはごく普通のこと。
@@ -780,6 +800,14 @@ export const workspace = {
                 sync: "サーバーから取得",
                 syncing: "サーバーからバージョンを取得している…",
                 syncedNothing: "すでに最新",
+                publish: {
+                    publishing: "このプロジェクトをサーバーに置いている…",
+                    noToken: "このインストールはそのサーバーにプロジェクトの登録を依頼できない。トークンを使ってサーバーを追加し直すこと。",
+                    refused: "そのサーバーはここでサインインしているアカウントを拒否したため、プロジェクトは登録されなかった。",
+                    unreachable: "そのサーバーは応答しなかったため、プロジェクトは登録されなかった。",
+                    wrongRepository: "そのサーバーは別のプロジェクトを登録したため、何も送られなかった。",
+                    unknown: "そのサーバーはプロジェクトを登録しなかった。",
+                },
                 signIn: {
                     required: "このサーバーはプロジェクトを接続する前にログインを求める。",
                     open: "このサーバーにサインイン",
@@ -867,6 +895,8 @@ export const workspace = {
             // 設定の表と一覧の見出し（静的なカタログから来る）。
             categories: {
                 general: "一般",
+                run: "実行",
+                view: "表示",
                 story: "ストーリーエディタ",
                 uiEditor: "UI エディタ",
                 blueprint: "ブループリントエディタ",
@@ -881,6 +911,11 @@ export const workspace = {
                 cheatSheet: "キーボードショートカットを表示",
                 contextHelp: "フォーカスされているもののヘルプ",
                 reopenClosedTab: "閉じたタブを開き直す",
+                // 開発モード・プレビュー・テストのうち、実行中のものを止める一つのキー。
+                // 停止する三つのコマンドが同じ割り当てを共有する。
+                run: {
+                    stop: "実行を停止",
+                },
                 undo: "元に戻す",
                 redo: "やり直す",
                 quickSwitchNext: "次のエディタのタブへ",

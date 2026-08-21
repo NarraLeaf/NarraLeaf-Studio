@@ -3,6 +3,9 @@
  * Comments in English per project convention.
  */
 
+import { resolveStoredAssetSetValue } from "@shared/build/blueprintAssetSlots";
+import type { AssetVariantMap } from "@shared/types/assetSet";
+import { readRuntimeLocale } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
     BLUEPRINT_NODE_TYPE_BOOLEAN_AND,
@@ -416,7 +419,11 @@ const COMPARE_OPS: Record<string, "eq" | "ne" | "gt" | "gte" | "lt" | "lte"> = {
 export type DataPinGraph = {
     id?: string;
     edges?: Array<{ from: { nodeId: string; port: string }; to: { nodeId: string; port: string } }>;
-    nodes?: Record<string, { type: string; params?: Record<string, unknown> }>;
+    /**
+     * `assetVariants` is the build's answer for an asset set this node names - absent in an authored
+     * document, present in a package. See {@link resolveStoredAssetSetValue}.
+     */
+    nodes?: Record<string, { type: string; params?: Record<string, unknown>; assetVariants?: AssetVariantMap }>;
 };
 
 export type DataPinResolveRuntime = {
@@ -3389,6 +3396,29 @@ function isOutputPort(
 }
 
 /**
+ * A stored value, with any asset set the build wrote an answer for replaced by the member the
+ * player's language asks for.
+ *
+ * Guarded on `assetVariants` before anything else: this runs on every data pin read, and an
+ * authored document has no answers at all, so the ordinary path is one property lookup. The locale
+ * is read only once that lookup says there is something to resolve.
+ *
+ * A blueprint that has already assigned a picture does not re-run when the language changes, the
+ * same way a line of dialogue already on screen does not - the next run resolves in the new
+ * language.
+ */
+function resolveStoredAssetSet(
+    node: { assetVariants?: AssetVariantMap } | undefined,
+    value: unknown,
+): unknown {
+    if (!node?.assetVariants) {
+        return value;
+    }
+    const { locale, sourceLocale } = readRuntimeLocale();
+    return resolveStoredAssetSetValue(node, value, locale, sourceLocale);
+}
+
+/**
  * Resolve the value feeding an input data pin, or an output value for pure data nodes.
  */
 export function resolveDataPinValue(
@@ -3423,7 +3453,7 @@ export function resolveDataPinValue(
         if (consumerPortId === "condition") {
             return false;
         }
-        return params[consumerPortId];
+        return resolveStoredAssetSet(graph.nodes?.[consumerNodeId], params[consumerPortId]);
     }
 
     const src = graph.nodes?.[edge.from.nodeId];
@@ -3475,7 +3505,9 @@ export function resolveDataPinValue(
         );
     }
     return coerceEdgeValueForTarget({
-        value,
+        // Resolved against the SOURCE node, which is the one that stored the id: an asset pin fed by
+        // a literal never sees a set at all, so the answer lives on the literal.
+        value: resolveStoredAssetSet(src, value),
         graph,
         edge,
         consumerParams: params,

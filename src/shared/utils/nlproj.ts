@@ -16,7 +16,14 @@ export interface ProjectConfigData {
     dependencies?: ProjectDependencyTable;
 }
 
-const NLPROJ_EXT = ".nlproj";
+/**
+ * The project config file's extension.
+ *
+ * Exported because it is also the extension Studio registers with the operating system: a
+ * double-clicked `.nlproj` is how a project is opened from outside Studio, and the launch path that
+ * answers it has to recognise the same file this module writes.
+ */
+export const NLPROJ_EXT = ".nlproj";
 const LEGACY_CONFIG_FILE = "project.json";
 const MAX_FILENAME_LENGTH = 100;
 

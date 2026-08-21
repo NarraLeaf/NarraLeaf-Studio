@@ -20,8 +20,11 @@ import {
     BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS,
     BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_LABELS,
     BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_TYPES,
+    BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_FN_RETURN,
+    readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import type { BlueprintFnSignatureSnapshot } from "@shared/types/blueprint/graph";
 import {
@@ -363,6 +366,72 @@ export function listCallableBlueprintFns(
     caller: BlueprintOwnerRef,
 ): BlueprintFnDeclaration[] {
     return collectDeclaredBlueprintFns(doc).filter(decl => isBlueprintFnVisibleToOwner(decl.owner, caller));
+}
+
+// ---------------------------------------------------------------------------
+// Call sites
+// ---------------------------------------------------------------------------
+
+/**
+ * One `Call Fn` node: where it sits, what it names, and the word its card prints.
+ *
+ * `name` is the signature snapshot's, which is the only handle on the target that survives the
+ * target's disappearance - the ref itself is a pair of ids. It is absent on a call stored before
+ * snapshots existed, or one written by hand.
+ */
+export type BlueprintFnCallSite = {
+    nodeId: string;
+    fnRef: string;
+    name?: string;
+};
+
+/**
+ * Every `Call Fn` in a graph that names a function.
+ *
+ * A call with no ref set is skipped: it is an unfinished node rather than a broken one - visible in
+ * the editor as an empty select, and reported there in those words. Whoever asks this for broken
+ * targets would otherwise have to filter it out again, and one of the two would eventually forget.
+ */
+export function listBlueprintFnCallSites(ir: BlueprintGraphIr): BlueprintFnCallSite[] {
+    const sites: BlueprintFnCallSite[] = [];
+    for (const node of Object.values(ir.nodes ?? {})) {
+        if (node.type !== BLUEPRINT_NODE_TYPE_FN_CALL) {
+            continue;
+        }
+        const fnRef = String(node.params?.[BLUEPRINT_NODE_PARAM_FN_REF] ?? "").trim();
+        if (!fnRef) {
+            continue;
+        }
+        sites.push({ nodeId: node.id, fnRef, name: readBlueprintFnSignatureSnapshot(node.params)?.name });
+    }
+    return sites;
+}
+
+/**
+ * Whether one `Call Fn` reaches a function, and which one. `null` is the whole of "this call is
+ * broken".
+ *
+ * The single answer to that question in the project, and it has to be: it is asked from the graph
+ * editor's validator, which draws `fn.call_target_not_found` on the canvas, and from the
+ * `blueprint/fn-target-missing` lint rule, which is what makes a build refuse one. Two
+ * implementations would be a panel and a report contradicting each other about the same node.
+ *
+ * Both halves are load-bearing. A call can name a head that is simply gone - a deleted function, or
+ * a fragment pasted from another project, where the blueprint id is one that project minted - and
+ * it can name a head that exists but is out of reach: fn visibility is decided by the *calling*
+ * blueprint's owner, so one ref resolves from one surface and not from another. A `caller` of
+ * `undefined` asks only the first half, for a graph validated with no owner in hand.
+ */
+export function resolveBlueprintFnCallTarget(
+    doc: BlueprintDocument,
+    fnRef: unknown,
+    caller: BlueprintOwnerRef | undefined,
+): BlueprintFnDeclaration | null {
+    const decl = findBlueprintFnByRef(doc, fnRef);
+    if (!decl) {
+        return null;
+    }
+    return !caller || isBlueprintFnVisibleToOwner(decl.owner, caller) ? decl : null;
 }
 
 // ---------------------------------------------------------------------------

@@ -212,6 +212,8 @@ export const storyInspector = {
         zIndex: "层级",
         loop: "循环",
         rate: "速度（1 = 正常）",
+        showOpacity: "不透明度（本次）",
+        showRate: "速度（本次）",
         fade: "淡入淡出（秒）",
     },
 
@@ -222,6 +224,7 @@ export const storyInspector = {
         sway: "飘摆",
         streak: "拖影",
         wind: "风向（度）",
+        fallSpeed: "落速",
         depthSpread: "景深差",
     },
 
@@ -297,6 +300,8 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "变换",
+        loop: "循环",
+        stopLoop: "停止循环",
         bringToFront: "置顶",
         mask: "遮罩",
         clearMask: "清除遮罩",
@@ -312,7 +317,7 @@ export const storyInspector = {
         wipe: "滑动揭示",
     },
     displayableEffectHint: {
-        mask: "将图像素材用作 CSS 遮罩",
+        mask: "将图像资产用作 CSS 遮罩",
         clearMask: "移除当前遮罩",
         clip: "应用 CSS 裁剪（clip-path）",
         clearClip: "移除当前裁剪路径",
@@ -390,8 +395,8 @@ export const storyInspector = {
         track: "音轨",
         trackDefault: "默认（{name}）",
         soundName: "音效名称",
-        bgmAsset: "背景音乐资源",
-        soundAsset: "音效资源",
+        bgmAsset: "背景音乐资产",
+        soundAsset: "音效资产",
         fade: "淡入淡出（秒）",
         seekTime: "跳转到（秒）",
         volume: "音量",
@@ -400,7 +405,7 @@ export const storyInspector = {
     },
     image: {
         imageName: "图片名称",
-        imageAsset: "图片资源",
+        imageAsset: "图片资产",
         autoFit: "自动适配",
     },
     text: {
@@ -415,7 +420,7 @@ export const storyInspector = {
     },
     video: {
         videoName: "视频名称",
-        videoAsset: "视频资源",
+        videoAsset: "视频资产",
         seekTime: "跳到",
     },
     nvl: {
@@ -441,9 +446,9 @@ export const storyInspector = {
         notPuppetHint: "该角色由 Studio 绘制，没有可设置的运行时状态",
     },
     asset: {
-        missing: "资源缺失",
-        none: "无资源",
-        clear: "清除资源",
+        missing: "资产缺失",
+        none: "无资产",
+        clear: "清除资产",
         selectTitle: "选择{label}",
     },
     displayableEffect: {
@@ -471,7 +476,7 @@ export const storyInspector = {
         change: "更换",
         select: "选择",
         clearImage: "清除图片",
-        assetError: "无法解析图片资源：{error}",
+        assetError: "无法解析图片资产：{error}",
         selectImageTitle: "选择背景图片",
     },
     control: {

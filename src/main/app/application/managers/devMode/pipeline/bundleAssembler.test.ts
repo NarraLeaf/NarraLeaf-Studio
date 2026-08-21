@@ -942,12 +942,17 @@ describe("bundleAssembler story schema", () => {
     });
 
     /** A project as an older Studio left it: one camera grade, spelled the way v17 spelled one. */
-    async function createLegacyStoryProject(): Promise<string> {
+    async function createLegacyStoryProject(localization?: unknown): Promise<string> {
         const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-story-schema-"));
         tempDirs.push(projectPath);
         await writeFile(
             path.join(projectPath, "project.nlproj"),
-            encodeProjectConfig({ name: "Test", identifier: "test.project", metadata: {} } as never),
+            encodeProjectConfig({
+                name: "Test",
+                identifier: "test.project",
+                metadata: {},
+                ...(localization ? { app: { localization } } : {}),
+            } as never),
         );
         await mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
         await writeFile(
@@ -1027,5 +1032,23 @@ describe("bundleAssembler story schema", () => {
                 easing: "easeInOut",
             },
         });
+    });
+
+    /**
+     * The other half of the `scene:` unit class: a per-locale file holds only the translated side, so
+     * without this table a scene reference read in the source language has nothing but the id to
+     * render. It is assembled from the documents the bundle carries, which is also what decides
+     * whether a scene name ships at all.
+     */
+    it("carries the source-language name of every scene the bundle holds", async () => {
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath: await createLegacyStoryProject({
+                sourceLocale: "en",
+                locales: [{ code: "en", displayName: "English" }, { code: "ja", displayName: "日本語" }],
+            }),
+            bundleId: "bundle-1",
+            revision: 1,
+        });
+        expect(bundle.localization?.scenes).toEqual({ "scene-1": "Scene 1" });
     });
 });

@@ -30,10 +30,10 @@ import {
 import {
     collectDeclaredBlueprintFns,
     collectExecReachableNodeIds,
-    findBlueprintFnByRef,
     isBlueprintFnSnapshotStale,
     isBlueprintFnVisibleToOwner,
     readBlueprintFnReturnPinDecls,
+    resolveBlueprintFnCallTarget,
     type BlueprintFnDeclaration,
 } from "./fnCatalog";
 import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
@@ -378,9 +378,11 @@ function validateBlueprintFnRules(
             });
             continue;
         }
-        const decl = findBlueprintFnByRef(doc, fnRef);
-        const visible = decl && (!ctx.blueprintOwner || isBlueprintFnVisibleToOwner(decl.owner, ctx.blueprintOwner));
-        if (!decl || !visible) {
+        // The shared resolver rather than a lookup plus a visibility test written out here: the
+        // same question is asked by `blueprint/fn-target-missing`, which decides whether a build
+        // ships, and the canvas and the lint report must not disagree about one node.
+        const decl = resolveBlueprintFnCallTarget(doc, fnRef, ctx.blueprintOwner);
+        if (!decl) {
             const snapshotName = readBlueprintFnSignatureSnapshot(node.params)?.name;
             out.push({
                 severity: "error",

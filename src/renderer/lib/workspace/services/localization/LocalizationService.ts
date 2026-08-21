@@ -304,6 +304,46 @@ export class LocalizationService extends Service<LocalizationService> implements
         return next;
     }
 
+    /**
+     * File whole units under ids nothing in this project has yet.
+     *
+     * Written for rows that have just been copied: the lines came across character for character
+     * under fresh `textId`s, and their translations follow them under those ids. Unlike
+     * {@link updateUnit} each unit is stored exactly as it arrives, `sourceHash` included, because
+     * re-anchoring the hash to the pasted line would clear a derived "stale" state that is still
+     * true of the translation - the source text moved on before the copy, not because of it.
+     *
+     * A unit with no target is skipped; that is what an untranslated line already looks like, and
+     * writing one would only add an entry for the author to prune. An id the document already holds
+     * is left alone: this creates translations, it never replaces one.
+     */
+    public adoptUnits(locale: string, units: Readonly<Record<string, LocalizationUnit>>): LocalizationDocument {
+        const document = this.requireLoadedDocument(locale);
+        const next = { ...document.units };
+        let adopted = 0;
+        for (const [unitId, unit] of Object.entries(units)) {
+            if (!unitId || !unit.target || next[unitId]) {
+                continue;
+            }
+            next[unitId] = {
+                target: unit.target,
+                sourceHash: unit.sourceHash,
+                status: unit.status,
+                ...(unit.note ? { note: unit.note } : {}),
+            };
+            adopted += 1;
+        }
+        if (adopted === 0) {
+            return document;
+        }
+        const updated: LocalizationDocument = { ...document, units: next };
+        this.documents.set(locale, updated);
+        this.dirtyLocales.add(locale);
+        this.scheduleAutoSave();
+        this.events.emit("documentChanged", { locale, document: updated });
+        return updated;
+    }
+
     public async flushPendingChanges(): Promise<void> {
         await this.autoSaver.flush();
     }

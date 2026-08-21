@@ -1,6 +1,7 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
+import type { DialogueConfiguration } from "./dialogue";
 import type { ProjectFontEntry } from "./typography";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle, LanguageChangeConfiguration } from "./localization";
@@ -14,7 +15,7 @@ import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryAnimationAsset, StoryAnimationAssetId, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
+import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
 
 export type DevModeEntry =
     | {
@@ -150,6 +151,12 @@ export type DevModeCharacterSummary = {
      *    Studio has no standing to call a colour unreadable there.
      */
     color?: string;
+    /**
+     * What the character's OWN asset set fields resolve to, per locale - today `defaultAvatarAssetId`
+     * and nothing else. A pose, a layer and an avatar entry each carry their own; see
+     * `@shared/build/characterAssetSets` for why the answers are not gathered into one place.
+     */
+    assetVariants?: StoryAssetVariants;
 };
 
 /**
@@ -160,6 +167,8 @@ export type DevModeCharacterSummary = {
 export type CharacterAvatarSummaryEntry = {
     baked?: boolean;
     overrideAssetId?: string | null;
+    /** What this entry's own asset set resolves to, per locale. See `@shared/build/characterAssetSets`. */
+    assetVariants?: StoryAssetVariants;
 };
 
 /**
@@ -170,7 +179,13 @@ export type CharacterAvatarSummaryEntry = {
 export type CharacterAppearanceSummary =
     | {
           kind: "preset";
-          poses: { id: string; name: string; assetId: string | null }[];
+          poses: {
+              id: string;
+              name: string;
+              assetId: string | null;
+              /** What this pose's own asset set resolves to, per locale. */
+              assetVariants?: StoryAssetVariants;
+          }[];
           defaultPoseId: string | null;
           /** Dialog avatars keyed by pose id. */
           avatars?: Record<string, CharacterAvatarSummaryEntry>;
@@ -191,6 +206,11 @@ export type CharacterAppearanceSummary =
               assetId?: string | null;
               options?: Record<string, string | null>;
               hidden?: boolean;
+              /**
+               * What this layer's own asset sets resolve to, per locale - covering `assetId` and
+               * every entry of `options`, which are the same slot drawn for different tags.
+               */
+              assetVariants?: StoryAssetVariants;
           }[];
       }
     | {
@@ -335,6 +355,11 @@ export type DevModeBundle = {
      * the default - restart and come back - because that is what those builds already did.
      */
     languageChange?: LanguageChangeConfiguration;
+    /**
+     * The author's dialogue settings, baked from `.nlproj` `app.dialogue`. Absent on bundles that
+     * predate the section, which every consumer reads as the engine's own values.
+     */
+    dialogue?: DialogueConfiguration;
     /**
      * The author's own version for this build, copied from `.nlproj` `metadata.version`.
      *
