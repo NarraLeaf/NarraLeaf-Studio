@@ -1,4 +1,5 @@
-import { useMemo, useCallback, useLayoutEffect, useState, Dispatch, SetStateAction, DragEvent } from "react";
+import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState, Dispatch, SetStateAction, DragEvent } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -9,11 +10,29 @@ import { ASSET_SET_REVEAL_RING, useAssetSetRevealMark, useSetSummary } from "../
 import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
 import type { AssetSetCell } from "@shared/types/assetSet";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
-import { assetSetsFiledIn, assetsFiledIn, groupsFiledIn, listViewRowOrder } from "../state/assetRowOrder";
+import {
+    assetSetsFiledIn,
+    assetsFiledIn,
+    groupsFiledIn,
+    listViewCategoryRows,
+    type ListViewRow,
+    type ListViewRowOrderInput,
+} from "../state/assetRowOrder";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+
+/** One row of the tree, already flattened. Only the section it belongs to varies. */
+type TreeListRow = ListViewRow<ResolvedAssetSet>;
+
+/**
+ * A row's resting height: `py-1.5` above and below a 20px line of `text-sm`.
+ *
+ * The first frame and the scrollbar are all that depend on it - every mounted row measures itself,
+ * so a row a support badge makes taller settles on its own.
+ */
+const TREE_ROW_HEIGHT_PX = 32;
 
 interface AssetsListViewProps {
     dropTargetId: string | null;
@@ -26,6 +45,8 @@ interface AssetsListViewProps {
     openItems: string[];
     onOpenChange: (openItems: string[]) => void;
     disableAnimation: boolean;
+    /** The panel's scroller. Each section windows its rows against it. */
+    scrollElement: HTMLElement | null;
 }
 
 export function AssetsListView({
@@ -39,6 +60,7 @@ export function AssetsListView({
     openItems,
     onOpenChange,
     disableAnimation,
+    scrollElement,
 }: AssetsListViewProps) {
     const { t, tn } = useTranslation();
     const freeze = useFreezeGuard();
@@ -59,24 +81,57 @@ export function AssetsListView({
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
 
-    // What a shift range covers. Recomputed rather than collected while rendering, because the tree
-    // draws itself through nested components and there is no one place a row passes through; the
-    // rules it walks are the ones the rows below follow, and the three that say what a level holds
-    // are the same functions.
-    const rowOrder = useMemo(() => listViewRowOrder({
-        openCategories: openItems,
-        assets: filteredAssets,
-        groups: filteredGroups,
-        rootAssetSets,
-        assetSets,
-        memberAssetIds,
-        expandedGroups,
-        expandedAssetSets,
-        isNarrowed,
-    }), [
+    /**
+     * Every section's rows, flattened.
+     *
+     * The tree is windowed, so a section is an index into an array rather than a nest of components:
+     * a library of a couple of thousand files used to put every one of them in the DOM, and that is
+     * the size a project reaches long before anyone suspects the panel is the slow part.
+     *
+     * A closed section keeps its rows even though it mounts none of them. What it draws instead is a
+     * spacer of their resting height, because the accordion animates a section shut by reading the
+     * height of what is inside it - and a body that empties in the same commit as the toggle has no
+     * height to shrink from, so the section would vanish rather than close.
+     */
+    const rowsByCategory = useMemo(() => {
+        const input: ListViewRowOrderInput<ResolvedAssetSet> = {
+            openCategories: openItems,
+            assets: filteredAssets,
+            groups: filteredGroups,
+            rootAssetSets,
+            assetSets,
+            memberAssetIds,
+            expandedGroups,
+            expandedAssetSets,
+            isNarrowed,
+        };
+        const out = {} as Record<AssetCategory, TreeListRow[]>;
+        for (const category of ASSET_CATEGORY_ORDER) {
+            out[category] = listViewCategoryRows(category, input);
+        }
+        return out;
+    }, [
         openItems, filteredAssets, filteredGroups, rootAssetSets, assetSets,
         memberAssetIds, expandedGroups, expandedAssetSets, isNarrowed,
     ]);
+
+    // What a shift range covers: the keys of the rows above, in the order they are drawn. One walk
+    // feeds both the markup and the range now, so the two cannot disagree about what is on screen.
+    const rowOrder = useMemo(() => {
+        const keys: string[] = [];
+        for (const category of ASSET_CATEGORY_ORDER) {
+            // A closed section draws nothing, so nothing in it can be caught in a range.
+            if (!openItems.includes(category)) {
+                continue;
+            }
+            for (const row of rowsByCategory[category]) {
+                if (row.selectionKey) {
+                    keys.push(row.selectionKey);
+                }
+            }
+        }
+        return keys;
+    }, [openItems, rowsByCategory]);
     useLayoutEffect(() => {
         publishRowOrder(rowOrder);
         // Cleared on the way out: the grid and the overview draw something else entirely, and a
@@ -89,8 +144,7 @@ export function AssetsListView({
             {ASSET_CATEGORY_ORDER.map((category) => {
                 const CategoryIcon = ASSET_CATEGORY_ICONS[category];
                 const categoryAssets = filteredAssets[category];
-                const categoryGroups = filteredGroups[category];
-                const categorySets = rootAssetSets[category];
+                const rows = rowsByCategory[category];
 
                 return (
                     <AccordionItem
@@ -172,17 +226,11 @@ export function AssetsListView({
                         >
                             {/* An empty category prints nothing. The accordion header's import buttons
                                 are the way in; announcing the absence is not information. */}
-                            {(categoryAssets.length > 0 || categoryGroups.length > 0 || categorySets.length > 0) && (
-                                <div className="py-1">
-                                    {/* Above the folders: a set is what a reference points at, and the
-                                        files it resolves to are filed below in the ordinary way. */}
-                                    {assetSetsFiledIn(categorySets, null)
-                                        .map(entry => <AssetSetItem key={entry.set.id} entry={entry} />)}
-                                    {groupsFiledIn(categoryGroups, null).map(group => <GroupItem key={group.id} group={group} category={category} level={0} />)}
-                                    {assetsFiledIn(categoryAssets, null, memberAssetIds)
-                                        .map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={0} />)}
-                                </div>
-                            )}
+                            {rows.length > 0 && (openItems.includes(category) ? (
+                                <CategoryRows category={category} rows={rows} scrollElement={scrollElement} />
+                            ) : (
+                                <div className="py-1" style={{ height: rows.length * TREE_ROW_HEIGHT_PX }} />
+                            ))}
                         </div>
                     </AccordionItem>
                 );
@@ -191,6 +239,190 @@ export function AssetsListView({
                 <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}
         </Accordion>
+    );
+}
+
+/**
+ * One section's rows, windowed against the panel's scroller.
+ *
+ * A virtualiser per section rather than one across the whole tree, so the accordion keeps its
+ * headers, its open/close animation and its keyboard handling exactly as they were. `scrollMargin`
+ * is what makes each agree with the rest of the column: other sections sit above and below this one
+ * inside the same scroller, so the virtualiser has to be told where its own list starts. The offsets
+ * it hands back are measured from the top of the scroller and the margin comes straight back off
+ * them, which is why a margin one commit stale moves nothing on screen - it can only window the
+ * wrong slice for a frame, and every commit re-measures.
+ */
+function CategoryRows({ category, rows, scrollElement }: {
+    category: AssetCategory;
+    rows: TreeListRow[];
+    scrollElement: HTMLElement | null;
+}) {
+    const freeze = useFreezeGuard();
+    const {
+        draggedItem,
+        draggedAssetSet,
+        filteredGroups,
+        expandedAssetSets,
+        assetSetReveal,
+        handleDropOnItem,
+        handleImportToGroup,
+    } = useAssetsPanelContext();
+    const listRef = useRef<HTMLDivElement | null>(null);
+    const [listMargin, setListMargin] = useState(0);
+    /**
+     * The folder the pointer is over, if any.
+     *
+     * Held for the whole section rather than by each folder's own wrapper, because a folder no
+     * longer wraps its contents: two adjacent rows of one folder would otherwise trade `dragleave`
+     * and `dragover` on every pointer move, and the tint would strobe.
+     */
+    const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
+
+    const virtualizer = useVirtualizer({
+        count: rows.length,
+        getScrollElement: () => scrollElement,
+        estimateSize: () => TREE_ROW_HEIGHT_PX,
+        overscan: 12,
+        scrollMargin: listMargin,
+        getItemKey: index => rows[index]?.key ?? index,
+    });
+
+    // The section's start offset moves whenever anything above it does: another section opening, the
+    // import strip appearing. Measured after every commit rather than once, the same way the story
+    // editor's row list does it.
+    useLayoutEffect(() => {
+        const list = listRef.current;
+        const scroller = scrollElement;
+        if (!list || !scroller) {
+            return;
+        }
+        const margin = list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+        setListMargin(previous => (Math.abs(previous - margin) > 0.5 ? margin : previous));
+    });
+
+    /**
+     * Put a jumped-to set on screen even when its row is not mounted.
+     *
+     * The row marks itself once it exists (see `useAssetSetRevealMark`), but a windowed list may
+     * have nothing to scroll to: there is no node until it has been scrolled to.
+     */
+    const revealNonce = assetSetReveal?.nonce ?? null;
+    const revealSetId = assetSetReveal?.setId ?? null;
+    useEffect(() => {
+        if (revealNonce === null || !revealSetId) {
+            return;
+        }
+        const index = rows.findIndex(row => row.kind === "set" && row.entry.set.id === revealSetId);
+        if (index >= 0) {
+            virtualizer.scrollToIndex(index, { align: "center" });
+        }
+        // The request is the event; the rows are read from the render it landed in.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [revealNonce]);
+
+    /** The folder a pointer event landed in, read off the row wrapper the virtualiser already indexes. */
+    const groupUnder = useCallback((event: DragEvent): AssetGroup | null => {
+        const host = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-index]");
+        const index = host ? Number(host.dataset.index) : Number.NaN;
+        const row = Number.isFinite(index) ? rows[index] : undefined;
+        const groupId = row?.groupPath[row.groupPath.length - 1];
+        if (!groupId) {
+            return null;
+        }
+        return filteredGroups[category].find(group => group.id === groupId) ?? null;
+    }, [category, filteredGroups, rows]);
+
+    return (
+        <div className="py-1">
+            <div
+                ref={listRef}
+                className="relative w-full"
+                style={{ height: virtualizer.getTotalSize() }}
+                onDragOver={(event) => {
+                    const group = groupUnder(event);
+                    if (!group) {
+                        // Nothing encloses this row, so the section's own root is the drop target and
+                        // this event belongs to it. Clearing here is what a folder's own wrapper used
+                        // to get for free by no longer being under the pointer.
+                        setDragOverGroupId(null);
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const files = event.dataTransfer.types.includes("Files");
+                    const internal = (draggedItem && draggedItem.category === category)
+                        || (draggedAssetSet && draggedAssetSet.category === category);
+                    // A frozen library never lights up as a drop target: the move and the import are
+                    // both refused, and a folder that glows and then keeps its old contents reads as
+                    // a bug.
+                    if (freeze.frozen || (!internal && !files)) {
+                        setDragOverGroupId(null);
+                        return;
+                    }
+                    setDragOverGroupId(group.id);
+                    event.dataTransfer.dropEffect = internal ? "move" : "copy";
+                }}
+                onDragLeave={(event) => {
+                    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        return;
+                    }
+                    setDragOverGroupId(null);
+                }}
+                onDrop={(event) => {
+                    const group = groupUnder(event);
+                    if (!group) {
+                        setDragOverGroupId(null);
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDragOverGroupId(null);
+                    if ((draggedItem || draggedAssetSet) && handleDropOnItem) {
+                        handleDropOnItem(event, category, group);
+                    } else {
+                        handleImportToGroup(category, group.id, event.dataTransfer.files, event.dataTransfer);
+                    }
+                }}
+            >
+                {virtualizer.getVirtualItems().map(item => {
+                    const row = rows[item.index];
+                    if (!row) {
+                        return null;
+                    }
+                    const bandOpen = row.band ? expandedAssetSets.has(row.band.setId) : false;
+                    return (
+                        <div
+                            key={item.key}
+                            ref={virtualizer.measureElement}
+                            data-index={item.index}
+                            className={cn(
+                                "absolute left-0 top-0 w-full",
+                                // The band runs the length of a top-level set and ends with it: the
+                                // set's members stay filed in whatever folder they were imported
+                                // into and are listed there too, so the tint is what says these rows
+                                // are one thing being shown twice.
+                                row.band && "bg-fill-subtle/50",
+                                row.band?.first && bandOpen && "border-t border-edge-subtle",
+                                row.band?.last && bandOpen && "border-b border-edge-subtle",
+                                dragOverGroupId && row.groupPath.includes(dragOverGroupId) && "bg-primary/20",
+                            )}
+                            style={{ transform: `translateY(${item.start - listMargin}px)` }}
+                        >
+                            {row.kind === "set" ? (
+                                <AssetSetItem row={row} />
+                            ) : row.kind === "setValue" ? (
+                                <AssetSetValueItem row={row} />
+                            ) : row.kind === "group" ? (
+                                <GroupItem row={row} />
+                            ) : (
+                                <AssetItem asset={row.asset} category={row.category} level={row.level} />
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
     );
 }
 
@@ -264,56 +496,30 @@ function TreeRow({
  *
  * The row is the folder's row - same component, same gesture, same indent - because a set is a
  * folder to whoever is browsing: it opens, it holds rows, and a sub-set nests inside it exactly as
- * a sub-folder does. What differs is only what the rows underneath are: one per value the set
- * varies by, answered either by a file or by a set one level down.
- *
- * The band of colour runs the length of the set and ends with it. A set is not a folder in the one
- * way that matters here - its members stay filed in whatever folder they were imported into and are
- * listed there too - so the band is what says these rows are one thing being shown twice.
+ * a sub-folder does. What differs is only what the rows underneath are: one per value the set varies
+ * by, answered either by a file or by a set one level down. Those rows are the flattened list's own,
+ * drawn after this one, and the tint that ties them together travels with each of them.
  */
-function AssetSetItem({ entry, level = 0, trailing, nested = false }: {
-    entry: ResolvedAssetSet;
-    level?: number;
-    /** What the parent set's row prints on the right for this one: the value it hangs at. */
-    trailing?: string;
-    /**
-     * This set is drawn inside another one.
-     *
-     * Not the same question as the indent: a set made in a folder is indented under it and still
-     * stands on its own. A nested set does not move on its own - where it is drawn follows the set
-     * it hangs under, so dragging it somewhere would change nothing the author can see.
-     */
-    nested?: boolean;
-}) {
+function AssetSetItem({ row }: { row: Extract<TreeListRow, { kind: "set" }> }) {
     const {
-        assets,
-        assetSets,
         assetSetNaming,
-        expandedAssetSets,
         setExpandedAssetSets,
         draggedAssetSet,
         handleAssetSetSelect,
         handleAssetSetDragStart,
         handleDragEnd,
         showAssetSetContextMenu,
-        showAssetSetValueContextMenu,
     } = useAssetsPanelContext();
+    const entry = row.entry;
     const summary = useSetSummary(entry);
     const reveal = useAssetSetRevealMark(entry.set.id);
+    // What the parent set's row prints on the right for this one: the value it hangs at.
+    const trailing = row.parent
+        ? formatAssetSetCoordinateReading(
+            readAssetSetCoordinate(row.parent.entry.set, row.parent.cell.coordinate, assetSetNaming),
+        )
+        : undefined;
 
-    // The whole library of that section, not the filtered list: a set's rows are its own, and one of
-    // them turning into "no file" because a search is narrowing the panel would read as a hole in the
-    // project.
-    const assetsById = useMemo(
-        () => new Map(assets[entry.category].map(asset => [asset.id, asset])),
-        [assets, entry.category],
-    );
-    const setsById = useMemo(
-        () => new Map(assetSets[entry.category].map(resolved => [resolved.set.id, resolved])),
-        [assetSets, entry.category],
-    );
-
-    const open = expandedAssetSets.has(entry.set.id);
     const toggle = useCallback(() => {
         setExpandedAssetSets(current => {
             const next = new Set(current);
@@ -327,76 +533,77 @@ function AssetSetItem({ entry, level = 0, trailing, nested = false }: {
     }, [entry.set.id, setExpandedAssetSets]);
 
     return (
-        <div className={cn(!nested && "bg-fill-subtle/50", !nested && open && "border-y border-edge-subtle")}>
-            <TreeRow
-                level={level}
-                draggable={!nested}
-                rowRef={reveal.ref}
-                icon={<Layers className={cn("w-4 h-4 shrink-0", entry.incomplete ? "text-warning" : "text-primary")} />}
-                label={entry.set.name}
-                meta={<span className={entry.incomplete ? "text-warning" : "text-fg-subtle"}>{summary}</span>}
-                trailing={trailing}
-                dataAttributes={{ "data-asset-set-id": entry.set.id }}
-                className={cn(
-                    draggedAssetSet?.setId === entry.set.id && "opacity-50",
-                    reveal.marked && ASSET_SET_REVEAL_RING,
-                )}
-                onClick={() => {
-                    // A set is not part of the library's multi-selection: nothing that acts on marked
-                    // rows (copy, export, delete bytes) means anything for a set.
-                    handleAssetSetSelect(entry);
-                    toggle();
-                }}
-                onContextMenu={event => showAssetSetContextMenu(event, entry)}
-                onDragStart={nested
-                    ? undefined
-                    : event => handleAssetSetDragStart?.(event, entry.category, entry.set.id)}
-                onDragEnd={nested ? undefined : () => handleDragEnd?.()}
+        <TreeRow
+            level={row.level}
+            // A nested set does not move on its own - where it is drawn follows the set it hangs
+            // under, so dragging it somewhere would change nothing the author can see.
+            draggable={!row.nested}
+            rowRef={reveal.ref}
+            icon={<Layers className={cn("w-4 h-4 shrink-0", entry.incomplete ? "text-warning" : "text-primary")} />}
+            label={entry.set.name}
+            meta={<span className={entry.incomplete ? "text-warning" : "text-fg-subtle"}>{summary}</span>}
+            {...(trailing ? { trailing } : {})}
+            dataAttributes={{ "data-asset-set-id": entry.set.id }}
+            className={cn(
+                draggedAssetSet?.setId === entry.set.id && "opacity-50",
+                reveal.marked && ASSET_SET_REVEAL_RING,
+            )}
+            onClick={() => {
+                // A set is not part of the library's multi-selection: nothing that acts on marked
+                // rows (copy, export, delete bytes) means anything for a set.
+                handleAssetSetSelect(entry);
+                toggle();
+            }}
+            onContextMenu={event => showAssetSetContextMenu(event, entry)}
+            {...(row.nested
+                ? {}
+                : {
+                    onDragStart: (event: React.DragEvent) => handleAssetSetDragStart?.(event, entry.category, entry.set.id),
+                    onDragEnd: () => handleDragEnd?.(),
+                })}
+        />
+    );
+}
+
+/**
+ * One value of a set.
+ *
+ * A value exactly one file answers is that file's ordinary row, marks and menu included: the only
+ * thing being inside a set changes is that the file cannot be dragged out of one - a member is named
+ * by its tags, and dropping it in a folder would move a row the set would go on drawing where it
+ * was. Anything else is the hole the value is.
+ */
+function AssetSetValueItem({ row }: { row: Extract<TreeListRow, { kind: "setValue" }> }) {
+    const { assets, assetSetNaming, showAssetSetValueContextMenu } = useAssetsPanelContext();
+    const entry = row.entry;
+    const coordinate = formatAssetSetCoordinateReading(
+        readAssetSetCoordinate(entry.set, row.cell.coordinate, assetSetNaming),
+    );
+    // The whole library of that section, not the filtered list: a set's rows are its own, and one of
+    // them turning into "no file" because a search is narrowing the panel would read as a hole in the
+    // project.
+    const asset = row.assetId
+        ? assets[entry.category].find(candidate => candidate.id === row.assetId)
+        : undefined;
+
+    if (asset) {
+        return (
+            <AssetItem
+                asset={asset}
+                category={entry.category}
+                level={row.level}
+                trailing={coordinate}
+                assetSetValue={{ setId: entry.set.id, value: row.cell.value }}
             />
-            {open && entry.contents.cells.map(cell => {
-                const coordinate = formatAssetSetCoordinateReading(
-                    readAssetSetCoordinate(entry.set, cell.coordinate, assetSetNaming),
-                );
-                const child = cell.childSetIds.length === 1 ? setsById.get(cell.childSetIds[0]) : undefined;
-                if (child) {
-                    return (
-                        <AssetSetItem
-                            key={cell.label}
-                            entry={child}
-                            level={level + 1}
-                            trailing={coordinate}
-                            nested
-                        />
-                    );
-                }
-                const asset = cell.assetIds.length === 1 ? assetsById.get(cell.assetIds[0]) : undefined;
-                if (asset) {
-                    // The file's ordinary row, marks and menu included: it is an ordinary file, and
-                    // the only thing being inside a set changes is that it cannot be dragged out of
-                    // one - a member is named by its tags, and dropping it in a folder would move a
-                    // row the set would go on drawing where it was.
-                    return (
-                        <AssetItem
-                            key={cell.label}
-                            asset={asset}
-                            category={entry.category}
-                            level={level + 1}
-                            trailing={coordinate}
-                            assetSetValue={{ setId: entry.set.id, value: cell.value }}
-                        />
-                    );
-                }
-                return (
-                    <AssetSetMemberRow
-                        key={cell.label}
-                        cell={cell}
-                        level={level + 1}
-                        coordinate={coordinate}
-                        onContextMenu={event => showAssetSetValueContextMenu(event, entry, cell.value)}
-                    />
-                );
-            })}
-        </div>
+        );
+    }
+    return (
+        <AssetSetMemberRow
+            cell={row.cell}
+            level={row.level}
+            coordinate={coordinate}
+            onContextMenu={event => showAssetSetValueContextMenu(event, entry, row.cell.value)}
+        />
     );
 }
 
@@ -429,34 +636,25 @@ function AssetSetMemberRow({ cell, level, coordinate, onContextMenu }: {
     );
 }
 
-function GroupItem({ group, category, level }: { group: AssetGroup; category: AssetCategory; level: number }) {
-    const freeze = useFreezeGuard();
+function GroupItem({ row }: { row: Extract<TreeListRow, { kind: "group" }> }) {
     const {
         filteredGroups,
         filteredAssets,
         selectedItems,
         draggedItem,
         clipboard,
-        expandedGroups,
         setExpandedGroups,
         rootAssetSets,
         memberAssetIds,
-        draggedAssetSet,
         handleItemSelect,
         handleGroupFocus,
         showContextMenu,
         handleDragStart,
         handleDragEnd,
-        handleDropOnItem,
-        handleImportToGroup,
         isFocused,
-        isNarrowed,
     } = useAssetsPanelContext();
-    const [isDragOverLocal, setDragOverLocal] = useState(false);
+    const { group, category } = row;
 
-    // Groups default to collapsed, so a search that left them collapsed would return hits nobody can
-    // see. While something is narrowing the library, every surviving group is open.
-    const isOpen = isNarrowed || expandedGroups.has(group.id);
     const toggleOpen = useCallback(() => {
         setExpandedGroups((prev) => {
             const newSet = new Set(prev);
@@ -469,6 +667,8 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
         });
     }, [group.id, setExpandedGroups]);
 
+    // Counted with the same three functions the flattened order walks, so the number on the folder
+    // and the rows underneath it can never come from two different readings of what it holds.
     const childGroups = groupsFiledIn(filteredGroups[category], group.id);
     const groupAssets = assetsFiledIn(filteredAssets[category], group.id, memberAssetIds);
     // Sets made in this folder are rows in it, so they are part of what it holds. The files they
@@ -480,71 +680,28 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
     const isCut = clipboard?.type === 'cut' && clipboard.groups.some(g => g.id === group.id);
 
     return (
-        <div
-            className={`${isDragOverLocal ? 'bg-primary/20' : ''}`}
-            onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const files = e.dataTransfer.types.includes("Files");
-                const internal = (draggedItem && draggedItem.category === category)
-                    || (draggedAssetSet && draggedAssetSet.category === category);
-                // A frozen library never lights up as a drop target: the move and the import are both
-                // refused, and a folder that glows and then keeps its old contents reads as a bug.
-                if (freeze.frozen || (!internal && !files)) {
-                    return;
-                }
-                setDragOverLocal(true);
-                e.dataTransfer.dropEffect = internal ? "move" : "copy";
-            }}
-            onDragLeave={(e) => {
-                e.stopPropagation();
-                setDragOverLocal(false);
-            }}
-            onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDragOverLocal(false);
-                if ((draggedItem || draggedAssetSet) && handleDropOnItem) {
-                    handleDropOnItem(e, category, group);
-                } else {
-                    handleImportToGroup(category, group.id, e.dataTransfer.files, e.dataTransfer);
-                }
-            }}
-        >
-            <TreeRow
-                level={level}
-                draggable
-                dataAttributes={{ "data-asset-group-id": group.id }}
-                className={cn(
-                    isSelected && "bg-primary/20 border-l-2 border-primary",
-                    isFocused(`group:${group.id}`) && "bg-fill-subtle",
-                    isDragging && "opacity-50",
-                    isCut && "opacity-40",
-                )}
-                icon={<FolderPlus className="w-4 h-4 shrink-0 text-primary" />}
-                label={group.name}
-                meta={<span className="text-fg-subtle">({groupAssets.length + childGroups.length + groupSets.length})</span>}
-                onClick={(e) => {
-                    handleItemSelect(group.id, true, e);
-                    handleGroupFocus(group.id);
-                    toggleOpen();
-                }}
-                onContextMenu={(e) => showContextMenu(e, category, group, true)}
-                onDragStart={(e) => handleDragStart?.(e, category, group, true)}
-                onDragEnd={() => handleDragEnd?.()}
-            />
-
-            {isOpen && (
-                <div>
-                    {/* Above the sub-folders, the way a set sits above the folders at a section's
-                        root: it is the entry a reference points at, and the files it resolves to are
-                        filed below it in the ordinary way. */}
-                    {groupSets.map(entry => <AssetSetItem key={entry.set.id} entry={entry} level={level + 1} />)}
-                    {childGroups.map(child => <GroupItem key={child.id} group={child} category={category} level={level + 1} />)}
-                    {groupAssets.map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={level + 1} />)}
-                </div>
+        <TreeRow
+            level={row.level}
+            draggable
+            dataAttributes={{ "data-asset-group-id": group.id }}
+            className={cn(
+                isSelected && "bg-primary/20 border-l-2 border-primary",
+                isFocused(`group:${group.id}`) && "bg-fill-subtle",
+                isDragging && "opacity-50",
+                isCut && "opacity-40",
             )}
-        </div>
+            icon={<FolderPlus className="w-4 h-4 shrink-0 text-primary" />}
+            label={group.name}
+            meta={<span className="text-fg-subtle">({groupAssets.length + childGroups.length + groupSets.length})</span>}
+            onClick={(e) => {
+                handleItemSelect(group.id, true, e);
+                handleGroupFocus(group.id);
+                toggleOpen();
+            }}
+            onContextMenu={(e) => showContextMenu(e, category, group, true)}
+            onDragStart={(e) => handleDragStart?.(e, category, group, true)}
+            onDragEnd={() => handleDragEnd?.()}
+        />
     );
 }
 

@@ -73,16 +73,16 @@ export function assetsFiledIn(
     return assets.filter(asset => (asset.groupId || null) === groupId && !memberAssetIds.has(asset.id));
 }
 
-export interface ListViewRowOrderInput {
+export interface ListViewRowOrderInput<T extends AssetSetRows = AssetSetRows> {
     /** Section ids the accordion is drawing open. A closed section draws no rows at all. */
     openCategories: readonly string[];
     /** The library as narrowed by the search box and the filters: what the tree is listing. */
     assets: Record<AssetCategory, Asset[]>;
     groups: Record<AssetCategory, AssetGroup[]>;
     /** Sets that hang under nothing, which is what a section and a folder list. */
-    rootAssetSets: Record<AssetCategory, AssetSetRows[]>;
+    rootAssetSets: Record<AssetCategory, T[]>;
     /** Every set of the section, so an open one can find the sets hanging under its values. */
-    assetSets: Record<AssetCategory, AssetSetRows[]>;
+    assetSets: Record<AssetCategory, T[]>;
     memberAssetIds: ReadonlySet<string>;
     expandedGroups: ReadonlySet<string>;
     expandedAssetSets: ReadonlySet<string>;
@@ -90,70 +90,203 @@ export interface ListViewRowOrderInput {
     isNarrowed: boolean;
 }
 
+/** One value of a set as the tree lays it out. Wider than {@link AssetSetRowCell}, which is the ordering's own view. */
+type RowCellOf<T extends AssetSetRows> = T["contents"]["cells"][number];
+
+/**
+ * One row of the tree, flattened.
+ *
+ * The tree used to draw itself through nested components, and the order above was recomputed from
+ * the same rules because there was no single place a row passed through. There is one now: the view
+ * windows its rows, and a windowed list is an index into a flat array by construction. So this is
+ * the one walk, and {@link listViewRowOrder} is a projection of it.
+ *
+ * Everything a row needs to know about where it sits travels with it, because its ancestors are no
+ * longer wrapped around it in the DOM: `groupPath` is what a drop on this row lands in and what a
+ * hovered folder lights up, and `band` is the tint a top-level set draws the length of itself.
+ */
+export type ListViewRow<T extends AssetSetRows = AssetSetRows> = {
+    /** Stable across renders of the same tree: React's key, and the virtualiser's measurement key. */
+    key: string;
+    category: AssetCategory;
+    /** Indent depth, 0 at a section's root. */
+    level: number;
+    /** What a range covers, or null for a row nothing can mark. */
+    selectionKey: string | null;
+    /** The folders enclosing this row, outermost first. */
+    groupPath: readonly string[];
+    /** The set whose tint this row carries, and whether it opens or closes the band. */
+    band: { setId: string; first: boolean; last: boolean } | null;
+} & (
+    | {
+        kind: "set";
+        entry: T;
+        /** Drawn inside another set: it does not move on its own, and carries no tint of its own. */
+        nested: boolean;
+        /** The parent set and the value this one hangs at, when it is drawn inside one. */
+        parent?: { entry: T; cell: RowCellOf<T> };
+    }
+    | {
+        kind: "setValue";
+        entry: T;
+        cell: RowCellOf<T>;
+        /** The single file answering this value, or null when the value is a hole. */
+        assetId: string | null;
+    }
+    | { kind: "group"; group: AssetGroup }
+    | { kind: "asset"; asset: Asset }
+);
+
+/**
+ * One section's rows, in the order `AssetsListView` draws them.
+ *
+ * Sets first at every level, then folders, then the loose files - which is what makes a range
+ * between two rows cover exactly what sits between them on screen.
+ */
+export function listViewCategoryRows<T extends AssetSetRows>(
+    category: AssetCategory,
+    {
+        assets,
+        groups,
+        rootAssetSets,
+        assetSets,
+        memberAssetIds,
+        expandedGroups,
+        expandedAssetSets,
+        isNarrowed,
+    }: ListViewRowOrderInput<T>,
+): ListViewRow<T>[] {
+    const rows: ListViewRow<T>[] = [];
+    const setsById = new Map(assetSets[category].map(entry => [entry.set.id, entry]));
+
+    /**
+     * `keyPath` is the walk that reached this set, not the set's id: the same declaration can hang
+     * under two values of two different parents, and two rows sharing a React key is the one thing
+     * a windowed list cannot survive.
+     */
+    const pushSet = (
+        entry: T,
+        level: number,
+        groupPath: readonly string[],
+        bandSetId: string | null,
+        parent: { entry: T; cell: RowCellOf<T> } | undefined,
+        keyPath: string,
+    ): void => {
+        const nested = parent !== undefined;
+        // A top-level set opens its own band; a nested one continues the band it is drawn inside.
+        const band = bandSetId ?? (nested ? null : entry.set.id);
+        const bandStart = rows.length;
+        const selfPath = keyPath + "set:" + entry.set.id;
+        rows.push({
+            kind: "set",
+            key: selfPath,
+            category,
+            level,
+            selectionKey: null,
+            groupPath,
+            band: band ? { setId: band, first: !nested, last: false } : null,
+            entry,
+            nested,
+            ...(parent ? { parent } : {}),
+        });
+        // Closed, a set hides its members as surely as a collapsed folder hides its files.
+        if (!expandedAssetSets.has(entry.set.id)) {
+            if (!nested) {
+                closeBand(rows, bandStart);
+            }
+            return;
+        }
+        entry.contents.cells.forEach((cell, index) => {
+            const cellPath = selfPath + "/" + index + "/";
+            const child = cell.childSetIds.length === 1 ? setsById.get(cell.childSetIds[0]) : undefined;
+            if (child) {
+                pushSet(child, level + 1, groupPath, band, { entry, cell }, cellPath);
+                return;
+            }
+            // A value answered by exactly one file is that file's ordinary row, marks included. A
+            // value with no file, or with several, is drawn as the hole it is and carries no key:
+            // there is no single row for a range to reach.
+            const assetId = cell.assetIds.length === 1 ? cell.assetIds[0] : null;
+            rows.push({
+                kind: "setValue",
+                key: cellPath + "value",
+                category,
+                level: level + 1,
+                selectionKey: assetId ? assetSelectionKey(assetId, false) : null,
+                groupPath,
+                band: band ? { setId: band, first: false, last: false } : null,
+                entry,
+                cell,
+                assetId,
+            });
+        });
+        if (!nested) {
+            closeBand(rows, bandStart);
+        }
+    };
+
+    const pushLevel = (groupId: string | null, level: number, groupPath: readonly string[]): void => {
+        for (const entry of assetSetsFiledIn(rootAssetSets[category], groupId)) {
+            pushSet(entry, level, groupPath, null, undefined, "");
+        }
+        for (const group of groupsFiledIn(groups[category], groupId)) {
+            rows.push({
+                kind: "group",
+                key: "group:" + group.id,
+                category,
+                level,
+                selectionKey: assetSelectionKey(group.id, true),
+                groupPath,
+                band: null,
+                group,
+            });
+            if (isNarrowed || expandedGroups.has(group.id)) {
+                pushLevel(group.id, level + 1, [...groupPath, group.id]);
+            }
+        }
+        for (const asset of assetsFiledIn(assets[category], groupId, memberAssetIds)) {
+            rows.push({
+                kind: "asset",
+                key: "asset:" + asset.id,
+                category,
+                level,
+                selectionKey: assetSelectionKey(asset.id, false),
+                groupPath,
+                band: null,
+                asset,
+            });
+        }
+    };
+
+    pushLevel(null, 0, []);
+    return rows;
+}
+
+/** Mark the last row a top-level set drew, so the tint ends where the set does. */
+function closeBand<T extends AssetSetRows>(rows: ListViewRow<T>[], bandStart: number): void {
+    const last = rows[rows.length - 1];
+    if (last && last.band && rows.length > bandStart) {
+        last.band = { ...last.band, last: true };
+    }
+}
+
 /**
  * The tree's rows, in the order `AssetsListView` draws them.
  *
- * Sets first at every level, then folders, then the loose files - the order the view lays out, so
- * that a range between two rows covers exactly what sits between them on screen.
+ * A closed section draws nothing at all, so it contributes nothing to a range.
  */
-export function listViewRowOrder({
-    openCategories,
-    assets,
-    groups,
-    rootAssetSets,
-    assetSets,
-    memberAssetIds,
-    expandedGroups,
-    expandedAssetSets,
-    isNarrowed,
-}: ListViewRowOrderInput): string[] {
+export function listViewRowOrder<T extends AssetSetRows>(input: ListViewRowOrderInput<T>): string[] {
     const keys: string[] = [];
-
     for (const category of ASSET_CATEGORY_ORDER) {
-        if (!openCategories.includes(category)) {
+        if (!input.openCategories.includes(category)) {
             continue;
         }
-        const setsById = new Map(assetSets[category].map(entry => [entry.set.id, entry]));
-
-        // A set's own row is not selectable, so it adds nothing here. Closed, it hides its members
-        // as surely as a collapsed folder hides its files, and they stay out of every range.
-        const pushSet = (entry: AssetSetRows): void => {
-            if (!expandedAssetSets.has(entry.set.id)) {
-                return;
+        for (const row of listViewCategoryRows(category, input)) {
+            if (row.selectionKey) {
+                keys.push(row.selectionKey);
             }
-            for (const cell of entry.contents.cells) {
-                const child = cell.childSetIds.length === 1 ? setsById.get(cell.childSetIds[0]) : undefined;
-                if (child) {
-                    pushSet(child);
-                    continue;
-                }
-                // A value answered by exactly one file is that file's ordinary row, marks included.
-                // A value with no file, or with several, is drawn as the hole it is and carries no
-                // key: there is no single row for a range to reach.
-                if (cell.assetIds.length === 1) {
-                    keys.push(assetSelectionKey(cell.assetIds[0], false));
-                }
-            }
-        };
-
-        const pushLevel = (groupId: string | null): void => {
-            for (const entry of assetSetsFiledIn(rootAssetSets[category], groupId)) {
-                pushSet(entry);
-            }
-            for (const group of groupsFiledIn(groups[category], groupId)) {
-                keys.push(assetSelectionKey(group.id, true));
-                if (isNarrowed || expandedGroups.has(group.id)) {
-                    pushLevel(group.id);
-                }
-            }
-            for (const asset of assetsFiledIn(assets[category], groupId, memberAssetIds)) {
-                keys.push(assetSelectionKey(asset.id, false));
-            }
-        };
-
-        pushLevel(null);
+        }
     }
-
     return keys;
 }
 
