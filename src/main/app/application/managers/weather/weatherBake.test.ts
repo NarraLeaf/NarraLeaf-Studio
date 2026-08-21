@@ -682,6 +682,9 @@ describe("devModeScreenEffectQuality", () => {
         expect(screenEffectBakeThreads(threadHost(undefined))).toBeNull();
         expect(screenEffectBakeThreads(threadHost("auto"))).toBeNull();
         expect(screenEffectBakeThreads(threadHost("3"))).toBe(3);
+        // One is a real stop, not a degenerate case: it is how an author says "leave the rest of
+        // this machine alone", and how a bug report takes the pool out of the question.
+        expect(screenEffectBakeThreads(threadHost("1"))).toBe(1);
         // Reverse control on the stop list: a count outside the offered stops is not honoured just
         // because it parses, or the setting would be a way to ask for sixty-four render threads.
         expect(screenEffectBakeThreads(threadHost("64"))).toBeNull();

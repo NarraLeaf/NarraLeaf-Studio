@@ -170,6 +170,8 @@ describe("how many threads a bake asks for", () => {
         // carries a 166 MB accumulator, and a choice made on a 1080p project follows the author to
         // the next one. So an explicit count is clamped exactly as the automatic one is.
         expect(resolveWeatherRenderThreads(SPEC, 3, {})).toBe(3);
+        // One survives every clamp, on every machine: it is the floor the pool already had.
+        expect(resolveWeatherRenderThreads(SPEC, 1, {})).toBe(1);
         expect(resolveWeatherRenderThreads({ ...SPEC, frames: 2 }, 4, {})).toBe(2);
         // Reverse control: without the clamp this would answer 4 rather than the machine's share.
         expect(resolveWeatherRenderThreads(SPEC, 4, {})).toBeLessThanOrEqual(4);

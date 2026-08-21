@@ -263,6 +263,7 @@ export const AppSettings: AppSettingDefinition[] = [
         options: [...SCREEN_EFFECT_THREAD_CHOICES],
         optionLabels: {
             auto: "Automatic",
+            "1": "1",
             "2": "2",
             "3": "3",
             "4": "4",
