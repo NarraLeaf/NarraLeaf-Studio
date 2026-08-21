@@ -5,8 +5,9 @@ export const devMode = {
     surfaceUnavailable: "Surface not available",
     waitingPayload: "Waiting for Dev Mode payload…",
     surfaceNotFound: "Surface not found: {surfaceId}",
-    // Said by both places that point Studio at a row - the Issues panel and the debug menu -
-    // and so held once: two copies of one sentence is how the two of them end up disagreeing.
+    // Said by the three places that point Studio at a row: the Issues panel, the debug menu,
+    // and a timeline row. Held once - three copies of one sentence is how they drift apart.
+    openInStudio: "Open in Studio",
     openInStudioFailed: "No workspace window is open for this project.",
     issues: {
         // One word, like every other panel in the drawer.
@@ -22,7 +23,6 @@ export const devMode = {
         onSurface: "On {surface}",
         noLocation: "Could not be traced to a line",
         viaPlayHead: "where playback was",
-        openInStudio: "Open in Studio",
         stack: "Stack",
         dismissAll: "Dismiss all ({count})",
         summary: "{errors} errors · {warnings} warnings",

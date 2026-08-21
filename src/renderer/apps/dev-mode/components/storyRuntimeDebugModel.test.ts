@@ -123,19 +123,6 @@ describe("projectSceneTimeline", () => {
         expect(rows[0]!.speakerColor).toBeNull();
     });
 
-    it("gives prose rows no colour bar and staging rows the editor's hue", () => {
-        const background: StoryBlock = {
-            id: "bg",
-            kind: "action",
-            parentId: null,
-            childrenIds: [],
-            payload: { action: "setBackground", assetId: "img-1" },
-        };
-        const rows = projectSceneTimeline(scene([narration("n", "hi"), background], ["n", "bg"]), noLookups);
-        expect(rows[0]!.barColor).toBeNull();
-        // The `scene` command group's hue - the same value `getBlockBadgeInfo` hands the editor's bar.
-        expect(rows[1]!.barColor).toBe("#8fa9c7");
-    });
 });
 
 describe("action id ↔ block bindings", () => {

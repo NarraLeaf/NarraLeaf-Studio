@@ -243,6 +243,11 @@ export const lint = {
             description: "プロジェクトにないページを埋め込んでいるページウィジェット",
             message: "このページウィジェットはプロジェクトにないページを埋め込んでいる",
         },
+        uiListItemFieldMissing: {
+            title: "項目が見つかりません",
+            description: "描画元のリストが宣言していない項目に紐づいたウィジェット",
+            message: "リストが宣言していない項目に紐づいているため、どの行も同じ内容になります",
+        },
         blueprintSaveFieldEmpty: {
             title: "未入力のセーブ項目",
             description: "実行される Save Game ノードで、宣言済みのセーブ項目が未入力",

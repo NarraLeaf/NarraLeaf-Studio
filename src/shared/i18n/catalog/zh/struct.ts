@@ -1,0 +1,36 @@
+export const struct = {
+    type: {
+        string: "字符串",
+        number: "数字",
+        boolean: "布尔值",
+        image: "图片",
+        color: "颜色",
+        json: "JSON",
+    },
+    field: {
+        name: "名称",
+        type: "类型",
+        add: "添加字段",
+        remove: "删除字段",
+        newName: "字段",
+        none: "没有字段",
+        engineOwned: "该列表的字段由引擎提供",
+        picker: "字段",
+        visiblePicker: "显示字段",
+        pickerEmpty: "不绑定字段",
+    },
+    row: {
+        add: "添加一行",
+        remove: "删除该行",
+        duplicate: "复制该行",
+        moveUp: "上移",
+        moveDown: "下移",
+        none: "没有内容",
+        number: "#",
+    },
+    image: {
+        select: "选择图片",
+        selectTitle: "选择图片",
+        clear: "清除图片",
+    },
+} as const;

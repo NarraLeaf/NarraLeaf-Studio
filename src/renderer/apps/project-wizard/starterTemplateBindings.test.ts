@@ -47,12 +47,14 @@ const scopes: { label: string; elements: Record<string, UIElement> }[] = [
 
 const boundValues: BoundValue[] = scopes.flatMap(scope =>
     Object.values(scope.elements).flatMap(element =>
-        Object.entries(element.valueBindings ?? {}).map(([propPath, binding]) => ({
-            scope: scope.label,
-            element,
-            propPath,
-            blueprintId: binding.blueprintId,
-        })),
+        Object.entries(element.valueBindings ?? {})
+            .filter(([, binding]) => binding.kind === "blueprintValue")
+            .map(([propPath, binding]) => ({
+                scope: scope.label,
+                element,
+                propPath,
+                blueprintId: (binding as { blueprintId: string }).blueprintId,
+            })),
     ),
 );
 

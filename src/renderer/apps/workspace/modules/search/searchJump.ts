@@ -10,6 +10,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { createStorySceneEditorTab } from "../story/scene-editor/openStorySceneEditorTab";
+import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabId";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
 import { requestAssetSetReveal } from "../assets/assetSetReveal";
@@ -39,9 +40,16 @@ const ASSETS_PANEL_ID = "narraleaf-studio:assets";
 export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDeps): boolean {
     switch (target.kind) {
         case "storyBlock":
+            // Tokened so that jumping to a hit, reading around it, and jumping back to the same hit
+            // is two navigations rather than one. See `nextStoryRevealToken`.
             deps.openEditorTab(
                 createStorySceneEditorTab(
-                    { storyId: target.storyId, sceneId: target.sceneId, activeBlockId: target.blockId },
+                    {
+                        storyId: target.storyId,
+                        sceneId: target.sceneId,
+                        activeBlockId: target.blockId,
+                        revealToken: nextStoryRevealToken(),
+                    },
                     target.sceneName || target.storyName,
                 ),
             );

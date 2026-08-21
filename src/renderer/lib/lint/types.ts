@@ -110,6 +110,7 @@ export type LintRuleId =
     | "ui/empty-behavior"
     | "ui/component-missing"
     | "ui/frame-target-missing"
+    | "ui/list-item-field-missing"
     | "blueprint/save-field-empty"
     | "variables/undeclared"
     | "variables/unused"
