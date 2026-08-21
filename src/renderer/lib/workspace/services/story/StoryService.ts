@@ -171,6 +171,21 @@ export class StoryService extends Service<StoryService> implements IStoryService
     /** Absolute directories already known to exist; see {@link ensureDir}. */
     private readonly verifiedDirs = new Set<string>();
     private libraryIndexDirty = false;
+    /**
+     * The library index's *derived* debt: one or more entries' `updatedAt` no longer matches the
+     * document it mirrors, and nothing else about the index has changed.
+     *
+     * Kept apart from {@link libraryIndexDirty} because the two are owed to different degrees. The
+     * index is the only place a story's name, its position, its `documentPath` and the default story
+     * exist - lose that write and the author's work is gone. `entry.updatedAt` is a *copy* of
+     * `document.meta.updatedAt`, and the document carrying the original is written by the same flush,
+     * before this would be: the fact is already durable, and nothing in Studio reads the copy.
+     *
+     * So a stamp is deferred while the author is typing and settled by the first save after they
+     * stop - see {@link flush}. That is the whole of the saving: a one-line edit used to rewrite the
+     * entire index every five seconds because a timestamp had moved.
+     */
+    private libraryStampsDirty = false;
     private animationIndexDirty = false;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
@@ -485,7 +500,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const document = this.getStoryDocument(storyId);
         await this.writeStoryDocument(storyId, document);
         this.markStoryEntrySaved(storyId, document.meta?.updatedAt);
-        if (this.libraryIndexDirty) {
+        // Stamps included, unlike the auto-save path: the author asked for this one by name, it is
+        // not on a five-second timer, and settling the mirror here costs one small write.
+        if (this.libraryIndexDirty || this.libraryStampsDirty) {
             await this.writeLibraryIndex();
         }
         if (this.animationIndexDirty) {
@@ -1563,6 +1580,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * library index has to come **after** every document or it goes out one save stale; the
      * animation index sits after its assets on the same reasoning.
      *
+     * That stamp is also the only reason most saves touched the index at all, and it is the one
+     * thing here that does not have to be written *now*: see {@link libraryStampsDirty}. While the
+     * author is still typing - which is what `hasScheduledWrite` answers - a stamps-only index is
+     * left for later; the first save after they stop writes it. An index that owes anything else
+     * goes out unconditionally, as it always did.
+     *
      * Every write is attempted even when an earlier one fails, and the first error is re-thrown at
      * the end. Stopping at the first failure would let one unwritable file - a permission on one
      * document, a name the volume rejects - starve every other document forever, because the saver
@@ -1596,7 +1619,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (this.animationIndexDirty) {
             await attempt(() => this.writeAnimationIndex());
         }
-        if (this.libraryIndexDirty) {
+        if (this.libraryIndexDirty || (this.libraryStampsDirty && !this.autoSaver.hasScheduledWrite())) {
             await attempt(() => this.writeLibraryIndex());
         }
 
@@ -1617,11 +1640,20 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.dirtyDocuments.clear();
         this.dirtyAnimationAssets.clear();
         this.libraryIndexDirty = false;
+        this.libraryStampsDirty = false;
         this.animationIndexDirty = false;
         this.setDirty(false);
     }
 
-    /** Whether any file this service owns is still owed to the disk. */
+    /**
+     * Whether any file this service owns is still owed to the disk.
+     *
+     * {@link libraryStampsDirty} is deliberately **not** counted. This drives the unsaved-changes
+     * indicator and the prompt that stands between the author and quitting, and an unwritten stamp
+     * is not unsaved work - the value it mirrors was written into the story document itself by the
+     * same flush. Counting it would light the indicator over a project with nothing unsaved and hold
+     * up a quit for a write nobody is waiting for.
+     */
     private hasPendingWrites(): boolean {
         return this.dirtyDocuments.size > 0
             || this.dirtyAnimationAssets.size > 0
@@ -1663,9 +1695,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getLibraryIndex(), null, 2);
         this.libraryIndexDirty = false;
+        this.libraryStampsDirty = false;
         const result = await fs.write(this.getIndexPath(), payload, "utf-8");
         this.settleWrite(result, () => {
+            // Both, unconditionally. These bytes carried the authored index *and* every stamp, and a
+            // write that did not land tells us nothing about which half mattered; re-owing the
+            // authored half is what makes the retry unconditional rather than deferrable again.
             this.libraryIndexDirty = true;
+            this.libraryStampsDirty = true;
         });
     }
 
@@ -1729,7 +1766,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             return;
         }
         entry.updatedAt = stamp;
-        this.libraryIndexDirty = true;
+        this.libraryStampsDirty = true;
     }
 
     private setDirty(value: boolean): void {

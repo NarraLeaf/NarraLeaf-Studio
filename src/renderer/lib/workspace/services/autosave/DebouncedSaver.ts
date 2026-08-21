@@ -162,6 +162,19 @@ export class DebouncedSaver {
         return this.pending || this.inFlight !== null;
     }
 
+    /**
+     * Whether another write is already owed *on top of* the one running.
+     *
+     * Narrower than {@link isPending}, which also counts the write in flight and is therefore always
+     * true when asked from inside `save()`. This is the question a `save` callback asks to find out
+     * whether the author is still typing: false means this is the last write of the streak unless
+     * something new arrives, which is what lets a writer defer work that only has to be right once
+     * the edits stop. See `StoryService.flush` and its library index.
+     */
+    public hasScheduledWrite(): boolean {
+        return this.pending;
+    }
+
     public getState(): SaveState {
         return this.state;
     }
