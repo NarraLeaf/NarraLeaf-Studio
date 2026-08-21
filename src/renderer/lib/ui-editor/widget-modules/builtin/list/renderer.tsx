@@ -471,10 +471,19 @@ export function ListRenderer(props: WidgetRendererProps) {
             if (!blueprintRuntime) {
                 return;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, {
-                ...listItemEventPayload(scope),
-                ...extra,
-            });
+            void blueprintRuntime.dispatchElementBlueprintEvent(
+                element.id,
+                eventName,
+                {
+                    ...listItemEventPayload(scope),
+                    ...extra,
+                },
+                // The row is carried, not only described: a handler answering a click on a row is
+                // asking about that row, so Get Item Field resolves there exactly as it does while
+                // the row is being drawn. Without it the only way to read the row that was clicked
+                // was to pull the item off the payload and index into it by hand.
+                { listItemScope: scope, instanceKey: `list-${element.id}-${scope.key}` },
+            );
         },
         [blueprintRuntime, element.id],
     );

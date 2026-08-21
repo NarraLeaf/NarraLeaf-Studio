@@ -799,7 +799,7 @@ function ListContentField(props: CustomFieldProps<UIInspectorData>) {
             >
                 {t("widgets.list.editContent")}
             </Button>
-            <span className="truncate text-2xs text-fg-subtle" title={summary}>
+            <span className="truncate text-2xs text-fg-subtle" data-tip={summary}>
                 {summary}
             </span>
             <ListContentModal
