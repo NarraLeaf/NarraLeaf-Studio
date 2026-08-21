@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ASSET_CATEGORY_EXTENSIONS, AssetCategory, AssetExtensions, AssetType } from "./assetTypes";
 import { FORMAT_EXTENSIONS, FileFormatValidator, UNDECODABLE_EXTENSIONS } from "./FileFormatValidator";
+import { UNRENDERABLE_FONT_FORMATS } from "@shared/typography/fontFormats";
 
 /**
  * A buffer that starts with the given signature and is long enough to clear the length guards in
@@ -160,6 +161,27 @@ describe("FileFormatValidator: containers Chromium cannot demux are refused with
         }
     });
 
+    /**
+     * SVG fonts left Blink a decade ago and EOT was never read outside Internet Explorer. Both were
+     * importable and neither could ever be drawn with - measured in Electron 38, where a minimal
+     * SVG 1.1 `<font>` is rejected by `FontFace` as `Invalid font data in ArrayBuffer.`
+     */
+    it("refuses SVG fonts and Embedded OpenType", async () => {
+        const svg = bytes(0x3C, 0x3F, 0x78, 0x6D, 0x6C);
+        expect(await expectRejected(AssetType.Font, "a.svg", svg)).toContain(".ttf or .otf");
+        expect(await expectRejected(AssetType.Font, "a.eot", bytes(0x00))).toContain(".ttf or .otf");
+    });
+
+    /**
+     * The editor's font loader and the import gate have to name the same formats. They used to
+     * disagree: the loader refused four, the gate refused none, and the gap was a font that imported
+     * cleanly and then rendered nothing anywhere.
+     */
+    it("refuses exactly the formats the editor's font loader cannot draw with", () => {
+        expect(Object.keys(UNDECODABLE_EXTENSIONS[AssetType.Font] ?? {}).sort())
+            .toEqual(Object.keys(UNRENDERABLE_FONT_FORMATS).sort());
+    });
+
     it("catches a collection wearing a single-face name", async () => {
         const error = await expectRejected(AssetType.Font, "a.ttf", TTC);
         expect(error).toContain("TTC");
@@ -186,6 +208,7 @@ describe("FileFormatValidator: containers Chromium cannot demux are refused with
         // The same bargain for fonts: visible so the author can find the file and be told what to
         // do with it, rather than hidden so that the picker looks empty.
         expect(AssetExtensions[AssetType.Font]).toContain("ttc");
+        expect(AssetExtensions[AssetType.Font]).toContain("svg");
     });
 
     it("does not second-guess the bytes of an Other asset", async () => {

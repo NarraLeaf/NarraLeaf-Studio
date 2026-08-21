@@ -190,14 +190,14 @@ describe("blueprint/reference-missing", () => {
         };
         const base = {
             blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }),
-            localizationKeyNames: new Set(["farewell"]),
+            localizationKeys: new Map([["farewell", "See you."]]),
         };
         expect(await run("blueprint/reference-missing", createTestLintContext(base))).toHaveLength(1);
         // The key registry not having loaded is the localization equivalent, and is also silent.
         expect(
             await run(
                 "blueprint/reference-missing",
-                createTestLintContext({ ...base, localizationKeyNames: null }),
+                createTestLintContext({ ...base, localizationKeys: null }),
             ),
         ).toEqual([]);
     });
@@ -220,7 +220,7 @@ describe("blueprint/reference-missing", () => {
             "blueprint/reference-missing",
             createTestLintContext({
                 blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }),
-                localizationKeyNames: new Set(["farewell"]),
+                localizationKeys: new Map([["farewell", "See you."]]),
             }),
         );
         expect(findings).toEqual([]);

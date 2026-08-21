@@ -1,5 +1,6 @@
 import { AssetExtensions, AssetType } from "./assetTypes";
 import { parseSharedBlueprintAssetJson, SharedBlueprintAssetParseError } from "./blueprintAssetSchema";
+import { UNRENDERABLE_FONT_FORMATS } from "@shared/typography/fontFormats";
 
 export type FileFormatValidationResult = {
     success: true;
@@ -413,18 +414,11 @@ export const UNDECODABLE_EXTENSIONS: Partial<Record<AssetType, Record<string, st
         '.mp4 or .webm',
     ),
     /**
-     * TrueType and OpenType **collections**, which hold several faces in one file.
+     * Fonts nothing can draw with - collections, SVG fonts, Embedded OpenType.
      *
-     * Not a decoder gap like the rows above - the format is fine and Studio can read it. The gap is
-     * in the loader: `FontFace` takes one file to mean one typeface and rejects a collection
-     * outright, so an imported `.ttc` is a font that renders nothing, in the editor and in the
-     * shipped game alike. Measured 2026-08-21 against `msgothic.ttc` and `simsun.ttc`: the specimen
-     * on Project -> Design fell back to the interface font, while single-face `.ttf` cuts of the
-     * same typefaces loaded normally.
-     *
-     * Which face the author wanted is the reason this is a refusal rather than an extraction: a
-     * `.ttc` typically carries a proportional, a fixed-pitch and a UI cut of one family, and picking
-     * the first would silently hand them one of three.
+     * Not a decoder gap like the rows above: these files are readable and the gap is in the *loader*,
+     * which is why the table lives beside the rest of the typography model rather than here. See
+     * `@shared/typography/fontFormats` for what was measured for each.
      */
-    [AssetType.Font]: convertTo(['ttc', 'otc'], 'a single-face .ttf or .otf'),
+    [AssetType.Font]: { ...UNRENDERABLE_FONT_FORMATS },
 };

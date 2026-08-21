@@ -44,7 +44,7 @@ export function createTestLintContext(
         persistentNameCollisions: [],
         savedNameCollisions: [],
         localization: null,
-        localizationKeyNames: null,
+        localizationKeys: null,
         voice: null,
         buildPlatforms: [],
         io: {

@@ -281,7 +281,7 @@ describe("readFontCoverage / containers", () => {
         const inner = sfnt([{ name: "cmap", data: cmapFormat4([{ start: 0x61, end: 0x7a, delta: 1 }]) }], 16);
         expect(readFontCoverage(new Uint8Array([...header, ...inner]))).toEqual({
             ok: false,
-            reason: "unloadable-container",
+            reason: "unrenderable",
         });
     });
 
@@ -290,7 +290,7 @@ describe("readFontCoverage / containers", () => {
         woff2.set(tag("wOF2"), 0);
         woff2.set(tag("ttcf"), 4);
         expect(readFontCoverage(woff2, { brotli: () => { throw new Error("must not be reached"); } }))
-            .toEqual({ ok: false, reason: "unloadable-container" });
+            .toEqual({ ok: false, reason: "unrenderable" });
     });
 });
 

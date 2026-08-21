@@ -15,6 +15,7 @@ import type {
 } from "@/lib/lint/context";
 import type { LintReport, LintReportEntry } from "@/lib/lint/types";
 import type { FontCoverageResult } from "@shared/typography/fontCoverage";
+import { isUnrenderableFontFormat } from "@shared/typography/fontFormats";
 import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
@@ -215,9 +216,11 @@ export class LintService extends Service<LintService> implements ILintService {
             // Loaded in the background from the service's own init, so it can genuinely be absent
             // here on a sweep run seconds after a project opens - which is why the field is
             // nullable rather than an empty set.
-            localizationKeyNames: safely(() => {
+            localizationKeys: safely(() => {
                 const keys = localizationService.getKeysIfLoaded()?.keys;
-                return keys ? new Set(Object.keys(keys)) : null;
+                return keys
+                    ? new Map(Object.entries(keys).map(([name, entry]) => [name, entry.sourceText]))
+                    : null;
             }, null),
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
@@ -554,6 +557,14 @@ export class LintService extends Service<LintService> implements ILintService {
                     // finding to make - `assets/missing` reports the second one, with the row that
                     // named it attached.
                     return { ok: false, reason: "not-a-font" };
+                }
+                if (isUnrenderableFontFormat(asset.ext)) {
+                    // Decided from the extension, without reading a byte: an SVG font and an EOT are
+                    // perfectly parseable files that no engine will draw with, and the coverage
+                    // parser would answer `not-a-font` for them - which is the arm this rule reads
+                    // as "a built-in stack" and passes over in silence. See
+                    // `@shared/typography/fontFormats`.
+                    return { ok: false, reason: "unrenderable" };
                 }
                 // Through `FontService` rather than straight to the bridge, for the memo: the rule
                 // asks once per language of the project, and re-reading a CJK face for each is a

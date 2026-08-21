@@ -3,6 +3,7 @@ import type { Asset } from "../assets/types";
 import { AssetsService } from "../core/AssetsService";
 import { Service } from "../Service";
 import { IUIEditorFontFaceService, Services, WorkspaceContext } from "../services";
+import { UNRENDERABLE_FONT_FORMATS } from "@shared/typography/fontFormats";
 
 export type EditorFontAcquireResult =
     | { ok: true; cssFamily: string }
@@ -18,7 +19,14 @@ type FontEntry = {
     loading?: Promise<EditorFontAcquireResult>;
 };
 
-const UNSUPPORTED_FORMATS = new Set(["ttc", "otc", "eot", "svg"]);
+/**
+ * Kept here as a set for the two lookups below, but **not decided here** any more.
+ *
+ * This service was the only place that knew these formats cannot be drawn, so a file it refused to
+ * load could still be imported and then sit on the project's font stack rendering nothing. The table
+ * moved to `@shared/typography/fontFormats`, where the import gate reads it too.
+ */
+const UNSUPPORTED_FORMATS = new Set(Object.keys(UNRENDERABLE_FONT_FORMATS));
 
 function cssFamilyForAssetId(assetId: string): string {
     return `nlEditorFont_${assetId.replace(/[^a-zA-Z0-9]/g, "_")}`;

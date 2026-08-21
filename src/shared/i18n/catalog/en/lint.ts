@@ -343,7 +343,7 @@ export const lint = {
             // check that quietly did not run reads on screen as a check that passed.
             messageUnreadable: "{font} could not be read, so glyph coverage was not checked",
             // A different fact from the one above: this file is fine and renders nothing anyway.
-            messageUnloadable: "{font} holds several typefaces in one file, which the game cannot use",
+            messageUnloadable: "{font} is a .{format} font, which the game cannot draw with",
         },
         typographyLocaleNoFont: {
             title: "Language with no font",

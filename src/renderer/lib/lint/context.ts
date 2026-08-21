@@ -204,14 +204,19 @@ export type LintContext = {
     savedNameCollisions: readonly PersistentNameCollision[];
     localization: LintLocalizationContext | null;
     /**
-     * Named localization keys, by name - the registry `Get Text` picks from.
+     * Named localization keys - the registry `Get Text` picks from - mapped to their source text.
      *
      * Separate from {@link localization}, which is about translations of the script: a project can
      * declare named keys with no target locale configured at all. `null` means the key document had
      * not finished loading when the sweep started, which is not the same as a project with no keys
      * and must not be read as one.
+     *
+     * The **text** and not only the names, because these are the words on the interface's own
+     * buttons - Save, Load, Continue - and a rule that only knew their names could not check what a
+     * player actually reads. `typography/glyph-coverage` is the rule that needed it; `blueprint`
+     * only ever asks whether a name exists.
      */
-    localizationKeyNames: ReadonlySet<string> | null;
+    localizationKeys: ReadonlyMap<string, string> | null;
     voice: LintVoiceContext | null;
     buildPlatforms: readonly GameBuildPlatform[];
     io: LintIo;

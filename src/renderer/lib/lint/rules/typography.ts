@@ -1,6 +1,10 @@
 import { getActiveProjectFonts } from "@shared/typography/projectFonts";
 import { coversCodePoint, type FontCoverage } from "@shared/typography/fontCoverage";
-import { characterTranslationUnitId } from "@shared/types/localization";
+import {
+    characterTranslationUnitId,
+    localizationKeyUnitId,
+    sceneTranslationUnitId,
+} from "@shared/types/localization";
 import { resolveProjectFontStackForLocale, type ProjectFontEntry } from "@shared/types/typography";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
@@ -135,6 +139,56 @@ function collectTextSites(ctx: LintContext): TextSite[] {
                     characterId: character.id,
                     characterName: character.name,
                 },
+            });
+        }
+    }
+
+    for (const story of ctx.stories) {
+        for (const scene of Object.values(story.document.scenes ?? {})) {
+            // A scene's name reaches a player through `scene:` references - a save slot's caption,
+            // a chapter list - so it is text the fonts have to be able to draw, not editor chrome.
+            if (!scene?.id || typeof scene.name !== "string" || !scene.name.trim()) {
+                continue;
+            }
+            sites.push({
+                unitId: sceneTranslationUnitId(scene.id),
+                source: scene.name,
+                location: {
+                    kind: "story",
+                    storyId: story.id,
+                    storyName: story.name,
+                    sceneId: scene.id,
+                    sceneName: scene.name,
+                },
+                target: {
+                    kind: "storyScene",
+                    storyId: story.id,
+                    storyName: story.name,
+                    sceneId: scene.id,
+                    sceneName: scene.name,
+                },
+            });
+        }
+    }
+
+    /**
+     * The named keys, which are the interface's own words: Save, Load, Continue.
+     *
+     * Left out of the first cut of this rule, and a real project showed what that cost - the six
+     * keys of a Chinese translation carried nine characters that appeared nowhere else in the
+     * script, so a font that could not draw them would have shipped a menu of empty boxes with
+     * nothing reported. They are the first words a player reads, not the last.
+     *
+     * Filed under the project, because a key belongs to no scene - but with a jump target, so the
+     * row still leads somewhere despite the empty locator column.
+     */
+    for (const [name, sourceText] of ctx.localizationKeys ?? []) {
+        if (sourceText.trim()) {
+            sites.push({
+                unitId: localizationKeyUnitId(name),
+                source: sourceText,
+                location: { kind: "project" },
+                target: { kind: "localizationKey", keyName: name },
             });
         }
     }
@@ -275,7 +329,7 @@ async function readStacks(
         const result = await ctx.io.probeFontCoverage(id);
         if (result.ok) {
             coverage.set(id, result.coverage);
-        } else if (result.reason === "unloadable-container") {
+        } else if (result.reason === "unrenderable") {
             unloadable.push(id);
         } else if (result.reason !== "not-a-font") {
             // `not-a-font` is what a built-in system stack and a deleted asset both answer, and
@@ -362,6 +416,12 @@ function fontName(ctx: LintContext, assetId: string): string {
     return ctx.assets.find(asset => asset.id === assetId)?.name ?? assetId;
 }
 
+/** The font's extension, lower case and without its dot. Empty for a rung with no asset. */
+function fontFormat(ctx: LintContext, assetId: string): string {
+    const ext = ctx.assets.find(asset => asset.id === assetId)?.ext ?? "";
+    return ext.trim().toLowerCase().replace(/^\./, "");
+}
+
 async function runGlyphCoverage(
     ctx: LintContext,
     entries: readonly ProjectFontEntry[],
@@ -394,12 +454,17 @@ async function runGlyphCoverage(
 
     // A font that renders nothing at all, said once. Not folded into the per-character findings
     // below, which it would otherwise turn into every character of the script: the single useful
-    // sentence about a collection is that the file cannot be used, not that it is missing an "a".
+    // sentence about such a file is that it cannot be used, not that it is missing an "a".
     for (const assetId of unloadable) {
         findings.push({
             ruleId: "typography/glyph-coverage" as const,
             messageKey: "lint.rule.typographyGlyphCoverage.messageUnloadable" as TranslationKey,
-            messageParams: { font: fontName(ctx, assetId) },
+            messageParams: {
+                font: fontName(ctx, assetId),
+                // The format, because the four that land here fail for four different reasons and
+                // the way out differs: a collection is split, an SVG font is redrawn.
+                format: fontFormat(ctx, assetId),
+            },
             location: { kind: "project" as const },
         });
     }
