@@ -54,6 +54,10 @@ export const settings = {
             label: "Workspace",
             description: "Startup behavior, workspace history, and automatic saving.",
         },
+        performance: {
+            label: "Performance",
+            description: "How much of this machine Studio spends, and how long you wait for it.",
+        },
         shortcuts: {
             label: "Shortcuts",
             description: "Keys bound to each command throughout Studio.",
@@ -87,6 +91,13 @@ export const settings = {
         developerMode: {
             label: "Developer options",
             description: "Right-click menus gain a section for copying the ID of the item clicked.",
+        },
+        screenEffectThreads: {
+            label: "Threads for screen effects",
+            description: "How many threads draw frames while the encoder runs. Automatic reads this machine.",
+            options: {
+                auto: "Automatic",
+            },
         },
         screenEffectQuality: {
             label: "Screen effects in Dev Mode",
