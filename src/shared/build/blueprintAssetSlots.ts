@@ -31,8 +31,17 @@ import {
  * consumer never sees a set at all, so the answer has to travel with the literal.
  */
 
-/** What kind of asset a pin carries. Mirrors the reference index's own two kinds. */
-export type BlueprintAssetSlotKind = "image" | "font";
+/** What kind of asset a pin carries. Mirrors the reference index's own kinds. */
+export type BlueprintAssetSlotKind = "image" | "audio" | "font";
+
+/**
+ * Where Play Sound stores the clip an author picked.
+ *
+ * Declared here rather than beside the node, and imported back by it, because a build cannot load
+ * the node module: this is the layer both halves can see, and one spelling is what keeps the walk
+ * and the node reading the same param.
+ */
+export const BLUEPRINT_SOUND_ASSET_PARAM_KEY = "soundAssetId";
 
 /**
  * The asset pins a build can see without a node catalogue.
@@ -47,6 +56,11 @@ export const BUILD_VISIBLE_BLUEPRINT_ASSET_PINS: readonly {
 }[] = Object.freeze([
     { pinId: "asset", paramKey: "asset", kind: "image" as const },
     { pinId: "fontAssetId", paramKey: "fontAssetId", kind: "font" as const },
+    // Play Sound keeps its clip in an inspector param, so no pin carries this name and the edge arm
+    // below never matches it. That is the honest answer rather than an oversight: the node's wired
+    // `assetId` pin takes a string the game computes - a gallery row's clip - and reading a stored
+    // id off it would be the id-shaped-string guess this file refuses everywhere else.
+    { pinId: BLUEPRINT_SOUND_ASSET_PARAM_KEY, paramKey: BLUEPRINT_SOUND_ASSET_PARAM_KEY, kind: "audio" as const },
 ]);
 
 /**
@@ -70,9 +84,13 @@ const GENERIC_LITERAL_NODE_TYPES: ReadonlySet<string> = Object.freeze(
  * `font` says no, for the reason the interface's own walk gives: the runtime derives a CSS family
  * name from the asset id and registers one `FontFace` under it, so one id standing for two files
  * would leave a cached face under a name that no longer describes its bytes.
+ *
+ * A clip says yes for the reason a picture does. A sound with one job in one scene is the kind of
+ * thing that changes with the language it is heard in, and nothing downstream derives an identity
+ * from its id: the host is handed the member the answer names and plays those bytes.
  */
 export function blueprintAssetSlotAcceptsSets(kind: BlueprintAssetSlotKind): boolean {
-    return kind === "image";
+    return kind !== "font";
 }
 
 /**
@@ -87,7 +105,7 @@ export function blueprintAssetSlotAcceptsSets(kind: BlueprintAssetSlotKind): boo
  * cannot resolve, the id would stop reading as a missing reference and the build would ship it.
  */
 export const BLUEPRINT_SET_LEGAL_PARAM_KEYS: ReadonlySet<string> = Object.freeze(
-    new Set(["asset", "assetId"]),
+    new Set(["asset", "assetId", BLUEPRINT_SOUND_ASSET_PARAM_KEY]),
 ) as ReadonlySet<string>;
 
 /** One stored asset id in a graph, and the ability to replace it where it sits. */
@@ -104,6 +122,8 @@ function readSlotValue(kind: BlueprintAssetSlotKind, value: unknown): string | n
         const id = blueprintImageAssetId(value);
         return id && id.trim() ? id.trim() : null;
     }
+    // A clip and a typeface are both stored as the bare id. Only the picture ever grew an envelope,
+    // because only the picture is also a value that travels along an edge.
     return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 

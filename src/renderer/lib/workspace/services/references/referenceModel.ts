@@ -8,6 +8,7 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
 } from "@shared/types/blueprint/graph";
 import type { BlueprintAssetPinKind } from "@shared/types/blueprint/valueTypes";
+import { BLUEPRINT_SOUND_ASSET_PARAM_KEY } from "@shared/build/blueprintAssetSlots";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
 import { isAppearanceModel, type AppearanceVariant } from "@shared/types/ui-editor/appearance";
@@ -127,9 +128,10 @@ export type ReferenceGapReason =
  * The kinds of library asset a gap can cast doubt on.
  *
  * Narrower than `AssetType` on purpose: what a gap knows is what the *site* could hold, and a site
- * holds a picture or a typeface. Nothing in the project can put a sound behind an image URL.
+ * holds a picture, a clip or a typeface. Nothing in the project can put a sound behind an image URL,
+ * which is what keeps one unreadable widget from putting the whole library beyond deleting.
  */
-export type ReferenceAssetKind = "image" | "font";
+export type ReferenceAssetKind = "image" | "audio" | "font";
 
 export interface ReferenceIndexGap {
     reason: ReferenceGapReason;
@@ -645,6 +647,10 @@ export type BlueprintAssetPinResolver = (nodeType: string) => readonly Blueprint
 const DEFAULT_BLUEPRINT_ASSET_PINS: readonly BlueprintAssetPin[] = [
     { pinId: "asset", kind: "image", paramKey: "asset", input: true },
     { pinId: "fontAssetId", kind: "font", paramKey: "fontAssetId", input: true },
+    // Play Sound's clip. `input: false` because it is an inspector param and no pin carries the
+    // name, so there is no edge to follow to a source - the node's wired `assetId` pin is a string
+    // the game computes, and claiming it stored one would invent a reference on every gallery page.
+    { pinId: BLUEPRINT_SOUND_ASSET_PARAM_KEY, kind: "audio", paramKey: BLUEPRINT_SOUND_ASSET_PARAM_KEY, input: false },
 ];
 
 /**
@@ -684,7 +690,12 @@ function incomingEdgeKey(nodeId: string, pinId: string): string {
     return `${nodeId}\u0000${pinId}`;
 }
 
-/** The asset id a pin value holds, by the kind of asset the pin declares. */
+/**
+ * The asset id a pin value holds, by the kind of asset the pin declares.
+ *
+ * A clip and a typeface are both the bare id; only the picture grew an envelope, and a graph saved
+ * before it existed still stores the raw string, which `blueprintImageAssetId` also accepts.
+ */
 function readAssetPinValue(kind: BlueprintAssetPinKind, value: unknown): string | null {
     if (kind === "image") {
         const imageAssetId = blueprintImageAssetId(value);

@@ -268,6 +268,7 @@ import {
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { resolveSliderRuntimeValue, type UISliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
+import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import { listBlueprintNodePaletteEntries } from "../../behavior-graph/nodeEditorCatalog";
 import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
@@ -7647,6 +7648,68 @@ describe("sound node transport", () => {
             { op: "setVolume", handle, volume: 0.25, fadeMs: 800 },
             { op: "seek", handle, timeMs: 30000 },
         ]);
+    });
+
+    /**
+     * A clip an asset set answers for.
+     *
+     * The set id is what the author picked and what the document stores. The build writes what it
+     * resolves to onto the node that stores it, and the member is chosen here, when the clip is
+     * asked for - a picture gets the same answer one layer down, in the data-pin resolver, but this
+     * node's clip is an inspector param whose name is no pin's, so it has to ask for itself.
+     */
+    describe("a clip that names an asset set", () => {
+        const SET_ID = "set-jingle";
+        const EN = "clip-en";
+        const JA = "clip-ja";
+
+        async function playedAssetId(locale: string | null): Promise<unknown> {
+            const log = { play: [] as unknown[], ops: [] as unknown[] };
+            const uninstall = locale === null
+                ? () => undefined
+                : setRuntimeLocaleSource({ getLocale: () => locale, sourceLocale: "en" });
+            try {
+                await executeGraph({
+                    graph: {
+                        id: "sound",
+                        entries: { main: { start: { nodeId: "play", port: "in" } } },
+                        nodes: {
+                            play: {
+                                id: "play",
+                                type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+                                params: { soundAssetId: SET_ID },
+                                assetVariants: { [SET_ID]: { en: EN, ja: JA } },
+                            },
+                        },
+                        edges: [],
+                    },
+                    entry: { start: { nodeId: "play", port: "in" } },
+                    hostAdapter: soundHostAdapter(log),
+                    blueprintLocals: {},
+                });
+            } finally {
+                uninstall();
+            }
+            return (log.play[0] as { assetId?: unknown } | undefined)?.assetId;
+        }
+
+        it("plays the member the player's language names", async () => {
+            expect(await playedAssetId("ja")).toBe(JA);
+        });
+
+        /** Defence, not policy: a filled map covers every locale the package ships. */
+        it("falls back to the language the project is written in", async () => {
+            expect(await playedAssetId("fr")).toBe(EN);
+        });
+
+        /**
+         * The editor canvas, where nothing installs a language. An authored document carries no
+         * answers either, so this only happens to a package played outside a running game - and
+         * handing the host the id unchanged is what every other unresolvable value does.
+         */
+        it("hands the stored id over unchanged when no game is running", async () => {
+            expect(await playedAssetId(null)).toBe(SET_ID);
+        });
     });
 });
 
