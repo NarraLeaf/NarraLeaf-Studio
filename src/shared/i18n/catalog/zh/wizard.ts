@@ -10,6 +10,9 @@ export const wizard = {
         source: "地址",
         clone: "克隆",
         import: "导入",
+        // 为服务器新建项目时第一页的名字。来源已由打开这个窗口的动作决定，那一栏不在页面上，
+        // 留下的是这个工程用什么做出来。
+        template: "模板",
     },
     nav: {
         createProject: "创建项目",
@@ -127,6 +130,9 @@ export const wizard = {
     review: {
         template: "模板",
         notSpecified: "未指定",
+        // 为服务器新建项目时取代版本控制那一行：发送到服务器本身就把工程纳入了版本控制，
+        // 两行说的是同一件事。
+        server: "服务器",
     },
     validation: {
         templateFailed: "无法将模板内容复制到工程中",

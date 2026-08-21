@@ -383,7 +383,6 @@ export enum IPCEventType {
     vcsListServerProjectHistory = "vcs.listServerProjectHistory",
     vcsListServerMembers = "vcs.listServerMembers",
     vcsSignInWithPassword = "vcs.signInWithPassword",
-    vcsCreateServerProject = "vcs.createServerProject",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
@@ -1448,19 +1447,6 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { authUrl: string; username: string; password: string },
         response: VcsPasswordSignInOutcome;
-    };
-    /**
-     * Ask a server to make a project, and get back the one it made.
-     *
-     * The server records it and creates the repository together. Studio never asks
-     * `loreserver` for a repository itself — one made that way is one the server has
-     * no row for, and nobody can open it.
-     */
-    [IPCEventType.vcsCreateServerProject]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; name: string; description?: string },
-        response: VcsServerProjectOutcome;
     };
     /**
      * Put the project that is open on to a server: register it, connect it, send it.
