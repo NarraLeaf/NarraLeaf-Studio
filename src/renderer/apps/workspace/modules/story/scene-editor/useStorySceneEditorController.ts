@@ -774,6 +774,33 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
     }, [scene]);
 
+    /**
+     * Land on a row with the caret in it, the way a text editor lands on the line you arrive at.
+     *
+     * The three rows that hold a LINE all take the caret: a text row opens its rich-text editor at
+     * `caret`, and a blank row or a draft row opens the line editor. Anything else has no line to put a
+     * caret in and is left selected, with the keyboard on the row list. Returns whether one opened.
+     *
+     * This is what every arrival shares - backspacing the line below away, arrowing out of the row
+     * above, backing out of a slot - so a blank row behaves like the empty line it is at all of them,
+     * instead of stopping the caret dead the way an action row does.
+     */
+    const openRowForEditing = useCallback((block: StoryBlock, caret: StoryCaretTarget = "end"): boolean => {
+        if (isTextEditableBlock(block)) {
+            const segment = getTextSegment(block);
+            setEditorMode({ kind: "text", blockId: block.id, value: segment?.value ?? "", rich: segment?.rich, caret });
+            return true;
+        }
+        if (block.kind !== "empty" && block.kind !== "invalid") {
+            return false;
+        }
+        // The line editor is a plain field, so the two caret shapes that carry a column collapse to the
+        // edge they arrived from: coming down lands at the start of the line, coming up at its end.
+        const fromAbove = caret === "start" || (typeof caret === "object" && "line" in caret && caret.line === "first");
+        startLineEdit(block, block.kind === "empty" ? "" : undefined, fromAbove ? 0 : Number.MAX_SAFE_INTEGER);
+        return true;
+    }, [startLineEdit]);
+
     const finishTextSelectGesture = useCallback((pending: { blockId: StoryBlockId; textEl: HTMLElement }) => {
         const block = scene?.blocks[pending.blockId];
         if (!block) {
@@ -1500,8 +1527,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     // Backspace on an empty line. An empty dialogue drops a rung to a blank insert slot in the same spot -
     // a completely empty line that can become anything (type narration, "/" for an action, "#" for another
-    // speaker) rather than a committed narration row. Any other empty text row is deleted and focus steps
-    // back to the line above.
+    // speaker) rather than a committed narration row - unless the line above is already a blank one, in
+    // which case the caret joins that. Any other empty text row is deleted and focus steps back to the
+    // line above, into it when that line can hold a caret (see {@link openRowForEditing}).
     const handleBackspaceAtEmptyStart = useCallback(() => {
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
             return;
@@ -1522,6 +1550,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (previousSibling && rowIndexById.has(previousSibling.id)) {
                 recordHistory();
                 storyService.deleteBlock(storyId, sceneId, id);
+                // A blank line above is already the undecided line this rung would open, so the caret
+                // goes INTO it rather than stacking a second empty line under it. That is what deleting
+                // a line does in a text editor: what is left of it joins the line above, caret and all.
+                if (previousSibling.kind === "empty") {
+                    setActiveBlockId(previousSibling.id);
+                    setSelectedBlockIds(new Set([previousSibling.id]));
+                    selectionAnchorRef.current = previousSibling.id;
+                    openRowForEditing(previousSibling, "end");
+                    return;
+                }
                 startInsertAfter(previousSibling.id, true);
                 return;
             }
@@ -1538,10 +1576,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setActiveBlockId(previous.block.id);
             setSelectedBlockIds(new Set([previous.block.id]));
             selectionAnchorRef.current = previous.block.id;
-            if (isTextEditableBlock(previous.block)) {
-                const segment = getTextSegment(previous.block);
-                setEditorMode({ kind: "text", blockId: previous.block.id, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
-            } else {
+            if (!openRowForEditing(previous.block, "end")) {
                 setEditorMode({ kind: "idle" });
                 focusRoot();
             }
@@ -1551,7 +1586,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "idle" });
             focusRoot();
         }
-    }, [editorMode, focusRoot, recordHistory, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
+    }, [editorMode, focusRoot, openRowForEditing, recordHistory, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
 
     // Enter while editing a text row: commit and open a new row that continues the same kind - narration
     // begets narration, a dialogue keeps its speaker, a menu option adds a sibling option. Kinds without a
@@ -1639,17 +1674,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setActiveBlockId(targetBlock.id);
         setSelectedBlockIds(new Set([targetBlock.id]));
         selectionAnchorRef.current = targetBlock.id;
-        if (isTextEditableBlock(targetBlock)) {
-            const segment = getTextSegment(targetBlock);
-            const caret: StoryCaretTarget = goalX === null
-                ? (goingBack ? "end" : "start")
-                : { goalX, line: goingBack ? "last" : "first" };
-            setEditorMode({ kind: "text", blockId: targetBlock.id, value: segment?.value ?? "", rich: segment?.rich, caret });
-        } else {
+        const caret: StoryCaretTarget = goalX === null
+            ? (goingBack ? "end" : "start")
+            : { goalX, line: goingBack ? "last" : "first" };
+        if (!openRowForEditing(targetBlock, caret)) {
             setEditorMode({ kind: "idle" });
             focusRoot();
         }
-    }, [commitTextEdit, editorMode, focusRoot, rowIndexById, startInsertAfter, visibleRows]);
+    }, [commitTextEdit, editorMode, focusRoot, openRowForEditing, rowIndexById, startInsertAfter, visibleRows]);
 
     /**
      * A selected non-text row was activated (Enter, double-click). A block with a real inspector opens
@@ -1895,22 +1927,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const afterId = editorMode.slot.afterBlockId;
         const afterBlock = afterId ? scene?.blocks[afterId] : null;
-        if (afterId && afterBlock && isTextEditableBlock(afterBlock)) {
-            const segment = getTextSegment(afterBlock);
-            setActiveBlockId(afterId);
-            setSelectedBlockIds(new Set([afterId]));
-            selectionAnchorRef.current = afterId;
-            setEditorMode({ kind: "text", blockId: afterId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
-            return;
-        }
         if (afterId) {
             setActiveBlockId(afterId);
             setSelectedBlockIds(new Set([afterId]));
             selectionAnchorRef.current = afterId;
         }
+        if (afterBlock && openRowForEditing(afterBlock, "end")) {
+            return;
+        }
         setEditorMode({ kind: "idle" });
         focusRoot();
-    }, [editorMode, focusRoot, recordHistory, returnFromCharacterActionSlot, scene, sceneId, storyId, storyService]);
+    }, [editorMode, focusRoot, openRowForEditing, recordHistory, returnFromCharacterActionSlot, scene, sceneId, storyId, storyService]);
 
     /**
      * Build a block from a plugin-registered story action. The registration's
@@ -2078,61 +2105,49 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock, slashAtAlias]);
 
     /**
-     * Enter on a line with nothing on it: the author is asking for the blank line itself.
+     * Enter on a line with nothing on it: a blank row is written **where that line is**, and the line
+     * the caret is on moves down to make room for it.
      *
-     * Enter has always meant "this line is finished, open the next one", and it means the same here -
-     * an empty line finished is a blank row (schema v20), and the caret moves down to the next one.
-     * Holding Enter therefore walks a column of blank lines, the way it does in every text editor. It
-     * used to close the slot and write nothing, which left Escape and Enter saying the same thing and
-     * no way at all to type an empty line on purpose.
+     * This is what Enter does to an empty line in any text editor - the blank line is pushed up and
+     * the caret stays on its own, still-empty line - and it is one rule for every empty line in the
+     * editor, whether the caret got there by clearing a row (a slot standing on a blank row), by
+     * Shift+Enter, or by the row's own `+`. Two earlier readings of it were wrong in opposite
+     * directions: writing the new row BELOW the caret put the line the author was on above the line
+     * they were typing on, and refusing to write one at all for a slot with no row under it made
+     * Enter mean "never mind" on a line that was plainly a line.
      *
-     * A slot standing over a row that is ALREADY blank adds the next one after it rather than
-     * rewriting it: the line this keystroke would write is the line the slot is sitting on.
-     *
-     * The caret lands in a slot standing *over* the new row rather than in one below it, and that is
-     * what makes the keystroke read as one line. An open slot draws a blank line of its own, so
-     * committing a blank row and then opening a slot underneath it put THREE blank lines on screen
-     * where there had been one - the row the slot had been covering, the row just written, and the
-     * slot - and the press was reported as adding two. It also means typing into the line fills the
-     * line the caret is on, instead of leaving a blank row above the words.
-     *
-     * Blur is deliberately NOT this path (see {@link commitNarrationFromInsert}, which still writes
-     * nothing for an empty draft). Clicking away from a slot the author never typed in has to leave
-     * the scene as it was, or every abandoned slot in a session would leave a blank row behind.
+     * Escape remains the way out of a slot nobody typed in, and blur is deliberately not this path
+     * (see {@link commitNarrationFromInsert}, which still writes nothing for an empty draft).
      */
-    const commitBlankRowFromInsert = useCallback(() => {
+    const commitBlankRowFromInsert = useCallback((): boolean => {
         if (editorMode.kind !== "insert" || !uuidService) {
-            return;
+            return false;
         }
         const slot = editorMode.slot;
         const covered = (slot.replaceBlockId ? scene?.blocks[slot.replaceBlockId] : null) ?? null;
         const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
-        // Where the new line lands, and which row ends up above it - both read before the document
-        // moves, because the caret's slot has to be built against the place the row is going.
-        const addingAfterBlank = covered !== null && covered.kind === "empty";
-        const parentId = covered
-            ? covered.parentId
-            : slot.target?.parentId ?? (slot.afterBlockId ? scene?.blocks[slot.afterBlockId]?.parentId ?? null : null);
-        const above = addingAfterBlank ? covered.id : slot.afterBlockId;
-        if (addingAfterBlank) {
-            insertBlock(block, covered.id, false);
-        } else {
-            insertBlock(block, slot.afterBlockId, false, { target: slot.target, replaceBlockId: slot.replaceBlockId });
+        if (covered) {
+            // The caret's line is a row of its own, so the new one goes in FRONT of it and the slot
+            // stays exactly where it was - on the same row, one position further down the scene. The
+            // step-back anchor becomes the row just written, which is now the line above.
+            insertBlock(block, null, false, { target: { parentId: covered.parentId, beforeBlockId: covered.id } });
+            slotDiscardedRef.current = false;
+            insertDraftRef.current = "";
+            setActiveBlockId(covered.id);
+            setEditorMode({
+                kind: "insert",
+                slot: { ...slot, afterBlockId: block.id, focusToken: Date.now() },
+                initialValue: "",
+            });
+            window.requestAnimationFrame(() => insertInputRef.current?.focus());
+            return true;
         }
-        slotDiscardedRef.current = false;
-        insertDraftRef.current = "";
-        setEditorMode({
-            kind: "insert",
-            slot: {
-                afterBlockId: above,
-                focusToken: Date.now(),
-                target: { parentId, beforeBlockId: block.id },
-                replaceBlockId: block.id,
-            },
-            initialValue: "",
-        });
-        window.requestAnimationFrame(() => insertInputRef.current?.focus());
-    }, [editorMode, insertBlock, scene, uuidService]);
+        // A slot with no row beneath it: the blank line lands where the slot is drawn, and the slot
+        // re-opens under it - which puts the new row above the caret, exactly as the branch above does.
+        insertBlock(block, slot.afterBlockId, false, { target: slot.target });
+        startInsertAfter(block.id, true);
+        return true;
+    }, [editorMode, insertBlock, scene, startInsertAfter, uuidService]);
 
     /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
@@ -2146,7 +2161,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const value = insertDraftRef.current;
         if (!value.trim()) {
-            commitBlankRowFromInsert();
+            // An empty line writes a blank row where it stands and carries the caret down with it.
+            if (!commitBlankRowFromInsert()) {
+                setEditorMode({ kind: "idle" });
+            }
             return;
         }
         if (isActionCommandLine(value, slashAtAlias)) {
@@ -2284,12 +2302,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (document) {
             // Every other line already speaking as this name comes along; leaving them behind would
             // fork one speaker into two that merely look alike.
-            promoteTempSpeaker(document, trimmed, characterId);
+            //
+            // This reaches the live blocks - the document held here is a shallow copy - so it is the
+            // one edit in the editor that does not go through StoryService. It rewrites dialogue
+            // payloads in any scene, so the story's asset locks are re-derived after it rather than
+            // left to a scoped sync that only knows about the scene on screen.
+            if (promoteTempSpeaker(document, trimmed, characterId) > 0 && storyId) {
+                storyService?.resyncAssetLocks(storyId);
+            }
         }
         setDialogueSpeaker(block, { characterId });
         uiService?.panels.show(CHARACTERS_PANEL_ID);
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
-    }, [characterService, document, setDialogueSpeaker, uiService]);
+    }, [characterService, document, setDialogueSpeaker, storyId, storyService, uiService]);
 
     /**
      * The rows among `blockIds` that speak as ONE unresolved speaker, and which speaker that is.
