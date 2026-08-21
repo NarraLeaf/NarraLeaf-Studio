@@ -309,7 +309,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         // call sent `{}` - so `packagePath` reached the wizard only from a main-process call
         // site, and any renderer trying to open the wizard on something got the first page.
         launchProjectWizard: (props: WindowProps[WindowAppType.ProjectWizard]) =>
-            ipcClient.invoke(IPCEventType.projectWizardLaunch, props ?? {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
+            ipcClient.invoke(IPCEventType.projectWizardLaunch, props ?? {}) as Promise<RequestStatus<WindowCloseResults[WindowAppType.ProjectWizard]>>,
         promptServerTrust: (props: ServerTrustPromptProps) => ipcClient.invoke(IPCEventType.serverTrustPrompt, { props }),
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
@@ -605,9 +605,6 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
          */
         signInWithPassword: (authUrl: string, username: string, password: string) =>
             ipcClient.invoke(IPCEventType.vcsSignInWithPassword, { authUrl, username, password }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
-        /** Goes to the network, and writes on the server. */
-        createServerProject: (remoteOrigin: string, name: string, description?: string) =>
-            ipcClient.invoke(IPCEventType.vcsCreateServerProject, { remoteOrigin, name, description }) as Promise<RequestStatus<VcsServerProjectOutcome>>,
         /**
          * Put this project on to a server: register it, connect it, send it.
          *

@@ -37,8 +37,8 @@ const bridge = vi.hoisted(() => ({
     listServerProjectHistory: vi.fn(),
     launchSettings: vi.fn(),
     launchWorkspace: vi.fn(() => Promise.resolve()),
-    launchProjectWizard: vi.fn(() => Promise.resolve({ success: true, data: null })),
-    createServerProject: vi.fn(),
+    launchProjectWizard: vi.fn<(props: unknown) => Promise<unknown>>(() => Promise.resolve({ success: true, data: null })),
+    publishProject: vi.fn(),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
@@ -52,7 +52,7 @@ vi.mock("@/lib/app/bridge", () => ({
             listServerProjectHistory: bridge.listServerProjectHistory,
             listLocalRepositories: () =>
                 Promise.resolve({ success: true, data: { repositories: bridge.repositories } }),
-            createServerProject: bridge.createServerProject,
+            publishProject: bridge.publishProject,
         },
         app: {
             launchSettings: bridge.launchSettings,
@@ -109,7 +109,7 @@ afterEach(() => {
     bridge.launchSettings.mockClear();
     bridge.launchWorkspace.mockClear();
     bridge.launchProjectWizard.mockClear();
-    bridge.createServerProject.mockReset();
+    bridge.publishProject.mockReset();
 });
 
 /** One server, already chosen because a list of one is not a choice. */
@@ -276,6 +276,45 @@ describe("open, or get", () => {
         const getting = (await find("[data-project-action='get']")).className;
 
         expect(getting).toBe(opening);
+    });
+
+    /**
+     * A project with nothing in it is not a project to fetch.
+     *
+     * Cloning a repository with no revisions succeeds and writes a `.lore` directory and
+     * nothing else, which the wizard then verifies and reports as "not a NarraLeaf
+     * project" - over a folder it has just filled, so the second attempt is refused as
+     * well. The answer is not to offer the copy, and to say why on the row.
+     */
+    it("offers no copy of a project the server has read and found nothing in", async () => {
+        open([project({ history: { revisions: 0, branch: "main" } })]);
+
+        await waitFor(() => expect(rowText()).toContain("launcher.servers.nothingSent"));
+        await openPage();
+        expect(document.querySelector("[data-project-action='get']")).toBeNull();
+        expect(document.querySelector("[data-project-action='open']")).toBeNull();
+    });
+
+    it("still offers a copy where the server never gave a count", async () => {
+        // Absent is not zero: this is a project registered a moment ago and full of work,
+        // whose server has not read it yet.
+        open([project({ history: {} })]);
+
+        await waitFor(() => expect(rowText()).toContain("Moonlit"));
+        expect(rowText()).not.toContain("launcher.servers.nothingSent");
+        await openPage();
+        expect(await find("[data-project-action='get']")).not.toBeNull();
+    });
+
+    it("opens the copy on this machine even where the server has read nothing", async () => {
+        // Somebody made it here and has not sent it yet. The folder is a project.
+        open(
+            [project({ history: { revisions: 0 } })],
+            [{ path: "D:/games/Moonlit", name: "Moonlit", repositoryId: REPOSITORY }],
+        );
+
+        await openPage();
+        expect(await find("[data-project-action='open']")).not.toBeNull();
     });
 
     it("prefers the local copy pointed at the server being read", () => {
@@ -637,33 +676,74 @@ describe("which server is being read", () => {
     });
 });
 
-describe("making one on the server", () => {
-    it("creates it there, then opens the clone flow on what came back", async () => {
+/**
+ * Making a project for a server.
+ *
+ * **The order is the whole of it.** This used to ask the server for a project first and
+ * then run the clone flow over what came back - a repository with no revisions, so what
+ * landed was a `.lore` directory reported to the author as "not a NarraLeaf project", and
+ * the empty project stayed on the server. So the project is written here first and the
+ * server is told about it afterwards, and a wizard nobody finished leaves that server
+ * exactly as it was.
+ */
+describe("making one for the server", () => {
+    const CREATED = {
+        success: true,
+        data: {
+            created: true,
+            projectPath: "D:/games/moonlit",
+            projectName: "Moonlit",
+            // The name a machine can say, which is what a repository address carries.
+            appId: "moonlit",
+        },
+    };
+
+    it("writes the project here, then sends it, then opens it", async () => {
         open([]);
-        bridge.createServerProject.mockResolvedValue({
-            success: true,
-            data: { ok: true, project: project({ id: "abc", name: "New", remote: `${ORIGIN}/new` }) },
+        bridge.launchProjectWizard.mockResolvedValue(CREATED);
+        bridge.publishProject.mockResolvedValue({ success: true, data: { ok: true } });
+
+        fireEvent.click(await find("[data-servers-action='new-project']"));
+
+        await waitFor(() => expect(bridge.launchProjectWizard).toHaveBeenCalledWith({
+            publishTo: { remoteOrigin: ORIGIN, server: "Blackwood Studio" },
+        }));
+        // The app id, not "Moonlit": `lore://host:port/<name>` cannot carry a space, and a
+        // server refuses a name that is not spellable there.
+        await waitFor(() => expect(bridge.publishProject)
+            .toHaveBeenCalledWith("D:/games/moonlit", ORIGIN, "moonlit"));
+        await waitFor(() => expect(bridge.launchWorkspace)
+            .toHaveBeenCalledWith({ projectPath: "D:/games/moonlit" }, true));
+    });
+
+    it("asks the server for nothing when the wizard was cancelled", async () => {
+        open([]);
+        bridge.launchProjectWizard.mockResolvedValue({ success: true, data: null });
+
+        fireEvent.click(await find("[data-servers-action='new-project']"));
+
+        await waitFor(() => expect(bridge.launchProjectWizard).toHaveBeenCalled());
+        expect(bridge.publishProject).not.toHaveBeenCalled();
+        expect(bridge.launchWorkspace).not.toHaveBeenCalled();
+    });
+
+    it("keeps a project the server would not take, and offers to open it", async () => {
+        open([]);
+        bridge.launchProjectWizard.mockResolvedValue(CREATED);
+        bridge.publishProject.mockResolvedValue({
+            success: true, data: { ok: false, problem: { kind: "unreachable" } },
         });
 
         fireEvent.click(await find("[data-servers-action='new-project']"));
 
-        fireEvent.change(await find("input"), { target: { value: "New" } });
-        fireEvent.click(document.querySelector("[data-servers-action='create']")!);
+        // Not opened behind the author's back: the project is there, it is not on the
+        // server, and the sentence that says so is what the button belongs to.
+        await waitFor(() => expect(document.body.textContent)
+            .toContain("launcher.servers.unsent.message(Moonlit|Blackwood Studio)"));
+        expect(bridge.launchWorkspace).not.toHaveBeenCalled();
 
-        await waitFor(() => expect(bridge.createServerProject).toHaveBeenCalledWith(ORIGIN, "New", undefined));
-        await waitFor(() => expect(bridge.launchProjectWizard)
-            .toHaveBeenCalledWith({ remoteUrl: `${ORIGIN}/new` }));
-    });
-
-    it("will not ask for a project with no name", async () => {
-        open([]);
-
-        fireEvent.click(await find("[data-servers-action='new-project']"));
-
-        const submit = await find("[data-servers-action='create']") as HTMLButtonElement;
-        expect(submit.disabled).toBe(true);
-        fireEvent.click(submit);
-        expect(bridge.createServerProject).not.toHaveBeenCalled();
+        fireEvent.click(await find("[data-servers-action='open-unsent']"));
+        expect(bridge.launchWorkspace).toHaveBeenCalledWith({ projectPath: "D:/games/moonlit" }, true);
     });
 });
 

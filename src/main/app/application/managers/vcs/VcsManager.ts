@@ -242,6 +242,25 @@ function isNothingToCommit(error: unknown): boolean {
 }
 
 /**
+ * The backend saying it holds no session for the server a call was aimed at.
+ *
+ * Told apart from every other failure because it is the one this end can do something
+ * about: Studio kept the token, so the answer is to present it again. A server that
+ * refused the account, a branch that has diverged, a machine that is off - none of those
+ * are helped by signing in, and all of them have to pass straight through.
+ *
+ * Matched on the sentence because that is all there is: the backend reports it as a plain
+ * `Error` from Lore, with no code and no class of its own. Both spellings appear - one
+ * from resolving the repository, one from the call that follows it - and the phrase is
+ * stable in each. A future spelling that is missed here reads as it does today rather
+ * than as anything worse.
+ */
+function isMissingBackendSession(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /no token stored|no stored token|not signed in/i.test(message);
+}
+
+/**
  * A project path this layer cannot work in, said so before anything acts on it.
  *
  * Named rather than anonymous for the reason {@link isNothingToCommit} explains: callers
@@ -761,6 +780,70 @@ export class VcsManager extends Manager {
      */
     private resolveOnlineIdentity(remoteOrigin: string | null): string {
         return this.storedServerSession(remoteOrigin)?.account.userId ?? this.resolveIdentity();
+    }
+
+    /**
+     * Run one call that reaches a server, presenting the stored token again if the backend
+     * turns out not to have one.
+     *
+     * **The two stores can hold different things, and only one of them is Studio's.** A
+     * session recorded here says an author signed in; the token the backend presents is in
+     * a store belonging to the machine, outside this profile and outside every repository.
+     * Anything that empties that store while this one is intact - a reinstall, settings
+     * carried to another machine, another tool clearing it - leaves Studio listing a server
+     * it can read over its API and refusing every clone, push and sync against it with a
+     * backend sentence about a token nobody here was ever asked for.
+     *
+     * Studio holds the token, sealed, so that is a state it can leave on its own: present
+     * it again and run the call a second time. Once, and only for the failure that says the
+     * backend has no session - a refusal from the server itself is an answer, and repeating
+     * it would be a second refusal a moment later.
+     */
+    private async withServerSession<T>(remoteOrigin: string | null, run: () => Promise<T>): Promise<T> {
+        try {
+            return await run();
+        } catch (error) {
+            if (remoteOrigin === null || !isMissingBackendSession(error)) throw error;
+            if (!(await this.presentStoredToken(remoteOrigin))) throw error;
+            return run();
+        }
+    }
+
+    /**
+     * Hand the backend the token this installation kept for one server.
+     *
+     * The same call {@link addServer} makes, with the same token, which is why it needs
+     * nothing from the author. False for every way it cannot happen - no session, no token
+     * this process can unseal, no Lore build, a server that refused it - and the caller
+     * then reports the failure it already had rather than one from here.
+     */
+    private async presentStoredToken(remoteOrigin: string): Promise<boolean> {
+        const session = this.storedServerSession(remoteOrigin);
+        if (session === null) return false;
+        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
+        if (token === null) return false;
+        const backend = await requireVcsBackend().catch(() => null);
+        if (backend === null) return false;
+
+        try {
+            await backend.signInToServer(
+                { repositoryPath: "", offline: false, cache: false },
+                {
+                    remoteUrl: remoteOrigin,
+                    authUrl: session.authUrl,
+                    token,
+                    userDataDir: this.app.getUserDataDir(),
+                },
+            );
+            this.app.logger.info("[Vcs] Presented the stored token to", remoteOrigin, "again");
+            return true;
+        } catch (error) {
+            this.app.logger.warn(
+                "[Vcs] The stored token for", remoteOrigin, "was not accepted:",
+                error instanceof Error ? error.message : String(error),
+            );
+            return false;
+        }
     }
 
     /** The session recorded for this server, if this installation has signed in to it. */
@@ -2000,35 +2083,6 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * Ask a server to make a project.
-     *
-     * The server both records it and creates the repository, in that order and
-     * within one call. Studio deliberately does not ask `loreserver` for a
-     * repository itself: one made that way is one the server has no row for, and
-     * a repository with no row is reachable by nobody at all.
-     *
-     * This makes a NEW, empty repository, which is the opposite of what an author with
-     * a project already on their disk wants. That is {@link publishProject}.
-     */
-    public async createServerProject(
-        remoteOrigin: string,
-        name: string,
-        description?: string,
-    ): Promise<ServerProjectResult> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-        const made = await createServerProject({
-            ...credentials,
-            name,
-            ...(description === undefined ? {} : { description }),
-        });
-        if (made.ok) {
-            this.app.logger.info("[Vcs] Created", made.project.name, "on", remoteOrigin);
-        }
-        return made;
-    }
-
-    /**
      * Put a project that already exists on to a server: register it, connect it, send it.
      *
      * **This is the act, and doing any two thirds of it is a state an author cannot read
@@ -2179,11 +2233,11 @@ export class VcsManager extends Manager {
     public async getSyncState(projectPath: string): Promise<VcsSyncState> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            return backend.readSyncState({
+            return this.withServerSession(session.remoteOrigin, () => backend.readSyncState({
                 ...session.globals,
                 offline: false,
                 identity: this.resolveOnlineIdentity(session.remoteOrigin),
-            });
+            }));
         });
     }
 
@@ -2199,12 +2253,12 @@ export class VcsManager extends Manager {
     public async push(projectPath: string): Promise<VcsPushResult> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            const result = await backend.pushToRemote({
+            const result = await this.withServerSession(session.remoteOrigin, () => backend.pushToRemote({
                 ...session.globals,
                 offline: false,
                 // The account id, not the author's name - see `resolveOnlineIdentity`.
                 identity: this.resolveOnlineIdentity(session.remoteOrigin),
-            });
+            }));
             this.app.logger.info(
                 "[Vcs] Pushed", session.root, result.branch,
                 result.alreadyPushed ? "(already up to date)" : "",
@@ -2257,7 +2311,10 @@ export class VcsManager extends Manager {
                 );
             }
 
-            const result = await backend.syncFromRemote({ ...globals, offline: false });
+            const result = await this.withServerSession(
+                session.remoteOrigin,
+                () => backend.syncFromRemote({ ...globals, offline: false }),
+            );
             this.app.logger.info(
                 "[Vcs] Synced", session.root,
                 `${result.filesChanged} file(s), ${result.revisionsReceived} revision(s)`,
@@ -2523,21 +2580,32 @@ export class VcsManager extends Manager {
         options: { onProgress?: (transferred: number, total: number) => void } = {},
     ): Promise<{ root: string; branch: string; fileCount: number }> {
         const root = projectRoot(destination);
+        const remoteOrigin = parseVcsRemoteUrl(repositoryUrl)?.origin ?? null;
         return this.serialize(root, async () => {
             const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
             try {
-                const cloned = await backend.cloneInto(
+                const cloned = await this.withServerSession(remoteOrigin, () => backend.cloneInto(
                     {
                         ...globals,
                         // Online, so the account id if this installation has signed in to the
                         // server the copy is coming from.
-                        identity: this.resolveOnlineIdentity(parseVcsRemoteUrl(repositoryUrl)?.origin ?? null),
+                        identity: this.resolveOnlineIdentity(remoteOrigin),
                     },
                     { repositoryUrl, onProgress: options.onProgress },
-                );
+                ));
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
                 return { root, ...cloned };
+            } catch (error) {
+                // Logged here because nothing else does: the handler turns this into a
+                // refusal the wizard prints, and a clone that failed used to leave the log
+                // with no line at all - the one place somebody looks when the sentence on
+                // screen is the backend's rather than Studio's.
+                this.app.logger.warn(
+                    "[Vcs] Could not clone", repositoryUrl, "->", root + ":",
+                    error instanceof Error ? error.message : String(error),
+                );
+                throw error;
             } finally {
                 // No session was opened here, so nothing else will let go of the
                 // repository - and a half-finished clone holds it too, which is why this
