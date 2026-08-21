@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ServiceRegistry } from "@/lib/workspace/services/serviceRegistry";
-import { PROJECT_DIAGNOSTICS_SLUG, PROJECT_DIAGNOSTICS_TEST_ID, type BuiltInTestHost } from "./builtin";
+import {
+    PROJECT_DIAGNOSTICS_SLUG,
+    PROJECT_DIAGNOSTICS_TEST_ID,
+    REACHABLE_ENDINGS_SLUG,
+    REACHABLE_ENDINGS_TEST_ID,
+    type BuiltInTestHost,
+} from "./builtin";
 import { TestRegistry } from "./registry";
 import { deriveBuiltInTestSlug, type TestDefinition } from "./types";
 
@@ -104,18 +110,22 @@ describe("TestRegistry", () => {
         registry.ensureBuiltInTestsRegistered(host);
         registry.ensureBuiltInTestsRegistered(host);
 
-        const builtIns = registry.list().filter(test => test.definition.id === PROJECT_DIAGNOSTICS_TEST_ID);
-        expect(builtIns).toHaveLength(1);
-        expect(builtIns[0].ownerPluginId).toBeUndefined();
-        expect(builtIns[0].definition.presentation).toBe("headless");
-        // Ruling R9: a headless test is a read-only observer, so it declares nothing to reach for.
-        expect(builtIns[0].definition.requires).toEqual([]);
+        const ids = [PROJECT_DIAGNOSTICS_TEST_ID, REACHABLE_ENDINGS_TEST_ID];
+        const builtIns = registry.list().filter(test => ids.includes(test.definition.id));
+        expect(builtIns.map(test => test.definition.id).sort()).toEqual([...ids].sort());
+        for (const builtIn of builtIns) {
+            expect(builtIn.ownerPluginId).toBeUndefined();
+            expect(builtIn.definition.presentation).toBe("headless");
+            // Ruling R9: a headless test is a read-only observer, so it declares nothing to reach for.
+            expect(builtIn.definition.requires).toEqual([]);
+        }
     });
 
-    it("names the built-in's i18n keys after the id they are derived from", () => {
-        // If the id is ever renamed, this fails rather than leaving `test.builtin.projectDiagnostics.*`
-        // behind as dead keys nothing addresses.
+    it("names each built-in's i18n keys after the id they are derived from", () => {
+        // If an id is ever renamed, this fails rather than leaving `test.builtin.<slug>.*` behind as
+        // dead keys nothing addresses.
         expect(deriveBuiltInTestSlug(PROJECT_DIAGNOSTICS_TEST_ID)).toBe(PROJECT_DIAGNOSTICS_SLUG);
+        expect(deriveBuiltInTestSlug(REACHABLE_ENDINGS_TEST_ID)).toBe(REACHABLE_ENDINGS_SLUG);
     });
 
     it("lists tests in category order, then title", () => {

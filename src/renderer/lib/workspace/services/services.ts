@@ -14,7 +14,9 @@ import type {
 import type { LintContext } from "@/lib/lint/context";
 import type { LintReport } from "@/lib/lint/types";
 import type { LintRunOptions } from "@/lib/lint/engine";
-import type { RegisteredTest, TestAvailability, TestId, TestRunRecord } from "@/lib/testing/types";
+import type { RegisteredTest, TestAvailability, TestId, TestParameterValues, TestRunRecord } from "@/lib/testing/types";
+import type { TestParameterMemory } from "@/lib/testing/parameterCache";
+import type { ResolvedTestParameter } from "@/lib/testing/parameters";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
@@ -1333,8 +1335,14 @@ interface ILintService extends IService {
 interface ITestRunService extends IService {
     listTests(): RegisteredTest[];
     getAvailability(id: TestId): TestAvailability;
+    /** What a test asks the author for, with every `select`'s option list already evaluated. */
+    listParameters(id: TestId): ResolvedTestParameter[];
+    /** The values each test was last run with, off the project cache. Never rejects. */
+    readRememberedParameters(): Promise<TestParameterMemory>;
+    /** Keep what a test was just started with. Silently does nothing on a frozen workspace. */
+    rememberParameters(testId: TestId, values: TestParameterValues): Promise<void>;
     /** Resolves the run id once the run is accepted - not when it finishes. */
-    start(testId: TestId): Promise<string>;
+    start(testId: TestId, parameters?: TestParameterValues): Promise<string>;
     cancel(runId: string): void;
     getActiveRun(): TestRunRecord | null;
     getRun(runId: string): TestRunRecord | null;

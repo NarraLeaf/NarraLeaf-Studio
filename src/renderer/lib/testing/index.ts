@@ -8,6 +8,7 @@ export type {
     RegisteredTest,
     TestAvailability,
     TestAvailabilityContext,
+    TestBooleanParameterDefinition,
     TestCapability,
     TestCategory,
     TestDefinition,
@@ -22,6 +23,10 @@ export type {
     TestId,
     TestLogEntry,
     TestLogLevel,
+    TestParameterDefinition,
+    TestParameterOption,
+    TestParameterValue,
+    TestParameterValues,
     TestPresentation,
     TestProgress,
     TestProjectHandle,
@@ -30,6 +35,7 @@ export type {
     TestRunRecord,
     TestRunStatus,
     TestSceneRef,
+    TestSelectParameterDefinition,
     TestStoryRef,
     TestText,
     TestVerdict,
@@ -45,6 +51,21 @@ export {
 } from "./types";
 export { TestRegistry, testRegistry } from "./registry";
 export type { TestRegisterOptions } from "./registry";
+export {
+    findEmptyTestSelect,
+    resolveTestParameters,
+    resolveTestParameterValue,
+    resolveTestParameterValues,
+    testParameterId,
+} from "./parameters";
+export type { ResolvedTestParameter } from "./parameters";
+export {
+    EMPTY_TEST_PARAMETER_MEMORY,
+    parseTestParameterMemory,
+    rememberTestParameters,
+    serializeTestParameterMemory,
+} from "./parameterCache";
+export type { TestParameterMemory } from "./parameterCache";
 export { formatTestText, testTextSortKey } from "./testText";
 export { TEST_CONSOLE_CHANNEL, TEST_CONSOLE_SOURCE, TestRunService } from "./TestRunService";
 export { PROJECT_DIAGNOSTICS_SLUG, PROJECT_DIAGNOSTICS_TEST_ID } from "./builtin";

@@ -26,6 +26,7 @@ import type { SceneFlowDrawnLine } from "./sceneFlowLines";
 import {
     formatSceneFlowDelta,
     formatSceneFlowVariableChip,
+    sceneFlowRouteGroupKey,
     SceneFlowRouteRail,
     type SceneFlowRouteSelection,
     type SceneFlowVariableFocus,
@@ -219,8 +220,8 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
             case "route":
                 return routeMap.routes.some(route => route.id === selection.routeId) ? selection : null;
             case "ending":
-                return routeMap.endings.some(ending => ending.sceneId === selection.sceneId)
-                    || routeMap.routes.some(route => route.endingSceneId === selection.sceneId)
+                return routeMap.endings.some(ending => ending.id === selection.endingId)
+                    || routeMap.routes.some(route => sceneFlowRouteGroupKey(route) === selection.endingId)
                     ? selection
                     : null;
             case "unreachableEndings":
@@ -528,17 +529,29 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
             case "route":
                 addRoutes(route => route.id === resolvedSelection.routeId);
                 break;
-            case "ending":
-                // The ending itself even when no route reaches it: clicking a row must point at
-                // something, and an all-dim map is indistinguishable from a broken one.
-                sceneIds.add(resolvedSelection.sceneId);
-                addRoutes(route => route.endingSceneId === resolvedSelection.sceneId);
-                break;
-            case "unreachableEndings":
-                for (const sceneId of routeMap.unreachableEndings) {
+            case "ending": {
+                // The ending's own scene even when no route reaches it: clicking a row must point
+                // at something, and an all-dim map is indistinguishable from a broken one.
+                const sceneId = routeMap.endings.find(ending => ending.id === resolvedSelection.endingId)?.sceneId
+                    ?? routeMap.routes.find(route => sceneFlowRouteGroupKey(route) === resolvedSelection.endingId)
+                        ?.endingSceneId;
+                if (sceneId) {
                     sceneIds.add(sceneId);
                 }
+                addRoutes(route => sceneFlowRouteGroupKey(route) === resolvedSelection.endingId);
                 break;
+            }
+            case "unreachableEndings": {
+                // Ending ids, so the scenes they are in come off the ending list rather than being
+                // assumed to be the ids themselves - several endings can share one scene.
+                const unreached = new Set(routeMap.unreachableEndings);
+                for (const ending of routeMap.endings) {
+                    if (unreached.has(ending.id)) {
+                        sceneIds.add(ending.sceneId);
+                    }
+                }
+                break;
+            }
             case "deadBranches": {
                 const dead = new Set(routeMap.deadBranchIds);
                 for (const branch of graph.branches) {

@@ -3,18 +3,34 @@ import { translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import type { GameTestEventPayload } from "@shared/types/gameTest";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
+import { ProjectNameConvention } from "../workspace/project/nameConvention";
 import { Service } from "../workspace/services/Service";
 import { Services, type ITestRunService, type WorkspaceContext } from "../workspace/services/services";
 import type { ConsoleService } from "../workspace/services/core/ConsoleService";
+import type { FileSystemService } from "../workspace/services/core/FileSystem";
 import type { WorkspaceFreezeService } from "../workspace/services/core/WorkspaceFreezeService";
 import type { StoryService } from "../workspace/services/story/StoryService";
 import { EventEmitter } from "../workspace/services/ui/EventEmitter";
+import {
+    EMPTY_TEST_PARAMETER_MEMORY,
+    parseTestParameterMemory,
+    rememberTestParameters,
+    serializeTestParameterMemory,
+    type TestParameterMemory,
+} from "./parameterCache";
+import {
+    findEmptyTestSelect,
+    resolveTestParameters,
+    resolveTestParameterValues,
+    type ResolvedTestParameter,
+} from "./parameters";
 import { testRegistry } from "./registry";
 import { formatTestText } from "./testText";
 import {
     TEST_PROTOCOL_VERSION,
     type RegisteredTest,
     type TestAvailability,
+    type TestAvailabilityContext,
     type TestDefinition,
     type TestFinding,
     type TestFindingSeverity,
@@ -25,6 +41,7 @@ import {
     type TestGameSession,
     type TestId,
     type TestLogLevel,
+    type TestParameterValues,
     type TestProgress,
     type TestProjectHandle,
     type TestRunContext,
@@ -299,6 +316,20 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         if (frozen && registered.definition.presentation === "windowed") {
             return { available: false, reason: { key: "test.reason.frozen" } };
         }
+        // A declared `select` with nothing in it is a host gate for the same reason the two above
+        // are: the run could not be told what to do, so offering Start would only fail later. It is
+        // stated on the row rather than as a dead dropdown, naming the parameter - "Ending has no
+        // values in this project" is what the author acts on.
+        const empty = findEmptyTestSelect(this.listParameters(id));
+        if (empty) {
+            return {
+                available: false,
+                reason: {
+                    key: "test.reason.parameterEmpty",
+                    params: { parameter: formatTestText(empty.label) },
+                },
+            };
+        }
         try {
             return registered.definition.checkAvailability?.({ projectPath: this.projectPath(), frozen })
                 ?? { available: true };
@@ -310,12 +341,91 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         }
     }
 
+    /**
+     * What a test asks the author for, with every `select`'s list already evaluated.
+     *
+     * Evaluated on demand rather than cached: the lists are drawn from the project (which endings
+     * exist), and the picker is the only caller that opens often enough to care - it asks once per
+     * open, which is exactly the contract `options` is documented under.
+     */
+    public listParameters(id: TestId): ResolvedTestParameter[] {
+        this.ensureBuiltInTestsRegistered();
+        const registered = testRegistry.get(id);
+        if (!registered) {
+            return [];
+        }
+        return resolveTestParameters(registered.definition, this.availabilityContext());
+    }
+
+    // -----------------------------------------------------------------------
+    // Remembered parameter values
+    // -----------------------------------------------------------------------
+
+    /**
+     * What the author last ran each test with, off the project cache.
+     *
+     * Never fails: an absent file is the ordinary state of a project nobody has run a parametrised
+     * test in, and an unreadable one is a derived file that lost nothing. Both answer "no remembered
+     * values", and the picker opens on defaults.
+     */
+    public async readRememberedParameters(): Promise<TestParameterMemory> {
+        const filesystem = this.tryGetFileSystem();
+        if (!filesystem) {
+            return EMPTY_TEST_PARAMETER_MEMORY;
+        }
+        try {
+            const result = await filesystem.readJSON<unknown>(this.parameterCachePath());
+            return result.ok ? parseTestParameterMemory(result.data) : EMPTY_TEST_PARAMETER_MEMORY;
+        } catch {
+            return EMPTY_TEST_PARAMETER_MEMORY;
+        }
+    }
+
+    /**
+     * Remember what one test was just started with.
+     *
+     * Read-modify-write rather than kept in memory: the picker is the only writer and it writes once
+     * per Start, so re-reading costs one round trip and means a second window's picks are not
+     * clobbered by whichever window happens to write last.
+     *
+     * Nothing checks whether the write landed, and nothing should. On a frozen workspace
+     * `FileSystem.write` answers a no-op success by design, so the memory of a dropdown is simply
+     * not kept there - which is the correct outcome, and a "did I save it" flag on top of it would
+     * be a retry queue for something worth nothing.
+     */
+    public async rememberParameters(testId: TestId, values: TestParameterValues): Promise<void> {
+        const filesystem = this.tryGetFileSystem();
+        if (!filesystem) {
+            return;
+        }
+        try {
+            const memory = rememberTestParameters(await this.readRememberedParameters(), testId, values);
+            await filesystem.createDir(this.getContext().project.resolve(ProjectNameConvention.EditorCache));
+            await filesystem.write(
+                this.parameterCachePath(),
+                serializeTestParameterMemory(memory),
+                "utf-8",
+            );
+        } catch {
+            // A cache that cannot be written costs one dropdown pick next time and nothing else.
+            // It is not project data, so there is nobody to tell.
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Runs
     // -----------------------------------------------------------------------
 
-    /** Resolves the run id once the run is accepted - not when it finishes. */
-    public async start(testId: TestId): Promise<string> {
+    /**
+     * Resolves the run id once the run is accepted - not when it finishes.
+     *
+     * `parameters` is what the author picked, and it is *resolved* here rather than trusted: only
+     * ids the definition declares survive, and a value it cannot account for falls back to the
+     * default (see `resolveTestParameterValues`). So the picker cannot hand a test a vocabulary it
+     * never asked for, and neither can the report tab's Run again - which passes the record's own
+     * snapshot, so running it a second time runs the same check and not a fresh set of defaults.
+     */
+    public async start(testId: TestId, parameters?: TestParameterValues): Promise<string> {
         this.ensureBuiltInTestsRegistered();
         const registered = testRegistry.get(testId);
         if (!registered) {
@@ -335,6 +445,7 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
             title: registered.definition.title,
             ownerPluginId: registered.ownerPluginId,
             protocolVersion: TEST_PROTOCOL_VERSION,
+            parameters: resolveTestParameterValues(this.listParameters(testId), parameters),
             status: "running",
             startedAt: Date.now(),
             findings: [],
@@ -472,6 +583,9 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         const base: Omit<TestRunContext, "project" | "game"> = {
             runId: active.record.runId,
             protocolVersion: TEST_PROTOCOL_VERSION,
+            // The record's own snapshot, so what the report says the run was told and what the run
+            // was actually told cannot differ.
+            parameters: active.record.parameters,
             signal: active.controller.signal,
             log: (level: TestLogLevel, message: TestText) => this.appendLog(active, level, message),
             progress: (progress: TestProgress | null) => this.setProgress(active, progress),
@@ -770,6 +884,23 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
 
     private projectPath(): string {
         return this.getContext().project.getConfig().projectPath;
+    }
+
+    /** What a definition is allowed to look at when it lists options or declines to run. */
+    private availabilityContext(): TestAvailabilityContext {
+        return { projectPath: this.projectPath(), frozen: this.isFrozen() };
+    }
+
+    private parameterCachePath(): string {
+        return this.getContext().project.resolve(ProjectNameConvention.EditorTestParameterCacheFile);
+    }
+
+    private tryGetFileSystem(): FileSystemService | null {
+        try {
+            return this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        } catch {
+            return null;
+        }
     }
 
     private nextRunId(): string {
