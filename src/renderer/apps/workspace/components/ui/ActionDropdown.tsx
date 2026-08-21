@@ -96,9 +96,17 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
         () => rootItems.flatMap(item => (isActionMenuSubmenu(item) && item.mnemonic ? [item.mnemonic] : [])),
         [rootItems],
     );
-    // Which of them was pressed, parked until the open lands: the effect below decides where the
-    // menu opens, and it runs after the bar has switched the open menu over to this one.
+    // Which of them was pressed, parked until the effect below can act on it - that is what decides
+    // where the menu opens, and it runs after the bar has switched the open menu over to this one.
+    //
+    // The letter is a ref and the count beside it is state, and it has to be both ways round. A
+    // second accelerator arriving while this menu is ALREADY open changes nothing the bar holds -
+    // same member, still open - so without something of its own to change, the effect would never
+    // run again and Alt+E after Alt+F would sit on the File menu. Consuming the letter then clears
+    // the ref alone, which costs no render: clearing state instead would re-run the effect with
+    // nothing pending and throw the focus back to the first row.
     const pendingMnemonicRef = useRef<string | null>(null);
+    const [mnemonicRequests, setMnemonicRequests] = useState(0);
     // The bar delivers keys to the open menu, so the handler has to exist before the hook that will
     // call it; it is handed over through a box that each render refreshes.
     const keyHandlerRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
@@ -112,7 +120,10 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
         hotTrack: true,
         mnemonic: group.mnemonic,
         innerMnemonics,
-        onInnerMnemonic: mnemonic => { pendingMnemonicRef.current = mnemonic; },
+        onInnerMnemonic: mnemonic => {
+            pendingMnemonicRef.current = mnemonic;
+            setMnemonicRequests(count => count + 1);
+        },
         onKeyDown: event => keyHandlerRef.current(event),
     });
     const revealMnemonic = useMnemonicReveal();
@@ -122,8 +133,10 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
         if (!isOpen) {
             setOpenPath([]);
             setFocusPath([]);
-            // A letter that opened nothing must not be waiting for the next open.
-            pendingMnemonicRef.current = null;
+            // The letter is left where it is on purpose. The bar reports it and opens this menu in
+            // the same task, so a letter can only ever be waiting for the open that is already on
+            // its way - and clearing it here would drop it on the closed render if those two
+            // updates were ever to land separately.
             return;
         }
         const requested = pendingMnemonicRef.current;
@@ -146,7 +159,7 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
         if (rootMenuRef.current) {
             rootMenuRef.current.focus();
         }
-    }, [isOpen, rootItems, focusContext]);
+    }, [isOpen, rootItems, focusContext, mnemonicRequests]);
 
     useEffect(() => {
         // Cleanup timers on unmount

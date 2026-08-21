@@ -274,6 +274,30 @@ describe("the keyboard", () => {
         expect(reached).toEqual(["F"]);
     });
 
+    it("keeps reporting the letter when that menu is already the open one", async () => {
+        // Alt+E after Alt+F. Nothing the bar holds changes - same member, still open - so the letter
+        // is all the menu has to go on, and it has to arrive every time or the second accelerator
+        // silently leaves the first one's menu on screen.
+        const reached: string[] = [];
+        render(
+            <TitleBarMenus>
+                <Menu
+                    id="main"
+                    label="Menu"
+                    hotTrack
+                    innerMnemonics={["F", "E"]}
+                    onInnerMnemonic={letter => reached.push(letter)}
+                />
+            </TitleBarMenus>,
+        );
+
+        await pressAccelerator("f");
+        await pressAccelerator("e");
+
+        expect(onScreen()).toEqual(["Menu menu"]);
+        expect(reached).toEqual(["F", "E"]);
+    });
+
     it("leaves the letter to a menu that is still a menu of its own", async () => {
         // Both arrangements can declare F. A menu on the bar owns the letter it names itself by, so
         // a collapsed one holding the same letter must not take it - which is what would happen if
