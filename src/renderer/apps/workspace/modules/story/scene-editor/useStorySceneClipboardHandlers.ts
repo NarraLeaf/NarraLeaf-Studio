@@ -16,6 +16,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { translate, translateN } from "@/lib/i18n";
 import {
     inferPasteSeparator,
@@ -60,6 +61,7 @@ import {
     writeCarriedTranslations,
     type CarriedTranslationPort,
 } from "./storyTranslationTransfer";
+import { carryVoiceWithinProject } from "./storyVoiceTransfer";
 import type {
     EditorMode,
     SerializedStoryBlock,
@@ -104,6 +106,14 @@ export function useStorySceneClipboardHandlers(params: {
      * which costs a paste its translations and nothing else.
      */
     localizationService: LocalizationService | null;
+    /**
+     * The voice libraries a paste re-keys its takes into. Null until the workspace is ready, which
+     * costs a paste its recordings and nothing else.
+     *
+     * Read at paste time rather than carried on the clipboard: a take points at a clip in this
+     * project's audio library, so it is only ever worth anything to the project it came from.
+     */
+    voiceService: VoiceService | null;
     storyId: string | undefined;
     sceneId: string | undefined;
     scene: StoryScene | null;
@@ -203,7 +213,8 @@ export function useStorySceneClipboardHandlers(params: {
      *
      * The `textIds` it returns are the renaming the clone performed, old id → new id. Every pasted
      * line gets a fresh one, so it is the only thing that can still tell which line over there
-     * became which line here - which is what the translations travelling with the rows are keyed by.
+     * became which line here - which is what the translations travelling with the rows are keyed by,
+     * and what the takes are found under (see `storyVoiceTransfer`).
      */
     const pasteBlocks = useCallback((
         roots: SerializedStoryBlock[],
@@ -456,6 +467,31 @@ export function useStorySceneClipboardHandlers(params: {
     }, [params]);
 
     /**
+     * Carry the takes of the pasted lines onto the ids the paste minted.
+     *
+     * Nothing about this comes off the clipboard: the takes are read out of this project's own voice
+     * libraries under the ids the lines had before the paste renamed them, which the renaming map
+     * still holds. A take is an id into this project's audio library and nothing at all anywhere
+     * else, so that is also the whole of why a foreign paste does not call this.
+     *
+     * Not part of the paste's undo step, for the reason the translations are not: takes live in
+     * per-language documents another service owns.
+     */
+    const carryVoice = useCallback(async (textIds: ReadonlyMap<string, string>): Promise<void> => {
+        const { voiceService } = params;
+        if (!voiceService || textIds.size === 0) {
+            return;
+        }
+        try {
+            await carryVoiceWithinProject(voiceService, params.isFrozen, [...textIds.keys()], textIds);
+        } catch (error) {
+            // The rows are pasted either way, and a recording that could not follow them is one
+            // re-link in the voice table - not something to raise a dialog over a Ctrl+V for.
+            console.warn("[storyClipboard] could not carry the takes for the pasted rows", error);
+        }
+    }, [params]);
+
+    /**
      * A paste of rows written by another project.
      *
      * Asynchronous because the files those rows reference are imported first: the rows are pasted
@@ -467,6 +503,12 @@ export function useStorySceneClipboardHandlers(params: {
      * The imported files are not part of the undo entry, for the same reason the wizard's created
      * characters are not part of its own: they are what the rows point at, and one press of undo
      * takes back the rows.
+     *
+     * Takes do not come across at all. A take names a clip in the audio library of the project that
+     * recorded it, and this window can neither read that library nor be handed the clip - the
+     * transfer offer covers the files the rows themselves name, and a take's audio is not one of
+     * them. Rows arrive unvoiced, and nothing here can say they used to be otherwise, because
+     * nothing on the clipboard says so.
      */
     const pasteForeignBlocks = useCallback(async (payload: StoryClipboardPayload, target: StoryBlockTarget) => {
         const { assetsService, fileSystemService } = params;
@@ -509,14 +551,18 @@ export function useStorySceneClipboardHandlers(params: {
     }, [carryTranslations, params, pasteBlocks]);
 
     /**
-     * The translations of rows pasted back into the project they were copied from.
+     * The translations and the takes of rows pasted back into the project they were copied from.
      *
      * Silent when it works, which is the ordinary case: the rows are where they were written and
      * every language they carry is still here, so there is nothing an author needs telling. The one
      * thing worth a word is a language removed between the copy and the paste - those translations
      * have nowhere to go, and saying nothing would let the author believe they came across.
+     *
+     * Translations first, then takes: a take is a recording of the line as the actor for that
+     * language reads it, which is the translation where there is one, so a take that landed first
+     * would read as stale until its translation caught up.
      */
-    const pasteOwnTranslations = useCallback(async (
+    const pasteOwnUnits = useCallback(async (
         payload: StoryClipboardPayload,
         textIds: ReadonlyMap<string, string>,
     ) => {
@@ -527,7 +573,8 @@ export function useStorySceneClipboardHandlers(params: {
                 "info",
             );
         }
-    }, [carryTranslations, params]);
+        await carryVoice(textIds);
+    }, [carryTranslations, carryVoice, params]);
 
     /**
      * The five routes, from one clipboard payload.
@@ -555,7 +602,7 @@ export function useStorySceneClipboardHandlers(params: {
                     if (!isStoryPasteFromAnotherProject(parsed, params.projectPath)) {
                         const pasted = pasteBlocks(parsed.roots, anchor.target);
                         if (pasted) {
-                            void pasteOwnTranslations(parsed, pasted.textIds);
+                            void pasteOwnUnits(parsed, pasted.textIds);
                         }
                         return true;
                     }
@@ -591,7 +638,7 @@ export function useStorySceneClipboardHandlers(params: {
             default:
                 return false;
         }
-    }, [params, pasteBlocks, pasteForeignBlocks, pasteOwnTranslations, pasteSingleLine, pastePlain, resolveAnchor]);
+    }, [params, pasteBlocks, pasteForeignBlocks, pasteOwnUnits, pasteSingleLine, pastePlain, resolveAnchor]);
 
     const copySelectionToClipboard = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
         if (isTextInputActive()) {

@@ -23,6 +23,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -79,6 +80,7 @@ import {
 import { cloneSerializedBlock, insertSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
 import { collectSubtreeBlocks } from "./storyForeignPaste";
 import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
+import { carryVoiceWithinProject } from "./storyVoiceTransfer";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
@@ -130,6 +132,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const fileSystemService = useMemo(() => (context && isInitialized ? context.services.get<FileSystemService>(Services.FileSystem) : null), [context, isInitialized]);
     /** Holds the translations a copy carries with its rows, and takes them back on a paste. */
     const localizationService = useMemo(() => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null), [context, isInitialized]);
+    /** Holds the recordings, so a line that is duplicated or pasted elsewhere keeps its take. */
+    const voiceService = useMemo(() => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null), [context, isInitialized]);
     /**
      * This window's own project, as the clipboard describes it.
      *
@@ -1639,6 +1643,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
             return;
         }
+        if (block.kind === "empty") {
+            // The whole content of a blank line is the line the author has not written yet, so opening
+            // it means opening the editor for that line - in place, and empty. Committing replaces the
+            // blank row; Escape leaves it exactly where it was. Same slot the Backspace demote opens,
+            // reached by Enter or a double-click instead.
+            if (!frozen) {
+                startLineEdit(block, "");
+            }
+            return;
+        }
         if (hasInspector(block)) {
             setEditorMode({ kind: "inspector", blockId });
             return;
@@ -2032,9 +2046,41 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock, slashAtAlias]);
 
     /**
+     * Enter on a line with nothing on it: the author is asking for the blank line itself.
+     *
+     * Enter has always meant "this line is finished, open the next one", and it means the same here -
+     * an empty line finished is a blank row (schema v20), and the slot that opens after it is where
+     * the next one goes. Holding Enter down therefore walks a column of blank lines, the way it does
+     * in every text editor. It used to close the slot and write nothing, which left Escape and Enter
+     * saying the same thing and no way at all to type an empty line on purpose.
+     *
+     * A slot standing over a row that is ALREADY blank adds the next one after it rather than
+     * rewriting it: the line this keystroke would write is the line the slot is sitting on.
+     *
+     * Blur is deliberately NOT this path (see {@link commitNarrationFromInsert}, which still writes
+     * nothing for an empty draft). Clicking away from a slot the author never typed in has to leave
+     * the scene as it was, or every abandoned slot in a session would leave a blank row behind.
+     */
+    const commitBlankRowFromInsert = useCallback(() => {
+        if (editorMode.kind !== "insert" || !uuidService) {
+            return;
+        }
+        const slot = editorMode.slot;
+        const covered = slot.replaceBlockId ? scene?.blocks[slot.replaceBlockId] : null;
+        const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
+        if (covered && covered.kind === "empty") {
+            insertBlock(block, covered.id, false);
+        } else {
+            insertBlock(block, slot.afterBlockId, false, { target: slot.target, replaceBlockId: slot.replaceBlockId });
+        }
+        startInsertAfter(block.id, true);
+    }, [editorMode, insertBlock, scene, startInsertAfter, uuidService]);
+
+    /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
-     * The line has to stand on its own now: prose commits, a resolvable command commits, and anything
-     * still wearing a `/` or `#` becomes an invalid row rather than silently becoming prose.
+     * The line has to stand on its own now: prose commits, a resolvable command commits, an empty line
+     * commits as a blank row, and anything still wearing a `/` or `#` becomes an invalid row rather
+     * than silently becoming prose.
      */
     const resolveInsertLine = useCallback(() => {
         if (editorMode.kind !== "insert") {
@@ -2042,7 +2088,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const value = insertDraftRef.current;
         if (!value.trim()) {
-            setEditorMode({ kind: "idle" });
+            commitBlankRowFromInsert();
             return;
         }
         if (isActionCommandLine(value, slashAtAlias)) {
@@ -2058,7 +2104,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         commitNarrationFromInsert(true);
-    }, [commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
+    }, [commitBlankRowFromInsert, commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
 
     /**
      * Pick a speaker that no Studio character backs. Valid, not a fallback: NLR's dialogue box only
@@ -2346,6 +2392,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         assetsService,
         fileSystemService,
         localizationService,
+        voiceService,
         storyId,
         sceneId,
         scene,
@@ -2510,28 +2557,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [activeBlockId, deleteRows, selectedBlockIds]);
 
     /**
-     * `Backspace` on a selected row that is not being edited: the row becomes a blank line with the
-     * caret in it, rather than being deleted. Pressing Backspace again on that blank line removes the
-     * row for good ({@link handleInsertBackspaceEmpty}), so an action row degrades to "blank line →
-     * gone" over two presses - the closure a text editor trained the author to expect. `Delete` is
-     * untouched and still removes the row outright: the two keys stay two paths.
+     * `Backspace` on a selected row that is not being edited: the row becomes a blank line, rather
+     * than being deleted. Pressing Backspace again on that blank line removes it for good, so a row
+     * degrades to "blank line → gone" over two presses - the closure a text editor trained the author
+     * to expect. `Delete` is untouched and still removes the row outright: the two keys stay two paths.
      *
-     * The blank line is a slot standing *in place of* the row ({@link startLineEdit}), not a committed
-     * narration row: it is the same empty line the empty-dialogue rung drops to, so both ladders land
-     * on one thing - a line that can still become anything the author types next (prose, the action
-     * trigger, `#` for a speaker). A narration row there would have answered the Backspace by naming
-     * the line before the author had, and every author who wanted an action back had to clear it again.
+     * **The blank line is committed, in place, immediately** (schema v20's `empty` row). That is the
+     * whole point of it being a row rather than an open editor: the author gets a caret in it for free,
+     * but Escape, a click elsewhere, closing the tab and reopening the project all leave the line
+     * standing where the row was. A slot alone would have vanished on the first of those, and an empty
+     * narration row - what stood here before - answered "clear this line" by naming it narration.
      *
-     * Nothing is written until something commits: the row waits underneath the slot, so Escape hands
-     * it straight back, and a commit swaps it out under `insertBlock`'s single `recordHistory`. One
-     * `Mod+Z` brings the original row back with its payload - the point of the whole closure, since
-     * two-step undo would hand the author a blank line and call it a restore.
+     * The insert and the delete run under one `recordHistory` (`insertBlock`'s own), so a single
+     * `Mod+Z` brings the original row back with its payload; the caret then sits in a slot that stands
+     * in place of the blank row, so typing replaces it under one more entry rather than adding a
+     * second line below it.
      *
      * Returns false when the rule does not apply (see {@link planRowBackspaceReplacement}), leaving
      * the caller to run the plain delete.
      */
     const replaceRowWithBlankLine = useCallback((): boolean => {
-        if (!scene || editorMode.kind === "text" || editorMode.kind === "insert") {
+        if (!scene || !uuidService || editorMode.kind === "text" || editorMode.kind === "insert") {
             return false;
         }
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
@@ -2539,14 +2585,31 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!plan) {
             return false;
         }
-        const block = scene.blocks[plan.replaceBlockId];
-        if (!block) {
-            return false;
-        }
-        // Empty, whatever the row held: this is the author clearing the line, not re-opening it.
-        startLineEdit(block, "");
+        // Read before the document moves: the row that will sit above the blank line is the one the
+        // ladder's next Backspace steps back onto.
+        const previousSiblingId = findPreviousSibling(scene, plan.replaceBlockId)?.id ?? null;
+        const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
+        insertBlock(block, null, false, { target: plan.target, replaceBlockId: plan.replaceBlockId });
+        selectionAnchorRef.current = block.id;
+        // A slot standing in place of the row that was just written, so the author can type straight
+        // into the line they cleared. Escape closes the slot and leaves the row: `replaceBlockId` only
+        // deletes on commit, which is what makes "type something" replace the blank line instead of
+        // stacking a second one under it.
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = "";
+        setEditorMode({
+            kind: "insert",
+            slot: {
+                afterBlockId: previousSiblingId,
+                focusToken: Date.now(),
+                target: { parentId: plan.target.parentId, beforeBlockId: block.id },
+                replaceBlockId: block.id,
+            },
+            initialValue: "",
+        });
+        window.requestAnimationFrame(() => insertInputRef.current?.focus());
         return true;
-    }, [activeBlockId, editorMode, scene, selectedBlockIds, startLineEdit]);
+    }, [activeBlockId, editorMode, insertBlock, scene, selectedBlockIds, uuidService]);
 
     const indentSelection = useCallback((direction: "in" | "out") => {
         if (!storyService || !storyId || !sceneId || !scene) {
@@ -2747,8 +2810,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const target = getInsertionTargetAfter(scene, anchorId);
         const insertedIds: StoryBlockId[] = [];
         // Duplicating mints fresh textIds exactly as a paste does, so the copies would arrive
-        // untranslated unless the units follow them. Collected before the clone, because the source
-        // ids are what the project's languages are keyed by.
+        // untranslated and unvoiced unless the units follow them. Collected before the clone, because
+        // the source ids are what the project's languages and voice libraries are keyed by.
         const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
         const textIdMap = new Map<string, string>();
         for (const rootId of orderedRoots) {
@@ -2763,13 +2826,23 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setEditorMode({ kind: "idle" });
         // After the rows are in, and not awaited: the duplicate is complete without it, and the
-        // translations land in documents of their own. Nothing here reports success - a duplicate
-        // that carried its languages is what the author already expected.
-        if (localizationService) {
-            void carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
-                .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
-        }
-    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
+        // translations and takes land in documents of their own. Nothing here reports success - a
+        // duplicate that carried its languages and its recordings is what the author already expected.
+        //
+        // Translations before takes, in one chain rather than two: a take is a recording of the line
+        // as the actor for that language reads it, which is the translation where there is one, so a
+        // take that landed first would read as stale until its translation caught up.
+        void (async () => {
+            if (localizationService) {
+                await carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
+                    .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
+            }
+            if (voiceService) {
+                await carryVoiceWithinProject(voiceService, isFrozenNow, sourceTextIds, textIdMap)
+                    .catch(error => console.warn("[storyEditor] could not carry takes for the duplicated rows", error));
+            }
+        })();
+    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows, voiceService]);
 
     /**
      * The block ids a row operation acts on: the selection (deduped to roots so a container carries its

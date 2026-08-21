@@ -42,6 +42,12 @@ import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
+import type {
+    TeamCallOutcome,
+    TeamConnection,
+    TeamEventMessage,
+    TeamSubscribeOutcome,
+} from "@shared/types/team";
 import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
@@ -625,6 +631,44 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Destination must be an empty (or missing) folder. */
         clone: (url: string, destination: string) =>
             ipcClient.invoke(IPCEventType.vcsClone, { url, destination }) as Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>>,
+    },
+
+    /**
+     * The Team protocol: what a server can be asked, and how it says something happened.
+     *
+     * Five entries, and it stays five. `call` names a method the server declared it
+     * serves - the names are in `@shared/types/team` - and the parameters and the answer
+     * are that method's business rather than this file's. Every screen that reads a
+     * server goes through `lib/team`, which types both ends of one call in one place.
+     *
+     * `onEvent` is the half the old API could not do at all. A server pushes on a topic
+     * this window subscribed to, so a comment somebody else wrote appears without anybody
+     * reopening anything.
+     *
+     * The token never comes near here. It stays sealed in the main process, which is what
+     * makes a call, and what crosses back is the answer.
+     */
+    team: {
+        /** Open a session with one server. Answers with where it stands, not when it is ready. */
+        open: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.teamOpen, { remoteOrigin }) as Promise<RequestStatus<TeamConnection>>,
+        /** Where every server Studio knows about stands. Local: opens nothing. */
+        connections: () =>
+            ipcClient.invoke(IPCEventType.teamConnections, {}) as Promise<RequestStatus<{ connections: TeamConnection[] }>>,
+        /** Goes to the server, over the session. Opens one first if there is none. */
+        call: (remoteOrigin: string, method: string, params?: unknown) =>
+            ipcClient.invoke(IPCEventType.teamCall, { remoteOrigin, method, params }) as Promise<RequestStatus<TeamCallOutcome>>,
+        /** Ask to be told about a topic. Held for this window, and dropped when it closes. */
+        subscribe: (remoteOrigin: string, topic: string) =>
+            ipcClient.invoke(IPCEventType.teamSubscribe, { remoteOrigin, topic }) as Promise<RequestStatus<TeamSubscribeOutcome>>,
+        unsubscribe: (remoteOrigin: string, topic: string) =>
+            ipcClient.invoke(IPCEventType.teamUnsubscribe, { remoteOrigin, topic }) as Promise<RequestStatus<void>>,
+        /** Something happened on a topic this window asked about. */
+        onEvent: (handler: (message: TeamEventMessage) => void) =>
+            ipcClient.onMessage(IPCEventType.teamEvent, handler),
+        /** A session opened, dropped, or was refused. Sent to every window. */
+        onConnectionChanged: (handler: (payload: { connection: TeamConnection }) => void) =>
+            ipcClient.onMessage(IPCEventType.teamConnectionChanged, handler),
     },
 
     gameBuild: {

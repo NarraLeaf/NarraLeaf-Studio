@@ -155,7 +155,7 @@ function listDocument(items: Array<Record<string, unknown>>): UIDocument {
                 parentId: "root",
                 childrenIds: ["row"],
                 layout: { x: 0, y: 0, width: 320, height: 240 },
-                props: { previewItems: items, itemKeyPath: "id" },
+                props: { items, itemKeyFieldId: "id" },
             },
             row: {
                 id: "row",

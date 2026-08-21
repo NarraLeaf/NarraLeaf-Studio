@@ -34,6 +34,7 @@ type Element = {
     childrenIds?: string[];
     props?: Record<string, unknown>;
     extra?: Record<string, unknown>;
+    valueBindings?: Record<string, unknown>;
 };
 type Surface = { id: string; name: string; kind: string; rootElementId: string; settings?: Record<string, unknown> };
 type GraphNode = { id: string; type: string; params?: Record<string, unknown> };
@@ -142,7 +143,7 @@ describe("the Confirm page in the starter template", () => {
         expect(list.props?.itemsBinding).toEqual({ kind: "pageProp", key: "buttons" });
         expect(list.props?.repeatDirection).toBe("horizontal");
         // Keyed by index, because two buttons may well read the same.
-        expect(list.props?.itemKeyPath).toBe("index");
+        expect(list.props?.itemKeyFieldId).toBe("index");
         const template = (list.childrenIds ?? []).map(id => document.elements[id]);
         expect(template.map(element => element.extra?.listSlot)).toEqual(["itemTemplate"]);
     });
@@ -164,11 +165,12 @@ describe("the Confirm page in the starter template", () => {
         expect(wired({ nodeId: click.id, port: "index" }, { nodeId: close.id, port: "result" })).toBe(true);
     });
 
-    it.each([
-        ["message", 0, BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS, "message"],
-        ["button label", 1, BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS, "text"],
-    ])("draws its %s from a value binding rather than a literal", (_name, textIndex, sourceType, jsonPath) => {
-        const text = pageElements().filter(element => element.type === "nl.text")[textIndex]!;
+    /**
+     * The message is not a row's own data - it belongs to the whole layer - so it is still read from
+     * the page props by a graph, which is the shape a value that has to be computed always takes.
+     */
+    it("draws its message from the props the layer was shown with", () => {
+        const text = pageElements().filter(element => element.type === "nl.text")[0]!;
         // Blank on the element, so nothing is left on screen when the binding is what speaks.
         expect(text.props?.text).toBe("");
         const blueprint = blueprints.find(
@@ -176,12 +178,31 @@ describe("the Confirm page in the starter template", () => {
         )!;
         expect(blueprint.owner.propPath).toBe("text");
         const { byType, wired } = onlyGraph(blueprint);
-        const source = byType(sourceType as string)!;
+        const source = byType(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)!;
         const read = byType(BLUEPRINT_NODE_TYPE_DATA_JSON_GET)!;
         const value = byType(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)!;
         expect(byType(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBeDefined();
-        expect(read.params?.path).toBe(jsonPath);
+        expect(read.params?.path).toBe("message");
         expect(wired({ nodeId: source.id, port: "props" }, { nodeId: read.id, port: "json" })).toBe(true);
         expect(wired({ nodeId: read.id, port: "result" }, { nodeId: value.id, port: "value" })).toBe(true);
+    });
+
+    /**
+     * The button label is a row's own data, so it is a field of the declared shape and nothing else -
+     * no graph, no dotted path typed into a pin. That the button rows have a declared shape at all is
+     * the other half of the claim: a list that declares none can offer nothing to bind to.
+     */
+    it("draws its button label from a field of the row", () => {
+        const list = pageElements().find(element => element.type === "nl.list")!;
+        expect(list.props?.itemStructId).toBe("nl.confirmButton");
+        const text = pageElements().filter(element => element.type === "nl.text")[1]!;
+        expect(text.props?.text).toBe("");
+        expect(text.valueBindings?.text).toEqual({ kind: "listItemField", fieldId: "text" });
+        // And no blueprint left behind saying the same thing a second time.
+        expect(
+            blueprints.some(
+                candidate => candidate.owner.kind === "widgetValue" && candidate.owner.elementId === text.id,
+            ),
+        ).toBe(false);
     });
 });

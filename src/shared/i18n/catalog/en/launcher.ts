@@ -167,6 +167,18 @@ export const launcher = {
         // drops the entry the server lists and leaves what the repository holds where it is.
         // So the limit is written out rather than implied, in the sentence that names both
         // the project and the list it is coming off.
+        // What people have said about one project, over the session this Studio holds
+        // with the server. Only reached on a deployment that serves conversations.
+        discussion: {
+            title: "Discussion",
+            empty: "No notes on this project.",
+            placeholder: "Write a note",
+            add: "Add",
+            resolve: "Resolve",
+            reopen: "Reopen",
+            resolved: "Resolved",
+            failed: "The note was not sent.",
+        },
         forget: {
             action: "Remove from this server",
             title: "Remove from this server",

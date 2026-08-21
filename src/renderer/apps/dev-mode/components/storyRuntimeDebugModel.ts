@@ -58,11 +58,6 @@ export type StoryTimelineRow = {
      * whose line it is.
      */
     speakerColor: string | null;
-    /**
-     * The category hue the editor bars this row with, or `null` for the prose rows that carry none.
-     * Same single source as the editor's bar, so a row is one colour in both places.
-     */
-    barColor: string | null;
 };
 
 export type DeclaredStoryVariable = {
@@ -104,7 +99,6 @@ export function projectSceneTimeline(scene: StoryScene, lookups: StoryRowLookups
             summary: projected.sentence,
             speaker: projected.speaker?.name || null,
             speakerColor: projected.speaker?.color ?? null,
-            barColor: projected.barColor,
         });
         for (const childId of block.childrenIds) {
             walk(childId, depth + 1);

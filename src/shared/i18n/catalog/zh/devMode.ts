@@ -6,7 +6,8 @@ export const devMode = {
     surfaceUnavailable: "界面不可用",
     waitingPayload: "正在等待开发模式数据…",
     surfaceNotFound: "未找到界面：{surfaceId}",
-    // See the English catalog: one sentence for both places that open a row in Studio.
+    // See the English catalog: one label and one sentence for the three surfaces that open a row.
+    openInStudio: "在 Studio 中打开",
     openInStudioFailed: "该项目没有打开的工作区窗口",
     issues: {
         title: "问题",
@@ -17,7 +18,6 @@ export const devMode = {
         onSurface: "位于界面 {surface}",
         noLocation: "无法定位到具体的行",
         viaPlayHead: "播放到此处",
-        openInStudio: "在 Studio 中打开",
         stack: "调用栈",
         dismissAll: "全部关闭（{count}）",
         summary: "{errors} 个错误 · {warnings} 个警告",
