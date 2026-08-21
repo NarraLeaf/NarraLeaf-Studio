@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { Logger } from "@shared/utils/logger";
@@ -77,6 +78,14 @@ export type WeatherBakeRequest = {
      */
     quality: WeatherBakeQuality;
     /**
+     * How many threads may draw this clip's frames, or `null` to read the machine.
+     *
+     * Not part of the clip and not part of the cache key: a frame is a pure function of its phase,
+     * so the same spec drawn on one thread and on four is the same picture. It rides on the request
+     * only because the setting lives in Studio and the drawing happens two processes away.
+     */
+    threads: number | null;
+    /**
      * Who is asking, for a caller whose mind is made up only until the next keystroke.
      *
      * `specs` is then read as the WHOLE of what that owner wants: anything it asked for on an earlier
@@ -102,6 +111,15 @@ export const WeatherBakeOwner = {
     prebake: (projectRoot: string): string => `weather:prebake:${projectRoot}`,
     /** What a Dev Mode session's current compile needs. A reload makes that a different compile. */
     devMode: (projectRoot: string): string => `weather:devMode:${projectRoot}`,
+    /**
+     * One compile's clips, for a preview, a test run or a build.
+     *
+     * Unique per call, unlike the two above, and that is the point: those two exist so that a LATER
+     * ask retires an earlier one from the same source, which is right for a pre-baker watching a
+     * document and wrong here. A preview and a build of the same project are two separate asks and
+     * both want their clips; neither may retire the other by starting.
+     */
+    pack: (): string => `weather:pack:${crypto.randomUUID()}`,
 } as const;
 
 export type WeatherBakeOutcome = {
@@ -127,7 +145,11 @@ export type WeatherBakeStarter = (
     binaryPath: string,
     spec: WeatherBakeSpec,
     targetPath: string,
-    options: { quality: WeatherBakeQuality; onProgress?: (progress: WeatherBakeProgress) => void },
+    options: {
+        quality: WeatherBakeQuality;
+        threads: number | null;
+        onProgress?: (progress: WeatherBakeProgress) => void;
+    },
 ) => WeatherBakeHandle;
 
 export type WeatherBakeManagerOptions = FfmpegResolveOptions & {
@@ -229,6 +251,7 @@ export class WeatherBakeManager {
                         startWeatherBakeInWorker(this.app, binaryPath, bakeSpec, target, bakeOptions));
                 const handle = startBake(tool.path, item.spec, item.target, {
                     quality: request.quality,
+                    threads: request.threads,
                     onProgress: (progress: WeatherBakeProgress) => {
                         context.report({ done: progress.frames, total: progress.total, unit: "frame" });
                     },
@@ -260,6 +283,19 @@ export class WeatherBakeManager {
             }
         });
         return { paths, failures };
+    }
+
+    /**
+     * Give up everything a claim asked for.
+     *
+     * A clip nobody else is left wanting stops encoding where it stands; a clip somebody else is
+     * waiting on carries on, which is the scheduler's rule and the right one - a build being
+     * cancelled is not a reason to take the weather away from a Dev Mode session watching the same
+     * scene. The attempt is derived rather than random so this is a pure function of the claim: what
+     * `supersede` acts on is "claimed under some OTHER attempt", so it only has to differ.
+     */
+    public abandon(claim: StudioTaskClaim): void {
+        this.scheduler.supersede({ owner: claim.owner, attempt: `${claim.attempt}:abandoned` });
     }
 
     /** Stop one clip, wherever it is in the queue. Whatever already landed stays on disk. */

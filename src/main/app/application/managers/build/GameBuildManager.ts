@@ -147,6 +147,13 @@ type BuildSession = {
     projectPath: string;
     snapshot: GameBuildStateSnapshot;
     worker: UtilityProcess | null;
+    /**
+     * Lets go of the weather bake this compile is sitting in, if it is.
+     *
+     * Separate from the worker above because it covers the window before that worker exists: the
+     * clips are produced first, and a cancel arriving then used to reach nothing at all.
+     */
+    abandonWeatherBake: (() => void) | null;
     cancelled: boolean;
 };
 
@@ -834,6 +841,7 @@ export class GameBuildManager {
                 platforms: [...new Set(request.targets.map(target => target.platform))],
             },
             worker: null,
+            abandonWeatherBake: null,
             cancelled: false,
         };
         this.sessions.set(key, session);
@@ -867,6 +875,11 @@ export class GameBuildManager {
             return session?.snapshot ?? { status: "idle" };
         }
         session.cancelled = true;
+        // Before the worker, because for the length of a bake there IS no worker: the clips a pack
+        // carries are produced first, and an author who pressed Cancel during one used to watch the
+        // build report itself cancelled while the encoder ran on to the end.
+        session.abandonWeatherBake?.();
+        session.abandonWeatherBake = null;
         if (session.worker) {
             session.worker.kill();
             session.worker = null;
@@ -902,6 +915,7 @@ export class GameBuildManager {
             projectPath: normalizedProjectPath,
             snapshot: { status: "preparing", startedAt: Date.now(), platforms: [] },
             worker: null,
+            abandonWeatherBake: null,
             cancelled: false,
         };
         this.sessions.set(key, session);
@@ -1018,6 +1032,7 @@ export class GameBuildManager {
             assetImages,
         }, {
             onStart: worker => { session.worker = worker; },
+            onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
             cancelled: () => session.cancelled,
             onAudit: report => { contentAudit = report; },
         });
@@ -1439,6 +1454,7 @@ export class GameBuildManager {
                 assetImages,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
                 onAudit: report => { contentAudit = report; },
             });
@@ -1481,6 +1497,7 @@ export class GameBuildManager {
                 assetImages,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
             });
             session.worker = null;

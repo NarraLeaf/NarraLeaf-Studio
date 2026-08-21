@@ -8,9 +8,23 @@ import { normalizeVfxConfiguration, type VfxConfiguration } from "@shared/types/
 import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
-import type { WeatherBakeManager } from "./WeatherBakeManager";
+import type { StudioTaskClaim } from "@shared/types/studioTask";
+import { WeatherBakeOwner, type WeatherBakeManager } from "./WeatherBakeManager";
 
 const logger = new Logger("WeatherBake");
+
+export type WeatherPackBakeOptions = {
+    /** How many threads may draw, or `null` to read the machine. The author's setting, resolved. */
+    threads: number | null;
+    /**
+     * Handed a function that abandons the bake, before it begins.
+     *
+     * The twin of `CompileWorkerHooks.onStart`, and it exists for the window that hook cannot cover:
+     * the clips are produced before the compile worker is forked, so for the length of a bake the
+     * caller's `worker.kill()` has nothing to kill.
+     */
+    onStart?: (abandon: () => void) => void;
+};
 
 /**
  * Produce every weather clip a project's stories ask for, so the pack can carry them.
@@ -35,11 +49,27 @@ const logger = new Logger("WeatherBake");
  * Never throws. A clip that could not be produced is logged and left out, and the compile reports it
  * as a story diagnostic on the row that wanted it - a scene that plays without weather rather than a
  * build that refuses over an overlay.
+ *
+ * ## Why the ask is claimed
+ *
+ * Because a build can be cancelled, and this runs before the compile worker exists - so the caller's
+ * usual cancel, which is to kill that worker, has nothing to kill yet. An **unclaimed** task is
+ * immune to `supersede` by design ("a caller saying it has moved on is not a caller speaking for
+ * everybody else"), so submitting anonymously here made the encoder unstoppable: an author who
+ * pressed Cancel watched the build report itself cancelled while the clip kept encoding. A claim is
+ * what gives the cancel something to let go of, and it still cannot stop a clip Dev Mode is waiting
+ * on, because that session's own claim keeps it alive.
  */
 export async function bakeWeatherClipsForPack(
     manager: WeatherBakeManager,
     projectPath: string,
+    options: WeatherPackBakeOptions,
 ): Promise<PackedWeatherClip[]> {
+    // A fresh owner per compile rather than one per project: two of these must never retire each
+    // other, and unlike the pre-baker there is no sense in which a later ask replaces an earlier one.
+    // A preview and a build of the same project are two asks, and both want their clips.
+    const claim: StudioTaskClaim = { owner: WeatherBakeOwner.pack(), attempt: "1" };
+    options.onStart?.(() => manager.abandon(claim));
     const uidoc = await readJson<UIDocument>(path.join(projectPath, "editor", "ui", "uidoc.json"));
     const specs = collectWeatherSpecs(
         await readStories(projectPath),
@@ -58,6 +88,8 @@ export async function bakeWeatherClipsForPack(
         specs,
         priority: "blocking",
         quality: "final",
+        threads: options.threads,
+        claim,
     });
     const clips: PackedWeatherClip[] = [];
     for (const spec of specs) {
