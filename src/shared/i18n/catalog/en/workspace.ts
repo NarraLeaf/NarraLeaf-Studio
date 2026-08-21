@@ -831,11 +831,27 @@ export const workspace = {
                  */
                 picker: {
                     title: "Connect to a server",
+                    // Asked of the server as soon as one is chosen, because what this project
+                    // becomes on it depends on what is already there.
+                    reading: "Reading what this server holds",
+                    // The server already holds this project - matched on the repository id,
+                    // which is the only thing that survives a rename on either end. There is
+                    // nothing left to decide, so the name is stated rather than asked for.
+                    already: "This server already holds this project, as {name}.",
                     // The path on the end of the address, which is what the repository is
                     // called on the server and what a collaborator clones by. Filled in from
                     // the project's folder, because that is the answer nearly every time.
                     nameLabel: "Name on the server",
                     namePlaceholder: "my-game",
+                    nameHint: "Letters, digits, dots, dashes and underscores.",
+                    // Both refusals belong to the server and are said here instead of there:
+                    // one comes back as a bare status code, and the other after the dialog
+                    // has closed on a publish that is already half done.
+                    nameInvalid: "A name on a server can hold letters, digits, dots, dashes and underscores.",
+                    nameTaken: "This server already has a project with that name.",
+                    // What the button does where the server has never seen this project: it
+                    // records it, points at it, and sends every version on this machine.
+                    createAndSend: "Create and send",
                     empty: "No servers have been added.",
                     // The last row of the list. The ellipsis is the convention for a control
                     // that opens somewhere else: this one opens Settings and closes the dialog.

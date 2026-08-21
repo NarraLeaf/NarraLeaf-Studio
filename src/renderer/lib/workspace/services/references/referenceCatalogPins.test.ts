@@ -10,7 +10,9 @@ import { extractBlueprintAssetReferences, type BlueprintAssetPin } from "./refer
 import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_SET_LEGAL_PARAM_KEYS } from "@shared/build/blueprintAssetSlots";
 import fs from "fs";
 import path from "path";
 
@@ -192,5 +194,82 @@ describe("a pin that publishes rather than stores", () => {
         expect(extraction.gaps).toEqual([
             expect.objectContaining({ reason: "computedAssetPin", affects: ["image"] }),
         ]);
+    });
+});
+
+/**
+ * The clip a Play Sound holds.
+ *
+ * It is not a pin, so none of the declarations above reach it: an author picks it in the node's
+ * inspector and it lands in `params.soundAssetId`. That makes it the one asset a graph can hold
+ * whose coverage rests entirely on the catalogue-free floor both the index and the build read.
+ */
+describe("the clip a Play Sound stores", () => {
+    function playSoundDoc(params: Record<string, unknown>) {
+        return {
+            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Title",
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                "g-1": {
+                                    graph: { nodes: { play: { id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY, params } } },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            persistentVariables: {},
+        };
+    }
+
+    /**
+     * The assertion that keeps the three halves honest. The picker offers a set in this param, the
+     * index expands one there, and the build resolves one there - and all three name the param by a
+     * string. Read off the shipping node rather than restated, so renaming the param without telling
+     * the other two fails here instead of shipping a set id to a game with no answer for it.
+     */
+    it("keeps its param name one a set may be named in", () => {
+        registerCoreBlueprintNodes();
+        const clip = blueprintNodeRegistry
+            .get(BLUEPRINT_NODE_TYPE_SOUND_PLAY)
+            ?.inspectorParams
+            ?.find(param => param.kind === "audioAsset");
+
+        expect(clip).toBeDefined();
+        expect(BLUEPRINT_SET_LEGAL_PARAM_KEYS.has(clip!.key)).toBe(true);
+    });
+
+    it("is a reference, reported under the key it is stored beneath", () => {
+        const extraction = extractBlueprintAssetReferences(
+            playSoundDoc({ soundAssetId: "clip-1" }) as never,
+            { resolveAssetPins: assetPinsFromCatalogue },
+        );
+
+        expect(extraction.gaps).toEqual([]);
+        expect(extraction.references).toEqual([
+            expect.objectContaining({ assetId: "clip-1", field: "soundAssetId", kind: "blueprint" }),
+        ]);
+    });
+
+    /**
+     * The wired pin is a string the game computes - a gallery row's clip - and it wins over the
+     * picker. Reading it as a stored id would invent a reference on every music page there is, so
+     * the pin is left undeclared and this walk sees only what an author picked.
+     */
+    it("reads nothing from a node that holds no clip", () => {
+        const extraction = extractBlueprintAssetReferences(
+            playSoundDoc({}) as never,
+            { resolveAssetPins: assetPinsFromCatalogue },
+        );
+
+        expect(extraction.references).toEqual([]);
+        expect(extraction.gaps).toEqual([]);
     });
 });

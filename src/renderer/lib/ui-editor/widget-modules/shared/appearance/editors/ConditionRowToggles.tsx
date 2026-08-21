@@ -1,7 +1,7 @@
 import type { AppearanceSystemCondition } from "@shared/types/ui-editor/appearance";
 import { useTranslation } from "@/lib/i18n";
 
-const KEYS: (keyof AppearanceSystemCondition)[] = ["hovered", "active", "disabled", "focused"];
+const KEYS: (keyof AppearanceSystemCondition)[] = ["hovered", "active", "disabled", "focused", "selected"];
 
 type Props = {
     conditions: AppearanceSystemCondition | null | undefined;

@@ -1,0 +1,43 @@
+{
+  "note": "The Team protocol's wire names. A byte-identical copy lives in the Team server at src/team/contract.json; both move together or the two stop understanding each other. Each side has a test that pins its own constants to this file, so a rename that forgets one half fails there rather than on somebody's machine.",
+  "protocol": 1,
+  "socketPath": "/api/team/v1/socket",
+  "capabilities": ["session", "comments"],
+  "errorCodes": [
+    "unknown-method",
+    "bad-params",
+    "not-found",
+    "refused",
+    "conflict",
+    "unavailable",
+    "unauthenticated",
+    "internal"
+  ],
+  "methods": [
+    "projects.list",
+    "projects.get",
+    "members.list",
+    "threads.list",
+    "threads.get",
+    "threads.create",
+    "threads.reply",
+    "threads.resolve",
+    "comments.edit",
+    "comments.delete"
+  ],
+  "topics": {
+    "projects": "projects",
+    "members": "members",
+    "project": "project:{project}",
+    "projectThreads": "project:{project}/threads"
+  },
+  "frames": {
+    "fromServer": ["hello", "result", "error", "subscribed", "event", "bye"],
+    "fromClient": ["call", "subscribe", "unsubscribe"]
+  },
+  "limits": {
+    "anchorField": 512,
+    "commentBody": 8192,
+    "suggestion": 65536
+  }
+}

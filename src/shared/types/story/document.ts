@@ -153,7 +153,22 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // The bump is not optional in either direction. A v18 Studio meeting `operation: "transform"` on the
 // camera arm has no branch for it and drops the row; a v19 Studio meeting `operation: "pan"` has
 // none for that. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 19 as const;
+// v20 adds the `empty` block kind: a row that holds nothing, compiles to nothing, and is not text.
+// It is the blank line a script has always had and a story document never did - what Backspace on a
+// row leaves standing in its place, waiting to be typed into. Until now that job fell to an empty
+// narration row, which is a line of prose with nothing in it and behaves like one: it drew
+// narration's placeholder ("double-click to type narration"), so the editor named the line before
+// the author had; `text/empty` reported every one of them, so ordinary editing accrued lint; and
+// turning it back into an action meant clearing the prose first. An `empty` row has no payload, no
+// text segment and no references, so there is nothing downstream to read out of it - the compiler
+// skips it, the text and localization rules never see it, and the script formats print it as the
+// blank line it is.
+// No migration. A v19 document cannot contain one - there was no way to write one - so the ladder
+// gets no new step, only the unconditional stamp it already ends with. The bump is still not
+// optional: nearly every switch over `StoryBlockKind` is exhaustive, so a v19 Studio meeting an
+// `empty` row would crash in one and silently drop the row in the next, depending which it reached
+// first. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 20 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -403,7 +418,7 @@ export type StoryPersistentDefinitionLegacy = {
     meta?: StoryMeta;
 };
 
-export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration";
+export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration" | "empty";
 
 export type StoryBlock =
     | StoryNodeActionBlock
@@ -412,7 +427,8 @@ export type StoryBlock =
     | StoryJumpBlock
     | StoryNoteBlock
     | StoryInvalidBlock
-    | StoryDeclarationBlock;
+    | StoryDeclarationBlock
+    | StoryEmptyBlock;
 
 export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
     id: StoryBlockId;
@@ -480,6 +496,32 @@ export type StoryJumpBlock = StoryBlockBase<"jump", StoryJumpPayload>;
 export type StoryNoteBlock = StoryBlockBase<"note", StoryNotePayload>;
 export type StoryInvalidBlock = StoryBlockBase<"invalid", StoryInvalidPayload>;
 export type StoryDeclarationBlock = StoryBlockBase<"declaration", StoryDeclarationPayload>;
+
+/**
+ * A blank line (schema v20).
+ *
+ * The row a script has and a scene did not: it holds nothing, says nothing and compiles to nothing.
+ * Backspace on a row leaves one where the row stood, so the line keeps its place in the scene while
+ * the author decides what goes there - and it survives Escape and the focus leaving, because it is a
+ * row and not an open editor.
+ *
+ * It is deliberately not an empty narration row, which is what stood in for it before v20: prose
+ * with nothing in it is still prose, so it drew narration's own placeholder, `text/empty` reported
+ * it, and typing an action into it meant clearing the prose first. An `empty` row has no payload for
+ * anything to read, so every rule that walks text, assets, references or translations passes it by.
+ */
+export type StoryEmptyBlock = StoryBlockBase<"empty", StoryEmptyPayload>;
+
+/**
+ * An empty row's payload: nothing, and nothing may be put in it.
+ *
+ * `Record<never, never>` rather than `Record<string, never>`, and the difference is the whole point:
+ * the latter carries an index signature, so `payload.text` on a union that includes it typechecks
+ * (as `never`) and every place that reads a payload without asking the kind first goes on compiling.
+ * With no index signature the compiler reports each one, which is how the arms that had to learn
+ * about this kind were found at all.
+ */
+export type StoryEmptyPayload = Record<never, never>;
 
 /**
  * A variable declaration, as a row (schema v6).
