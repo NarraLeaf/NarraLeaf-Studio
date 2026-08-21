@@ -581,6 +581,11 @@ export const storyInspector = {
         // every other stranded reference, and a cut point on the release build ends nothing.
         cutMissingVariant: "Deleted variant, now read as {name}",
         cutNoVariants: "No variants",
+        endingName: "Ending name",
+        endingPage: "Page shown afterwards",
+        // The two answers that are not a page. Both are decisions, so both are worded as one.
+        endingPageInherit: "Same as the project setting",
+        endingPageNone: "Show nothing",
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },

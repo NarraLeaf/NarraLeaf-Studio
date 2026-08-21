@@ -43,6 +43,8 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/empty-scene",
     "story/app-tag-unknown",
     "story/cut-point-orphan",
+    "story/rows-after-ending",
+    "story/ending-name-duplicate",
     "story/cut-point-unreachable",
     "story/stage-object-missing",
     "story/stage-object-duplicate",
@@ -83,7 +85,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(55);
+        expect(LINT_RULES).toHaveLength(57);
     });
 
     it("gives every rule a unique id", () => {

@@ -508,6 +508,11 @@ export const storyInspector = {
         // 这一行指向的变体工程里已经没有了。它和其他失效引用一样按正式变体读取，而截断正式变体等于不截断。
         cutMissingVariant: "已删除的变体，现按{name}读取",
         cutNoVariants: "没有变体",
+        endingName: "结局名称",
+        endingPage: "结束后显示的页面",
+        // 两个不是页面的答案。它们都是决定，所以都按决定来措辞。
+        endingPageInherit: "与工程设置相同",
+        endingPageNone: "不显示任何页面",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },
