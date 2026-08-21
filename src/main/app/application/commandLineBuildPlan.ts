@@ -12,7 +12,14 @@ import {
     type GameBuildPlatform,
     type GameBuildRequest,
 } from "@shared/types/gameBuild";
-import type { BuildCommandLineOptions } from "./commandLine";
+import type { CommandLineBuildReportExperimental } from "@shared/types/commandLineBuild";
+import {
+    EXPERIMENTAL_CONDITION_IDS,
+    EXPERIMENTAL_FLAG,
+    experimentalCondition,
+    type ExperimentalState,
+} from "@shared/types/experimental";
+import type { BuildCommandLineOptions, ExperimentalCommandLineOptions } from "./commandLine";
 
 /**
  * What `--build` and its flags come to: one variant, one platform, one format.
@@ -128,5 +135,107 @@ export function planCommandLineBuild(input: {
             allowUnsigned: options.allowUnsigned,
             reportPath: options.reportPath ? path.resolve(workingDirectory, options.reportPath) : null,
         },
+    };
+}
+
+/** What experimental mode came to for this run: what the report says, and whether to build at all. */
+export type CommandLineBuildExperimentalResult = {
+    /** The report's account of the mode, whichever way this went. */
+    report: CommandLineBuildReportExperimental;
+    /** The sentence to refuse the launch with, or null to go on and build. */
+    refusal: string | null;
+};
+
+/**
+ * Answer for experimental mode before anything is opened.
+ *
+ * `requested` is what the command line asked for; `honoured` is what `BaseApp.getExperimentalState`
+ * decided to give it. The two differ exactly where a launch asked for something it did not get, and
+ * closing that gap is what this is for.
+ *
+ * ## Why a launch that asked and did not get it is refused rather than warned
+ *
+ * The mode's one shipped condition changes the artifact and nothing about the artifact records it.
+ * So `--build --experimental --x-debuggable-build` on a Studio that cannot enter the mode produces a
+ * *production* build while the caller believes it is holding a debuggable one, and the same is true
+ * of a condition flag typed without `--experimental`. Both are the failure this whole area exists to
+ * prevent, arriving through the one entry point with nobody watching: a warning on a log is read by
+ * a person, and there is no person.
+ *
+ * A pipeline whose job fails is a pipeline that stops. A pipeline handed the opposite of what it
+ * asked for archives it, signs it, and ships it. The first is recoverable in a minute and the second
+ * is recoverable only by whoever eventually notices, so this refuses.
+ *
+ * `--experimental` alone - which no condition follows, and which therefore would have changed
+ * nothing - is refused on the same terms rather than let through. The carve-out would have to be
+ * "the mode was unavailable but nothing it unlocks was wanted", which is a judgement about what each
+ * condition does, made in the one place that must not have to know. One rule: asked for and not
+ * given is refused.
+ *
+ * An unknown `--x-` flag is refused for the third time in the same shape. `--x-debugable-build` is a
+ * typo away from the real one and produces exactly the artifact a typo should not produce silently;
+ * `planCommandLineBuild` refuses a `--build-arch` the platform has no use for on the same reasoning.
+ */
+export function resolveCommandLineBuildExperimental(
+    requested: ExperimentalCommandLineOptions,
+    honoured: ExperimentalState,
+): CommandLineBuildExperimentalResult {
+    const requestedConditions = [...requested.conditions];
+    const unknownConditionFlags = [...requested.unknownConditionFlags];
+    const askedForSomething = requested.requested
+        || requestedConditions.length > 0
+        || unknownConditionFlags.length > 0;
+
+    if (!askedForSomething) {
+        return {
+            report: {
+                state: "off",
+                conditions: [],
+                requestedConditions: [],
+                unknownConditionFlags: [],
+            },
+            refusal: null,
+        };
+    }
+
+    const asked = { requestedConditions, unknownConditionFlags };
+    // The flags as an operator would type them, which is what a refusal has to name: a condition id
+    // on its own is not something anybody can search their own command line for.
+    const flags = [
+        ...requestedConditions.map(id => experimentalCondition(id).flag),
+        ...unknownConditionFlags,
+    ];
+
+    if (!honoured.enabled) {
+        // The mode is off for one of two reasons and the line says which: `getExperimentalState`
+        // refuses a packaged Studio and refuses a launch that never opened the mode, so a launch
+        // that did carry `--experimental` and still has it off was refused by the Studio.
+        if (requested.requested) {
+            const listed = flags.length > 0 ? flags.join(" ") : EXPERIMENTAL_FLAG;
+            return {
+                report: { state: "refused", refusal: "unavailable", conditions: [], ...asked },
+                refusal: `This Studio cannot enter experimental mode, so ${listed} would have changed`
+                    + " nothing about this build. Experimental mode is available to a development"
+                    + " launch only; a packaged Studio always refuses it.",
+            };
+        }
+        return {
+            report: { state: "refused", refusal: "mode-not-opened", conditions: [], ...asked },
+            refusal: `${flags.join(" ")} asks for an experimental condition without ${EXPERIMENTAL_FLAG},`
+                + ` so none of them apply. Pass ${EXPERIMENTAL_FLAG} as well, or drop them.`,
+        };
+    }
+
+    if (unknownConditionFlags.length > 0) {
+        return {
+            report: { state: "refused", refusal: "unknown-condition", conditions: [], ...asked },
+            refusal: `${unknownConditionFlags.join(" ")} names no experimental condition.`
+                + ` The registered conditions are: ${EXPERIMENTAL_CONDITION_IDS.join(", ")}.`,
+        };
+    }
+
+    return {
+        report: { state: "on", conditions: [...honoured.conditions], ...asked },
+        refusal: null,
     };
 }
