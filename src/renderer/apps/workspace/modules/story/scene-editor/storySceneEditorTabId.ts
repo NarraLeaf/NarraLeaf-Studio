@@ -28,6 +28,18 @@ export type StorySceneEditorTabPayload = {
     storyId: StoryId;
     sceneId: StorySceneId;
     activeBlockId?: StoryBlockId;
+    /**
+     * Makes a repeated navigation to the SAME row a second request.
+     *
+     * Re-opening an already-open tab replaces its payload, and the target alone cannot tell one ask
+     * apart from the one before it — so without this, "take me to the line that is playing", asked
+     * twice while the game sits on that line, would land the second time on wherever the author had
+     * scrolled to since. Same reason {@link StorySceneEditorDraftJump.token} exists.
+     *
+     * Optional because most callers navigate to a row the author picked out of a list, and picking
+     * the same row twice is one destination asked for twice.
+     */
+    revealToken?: number;
     draftJump?: StorySceneEditorDraftJump;
 };
 

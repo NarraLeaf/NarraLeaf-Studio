@@ -20,7 +20,10 @@ export function referenceAssetKindOf(assetType: AssetType): ReferenceAssetKind |
             return "image";
         case AssetType.Font:
             return "font";
+        // A blueprint's Play Sound names a clip, so a gap over one is doubt about sounds in
+        // particular rather than about the library at large.
         case AssetType.Audio:
+            return "audio";
         case AssetType.Video:
         case AssetType.JSON:
         case AssetType.Blueprint:

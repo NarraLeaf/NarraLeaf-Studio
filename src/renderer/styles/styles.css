@@ -250,11 +250,18 @@
  *    stylesheet is bundled into the game runtime. Dev Mode omits the class too,
  *    so the game it hosts keeps its motion.
  *  - `.nl-motion-keep` — motion that is information rather than decoration:
- *    game content embedded in a Studio window (the story preview's stage) and
- *    the indeterminate progress bars. Freezing the preview would not calm the
- *    interface, it would misrepresent the work — an author cannot tune a
- *    transition they are prevented from seeing. Freezing a busy indicator is
- *    worse than pointless: a bar that has stopped sweeping reads as a hang.
+ *    game content embedded in a Studio window (the story preview's stage, the
+ *    UI editor's canvas, a blueprint node's element preview), the box that
+ *    plays back an element's own enter and exit animation, and the
+ *    indeterminate progress bars. Freezing a preview
+ *    would not calm the interface, it would misrepresent the work — an author
+ *    cannot tune a transition they are prevented from seeing. Freezing a busy
+ *    indicator is worse than pointless: a bar that has stopped sweeping reads
+ *    as a hang.
+ *
+ *    The page thumbnails and the component library render the same widgets
+ *    through the same code and are deliberately NOT tagged: a panel of thirty
+ *    cards all moving at once is one of the reasons somebody asked for calm.
  *  - `.animate-spin` — spinners, for that same reason. Matched by Tailwind's
  *    own class because they are scattered across dozens of components and
  *    tagging each one would rot; this is the one place that has to know.

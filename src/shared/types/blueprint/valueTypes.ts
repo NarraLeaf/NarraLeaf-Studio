@@ -56,11 +56,13 @@ export type BlueprintImageAsset = {
 /**
  * The kinds of library asset a blueprint pin can carry.
  *
- * Split by kind because the two are stored differently and read differently: an image travels as the
- * tagged {@link BlueprintImageAsset} record, a font as the bare id string. The reverse-lookup index
- * needs to know which of the two it is holding before it can turn a pin value into an asset id.
+ * Split by kind because they are stored differently and read differently: an image travels as the
+ * tagged {@link BlueprintImageAsset} record, a clip and a font as the bare id string. The
+ * reverse-lookup index needs to know which it is holding before it can turn a pin value into an
+ * asset id - and which it is also decides whether an asset set may be named there, which is a
+ * separate question answered by `blueprintAssetSlotAcceptsSets`.
  */
-export type BlueprintAssetPinKind = "image" | "font";
+export type BlueprintAssetPinKind = "image" | "audio" | "font";
 
 /**
  * Declares that a pin carries a library asset id, so the reverse-lookup index can find the

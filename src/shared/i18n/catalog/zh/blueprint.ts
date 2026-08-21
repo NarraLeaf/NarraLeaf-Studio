@@ -596,6 +596,7 @@ export const blueprint = {
         playing: "播放中",
         fadeS: "淡变（秒）",
         fadeInS: "淡入（秒）",
+        audioClip: "音频片段",
         audioTrack: "音轨",
         timeS: "时间（秒）",
         max: "最大值",
