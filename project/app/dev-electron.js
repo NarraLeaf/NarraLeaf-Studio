@@ -332,6 +332,27 @@ function broadcastReload(target = 'all') {
     });
 
     /**
+     * Build & watch the weather bake worker (forked by utilityProcess for every clip a weather seed
+     * describes). Without this, `yarn dev` leaves dist/main/weatherWorker.js missing and every bake
+     * fails with "the weather worker stopped before it produced a clip" - the third instance of the
+     * hole the two blocks around this one already document.
+     */
+    const buildWeatherBakeWorker = () => watchBuild({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'weatherWorker.ts')],
+        outfile: path.join(distDir, 'main', 'weatherWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // Nothing native in here; keep this list in sync with build-main.js.
+        external: ['electron'],
+        sourcemap: true,
+        target: ['node18'],
+    }, () => {
+        // No Electron restart: the worker is spawned fresh per bake.
+        console.log('[weatherWorker] built.');
+    });
+
+    /**
      * Build & watch the artifact compile worker (forked by utilityProcess for
      * preview launches and the pre-package compile). Without this, `yarn dev`
      * leaves dist/main/compileWorker.js missing and every preview launch fails
@@ -479,6 +500,7 @@ function broadcastReload(target = 'all') {
         buildMainProcess(),
         buildGameBuildWorker(),
         buildPsdImportWorker(),
+        buildWeatherBakeWorker(),
         buildArtifactCompileWorker(),
         buildContentAudit(),
         buildPreloadScript(),

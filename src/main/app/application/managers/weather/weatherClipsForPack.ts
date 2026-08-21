@@ -4,8 +4,10 @@ import type { StoryDocument, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { Fs } from "@shared/utils/fs";
 import { isValidStoryId } from "@shared/utils/storyId";
+import { normalizeVfxConfiguration, type VfxConfiguration } from "@shared/types/vfx";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
+import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import type { WeatherBakeManager } from "./WeatherBakeManager";
 
 const logger = new Logger("WeatherBake");
@@ -39,7 +41,11 @@ export async function bakeWeatherClipsForPack(
     projectPath: string,
 ): Promise<PackedWeatherClip[]> {
     const uidoc = await readJson<UIDocument>(path.join(projectPath, "editor", "ui", "uidoc.json"));
-    const specs = collectWeatherSpecs(await readStories(projectPath), uidoc ?? undefined);
+    const specs = collectWeatherSpecs(
+        await readStories(projectPath),
+        uidoc ?? undefined,
+        await readVfxConfiguration(projectPath),
+    );
     if (specs.length === 0) {
         return [];
     }
@@ -83,6 +89,27 @@ async function readStories(projectPath: string): Promise<StoryDocument[]> {
         }
     }
     return stories;
+}
+
+/**
+ * The frame rate this project bakes its screen effects at, read from the `.nlproj`.
+ *
+ * Read here rather than taken from the assembled bundle for the same reason the documents are: the
+ * bundle is put together inside the compile worker, and this runs before it in the main process.
+ * Both ends read the same file, which is what keeps the ids this produces and the ids the packer
+ * narrows by from ever naming different clips.
+ *
+ * An unreadable project is the default rate rather than a refusal. The clips then baked are the
+ * ones a project that never opened the setting asks for, which is what the packer will look for too.
+ */
+async function readVfxConfiguration(projectPath: string): Promise<VfxConfiguration> {
+    try {
+        const config = await readProjectConfigFromDir(projectPath);
+        const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+        return normalizeVfxConfiguration(app?.vfx);
+    } catch {
+        return normalizeVfxConfiguration(undefined);
+    }
 }
 
 /** Null for anything that is not there or will not parse: a project with no stories asks for no clips. */

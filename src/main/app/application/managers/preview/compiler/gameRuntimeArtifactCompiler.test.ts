@@ -1613,6 +1613,7 @@ describe("weather clips in the pack", () => {
         const expectedId = weatherClipAssetId(weatherSpecForStage(
             { seed: "snow" },
             { surfaces: [{ kind: "appSurface", designSize: { width: 1280, height: 720 } }] } as never,
+            undefined,
         ));
 
         const result = await compileGameRuntimeArtifact({
@@ -1637,7 +1638,7 @@ describe("weather clips in the pack", () => {
 
         const clipPath = path.join(tempDir, "rain.webm");
         await fs.writeFile(clipPath, "webm bytes", "utf-8");
-        const unreachedId = weatherClipAssetId(weatherSpecForStage({ seed: "rain" }, undefined));
+        const unreachedId = weatherClipAssetId(weatherSpecForStage({ seed: "rain" }, undefined, undefined));
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47321),
@@ -1648,6 +1649,35 @@ describe("weather clips in the pack", () => {
         expect(pack.assets.items[unreachedId]).toBeUndefined();
         await expect(fs.readdir(path.join(result.appDir, "assets"))).resolves.not.toContain("rain.webm");
     });
+    it("addresses the clip at the rate the project states, not at the default", async () => {
+        // The rate is half of a clip's identity. If the packer narrowed by ids computed at 30
+        // while the game asked at 60, every build of a project that raised the rate would ship
+        // a file nothing opens and play the scene with no weather and no error.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, { app: { vfx: { frameRate: 60 } } });
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await writeWeatherStory(projectPath, [{ seed: "snow" }]);
+
+        const clipPath = path.join(tempDir, "snow-60.webm");
+        await fs.writeFile(clipPath, "webm bytes", "utf-8");
+        const stage = { surfaces: [{ kind: "appSurface", designSize: { width: 1280, height: 720 } }] } as never;
+        const atSixty = weatherClipAssetId(weatherSpecForStage({ seed: "snow" }, stage, { frameRate: 60 }));
+        const atThirty = weatherClipAssetId(weatherSpecForStage({ seed: "snow" }, stage, undefined));
+        expect(atSixty).not.toBe(atThirty);
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47321),
+            weatherClips: [{ id: atSixty, path: clipPath }, { id: atThirty, path: clipPath }],
+        });
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[atSixty]).toMatchObject({ id: atSixty, type: "video" });
+        expect(pack.assets.items[atThirty]).toBeUndefined();
+    });
+
     it("keeps the clip's manifest entry through a production build, where most fields are dropped", async () => {
         // A shipped pack is compiled down to what the runtime needs. `relativePath` is how it finds
         // the file at all, so a stripping pass that took the entry with it would leave a game that
@@ -1665,6 +1695,7 @@ describe("weather clips in the pack", () => {
         const expectedId = weatherClipAssetId(weatherSpecForStage(
             { seed: "snow" },
             { surfaces: [{ kind: "appSurface", designSize: { width: 1280, height: 720 } }] } as never,
+            undefined,
         ));
 
         const result = await compileGameRuntimeArtifact({

@@ -32,12 +32,14 @@ function entry(init: {
     total?: number;
     complete?: boolean;
     documentKind?: DocumentDiffEntry["documentKind"];
+    members?: readonly string[];
 }): DocumentDiffEntry {
     const changes = Array.from({ length: init.changes ?? 1 }, (_, index) => change(`field${index}`));
     return {
         path: init.path,
         kind: init.kind ?? "changed",
         ...(init.documentKind ? { documentKind: init.documentKind } : {}),
+        ...(init.members ? { members: init.members } : {}),
         diff: {
             changes,
             complete: init.complete ?? true,
@@ -48,6 +50,44 @@ function entry(init: {
 }
 
 const budget = { rowBudget: 1000 };
+
+describe("a document stored as several files", () => {
+    it("is one row, and says how many files it stands for", () => {
+        // The producer folds; this is where the fold has to survive without becoming a lie. The row
+        // is named by the manifest - which may not itself have changed - and the count of files is
+        // the only thing on the row that says the document is not one file.
+        const index = buildChangeIndex([
+            entry({
+                path: "editor/story/stories/a/storydoc.json",
+                changes: 3,
+                members: [
+                    "editor/story/stories/a/scenes/s1.json",
+                    "editor/story/stories/a/scenes/s2.json",
+                ],
+            }),
+            entry({ path: "editor/brand.json" }),
+        ], budget);
+
+        expect(index.rows).toHaveLength(2);
+        expect(index.rows.find((row) => row.path.endsWith("storydoc.json"))?.memberCount).toBe(2);
+        // Zero, not one: an ordinary document is one file and has nothing to add.
+        expect(index.rows.find((row) => row.path === "editor/brand.json")?.memberCount).toBe(0);
+    });
+
+    it("counts as one file against a group's heading and its budget", () => {
+        // The number beside a heading is read as "this is what opening it will cost me". A set
+        // counted by its members would say forty over a group that opens to one line.
+        const index = buildChangeIndex([
+            entry({
+                path: "editor/story/stories/a/storydoc.json",
+                members: Array.from({ length: 40 }, (_, i) => `editor/story/stories/a/scenes/s${i}.json`),
+            }),
+        ], budget);
+
+        expect(index.groups[0].count).toBe(1);
+        expect(index.omitted).toBe(0);
+    });
+});
 
 describe("buildChangeIndex", () => {
     it("gives every file exactly one row, whatever is inside it", () => {

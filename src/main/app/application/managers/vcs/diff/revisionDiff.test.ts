@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CONTENT_HEAD_READ_CEILING, DIFF_PARSE_BYTE_CEILING, DIFF_PATH_LIMIT } from "./documentDiff";
+import { CONTENT_HEAD_READ_CEILING, DIFF_PARSE_BYTE_CEILING, DIFF_UNIT_LIMIT } from "./documentDiff";
 import { diffRevisions, type RevisionDiffSource } from "./revisionDiff";
 
 /**
@@ -126,8 +126,8 @@ describe("diffing two revisions", () => {
         expect(reads[0].paths).toEqual(["a.json", "m.json", "z.json"]);
     });
 
-    it("lists the paths without reading them past the path limit", async () => {
-        const many = Array.from({ length: DIFF_PATH_LIMIT + 5 }, (_, index) => `editor/f${index}.json`);
+    it("lists the documents without reading them past the document limit", async () => {
+        const many = Array.from({ length: DIFF_UNIT_LIMIT + 5 }, (_, index) => `editor/f${index}.json`);
         const { source, reads, walks } = sourceOf({}, { changedPaths: async () => many });
         const onDegrade = vi.fn();
 
@@ -136,12 +136,14 @@ describe("diffing two revisions", () => {
         expect(reads).toEqual([]);
         // Not even the trees are walked: the answer past the limit is the list of paths.
         expect(walks).toEqual([]);
-        expect(result.documents).toHaveLength(DIFF_PATH_LIMIT);
+        expect(result.documents).toHaveLength(DIFF_UNIT_LIMIT);
+        // Documents, not paths - the unit the limit counts in. With no document set registered
+        // the two numbers are the same, which is what makes this an unchanged answer here.
         expect(result.pathCount).toBe(many.length);
         expect(result.complete).toBe(false);
         // "Changed, not inspected" rather than an empty diff, which would read as unchanged.
         expect(result.documents[0].diff.changes[0].label.key).toBe("documentDiff.opaque.unread");
-        expect(onDegrade).toHaveBeenCalledWith(expect.stringContaining("path limit"));
+        expect(onDegrade).toHaveBeenCalledWith(expect.stringContaining("document limit"));
     });
 
     it("stops reading once the total byte budget is spent, and still lists every path", async () => {

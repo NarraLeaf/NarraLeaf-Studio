@@ -6,7 +6,8 @@ import type { WeatherBakeSpec } from "@shared/weather/model";
 import type { StudioTaskClaim, StudioTaskPriority } from "@shared/types/studioTask";
 import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp } from "../media/ffmpegTool";
 import type { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
-import { startWeatherBake, type BakeSpawn, type WeatherBakeProgress } from "./weatherBake";
+import type { WeatherBakeHandle, WeatherBakeProgress } from "./weatherBake";
+import { startWeatherBakeInWorker, type WeatherBakeWorkerHostApp } from "./weatherBakeWorker";
 
 /**
  * The clips a project's weather seeds describe, produced once and then found.
@@ -39,6 +40,14 @@ import { startWeatherBake, type BakeSpawn, type WeatherBakeProgress } from "./we
  * That is what makes pre-baking work. Studio can submit a clip at `idle` while the author is still
  * choosing parameters; if they press Run a moment later the same submission arrives at `blocking`,
  * adopts the bake already in flight, and the wait is whatever was left of it.
+ *
+ * ## Where the work happens
+ *
+ * Not here. A bake draws its own frames in JavaScript - 8 MB of them, sixty times a second of clip -
+ * and doing that on the main process cut the smallest IPC round trip from 0.2 ms to 39.6 ms for the
+ * whole minute it takes, which is what turned a Dev Mode reload from 30 ms into fifteen seconds. So
+ * every bake is forked into a utility process ({@link startWeatherBakeInWorker}); this class decides
+ * WHAT to make and where to keep it, and holds a handle to the process making it.
  */
 
 const logger = new Logger("WeatherBake");
@@ -95,13 +104,27 @@ export type WeatherBakeOutcome = {
     failures: Map<string, string>;
 };
 
+/**
+ * How a clip gets made, so a test can watch one without an encoder or a worker.
+ *
+ * The default forks a utility process. It is injectable rather than mocked at the module boundary
+ * because the seam is the point: what this manager promises is a handle - frames on the way out, one
+ * cancel on the way in - and anything that keeps that promise is a bake as far as it is concerned.
+ */
+export type WeatherBakeStarter = (
+    binaryPath: string,
+    spec: WeatherBakeSpec,
+    targetPath: string,
+    options: { onProgress?: (progress: WeatherBakeProgress) => void },
+) => WeatherBakeHandle;
+
 export type WeatherBakeManagerOptions = FfmpegResolveOptions & {
-    spawnProcess?: BakeSpawn;
+    startBake?: WeatherBakeStarter;
 };
 
 export class WeatherBakeManager {
     constructor(
-        private readonly app: FfmpegResolverApp,
+        private readonly app: FfmpegResolverApp & WeatherBakeWorkerHostApp,
         private readonly scheduler: StudioTaskScheduler,
     ) {}
 
@@ -179,8 +202,10 @@ export class WeatherBakeManager {
             key: bakeTaskKey(item.key),
             priority: request.priority,
             run: async context => {
-                const handle = startWeatherBake(tool.path, item.spec, item.target, {
-                    ...(options.spawnProcess ? { spawnProcess: options.spawnProcess } : {}),
+                const startBake = options.startBake
+                    ?? ((binaryPath, bakeSpec, target, bakeOptions) =>
+                        startWeatherBakeInWorker(this.app, binaryPath, bakeSpec, target, bakeOptions));
+                const handle = startBake(tool.path, item.spec, item.target, {
                     onProgress: (progress: WeatherBakeProgress) => {
                         context.report({ done: progress.frames, total: progress.total, unit: "frame" });
                     },
