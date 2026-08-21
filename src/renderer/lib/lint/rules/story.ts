@@ -1,8 +1,7 @@
 import { collectCutPoints } from "@shared/story/appTagFold";
 import {
-    blueprintDocumentGraphCarriers,
     reachableSceneIds,
-    scanStoryEntryPoints,
+    scanProjectStoryEntryPoints,
     type StoryEntryPointScan,
 } from "@shared/story/storyReachability";
 import { isBuiltinAppTagId } from "@shared/types/appTag";
@@ -317,42 +316,16 @@ function hasOutgoingTransfer(scene: StoryScene): boolean {
 }
 
 /**
- * Where play can begin.
+ * Where play can begin: the scene an author marked as a story's entry ("Set Entry Scene" in the
+ * story panel) and every scene a blueprint's `Start Game` node names.
  *
- * Two sources, and both are real author intent rather than a guess: the scene an author marked as a
- * story's entry (`StoryDocument.entrySceneId`, the "Set Entry Scene" action in the story panel), and
- * every scene a blueprint's `Start Game` node names. Nothing else is an entry - in particular "the
- * first scene in document order" is NOT assumed, because a project that simply never marked an entry
- * would then have every scene but one declared unreachable.
- *
- * The blueprint half is `scanStoryEntryPoints`, the same scan the build's own scene sweep runs: a
- * report that disagreed with a removal would tell an author a scene is orphaned while the package
- * kept shipping it, or the reverse. The document half stays here because it is a rule of this
- * report, not of the scan - which scenes an author marked is a different question from which ones a
- * blueprint names.
- *
- * The graph walk reads every blueprint in the document, `ownerRecords` and all - deliberately unlike
- * `listBlueprintGraphSites`; see `blueprintDocumentGraphCarriers` for why the entry scan cannot
- * afford that skip.
+ * The whole of it is {@link scanProjectStoryEntryPoints}, which is shared rather than local because
+ * the `reachable-endings` test asks the same question - and a report that disagreed with a check
+ * about where play begins would tell an author a scene is orphaned while another surface walks
+ * straight through it.
  */
 function collectEntryPoints(ctx: LintContext): StoryEntryPointScan {
-    const scan = scanStoryEntryPoints(
-        blueprintDocumentGraphCarriers(ctx.blueprintDocument),
-        (storyId, sceneId) => Boolean(ctx.stories.find(story => story.id === storyId)?.document.scenes[sceneId]),
-    );
-    for (const entry of ctx.stories) {
-        const entrySceneId = entry.document.entrySceneId;
-        if (!entrySceneId || !entry.document.scenes[entrySceneId]) {
-            continue;
-        }
-        const scenes = scan.byStory.get(entry.id);
-        if (scenes) {
-            scenes.add(entrySceneId);
-        } else {
-            scan.byStory.set(entry.id, new Set([entrySceneId]));
-        }
-    }
-    return scan;
+    return scanProjectStoryEntryPoints(ctx.stories, ctx.blueprintDocument);
 }
 
 export const STORY_LINT_RULES: readonly LintRule[] = [

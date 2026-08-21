@@ -7,7 +7,7 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { formatSceneFlowArmLabel } from "./SceneFlowBranchNode";
 import type { SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel";
-import { MAX_ROUTES, type SceneFlowRoute, type SceneFlowRouteMap } from "./sceneFlowRoutes";
+import { MAX_ROUTES, type SceneFlowEnding, type SceneFlowRoute, type SceneFlowRouteMap } from "./sceneFlowRoutes";
 import {
     foldRouteVariableValue,
     type SceneFlowDelta,
@@ -32,7 +32,12 @@ const ROUTE_LABEL_MAX_CHARS = 48;
  * would need two colours, and the second colour is the one nobody can name.
  */
 export type SceneFlowRouteSelection =
-    | { kind: "ending"; sceneId: StorySceneId }
+    /**
+     * One row of the ending list: a {@link SceneFlowEnding.id}, or the scene id of a group of paths
+     * that stop somewhere without reaching an ending. Both are rows of the same list, so they share
+     * a variant rather than making every consumer ask which sort of row was clicked.
+     */
+    | { kind: "ending"; endingId: string }
     | { kind: "route"; routeId: string }
     | { kind: "unreachableEndings" }
     | { kind: "deadBranches" };
@@ -115,14 +120,23 @@ export function formatSceneFlowVariableChip(
     });
 }
 
-/** A scene paths stop in, and the paths that stop there. */
+/** One row of the list: an ending, or a place paths stop without reaching one. */
 type SceneFlowRouteGroup = {
+    /** {@link SceneFlowEnding.id} for an ending, the scene id for a group of paths that stop. */
+    key: string;
     sceneId: StorySceneId;
+    /** The ending's name, or the scene's when the row is not an ending. */
     name: string;
+    /**
+     * The scene this ending is in, when {@link name} is the ending's own name rather than the
+     * scene's. Null otherwise, so the row does not print the same word twice — and several endings
+     * in one scene each say where they are, which is the whole reason they are separate rows.
+     */
+    sceneName: string | null;
     routes: SceneFlowRoute[];
     /**
-     * A terminal scene of the graph. `false` means paths merely *stop* here — cut at a cycle, or an
-     * option that ran out of continuations — while the scene still has other exits.
+     * An ending. `false` means paths merely *stop* here — cut at a cycle, an option that ran out of
+     * continuations, or a scene with no way out in a story that marks its endings elsewhere.
      */
     isEnding: boolean;
     /** Only meaningful for an ending: reachable from the entry scene. */
@@ -135,12 +149,21 @@ const ROW_CLASS = "flex w-full min-w-0 cursor-default items-center gap-1.5 px-2 
 function selectionKey(selection: SceneFlowRouteSelection): string {
     switch (selection.kind) {
         case "ending":
-            return `ending:${selection.sceneId}`;
+            return `ending:${selection.endingId}`;
         case "route":
             return `route:${selection.routeId}`;
         default:
             return selection.kind;
     }
+}
+
+/**
+ * The list row a route belongs to: the ending it reached, or the scene it stopped in.
+ *
+ * One function so the rail's grouping and the tab's highlight cannot key the same route two ways.
+ */
+export function sceneFlowRouteGroupKey(route: SceneFlowRoute): string {
+    return route.endingId ?? route.endingSceneId;
 }
 
 /**
@@ -170,49 +193,77 @@ export function SceneFlowRouteRail({
     }, [graph]);
 
     const groups = useMemo<SceneFlowRouteGroup[]>(() => {
-        const routesBySceneId = new Map<StorySceneId, SceneFlowRoute[]>();
+        const routesByKey = new Map<string, SceneFlowRoute[]>();
         for (const route of routeMap.routes) {
-            const list = routesBySceneId.get(route.endingSceneId);
+            const key = sceneFlowRouteGroupKey(route);
+            const list = routesByKey.get(key);
             if (list) {
                 list.push(route);
             } else {
-                routesBySceneId.set(route.endingSceneId, [route]);
+                routesByKey.set(key, [route]);
             }
         }
-        const endingBySceneId = new Map(routeMap.endings.map(ending => [ending.sceneId, ending]));
+        const endingsBySceneId = new Map<StorySceneId, SceneFlowEnding[]>();
+        for (const ending of routeMap.endings) {
+            const list = endingsBySceneId.get(ending.sceneId);
+            if (list) {
+                list.push(ending);
+            } else {
+                endingsBySceneId.set(ending.sceneId, [ending]);
+            }
+        }
 
         // Walked in the graph's scene order rather than the routes' discovery order, so re-opening
-        // the tab lists the endings the way the outline does. Names come from the document: a route
-        // can stop in a scene that is NOT in `endings`, and a lookup there would miss it.
+        // the tab lists the endings the way the outline does, and the several endings of one scene
+        // sit together. Scene names come from the document: a route can stop in a scene that holds
+        // no ending at all, and a lookup into `endings` would miss it.
         const result: SceneFlowRouteGroup[] = [];
         for (const node of graph.nodes) {
-            const ending = endingBySceneId.get(node.sceneId);
-            const routes = routesBySceneId.get(node.sceneId);
-            if (!ending && !routes) {
-                continue;
+            const sceneName = document.scenes[node.sceneId]?.name ?? node.name;
+            const endings = endingsBySceneId.get(node.sceneId) ?? [];
+            for (const ending of endings) {
+                const authored = ending.source === "authored";
+                result.push({
+                    key: ending.id,
+                    sceneId: node.sceneId,
+                    name: authored ? ending.name || t("story.flow.route.endingUnnamed") : sceneName,
+                    sceneName: authored ? sceneName : null,
+                    routes: routesByKey.get(ending.id) ?? [],
+                    isEnding: true,
+                    reachable: ending.reachable,
+                });
             }
-            result.push({
-                sceneId: node.sceneId,
-                name: document.scenes[node.sceneId]?.name ?? node.name,
-                routes: routes ?? [],
-                isEnding: Boolean(ending),
-                reachable: ending ? ending.reachable : true,
-            });
+            // Paths that stop in this scene without reaching an ending. Its own row, below the
+            // scene's endings, because "some ways through end here and some just run out" is a
+            // sentence the rail has to be able to say about one scene.
+            const stopped = routesByKey.get(node.sceneId);
+            if (stopped && !endings.some(ending => ending.id === node.sceneId)) {
+                result.push({
+                    key: node.sceneId,
+                    sceneId: node.sceneId,
+                    name: sceneName,
+                    sceneName: null,
+                    routes: stopped,
+                    isEnding: false,
+                    reachable: true,
+                });
+            }
         }
         return result;
-    }, [document, graph, routeMap]);
+    }, [document, graph, routeMap, t]);
 
     /**
-     * The ending whose routes are listed. Derived from the selection rather than held as its own
-     * state: selecting a route inside an ending must not fold the ending shut under it, and a
-     * document reload that drops the selection has to drop the open row with it.
+     * The row whose routes are listed. Derived from the selection rather than held as its own
+     * state: selecting a route inside a row must not fold the row shut under it, and a document
+     * reload that drops the selection has to drop the open row with it.
      */
-    const openSceneId = useMemo<StorySceneId | null>(() => {
+    const openKey = useMemo<string | null>(() => {
         if (selection?.kind === "ending") {
-            return selection.sceneId;
+            return selection.endingId;
         }
         if (selection?.kind === "route") {
-            return routeMap.routes.find(route => route.id === selection.routeId)?.endingSceneId ?? null;
+            const route = routeMap.routes.find(item => item.id === selection.routeId);
+            return route ? sceneFlowRouteGroupKey(route) : null;
         }
         return null;
     }, [routeMap, selection]);
@@ -267,11 +318,11 @@ export function SceneFlowRouteRail({
                 )}
 
                 {groups.map(group => {
-                    const open = openSceneId === group.sceneId;
-                    const selected = selection?.kind === "ending" && selection.sceneId === group.sceneId;
+                    const open = openKey === group.key;
+                    const selected = selection?.kind === "ending" && selection.endingId === group.key;
                     const range = focus?.ranges.get(group.sceneId);
                     return (
-                        <div key={group.sceneId}>
+                        <div key={group.key}>
                             <button
                                 type="button"
                                 className={cn(
@@ -280,7 +331,7 @@ export function SceneFlowRouteRail({
                                     selected ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill-subtle hover:text-fg",
                                 )}
                                 aria-expanded={open}
-                                onClick={() => toggle({ kind: "ending", sceneId: group.sceneId })}
+                                onClick={() => toggle({ kind: "ending", endingId: group.key })}
                             >
                                 {open
                                     ? <ChevronDown className="mt-px h-3 w-3 shrink-0" />
@@ -303,6 +354,11 @@ export function SceneFlowRouteRail({
                                             </span>
                                         )}
                                     </span>
+                                    {group.sceneName && (
+                                        <span className="truncate text-fg-subtle" data-tip={group.sceneName}>
+                                            {group.sceneName}
+                                        </span>
+                                    )}
                                     {focus && range && (
                                         <span
                                             className="truncate text-fg-subtle tabular-nums"
