@@ -111,7 +111,7 @@ export function StoryCommandCandidateMenu(props: {
     return createPortal(
         <div
             ref={listRef}
-            className="z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
+            className="nl-no-scrollbar z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
             style={props.frame.style}
             role="listbox"
             onMouseDown={event => {

@@ -7,6 +7,7 @@ import { RuntimeCrashBoundary } from "./RuntimeCrashBoundary";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { setRuntimeCrashPolicy } from "./crashPolicy";
 import { installRuntimeErrorHooks } from "./runtimeErrorHooks";
+import { installScrollbarAutoHide } from "@/styles/scrollbarAutoHide";
 
 // Before anything else, including the missing-root check below: what this build does about a crash
 // has to be settled before there is any chance of one. On the desktop shell the answer arrives as
@@ -17,6 +18,10 @@ setRuntimeCrashPolicy(getGameRuntimeBridge()?.crashPolicy ?? undefined);
 // Ahead of React, so a throw during boot is observed too - that is the window in which a broken
 // pack most often dies.
 installRuntimeErrorHooks();
+
+// The JS half of the scrollbar rules in styles.css, which this runtime shares with Studio: without
+// it no scroller the game draws - a saves list, a long log - ever shows a thumb.
+installScrollbarAutoHide();
 
 const root = document.getElementById("root");
 
