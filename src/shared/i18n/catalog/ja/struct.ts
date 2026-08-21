@@ -16,6 +16,7 @@ export const struct = {
         none: "項目なし",
         engineOwned: "このリストの項目はエンジンから提供されます",
         picker: "項目",
+        visiblePicker: "表示の項目",
         pickerEmpty: "項目なし",
     },
     row: {

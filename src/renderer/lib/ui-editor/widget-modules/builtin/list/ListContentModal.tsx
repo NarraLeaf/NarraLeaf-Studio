@@ -214,16 +214,21 @@ export function ListContentModal(props: {
                                     ariaLabel={t("struct.field.type")}
                                     onChange={value => retypeField(field.id, String(value) as UIStructFieldType)}
                                 />
-                                <IconButton
-                                    size="sm"
-                                    variant="ghost"
-                                    aria-label={t("struct.field.remove")}
-                                    disabled={readOnly || fieldsLocked}
-                                    data-tip={readOnly ? freeze.reason : t("struct.field.remove")}
-                                    onClick={() => removeField(field.id)}
-                                >
-                                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
-                                </IconButton>
+                                {/* Absent rather than disabled on an engine-owned shape, for the same
+                                    reason the add button is: a control that can never do anything is
+                                    a question the author has to answer every time they read the row. */}
+                                {fieldsLocked ? null : (
+                                    <IconButton
+                                        size="sm"
+                                        variant="ghost"
+                                        aria-label={t("struct.field.remove")}
+                                        disabled={readOnly}
+                                        data-tip={readOnly ? freeze.reason : t("struct.field.remove")}
+                                        onClick={() => removeField(field.id)}
+                                    >
+                                        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+                                    </IconButton>
+                                )}
                             </div>
                         ))}
                         {fieldsLocked ? null : (

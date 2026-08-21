@@ -23,6 +23,7 @@ export const struct = {
         none: "No fields",
         engineOwned: "This list receives its fields from the engine.",
         picker: "Field",
+        visiblePicker: "Visible from field",
         pickerEmpty: "No field",
     },
     row: {
