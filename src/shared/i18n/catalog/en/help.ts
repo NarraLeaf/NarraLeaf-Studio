@@ -75,6 +75,7 @@ export const help = {
                 + "Build produces the files delivered to players. Dev Mode and Preview take seconds; a build "
                 + "takes minutes.\n"
                 + "\n"
+                + "- Dev Mode opens the line that is playing in the story editor, from its debug menu.\n"
                 + "- Run starts the mode chosen last.\n"
                 + "- Preview and Build are unavailable while the project is frozen. Dev Mode still runs, and "
                 + "while an old version is open it runs that version.",

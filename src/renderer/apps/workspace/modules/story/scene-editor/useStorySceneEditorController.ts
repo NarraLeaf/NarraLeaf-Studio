@@ -871,6 +871,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // switches the ticks holding it back on, so the target is actually visible and selected rather
         // than an invisible selection on a hidden row.
         revealRowInFilter(block);
+        // And over a fold, which hides a row just as completely. A choice the author collapsed is the
+        // likeliest thing standing between a navigation and its target, and leaving it shut made this
+        // function claim a reveal it had not performed.
+        setCollapsedBlockIds(previous => {
+            if (previous.size === 0) {
+                return previous;
+            }
+            let next: Set<StoryBlockId> | null = null;
+            const walked = new Set<StoryBlockId>();
+            let parentId = block.parentId;
+            // Guarded rather than trusted: a corrupted `parentId` cycle would otherwise hang the tab.
+            while (parentId && !walked.has(parentId)) {
+                walked.add(parentId);
+                if (previous.has(parentId)) {
+                    next ??= new Set(previous);
+                    next.delete(parentId);
+                }
+                parentId = scene?.blocks[parentId]?.parentId ?? null;
+            }
+            return next ?? previous;
+        });
         setActiveBlockId(blockId);
         setSelectedBlockIds(new Set([blockId]));
         selectionAnchorRef.current = blockId;

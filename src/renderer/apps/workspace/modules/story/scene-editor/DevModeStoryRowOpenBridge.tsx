@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useRegistry } from "@/apps/workspace/registry";
@@ -20,10 +20,16 @@ import { createStorySceneEditorTab } from "./openStorySceneEditorTab";
  * The deep link is the scene editor's own `activeBlockId` — the same affordance search jumps ride,
  * so an error lands the author exactly where a search hit would, and re-opening an already-open tab
  * replaces its payload and re-fires the link.
+ *
+ * Each request carries its own `revealToken` because this is the one caller that asks for the same
+ * row twice: the play head sits on a line for as long as the author reads it, and "take me back to
+ * the line that is playing" has to work the second time it is asked.
  */
 export function DevModeStoryRowOpenBridge(): null {
     const { openEditorTab } = useRegistry();
     const { context } = useWorkspace();
+    /** Counted rather than timestamped: two requests inside one millisecond are still two requests. */
+    const requestSeqRef = useRef(0);
 
     useEffect(() => {
         const token = getInterface().devMode.onStoryRowOpen(({ storyId, sceneId, blockId }) => {
@@ -41,9 +47,10 @@ export function DevModeStoryRowOpenBridge(): null {
             if (!document?.scenes[sceneId]) {
                 return;
             }
+            requestSeqRef.current += 1;
             openEditorTab(
                 createStorySceneEditorTab(
-                    { storyId, sceneId, activeBlockId: blockId },
+                    { storyId, sceneId, activeBlockId: blockId, revealToken: requestSeqRef.current },
                     getStorySceneName(document.scenes, sceneId),
                 ),
             );
