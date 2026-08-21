@@ -221,6 +221,11 @@ export class StudioDebugServer {
                     windowType: window.getWindowType(),
                     title: safeTitle(window),
                     url,
+                    // Existing is not the same as on screen: a launcher held back for a project
+                    // being opened, and a window that has not finished its first render, are both
+                    // here and neither is visible. Without this the only way to tell them apart is
+                    // to look at the screen.
+                    visible: isVisible(window),
                 };
             });
     }
@@ -310,6 +315,14 @@ function safeTitle(window: AppWindow): string {
         return window.getTitle();
     } catch {
         return "";
+    }
+}
+
+function isVisible(window: AppWindow): boolean {
+    try {
+        return window.win.isVisible();
+    } catch {
+        return false;
     }
 }
 
