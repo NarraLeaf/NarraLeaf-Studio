@@ -250,7 +250,7 @@ function RuntimeIssueEntry(props: {
                 </div>
             ) : null}
             <div className="text-2xs leading-snug opacity-90">{issue.message}</div>
-            {openFailed ? <div className="text-2xs opacity-70">{t("devMode.issues.openFailed")}</div> : null}
+            {openFailed ? <div className="text-2xs opacity-70">{t("devMode.openInStudioFailed")}</div> : null}
             {issue.stack ? (
                 <div>
                     <button

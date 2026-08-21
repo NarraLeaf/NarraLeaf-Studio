@@ -11,6 +11,7 @@ import {
     formatStoryVariableDeltaChip,
     formatStoryVariableRangeChip,
     listDeclaredStoryVariables,
+    locatePlayHeadRow,
     projectExecutionContext,
     projectSceneTimeline,
     projectStoryTrailHighlight,
@@ -170,6 +171,55 @@ describe("resolveSceneIdForBlock", () => {
         // Before the first action, and for an engine action bound to no Studio row.
         expect(resolveSceneIdForBlock(document, null, "entry")).toBe("entry");
         expect(resolveSceneIdForBlock(document, "gone", "entry")).toBe("entry");
+    });
+});
+
+describe("locatePlayHeadRow", () => {
+    const documents = {
+        story: {
+            scenes: {
+                entry: { blocks: { a: narration("a", "A") } },
+                elsewhere: { blocks: { b: narration("b", "B") } },
+            },
+        } as unknown as StoryDocument,
+    };
+    const bindings: NlrActionIdBinding[] = [
+        { staticId: "act-a", blockId: "a" } as NlrActionIdBinding,
+        { staticId: "act-b", blockId: "b" } as NlrActionIdBinding,
+    ];
+    const context = { storyId: "story", sceneId: "entry" as StorySceneId };
+
+    it("names the scene that owns the row, not the one the run was launched into", () => {
+        // The whole reason the highlight and the "open in Studio" click share this function: the
+        // editor matches on the scene, so a row carried under the launch scene after a jump is a row
+        // it cannot find.
+        expect(locatePlayHeadRow(documents, context, bindings, "act-b")).toEqual({
+            storyId: "story",
+            sceneId: "elsewhere",
+            blockId: "b",
+        });
+        expect(locatePlayHeadRow(documents, context, bindings, "act-a")).toEqual({
+            storyId: "story",
+            sceneId: "entry",
+            blockId: "a",
+        });
+    });
+
+    it("has nothing to point at with no story, no action, or an action that is not a row", () => {
+        expect(locatePlayHeadRow(documents, null, bindings, "act-a")).toBeNull();
+        expect(locatePlayHeadRow(documents, context, bindings, null)).toBeNull();
+        // Engine actions the compiler emits on its own are bound to no Studio block.
+        expect(locatePlayHeadRow(documents, context, bindings, "act-internal")).toBeNull();
+    });
+
+    it("falls back to the launch scene when the bundle carries no document for the story", () => {
+        // A bundle without a story library still runs; the row is still worth forwarding, and the
+        // launch scene is the only answer available.
+        expect(locatePlayHeadRow(undefined, context, bindings, "act-b")).toEqual({
+            storyId: "story",
+            sceneId: "entry",
+            blockId: "b",
+        });
     });
 });
 
