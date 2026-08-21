@@ -32,7 +32,7 @@ import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
 import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
-import { isMainDevMode, parseMainCommandLine } from "./commandLine";
+import { isMainDevMode, parseMainCommandLine, type BuildCommandLineOptions } from "./commandLine";
 import {
     EXPERIMENTAL_FLAG,
     EXPERIMENTAL_OFF,
@@ -716,6 +716,21 @@ export class BaseApp {
      */
     public wantsLauncherOnStartup(): boolean {
         return this.commandLine.launcher;
+    }
+
+    /**
+     * What `--build` asked for, or null when this launch asked for no build.
+     *
+     * Not dev-gated, unlike `--project` beside it, and the reasoning is in
+     * {@link MainCommandLineOptions.build}: a build agent runs an installed Studio, and this flag
+     * opens no interface for a stray argument to redirect.
+     *
+     * Answers the options whenever `--build` appeared *at all*, including when what followed it was
+     * wrong. A launch that meant to build and mistyped a flag has to end as a bad invocation, not
+     * on the home screen with nobody there to read it.
+     */
+    public getCommandLineBuild(): BuildCommandLineOptions | null {
+        return this.commandLine.build.requested ? this.commandLine.build : null;
     }
 
     public getAppEntry(type: WindowAppType): string {

@@ -50,11 +50,19 @@ function describe(projects: readonly RecentlyOpenedProject[]): string {
  * Nothing here touches the disk beyond `resolveDirectory`, and nothing here opens anything - a
  * resolution is a *claim about which project was meant*, and whether that project can actually be
  * loaded is the workspace's answer to give.
+ *
+ * `flag` is only the name every failure quotes. `--build` takes a project the same way `--project`
+ * does and has to fail the same way, and one resolver saying `--project` at a caller who typed
+ * something else sends them looking for a flag they never used.
  */
-export function resolveStartupProject(selector: string, lookup: StartupProjectLookup): StartupProjectResolution {
+export function resolveStartupProject(
+    selector: string,
+    lookup: StartupProjectLookup,
+    flag: string = "--project",
+): StartupProjectResolution {
     const wanted = selector.trim();
     if (wanted === "") {
-        return { ok: false, reason: "--project was given an empty value" };
+        return { ok: false, reason: `${flag} was given an empty value` };
     }
 
     const directory = lookup.resolveDirectory(wanted);
@@ -72,7 +80,7 @@ export function resolveStartupProject(selector: string, lookup: StartupProjectLo
     if (exact.length > 1) {
         return {
             ok: false,
-            reason: `--project "${wanted}" matches ${exact.length} recent projects `
+            reason: `${flag} "${wanted}" matches ${exact.length} recent projects `
                 + `(${exact.map(project => project.path).join(", ")}). Pass the path instead.`,
         };
     }
@@ -84,13 +92,13 @@ export function resolveStartupProject(selector: string, lookup: StartupProjectLo
     if (partial.length > 1) {
         return {
             ok: false,
-            reason: `--project "${wanted}" matches ${partial.length} recent projects `
+            reason: `${flag} "${wanted}" matches ${partial.length} recent projects `
                 + `(${partial.map(project => project.path).join(", ")}). Pass the path instead.`,
         };
     }
 
     return {
         ok: false,
-        reason: `--project "${wanted}" is not a directory and matches no recent project (${describe(projects)})`,
+        reason: `${flag} "${wanted}" is not a directory and matches no recent project (${describe(projects)})`,
     };
 }
