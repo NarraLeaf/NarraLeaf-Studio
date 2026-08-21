@@ -157,6 +157,7 @@ export const launcher = {
             reopen: "重新打开",
             resolved: "已解决",
             failed: "备注未发送。",
+            unavailable: "无法读取该项目的讨论。",
         },
         forget: {
             action: "从这台服务器移除",

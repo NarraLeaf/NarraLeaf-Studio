@@ -413,6 +413,34 @@ describe("the conversations", () => {
         expect(row).toContain("ada");
     });
 
+    it("keeps what it read when the server stops answering, and says it could not refresh", async () => {
+        // Measured on a real server: a restart used to turn two conversations into "nobody
+        // has said anything", which is a different claim entirely.
+        bridge.capabilities = ["session", "comments"];
+        sessionAnswers({ "threads.list": { threads: [thread()] } });
+        open({ detail: detail({ readable: false }), page: null });
+        await waitFor(() => {
+            expect(document.querySelector("[data-discussion-thread='t1']")).not.toBeNull();
+        });
+
+        // The next read fails, as it does the moment a server goes away.
+        bridge.teamCall.mockImplementation(() =>
+            Promise.resolve({
+                success: true,
+                data: { ok: false, problem: { kind: "offline", detail: "ECONNREFUSED" } },
+            }),
+        );
+        fireEvent.click(document.querySelector("[data-discussion-action='settle']") as HTMLElement);
+
+        await waitFor(() => {
+            expect(document.querySelector("[data-discussion-unread]")).not.toBeNull();
+        });
+        // Still there, and the empty state is nowhere near it.
+        expect(document.querySelector("[data-discussion-thread='t1']")).not.toBeNull();
+        expect(document.querySelector("[data-project-discussion]")?.textContent ?? "")
+            .not.toContain("discussion.empty");
+    });
+
     it("writes a note about the project itself, anchored to nothing", async () => {
         bridge.capabilities = ["session", "comments"];
         sessionAnswers({
