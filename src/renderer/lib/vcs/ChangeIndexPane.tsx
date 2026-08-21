@@ -157,7 +157,12 @@ function ChangeIndexRowView({
         <button
             type="button"
             onClick={onSelect}
-            data-tip={row.path}
+            // The path, plus - for a document that is stored as several files - how many of them
+            // this one row stands for. In the tooltip rather than on the row, because a row that
+            // grows with what it stands for turns the index back into a report.
+            data-tip={row.memberCount > 0
+                ? `${row.path} · ${translator.tn("documentDiff.shell.setFiles", row.memberCount)}`
+                : row.path}
             data-change-index-row={row.path}
             className={cn(
                 "flex w-full items-baseline gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-2 py-1 pl-6 text-left",

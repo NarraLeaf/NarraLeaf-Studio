@@ -1456,6 +1456,10 @@ async function copyWeatherClips(input: {
         collectWeatherSpecs(
             Object.values(input.bundle.storyLibrary?.documents ?? {}),
             input.bundle.ui.uidoc,
+            // The bundle's copy of the project's frame rate, which is also what the shipped game
+            // will compute its ids from. Taking it from anywhere else is how a package comes to
+            // carry a clip under an id nothing in it ever asks for.
+            input.bundle.vfx,
         ).map(weatherClipAssetId),
     );
     for (const clip of input.clips) {

@@ -2,18 +2,31 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WEATHER_FPS, type WeatherBakeSpec } from "@shared/weather/model";
+import type { WeatherBakeSpec } from "@shared/weather/model";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
-import { parseBakeFrame, startWeatherBake, weatherBakeArgs, type BakeChildProcess, type BakeSpawn } from "./weatherBake";
+import {
+    parseBakeFrame,
+    startWeatherBake,
+    weatherBakeArgs,
+    type BakeChildProcess,
+    type BakeSpawn,
+    type WeatherBakeResult,
+} from "./weatherBake";
 import { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
-import { WeatherBakeManager } from "./WeatherBakeManager";
+import { WeatherBakeManager, type WeatherBakeStarter } from "./WeatherBakeManager";
 
-/** Small and short: these tests are about the plumbing, and every frame is really rendered. */
+/**
+ * Small and short: these tests are about the plumbing, and every frame is really rendered.
+ *
+ * The rate is deliberately not the project default. The rate is the author's now, so a baker that
+ * went back to a constant would still agree with a spec that stated 30 - and would then encode every
+ * project's effects at the wrong speed while these tests stayed green.
+ */
 const SPEC: WeatherBakeSpec = {
     ref: { seed: "snow" },
     width: 64,
     height: 36,
-    fps: WEATHER_FPS,
+    fps: 48,
     frames: 4,
 };
 
@@ -100,7 +113,8 @@ describe("weatherBakeArgs", () => {
         // same buffer, and a mismatch here would encode a sheared picture rather than fail.
         expect(args[args.indexOf("-pix_fmt") + 1]).toBe("rgba");
         expect(args).toContain("64x36");
-        expect(args[args.indexOf("-r") + 1]).toBe(String(WEATHER_FPS));
+        // The spec's rate, not a constant: `SPEC.fps` is 48 precisely so this cannot pass by accident.
+        expect(args[args.indexOf("-r") + 1]).toBe("48");
     });
 
     it("encodes with the project's own VP9 settings", () => {
@@ -279,13 +293,25 @@ describe("startWeatherBake", () => {
 describe("WeatherBakeManager", () => {
     let dir = "";
     let toolDir = "";
-    const app = { isPackaged: () => false, resolveResource: (p: string) => p };
+    // `getDistDir` is where the real manager finds its worker; these tests hand it a bake instead,
+    // so nothing ever reads it.
+    const app = { isPackaged: () => false, resolveResource: (p: string) => p, getDistDir: () => "" };
     /**
-     * The resolver looks for a real file, so the tests give it one. It is never executed - the spawn
+     * The resolver looks for a real file, so the tests give it one. It is never executed - the bake
      * is injected - but pointing the override at a directory that genuinely holds the binary is what
      * keeps "unavailable" a distinct outcome the last test can still reach.
      */
     const withTool = () => ({ env: { NLS_FFMPEG_DIR: toolDir } });
+    /**
+     * The bake the manager would fork, run here instead.
+     *
+     * Production forks a utility process because drawing frames on the main process makes the app
+     * answer 200x slower; a test has no main process to protect, and injecting at the seam keeps
+     * these cases about what the MANAGER does - dedupe, cache, queue, cancel.
+     */
+    const inThisProcess = (spawnProcess: BakeSpawn): WeatherBakeStarter =>
+        (binaryPath, spec, targetPath, options) =>
+            startWeatherBake(binaryPath, spec, targetPath, { ...options, spawnProcess });
 
     beforeEach(async () => {
         dir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-weather-project-"));
@@ -311,7 +337,7 @@ describe("WeatherBakeManager", () => {
         const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const outcome = await manager.ensure(
             { projectRoot: dir, specs: [SPEC, { ...SPEC }, { ...SPEC, ref: { seed: "snow", params: {} } }], priority: "blocking" },
-            { spawnProcess: encoder.spawnProcess, ...withTool() },
+            { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
         expect(spawns).toBe(1);
@@ -329,7 +355,7 @@ describe("WeatherBakeManager", () => {
 
         const outcome = await manager.ensure(
             { projectRoot: dir, specs: [SPEC], priority: "blocking" },
-            { spawnProcess: encoder.spawnProcess, ...withTool() },
+            { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
         expect(spawns).toBe(0);
@@ -350,12 +376,42 @@ describe("WeatherBakeManager", () => {
 
         const outcome = await manager.ensure(
             { projectRoot: dir, specs: [SPEC, { ...SPEC, ref: { seed: "rain" } }], priority: "idle" },
-            { spawnProcess: encoder.spawnProcess, ...withTool() },
+            { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
         expect(outcome.paths.size).toBe(2);
         expect(kinds).toContain("weatherBake:running");
         // And the queue is empty afterwards - a task that never settles would hold every later one.
+        expect(scheduler.getOverview().active).toBeNull();
+    });
+
+    it("reaches a running bake's cancel, whatever is making it", async () => {
+        // The manager holds a handle to something in another process now, so "stop" has to travel:
+        // the scheduler cancels the task, the task cancels the handle, and the outcome says
+        // cancelled rather than reporting a clip that was never written.
+        const scheduler = new StudioTaskScheduler();
+        const manager = new WeatherBakeManager(app, scheduler);
+        let stop = (): void => undefined;
+        let announceStart = (): void => undefined;
+        const startedOnce = new Promise<void>(resolve => { announceStart = resolve; });
+        const starter: WeatherBakeStarter = () => {
+            const result = new Promise<WeatherBakeResult>(resolve => {
+                stop = () => resolve({ status: "cancelled" });
+            });
+            announceStart();
+            return { result, cancel: () => stop() };
+        };
+
+        const pending = manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking" },
+            { startBake: starter, ...withTool() },
+        );
+        await startedOnce;
+        manager.cancel(SPEC);
+        const outcome = await pending;
+
+        expect(outcome.paths.size).toBe(0);
+        expect(outcome.failures.get(weatherBakeKey(SPEC))).toBe("cancelled");
         expect(scheduler.getOverview().active).toBeNull();
     });
 

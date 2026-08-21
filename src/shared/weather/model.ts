@@ -289,7 +289,15 @@ export type WeatherBakeSpec = {
  */
 export const WEATHER_LOOP_SECONDS = 12;
 
-export const WEATHER_FPS = 30;
+/*
+ * There is deliberately no frame-rate constant here.
+ *
+ * The rate is the project's (`app.vfx.frameRate`, see `@shared/types/vfx`) and reaches a bake
+ * through `weatherSpecForStage`, which is the one place that turns a seed into a spec. A constant
+ * beside the loop length would read as the answer and would be picked up by the next caller that
+ * needed a number, which is exactly how a preview and a bake come to disagree about what the same
+ * row looks like.
+ */
 
 /**
  * The ceiling a bake renders at.

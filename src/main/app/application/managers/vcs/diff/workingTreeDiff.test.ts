@@ -4,7 +4,7 @@ import {
     CONTENT_HEAD_READ_CEILING,
     DIFF_MOVE_CONFIRM_BYTE_CEILING,
     DIFF_PARSE_BYTE_CEILING,
-    DIFF_PATH_LIMIT,
+    DIFF_UNIT_LIMIT,
 } from "./documentDiff";
 import { diffWorkingTree, type WorkingTreeDiffSource } from "./workingTreeDiff";
 
@@ -226,18 +226,18 @@ describe("diffing the working tree against the last version", () => {
         expect(result.documents[0].diff.changes[0].label.key).toBe("documentDiff.opaque.unread");
     });
 
-    it("lists without reading past the path limit", async () => {
-        const files = Array.from({ length: DIFF_PATH_LIMIT + 3 }, (_, index) => fileChange(`editor/f${index}.json`, "modified"));
+    it("lists without reading past the document limit", async () => {
+        const files = Array.from({ length: DIFF_UNIT_LIMIT + 3 }, (_, index) => fileChange(`editor/f${index}.json`, "modified"));
         const { source, reads } = sourceOf(statusOf(files), {}, {});
         const onDegrade = vi.fn();
 
         const result = await diffWorkingTree(source, { onDegrade });
 
         expect(reads).toEqual([]);
-        expect(result.documents).toHaveLength(DIFF_PATH_LIMIT);
+        expect(result.documents).toHaveLength(DIFF_UNIT_LIMIT);
         expect(result.pathCount).toBe(files.length);
         expect(result.complete).toBe(false);
-        expect(onDegrade).toHaveBeenCalledWith(expect.stringContaining("path limit"));
+        expect(onDegrade).toHaveBeenCalledWith(expect.stringContaining("document limit"));
     });
 });
 

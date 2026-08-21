@@ -27,6 +27,7 @@ import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibi
 import type { SaveLocationConfiguration } from "@shared/utils/userDataLocation";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
+import type { VfxConfiguration } from "@shared/types/vfx";
 import type { VoiceConfiguration } from "@shared/types/voice";
 import type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
 import type { LintRuleSeverity } from "@/lib/lint/types";
@@ -51,6 +52,13 @@ export {
     normalizeVoiceConfiguration,
 } from "@shared/types/voice";
 export type { VoiceConfiguration, VoiceLocaleEntry } from "@shared/types/voice";
+export {
+    DEFAULT_VFX_CONFIGURATION,
+    DEFAULT_VFX_FRAME_RATE,
+    normalizeVfxConfiguration,
+    VFX_FRAME_RATES,
+} from "@shared/types/vfx";
+export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
 export {
     DEFAULT_WEB_OPTIMIZATION_CONFIGURATION,
     normalizeWebOptimizationConfiguration,
@@ -378,6 +386,13 @@ export type ProjectAppConfiguration = {
     localization?: LocalizationConfiguration;
     /** Game voice-over setup (see @shared/types/voice); absent until configured. */
     voice?: VoiceConfiguration;
+    /**
+     * How the screen effects Studio bakes are made (see @shared/types/vfx); absent until configured.
+     *
+     * Absent has to keep meaning 30, because the rate is part of the identity of every clip already
+     * baked for every existing project - see `weatherBakeDescriptor`.
+     */
+    vfx?: VfxConfiguration;
     /** Asset-protection policy applied at pack time; absent until configured. */
     security?: SecurityConfiguration;
     /** What the shipped game does when it stops working; absent until configured. */
