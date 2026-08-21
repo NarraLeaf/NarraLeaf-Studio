@@ -224,10 +224,10 @@ function RuntimeIssueEntry(props: {
                                 tone.button,
                             )}
                             onClick={openInStudio}
-                            data-tip={t("devMode.issues.openInStudio")}
+                            data-tip={t("devMode.openInStudio")}
                         >
                             <ExternalLink className="h-3 w-3" aria-hidden />
-                            {t("devMode.issues.openInStudio")}
+                            {t("devMode.openInStudio")}
                         </button>
                     ) : null}
                     <button

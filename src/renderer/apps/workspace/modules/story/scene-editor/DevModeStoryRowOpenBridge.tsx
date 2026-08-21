@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useRegistry } from "@/apps/workspace/registry";
@@ -7,6 +7,7 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import type { StoryDocument } from "@shared/types/story";
 import { createStorySceneEditorTab } from "./openStorySceneEditorTab";
+import { nextStoryRevealToken } from "./storySceneEditorTabId";
 
 /**
  * "Open this row in Studio", from the Dev Mode error banner: opens the scene editor on the row that
@@ -28,8 +29,6 @@ import { createStorySceneEditorTab } from "./openStorySceneEditorTab";
 export function DevModeStoryRowOpenBridge(): null {
     const { openEditorTab } = useRegistry();
     const { context } = useWorkspace();
-    /** Counted rather than timestamped: two requests inside one millisecond are still two requests. */
-    const requestSeqRef = useRef(0);
 
     useEffect(() => {
         const token = getInterface().devMode.onStoryRowOpen(({ storyId, sceneId, blockId }) => {
@@ -47,10 +46,9 @@ export function DevModeStoryRowOpenBridge(): null {
             if (!document?.scenes[sceneId]) {
                 return;
             }
-            requestSeqRef.current += 1;
             openEditorTab(
                 createStorySceneEditorTab(
-                    { storyId, sceneId, activeBlockId: blockId, revealToken: requestSeqRef.current },
+                    { storyId, sceneId, activeBlockId: blockId, revealToken: nextStoryRevealToken() },
                     getStorySceneName(document.scenes, sceneId),
                 ),
             );

@@ -3812,30 +3812,6 @@
       },
       "props": {
         "itemsBinding": null,
-        "previewItems": [
-          {
-            "id": "p0",
-            "nametag": "Speaker",
-            "text": "Line"
-          },
-          {
-            "id": "p1",
-            "nametag": "Speaker",
-            "text": "Line"
-          },
-          {
-            "id": "p2",
-            "nametag": "Speaker",
-            "text": "Line"
-          },
-          {
-            "id": "p3",
-            "nametag": "Speaker",
-            "text": "Line"
-          }
-        ],
-        "itemKeyPath": "id",
-        "previewCount": 5,
         "selectedIndex": -1,
         "itemGap": 8,
         "repeatDirection": "vertical",
@@ -3879,7 +3855,52 @@
           },
           "trackElementId": null,
           "thumbElementId": null
-        }
+        },
+        "placeholderCount": 5,
+        "itemStructId": "nl.historyEntry",
+        "itemKeyFieldId": "id",
+        "items": [
+          {
+            "id": "p0",
+            "type": "say",
+            "text": "Line",
+            "character": "Speaker",
+            "voice": "",
+            "voiceId": "",
+            "selected": "",
+            "isPending": false
+          },
+          {
+            "id": "p1",
+            "type": "say",
+            "text": "Line",
+            "character": "Speaker",
+            "voice": "",
+            "voiceId": "",
+            "selected": "",
+            "isPending": false
+          },
+          {
+            "id": "p2",
+            "type": "say",
+            "text": "Line",
+            "character": "Speaker",
+            "voice": "",
+            "voiceId": "",
+            "selected": "",
+            "isPending": false
+          },
+          {
+            "id": "p3",
+            "type": "say",
+            "text": "Line",
+            "character": "Speaker",
+            "voice": "",
+            "voiceId": "",
+            "selected": "",
+            "isPending": false
+          }
+        ]
       }
     },
     "e1e45cc5-f9bf-48da-b126-555dcc1abcf6": {
@@ -4449,9 +4470,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "244ce5e4-90b4-4ec1-9afb-b8376e92f195",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "character"
         }
       }
     },
@@ -4644,9 +4664,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "6a89cfda-3bde-4156-8d4c-23e0aa770962",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "text"
         }
       }
     },
@@ -44470,25 +44489,6 @@
       },
       "props": {
         "itemsBinding": null,
-        "previewItems": [
-          {
-            "text": "Choice A",
-            "index": 0,
-            "disabled": false
-          },
-          {
-            "text": "Choice B",
-            "index": 1,
-            "disabled": false
-          },
-          {
-            "text": "Choice C",
-            "index": 2,
-            "disabled": false
-          }
-        ],
-        "itemKeyPath": "index",
-        "previewCount": 4,
         "selectedIndex": -1,
         "itemGap": 18,
         "repeatDirection": "vertical",
@@ -44532,7 +44532,27 @@
           },
           "trackElementId": null,
           "thumbElementId": null
-        }
+        },
+        "placeholderCount": 4,
+        "itemStructId": "nl.choiceItem",
+        "itemKeyFieldId": "index",
+        "items": [
+          {
+            "text": "Choice A",
+            "index": 0,
+            "disabled": false
+          },
+          {
+            "text": "Choice B",
+            "index": 1,
+            "disabled": false
+          },
+          {
+            "text": "Choice C",
+            "index": 2,
+            "disabled": false
+          }
+        ]
       }
     },
     "39358c7e-403f-4248-b9a4-975e0f8a31ae": {
@@ -45472,9 +45492,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "cfdd4e6a-e983-4c1e-97b1-1851671262c3",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "text"
         }
       }
     },
@@ -47406,18 +47425,6 @@
       },
       "props": {
         "itemsBinding": null,
-        "previewItems": [
-          {
-            "id": "preview-1",
-            "message": "Notification message"
-          },
-          {
-            "id": "preview-2",
-            "message": "Another message"
-          }
-        ],
-        "itemKeyPath": "id",
-        "previewCount": 2,
         "selectedIndex": -1,
         "itemGap": 12,
         "repeatDirection": "vertical",
@@ -47461,7 +47468,20 @@
           },
           "trackElementId": null,
           "thumbElementId": null
-        }
+        },
+        "placeholderCount": 2,
+        "itemStructId": "nl.notificationItem",
+        "itemKeyFieldId": "id",
+        "items": [
+          {
+            "id": "preview-1",
+            "message": "Notification message"
+          },
+          {
+            "id": "preview-2",
+            "message": "Another message"
+          }
+        ]
       }
     },
     "0e33b3a5-ce67-49fe-8746-d778d07812fd": {
@@ -48401,9 +48421,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "e17db2d7-fd2d-43b7-8571-5724ff6b7dd1",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "message"
         }
       }
     },
@@ -69431,20 +69450,6 @@
           "kind": "pageProp",
           "key": "buttons"
         },
-        "previewItems": [
-          {
-            "text": "Return to title",
-            "index": 0,
-            "disabled": false
-          },
-          {
-            "text": "Cancel",
-            "index": 1,
-            "disabled": false
-          }
-        ],
-        "itemKeyPath": "index",
-        "previewCount": 2,
         "selectedIndex": -1,
         "itemGap": 20,
         "repeatDirection": "horizontal",
@@ -69488,7 +69493,22 @@
           },
           "trackElementId": null,
           "thumbElementId": null
-        }
+        },
+        "placeholderCount": 2,
+        "itemStructId": "nl.confirmButton",
+        "itemKeyFieldId": "index",
+        "items": [
+          {
+            "text": "Return to title",
+            "index": 0,
+            "disabled": false
+          },
+          {
+            "text": "Cancel",
+            "index": 1,
+            "disabled": false
+          }
+        ]
       }
     },
     "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75": {
@@ -70056,9 +70076,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "text"
         }
       }
     },
@@ -75159,22 +75178,6 @@
       },
       "props": {
         "itemsBinding": null,
-        "previewItems": [
-          {
-            "id": "p0"
-          },
-          {
-            "id": "p1"
-          },
-          {
-            "id": "p2"
-          },
-          {
-            "id": "p3"
-          }
-        ],
-        "itemKeyPath": "id",
-        "previewCount": 4,
         "selectedIndex": -1,
         "itemGap": 12,
         "repeatDirection": "horizontal",
@@ -75229,7 +75232,40 @@
           "effectBlend": "",
           "effectGlow": null,
           "effectFilter": null
-        }
+        },
+        "placeholderCount": 4,
+        "itemStructId": "nl.saveEntry",
+        "itemKeyFieldId": "id",
+        "items": [
+          {
+            "id": "p0",
+            "slot": 0,
+            "timestamp": 0,
+            "createdAt": 0,
+            "metadata": null
+          },
+          {
+            "id": "p1",
+            "slot": 1,
+            "timestamp": 0,
+            "createdAt": 0,
+            "metadata": null
+          },
+          {
+            "id": "p2",
+            "slot": 2,
+            "timestamp": 0,
+            "createdAt": 0,
+            "metadata": null
+          },
+          {
+            "id": "p3",
+            "slot": 3,
+            "timestamp": 0,
+            "createdAt": 0,
+            "metadata": null
+          }
+        ]
       }
     },
     "f4d2f822-fd4f-4f62-924d-0cfb8a945a23": {

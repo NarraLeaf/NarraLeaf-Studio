@@ -131,10 +131,10 @@ describe("blueprint list properties fallback", () => {
         expect(hostApi.widget.getListProperties("list").items).toEqual([{ id: "one" }, { id: "two" }]);
     });
 
-    it("falls back to preview items when the prop is missing or is not an array", () => {
+    it("falls back to the authored items when the prop is missing or is not an array", () => {
         const document = listDocument({
             itemsBinding: { kind: "pageProp", key: "chapters" },
-            previewItems: [{ id: "preview" }],
+            items: [{ id: "preview" }],
         });
         expect(hostApiFor(document, {}).widget.getListProperties("list").items).toEqual([{ id: "preview" }]);
         expect(hostApiFor(document, { chapters: "one" }).widget.getListProperties("list").items)

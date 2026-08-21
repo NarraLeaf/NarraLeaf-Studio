@@ -14,6 +14,18 @@ export function isActionMenuSubmenu(item: ActionMenuItem): item is ActionSubmenu
     return !isActionMenuSeparator(item) && !isActionMenuAction(item);
 }
 
+/**
+ * Is the row at `index`, on the panel `level` deep, one the open menus hang from?
+ *
+ * Passing THROUGH a row counts. Asking instead whether the row is the END of the open path meant a
+ * row stopped counting as open the moment something inside it opened - so the panel a second-level
+ * submenu had just been opened from unmounted, taking the submenu with it. Reachable by pointer and
+ * by Enter alike, and it read as the whole menu vanishing.
+ */
+export function isRowOnOpenPath(openPath: readonly number[], level: number, index: number): boolean {
+    return openPath.length > level && openPath[level] === index;
+}
+
 export function getActionGroupItems(group: ActionGroup): ActionMenuItem[] {
     return (group.items ?? group.actions ?? []) as ActionMenuItem[];
 }

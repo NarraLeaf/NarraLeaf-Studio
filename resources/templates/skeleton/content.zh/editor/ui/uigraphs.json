@@ -1309,12 +1309,9 @@
                     },
                     "n6": {
                       "id": "n6",
-                      "type": "blueprint.data.jsonGet",
+                      "type": "blueprint.list.getItemField",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "id"
+                        "field": "id"
                       },
                       "meta": {
                         "editorLayout": {
@@ -1473,18 +1470,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n5",
-                        "port": "item"
-                      },
-                      "to": {
                         "nodeId": "n6",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n6",
-                        "port": "result"
+                        "port": "value"
                       },
                       "to": {
                         "nodeId": "n7",
@@ -40717,173 +40704,6 @@
         },
         "bindings": {}
       },
-      "244ce5e4-90b4-4ec1-9afb-b8376e92f195": {
-        "id": "244ce5e4-90b4-4ec1-9afb-b8376e92f195",
-        "name": "说话人",
-        "owner": {
-          "kind": "widgetValue",
-          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-          "elementId": "0185d569-9ab3-460a-9f35-107e559c105c",
-          "propPath": "text"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "init"
-            ],
-            "events": {
-              "init": {
-                "id": "init",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.data.returnValue",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1120,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n3": {
-                      "id": "n3",
-                      "type": "blueprint.event.head.flush",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.list.getItemProps",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n5": {
-                      "id": "n5",
-                      "type": "blueprint.data.jsonGet",
-                      "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "character"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n6": {
-                      "id": "n6",
-                      "type": "blueprint.string.toString",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 840,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n2",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n4",
-                        "port": "props"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "value"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n6",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "value"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "meta": {
-          "valueType": "string"
-        }
-      },
       "45c92e37-0e00-4a52-8b7a-9e2b33ddb5dc": {
         "id": "45c92e37-0e00-4a52-8b7a-9e2b33ddb5dc",
         "name": "说话人",
@@ -40909,173 +40729,6 @@
           "functions": {}
         },
         "bindings": {}
-      },
-      "6a89cfda-3bde-4156-8d4c-23e0aa770962": {
-        "id": "6a89cfda-3bde-4156-8d4c-23e0aa770962",
-        "name": "台词",
-        "owner": {
-          "kind": "widgetValue",
-          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-          "elementId": "465a62e7-7bbc-475d-8002-929ada7ee70b",
-          "propPath": "text"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "init"
-            ],
-            "events": {
-              "init": {
-                "id": "init",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.data.returnValue",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1120,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n3": {
-                      "id": "n3",
-                      "type": "blueprint.event.head.flush",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.list.getItemProps",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n5": {
-                      "id": "n5",
-                      "type": "blueprint.data.jsonGet",
-                      "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "text"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n6": {
-                      "id": "n6",
-                      "type": "blueprint.string.toString",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 840,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n2",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n4",
-                        "port": "props"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "value"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n6",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "value"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "meta": {
-          "valueType": "string"
-        }
       },
       "50fbdd1e-06f3-4d44-880f-82a9f556ba75": {
         "id": "50fbdd1e-06f3-4d44-880f-82a9f556ba75",
@@ -41103,173 +40756,6 @@
         },
         "bindings": {}
       },
-      "cfdd4e6a-e983-4c1e-97b1-1851671262c3": {
-        "id": "cfdd4e6a-e983-4c1e-97b1-1851671262c3",
-        "name": "选项文字",
-        "owner": {
-          "kind": "widgetValue",
-          "surfaceId": "a656476f-829e-4b6f-94f9-87ad486a68d1",
-          "elementId": "f9043e4d-3de7-4163-812a-94ee3325ddcb",
-          "propPath": "text"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "init"
-            ],
-            "events": {
-              "init": {
-                "id": "init",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.data.returnValue",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1120,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n3": {
-                      "id": "n3",
-                      "type": "blueprint.event.head.flush",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.list.getItemProps",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n5": {
-                      "id": "n5",
-                      "type": "blueprint.data.jsonGet",
-                      "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "text"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n6": {
-                      "id": "n6",
-                      "type": "blueprint.string.toString",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 840,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n2",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n4",
-                        "port": "props"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "value"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n6",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "value"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "meta": {
-          "valueType": "string"
-        }
-      },
       "8ebf607c-0325-4d7d-9b48-53c06b1af432": {
         "id": "8ebf607c-0325-4d7d-9b48-53c06b1af432",
         "name": "选项文字",
@@ -41295,173 +40781,6 @@
           "functions": {}
         },
         "bindings": {}
-      },
-      "e17db2d7-fd2d-43b7-8571-5724ff6b7dd1": {
-        "id": "e17db2d7-fd2d-43b7-8571-5724ff6b7dd1",
-        "name": "消息",
-        "owner": {
-          "kind": "widgetValue",
-          "surfaceId": "f772ffc3-f108-40b9-a217-4fc652fb68d2",
-          "elementId": "30fbfd8c-116a-4d5a-aa0f-410c1730b5f2",
-          "propPath": "text"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "init"
-            ],
-            "events": {
-              "init": {
-                "id": "init",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.data.returnValue",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1120,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n3": {
-                      "id": "n3",
-                      "type": "blueprint.event.head.flush",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.list.getItemProps",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n5": {
-                      "id": "n5",
-                      "type": "blueprint.data.jsonGet",
-                      "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "message"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n6": {
-                      "id": "n6",
-                      "type": "blueprint.string.toString",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 840,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n2",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n4",
-                        "port": "props"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "value"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n6",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n1",
-                        "port": "value"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "meta": {
-          "valueType": "string"
-        }
       },
       "ea1e5660-2c2b-497c-8690-ad4fe29ba2b1": {
         "id": "ea1e5660-2c2b-497c-8690-ad4fe29ba2b1",
@@ -41542,131 +40861,6 @@
                           "path"
                         ],
                         "path": "message"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 600,
-                          "y": 140
-                        }
-                      }
-                    },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.data.returnValue",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 900,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n2",
-                        "port": "props"
-                      },
-                      "to": {
-                        "nodeId": "n3",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "value"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "meta": {
-          "valueType": "string"
-        }
-      },
-      "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79": {
-        "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79",
-        "name": "按钮文字",
-        "owner": {
-          "kind": "widgetValue",
-          "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
-          "elementId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76",
-          "propPath": "text"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "init"
-            ],
-            "events": {
-              "init": {
-                "id": "init",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.list.getItemProps",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 300,
-                          "y": 140
-                        }
-                      }
-                    },
-                    "n3": {
-                      "id": "n3",
-                      "type": "blueprint.data.jsonGet",
-                      "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "text"
                       },
                       "meta": {
                         "editorLayout": {
@@ -42932,12 +42126,9 @@
                     },
                     "n11": {
                       "id": "n11",
-                      "type": "blueprint.data.jsonGet",
+                      "type": "blueprint.list.getItemField",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "id"
+                        "field": "id"
                       },
                       "meta": {
                         "editorLayout": {
@@ -43117,18 +42308,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n10",
-                        "port": "item"
-                      },
-                      "to": {
                         "nodeId": "n11",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n11",
-                        "port": "result"
+                        "port": "value"
                       },
                       "to": {
                         "nodeId": "n12",
@@ -43476,25 +42657,11 @@
                         }
                       }
                     },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.list.getItemProps",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 260,
-                          "y": 260
-                        }
-                      }
-                    },
                     "n5": {
                       "id": "n5",
-                      "type": "blueprint.data.jsonGet",
+                      "type": "blueprint.list.getItemField",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "timestamp"
+                        "field": "timestamp"
                       },
                       "meta": {
                         "editorLayout": {
@@ -43562,18 +42729,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n4",
-                        "port": "props"
-                      },
-                      "to": {
                         "nodeId": "n5",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "result"
+                        "port": "value"
                       },
                       "to": {
                         "nodeId": "n6",
@@ -43756,25 +42913,11 @@
                         }
                       }
                     },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.list.getItemProps",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 260,
-                          "y": 260
-                        }
-                      }
-                    },
                     "n5": {
                       "id": "n5",
-                      "type": "blueprint.data.jsonGet",
+                      "type": "blueprint.list.getItemField",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "path"
-                        ],
-                        "path": "metadata"
+                        "field": "metadata"
                       },
                       "meta": {
                         "editorLayout": {
@@ -43834,18 +42977,8 @@
                     },
                     {
                       "from": {
-                        "nodeId": "n4",
-                        "port": "props"
-                      },
-                      "to": {
                         "nodeId": "n5",
-                        "port": "json"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "result"
+                        "port": "value"
                       },
                       "to": {
                         "nodeId": "n6",
@@ -49457,24 +48590,10 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetValue:8a607acd-95dd-4af7-9994-686c20891c18:0185d569-9ab3-460a-9f35-107e559c105c:text": {
-        "activeBlueprintId": "244ce5e4-90b4-4ec1-9afb-b8376e92f195",
-        "privateBlueprintIds": [
-          "244ce5e4-90b4-4ec1-9afb-b8376e92f195"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:0185d569-9ab3-460a-9f35-107e559c105c": {
         "activeBlueprintId": "45c92e37-0e00-4a52-8b7a-9e2b33ddb5dc",
         "privateBlueprintIds": [
           "45c92e37-0e00-4a52-8b7a-9e2b33ddb5dc"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetValue:8a607acd-95dd-4af7-9994-686c20891c18:465a62e7-7bbc-475d-8002-929ada7ee70b:text": {
-        "activeBlueprintId": "6a89cfda-3bde-4156-8d4c-23e0aa770962",
-        "privateBlueprintIds": [
-          "6a89cfda-3bde-4156-8d4c-23e0aa770962"
         ],
         "initializedFrontend": "visual"
       },
@@ -49485,24 +48604,10 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetValue:a656476f-829e-4b6f-94f9-87ad486a68d1:f9043e4d-3de7-4163-812a-94ee3325ddcb:text": {
-        "activeBlueprintId": "cfdd4e6a-e983-4c1e-97b1-1851671262c3",
-        "privateBlueprintIds": [
-          "cfdd4e6a-e983-4c1e-97b1-1851671262c3"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:a656476f-829e-4b6f-94f9-87ad486a68d1:f9043e4d-3de7-4163-812a-94ee3325ddcb": {
         "activeBlueprintId": "8ebf607c-0325-4d7d-9b48-53c06b1af432",
         "privateBlueprintIds": [
           "8ebf607c-0325-4d7d-9b48-53c06b1af432"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetValue:f772ffc3-f108-40b9-a217-4fc652fb68d2:30fbfd8c-116a-4d5a-aa0f-410c1730b5f2:text": {
-        "activeBlueprintId": "e17db2d7-fd2d-43b7-8571-5724ff6b7dd1",
-        "privateBlueprintIds": [
-          "e17db2d7-fd2d-43b7-8571-5724ff6b7dd1"
         ],
         "initializedFrontend": "visual"
       },
@@ -49531,13 +48636,6 @@
         "activeBlueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78",
         "privateBlueprintIds": [
           "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e78"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetValue:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70:b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76:text": {
-        "activeBlueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79",
-        "privateBlueprintIds": [
-          "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79"
         ],
         "initializedFrontend": "visual"
       },
