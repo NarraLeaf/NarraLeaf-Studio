@@ -252,6 +252,7 @@ export const storyInspector = {
         wind: "風向き（度）",
         fallSpeed: "落下速度",
         flutter: "舞い",
+        solidity: "濃さ",
         depthSpread: "奥行き差",
     },
 

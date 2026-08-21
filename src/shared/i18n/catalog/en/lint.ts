@@ -206,6 +206,7 @@ export const lint = {
             messageStory: "Starts a story that no longer exists",
             messageScene: "Names a scene that no longer exists",
             messageChoice: "Names a choice that no longer exists",
+            messageEnding: "Names an ending that no longer exists",
             messageCharacter: "Names a character that no longer exists",
             messageTextKey: "Names a text key the project does not declare",
         },

@@ -14,6 +14,14 @@
  * would mean two answers to one question, and only the baked one would survive a change of mind
  * without a re-bake.
  *
+ * ⚠ {@link WEATHER_PARAMS.solidity} is the near miss, and it is worth stating why it is not a
+ * duplicate of the payload's `opacity`. The payload's scales the finished OVERLAY, uniformly, at
+ * playback, and cannot exceed 1. The seed's decides how much light one PARTICLE lays down before any
+ * of that — so it can pass 1, where the falloff clips and the particle gains a solid core and a
+ * tighter edge instead of merely getting brighter. Turning the overlay up cannot produce that,
+ * because the wash and the petal are scaled together. One is how loud the effect is; the other is
+ * what the effect is a picture of.
+ *
  * ## Speed is baked, and `rate` is not the same question
  *
  * How fast the particles fall IS a pixel decision, so {@link WEATHER_PARAMS.fallSpeed} is here. The
@@ -73,6 +81,7 @@ export type WeatherParamKey =
     | "wind"
     | "fallSpeed"
     | "flutter"
+    | "solidity"
     | "depthSpread";
 
 /**
@@ -85,10 +94,18 @@ export type WeatherParamKey =
 export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
     /** Particles per megapixel of covered area. */
     density: { min: 10, max: 900, step: 10, default: 200 },
-    /** Radius in stage px of the nearest particles — the big, soft, out-of-focus ones. */
-    sizeNear: { min: 2, max: 48, step: 1, default: 17 },
+    /**
+     * Radius in stage px of the nearest particles — the big, soft, out-of-focus ones.
+     *
+     * ⚠ Past about 32 the sakura seed is MAGNIFYING its sprite (the petal bitmap is 64px square, so
+     * a radius of 32 already spans it) and its outline softens in proportion. That is a real cost
+     * and not a reason to cap the range: a sparse field of a few large petals is a legitimate look,
+     * the softness is largely paid off by {@link solidity} clipping the core flat, and a ceiling
+     * that a seed's own default sat on would be the worse fault. See `petalSprite.ts`.
+     */
+    sizeNear: { min: 2, max: 96, step: 1, default: 17 },
     /** Radius in stage px of the farthest particles. */
-    sizeFar: { min: 0.5, max: 12, step: 0.5, default: 2 },
+    sizeFar: { min: 0.5, max: 24, step: 0.5, default: 2 },
     /** How far a particle drifts across its fall line, in stage px. */
     sway: { min: 0, max: 240, step: 4, default: 52 },
     /** Length of the motion smear along the fall line, in stage px. Rain's whole identity. */
@@ -138,6 +155,33 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
      * exactly as safe as it was when the whole number was the input.
      */
     flutter: { min: 0.1, max: 3, step: 0.1, default: 0.8 },
+    /**
+     * How much light one particle lays down, against the depth ramp that would otherwise decide it
+     * alone. 1 leaves that ramp exactly as it was.
+     *
+     * ## Why a particle needs this and the overlay's own `opacity` cannot give it
+     *
+     * Two multiplications were eating the picture before anything composited it: the petal bitmap
+     * peaks at 216 of 255, and the depth gain runs 0.28 to 0.95. A median petal's brightest pixel
+     * was therefore 133, and its average across the whole shape 82 — a third of full, which through
+     * `screen` on anything but a dark scene is a haze rather than a petal. Turning the payload's
+     * `opacity` up does not reach it: that scales the finished overlay, so the haze and the petal
+     * come up together and the ratio between them never moves.
+     *
+     * ## Why it may exceed 1, which is the whole point
+     *
+     * Everything here is light accumulated in float and clamped once, when the frame is written. A
+     * multiplier past 1 therefore does not simply brighten: the soft falloff CLIPS, and the particle
+     * gains a flat saturated core with the ramp compressed into a narrower rim. Measured on sakura's
+     * defaults, 1 to 2.5 doubles the frame's edge energy (0.245 to 0.498) while the lit area moves
+     * by a fifteenth — so it is read as a sharper petal rather than a bigger glow. That is what
+     * answers "the petals look transparent AND blurry", which are one complaint and not two.
+     *
+     * ⚠ It buys that sharpness by throwing away tone inside the core, which is what the bitmap
+     * exists to carry. Far past the point where the core is saturated there is nothing left to
+     * clip and the shape stops improving, so the range ends where it stops paying.
+     */
+    solidity: { min: 0.2, max: 4, step: 0.1, default: 1 },
     /** How much faster the near field falls than the far field. 1 = everything falls together. */
     depthSpread: { min: 1, max: 8, step: 1, default: 3 },
 };
@@ -193,7 +237,7 @@ export type WeatherSeedDefinition = {
 export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     snow: {
         id: "snow",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "depthSpread"],
         defaults: { density: 160, sizeNear: 17, sizeFar: 2, sway: 52, fallSpeed: 2, flutter: 0.35, depthSpread: 3 },
         tint: [255, 255, 255],
         streaked: false,
@@ -202,7 +246,7 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     },
     rain: {
         id: "rain",
-        params: ["density", "sizeNear", "sizeFar", "streak", "wind", "fallSpeed", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "streak", "wind", "fallSpeed", "solidity", "depthSpread"],
         // No sway and no flutter: rain falls in straight parallel lines, which is also why `wind`
         // reads as a tilt of the whole field rather than as a wobble. A drop has no face to turn.
         defaults: { density: 170, sizeNear: 2.4, sizeFar: 1, streak: 30, sway: 0, fallSpeed: 3, depthSpread: 7 },
@@ -214,12 +258,24 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     },
     sakura: {
         id: "sakura",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "depthSpread"],
         // Petals nearly twice the size the first rounds shipped. 26px of radius is 2.4% of a 1080p
         // frame's height, and at that size the sprite's outline - the notch that says cherry rather
         // than leaf - is below what the picture can carry, so it reads as a pale dot. A pale dot
         // falling slowly is snow, which is what the finished clips in fact looked like.
-        defaults: { density: 90, sizeNear: 48, sizeFar: 11, sway: 110, fallSpeed: 3, flutter: 1.1, depthSpread: 2 },
+        //
+        // Few of them, drifting: forty petals on a 1080p frame turning once every three seconds. It
+        // is a deliberately sparser and calmer field than the other two seeds, so each petal is read
+        // as an object rather than as texture - which is also why this is the seed that needs
+        // `solidity` above 1. At 1 a petal of this size is a muddy wash with no edge.
+        //
+        // 2 rather than higher because the two things it buys run out at different rates. The edge
+        // is nearly all bought by 2; the colour keeps being spent after that. Measured across the
+        // lit area: at 1 none of it is a blown white core and mean saturation is 19%, at 2 it is
+        // 15% white and 15% saturated, at 2.5 it is 30% white and 12%, at 4 it is 55% white and 8%.
+        // A petal whose middle is white is still a petal, but it stops being a PINK one, and pink
+        // is the half of "sakura" the shape does not carry.
+        defaults: { density: 15, sizeNear: 48, sizeFar: 11, sway: 110, fallSpeed: 3, flutter: 0.3, solidity: 2, depthSpread: 2 },
         tint: [255, 206, 214],
         streaked: false,
         tumbles: true,
