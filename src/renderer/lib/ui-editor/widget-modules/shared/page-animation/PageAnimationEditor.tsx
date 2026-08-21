@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Play, RotateCw } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { MotionConfig, motion, useReducedMotion } from "motion/react";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import { Switch } from "@/lib/components/elements/Switch";
@@ -111,31 +111,37 @@ function PageAnimationPreview({
     const animate = phase === "enter" ? motionProps.animate : motionProps.exit;
 
     return (
-        <div className="relative h-[68px] overflow-hidden rounded-md border border-edge bg-[#080a0d]">
-            <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:16px_16px]" />
-            <div className="absolute inset-0 flex items-center justify-center">
-                <motion.div
-                    key={[
-                        phase,
-                        tick,
-                        settings.enter,
-                        settings.exit,
-                        settings.enterDirection,
-                        settings.exitDirection,
-                        settings.enterAngleDegrees,
-                        settings.exitAngleDegrees,
-                        settings.enterDurationSeconds,
-                        settings.exitDurationSeconds,
-                        settings.enterDelaySeconds,
-                        settings.exitDelaySeconds,
-                        settings.exitBlocking,
-                    ].join(":")}
-                    className="h-9 w-14 rounded-md border border-primary/40 bg-primary/20 shadow-[0_0_24px_rgba(64,168,196,0.18)]"
-                    initial={initial}
-                    animate={animate}
-                />
+        // Exempt from `ui.reduceMotion`, like the canvas this animation will play on: the box has
+        // nothing to say when it is still - both ends of a slide are an empty grid - and the setting
+        // would otherwise strip the movement and leave a bare fade behind. The OS preference is a
+        // different question and still lands, through `prefersReducedMotion` above.
+        <MotionConfig reducedMotion="never">
+            <div className="nl-motion-keep relative h-[68px] overflow-hidden rounded-md border border-edge bg-[#080a0d]">
+                <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:16px_16px]" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <motion.div
+                        key={[
+                            phase,
+                            tick,
+                            settings.enter,
+                            settings.exit,
+                            settings.enterDirection,
+                            settings.exitDirection,
+                            settings.enterAngleDegrees,
+                            settings.exitAngleDegrees,
+                            settings.enterDurationSeconds,
+                            settings.exitDurationSeconds,
+                            settings.enterDelaySeconds,
+                            settings.exitDelaySeconds,
+                            settings.exitBlocking,
+                        ].join(":")}
+                        className="h-9 w-14 rounded-md border border-primary/40 bg-primary/20 shadow-[0_0_24px_rgba(64,168,196,0.18)]"
+                        initial={initial}
+                        animate={animate}
+                    />
+                </div>
             </div>
-        </div>
+        </MotionConfig>
     );
 }
 
