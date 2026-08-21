@@ -250,6 +250,7 @@ export const storyInspector = {
         wind: "Wind (deg)",
         fallSpeed: "Fall speed",
         flutter: "Flutter",
+        solidity: "Solidity",
         depthSpread: "Depth spread",
     },
 

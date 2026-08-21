@@ -10,6 +10,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
@@ -17,6 +18,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import type { SaveSchemaField } from "@shared/types/saveSchema";
+import type { StoryDocument } from "@shared/types/story";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
 import {
@@ -96,6 +98,29 @@ function uiDocumentWithSurfaces(...surfaceIds: string[]): UIDocument {
         surfaces: surfaceIds.map(id => ({ id, kind: "appSurface" })),
         elements: {},
     } as unknown as UIDocument;
+}
+
+/** A story document whose one scene declares one `/ending` row, under the id passed. */
+function storyWithEnding(endingId: string) {
+    return {
+        id: "story-1",
+        scenes: {
+            "scene-1": {
+                id: "scene-1",
+                name: "Final Hours",
+                rootBlockIds: [endingId],
+                blocks: {
+                    [endingId]: {
+                        id: endingId,
+                        kind: "control",
+                        payload: { control: "ending", name: "Sunrise" },
+                        childrenIds: [],
+                    },
+                },
+            },
+        },
+        unassignedSceneIds: ["scene-1"],
+    } as unknown as StoryDocument;
 }
 
 /** `On App Boot -> Go Page`, where the page is whatever id is passed. */
@@ -224,6 +249,49 @@ describe("blueprint/reference-missing", () => {
             }),
         );
         expect(findings).toEqual([]);
+    });
+
+    it("reports an ending the story no longer declares, and says nothing about one it does", async () => {
+        // The `ending` row IS the declaration, so a deleted row leaves a node asking a question no
+        // playthrough can answer yes to - it reads `false` forever with nothing on screen to say why.
+        const graph = (endingId: string): BlueprintGraphIr => ({
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                reached: {
+                    id: "reached",
+                    type: BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
+                    params: { storyId: "story-1", endingId },
+                },
+                log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                { from: { nodeId: "reached", port: "isReached" }, to: { nodeId: "log", port: "message" } },
+            ],
+        });
+        const stories = [{ id: "story-1", name: "Chapter One", document: storyWithEnding("ending-good") }];
+
+        const missing = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("ending-deleted") } }),
+                stories,
+            }),
+        );
+        expect(missing).toHaveLength(1);
+        expect(missing[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintReferenceMissing.messageEnding",
+            location: { kind: "blueprint", nodeId: "reached" },
+        });
+
+        const present = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("ending-good") } }),
+                stories,
+            }),
+        );
+        expect(present).toEqual([]);
     });
 
     it("accounts for every project-entity option source the node catalogue declares", () => {

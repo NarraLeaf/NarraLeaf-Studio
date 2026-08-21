@@ -105,6 +105,13 @@ type Particle = {
     radius: number;
     /** Radius along the fall line — larger than `radius` only for a streaked seed. */
     length: number;
+    /**
+     * How much light this particle lays down: its depth ramp times the seed's `solidity`.
+     *
+     * May exceed 1, and is meant to. Everything accumulates in float and is clamped once when the
+     * frame is written, so a gain past 1 saturates the particle's core and compresses its falloff
+     * into a narrower rim - which is what makes a large petal read as a shape rather than a wash.
+     */
     gain: number;
 };
 
@@ -270,7 +277,10 @@ export function buildWeatherField(
             spinPhase: rnd(),
             radius,
             length: seed.streaked ? Math.max(radius, params.streak * (0.35 + depth * 0.65)) : radius,
-            gain: 0.28 + depth * 0.67,
+            // The depth ramp, scaled by what the author asked for. Not clamped to 1: the accumulator
+            // is float and the clamp happens once at write-out, so a solidity above 1 clips the
+            // falloff into a flat core rather than overflowing anything.
+            gain: (0.28 + depth * 0.67) * params.solidity,
         });
     }
 

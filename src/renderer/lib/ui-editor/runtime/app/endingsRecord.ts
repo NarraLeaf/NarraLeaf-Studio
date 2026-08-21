@@ -81,6 +81,28 @@ export async function markEndingReached(
     await persistence.set(ENDINGS_PERSISTENCE_KEY, [...current, endingId]);
 }
 
+/**
+ * Forget one ending, durably. The exact inverse of {@link markEndingReached}, and async for the
+ * same reason: the surviving ids have to be read through `getAsync` before they can be written
+ * back, or a wipe built on a cold session map would take every other unlock with it.
+ *
+ * An id that was never recorded writes nothing, so a debug menu re-running the same node does not
+ * touch the file on every press.
+ */
+export async function forgetEndingReached(
+    persistence: EndingsPersistence,
+    endingId: string,
+): Promise<void> {
+    if (!endingId) {
+        return;
+    }
+    const current = normalizeEndingIds(await persistence.getAsync(ENDINGS_PERSISTENCE_KEY));
+    if (!current.includes(endingId)) {
+        return;
+    }
+    await persistence.set(ENDINGS_PERSISTENCE_KEY, current.filter(id => id !== endingId));
+}
+
 /** Wipe the record. What `Clear Endings` does, and what a "reset progress" control calls. */
 export async function clearReachedEndings(persistence: Pick<EndingsPersistence, "set">): Promise<void> {
     await persistence.set(ENDINGS_PERSISTENCE_KEY, []);
