@@ -17,11 +17,12 @@ export function serializeBlockSubtree(scene: StoryScene, blockId: StoryBlockId):
 /**
  * Copy a subtree onto fresh ids - block ids and the `textId` of every text segment in it.
  *
- * The text ids have to be new: a `textId` is the id of a translation unit, and two rows sharing one
- * would share whatever any language says about them. `textIds` collects what that renaming did, old
- * id → new id, for the one caller that has to follow a line across it - the translations copied
- * with the rows are keyed by the ids they had over there (see `storyTranslationTransfer`). Passing
- * nothing collects nothing.
+ * The text ids have to be new: a `textId` is the id of a translation unit AND of a voice unit, and
+ * two rows sharing one would share whatever any language says about them and whichever recording
+ * either of them was given. `textIds` collects what that renaming did, old id → new id, for the
+ * callers that have to follow a line across it - the translations copied with the rows are keyed by
+ * the ids they had over there (see `storyTranslationTransfer`), and so are the takes those lines
+ * already have in this project (see `storyVoiceTransfer`). Passing nothing collects nothing.
  */
 export function cloneSerializedBlock(
     source: SerializedStoryBlock,
@@ -43,7 +44,7 @@ export function cloneSerializedBlock(
  * The text-segment ids the given blocks carry, in the order they are met, each once.
  *
  * Read off the same fields {@link cloneSerializedBlock} renames, so what a copy carries translations
- * for and what a paste re-keys them onto can never describe two different sets of lines.
+ * and takes for, and what a paste re-keys them onto, can never describe two different sets of lines.
  */
 export function listBlockTextIds(blocks: Iterable<StoryBlock>): string[] {
     const ids: string[] = [];

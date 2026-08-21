@@ -158,6 +158,19 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // an action with, so Ctrl+V and Delete kept working on a frozen project.
     const freeze = useFreezeGuard();
     const searchBoxRef = useRef<HTMLInputElement>(null);
+    /**
+     * The panel's scroller.
+     *
+     * Handed to the tree, which windows each section's rows against it. The grid scrolls inside
+     * itself and does not need it.
+     *
+     * State rather than a ref: the scroller is an ancestor of the sections that read it, and React
+     * attaches an ancestor's ref *after* its descendants' layout effects have run - so a ref would
+     * still be null on the commit where each section's virtualiser first looks for it, and nothing
+     * would tell it to look again. The tree drew nothing at all until some unrelated re-render
+     * happened to come along.
+     */
+    const [listScrollElement, setListScrollElement] = useState<HTMLDivElement | null>(null);
     const inputDialog = useMemo(() => {
         if (!context) return null;
         const uiService = context.services.get<UIService>(Services.UI);
@@ -1216,7 +1229,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     onDismiss={dismissImportFailures}
                 />
 
-                <div className="flex-1 overflow-y-auto">
+                <div ref={setListScrollElement} className="flex-1 overflow-y-auto">
                     {viewMode === "overview" ? (
                         <AssetOverviewView snapshot={snapshot} failed={snapshotFailed} refresh={refreshSnapshot} />
                     ) : viewMode === "list" ? (
@@ -1231,6 +1244,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             openItems={effectiveOpenItems}
                             onOpenChange={(next) => setCategoryOpenItems(filterKnownAssetCategoryIds(next))}
                             disableAnimation={disableAccordionAnimation}
+                            scrollElement={listScrollElement}
                         />
                     ) : (
                         <AssetsIconView

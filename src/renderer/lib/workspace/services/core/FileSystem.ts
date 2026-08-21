@@ -44,8 +44,13 @@ const writeObservers = new Set<(outcome: FsWriteOutcome) => void>();
  * goes through this class - `RendererDocumentStorage`, the asset shards, the service stores. The
  * facade's direct writers (asset import, project settings) are author actions, and a reload does not
  * perform them.
+ *
+ * `refused` is how a caller that needs to know can still tell this apart from a write that landed.
+ * Nothing has to read it - the flag is absent on every real success, so ignoring it keeps the old
+ * meaning exactly - but a writer that tracks what it still owes the disk must, or it clears a debt
+ * that was never paid. See {@link FsRequestResult}.
  */
-const FROZEN_NO_OP: FsRequestResult<void> = { ok: true, data: undefined };
+const FROZEN_NO_OP: FsRequestResult<void> = { ok: true, data: undefined, refused: true };
 
 function reportWriteOutcome(path: string, result: FsRequestResult<void>): FsRequestResult<void> {
     if (writeObservers.size > 0) {

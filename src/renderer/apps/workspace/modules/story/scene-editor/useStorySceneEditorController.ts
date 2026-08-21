@@ -23,6 +23,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
@@ -79,6 +80,7 @@ import {
 import { cloneSerializedBlock, insertSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
 import { collectSubtreeBlocks } from "./storyForeignPaste";
 import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
+import { carryVoiceWithinProject } from "./storyVoiceTransfer";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
@@ -130,6 +132,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const fileSystemService = useMemo(() => (context && isInitialized ? context.services.get<FileSystemService>(Services.FileSystem) : null), [context, isInitialized]);
     /** Holds the translations a copy carries with its rows, and takes them back on a paste. */
     const localizationService = useMemo(() => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null), [context, isInitialized]);
+    /** Holds the recordings, so a line that is duplicated or pasted elsewhere keeps its take. */
+    const voiceService = useMemo(() => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null), [context, isInitialized]);
     /**
      * This window's own project, as the clipboard describes it.
      *
@@ -2446,6 +2450,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         assetsService,
         fileSystemService,
         localizationService,
+        voiceService,
         storyId,
         sceneId,
         scene,
@@ -2863,8 +2868,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const target = getInsertionTargetAfter(scene, anchorId);
         const insertedIds: StoryBlockId[] = [];
         // Duplicating mints fresh textIds exactly as a paste does, so the copies would arrive
-        // untranslated unless the units follow them. Collected before the clone, because the source
-        // ids are what the project's languages are keyed by.
+        // untranslated and unvoiced unless the units follow them. Collected before the clone, because
+        // the source ids are what the project's languages and voice libraries are keyed by.
         const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
         const textIdMap = new Map<string, string>();
         for (const rootId of orderedRoots) {
@@ -2879,13 +2884,23 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setEditorMode({ kind: "idle" });
         // After the rows are in, and not awaited: the duplicate is complete without it, and the
-        // translations land in documents of their own. Nothing here reports success - a duplicate
-        // that carried its languages is what the author already expected.
-        if (localizationService) {
-            void carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
-                .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
-        }
-    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
+        // translations and takes land in documents of their own. Nothing here reports success - a
+        // duplicate that carried its languages and its recordings is what the author already expected.
+        //
+        // Translations before takes, in one chain rather than two: a take is a recording of the line
+        // as the actor for that language reads it, which is the translation where there is one, so a
+        // take that landed first would read as stale until its translation caught up.
+        void (async () => {
+            if (localizationService) {
+                await carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
+                    .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
+            }
+            if (voiceService) {
+                await carryVoiceWithinProject(voiceService, isFrozenNow, sourceTextIds, textIdMap)
+                    .catch(error => console.warn("[storyEditor] could not carry takes for the duplicated rows", error));
+            }
+        })();
+    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows, voiceService]);
 
     /**
      * The block ids a row operation acts on: the selection (deduped to roots so a container carries its
