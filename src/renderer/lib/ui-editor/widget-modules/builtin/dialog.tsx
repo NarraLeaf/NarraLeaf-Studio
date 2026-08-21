@@ -27,6 +27,9 @@ export const DialogSentenceWidgetModule: UIWidgetModule = extendWidgetModule(Tex
                 color: "#f8fafc",
                 fontWeight: "normal",
                 lineHeight: 1.45,
+                // A dialogue line is written once and read in every language the game ships in, so
+                // it fits itself to its box unless the author turns that off.
+                textAutoFit: true,
             },
         }),
     render: DialogSentenceRenderer,
