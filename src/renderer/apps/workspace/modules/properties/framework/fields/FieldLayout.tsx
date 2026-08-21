@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { BaseFieldDefinition } from "../types";
 
 interface FieldLayoutProps {
@@ -13,11 +14,7 @@ interface FieldLayoutProps {
 export function FieldLayout({ field, children, className = "" }: FieldLayoutProps) {
     return (
         <div className={["min-w-0", className].filter(Boolean).join(" ")}>
-            {field.label && (
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {field.label}
-                </label>
-            )}
+            <FieldLabelRow field={field} />
             {children}
             {field.helpText && (
                 <p className="mt-1 text-xs text-fg-subtle">{field.helpText}</p>
