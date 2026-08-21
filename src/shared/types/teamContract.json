@@ -1,8 +1,8 @@
 {
-  "note": "The Team protocol's wire names. A byte-identical copy lives in the Team server at src/team/contract.json; both move together or the two stop understanding each other. Each side has a test that pins its own constants to this file, so a rename that forgets one half fails there rather than on somebody's machine.",
+  "note": "The Team protocol's wire names. A byte-identical copy lives in Studio at src/shared/types/teamContract.json; both move together or the two stop understanding each other. Each side has a test that pins its own constants to this file, so a rename that forgets one half fails there rather than on somebody's machine.",
   "protocol": 1,
   "socketPath": "/api/team/v1/socket",
-  "capabilities": ["session", "comments"],
+  "capabilities": ["session", "comments", "clients", "live", "overlay"],
   "errorCodes": [
     "unknown-method",
     "bad-params",
@@ -23,13 +23,29 @@
     "threads.reply",
     "threads.resolve",
     "comments.edit",
-    "comments.delete"
+    "comments.delete",
+    "clients.announce",
+    "clients.withdraw",
+    "clients.list",
+    "live.list",
+    "live.open",
+    "live.join",
+    "live.leave",
+    "live.close",
+    "live.say",
+    "overlay.list",
+    "overlay.put",
+    "overlay.drop"
   ],
   "topics": {
     "projects": "projects",
     "members": "members",
     "project": "project:{project}",
-    "projectThreads": "project:{project}/threads"
+    "projectThreads": "project:{project}/threads",
+    "projectOverlay": "project:{project}/overlay",
+    "projectClients": "project:{project}/clients",
+    "projectLive": "project:{project}/live",
+    "live": "live:{session}"
   },
   "frames": {
     "fromServer": ["hello", "result", "error", "subscribed", "event", "bye"],
@@ -38,6 +54,9 @@
   "limits": {
     "anchorField": 512,
     "commentBody": 8192,
-    "suggestion": 65536
+    "suggestion": 65536,
+    "overlayBody": 65536,
+    "livePayload": 16384,
+    "instanceField": 256
   }
 }
