@@ -1,8 +1,10 @@
 import "@xyflow/react/dist/style.css";
 import {
+    forwardRef,
     useCallback,
     useEffect,
     useId,
+    useImperativeHandle,
     useLayoutEffect,
     useMemo,
     useRef,
@@ -664,13 +666,15 @@ function BlueprintFlowCanvasInner({
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
-    const [addMenu, setAddMenu] = useState<{
-        clientX: number;
-        clientY: number;
-        flow: { x: number; y: number };
-        /** Set when the menu was opened by dragging off a pin; filters to compatible nodes + auto-wires. */
-        connectSource?: BlueprintDragConnectSource;
-    } | null>(null);
+    /**
+     * The creation menu holds its own open/closed state and is reached through this handle.
+     *
+     * Deliberately a ref rather than canvas state: opening the menu is a right-click, and a right-click
+     * that re-rendered the canvas would put the whole React Flow subtree through reconciliation before
+     * the menu could appear — which is most of what made the gesture take a visible moment. Nothing on
+     * the canvas depends on whether the menu is up, so nothing here has to know.
+     */
+    const addMenuRef = useRef<BlueprintAddNodeMenuHostHandle | null>(null);
 
     const [pendingPlacementEntry, setPendingPlacementEntry] = useState<BlueprintNodeEditorCatalogEntry | null>(null);
     const pendingPlacementEntryRef = useRef<BlueprintNodeEditorCatalogEntry | null>(null);
@@ -1096,7 +1100,7 @@ function BlueprintFlowCanvasInner({
                       };
             lastPointerClientRef.current = point;
             const flow = screenToFlowPosition(point);
-            setAddMenu({
+            addMenuRef.current?.open({
                 clientX: point.x,
                 clientY: point.y,
                 flow: { x: flow.x, y: flow.y },
@@ -1276,6 +1280,33 @@ function BlueprintFlowCanvasInner({
         });
     }, [breakpointScope, nodeMenu, t]);
 
+    const onAddMenuPickEntry = useCallback(
+        (
+            entry: BlueprintNodeEditorCatalogEntry,
+            flowPos: { x: number; y: number },
+            connectSource: BlueprintDragConnectSource | undefined,
+        ) => {
+            if (connectSource) {
+                const newNodePinId = pickBlueprintDragConnectTargetPin(connectSource, entry);
+                if (!newNodePinId) {
+                    return;
+                }
+                const newId = onAddNodeAtFlowPositionAndConnect?.(entry, flowPos, {
+                    existingNodeId: connectSource.nodeId,
+                    existingHandleId: connectSource.handleId,
+                    existingHandleType: connectSource.handleType,
+                    newNodePinId,
+                });
+                if (typeof newId === "string" && newId.length > 0) {
+                    onSelectNodeIds([newId]);
+                }
+                return;
+            }
+            setPendingPlacementEntry(entry);
+        },
+        [onAddNodeAtFlowPositionAndConnect, onSelectNodeIds],
+    );
+
     const onPaneContextMenu = useCallback(
         (e: MouseEvent | ReactMouseEvent<Element>) => {
             if (!onAddNodeAtFlowPosition) {
@@ -1292,7 +1323,7 @@ function BlueprintFlowCanvasInner({
             const clientY = "clientY" in e ? e.clientY : 0;
             lastPointerClientRef.current = { x: clientX, y: clientY };
             const flow = screenToFlowPosition({ x: clientX, y: clientY });
-            setAddMenu({
+            addMenuRef.current?.open({
                 clientX,
                 clientY,
                 flow: { x: flow.x, y: flow.y },
@@ -1374,47 +1405,12 @@ function BlueprintFlowCanvasInner({
                     nodeColor={() => "var(--narraleaf-accent, #40a8c4)"}
                 />
             </ReactFlow>
-            {addMenu ? (
-                <BlueprintAddNodeMenu
-                    nodeCatalog={nodeCatalog}
-                    open
-                    paletteContext={paletteContext}
-                    anchor={{ x: addMenu.clientX, y: addMenu.clientY }}
-                    flowPosition={addMenu.flow}
-                    connectMode={Boolean(addMenu.connectSource)}
-                    connectSourceLabel={
-                        addMenu.connectSource && !addMenu.connectSource.isExec
-                            ? addMenu.connectSource.valueType
-                            : undefined
-                    }
-                    entryFilter={
-                        addMenu.connectSource
-                            ? entry => pickBlueprintDragConnectTargetPin(addMenu.connectSource!, entry) !== null
-                            : undefined
-                    }
-                    onClose={() => setAddMenu(null)}
-                    onPickEntry={(entry, flowPos) => {
-                        const connectSource = addMenu.connectSource;
-                        if (connectSource) {
-                            const newNodePinId = pickBlueprintDragConnectTargetPin(connectSource, entry);
-                            if (!newNodePinId) {
-                                return;
-                            }
-                            const newId = onAddNodeAtFlowPositionAndConnect?.(entry, flowPos, {
-                                existingNodeId: connectSource.nodeId,
-                                existingHandleId: connectSource.handleId,
-                                existingHandleType: connectSource.handleType,
-                                newNodePinId,
-                            });
-                            if (typeof newId === "string" && newId.length > 0) {
-                                onSelectNodeIds([newId]);
-                            }
-                            return;
-                        }
-                        setPendingPlacementEntry(entry);
-                    }}
-                />
-            ) : null}
+            <BlueprintAddNodeMenuHost
+                ref={addMenuRef}
+                nodeCatalog={nodeCatalog}
+                paletteContext={paletteContext}
+                onPickEntry={onAddMenuPickEntry}
+            />
             <SaveSchemaFieldsModal isOpen={saveSchemaEditorOpen} onClose={closeSaveSchemaEditor} />
             {nodeMenu ? (
                 <ContextMenu
@@ -1427,6 +1423,85 @@ function BlueprintFlowCanvasInner({
         </div>
     );
 }
+
+/** What the canvas hands the menu when a right-click (or a pin drag) asks for it. */
+type BlueprintAddNodeMenuRequest = {
+    clientX: number;
+    clientY: number;
+    flow: { x: number; y: number };
+    /** Set when the menu was opened by dragging off a pin; filters to compatible nodes + auto-wires. */
+    connectSource?: BlueprintDragConnectSource;
+};
+
+export type BlueprintAddNodeMenuHostHandle = {
+    open: (request: BlueprintAddNodeMenuRequest) => void;
+    close: () => void;
+};
+
+/**
+ * Owns whether the creation menu is up, so the canvas does not have to.
+ *
+ * The canvas is the expensive tree on this page — one React Flow instance, every node card, every
+ * pin row. Keeping "is the menu open" out of it means a right-click renders the menu and nothing
+ * else. The handle is the whole interface: the canvas calls `open` from its gesture handlers and
+ * never reads the answer back.
+ */
+const BlueprintAddNodeMenuHost = forwardRef<
+    BlueprintAddNodeMenuHostHandle,
+    {
+        nodeCatalog: IBlueprintNodeCatalogService;
+        paletteContext: BlueprintPaletteContext;
+        onPickEntry: (
+            entry: BlueprintNodeEditorCatalogEntry,
+            flowPosition: { x: number; y: number },
+            connectSource: BlueprintDragConnectSource | undefined,
+        ) => void;
+    }
+>(function BlueprintAddNodeMenuHost({ nodeCatalog, paletteContext, onPickEntry }, ref) {
+    const [request, setRequest] = useState<BlueprintAddNodeMenuRequest | null>(null);
+
+    useImperativeHandle(ref, () => ({
+        open: next => setRequest(next),
+        close: () => setRequest(null),
+    }), []);
+
+    const connectSource = request?.connectSource;
+    const entryFilter = useMemo(
+        () =>
+            connectSource
+                ? (entry: BlueprintNodeEditorCatalogEntry) =>
+                      pickBlueprintDragConnectTargetPin(connectSource, entry) !== null
+                : undefined,
+        [connectSource],
+    );
+
+    const close = useCallback(() => setRequest(null), []);
+    const pick = useCallback(
+        (entry: BlueprintNodeEditorCatalogEntry, flowPosition: { x: number; y: number }) => {
+            onPickEntry(entry, flowPosition, connectSource);
+        },
+        [connectSource, onPickEntry],
+    );
+
+    if (!request) {
+        return null;
+    }
+
+    return (
+        <BlueprintAddNodeMenu
+            nodeCatalog={nodeCatalog}
+            open
+            paletteContext={paletteContext}
+            anchor={{ x: request.clientX, y: request.clientY }}
+            flowPosition={request.flow}
+            connectMode={Boolean(connectSource)}
+            connectSourceLabel={connectSource && !connectSource.isExec ? connectSource.valueType : undefined}
+            entryFilter={entryFilter}
+            onClose={close}
+            onPickEntry={pick}
+        />
+    );
+});
 
 export type BlueprintFlowCanvasProps = BlueprintFlowCanvasInnerProps;
 
