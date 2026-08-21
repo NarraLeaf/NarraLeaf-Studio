@@ -16,8 +16,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookMarked, Plus, Trash2 } from "lucide-react";
+import { BookMarked, ListChecks, Plus, Trash2 } from "lucide-react";
 import {
+    Button,
     CONTROL_SIZE_CLASS,
     CONTROL_SQUARE_CLASS,
     EmptyState,
@@ -36,6 +37,14 @@ import {
     type ProjectDictionaryEntry,
     type ProjectDictionaryOptions,
 } from "@shared/types/dictionary";
+import { useRegistry } from "@/apps/workspace/registry";
+import {
+    findingsByTerm,
+    scanProjectForVariants,
+    variantNeedles,
+    type DictionaryFinding,
+} from "@/lib/workspace/services/dictionary/dictionaryScan";
+import { jumpToSearchTarget } from "../search/searchJump";
 import type { PanelComponentProps } from "../types";
 import type { DictionaryPanelPayload } from "./openDictionaryPanel";
 
@@ -168,8 +177,39 @@ function EntryEditor(props: {
     );
 }
 
+/**
+ * Where one term is written the way this project does not, and a way to get there.
+ *
+ * Rows rather than a count, because the answer to "this term is inconsistent" is always "where" -
+ * and the row it is in is the only place it can be fixed, since a replacement made from here would
+ * be a project-wide edit nobody watched.
+ */
+function EntryFindings(props: { findings: DictionaryFinding[]; onJump: (finding: DictionaryFinding) => void }) {
+    return (
+        <div className="flex flex-col gap-0.5 pb-1">
+            {props.findings.map((finding, index) => (
+                <button
+                    key={`${finding.target.blockId}:${index}`}
+                    type="button"
+                    onClick={() => props.onJump(finding)}
+                    className={cn(
+                        "flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md border border-edge-subtle px-2 py-1",
+                        "text-left text-fg-muted transition-colors duration-150",
+                        "hover:border-edge hover:bg-fill hover:text-fg focus:border-primary",
+                    )}
+                >
+                    <span className="w-full truncate text-2xs text-fg-subtle">
+                        {finding.target.sceneName || finding.target.storyName}
+                    </span>
+                    <span className="w-full truncate text-xs">{finding.preview}</span>
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanelPayload>) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const freeze = useFreezeGuard();
 
@@ -183,6 +223,18 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
     const [query, setQuery] = useState("");
     const [openTerm, setOpenTerm] = useState<string | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
+    const { openEditorTab, setPanelVisibility } = useRegistry();
+    /** The last check's answer, or `null` before one has been run. */
+    const [findings, setFindings] = useState<DictionaryFinding[] | null>(null);
+    const [scanning, setScanning] = useState<{ done: number; total: number } | null>(null);
+    /**
+     * Bumped to abandon a check in flight.
+     *
+     * A scan reads every story in the project, so it outlives the panel that started it: closing the
+     * panel, switching project, or pressing the button again must not leave a second pass writing its
+     * answer over the first.
+     */
+    const scanRef = useRef(0);
 
     useEffect(() => {
         if (!service) {
@@ -264,6 +316,58 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
         setOpenTerm(candidate);
     }, [query, service, t]);
 
+    /** Abandon whatever is in flight when the panel goes away. */
+    useEffect(() => () => {
+        scanRef.current += 1;
+    }, []);
+
+    // A check answers for the dictionary it was run against. Editing one term does not tell us
+    // anything about another's occurrences, but it does mean the list on screen is about a
+    // dictionary that no longer exists - so it is dropped rather than left to be read as current.
+    useEffect(() => {
+        scanRef.current += 1;
+        setScanning(null);
+        setFindings(null);
+    }, [service]);
+
+    const check = useCallback(() => {
+        if (!context || !service) {
+            return;
+        }
+        const generation = scanRef.current + 1;
+        scanRef.current = generation;
+        let needles;
+        try {
+            needles = variantNeedles(service.listEntries());
+        } catch {
+            return;
+        }
+        setFindings(null);
+        setScanning({ done: 0, total: 0 });
+        void scanProjectForVariants(context, needles, {
+            shouldContinue: () => scanRef.current === generation,
+            onProgress: progress => {
+                if (scanRef.current === generation) {
+                    setScanning(progress);
+                }
+            },
+        }).then(result => {
+            if (scanRef.current !== generation) {
+                return;
+            }
+            setScanning(null);
+            // A partial answer is thrown away rather than shown: "nothing found" and "nothing found
+            // in the half I read" are the same sentence on screen and not the same fact.
+            setFindings(result.complete ? result.findings : null);
+        });
+    }, [context, service]);
+
+    const byTerm = useMemo(() => findingsByTerm(findings ?? []), [findings]);
+
+    const jump = useCallback((finding: DictionaryFinding) => {
+        jumpToSearchTarget(finding.target, { openEditorTab, setPanelVisibility, context });
+    }, [context, openEditorTab, setPanelVisibility]);
+
     return (
         <div className="flex h-full flex-col">
             <div className="flex items-center gap-1.5 px-2 py-2">
@@ -317,7 +421,17 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
                                 {entry.reading ? (
                                     <span className="shrink-0 text-2xs text-fg-subtle">{entry.reading}</span>
                                 ) : null}
+                                {byTerm.has(entry.term) ? (
+                                    <span className="shrink-0 text-2xs text-warning">
+                                        {tn("dictionary.found", byTerm.get(entry.term)!.length, {
+                                            count: byTerm.get(entry.term)!.length,
+                                        })}
+                                    </span>
+                                ) : null}
                             </button>
+                            {openTerm === entry.term && byTerm.has(entry.term) ? (
+                                <EntryFindings findings={byTerm.get(entry.term)!} onJump={jump} />
+                            ) : null}
                             {openTerm === entry.term ? (
                                 <EntryEditor
                                     entry={entry}
@@ -344,6 +458,26 @@ export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanel
             </div>
 
             <div className="border-t border-edge-subtle px-2 py-2">
+                <div className="mb-1 flex items-center gap-2">
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={scanning !== null || !service}
+                        onClick={check}
+                    >
+                        <ListChecks className="mr-1 h-3.5 w-3.5" />
+                        {t("dictionary.check")}
+                    </Button>
+                    <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
+                        {scanning
+                            ? t("dictionary.checking", { done: String(scanning.done), total: String(scanning.total) })
+                            : findings === null
+                                ? ""
+                                : findings.length === 0
+                                    ? t("dictionary.checkClean")
+                                    : tn("dictionary.found", findings.length, { count: findings.length })}
+                    </span>
+                </div>
                 {/* A div rather than a label: the control is a button, so a label around it would
                     look clickable and do nothing. The name is on the switch itself instead. */}
                 <div className="flex items-center justify-between gap-2 py-1 text-xs text-fg-muted">
