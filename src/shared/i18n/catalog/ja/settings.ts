@@ -349,6 +349,7 @@ export const settings = {
         refresh: "再取得",
         browsing: "読み込んでいます…",
         download: "ダウンロード",
+        update: "更新",
         downloading: "ダウンロードしています…",
         failed: "辞書の一覧を取得できませんでした。設定のネットワークポリシーを確認してください。",
         installed: {

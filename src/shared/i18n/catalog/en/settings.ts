@@ -367,6 +367,8 @@ export const settings = {
         refresh: "Refresh",
         browsing: "Loading…",
         download: "Download",
+        /** Same button on a language already installed under an older digest. */
+        update: "Update",
         downloading: "Downloading…",
         failed: "The dictionary list could not be retrieved. Check the network policy in Settings.",
         installed: {
