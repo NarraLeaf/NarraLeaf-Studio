@@ -24,4 +24,11 @@ export const dictionary = {
         suggestReadings: "建议读音",
         checkVariants: "检查异体写法",
     },
+    /** 拿工程里每一个故事对异体写法过一遍。 */
+    check: "检查工程",
+    checking: "{done}/{total}",
+    checkClean: "未发现异体写法",
+    found: {
+        other: "{count} 行",
+    },
 } satisfies LocaleNamespace<"dictionary">;

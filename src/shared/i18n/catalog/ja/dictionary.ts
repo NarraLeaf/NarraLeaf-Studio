@@ -23,4 +23,11 @@ export const dictionary = {
         suggestReadings: "読みの提案",
         checkVariants: "別表記の検査",
     },
+    /** プロジェクトの全ストーリーを別表記で見る。 */
+    check: "プロジェクトを検査",
+    checking: "{done}/{total}",
+    checkClean: "別表記なし",
+    found: {
+        other: "{count} 行",
+    },
 } satisfies LocaleNamespace<"dictionary">;
