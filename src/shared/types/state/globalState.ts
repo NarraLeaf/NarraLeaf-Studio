@@ -386,9 +386,9 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
     "ui.fontFamily": "Default",
     "ui.reduceMotion": false,
-    // Named dropdowns, which is how the title bar has always drawn them; collapsing them is a
-    // choice the author makes, not one an update makes for them.
-    "ui.menuBar.mode": "toolbar",
+    // Collapsed into one button, which is the arrangement Studio ships in: the title bar is its only
+    // full-width strip, and the menus lose nothing by being one button - see `menuBarOptions`.
+    "ui.menuBar.mode": "hamburger",
     "ui.statusBar.visible": true,
     "ui.statusBar.hiddenItems": [],
     "ui.titleBarSearch.visible": true,
