@@ -31,6 +31,7 @@ export type HelpSectionId = (typeof HELP_SECTIONS)[number];
  * typo is a failing test rather than a topic that renders its own key.
  */
 export const HELP_TOPIC_IDS = [
+    "gettingHelp",
     "workspaceLayout",
     "newProject",
     "runModes",
@@ -115,6 +116,14 @@ const DOCS_URL = "https://www.narraleaf.com/docs/studio";
 
 export const HELP_TOPICS: readonly HelpTopic[] = [
     // --- Getting around -------------------------------------------------------
+    // First in the list, which makes it the topic the browser opens on and the one `F1` lands on
+    // when nothing under the pointer has a topic of its own.
+    {
+        id: "gettingHelp",
+        section: "start",
+        shortcuts: ["workspace-context-help", "workspace-command-palette"],
+        related: ["workspaceLayout", "keyboard", "search"],
+    },
     {
         id: "workspaceLayout",
         section: "start",
