@@ -7,6 +7,7 @@ import {
     useState,
     type CSSProperties,
 } from "react";
+import { MotionConfig } from "motion/react";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { useUiClipboardSync } from "@/lib/ui-editor/commands/useUiClipboardSync";
@@ -447,26 +448,47 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         };
     }, [documentService, readOnly, stateService, surface?.host]);
 
+    /**
+     * What is on the canvas is the game, so `ui.reduceMotion` must not reach it.
+     *
+     * The same pair the story preview's stage carries (`NlrStageLayer`), for the same reason
+     * styles.css gives for exempting it: a transition an author is prevented from seeing is one they
+     * cannot tune. `nl-motion-keep` lifts the surface out of the CSS blanket, and
+     * `reducedMotion="never"` lifts it out of the MotionConfig in `lib/renderApp` - the widget
+     * renderers animate their appearance transitions from framer-motion, where no CSS rule reaches,
+     * and that half is most of what the canvas moves.
+     *
+     * Here rather than inside `renderSurface`: the page thumbnails and the component library go
+     * through that same method, and a panel of thirty cards all moving at once is one of the reasons
+     * somebody turns the setting on in the first place.
+     */
     const surfaceContent = useMemo(() => {
         if (!surfaceId || !runtimeBridge || !documentService) {
             return null;
         }
         const style = getEditorSurfaceStyle(surface);
-        if (isComponentEdit) {
-            return runtimeBridge.renderDocumentSurface({
+        // On the surface root, not on the canvas node above it: the reference frames and the layout
+        // diagnostic markers beside it are Studio chrome, and stay calm with the rest of the window.
+        const className = "relative nl-motion-keep";
+        const rendered = isComponentEdit
+            ? runtimeBridge.renderDocumentSurface({
                 document: documentService.getDocument(),
                 surfaceId,
                 hostAdapter,
-                className: "relative",
+                className,
+                style,
+            })
+            : runtimeBridge.renderSurface({
+                surfaceId,
+                hostAdapter,
+                className,
                 style,
             });
+        if (!rendered) {
+            return null;
         }
-        return runtimeBridge.renderSurface({
-            surfaceId,
-            hostAdapter,
-            className: "relative",
-            style,
-        });
+        // Renders no node of its own, so the canvas keeps the shape the interaction layer measures.
+        return <MotionConfig reducedMotion="never">{rendered}</MotionConfig>;
     }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion, brandRevision]);
 
     const applyTool = useCallback(
