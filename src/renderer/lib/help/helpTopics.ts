@@ -46,6 +46,8 @@ export const HELP_TOPIC_IDS = [
     "storyScript",
     "sceneSnapshot",
     "storyMotion",
+    "dictionary",
+    "dictionaryMarks",
     "assets",
     "assetSets",
     "assetSetAxes",
@@ -63,6 +65,7 @@ export const HELP_TOPIC_IDS = [
     "blueprints",
     "uiBindings",
     "networkNodes",
+    "spellcheck",
     "lint",
     "tests",
     "dashboard",
@@ -191,6 +194,16 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["storyVariables", "runModes"],
     },
     {
+        id: "dictionary",
+        section: "story",
+        related: ["dictionaryMarks", "spellcheck", "storyScene"],
+    },
+    {
+        id: "dictionaryMarks",
+        section: "story",
+        related: ["dictionary", "spellcheck", "lint"],
+    },
+    {
         id: "storyMotion",
         section: "story",
         shortcuts: ["story-motion.prev-frame", "story-motion.next-frame", "story-motion.delete"],
@@ -298,6 +311,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     },
 
     // --- Checks ---------------------------------------------------------------
+    {
+        id: "spellcheck",
+        section: "quality",
+        related: ["dictionary", "dictionaryMarks", "studioSettings"],
+    },
     {
         id: "lint",
         section: "quality",
