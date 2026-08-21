@@ -22,6 +22,7 @@ const PROJECT = "D:/projects/my-game";
 const privilegedFs = vi.hoisted(() => ({
     requestWrite: vi.fn(),
     requestWriteRaw: vi.fn(),
+    requestWriteBatch: vi.fn(),
     requestRead: vi.fn(),
     copyFile: vi.fn(),
     deleteFile: vi.fn(),
@@ -159,6 +160,61 @@ describe("WorkspaceFreezeService", () => {
         expect(privilegedFs.requestWrite).toHaveBeenCalledTimes(1);
         expect(privilegedFs.requestWriteRaw).toHaveBeenCalledTimes(1);
         expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(service.isFrozen()).toBe(true);
+    });
+
+    /**
+     * The batched write has the same job here as the single one, and one extra failure mode: it can
+     * carry frozen and writable paths in the same call. Dropping the frozen ones quietly would report
+     * the rest as a complete write, so they come back as refusals - the same `{ok, refused}` a single
+     * write answers, per file.
+     */
+    it("refuses the frozen members of a batch per file and still writes the rest", async () => {
+        const service = await createService();
+        await service.freeze({ kind: "manual" });
+
+        // One result, because only one path may be in the grant. Asserting on that below.
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            statusText: "OK",
+            json: async () => ({ results: [{ ok: true, data: undefined }] }),
+        } as never);
+
+        const outcomes = await BaseFileSystemService.writeBatch([
+            { path: `${PROJECT}/${STORY_INDEX}`, data: "{}", encoding: "utf-8" },
+            { path: `${PROJECT}/editor/cache/thumbnail/ab.png`, data: "cached", encoding: "utf-8" },
+        ]);
+
+        expect(outcomes.map(outcome => outcome.path)).toEqual([
+            `${PROJECT}/${STORY_INDEX}`,
+            `${PROJECT}/editor/cache/thumbnail/ab.png`,
+        ]);
+        // Versioned project data: refused, and a caller that clears its debt on `ok` alone would lose
+        // the edit here exactly as it would on the single-file route.
+        expect(outcomes[0]).toMatchObject({ ok: true, refused: true });
+        // Not versioned, so it goes out - in a grant that never named the frozen path at all. No
+        // `refused` on it: this one really did reach the disk.
+        expect(outcomes[1]).toEqual({ ok: true, data: undefined, path: `${PROJECT}/editor/cache/thumbnail/ab.png` });
+        expect(privilegedFs.requestWriteBatch).toHaveBeenCalledTimes(1);
+        // [0] is the actor; the facade binds it. The entries are the second argument.
+        expect(privilegedFs.requestWriteBatch.mock.calls[0][1]).toEqual([
+            { path: `${PROJECT}/editor/cache/thumbnail/ab.png`, encoding: "utf-8" },
+        ]);
+        expect(service.isFrozen()).toBe(true);
+    });
+
+    it("asks for no grant at all when every path in a batch is frozen", async () => {
+        const service = await createService();
+        await service.freeze({ kind: "manual" });
+
+        const outcomes = await BaseFileSystemService.writeBatch([
+            { path: `${PROJECT}/${STORY_INDEX}`, data: "{}", encoding: "utf-8" },
+            { path: `${PROJECT}/project.json`, data: "{}", encoding: "utf-8" },
+        ]);
+
+        expect(outcomes.every(outcome => outcome.ok && outcome.refused === true)).toBe(true);
+        expect(privilegedFs.requestWriteBatch).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
         expect(service.isFrozen()).toBe(true);
     });
 

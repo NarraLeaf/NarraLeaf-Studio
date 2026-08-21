@@ -1,4 +1,5 @@
 import { FsRejectError, FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import { WRITE_BATCH_MAX_ENTRIES, encodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { IFileSystemService, WorkspaceContext } from "../services";
@@ -25,6 +26,27 @@ export type FsWriteOutcome = {
     ok: boolean;
     error?: FsRejectError;
 };
+
+/**
+ * One file handed to {@link BaseFileSystemService.writeBatch}.
+ *
+ * Text carries the encoding its *file* is stored in; bytes carry none, which is the same distinction
+ * `requestWrite` and `requestWriteRaw` draw. The wire between here and the disk is UTF-8 for text
+ * either way.
+ */
+export type FsWriteBatchEntry =
+    | { path: string; data: string; encoding: FsTextEncoding }
+    | { path: string; data: Uint8Array; encoding?: undefined };
+
+/**
+ * What became of one entry, in the order it was handed in.
+ *
+ * A batch never fails as a whole from the caller's point of view: every entry gets an answer, and an
+ * answer that is `ok` with `refused` is the freeze latch's no-op exactly as it is for a single write
+ * (see {@link FROZEN_NO_OP}). A writer that tracks what it still owes the disk reads `refused` here
+ * for the same reason it reads it there.
+ */
+export type FsWriteBatchOutcome = FsRequestResult<void> & { path: string };
 
 const writeObservers = new Set<(outcome: FsWriteOutcome) => void>();
 
@@ -164,6 +186,54 @@ export class BaseFileSystemService {
             return FROZEN_NO_OP;
         }
         return reportWriteOutcome(path, await this.putRaw(path, data));
+    }
+
+    /**
+     * Write several files through **one** grant and one `PUT`.
+     *
+     * A single write is two IPC round trips - a grant, then a `PUT` to the URL it mints - and the
+     * pair costs about the same whatever the payload weighs: measured on this machine, a 7-byte
+     * write and a 55 KB write both land near 12 ms. Three hundred of them cost seconds in sequence.
+     * This pays that once for the whole set.
+     *
+     * The contract, which is what makes it usable by a writer that tracks debts:
+     *
+     *  - **Every entry gets its own answer**, in the order handed in. A batch does not fail as a
+     *    whole: a permission error on one path, or a directory that went missing under one of them,
+     *    is that entry's result and nobody else's.
+     *  - **A refusal is still a refusal.** The freeze latch is consulted per path *before* the grant
+     *    is asked for, and refused paths never reach it - they come back as {@link FROZEN_NO_OP}, so
+     *    a caller that clears a debt on `ok` alone loses an edit here exactly as it would on the
+     *    single-file route, and one that reads `refused` is right on both.
+     *  - **The grant is not a wider grant.** Every path is authorized individually in the main
+     *    process and one denial refuses the whole grant; the body carries payload *sizes* only, so
+     *    nothing the renderer puts on the wire can name a file the grant does not already cover.
+     *
+     * Sets larger than {@link WRITE_BATCH_MAX_ENTRIES} are split into that many at a time, so the
+     * caller never has to know the cap exists.
+     */
+    public static async writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]> {
+        const outcomes: FsWriteBatchOutcome[] = new Array(entries.length);
+        const attempted: { entry: FsWriteBatchEntry; index: number }[] = [];
+
+        for (const [index, entry] of entries.entries()) {
+            if (refuseFrozenWrite(entry.path) || refuseReloadingWrite(entry.path)) {
+                outcomes[index] = { ...FROZEN_NO_OP, path: entry.path };
+            } else {
+                attempted.push({ entry, index });
+            }
+        }
+
+        for (let start = 0; start < attempted.length; start += WRITE_BATCH_MAX_ENTRIES) {
+            const chunk = attempted.slice(start, start + WRITE_BATCH_MAX_ENTRIES);
+            const results = await this.putBatch(chunk.map(item => item.entry));
+            for (const [position, item] of chunk.entries()) {
+                const result = reportWriteOutcome(item.entry.path, results[position]);
+                outcomes[item.index] = { ...result, path: item.entry.path };
+            }
+        }
+
+        return outcomes;
     }
 
     public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
@@ -352,6 +422,60 @@ export class BaseFileSystemService {
         };
     }
 
+    /**
+     * The grant-and-`PUT` half of {@link writeBatch}, for a set already known to be within the cap
+     * and free of refusals. Answers one result per entry, in order, always.
+     *
+     * Every way this can go wrong at the transport level - a refused grant, a non-200, a body that
+     * is not the expected shape - answers the *same* error for every entry rather than throwing. The
+     * caller's whole reason for using this is to learn what landed, and an exception tells it
+     * nothing it can act on.
+     */
+    private static async putBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsRequestResult<void>[]> {
+        const sameForAll = (error: FsRejectError): FsRequestResult<void>[] =>
+            entries.map(() => ({ ok: false, error }));
+
+        const requestResult = this.wrapIPCError(
+            await appPrivilegedFacade.fs.requestWriteBatch(
+                entries.map(entry => ({ path: entry.path, encoding: entry.encoding })),
+            ),
+        );
+        if (!requestResult.ok) {
+            return sameForAll(requestResult.error);
+        }
+
+        const url = this.constructUrl(requestResult.data);
+        const encoder = new TextEncoder();
+        const body = encodeWriteBatchFrame(
+            entries.map(entry => (typeof entry.data === "string" ? encoder.encode(entry.data) : entry.data)),
+        );
+        const response = await fetch(url, {
+            method: "PUT",
+            body,
+            headers: { "Content-Type": "application/octet-stream" },
+        });
+        if (!response.ok) {
+            return sameForAll({
+                code: FsRejectErrorCode.IPC_ERROR,
+                message: `Failed to write ${entries.length} file(s) to ${url}: ${response.statusText}`,
+            });
+        }
+
+        let results: unknown;
+        try {
+            results = ((await response.json()) as { results?: unknown }).results;
+        } catch {
+            results = undefined;
+        }
+        if (!Array.isArray(results) || results.length !== entries.length) {
+            return sameForAll({
+                code: FsRejectErrorCode.IPC_ERROR,
+                message: `Batched write to ${url} did not report one result per file`,
+            });
+        }
+        return results as FsRequestResult<void>[];
+    }
+
     private static async putRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
         const requestResult = this.wrapIPCError(await appPrivilegedFacade.fs.requestWriteRaw(path));
         if (!requestResult.ok) {
@@ -438,6 +562,11 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
 
     public async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
         return BaseFileSystemService.writeRaw(path, data);
+    }
+
+    /** See {@link BaseFileSystemService.writeBatch}. */
+    public async writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]> {
+        return BaseFileSystemService.writeBatch(entries);
     }
 
     public async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {

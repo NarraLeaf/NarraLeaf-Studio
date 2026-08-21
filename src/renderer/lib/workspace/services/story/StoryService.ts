@@ -168,7 +168,24 @@ export class StoryService extends Service<StoryService> implements IStoryService
      */
     private readonly dirtyDocuments = new Set<StoryId>();
     private readonly dirtyAnimationAssets = new Set<StoryAnimationAssetId>();
+    /** Absolute directories already known to exist; see {@link ensureDir}. */
+    private readonly verifiedDirs = new Set<string>();
     private libraryIndexDirty = false;
+    /**
+     * The library index's *derived* debt: one or more entries' `updatedAt` no longer matches the
+     * document it mirrors, and nothing else about the index has changed.
+     *
+     * Kept apart from {@link libraryIndexDirty} because the two are owed to different degrees. The
+     * index is the only place a story's name, its position, its `documentPath` and the default story
+     * exist - lose that write and the author's work is gone. `entry.updatedAt` is a *copy* of
+     * `document.meta.updatedAt`, and the document carrying the original is written by the same flush,
+     * before this would be: the fact is already durable, and nothing in Studio reads the copy.
+     *
+     * So a stamp is deferred while the author is typing and settled by the first save after they
+     * stop - see {@link flush}. That is the whole of the saving: a one-line edit used to rewrite the
+     * entire index every five seconds because a timestamp had moved.
+     */
+    private libraryStampsDirty = false;
     private animationIndexDirty = false;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
@@ -374,6 +391,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
             }
         });
         const dir = this.getStoryDocumentDir(storyId);
+        // Its directory is going away, and undo can bring the story back: leaving it memoized would
+        // let the restoring write skip the `createDir` that has to happen first.
+        this.verifiedDirs.delete(dir);
         void this.getFileSystem().deleteDir(dir).catch(err => {
             console.warn("[StoryService] failed to delete story directory", err);
         });
@@ -480,7 +500,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const document = this.getStoryDocument(storyId);
         await this.writeStoryDocument(storyId, document);
         this.markStoryEntrySaved(storyId, document.meta?.updatedAt);
-        if (this.libraryIndexDirty) {
+        // Stamps included, unlike the auto-save path: the author asked for this one by name, it is
+        // not on a five-second timer, and settling the mirror here costs one small write.
+        if (this.libraryIndexDirty || this.libraryStampsDirty) {
             await this.writeLibraryIndex();
         }
         if (this.animationIndexDirty) {
@@ -516,6 +538,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
      */
     public async reloadFromDisk(): Promise<void> {
         const previouslyLoaded = [...this.documents.keys()];
+
+        // The working tree was replaced under us - a checkout, a merge, a revision view leaving. The
+        // paths have not moved, so nothing else would make this service re-ask whether they are
+        // still there.
+        this.forgetVerifiedDirs();
 
         await this.loadLibrary();
         await this.loadAnimationIndex();
@@ -1553,6 +1580,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * library index has to come **after** every document or it goes out one save stale; the
      * animation index sits after its assets on the same reasoning.
      *
+     * That stamp is also the only reason most saves touched the index at all, and it is the one
+     * thing here that does not have to be written *now*: see {@link libraryStampsDirty}. While the
+     * author is still typing - which is what `hasScheduledWrite` answers - a stamps-only index is
+     * left for later; the first save after they stop writes it. An index that owes anything else
+     * goes out unconditionally, as it always did.
+     *
      * Every write is attempted even when an earlier one fails, and the first error is re-thrown at
      * the end. Stopping at the first failure would let one unwritable file - a permission on one
      * document, a name the volume rejects - starve every other document forever, because the saver
@@ -1586,7 +1619,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (this.animationIndexDirty) {
             await attempt(() => this.writeAnimationIndex());
         }
-        if (this.libraryIndexDirty) {
+        if (this.libraryIndexDirty || (this.libraryStampsDirty && !this.autoSaver.hasScheduledWrite())) {
             await attempt(() => this.writeLibraryIndex());
         }
 
@@ -1607,11 +1640,20 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.dirtyDocuments.clear();
         this.dirtyAnimationAssets.clear();
         this.libraryIndexDirty = false;
+        this.libraryStampsDirty = false;
         this.animationIndexDirty = false;
         this.setDirty(false);
     }
 
-    /** Whether any file this service owns is still owed to the disk. */
+    /**
+     * Whether any file this service owns is still owed to the disk.
+     *
+     * {@link libraryStampsDirty} is deliberately **not** counted. This drives the unsaved-changes
+     * indicator and the prompt that stands between the author and quitting, and an unwritten stamp
+     * is not unsaved work - the value it mirrors was written into the story document itself by the
+     * same flush. Counting it would light the indicator over a project with nothing unsaved and hold
+     * up a quit for a write nobody is waiting for.
+     */
     private hasPendingWrites(): boolean {
         return this.dirtyDocuments.size > 0
             || this.dirtyAnimationAssets.size > 0
@@ -1629,18 +1671,39 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return result.ok && result.refused !== true;
     }
 
+    /**
+     * The common tail of every writer here: re-owe what did not land, then report a real failure.
+     *
+     * `reOwe` runs for a *refused* write as well as a failed one - see {@link wrote} - which is why
+     * it is a callback and not a flag: only the caller knows which debt it just cleared.
+     */
+    private settleWrite(result: FsRequestResult<void>, reOwe: () => void): void {
+        if (!StoryService.wrote(result)) {
+            reOwe();
+        }
+        if (!result.ok) {
+            // One way a write fails is a directory that went missing under a running Studio. Drop
+            // what `ensureDir` believes, so the auto-saver's retry re-checks the disk and re-creates
+            // it instead of repeating the same doomed attempt down the whole backoff ladder.
+            this.forgetVerifiedDirs();
+            throw new RendererError(result.error.message);
+        }
+    }
+
     private async writeLibraryIndex(): Promise<void> {
         const fs = this.getFileSystem();
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getLibraryIndex(), null, 2);
         this.libraryIndexDirty = false;
+        this.libraryStampsDirty = false;
         const result = await fs.write(this.getIndexPath(), payload, "utf-8");
-        if (!StoryService.wrote(result)) {
+        this.settleWrite(result, () => {
+            // Both, unconditionally. These bytes carried the authored index *and* every stamp, and a
+            // write that did not land tells us nothing about which half mattered; re-owing the
+            // authored half is what makes the retry unconditional rather than deferrable again.
             this.libraryIndexDirty = true;
-        }
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+            this.libraryStampsDirty = true;
+        });
     }
 
     /**
@@ -1660,12 +1723,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const payload = JSON.stringify(document, null, 2);
         this.dirtyDocuments.delete(storyId);
         const result = await this.getFileSystem().write(this.getStoryDocumentPath(storyId), payload, "utf-8");
-        if (!StoryService.wrote(result)) {
+        this.settleWrite(result, () => {
             this.dirtyDocuments.add(storyId);
-        }
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+        });
     }
 
     private async writeAnimationIndex(): Promise<void> {
@@ -1674,12 +1734,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const payload = JSON.stringify(this.getAnimationIndex(), null, 2);
         this.animationIndexDirty = false;
         const result = await fs.write(this.getAnimationIndexPath(), payload, "utf-8");
-        if (!StoryService.wrote(result)) {
+        this.settleWrite(result, () => {
             this.animationIndexDirty = true;
-        }
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+        });
     }
 
     private async writeAnimationAsset(asset: StoryAnimationAsset): Promise<void> {
@@ -1687,12 +1744,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const payload = JSON.stringify(asset, null, 2);
         this.dirtyAnimationAssets.delete(asset.id);
         const result = await this.getFileSystem().write(this.getAnimationAssetPath(asset.id), payload, "utf-8");
-        if (!StoryService.wrote(result)) {
+        this.settleWrite(result, () => {
             this.dirtyAnimationAssets.add(asset.id);
-        }
-        if (!result.ok) {
-            throw new RendererError(result.error.message);
-        }
+        });
     }
 
     /**
@@ -1712,7 +1766,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             return;
         }
         entry.updatedAt = stamp;
-        this.libraryIndexDirty = true;
+        this.libraryStampsDirty = true;
     }
 
     private setDirty(value: boolean): void {
@@ -2136,41 +2190,68 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private async ensureStoryDirs(): Promise<void> {
-        const fs = this.getFileSystem();
-        const dirs = [
-            this.getContext().project.resolve(ProjectNameConvention.EditorStory),
-            this.getContext().project.resolve(ProjectNameConvention.EditorStoryStories),
-            this.getContext().project.resolve(ProjectNameConvention.EditorStoryAnimations),
-        ];
-        for (const dir of dirs) {
-            const exists = await fs.isDirExists(dir);
-            if (!exists.ok) {
-                throw new RendererError(exists.error.message || "Failed to access story directory");
-            }
-            if (!exists.data) {
-                const created = await fs.createDir(dir);
-                if (!created.ok) {
-                    throw new RendererError(created.error.message || "Failed to create story directory");
-                }
-            }
-        }
+        await this.ensureDir(this.getContext().project.resolve(ProjectNameConvention.EditorStory));
+        await this.ensureDir(this.getContext().project.resolve(ProjectNameConvention.EditorStoryStories));
+        await this.ensureDir(this.getContext().project.resolve(ProjectNameConvention.EditorStoryAnimations));
     }
 
     private async ensureStoryDocumentDir(storyId: StoryId): Promise<void> {
         assertValidStoryId(storyId);
         await this.ensureStoryDirs();
+        await this.ensureDir(this.getStoryDocumentDir(storyId));
+    }
+
+    /**
+     * Make sure `dir` exists, asking the disk only the first time.
+     *
+     * Every save used to re-ask. A one-line edit on a 300-scene project spent 21 ms of its 196 ms
+     * flush on seven `isDirExists` round trips - three for the story tree, one for the document's own
+     * directory, then the same three again for the library index - all of them re-confirming
+     * directories that `init` verified before the project was even shown.
+     *
+     * **A stale "yes" is accepted on purpose**, and it is safe for two independent reasons:
+     *
+     *  - The check is duplicated in the main process anyway. `allocateWrite` (privilegedAction.ts)
+     *    stats the parent directory of every write grant it hands out and answers `NOT_FOUND` when it
+     *    is gone. So a directory that disappears under a running Studio - a VCS checkout, another
+     *    window, the author in Explorer - fails the *write*, loudly, whatever this memo believes.
+     *  - A failed write is not swallowed: the debt is re-owed (see {@link writeStoryDocument}) and
+     *    the writers below drop the memo, so the auto-saver's next retry re-checks the disk and
+     *    re-creates whatever went missing. A stale entry therefore costs one failed attempt, never a
+     *    lost edit.
+     *
+     * The memo is keyed by *absolute* path, which is what makes a project switch invalidate it for
+     * free: another project resolves to other paths and simply misses. {@link reloadFromDisk} and
+     * {@link removeStory} clear it explicitly, because those are the two moments where the tree this
+     * service is looking at changes without the paths changing with it.
+     */
+    private async ensureDir(dir: string): Promise<void> {
+        if (this.verifiedDirs.has(dir)) {
+            return;
+        }
         const fs = this.getFileSystem();
-        const dir = this.getStoryDocumentDir(storyId);
         const exists = await fs.isDirExists(dir);
         if (!exists.ok) {
-            throw new RendererError(exists.error.message || "Failed to access story document directory");
+            throw new RendererError(exists.error.message || "Failed to access story directory");
         }
         if (!exists.data) {
             const created = await fs.createDir(dir);
             if (!created.ok) {
-                throw new RendererError(created.error.message || "Failed to create story document directory");
+                throw new RendererError(created.error.message || "Failed to create story directory");
             }
         }
+        this.verifiedDirs.add(dir);
+    }
+
+    /**
+     * Forget what this service believes about the disk's shape.
+     *
+     * Called from every write that did not land, so the retry re-checks rather than repeating the
+     * same doomed attempt forever, and from the two places the working tree is replaced underneath
+     * us. Never called on a *refused* write: a freeze latch says nothing about directories.
+     */
+    private forgetVerifiedDirs(): void {
+        this.verifiedDirs.clear();
     }
 
     private getStoryDocumentDir(storyId: StoryId): string {
