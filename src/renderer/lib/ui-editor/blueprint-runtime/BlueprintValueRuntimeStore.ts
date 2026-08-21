@@ -536,6 +536,15 @@ function resolveListItemFieldValue(
     return { resolved: true, value: coerceValue(unwrapped, target.valueType) };
 }
 
+/**
+ * The one bindable prop that is not a widget prop and belongs to every type.
+ *
+ * Whether a row shows a piece of itself - the "cleared" badge on a save slot, the lock on a gallery
+ * cell - is per-row by nature, and the only thing that ever varied per row before was content. It is
+ * handled outside the target table because the table is keyed by widget type and this is not.
+ */
+const LAYOUT_VISIBLE_BINDING_PATH = "layout.visible";
+
 export function mergeElementWithBlueprintValues(
     element: UIElement,
     surfaceId: string,
@@ -546,6 +555,13 @@ export function mergeElementWithBlueprintValues(
     const bindings = element.valueBindings;
     if (!bindings) {
         return element;
+    }
+    const visibleBinding = bindings[LAYOUT_VISIBLE_BINDING_PATH];
+    if (visibleBinding?.kind === "listItemField" && listItemScope) {
+        const raw = readUIStructFieldValue(listItemScope.struct ?? null, visibleBinding.fieldId, listItemScope.item);
+        if (raw !== undefined) {
+            element = { ...element, layout: { ...element.layout, visible: coerceValue(raw, "boolean") !== false } };
+        }
     }
     // Matched through the inheritance chain: the specialisations inherit the text inspector, so a
     // Dialog Sentence offers the same bind-to-blueprint control and has to resolve it too.

@@ -39,6 +39,18 @@ import { getUIComponentLink, isLinkedUIComponentElement, type UIElement } from "
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
+import { createListItemFieldBindingField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
+
+/**
+ * Bind whether this element shows to a field of the row it is drawn in.
+ *
+ * Module-level so the field renderer keeps a stable component identity across schema rebuilds, the
+ * same reason the widget inspectors declare theirs outside their factories.
+ */
+const LayoutVisibleListItemFieldBinding = createListItemFieldBindingField({
+    propPath: "layout.visible",
+    valueType: "boolean",
+});
 import type {
     FieldDefinition,
     InlineRowItemContext,
@@ -520,6 +532,13 @@ function createLayoutInspectorSchema(
                 },
             ],
             order: 3,
+        }));
+        // Only draws inside a list item template; elsewhere it renders nothing at all.
+        fields.push(defineField<UIInspectorData, any>({
+            id: "layout.visible.listItemField",
+            type: "custom",
+            component: LayoutVisibleListItemFieldBinding,
+            order: 4,
         }));
     }
     if (sizeField) {

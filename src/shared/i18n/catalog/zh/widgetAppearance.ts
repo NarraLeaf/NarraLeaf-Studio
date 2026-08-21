@@ -134,6 +134,7 @@ export const widgetAppearance = {
         active: "激活",
         disabled: "禁用",
         focused: "聚焦",
+        selected: "选中",
         when: "当",
         toggleTitle: "要求 {condition} = true（循环：未设 → true → false）",
         overridesTitle: "状态覆盖（高级）",
