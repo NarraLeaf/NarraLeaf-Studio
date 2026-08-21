@@ -326,6 +326,13 @@ export const workspace = {
         toggleLeftSidebar: "切换左侧边栏",
         toggleRightSidebar: "切换右侧边栏",
         toggleBottomPanel: "切换底部面板",
+        mainMenu: {
+            label: "主菜单",
+            modes: {
+                hamburger: "收进汉堡按钮",
+                toolbar: "在标题栏中分别显示",
+            },
+        },
         panelMenu: {
             removeItem: "移除此项目",
             collapseItem: "折叠到折叠项",

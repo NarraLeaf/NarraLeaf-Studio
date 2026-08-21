@@ -1,5 +1,5 @@
 import type { FocusContext } from "@/lib/workspace/services/ui";
-import type { ActionDefinition, ActionGroup, ActionMenuItem, ActionSeparator } from "../../registry/types";
+import type { ActionDefinition, ActionGroup, ActionMenuItem, ActionSeparator, ActionSubmenu } from "../../registry/types";
 
 export function isActionMenuSeparator(item: ActionMenuItem): item is ActionSeparator {
     return (item as ActionSeparator).separator === true;
@@ -7,6 +7,11 @@ export function isActionMenuSeparator(item: ActionMenuItem): item is ActionSepar
 
 export function isActionMenuAction(item: ActionMenuItem): item is ActionDefinition {
     return (item as ActionDefinition).onClick !== undefined;
+}
+
+/** The remaining kind: what is neither a separator nor a command is a menu of its own. */
+export function isActionMenuSubmenu(item: ActionMenuItem): item is ActionSubmenu {
+    return !isActionMenuSeparator(item) && !isActionMenuAction(item);
 }
 
 export function getActionGroupItems(group: ActionGroup): ActionMenuItem[] {

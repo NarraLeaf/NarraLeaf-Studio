@@ -85,12 +85,32 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "ui.accentColor": string;
     /**
+     * Typeface for the Studio interface: one of the preset ids in
+     * `renderer/lib/settings/uiFontOptions`, or the name of a family installed on this computer.
+     * Nothing validates it against a list — a `global.json` carried to another machine may well
+     * name a font that is not there, which CSS resolves by falling through to the base stack.
+     * Applied by the renderer (lib/appearance) by overriding `--nl-ui-font`, which only Studio
+     * chrome reads; a shipped game and the Dev Mode stage keep the base stack.
+     */
+    "ui.fontFamily": string;
+    /**
      * Calm the Studio interface: no CSS transitions or animations (styles.css) and no
      * framer-motion transform/layout animations (the MotionConfig in lib/renderApp). Independent
      * of the OS-level `prefers-reduced-motion`, which is honored on its own — this is for wanting
      * it here without wanting it everywhere. Game content is exempt in both layers.
      */
     "ui.reduceMotion": boolean;
+    /**
+     * How the workspace's menus (File, Help, and whatever a panel or a plugin registers) are
+     * presented in the title bar: `toolbar` leaves them beside the run controls as named
+     * dropdowns, `hamburger` collapses all of them into a single button whose menu lists them as
+     * submenus.
+     *
+     * Off macOS only. There the same groups are the system menu bar (`useNativeMenuSync`), the
+     * title bar never draws them, and neither value would change anything - which is why the
+     * settings row says so rather than pretending to work.
+     */
+    "ui.menuBar.mode": "toolbar" | "hamburger" | string;
     /** The slim strip along the bottom of the workspace; the dock reclaims its row when off. */
     "ui.statusBar.visible": boolean;
     /**
@@ -364,7 +384,11 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
     "ui.windowIcon": WINDOW_ICON_DEFAULT,
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
+    "ui.fontFamily": "Default",
     "ui.reduceMotion": false,
+    // Collapsed into one button, which is the arrangement Studio ships in: the title bar is its only
+    // full-width strip, and the menus lose nothing by being one button - see `menuBarOptions`.
+    "ui.menuBar.mode": "hamburger",
     "ui.statusBar.visible": true,
     "ui.statusBar.hiddenItems": [],
     "ui.titleBarSearch.visible": true,

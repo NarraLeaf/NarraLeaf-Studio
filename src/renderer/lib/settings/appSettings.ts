@@ -1,12 +1,20 @@
 import { AppSettingDefinition, SettingCategory, SettingScope } from "@/lib/settings/models";
+import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MENU_BAR_MODES } from "@/lib/settings/menuBarOptions";
 import { SettingValueType } from "@/lib/settings/types";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
     EDITOR_FONT_FAMILY_PRESETS,
+    EDITOR_FONT_PRESET_STACKS,
     EDITOR_FONT_SIZE_DEFAULT,
     EDITOR_FONT_SIZE_MAX,
     EDITOR_FONT_SIZE_MIN,
 } from "@/lib/settings/editorFontOptions";
+import {
+    UI_FONT_FAMILY_DEFAULT,
+    UI_FONT_FAMILY_KEY,
+    UI_FONT_FAMILY_PRESETS,
+    UI_FONT_PRESET_STACKS,
+} from "@/lib/settings/uiFontOptions";
 import {
     EDITOR_SURFACE_OPACITY_DEFAULT,
     EDITOR_SURFACE_OPACITY_MAX,
@@ -48,6 +56,7 @@ import {
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
 import { CONFIRM_QUIT_DEFAULT, CONFIRM_QUIT_KEY } from "@shared/constants/quit";
+import { isMacPlatform } from "@/lib/app/platform";
 import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
@@ -219,9 +228,11 @@ export const AppSettings: AppSettingDefinition[] = [
         // can be seen at all: ⌘Q reaches Studio as the App menu's key equivalent, and swallowing it
         // has to happen before the menu acts on it.
         //
-        // macOS only, and the platform check is the whole of the availability rule - there is no
-        // state anywhere else that could make it true, so unlike the background-image row this one
-        // never changes answer for the lifetime of the window.
+        // macOS only, and hidden outright everywhere else. ⌘Q is a macOS keystroke; on Windows and
+        // Linux there is no gesture for this row to govern, so a disabled row with "not available on
+        // this operating system" under it was answering a question the author had no way to ask.
+        // The key is still stored and still exported - see `getAllAppSettings` - so a settings file
+        // that travels between machines keeps whatever the Mac chose.
         key: CONFIRM_QUIT_KEY,
         category: "general",
         scope: SettingScope.Global,
@@ -231,15 +242,10 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
         descriptionKey: "settings.items.confirmQuit.description",
         defaultValue: CONFIRM_QUIT_DEFAULT,
-        availability: async () => {
-            // Dynamic, like the background-image row below: `platform` reaches the window bootstrap
-            // for its cached answer, and this module is also loaded by the settings export/import
-            // scope walker, which runs where no window has booted.
-            const { isMacPlatform } = await import("@/lib/app/platform");
-            return isMacPlatform()
-                ? { enabled: true }
-                : { enabled: false, reasonKey: "settings.items.confirmQuit.unsupportedPlatform" };
-        },
+        // Asked at render, never at module load: `isMacPlatform` reads the bootstrap's cached
+        // platform info and answers `false` where no window has booted, which is also where this
+        // module gets loaded by the settings export/import scope walker.
+        visible: () => isMacPlatform(),
     },
     {
         // Read by the main process's UpdateManager when it decides whether to schedule the launch
@@ -361,6 +367,35 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
+        // Applied by `lib/appearance` as the `--nl-ui-font` custom property, which one guarded rule
+        // in styles.css reads (`html.nl-studio`). Studio chrome only: the game stage in Dev Mode
+        // and every surface preview on a canvas stay in the base stack, because what they show is
+        // the author's game and not their editor.
+        //
+        // `Font`, not `Enum`, for the same reason as the story editor's font below: the list is the
+        // presets PLUS every family installed on this computer, which the picker discovers at open
+        // time. `options` therefore carries only the presets, and nothing validates a stored value
+        // against it.
+        key: UI_FONT_FAMILY_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Font,
+        label: "Interface font",
+        labelKey: "settings.items.uiFontFamily.label",
+        description: "Typeface used for the Studio interface. Any font installed on this computer can be chosen.",
+        descriptionKey: "settings.items.uiFontFamily.description",
+        defaultValue: UI_FONT_FAMILY_DEFAULT,
+        options: [...UI_FONT_FAMILY_PRESETS],
+        optionFontStacks: UI_FONT_PRESET_STACKS,
+        // The same four preset ids as the story editor's font, so the same four labels.
+        optionLabelKeys: {
+            "Default": "settings.items.editorFontFamily.options.default",
+            "Sans Serif": "settings.items.editorFontFamily.options.sansSerif",
+            "Serif": "settings.items.editorFontFamily.options.serif",
+            "Monospace": "settings.items.editorFontFamily.options.monospace",
+        },
+    },
+    {
         // Handed to the tooltip controller by `lib/appearance`, which is also where the accent and
         // the motion preference are applied: a value JS has to read, with no media query or CSS
         // custom property that could carry it instead.
@@ -464,6 +499,7 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionKey: "settings.items.editorFontFamily.description",
         defaultValue: EDITOR_FONT_FAMILY_DEFAULT,
         options: [...EDITOR_FONT_FAMILY_PRESETS],
+        optionFontStacks: EDITOR_FONT_PRESET_STACKS,
         optionLabelKeys: {
             "Default": "settings.items.editorFontFamily.options.default",
             "Sans Serif": "settings.items.editorFontFamily.options.sansSerif",
@@ -883,6 +919,38 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "The strip along the bottom of the workspace.",
         descriptionKey: "settings.items.statusBarVisible.description",
         defaultValue: true,
+    },
+    {
+        // Read by WorkspaceLayout, which either hands the groups to the title bar's ActionBar or
+        // hides them there and draws the hamburger that holds them (`MainMenuButton`). The same
+        // choice is on the title bar's own right-click menu, which is where an author who has just
+        // lost their File menu goes looking for it.
+        key: MENU_BAR_MODE_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Main menu",
+        labelKey: "settings.items.menuBarMode.label",
+        description: "Where the File, Help and panel menus live in the title bar.",
+        descriptionKey: "settings.items.menuBarMode.description",
+        defaultValue: MENU_BAR_MODE_DEFAULT,
+        options: [...MENU_BAR_MODES],
+        // The mode names belong to the title bar rather than to this window, so both readers take
+        // them from the same keys - a second wording here could only disagree with the menu.
+        optionLabelKeys: {
+            hamburger: "workspace.shell.mainMenu.modes.hamburger",
+            toolbar: "workspace.shell.mainMenu.modes.toolbar",
+        },
+        availability: async () => {
+            // macOS puts these groups on the system menu bar instead (`useNativeMenuSync`), so
+            // neither value would move anything. Shown disabled with the reason rather than hidden
+            // like the ⌘Q row: this preference has a meaning on every platform and the author can
+            // still read which one is stored - it is only the applying of it that macOS takes over.
+            const { isMacPlatform } = await import("@/lib/app/platform");
+            return isMacPlatform()
+                ? { enabled: false, reasonKey: "settings.items.menuBarMode.unsupportedPlatform" }
+                : { enabled: true };
+        },
     },
     {
         // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working -

@@ -16,7 +16,7 @@ export const project = {
         // typography and the rest of a project's look are meant to join it.
         design: {
             title: "Design",
-            description: "Colors, and the controls they paint",
+            description: "Colors, fonts, and the controls they paint",
         },
         project: {
             title: "Project",
@@ -50,6 +50,8 @@ export const project = {
         // whose ids they name.
         brandColors: "Colors",
         brandControls: "Controls",
+        // The third part of the Design sub-page: the fonts everything else is set in by default.
+        typography: "Typography",
         distribution: "Distribution key",
         linting: "Project check",
         security: "Security",

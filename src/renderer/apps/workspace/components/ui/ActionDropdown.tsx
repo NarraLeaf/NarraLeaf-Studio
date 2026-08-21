@@ -11,6 +11,7 @@ import {
     getVisibleActionMenuItems,
     isActionMenuAction,
     isActionMenuSeparator,
+    isActionMenuSubmenu,
 } from "./actionMenuModel";
 import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
 import { MnemonicLabel, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
@@ -21,6 +22,20 @@ import { useTranslation } from "@/lib/i18n";
 
 interface ActionDropdownProps {
     group: ActionGroup;
+    /**
+     * Draw the trigger as its icon alone, with no label and no chevron - the hamburger main menu,
+     * whose one button stands for every group rather than naming one.
+     */
+    iconOnly?: boolean;
+    /**
+     * The items already carry whatever a frozen workspace does to them, so leave them alone.
+     *
+     * Set by the hamburger main menu, which holds several groups at once: the freeze is a decision
+     * per group (see `./freezeActionPolicy`), and this dropdown - which knows only its own id -
+     * would otherwise re-apply it to all of them, switching off the File and Help menus that keep a
+     * frozen window escapable.
+     */
+    preFrozen?: boolean;
 }
 
 /**
@@ -35,28 +50,12 @@ interface ActionDropdownProps {
  * than each on its own (`./titleBarMenus`): one at a time, and the pointer walks between them once
  * one is open.
  */
-export function ActionDropdown({ group }: ActionDropdownProps) {
+export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: ActionDropdownProps) {
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
     const frozen = useWorkspaceFrozen();
-    const frozenOut = frozen && !isFreezeExemptActionGroup(group.id);
+    const frozenOut = frozen && !preFrozen && !isFreezeExemptActionGroup(group.id);
     const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
-    // The bar delivers keys to the open menu, so the handler has to exist before the hook that will
-    // call it; it is handed over through a box that each render refreshes.
-    const keyHandlerRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
-    const {
-        ref: dropdownRef,
-        open: isOpen,
-        setOpen: setIsOpen,
-        toggle: toggleDropdown,
-        triggerProps,
-    } = useTitleBarMenu(group.id, {
-        hotTrack: true,
-        mnemonic: group.mnemonic,
-        onKeyDown: event => keyHandlerRef.current(event),
-    });
-    const revealMnemonic = useMnemonicReveal();
-    const shortcuts = useShortcutLabels();
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
     const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
@@ -86,20 +85,81 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
         );
     }, [group, focusContext, frozenOut]);
 
+    /**
+     * Accelerators this menu answers to on behalf of rows that are themselves menus.
+     *
+     * Empty for every menu on the bar, whose rows are commands. The hamburger is what this is for:
+     * its rows are the groups that used to have buttons, and an author who has always pressed Alt+F
+     * should not have to learn that the letter moved when the bar was collapsed.
+     */
+    const innerMnemonics = useMemo(
+        () => rootItems.flatMap(item => (isActionMenuSubmenu(item) && item.mnemonic ? [item.mnemonic] : [])),
+        [rootItems],
+    );
+    // Which of them was pressed, parked until the effect below can act on it - that is what decides
+    // where the menu opens, and it runs after the bar has switched the open menu over to this one.
+    //
+    // The letter is a ref and the count beside it is state, and it has to be both ways round. A
+    // second accelerator arriving while this menu is ALREADY open changes nothing the bar holds -
+    // same member, still open - so without something of its own to change, the effect would never
+    // run again and Alt+E after Alt+F would sit on the File menu. Consuming the letter then clears
+    // the ref alone, which costs no render: clearing state instead would re-run the effect with
+    // nothing pending and throw the focus back to the first row.
+    const pendingMnemonicRef = useRef<string | null>(null);
+    const [mnemonicRequests, setMnemonicRequests] = useState(0);
+    // The bar delivers keys to the open menu, so the handler has to exist before the hook that will
+    // call it; it is handed over through a box that each render refreshes.
+    const keyHandlerRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
+    const {
+        ref: dropdownRef,
+        open: isOpen,
+        setOpen: setIsOpen,
+        toggle: toggleDropdown,
+        triggerProps,
+    } = useTitleBarMenu(group.id, {
+        hotTrack: true,
+        mnemonic: group.mnemonic,
+        innerMnemonics,
+        onInnerMnemonic: mnemonic => {
+            pendingMnemonicRef.current = mnemonic;
+            setMnemonicRequests(count => count + 1);
+        },
+        onKeyDown: event => keyHandlerRef.current(event),
+    });
+    const revealMnemonic = useMnemonicReveal();
+    const shortcuts = useShortcutLabels();
+
     useEffect(() => {
         if (!isOpen) {
             setOpenPath([]);
             setFocusPath([]);
+            // The letter is left where it is on purpose. The bar reports it and opens this menu in
+            // the same task, so a letter can only ever be waiting for the open that is already on
+            // its way - and clearing it here would drop it on the closed render if those two
+            // updates were ever to land separately.
+            return;
+        }
+        const requested = pendingMnemonicRef.current;
+        pendingMnemonicRef.current = null;
+        // Opened by the accelerator of a menu this one is holding: land inside that menu, which is
+        // where pressing its own button used to land. Anything else opens on its first row.
+        const index = requested === null ? -1 : indexOfMnemonic(rootItems, requested);
+        if (index >= 0) {
+            const item = rootItems[index];
+            const inner = isActionMenuSubmenu(item) ? getVisibleActionMenuItems(item.items, focusContext) : [];
+            const first = firstEnabledIndex(inner);
+            setOpenPath([index]);
+            setFocusPath(first >= 0 ? [index, first] : [index]);
         } else {
             // initialize focus on first enabled item
             const idx = firstEnabledIndex(rootItems);
             setFocusPath(idx >= 0 ? [idx] : []);
-            // focus the root menu container to receive keyboard events
-            if (rootMenuRef.current) {
-                rootMenuRef.current.focus();
-            }
         }
-    }, [isOpen, rootItems]);
+        // focus the root menu container to receive keyboard events
+        if (rootMenuRef.current) {
+            rootMenuRef.current.focus();
+        }
+    }, [isOpen, rootItems, focusContext, mnemonicRequests]);
 
     useEffect(() => {
         // Cleanup timers on unmount
@@ -203,7 +263,8 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                     }
                 }}
                 className={cn(
-                    "h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default",
+                    "rounded-md flex items-center gap-2 text-sm transition-colors cursor-default",
+                    iconOnly ? "h-8 w-8 justify-center" : "h-8 px-2",
                     // The open menu keeps the pressed fill after the pointer has left the button for
                     // the panel below it - and while the pointer is walking the bar, it is the only
                     // thing naming which menu the panel belongs to.
@@ -215,14 +276,18 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                 aria-haspopup="true"
             >
                 {group.icon && <span className="w-4 h-4">{group.icon}</span>}
-                <span>
-                    <MnemonicLabel
-                        label={String(groupLabel)}
-                        mnemonic={group.mnemonic}
-                        reveal={revealMnemonic}
-                    />
-                </span>
-                <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                {!iconOnly && (
+                    <>
+                        <span>
+                            <MnemonicLabel
+                                label={String(groupLabel)}
+                                mnemonic={group.mnemonic}
+                                reveal={revealMnemonic}
+                            />
+                        </span>
+                        <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                    </>
+                )}
             </button>
 
             {isOpen && (
@@ -267,6 +332,17 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
             )}
         </div>
     );
+}
+
+/**
+ * The row whose accelerator is this letter, or -1.
+ *
+ * Compared case-insensitively for the same reason the bar matches on the physical key: the letter is
+ * declared as it is drawn, and what arrives depends on the layout that happens to be active.
+ */
+function indexOfMnemonic(items: ActionMenuItem[], mnemonic: string): number {
+    const letter = mnemonic.toUpperCase();
+    return items.findIndex(item => isActionMenuSubmenu(item) && item.mnemonic?.toUpperCase() === letter);
 }
 
 function firstEnabledIndex(items: ActionMenuItem[]): number {
@@ -346,12 +422,16 @@ interface MenuLevelProps {
      * Hover text for the items this menu has turned off wholesale - the frozen workspace's reason.
      * Set only when the freeze is the cause, so a row disabled by its own registration is not given
      * an explanation that would be wrong.
+     *
+     * A submenu may override it for its own rows (`ActionSubmenu.disabledReason`), which is how the
+     * hamburger main menu holds several groups at once and still answers for each of them.
      */
     disabledTitle?: string;
 }
 
 function MenuLevel(props: MenuLevelProps) {
     const { t } = useTranslation();
+    const revealMnemonic = useMnemonicReveal();
     const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext, shortcuts, disabledTitle } = props;
     const parentPath = focusPath.slice(0, level);
     const focusedIndex = focusPath[level] ?? -1;
@@ -439,7 +519,16 @@ function MenuLevel(props: MenuLevelProps) {
                                         {item.checked ? <Check className="w-3 h-3" /> : null}
                                     </span>
                                 ) : null}
-                                <span>{String(item.labelKey ? t(item.labelKey) : item.label)}</span>
+                                {/* A row that is itself a menu can carry the accelerator that menu
+                                    had as a button on the bar - the hamburger's rows do. The hint
+                                    belongs on the row because that is where the menu now is. */}
+                                <span>
+                                    <MnemonicLabel
+                                        label={String(item.labelKey ? t(item.labelKey) : item.label)}
+                                        mnemonic={isActionMenuSubmenu(item) ? item.mnemonic : undefined}
+                                        reveal={revealMnemonic}
+                                    />
+                                </span>
                             </span>
                             {/* Right side: shortcut + badge/chevron */}
                             <span className="flex items-center gap-2">
@@ -466,7 +555,7 @@ function MenuLevel(props: MenuLevelProps) {
                                         hoverCloseTimerRef={hoverCloseTimerRef}
                                         focusContext={focusContext}
                                         shortcuts={shortcuts}
-                                        disabledTitle={disabledTitle}
+                                        disabledTitle={item.disabledReason ?? disabledTitle}
                                     />
                                 </div>
                             )}

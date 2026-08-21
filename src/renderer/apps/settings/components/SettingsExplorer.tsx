@@ -15,6 +15,7 @@ import { SETTING_PANELS } from "../panels";
 import { SettingColorPicker } from "./SettingColorPicker";
 import { SettingFontPicker } from "./SettingFontPicker";
 import { SettingSourcePicker } from "./SettingSourcePicker";
+import { SETTING_CONTROL_WIDTH } from "./settingControlWidth";
 import {
     SETTINGS_HIGHLIGHT_RING,
     SettingsHighlightContext,
@@ -413,7 +414,7 @@ export function SettingsExplorer<T>({
                 const max = descriptor.max ?? 100;
                 const sliderValue = Number(displayValue);
                 return (
-                    <div className="flex items-center gap-3">
+                    <div className="flex w-full items-center gap-3">
                         <Slider
                             value={Number.isFinite(sliderValue) ? sliderValue : Number(descriptor.defaultValue)}
                             min={min}
@@ -426,7 +427,7 @@ export function SettingsExplorer<T>({
                             onValueChange={(next) => handleInputChange(descriptor.id, String(next))}
                             onValueCommit={(next) => handleCommit(entry, next)}
                             aria-label={descriptor.label}
-                            className="w-40"
+                            className="min-w-0 flex-1"
                         />
                         <span className="w-12 shrink-0 text-right text-xs tabular-nums text-fg-muted">
                             {displayValue}{descriptor.unit ?? ""}
@@ -453,12 +454,8 @@ export function SettingsExplorer<T>({
                 );
             }
             case SettingValueType.Source: {
-                // A little wider than a dropdown gets, because what this control shows once an
-                // address has been typed is the address. Not wide enough to spell one out, though:
-                // no width this row can spare fits a URL, and what an offered source shows is a
-                // two-word name, so the extra room only made an empty bar beside a short label.
                 return (
-                    <div className="w-48 max-w-full">
+                    <div className="w-full">
                         <SettingSourcePicker
                             value={displayValue}
                             presets={descriptor.options ?? []}
@@ -471,14 +468,13 @@ export function SettingsExplorer<T>({
                 );
             }
             case SettingValueType.Font: {
-                // Wider than the other controls get: the trigger renders the chosen face in itself,
-                // and a family name truncated to an ellipsis is no longer a specimen of anything.
                 return (
-                    <div className="w-56 max-w-full">
+                    <div className="w-full">
                         <SettingFontPicker
                             value={displayValue}
                             presets={descriptor.options ?? []}
                             presetLabels={descriptor.optionLabels}
+                            presetStacks={descriptor.optionFontStacks}
                             onChange={(next) => handleEnumChange(entry, next)}
                             disabled={isSaving}
                             ariaLabel={descriptor.label}
@@ -499,9 +495,9 @@ export function SettingsExplorer<T>({
                 const effectiveHex = (isCustom ? normalizeHexColor(displayValue) : descriptor.optionColors?.[displayValue])
                     ?? ACCENT_SWATCHES[ACCENT_COLOR_DEFAULT];
                 return (
-                    // Wraps: this strip is the widest control in the pane, and at a high UI zoom the
-                    // row it sits in is narrower than the swatches are long. Unwrapped it just ran
-                    // off the right edge, taking the picker chip (the way to any OTHER colour) with it.
+                    // Wraps: at a high UI zoom the row this sits in is narrower than the swatches
+                    // are long. Unwrapped it just ran off the right edge, taking the picker chip
+                    // (the way to any OTHER colour) with it.
                     <div className="flex flex-wrap items-center justify-end gap-1.5" role="radiogroup" aria-label={descriptor.label}>
                         {options.map(option => {
                             const selected = option === displayValue;
@@ -579,9 +575,13 @@ export function SettingsExplorer<T>({
                     return input;
                 }
                 return (
-                    <div className="flex items-center gap-2">
-                        <div className="w-24">{input}</div>
-                        <span className="shrink-0 text-xs text-fg-muted">{descriptor.unit}</span>
+                    // The unit gets a fixed gutter rather than its own natural width, so the field
+                    // beside it ends where every other unit-bearing field does. Sized to hold the
+                    // longest of them (`min`); letting each size itself left the `ms` field and the
+                    // `%` field one row below it nine pixels out of line with each other.
+                    <div className="flex w-full items-center gap-2">
+                        <div className="min-w-0 flex-1">{input}</div>
+                        <span className="w-7 shrink-0 text-xs text-fg-muted">{descriptor.unit}</span>
                     </div>
                 );
             }
@@ -680,10 +680,12 @@ export function SettingsExplorer<T>({
                         </span>
                         <span className="text-xs text-fg-subtle">{descriptor.description}</span>
                     </div>
-                    {/* `max-w-full`, not `shrink-0`: once this column has wrapped onto its own line it
-                        must be allowed to stay inside the pane, or a wide control (the accent strip)
-                        overflows to the right exactly as it did before the wrap. */}
-                    <div className="flex flex-col items-end gap-1 ml-auto min-w-0 max-w-full">
+                    {/* One width for every row - see `SETTING_CONTROL_WIDTH`. Fields fill it; a switch,
+                        an action button or the accent strip keeps its own size and sits at the right
+                        of it. `max-w-full` rather than the fixed width alone: once this column has
+                        wrapped onto its own line it must be allowed to stay inside the pane, or a
+                        wide control overflows to the right exactly as it did before the wrap. */}
+                    <div className={cn("flex flex-col items-end gap-1 ml-auto max-w-full", SETTING_CONTROL_WIDTH)}>
                         {renderControl(entry)}
                         {isSaving && <Loader2 className="w-3 h-3 text-primary animate-spin" />}
                     </div>

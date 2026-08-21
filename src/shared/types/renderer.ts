@@ -1182,7 +1182,8 @@ export interface RendererPreloadedInterface {
     /** Project templates bundled with this build (resources/templates). */
     projectTemplates: {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
-        scaffold(templateId: string, projectPath: string): Promise<RequestStatus<{ filesCopied: number; locales: string[] }>>;
+        /** `locale` picks the template's own copy of its content written in that language, if it has one. */
+        scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; contentLocale?: string }>>;
     };
 
     assets: {

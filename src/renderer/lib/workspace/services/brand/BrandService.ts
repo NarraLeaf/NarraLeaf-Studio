@@ -12,6 +12,12 @@ import {
     type ProjectBrandDocument,
 } from "@shared/types/brand";
 import { getActiveBrandPalette, setActiveBrandPalette, type BrandPalette } from "@shared/brand/brandRegistry";
+import { setActiveProjectFonts } from "@shared/typography/projectFonts";
+import {
+    normalizeProjectFontStack,
+    PROJECT_FONT_STACK_MAX,
+    type ProjectFontEntry,
+} from "@shared/types/typography";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -24,6 +30,7 @@ import { EventEmitter } from "../ui/EventEmitter";
 
 type BrandServiceEvents = {
     colorsChanged: BrandColor[];
+    fontsChanged: ProjectFontEntry[];
     dirtyChanged: boolean;
 };
 
@@ -113,6 +120,7 @@ export class BrandService extends Service<BrandService> implements IBrandService
 
         this.setDirty(false);
         this.emitColorsChanged();
+        this.emitFontsChanged();
         return this.listColors();
     }
 
@@ -129,11 +137,13 @@ export class BrandService extends Service<BrandService> implements IBrandService
             ...document,
             schemaVersion: BRAND_SCHEMA_VERSION,
             colors: normalizeProjectBrandColors(document.colors),
+            fonts: normalizeProjectFontStack(document.fonts),
         };
         await saveDocument(brandSpec, this.storage(), brandSpec.pathFor(), updated);
         this.document = updated;
         this.setDirty(false);
         this.emitColorsChanged();
+        this.emitFontsChanged();
     }
 
     public getDocument(): ProjectBrandDocument {
@@ -171,6 +181,69 @@ export class BrandService extends Service<BrandService> implements IBrandService
 
     public onColorsChanged(handler: (colors: BrandColor[]) => void): () => void {
         return this.events.on("colorsChanged", handler);
+    }
+
+    /**
+     * The project's default font stack, in priority order. The array is a copy; edit through the
+     * mutators.
+     */
+    public listFonts(): ProjectFontEntry[] {
+        return [...this.getDocument().fonts];
+    }
+
+    public onFontsChanged(handler: (fonts: ProjectFontEntry[]) => void): () => void {
+        return this.events.on("fontsChanged", handler);
+    }
+
+    /**
+     * Append a font to the stack. Refuses one already on it, and refuses to grow past
+     * {@link PROJECT_FONT_STACK_MAX}.
+     *
+     * Reported rather than silent, because the caller is a picker the author has just pressed a font
+     * in: nothing happening on screen is indistinguishable from a control that does not work.
+     */
+    public addFont(assetId: string): boolean {
+        const id = assetId.trim();
+        if (!id) {
+            return false;
+        }
+        const fonts = this.getDocument().fonts;
+        if (fonts.length >= PROJECT_FONT_STACK_MAX || fonts.some(entry => entry.assetId === id)) {
+            return false;
+        }
+        this.applyFontMutation(entries => [...entries, { assetId: id }]);
+        return true;
+    }
+
+    public removeFont(assetId: string): boolean {
+        if (!this.getDocument().fonts.some(entry => entry.assetId === assetId)) {
+            return false;
+        }
+        this.applyFontMutation(entries => entries.filter(entry => entry.assetId !== assetId));
+        return true;
+    }
+
+    /**
+     * Move a font one rung up (`-1`) or down (`+1`).
+     *
+     * By offset rather than to an index because the surface's control is a pair of arrows, and the
+     * two ends have to be no-ops rather than wraps - a font already at the top pressed upwards must
+     * not appear at the bottom, which is the one outcome the author cannot have meant.
+     */
+    public moveFont(assetId: string, offset: number): boolean {
+        const entries = this.getDocument().fonts;
+        const from = entries.findIndex(entry => entry.assetId === assetId);
+        const to = from + offset;
+        if (from < 0 || offset === 0 || to < 0 || to >= entries.length) {
+            return false;
+        }
+        this.applyFontMutation(list => {
+            const next = [...list];
+            const [moving] = next.splice(from, 1);
+            next.splice(to, 0, moving!);
+            return next;
+        });
+        return true;
     }
 
     public onDirtyChanged(handler: (dirty: boolean) => void): () => void {
@@ -289,11 +362,13 @@ export class BrandService extends Service<BrandService> implements IBrandService
         this.document = {
             schemaVersion: BRAND_SCHEMA_VERSION,
             colors: normalizeProjectBrandColors(document.colors),
+            fonts: normalizeProjectFontStack(document.fonts),
         };
         this.revision += 1;
         this.setDirty(true);
         this.autoSaver.schedule();
         this.emitColorsChanged();
+        this.emitFontsChanged();
     }
 
     /**
@@ -306,6 +381,10 @@ export class BrandService extends Service<BrandService> implements IBrandService
      */
     public dispose(): void {
         setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+        // The empty stack for the same reason the seeds are the palette's answer: it is what a
+        // project that has chosen no default font holds, so a project closed here cannot leave
+        // its typeface setting the next project's text for as long as that project's load takes.
+        setActiveProjectFonts([]);
     }
 
     /** The single mutation entry - mutate the list, re-normalize, bump, mark dirty, autosave, publish. */
@@ -316,6 +395,16 @@ export class BrandService extends Service<BrandService> implements IBrandService
         this.setDirty(true);
         this.autoSaver.schedule();
         this.emitColorsChanged();
+    }
+
+    /** {@link applyColorMutation} for the font stack. Same contract, same single entry point. */
+    private applyFontMutation(mutator: (fonts: ProjectFontEntry[]) => ProjectFontEntry[]): void {
+        const document = this.getDocument();
+        document.fonts = normalizeProjectFontStack(mutator([...document.fonts]));
+        this.revision += 1;
+        this.setDirty(true);
+        this.autoSaver.schedule();
+        this.emitFontsChanged();
     }
 
     /**
@@ -359,6 +448,13 @@ export class BrandService extends Service<BrandService> implements IBrandService
         const colors = this.listColors();
         setActiveBrandPalette(colors);
         this.events.emit("colorsChanged", colors);
+    }
+
+    /** Publish first, then tell the subscribers - see {@link emitColorsChanged}. */
+    private emitFontsChanged(): void {
+        const fonts = this.listFonts();
+        setActiveProjectFonts(fonts);
+        this.events.emit("fontsChanged", fonts);
     }
 
     private setDirty(value: boolean): void {

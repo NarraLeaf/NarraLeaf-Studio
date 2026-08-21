@@ -145,3 +145,48 @@ describe("auditShippedContent", () => {
         expect(result.failures.every(failure => failure.reason === "unreadable")).toBe(true);
     });
 });
+
+/**
+ * The project's default fonts are a demand every line of text makes and no page names, so the walk
+ * over the UI document cannot raise them - a package that dropped one would fail at the first
+ * painted character with nothing having asked about it.
+ */
+describe("the project's default fonts", () => {
+    const DEFAULT_FONT = "44444444-4444-4444-8444-444444444444";
+
+    function packWithDefaultFont(items: Record<string, { relativePath: string }>): GameRuntimePackV1 {
+        const built = pack(items);
+        (built.bundle as { fonts?: unknown }).fonts = [{ assetId: DEFAULT_FONT }];
+        return built;
+    }
+
+    it("is audited like any other demand", async () => {
+        const items: Record<string, { relativePath: string }> = {
+            [IMAGE]: { relativePath: "assets/a.png" },
+            [FONT]: { relativePath: "assets/b.woff2" },
+            [DETACHED]: { relativePath: "assets/c.png" },
+            [DEFAULT_FONT]: { relativePath: "assets/d.woff2" },
+        };
+        const result = await auditShippedContent({
+            pack: packWithDefaultFont(items),
+            reader: { entryExists: async () => true, resolveEntryName: id => items[id]?.relativePath ?? null },
+        });
+
+        expect(result.failures).toEqual([]);
+        expect(result.checkedAssetCount).toBe(4);
+    });
+
+    it("fails a package that carries the setting and not the file", async () => {
+        const items: Record<string, { relativePath: string }> = {
+            [IMAGE]: { relativePath: "assets/a.png" },
+            [FONT]: { relativePath: "assets/b.woff2" },
+            [DETACHED]: { relativePath: "assets/c.png" },
+        };
+        const result = await auditShippedContent({
+            pack: packWithDefaultFont(items),
+            reader: { entryExists: async () => true, resolveEntryName: id => items[id]?.relativePath ?? null },
+        });
+
+        expect(result.failures).toEqual([{ assetId: DEFAULT_FONT, origin: "Project design", reason: "missing" }]);
+    });
+});

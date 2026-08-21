@@ -46,6 +46,21 @@ describe("listProjectTemplates", () => {
         expect(template.locales.zh?.name).toBe("骨架");
     });
 
+    it("reports the languages a template writes its content in", async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({
+            name: "Skeleton",
+            // `..` names a directory outside the template; a code that is not a language is not one.
+            contentLocales: { zh: { remove: ["editor/localization/zh-CN.json"] }, "../evil": {} },
+        }));
+        await writeFile(path.join(templatesDir, "plain", "template.json"), JSON.stringify({ name: "Plain" }));
+
+        const [plain, skeleton] = await listProjectTemplates(templatesDir);
+
+        expect(skeleton.contentLocales).toEqual(["zh"]);
+        // Absent, not empty: the template says the same thing to everybody.
+        expect(plain.contentLocales).toBeUndefined();
+    });
+
     it("drops a malformed template rather than the whole list", async () => {
         await writeFile(path.join(templatesDir, "broken", "template.json"), "{ not json");
         await writeFile(path.join(templatesDir, "nameless", "template.json"), JSON.stringify({ version: "1" }));
@@ -109,6 +124,99 @@ describe("scaffoldProjectFromTemplate", () => {
         await writeFile(path.join(templatesDir, "silent", "content", "editor", "story", "index.json"), "{}");
 
         expect((await scaffoldProjectFromTemplate(templatesDir, "silent", projectDir)).locales).toEqual([]);
+    });
+
+    it("hands over the copy written in the author's language, over the base one", async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({
+            name: "Skeleton",
+            contentLocales: { zh: { remove: ["editor/localization/zh-CN.json"] } },
+        }));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "story.json"), '{"line":"You are late."}');
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "localization", "zh-CN.json"), "{}");
+        await writeFile(path.join(templatesDir, "skeleton", "content", "assets", "pic.png"), "PNG");
+        await writeFile(path.join(templatesDir, "skeleton", "content.zh", "editor", "story.json"), '{"line":"你迟到了。"}');
+        await writeFile(path.join(templatesDir, "skeleton", "content.zh", "editor", "localization", "en.json"), "{}");
+
+        const result = await scaffoldProjectFromTemplate(templatesDir, "skeleton", projectDir, "zh");
+
+        expect(result.contentLocale).toBe("zh");
+        expect(await fs.readFile(path.join(projectDir, "editor", "story.json"), "utf-8")).toBe('{"line":"你迟到了。"}');
+        // Structure and assets come from the base tree either way: a variant is the same project
+        // said again, not a second one.
+        expect(await fs.readFile(path.join(projectDir, "assets", "pic.png"), "utf-8")).toBe("PNG");
+        // The language the base was translated INTO is the one the variant is written in, so its
+        // translation file leaves with it - and the languages reported are the ones now on disk.
+        await expect(fs.stat(path.join(projectDir, "editor", "localization", "zh-CN.json"))).rejects.toThrow();
+        expect(result.locales).toEqual(["en"]);
+    });
+
+    it("matches a variant on the language, not on the exact code", async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({
+            name: "Skeleton",
+            contentLocales: { zh: {} },
+        }));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "story.json"), '{"line":"en"}');
+        await writeFile(path.join(templatesDir, "skeleton", "content.zh", "editor", "story.json"), '{"line":"zh"}');
+
+        const result = await scaffoldProjectFromTemplate(templatesDir, "skeleton", projectDir, "zh-CN");
+
+        expect(result.contentLocale).toBe("zh");
+        expect(await fs.readFile(path.join(projectDir, "editor", "story.json"), "utf-8")).toBe('{"line":"zh"}');
+    });
+
+    it("gives the base content to an author whose language the template does not write", async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({
+            name: "Skeleton",
+            contentLocales: { zh: {} },
+        }));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "story.json"), '{"line":"en"}');
+        await writeFile(path.join(templatesDir, "skeleton", "content.zh", "editor", "story.json"), '{"line":"zh"}');
+
+        const result = await scaffoldProjectFromTemplate(templatesDir, "skeleton", projectDir, "ko");
+
+        expect(result.contentLocale).toBeUndefined();
+        expect(await fs.readFile(path.join(projectDir, "editor", "story.json"), "utf-8")).toBe('{"line":"en"}');
+    });
+
+    it("ignores a variant directory the manifest does not declare", async () => {
+        // The declaration is the offer; a directory somebody left behind is not one.
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({ name: "Skeleton" }));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "story.json"), '{"line":"en"}');
+        await writeFile(path.join(templatesDir, "skeleton", "content.zh", "editor", "story.json"), '{"line":"zh"}');
+
+        const result = await scaffoldProjectFromTemplate(templatesDir, "skeleton", projectDir, "zh");
+
+        expect(result.contentLocale).toBeUndefined();
+        expect(await fs.readFile(path.join(projectDir, "editor", "story.json"), "utf-8")).toBe('{"line":"en"}');
+    });
+
+    it("keeps the base content when a declared variant is not there", async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({
+            name: "Skeleton",
+            contentLocales: { zh: {} },
+        }));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "story.json"), '{"line":"en"}');
+
+        // A build that lost the directory costs the author a language, never the project.
+        const result = await scaffoldProjectFromTemplate(templatesDir, "skeleton", projectDir, "zh");
+
+        expect(result.contentLocale).toBeUndefined();
+        expect(result.filesCopied).toBe(1);
+    });
+
+    it("refuses to remove anything outside the project", async () => {
+        await writeFile(path.join(templatesDir, "skeleton", "template.json"), JSON.stringify({
+            name: "Skeleton",
+            contentLocales: { zh: { remove: ["../outside.txt", "/etc/hosts", "editor/gone.json"] } },
+        }));
+        await writeFile(path.join(templatesDir, "skeleton", "content", "editor", "gone.json"), "{}");
+        await writeFile(path.join(templatesDir, "skeleton", "content.zh", "editor", "kept.json"), "{}");
+        await writeFile(path.join(root, "outside.txt"), "not the project's");
+
+        await scaffoldProjectFromTemplate(templatesDir, "skeleton", projectDir, "zh");
+
+        expect(await fs.readFile(path.join(root, "outside.txt"), "utf-8")).toBe("not the project's");
+        await expect(fs.stat(path.join(projectDir, "editor", "gone.json"))).rejects.toThrow();
     });
 
     it("refuses an id that would read outside the templates directory", async () => {

@@ -47,6 +47,21 @@
      */
     --nl-editor-surface-opacity: 1;
 
+    /*
+     * The Studio interface typeface.
+     *
+     * `--nl-ui-font-base` is the stack the product ships with — Tailwind's `sans`, pulled through
+     * `theme()` rather than spelled out again, so the two can never drift. It is also what the
+     * `ui.fontFamily` preference means by "Default", and the tail a chosen family falls back to for
+     * the glyphs it has no drawing of.
+     *
+     * `--nl-ui-font` is what the interface is actually set in. Studio windows override it on the
+     * root element from the setting (src/renderer/lib/appearance); a game runtime never runs that
+     * bootstrap, so it keeps the base stack.
+     */
+    --nl-ui-font-base: theme(fontFamily.sans);
+    --nl-ui-font: var(--nl-ui-font-base);
+
     --narraleaf-accent: rgb(var(--nl-primary));
     --narraleaf-accent-strong: rgb(var(--nl-primary));
     --narraleaf-accent-weak: rgb(var(--nl-primary) / 0.6);
@@ -284,6 +299,38 @@
 
 :root.nl-reduce-motion {
     --nl-motion: 0;
+}
+
+/*
+ * Set the interface in the author's chosen face.
+ *
+ * `.nl-studio` — the same guard the light theme and the reduced-motion blanket use, and for the
+ * same reason: this stylesheet is bundled into the game runtime, and a shipped game is set in the
+ * face its author chose for IT, not in the one whoever built it likes reading Studio in. Dev Mode
+ * omits the class as well, so the game it hosts is unaffected.
+ *
+ * On `html` because that is what Tailwind's preflight sets `font-family` on, and a rule of equal
+ * specificity would be a coin toss on source order. The class settles it.
+ */
+html.nl-studio {
+    font-family: var(--nl-ui-font);
+}
+
+/*
+ * ...but not the game's own UI, wherever it is previewed inside Studio chrome.
+ *
+ * `.ui-editor-surface` is the frame every rendered surface carries — the editing canvas, the panel
+ * thumbnails, the template cards, a `frame` widget's nested surface — so one rule covers all of
+ * them. A surface is the author's work being shown back to them, and a widget that has not been
+ * given a font asset is drawn in whatever it inherits: without this it would inherit the Studio
+ * preference and the canvas would stop agreeing with the game.
+ *
+ * Scoped to `.nl-studio` too, so this only ever *undoes* the preference. Unscoped it would also
+ * pin the surface inside a shipped game, where there is no preference to undo and where a runtime
+ * that one day sets a font above the stage should still reach it.
+ */
+:root.nl-studio .ui-editor-surface {
+    font-family: var(--nl-ui-font-base);
 }
 
 *, *::before, *::after {

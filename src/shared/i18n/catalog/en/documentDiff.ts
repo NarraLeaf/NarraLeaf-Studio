@@ -82,6 +82,8 @@ export const documentDiff = {
         audioTracks: "Audio tracks",
         /** The author's own colors. The seeded palette is always there and is not counted. */
         brandColors: "Brand colors",
+        /** The project's default font stack. Counted whole - every rung is one the author added. */
+        brandFonts: "Default fonts",
         characterGroups: "Character groups",
         characters: "Characters",
         dictionaryWords: "Dictionary words",
