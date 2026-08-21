@@ -1690,13 +1690,49 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
     }
 
+    /**
+     * The one route every file this service owns goes out by.
+     *
+     * **Not `fs.write`.** That verb mints a write grant over IPC and then `PUT`s the payload back
+     * through the app protocol, and the pair costs about the same whatever the payload weighs.
+     * Measured in the running app on a 300-scene, 30,000-row story document of 18,499,412 bytes,
+     * the two routes interleaved in one loop so load drift hits both:
+     *
+     *  - one write of that document: **122 ms** (112-131) through the grant and the `PUT`, **54 ms**
+     *    (51-67) through the direct call below;
+     *  - the whole {@link flush} after a one-line edit: **158 ms** (155-167) before, **89 ms**
+     *    (86-90) after.
+     *
+     * The same temp-fsync-rename sequence run from plain Node is about 22 ms, so most of what the
+     * grant route spent never touched a disk. This service writes that document on every auto-save -
+     * at most every five seconds, for as long as the author keeps typing.
+     *
+     * All four writers use it, and all four have the same shape: a file that has to be *created* on
+     * the first open of a project that predates it (a new story, a library index, an animation index,
+     * a new motion asset) and *replaced* on every save after that. Neither existing no-grant verb
+     * covers both - `writeFileNoFollow` can only overwrite, `ensureRegularFile` deliberately writes
+     * nothing when the file is already there - which is why
+     * `Fs.writeFileNoFollowOrCreate` exists.
+     *
+     * What changes for the author: a story document that is a symlink or has a hard link is now
+     * refused with `INVALID_PATH` instead of being written through. Nothing in Studio creates
+     * either, and a symlinked or junctioned story *directory* is unaffected - only the final path
+     * component is inspected.
+     *
+     * What does not change is everything {@link settleWrite} reads: a frozen or reloading workspace
+     * still answers `ok` with `refused`, and a real failure is still `ok: false` with a code the
+     * save-status surface already understands.
+     */
+    private writeStoryFile(path: string, payload: string): Promise<FsRequestResult<void>> {
+        return this.getFileSystem().writeFileNoFollowOrCreate(path, payload, "utf-8");
+    }
+
     private async writeLibraryIndex(): Promise<void> {
-        const fs = this.getFileSystem();
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getLibraryIndex(), null, 2);
         this.libraryIndexDirty = false;
         this.libraryStampsDirty = false;
-        const result = await fs.write(this.getIndexPath(), payload, "utf-8");
+        const result = await this.writeStoryFile(this.getIndexPath(), payload);
         this.settleWrite(result, () => {
             // Both, unconditionally. These bytes carried the authored index *and* every stamp, and a
             // write that did not land tells us nothing about which half mattered; re-owing the
@@ -1722,18 +1758,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDocumentDir(storyId);
         const payload = JSON.stringify(document, null, 2);
         this.dirtyDocuments.delete(storyId);
-        const result = await this.getFileSystem().write(this.getStoryDocumentPath(storyId), payload, "utf-8");
+        const result = await this.writeStoryFile(this.getStoryDocumentPath(storyId), payload);
         this.settleWrite(result, () => {
             this.dirtyDocuments.add(storyId);
         });
     }
 
     private async writeAnimationIndex(): Promise<void> {
-        const fs = this.getFileSystem();
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getAnimationIndex(), null, 2);
         this.animationIndexDirty = false;
-        const result = await fs.write(this.getAnimationIndexPath(), payload, "utf-8");
+        const result = await this.writeStoryFile(this.getAnimationIndexPath(), payload);
         this.settleWrite(result, () => {
             this.animationIndexDirty = true;
         });
@@ -1743,7 +1778,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDirs();
         const payload = JSON.stringify(asset, null, 2);
         this.dirtyAnimationAssets.delete(asset.id);
-        const result = await this.getFileSystem().write(this.getAnimationAssetPath(asset.id), payload, "utf-8");
+        const result = await this.writeStoryFile(this.getAnimationAssetPath(asset.id), payload);
         this.settleWrite(result, () => {
             this.dirtyAnimationAssets.add(asset.id);
         });
@@ -2211,10 +2246,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
      *
      * **A stale "yes" is accepted on purpose**, and it is safe for two independent reasons:
      *
-     *  - The check is duplicated in the main process anyway. `allocateWrite` (privilegedAction.ts)
-     *    stats the parent directory of every write grant it hands out and answers `NOT_FOUND` when it
-     *    is gone. So a directory that disappears under a running Studio - a VCS checkout, another
-     *    window, the author in Explorer - fails the *write*, loudly, whatever this memo believes.
+     *  - The check is duplicated in the main process anyway. The write itself creates its scratch
+     *    sibling *in* the directory (`Fs.writeFileNoFollowOrCreate` -> `createTempSibling`), so a
+     *    directory that is not there answers `NOT_FOUND` from the `open`. So a directory that
+     *    disappears under a running Studio - a VCS checkout, another window, the author in Explorer
+     *    - fails the *write*, loudly, whatever this memo believes. The write-grant route these
+     *    writers used to take reached the same answer a different way, by stat'ing the parent in
+     *    `allocateWrite` (privilegedAction.ts) before minting the URL.
      *  - A failed write is not swallowed: the debt is re-owed (see {@link writeStoryDocument}) and
      *    the writers below drop the memo, so the auto-saver's next retry re-checks the disk and
      *    re-creates whatever went missing. A stale entry therefore costs one failed attempt, never a

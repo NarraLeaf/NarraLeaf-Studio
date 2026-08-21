@@ -1,4 +1,4 @@
-import { createTranslator, normalizeLocale, resolvePreferredLocale, Translator, type LocaleCode } from "@shared/i18n";
+import { createTranslator, DEFAULT_LOCALE, normalizeLocale, resolvePreferredLocale, Translator, type LocaleCode } from "@shared/i18n";
 import type { BaseApp } from "./baseApp";
 
 /**
@@ -28,6 +28,14 @@ function systemLanguages(): string[] {
  * settled on, kept as a tail entry because the ordered list is empty on some Linux setups.
  */
 export function getMainLocale(app: BaseApp): LocaleCode {
+    // A command-line build states its language rather than inheriting one. Half of a build's console
+    // is written here and half in the workspace, and a machine set to another language produced a log
+    // in two languages at once - neither of them chosen by whoever reads it. The workspace side pins
+    // itself the same way; see `runCommandLineBuild`. Nothing else about the run changes, and this
+    // launch opens no menu, no dialog and no window for the choice to be visible in anyway.
+    if (app.getCommandLineBuild()) {
+        return DEFAULT_LOCALE;
+    }
     const stored = app.globalState.get("app.language");
     if (typeof stored === "string" && stored.length > 0) {
         return normalizeLocale(stored);

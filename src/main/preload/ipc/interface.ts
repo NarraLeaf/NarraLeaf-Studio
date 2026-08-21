@@ -19,6 +19,7 @@ import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, De
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "@shared/types/gameBuild";
+import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type { StudioTaskOverview } from "@shared/types/studioTask";
 import type { StudioClipboardKind } from "@shared/types/studioClipboard";
@@ -104,6 +105,8 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "ensureRegularFile", path, data, encoding }),
             writeFileNoFollow: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollow", path, data, encoding }),
+            writeFileNoFollowOrCreate: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollowOrCreate", path, data, encoding }),
             recoverCorruptedJsonFile: (actor: PrivilegedActor, path: string, replacement: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "recoverCorruptedJsonFile", path, replacement, encoding }),
             createDir: (actor: PrivilegedActor, path: string) =>
@@ -284,6 +287,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
         reportLoadResult: (ok: boolean) =>
             ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
+        reportCommandLineBuild: (event: CommandLineBuildEvent) =>
+            ipcClient.send(IPCEventType.workspaceCommandLineBuild, event),
         reportWriteFreeze: (reason: WorkspaceFreezeKind | null, revision?: RevisionId) =>
             ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason, revision }),
         onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>

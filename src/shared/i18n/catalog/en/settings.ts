@@ -87,6 +87,14 @@ export const settings = {
             label: "Developer options",
             description: "Right-click menus gain a section for copying the ID of the item clicked.",
         },
+        screenEffectQuality: {
+            label: "Screen effects in Dev Mode",
+            description: "Draft is generated in about a third of the time. Previews and builds always use the final quality.",
+            options: {
+                draft: "Draft",
+                final: "Final quality",
+            },
+        },
         confirmQuit: {
             label: "Confirm before quitting with ⌘Q",
             description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
