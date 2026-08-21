@@ -36,7 +36,11 @@ export function startWeatherBakeInWorker(
     binaryPath: string,
     spec: WeatherBakeSpec,
     targetPath: string,
-    options: { quality: WeatherBakeQuality; onProgress?: (progress: WeatherBakeProgress) => void },
+    options: {
+        quality: WeatherBakeQuality;
+        threads: number | null;
+        onProgress?: (progress: WeatherBakeProgress) => void;
+    },
 ): WeatherBakeHandle {
     let settle: (result: WeatherBakeResult) => void = () => undefined;
     const result = new Promise<WeatherBakeResult>(resolve => {
@@ -80,7 +84,7 @@ export function startWeatherBakeInWorker(
     }));
 
     const post = (message: WeatherWorkerInboundMessage): void => worker.postMessage(message);
-    post({ type: "bake", binaryPath, spec, quality: options.quality, targetPath });
+    post({ type: "bake", binaryPath, spec, quality: options.quality, threads: options.threads, targetPath });
 
     return {
         result,

@@ -46,6 +46,9 @@ describe("dev mode weather clip grants", () => {
     function makeWindow(outcome: { paths: Map<string, string>; failures: Map<string, string> }): AppWindow<WindowAppType.DevMode> {
         const app = {
             storageManager,
+            // The handler reads two Performance settings on its way into a bake. An empty store is
+            // the honest fake: both readers are specified to fall back when nothing is stored.
+            globalState: { get: () => undefined },
             getWeatherBakeManager: () => ({
                 ensure: async (request: { claim?: { owner: string; attempt: string } }) => {
                     asked = request;

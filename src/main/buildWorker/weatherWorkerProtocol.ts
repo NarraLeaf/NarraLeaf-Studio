@@ -33,6 +33,14 @@ export type WeatherWorkerBakeMessage = {
      * Mode session throws away.
      */
     quality: WeatherBakeQuality;
+    /**
+     * How many threads may draw frames, or `null` to read the machine.
+     *
+     * Carried rather than read from the environment here: the author's choice lives in Studio's
+     * settings, which this process cannot see, and an environment variable set at fork time would
+     * make the answer depend on when the worker was started rather than on what is stored now.
+     */
+    threads: number | null;
     /** Where the finished clip lands. The worker writes through a temporary name beside it. */
     targetPath: string;
 };

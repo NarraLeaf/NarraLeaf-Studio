@@ -187,6 +187,7 @@ export type AppSettingCategoryKey =
     | "appearance"
     | "editor"
     | "workspace"
+    | "performance"
     | "shortcuts"
     | "versionControl"
     | "network"
