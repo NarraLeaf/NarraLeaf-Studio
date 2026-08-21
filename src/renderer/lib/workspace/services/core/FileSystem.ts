@@ -251,6 +251,35 @@ export class BaseFileSystemService {
     }
 
     /**
+     * Write a document straight down the IPC call, without minting a write grant first.
+     *
+     * {@link write} is two round trips - a grant, then a `PUT` to the URL it mints - and both are
+     * paid whatever the payload weighs. Measured in the running app on a 30,000-row story document
+     * of 18,499,412 bytes, the routes interleaved: a median 122 ms (112-131) through the grant and
+     * the `PUT` against 54 ms (51-67) through this call. The same temp-fsync-rename sequence run
+     * from plain Node is about 22 ms, so most of the grant route's cost never touches a disk and
+     * roughly half of what is left here is the structured clone this still pays. A story document
+     * is written on every auto-save, at most every five seconds, while the author is typing.
+     *
+     * What is given up for that is stated in `Fs.writeFileNoFollowOrCreate`: the target has to be a
+     * plain regular file or absent, so a symlink or a hard-linked path is now refused with
+     * `INVALID_PATH` where the grant route would have written through it.
+     *
+     * Everything a caller reads is unchanged, and deliberately so:
+     *  - the freeze and reload latches are consulted here, first, and answer {@link FROZEN_NO_OP} -
+     *    so a refusal is still `ok` with `refused`, and a writer tracking what it owes the disk
+     *    still re-owes it;
+     *  - a real failure is still `ok: false` with an {@link FsRejectError}, reported to
+     *    {@link observeWrites} exactly as the grant route's is.
+     */
+    public static async writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
+            return FROZEN_NO_OP;
+        }
+        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollowOrCreate(path, data, encoding)));
+    }
+
+    /**
      * Set a damaged JSON file aside and put a usable one in its place.
      *
      * Gated like every other writer, which it was not before. It moves the author's file and writes
@@ -575,6 +604,11 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
 
     public async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
         return BaseFileSystemService.writeFileNoFollow(path, data, encoding);
+    }
+
+    /** See {@link BaseFileSystemService.writeFileNoFollowOrCreate}. */
+    public async writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.writeFileNoFollowOrCreate(path, data, encoding);
     }
 
     public async recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {

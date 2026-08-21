@@ -1,4 +1,4 @@
-import type { WeatherBakeSpec } from "@shared/weather/model";
+import type { WeatherBakeQuality, WeatherBakeSpec } from "@shared/weather/model";
 import type { WeatherBakeResult } from "@/app/application/managers/weather/weatherBake";
 
 /**
@@ -27,6 +27,12 @@ export type WeatherWorkerBakeMessage = {
     /** Absolute path to the ffmpeg the host resolved. The worker resolves nothing itself. */
     binaryPath: string;
     spec: WeatherBakeSpec;
+    /**
+     * How hard the encoder works. Carried rather than decided here: the worker knows nothing about
+     * who asked, and the tier is the difference between the file a build ships and the one a Dev
+     * Mode session throws away.
+     */
+    quality: WeatherBakeQuality;
     /** Where the finished clip lands. The worker writes through a temporary name beside it. */
     targetPath: string;
 };

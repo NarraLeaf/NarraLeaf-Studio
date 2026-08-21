@@ -1,4 +1,5 @@
 
+import type { GameBuildRequest } from "./gameBuild";
 import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "./pluginPermissions";
 import type { ServerTrustPromptProps, ServerTrustPromptResult } from "./serverTrust";
 
@@ -51,6 +52,17 @@ export type WindowProps = {
          * list it as the first anomaly.
          */
         recoveryReason?: string;
+        /**
+         * Run this build and report the result, instead of opening the editor.
+         *
+         * Set only by `--build`. A window prop rather than a message sent once the window is up, for
+         * the reason `recovery` above gives from the other side: it is settled before the first
+         * service starts, so the workspace can come up as the thing it is going to be. In this mode
+         * the shell, the tabs, the plugins and the built-in modules are never mounted - the checks
+         * and the build need services, not an interface, and an interface nobody can see costs a
+         * minute of startup and brings dialogs with nobody to answer them.
+         */
+        commandLineBuild?: { request: GameBuildRequest };
     },
     [WindowAppType.ProjectWizard]: {
         /**

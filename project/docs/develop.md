@@ -284,7 +284,7 @@
     - [ ] Build profiles
     - [ ] Signing and notarization workflow
     - [ ] Patch package generation
-    - [ ] CI-friendly command line export
+    - [x] CI-friendly command line build (`--build`)
   - [ ] Publish workflow
     - [ ] Local build artifacts browser
     - [ ] Itch.io export helper
@@ -653,7 +653,7 @@
     - [ ] 构建配置文件（Profile）
     - [ ] 签名与公证流程
     - [ ] 补丁包生成
-    - [ ] 适合 CI 的命令行导出
+    - [x] 适合 CI 的命令行构建（`--build`）
   - [ ] 发布流程
     - [ ] 本地构建产物浏览器
     - [ ] itch.io 导出助手
