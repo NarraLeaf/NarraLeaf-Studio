@@ -12,12 +12,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_HIDE,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
     BLUEPRINT_NODE_TYPE_LAYER_WAIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
@@ -45,6 +47,8 @@ import {
 } from "@/lib/ui-editor/runtime/app/layers/LayerStackController";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
+import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
+import { BLUEPRINT_MEMO_RECORD_KEY } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 
 function createDocument(): UIDocument {
     const surface = (id: string, name: string) => ({
@@ -121,8 +125,15 @@ function createLayerHost(options?: { runtimeScopeId?: string; pageProps?: Record
     return { stack, api, adapter, logs };
 }
 
-async function runGraph(graph: UIGraph, host: LayerTestHost): Promise<Record<string, unknown>> {
+async function runGraph(
+    graph: UIGraph,
+    host: LayerTestHost,
+    memoRecord?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
     const locals: Record<string, unknown> = {};
+    if (memoRecord) {
+        Object.defineProperty(locals, BLUEPRINT_MEMO_RECORD_KEY, { value: memoRecord, enumerable: false });
+    }
     await executeGraph({
         graph,
         entry: graph.entries.main,
@@ -276,6 +287,52 @@ describe("Layer blueprint nodes", () => {
         );
         await expect(waiting).resolves.toBe("yes");
         expect(stack.getState()).toEqual([]);
+    });
+
+    it("Close This Layer answers with what a Memo is holding", async () => {
+        // The shape the Confirm page ships with: the pressed row index is read twice - once as the
+        // layer's answer, once to pick which sound plays - so it travels through a Memo, whose
+        // output is the only data pin in the system allowed to feed two consumers. That also carries
+        // the number into a Result pin typed `json`, which a bare integer pin could not be drawn onto.
+        //
+        // A Memo parks its value in the blueprint's variable record rather than in the per-execution
+        // locals, which is what gives it a Var's lifetime - and what makes a write with no record
+        // attached a silent no-op. The runtime attaches one; this harness has to as well.
+        registerCoreBlueprintNodes();
+        const memoRecord: Record<string, unknown> = {};
+        const stack = new LayerStackController();
+        const key = mountSurfaceLayer(stack, { surfaceId: "confirm" });
+        const inside = createLayerHostOn(stack, key);
+        const waiting = stack.waitForClose(key);
+        const seen = await runGraph(
+            {
+                id: "memo-answer",
+                entries: { main: { start: { nodeId: "memo", port: "in" } } },
+                nodes: {
+                    index: {
+                        id: "index",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
+                        params: { value: 2 },
+                    },
+                    memo: { id: "memo", type: BLUEPRINT_NODE_TYPE_DATA_MEMO, params: {} },
+                    act: { id: "act", type: BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF, params: {} },
+                    echo: { id: "echo", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "seen" } },
+                },
+                edges: [
+                    { from: { nodeId: "index", port: "value" }, to: { nodeId: "memo", port: "value" } },
+                    { from: { nodeId: "memo", port: "next" }, to: { nodeId: "act", port: "in" } },
+                    { from: { nodeId: "memo", port: "result" }, to: { nodeId: "act", port: "result" } },
+                    { from: { nodeId: "memo", port: "result" }, to: { nodeId: "echo", port: "value" } },
+                    { from: { nodeId: "act", port: "next" }, to: { nodeId: "echo", port: "in" } },
+                ],
+            } as unknown as UIGraph,
+            inside,
+            memoRecord,
+        );
+        // Read back downstream as well as through the layer, because a Memo whose fan-out only fed
+        // one consumer would still pass the assertion above.
+        expect(seen.seen).toBe(2);
+        await expect(waiting).resolves.toBe(2);
     });
 
     it("Close This Layer on a page that is not a layer does nothing and says so", async () => {

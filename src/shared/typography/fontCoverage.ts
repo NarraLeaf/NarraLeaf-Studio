@@ -60,7 +60,17 @@ export type FontCoverageFailureReason =
     /** Structurally a font, but a table offset or length points outside the file. */
     | "malformed"
     /** WOFF or WOFF2, and the host did not supply the decompressor that container needs. */
-    | "needs-decompressor";
+    | "needs-decompressor"
+    /**
+     * A TrueType/OpenType **collection**, which nothing in Studio can render.
+     *
+     * Parsing one is easy and the answer would be worthless: `FontFace` takes one file to mean one
+     * typeface and rejects a collection, so a `.ttc` on the project's stack draws nothing at all.
+     * Reporting coverage for it would be the one lie this module must not tell - it would let
+     * `typography` lint certify text that renders as boxes. Import refuses these
+     * (`FileFormatValidator`); this arm is what a library that took one in before that did answers.
+     */
+    | "unloadable-container";
 
 export type FontCoverageResult =
     | { ok: true; coverage: FontCoverage }
@@ -85,10 +95,8 @@ export const EMPTY_FONT_COVERAGE: FontCoverage = { ranges: [], count: 0, codePag
 /**
  * Read the code points a font can draw, and the code pages it declares.
  *
- * Accepts bare sfnt (`.ttf` / `.otf`), collections (`.ttc` / `.otc`), WOFF and WOFF2. A collection
- * is read as **its first font**: a collection's members share outlines and differ in naming and
- * layout, and the browser installing one `FontFace` from the file gets the first face too, so
- * reading any other would describe something the game never renders.
+ * Accepts bare sfnt (`.ttf` / `.otf`), WOFF and WOFF2. A collection is refused rather than read -
+ * see {@link FontCoverageFailureReason}.
  */
 export function readFontCoverage(bytes: Uint8Array, decompress: FontDecompressors = {}): FontCoverageResult {
     let tables: TableSet;
@@ -174,12 +182,7 @@ function openFont(bytes: Uint8Array, decompress: FontDecompressors): OpenResult 
         return openWoff2(bytes, decompress);
     }
     if (tag === "ttcf") {
-        if (bytes.length < 16) {
-            return { ok: false, reason: "malformed" };
-        }
-        // numFonts at 8, then the offset of each font's own offset table. The first one is the face
-        // a `FontFace` built from this file resolves to, so it is the one described.
-        return openSfnt(bytes, u32(bytes, 12));
+        return { ok: false, reason: "unloadable-container" };
     }
     if (tag === "OTTO" || tag === "true" || tag === "typ1" || (bytes.length >= 4 && u32(bytes, 0) === 0x00010000)) {
         return openSfnt(bytes, 0);
@@ -284,7 +287,11 @@ function openWoff2(bytes: Uint8Array, decompress: FontDecompressors): OpenResult
     if (!decompress.brotli) {
         return { ok: false, reason: "needs-decompressor" };
     }
-    const flavor = ascii(bytes, 4, 4);
+    // Wrapping a collection in WOFF2 does not make it loadable; refused before the stream is even
+    // decompressed, for the reason a bare `ttcf` is.
+    if (ascii(bytes, 4, 4) === "ttcf") {
+        return { ok: false, reason: "unloadable-container" };
+    }
     const numTables = u16(bytes, 12);
     const totalCompressedSize = u32(bytes, 20);
 
@@ -331,17 +338,6 @@ function openWoff2(bytes: Uint8Array, decompress: FontDecompressors): OpenResult
         streamOffset += length;
     }
 
-    // A WOFF2 collection carries a directory of which tables each face uses, between the table
-    // directory and the compressed stream. Its size has to be stepped over to find the stream, and
-    // the first face is described for the reason `openFont` describes for a bare `ttcf`.
-    if (flavor === "ttcf") {
-        const skipped = skipWoff2CollectionDirectory(bytes, cursor, entries.length);
-        if (skipped === null) {
-            return { ok: false, reason: "malformed" };
-        }
-        cursor = skipped;
-    }
-
     if (cursor + totalCompressedSize > bytes.length) {
         return { ok: false, reason: "malformed" };
     }
@@ -358,37 +354,6 @@ function openWoff2(bytes: Uint8Array, decompress: FontDecompressors): OpenResult
         tables.set(entry.name, stream.subarray(entry.offset, entry.offset + entry.length));
     }
     return { ok: true, tables };
-}
-
-/**
- * Step over a WOFF2 collection directory, answering the offset it ends at.
- *
- * Nothing in it is read: it says which of the tables already listed each face uses, and this module
- * describes the first face, whose tables are the ones it would name. Only its *length* matters, and
- * that has to be walked because every field in it is variable-length (255UInt16).
- */
-function skipWoff2CollectionDirectory(bytes: Uint8Array, start: number, tableCount: number): number | null {
-    let cursor = start + 4; // Version (u32).
-    const numFonts = read255UInt16(bytes, cursor);
-    if (!numFonts) {
-        return null;
-    }
-    cursor = numFonts.next;
-    for (let font = 0; font < numFonts.value; font += 1) {
-        const numTables = read255UInt16(bytes, cursor);
-        if (!numTables) {
-            return null;
-        }
-        cursor = numTables.next + 4; // flavor (u32) follows the table count.
-        for (let i = 0; i < numTables.value; i += 1) {
-            const index = read255UInt16(bytes, cursor);
-            if (!index || index.value >= tableCount) {
-                return null;
-            }
-            cursor = index.next;
-        }
-    }
-    return cursor <= bytes.length ? cursor : null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -697,27 +662,3 @@ function readUIntBase128(bytes: Uint8Array, at: number): { value: number; next: 
     return null;
 }
 
-/** WOFF2's 255UInt16: one byte below 253, two or three with 253/254/255 as the escapes. */
-function read255UInt16(bytes: Uint8Array, at: number): { value: number; next: number } | null {
-    const first = bytes[at];
-    if (first === undefined) {
-        return null;
-    }
-    if (first === 253) {
-        const hi = bytes[at + 1];
-        const lo = bytes[at + 2];
-        if (hi === undefined || lo === undefined) {
-            return null;
-        }
-        return { value: (hi << 8) | lo, next: at + 3 };
-    }
-    if (first === 255) {
-        const next = bytes[at + 1];
-        return next === undefined ? null : { value: next + 253, next: at + 2 };
-    }
-    if (first === 254) {
-        const next = bytes[at + 1];
-        return next === undefined ? null : { value: next + 506, next: at + 2 };
-    }
-    return { value: first, next: at + 1 };
-}
