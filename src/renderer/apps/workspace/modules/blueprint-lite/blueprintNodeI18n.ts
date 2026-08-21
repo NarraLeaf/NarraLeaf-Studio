@@ -586,6 +586,10 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Button": "blueprint.port.button",
     "Char": "blueprint.port.char",
     "Checked": "blueprint.port.checked",
+    // Play Sound's own label, kept apart from the boolean "Clip" that means clipping a
+    // container's contents. One English word, two unrelated things, and a language that has a
+    // different word for each - which is what the label a node declares is a key for.
+    "Audio Clip": "blueprint.port.audioClip",
     "Clip": "blueprint.port.clip",
     "Contains": "blueprint.port.contains",
     "CPS": "blueprint.port.cps",
