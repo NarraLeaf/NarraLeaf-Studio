@@ -250,13 +250,27 @@ export async function diffWorkingTree(
     // source has no port for.
     const listing = new Set([...recorded.keys(), ...files.map((file) => file.path)]);
     const setFiles = new Map<string, readonly string[]>();
+    /** Every file that belongs to a set, so nothing here treats one as a standalone document. */
     const setPaths = new Set<string>();
+    /**
+     * The subset a comparison will actually open.
+     *
+     * **Two sets rather than one, because the two questions have different answers for a set over
+     * {@link DOCUMENT_SET_MEMBER_LIMIT}.** Such a document is reported as one unread row, so none of
+     * its bytes are worth reading - but its members are still not standalone files, and leaving them
+     * out of `setPaths` put them back into the rename pairing and into the read plan. Both read them
+     * in full, out of the one shared {@link DIFF_TOTAL_BYTE_BUDGET}, and `workingSetEntry` then threw
+     * every byte away - so one large story the author never touched could push documents they DID
+     * touch out of the plan and flip `complete` to false, with the reason nowhere on screen.
+     */
+    const plannedSetPaths = new Set<string>();
     for (const unit of units) {
         if (unit.kind !== "set") continue;
         const members = documentSetPathsAmong(unit.spec, unit.key, listing);
         setFiles.set(unit.path, members);
+        for (const path of members) setPaths.add(path);
         if (members.length <= DOCUMENT_SET_MEMBER_LIMIT) {
-            for (const path of members) setPaths.add(path);
+            for (const path of members) plannedSetPaths.add(path);
         }
     }
 
@@ -282,7 +296,7 @@ export async function diffWorkingTree(
         const after = file ? working.get(path)?.size ?? 0 : before?.size ?? 0;
         return planPathRead(path, before?.size ?? 0, after, classOf(path));
     };
-    for (const path of [...files.filter((file) => !setPaths.has(file.path)).map((file) => file.path), ...setPaths]) {
+    for (const path of [...files.filter((file) => !setPaths.has(file.path)).map((file) => file.path), ...plannedSetPaths]) {
         if (paired.has(path)) continue;
         const wanted = wantRead(path);
         if (wanted === 0) continue;
@@ -304,8 +318,12 @@ export async function diffWorkingTree(
             .filter((file) => !setPaths.has(file.path))
             .filter((file) => planned.has(file.path) && file.kind !== "added" && !pairing.recorded.has(file.was))
             .map((file) => file.was),
-        ...[...setPaths].filter((path) => planned.has(path) && recorded.has(changedFile.get(path)?.was ?? path))
-            .map((path) => changedFile.get(path)?.was ?? path),
+        // **At the path itself, not under `was`.** A moved file's recorded bytes belong to its OLD
+        // name, and inside a set that old name is a member of the same document in its own right -
+        // so it is fetched by its own entry here, and the new name has no recorded side at all.
+        // Reading `was` under the new name would give the destination a base it never had, and the
+        // rename would then compare as no change.
+        ...[...plannedSetPaths].filter((path) => planned.has(path) && recorded.has(path)),
     ];
     let recordedBytes: ReadonlyMap<string, Buffer | null> = new Map();
     let readFailure: string | null = null;
@@ -706,21 +724,37 @@ async function workingSetEntry(request: WorkingSetEntryRequest): Promise<Documen
         return { ...common, diff: unreadDocumentDiff(kind) };
     }
 
+    // **Where an explicit move left its source.** Lore reports a move as ONE entry, at the
+    // destination (§4.18 names the other spelling, delete+add, which arrives as two entries and is
+    // handled by the two of them being ordinary members). So the source path is in the recorded
+    // tree and in no status entry at all - which is, from `changedFile` alone, indistinguishable
+    // from a member nobody touched. Read as untouched it would go onto the working side too, the
+    // destination would borrow its bytes for a base it never had, both sides would come out
+    // identical, and a renamed scene would report NO CHANGES AT ALL.
+    const movedAway = new Set(
+        [...changedFile.values()]
+            .filter((entry) => entry.kind === "moved" && entry.was !== entry.path)
+            .map((entry) => entry.was),
+    );
+
     const base = new Map<string, Buffer>();
     const head = new Map<string, Buffer>();
     for (const path of files) {
         const file = changedFile.get(path);
-        const was = file?.was ?? path;
-        const recordedSide = file?.kind === "added" || !recorded.has(was)
+        // What the recorded side holds AT THIS PATH. An addition has nothing there, and neither has
+        // the destination of a move: its recorded bytes live under the source name, which is a
+        // member of this same document and gets its own turn in this loop.
+        const recordedSide = file?.kind === "added" || file?.kind === "moved" || !recorded.has(path)
             ? null
-            : request.pairing.recorded.get(was) ?? request.recordedBytes.get(was) ?? null;
+            : request.pairing.recorded.get(path) ?? request.recordedBytes.get(path) ?? null;
         if (recordedSide) {
             base.set(path, recordedSide);
         }
         if (!file) {
-            // Not in `status`, so the disk holds the recorded bytes. Reading it again would answer
-            // the same thing at the price of a syscall per member.
-            if (recordedSide) head.set(path, recordedSide);
+            // Not in `status`: either untouched - the disk holds the recorded bytes, and reading it
+            // again would answer the same thing at the price of a syscall per member - or the
+            // source of a move, which is not on disk under this name any more.
+            if (recordedSide && !movedAway.has(path)) head.set(path, recordedSide);
             continue;
         }
         if (file.kind === "removed") {

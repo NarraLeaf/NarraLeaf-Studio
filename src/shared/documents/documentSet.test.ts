@@ -15,6 +15,7 @@ import {
     defineDocumentSetSpec,
     documentSetAt,
     DocumentSetIncompleteError,
+    documentSetMemberScan,
     documentSetPathsAmong,
     documentSetPartsFrom,
     DocumentSetWriteError,
@@ -217,6 +218,37 @@ describe("the files a set is made of", () => {
         const raw = new Map<string, unknown>([[notebookPagePath("n1", "p1"), notebookPage("One", ["a"])]]);
 
         expect(() => documentSetPartsFrom(notebookSpec, KEY, raw)).toThrow(DocumentSetIncompleteError);
+    });
+
+    it("scans the member directory, and does not offer the manifest as one of its own members", () => {
+        // `<id>/index.json` beside `<id>/<name>.json` is a legal layout - the registry lets the more
+        // specific literal win for its own path - so a directory scan sees the manifest as a
+        // candidate member. The other two readers take it out by name; the scan must too, or
+        // `documentSetFilesOnDisk` answers with the manifest twice.
+        const subsuming = defineDocumentSetSpec({
+            kind: "test-subsuming" as unknown as DocumentKind,
+            version: 1,
+            manifestPath: "editor/books/<bookId>/index.json",
+            memberPath: "editor/books/<bookId>/<pageId>.json",
+            parse: (raw: unknown) => raw,
+            summarize: () => ({title: "", counts: []}),
+            assemble: parts => parts.manifest,
+            disassemble: () => ({manifest: {}, members: new Map<string, unknown>()}),
+        });
+
+        const scan = documentSetMemberScan(subsuming, {bookId: "b1"});
+
+        expect(scan.directory).toBe("editor/books/b1");
+        expect(scan.pathOf("index.json")).toBeUndefined();
+        expect(scan.pathOf("chapter-1.json")).toBe("editor/books/b1/chapter-1.json");
+        expect(scan.pathOf("cover.png")).toBeUndefined();
+    });
+
+    it("scans the directory a nested member family lives in", () => {
+        const scan = documentSetMemberScan(notebookSpec, KEY);
+
+        expect(scan.directory).toBe("editor/notebooks/n1/pages");
+        expect(scan.pathOf("p1.json")).toBe("editor/notebooks/n1/pages/p1.json");
     });
 });
 

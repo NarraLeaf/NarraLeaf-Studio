@@ -249,7 +249,13 @@ interface ComposedSet {
     readonly spec: AnyDocumentSetSpec;
     readonly key: Readonly<Record<string, string>>;
     readonly manifestPath: string;
-    /** Every file of the set found on disk, repository-relative. */
+    /**
+     * The files of the set that went INTO the merge, repository-relative.
+     *
+     * Not every file that was found: this is the list the write-back may delete from, and a file
+     * that was listed but never merged is a member nobody looked at rather than one the settled
+     * document decided against.
+     */
     readonly files: readonly string[];
     /** The subset the backend could not settle - the paths a resolve verb has to be given. */
     readonly conflicted: readonly string[];
@@ -371,6 +377,15 @@ function composeSetMerge(root: string, location: DocumentSetLocation): Composed 
         ["theirs", new Map()],
     ]);
     const conflicted: string[] = [];
+    /**
+     * The files that actually went into the three sides.
+     *
+     * Kept apart from `files` because it is what the write-back is allowed to DELETE. A path that
+     * was listed but never merged is not a member the settled document decided against - it is a
+     * member nobody looked at - and a loop that removes whatever the settled document does not hold
+     * cannot tell the two apart unless they are different lists.
+     */
+    const contributed: string[] = [];
 
     for (const relative of files) {
         const absolute = absoluteWithin(root, relative);
@@ -378,6 +393,7 @@ function composeSetMerge(root: string, location: DocumentSetLocation): Composed 
         const theirs = readSide(`${absolute}${SIDECAR.theirs}`);
         if (mine && theirs) {
             conflicted.push(relative);
+            contributed.push(relative);
             const base = readSide(`${absolute}${SIDECAR.base}`);
             if (base) sides.get("base")?.set(relative, base);
             sides.get("mine")?.set(relative, mine);
@@ -392,8 +408,21 @@ function composeSetMerge(root: string, location: DocumentSetLocation): Composed 
         }
         const working = readSide(absolute);
         if (!working) {
+            // **`documentSetFilesOnDisk` proved this file exists, so a null read is a file that
+            // could not be OPENED** - a lock, a directory in its place, a hostile mode. The first
+            // version skipped it, and skipping is what loses the author's work: the member left all
+            // three sides with no signal anywhere, the assembled document came out without it, and
+            // the write-back's delete loop then removed the file, because a member the settled
+            // document does not hold is a member the author decided against. Refusing is the answer
+            // the single-file path already gives when one of its three copies cannot be read.
+            if (fs.existsSync(absolute)) {
+                return { blocked: "unreadable", detail: `${relative} is on disk but could not be read` };
+            }
+            // Gone between the listing and the read. An ordinary race, there is nothing to merge,
+            // and it is not in `contributed` - so nothing will try to delete it either.
             continue;
         }
+        contributed.push(relative);
         for (const side of sides.values()) side.set(relative, working);
     }
 
@@ -457,7 +486,7 @@ function composeSetMerge(root: string, location: DocumentSetLocation): Composed 
                 spec,
                 key: location.key,
                 manifestPath: location.manifestPath,
-                files,
+                files: contributed,
                 conflicted: conflicted.sort(),
             },
         };
