@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { Logger } from "@shared/utils/logger";
 import { weatherBakeKey, type WeatherBakeIdentity } from "@shared/weather/bakeKey";
-import type { WeatherBakeSpec } from "@shared/weather/model";
+import type { WeatherBakeQuality, WeatherBakeSpec } from "@shared/weather/model";
 import type { StudioTaskClaim, StudioTaskPriority } from "@shared/types/studioTask";
 import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp } from "../media/ffmpegTool";
 import type { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
@@ -65,6 +65,18 @@ export type WeatherBakeRequest = {
      */
     priority: StudioTaskPriority;
     /**
+     * How good the clips have to be, and therefore how long they take.
+     *
+     * Read as a **floor, not an equality**: a request for `draft` is satisfied by a `final` clip
+     * that is already on disk, because a better answer to the same question is still an answer. The
+     * reverse is not true, which is the entire point - a build must never be handed the copy some
+     * Dev Mode session made in a hurry.
+     *
+     * Stated by every caller. A default here would be a default for `bakeWeatherClipsForPack`, and
+     * the way that goes wrong is a shipped game whose weather is quietly the draft.
+     */
+    quality: WeatherBakeQuality;
+    /**
      * Who is asking, for a caller whose mind is made up only until the next keystroke.
      *
      * `specs` is then read as the WHOLE of what that owner wants: anything it asked for on an earlier
@@ -115,7 +127,7 @@ export type WeatherBakeStarter = (
     binaryPath: string,
     spec: WeatherBakeSpec,
     targetPath: string,
-    options: { onProgress?: (progress: WeatherBakeProgress) => void },
+    options: { quality: WeatherBakeQuality; onProgress?: (progress: WeatherBakeProgress) => void },
 ) => WeatherBakeHandle;
 
 export type WeatherBakeManagerOptions = FfmpegResolveOptions & {
@@ -128,9 +140,19 @@ export class WeatherBakeManager {
         private readonly scheduler: StudioTaskScheduler,
     ) {}
 
-    /** The absolute path a clip would be cached at, whether or not it exists yet. */
-    public pathFor(projectRoot: string, identity: WeatherBakeIdentity): string {
-        return path.join(projectRoot, WEATHER_CACHE_DIR, `${weatherBakeKey(identity)}.webm`);
+    /**
+     * The absolute path a clip would be cached at, whether or not it exists yet.
+     *
+     * The tier is in the FILE NAME and deliberately not in {@link weatherBakeKey}. The key becomes
+     * the asset id a packaged game asks for (`weatherClipAssetId`), and a shipped game has no idea
+     * which tier produced what it is looking for; folding the tier in would make every build depend
+     * on the runtime spelling `final` the same way, and the failure mode for getting that wrong is
+     * silent - a valid pack, a story that plays, and no weather. Two names in one cache directory
+     * cost nothing and cannot be got wrong.
+     */
+    public pathFor(projectRoot: string, identity: WeatherBakeIdentity, quality: WeatherBakeQuality): string {
+        const suffix = quality === "draft" ? ".draft.webm" : ".webm";
+        return path.join(projectRoot, WEATHER_CACHE_DIR, `${weatherBakeKey(identity)}${suffix}`);
     }
 
     /**
@@ -169,11 +191,11 @@ export class WeatherBakeManager {
         const missing: { spec: WeatherBakeSpec; key: string; target: string }[] = [];
         for (const spec of wanted) {
             const key = weatherBakeKey(spec);
-            const target = this.pathFor(request.projectRoot, spec);
-            if (await exists(target)) {
-                paths.set(key, target);
+            const found = await this.findAtLeast(request.projectRoot, spec, request.quality);
+            if (found) {
+                paths.set(key, found);
             } else {
-                missing.push({ spec, key, target });
+                missing.push({ spec, key, target: this.pathFor(request.projectRoot, spec, request.quality) });
             }
         }
         if (missing.length === 0) {
@@ -199,13 +221,14 @@ export class WeatherBakeManager {
             kind: "weatherBake",
             // The clip IS the key, so two rows, two scenes or two windows asking for the same weather
             // are one task - and a speculative submission is the same task as the awaited one.
-            key: bakeTaskKey(item.key),
+            key: bakeTaskKey(item.key, request.quality),
             priority: request.priority,
             run: async context => {
                 const startBake = options.startBake
                     ?? ((binaryPath, bakeSpec, target, bakeOptions) =>
                         startWeatherBakeInWorker(this.app, binaryPath, bakeSpec, target, bakeOptions));
                 const handle = startBake(tool.path, item.spec, item.target, {
+                    quality: request.quality,
                     onProgress: (progress: WeatherBakeProgress) => {
                         context.report({ done: progress.frames, total: progress.total, unit: "frame" });
                     },
@@ -240,14 +263,44 @@ export class WeatherBakeManager {
     }
 
     /** Stop one clip, wherever it is in the queue. Whatever already landed stays on disk. */
-    public cancel(spec: WeatherBakeSpec): void {
-        this.scheduler.cancel(bakeTaskKey(weatherBakeKey(spec)));
+    public cancel(spec: WeatherBakeSpec, quality: WeatherBakeQuality): void {
+        this.scheduler.cancel(bakeTaskKey(weatherBakeKey(spec), quality));
+    }
+
+    /**
+     * A cached clip that is at least as good as asked for, or `null`.
+     *
+     * `final` first for a draft request, so a project that has been built once stops re-baking its
+     * weather every time Dev Mode starts: the better file is already there and is a strictly better
+     * answer. A `final` request looks at one name only - the whole reason the tiers are separate
+     * files is that a draft can never stand in for the thing a player receives.
+     */
+    private async findAtLeast(
+        projectRoot: string,
+        identity: WeatherBakeIdentity,
+        quality: WeatherBakeQuality,
+    ): Promise<string | null> {
+        const candidates: WeatherBakeQuality[] = quality === "draft" ? ["final", "draft"] : ["final"];
+        for (const candidate of candidates) {
+            const target = this.pathFor(projectRoot, identity, candidate);
+            if (await exists(target)) {
+                return target;
+            }
+        }
+        return null;
     }
 }
 
-/** One namespace for the scheduler's key space, so a weather key can never collide with another kind's. */
-function bakeTaskKey(key: string): string {
-    return `weather:${key}`;
+/**
+ * One namespace for the scheduler's key space, so a weather key can never collide with another kind's.
+ *
+ * The tier is part of it, and that is what keeps the pre-baker useful: a speculative submission and
+ * the run that overtakes it are the same task only if they agree about the tier, so both read the
+ * same setting. Two tiers of one clip are two tasks because they produce two files - a build waiting
+ * on `final` must not be handed the draft that happens to be encoding.
+ */
+function bakeTaskKey(key: string, quality: WeatherBakeQuality): string {
+    return `weather:${key}:${quality}`;
 }
 
 /**

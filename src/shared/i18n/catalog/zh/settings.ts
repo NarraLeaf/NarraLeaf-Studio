@@ -78,6 +78,14 @@ export const settings = {
             label: "开发者选项",
             description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
         },
+        screenEffectQuality: {
+            label: "开发模式中的屏幕效果",
+            description: "草稿的生成时间约为三分之一。预览与构建始终使用最终画质",
+            options: {
+                draft: "草稿",
+                final: "最终画质",
+            },
+        },
         confirmQuit: {
             label: "在使用 ⌘Q 退出时二次确认",
             description: "连按两次 ⌘Q 才会退出，按一次不退出",

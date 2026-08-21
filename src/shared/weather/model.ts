@@ -321,3 +321,35 @@ export function weatherBakeSize(designWidth: number, designHeight: number): { wi
     const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
     return { width: even(designWidth), height: even(designHeight) };
 }
+
+/**
+ * How much work a bake is allowed to spend on the encoder.
+ *
+ * **Not part of the clip.** Two tiers of the same spec are the same picture at the same size for the
+ * same number of frames; what differs is how hard the encoder looked for a smaller way to say it.
+ * That is why this is not a field of {@link WeatherBakeSpec} and never reaches
+ * `weatherBakeKey` — an identity that included it would put the tier into the asset id a shipped
+ * game asks for, and a game that asks for `final` while the pack carries `draft` finds nothing and
+ * plays with no weather at all.
+ *
+ * The tiers, and the measurements behind them (1080p, 720 frames, this project's own renderer):
+ *
+ * - `final` — libvpx `-deadline good -cpu-used 2`. ~13 ms a frame.
+ * - `draft` — libvpx `-deadline realtime -cpu-used 4`. ~3 ms a frame, ~30% more bytes, SSIM 0.9993
+ *   against the same source's 0.9997.
+ *
+ * `realtime` is a different encoder, not a faster setting of the same one: no lookahead, so no
+ * alt-ref frames and no temporal filtering, and a coarser mode search. The bytes it saves nothing on
+ * do not matter here — a clip is ~1.5 MB against a budget measured in tens of megabytes — and the
+ * quality it gives up is not visible on **this** content, which is sparse bright particles on black.
+ *
+ * ⚠ That last clause is the whole justification, and it is content-dependent. `realtime`'s coarser
+ * partitioning is known to band on large smooth gradients. A seed that is fog, haze or god-rays
+ * rather than particles has to be measured again before it is allowed to bake at `draft`.
+ *
+ * `-cpu-used 4` rather than 5 or 6 is also measured rather than picked: libvpx switches to its
+ * non-RD decision path at 5, which costs the same wall-clock and 27% more bytes.
+ */
+export const WEATHER_BAKE_QUALITIES = ["draft", "final"] as const;
+
+export type WeatherBakeQuality = typeof WEATHER_BAKE_QUALITIES[number];
