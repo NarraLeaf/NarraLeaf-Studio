@@ -24,4 +24,12 @@ export const dictionary = {
         suggestReadings: "Suggest readings",
         checkVariants: "Check variant spellings",
     },
+    /** Reading every story in the project against the variant spellings. */
+    check: "Check project",
+    checking: "{done}/{total}",
+    checkClean: "No variant spellings",
+    found: {
+        one: "{count} row",
+        other: "{count} rows",
+    },
 } as const;
