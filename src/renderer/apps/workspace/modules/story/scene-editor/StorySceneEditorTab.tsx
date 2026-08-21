@@ -995,13 +995,23 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * Keep the active row on screen. Arrow-navigating a long scene used to walk the selection off the
      * viewport and leave it there — survivable while every row was in the DOM, fatal once they are
      * not, because Enter would open an editor on a row that does not exist.
+     *
+     * A row being REWRITTEN has no row element: the slot renders in its place (see `insertSlotHostId`),
+     * so the row's own id is not in the DOM while the author is typing into it. Read as "the row is not
+     * mounted", that sent every opened blank line and every re-opened draft row to the middle of the
+     * viewport — the list jumping under a caret that had just been placed by a click. The slot IS the
+     * row here, so it is what gets measured, and it moves by the same minimum as anything else.
      */
+    const insertSlotCoversActiveRow = editor.editorMode.kind === "insert"
+        && editor.editorMode.slot.replaceBlockId === editor.activeBlockId;
     useEffect(() => {
         if (!active || !editor.activeBlockId || editor.editorMode.kind === "text") {
             return;
         }
         const scroller = editor.scrollContainerRef.current;
-        const row = scroller?.querySelector<HTMLElement>(`[data-story-row-block-id="${CSS.escape(editor.activeBlockId)}"]`);
+        const row = scroller?.querySelector<HTMLElement>(insertSlotCoversActiveRow
+            ? "[data-story-insert-slot]"
+            : `[data-story-row-block-id="${CSS.escape(editor.activeBlockId)}"]`);
         if (!scroller) {
             return;
         }
@@ -1014,7 +1024,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         if (rowRect.top < viewRect.top || rowRect.bottom > viewRect.bottom) {
             row.scrollIntoView({ block: "nearest" });
         }
-    }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, scrollRowIntoView]);
+    }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, insertSlotCoversActiveRow, scrollRowIntoView]);
 
     /**
      * The right rail follows the selected row.
