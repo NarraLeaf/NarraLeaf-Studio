@@ -19,6 +19,7 @@ import {
     listBlueprintFnCallSites,
     resolveBlueprintFnCallTarget,
 } from "../../workspace/services/ui-editor/blueprint/fnCatalog";
+import { listStoryEndings } from "@shared/types/story";
 import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
 import { blueprintNodeJumpTarget, listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
@@ -67,7 +68,7 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
 // ---------------------------------------------------------------------------
 
 /** What kind of thing a dangling id was supposed to name; picks the sentence. */
-type BlueprintReferenceKind = "surface" | "story" | "scene" | "choice" | "character" | "textKey";
+type BlueprintReferenceKind = "surface" | "story" | "scene" | "choice" | "ending" | "character" | "textKey";
 
 /**
  * Select params whose options are project entities, keyed by the `dynamicOptionsSource` the node
@@ -83,6 +84,7 @@ export const REFERENCE_KIND_BY_OPTIONS_SOURCE: Readonly<Record<string, Blueprint
     stories: "story",
     storyScenes: "scene",
     storyChoiceOptions: "choice",
+    storyEndings: "ending",
     characters: "character",
     localizationKeys: "textKey",
 };
@@ -123,6 +125,7 @@ const REFERENCE_MESSAGE_KEY: Readonly<Record<BlueprintReferenceKind, Translation
     story: "lint.rule.blueprintReferenceMissing.messageStory" as TranslationKey,
     scene: "lint.rule.blueprintReferenceMissing.messageScene" as TranslationKey,
     choice: "lint.rule.blueprintReferenceMissing.messageChoice" as TranslationKey,
+    ending: "lint.rule.blueprintReferenceMissing.messageEnding" as TranslationKey,
     character: "lint.rule.blueprintReferenceMissing.messageCharacter" as TranslationKey,
     textKey: "lint.rule.blueprintReferenceMissing.messageTextKey" as TranslationKey,
 };
@@ -150,6 +153,7 @@ function buildReferenceUniverse(ctx: LintContext): BlueprintReferenceUniverse {
         const stories = new Set<string>();
         const scenes = new Set<string>();
         const choices = new Set<string>();
+        const endings = new Set<string>();
         for (const entry of ctx.stories) {
             stories.add(entry.id);
             for (const scene of Object.values(entry.document.scenes)) {
@@ -165,10 +169,17 @@ function buildReferenceUniverse(ctx: LintContext): BlueprintReferenceUniverse {
                     }
                 }
             }
+            // Through the scan rather than the block table, so an ending inside a disabled container
+            // is absent here exactly as it is absent from the build - a node pointing at one asks a
+            // question no playthrough can ever answer yes to.
+            for (const ending of listStoryEndings(entry.document)) {
+                endings.add(ending.endingId);
+            }
         }
         universe.story = stories;
         universe.scene = scenes;
         universe.choice = choices;
+        universe.ending = endings;
     }
     if (ctx.localizationKeys) {
         // Only the names here: this rule asks whether a key exists, never what it says.
