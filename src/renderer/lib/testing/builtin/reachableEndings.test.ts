@@ -170,6 +170,9 @@ function runContext(signal?: AbortSignal): {
     const ctx = {
         runId: "run-1",
         protocolVersion: TEST_PROTOCOL_VERSION,
+        // This test declares no parameters, so the host resolves it an empty set - which is what a
+        // context is required to carry rather than leave absent.
+        parameters: {},
         signal: signal ?? new AbortController().signal,
         log: () => undefined,
         progress: (value: TestProgress | null) => {
