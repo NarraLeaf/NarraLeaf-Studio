@@ -202,6 +202,7 @@ export const lint = {
             messageStory: "開始する対象のストーリーが存在しない",
             messageScene: "指しているシーンが存在しない",
             messageChoice: "指している選択肢が存在しない",
+            messageEnding: "指しているエンディングが存在しない",
             messageCharacter: "指しているキャラクターが存在しない",
             messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
         },

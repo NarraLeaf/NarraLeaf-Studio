@@ -535,6 +535,31 @@ export type BlueprintHostApiRuntime = {
          * no game up there is no record, and the call is a no-op instead of an error.
          */
         clearVisited: () => void;
+        /**
+         * Has the player ever reached this ending, by the `ending` row's Studio block id.
+         *
+         * Project persistence rather than the save file, unlike the visited record above: an endings
+         * screen reports what this player has ever seen, so loading an older save must not re-lock
+         * anything. Needs no running story - a title screen asks it before the first game exists.
+         */
+        isEndingReached: (endingId: string) => boolean;
+        /**
+         * Every ending one story declares, in document order, each row already carrying whether it
+         * was reached. Empty for an unknown or unnamed story rather than an error.
+         *
+         * The list comes from the story document this build ships, so it can never offer an ending
+         * the compiler does not emit, and it is available with no game running for the same reason
+         * the reader above is.
+         */
+        listEndings: (storyId: string) => BlueprintStoryEnding[];
+        /**
+         * Forget one ending. Awaited, unlike `clearVisited`: this writes host persistence rather
+         * than a live `Storable`, and a caller that navigates away on the next beat has to know the
+         * write landed.
+         */
+        clearEndingState: (endingId: string) => Promise<void>;
+        /** Wipe the whole endings record. The `Clear Text Read` of this family. */
+        clearEndings: () => Promise<void>;
         choose: (index: number) => Promise<void>;
         next: () => Promise<void>;
         skip: () => Promise<void>;
@@ -783,6 +808,15 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onIsSceneVisited?: (sceneId: string) => boolean;
     onIsOptionPicked?: (optionId: string) => boolean;
     onClearVisited?: () => void;
+    /**
+     * The endings record, in project persistence. Absent only where there is no runtime store at
+     * all (a Page previewed inside the editor), where every ending reads as not reached and the two
+     * wipes are no-ops - which is what lets an endings screen lay out in the preview.
+     */
+    onIsEndingReached?: (endingId: string) => boolean;
+    onListEndings?: (storyId: string) => BlueprintStoryEnding[];
+    onClearEndingState?: (endingId: string) => Promise<void> | void;
+    onClearEndings?: () => Promise<void> | void;
     onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
@@ -1613,6 +1647,25 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
 }
 
 /**
+ * One of a story's endings, as `Get Endings` hands it to a list widget.
+ *
+ * Flattened, and carrying its own unlock state, so an item template binds every cell of a row from
+ * the row itself. The alternative - a list of ids plus an `Is Ending Reached` per cell - would run a
+ * graph per row to learn something the list already knew.
+ *
+ * `name` is display text and may be empty; `endingId` is the identity, and is the id
+ * `Clear Ending State` and the record itself both key on.
+ */
+export type BlueprintStoryEnding = {
+    endingId: string;
+    name: string;
+    sceneId: string;
+    /** The scene the ending row sits in, so a row can be grouped or captioned without a lookup. */
+    sceneName: string;
+    isReached: boolean;
+};
+
+/**
  * One dialogue/menu backlog entry, mirrored from NarraLeaf's `LiveGame.getHistory()` or
  * `getFuture()` - an entry is the same entry on either side of the play head, so one item template
  * binds both lists.
@@ -2095,6 +2148,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsSceneVisited,
         onIsOptionPicked,
         onClearVisited,
+        onIsEndingReached,
+        onListEndings,
+        onClearEndingState,
+        onClearEndings,
         onSelectChoice,
         onNext,
         onSkip,
@@ -3870,6 +3927,44 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     onClearVisited?.();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isEndingReached: (endingId: string) => {
+                const cap = "game.isEndingReached";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No record reachable is "not reached", not an error: an endings screen opened
+                    // in the editor preview must still lay out, and locked is the honest answer.
+                    return onIsEndingReached ? onIsEndingReached(endingId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            listEndings: (storyId: string) => {
+                const cap = "game.listEndings";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onListEndings ? onListEndings(storyId) : [];
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            clearEndingState: async (endingId: string) => {
+                const cap = "game.clearEndingState";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onClearEndingState?.(endingId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            clearEndings: async () => {
+                const cap = "game.clearEndings";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onClearEndings?.();
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
