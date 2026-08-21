@@ -95,7 +95,6 @@ export function AssetsListView({
      */
     const rowsByCategory = useMemo(() => {
         const input: ListViewRowOrderInput<ResolvedAssetSet> = {
-            openCategories: openItems,
             assets: filteredAssets,
             groups: filteredGroups,
             rootAssetSets,
@@ -111,7 +110,7 @@ export function AssetsListView({
         }
         return out;
     }, [
-        openItems, filteredAssets, filteredGroups, rootAssetSets, assetSets,
+        filteredAssets, filteredGroups, rootAssetSets, assetSets,
         memberAssetIds, expandedGroups, expandedAssetSets, isNarrowed,
     ]);
 

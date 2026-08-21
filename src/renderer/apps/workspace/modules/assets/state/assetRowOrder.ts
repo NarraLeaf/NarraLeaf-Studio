@@ -73,9 +73,13 @@ export function assetsFiledIn(
     return assets.filter(asset => (asset.groupId || null) === groupId && !memberAssetIds.has(asset.id));
 }
 
+/**
+ * What one section of the tree is laid out from.
+ *
+ * Which sections are open is not here: a closed section draws no rows, and deciding not to ask for
+ * them is the caller's - the view walks the sections it is drawing and nothing else.
+ */
 export interface ListViewRowOrderInput<T extends AssetSetRows = AssetSetRows> {
-    /** Section ids the accordion is drawing open. A closed section draws no rows at all. */
-    openCategories: readonly string[];
     /** The library as narrowed by the search box and the filters: what the tree is listing. */
     assets: Record<AssetCategory, Asset[]>;
     groups: Record<AssetCategory, AssetGroup[]>;
@@ -268,26 +272,6 @@ function closeBand<T extends AssetSetRows>(rows: ListViewRow<T>[], bandStart: nu
     if (last && last.band && rows.length > bandStart) {
         last.band = { ...last.band, last: true };
     }
-}
-
-/**
- * The tree's rows, in the order `AssetsListView` draws them.
- *
- * A closed section draws nothing at all, so it contributes nothing to a range.
- */
-export function listViewRowOrder<T extends AssetSetRows>(input: ListViewRowOrderInput<T>): string[] {
-    const keys: string[] = [];
-    for (const category of ASSET_CATEGORY_ORDER) {
-        if (!input.openCategories.includes(category)) {
-            continue;
-        }
-        for (const row of listViewCategoryRows(category, input)) {
-            if (row.selectionKey) {
-                keys.push(row.selectionKey);
-            }
-        }
-    }
-    return keys;
 }
 
 /** One section of the grid, already reduced to the tiles it draws. See `AssetsIconView`. */
