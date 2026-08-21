@@ -18,6 +18,19 @@ const NO_EXPERIMENTAL = {
     unknownConditionFlags: [],
 } as const;
 
+const NO_BUILD = {
+    requested: false,
+    selector: null,
+    variantId: null,
+    platform: null,
+    format: null,
+    arch: null,
+    outputDir: null,
+    reportPath: null,
+    allowUnsigned: false,
+    error: null,
+} as const;
+
 describe("parseMainCommandLine", () => {
     it("keeps CDP disabled by default", () => {
         expect(parseMainCommandLine(["electron", "dist/main/index.js"])).toEqual({
@@ -26,6 +39,7 @@ describe("parseMainCommandLine", () => {
             skipOnboarding: false,
             project: NO_STARTUP_PROJECT,
             launcher: false,
+            build: NO_BUILD,
             cdp: {
                 enabled: false,
                 port: DEFAULT_CDP_PORT,
@@ -45,6 +59,7 @@ describe("parseMainCommandLine", () => {
             skipOnboarding: false,
             project: NO_STARTUP_PROJECT,
             launcher: false,
+            build: NO_BUILD,
             cdp: {
                 enabled: true,
                 port: DEFAULT_CDP_PORT,
@@ -308,5 +323,80 @@ describe("parseMainCommandLine", () => {
         ]);
 
         expect(options.openPaths).toEqual([]);
+    });
+
+    it("reads the build flags in both forms", () => {
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe",
+            "--build", "D:\games\demo",
+            "--build-variant=demo",
+            "--build-target", "windows",
+            "--build-format=nsis",
+            "--build-arch", "arm64",
+            "--build-output=D:\out",
+            "--build-report", "D:\out\report.json",
+            "--build-allow-unsigned",
+        ]);
+
+        expect(options.build).toEqual({
+            requested: true,
+            selector: "D:\games\demo",
+            variantId: "demo",
+            platform: "windows",
+            format: "nsis",
+            arch: "arm64",
+            outputDir: "D:\out",
+            reportPath: "D:\out\report.json",
+            allowUnsigned: true,
+            error: null,
+        });
+    });
+
+    it("does not take a build flag's value for a path to open", () => {
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--build", "demo", "--build-target", "web",
+        ]);
+
+        expect(options.openPaths).toEqual([]);
+    });
+
+    it("still reports a build when --build was given no value", () => {
+        // `requested` has to survive the value being the thing that is missing, or the launch would
+        // fall through to the home screen with nobody there to read it.
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--build"]);
+
+        expect(options.build.requested).toBe(true);
+        expect(options.build.selector).toBeNull();
+        expect(options.build.error).toBe(
+            "Missing --build value: expected a project path or a recent project's name",
+        );
+    });
+
+    it("refuses build flags that name a build nothing asked for", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--build-target", "windows"]);
+
+        expect(options.build.requested).toBe(true);
+        expect(options.build.error).toBe("Missing --build: the build flags name a build nothing asked for");
+    });
+
+    it("forgives a flag that was given a value on a later pass", () => {
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--build", "demo", "--build-format", "--build-format=zip",
+        ]);
+
+        expect(options.build.format).toBe("zip");
+        expect(options.build.error).toBeNull();
+    });
+
+    it("reports the first flag still missing a value", () => {
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--build", "demo", "--build-target", "--build-report",
+        ]);
+
+        expect(options.build.error).toBe("Missing --build-target value: expected a platform");
+    });
+
+    it("asks for no build when none was mentioned", () => {
+        expect(parseMainCommandLine(["NarraLeaf-Studio.exe", "--dev"]).build).toEqual(NO_BUILD);
     });
 });

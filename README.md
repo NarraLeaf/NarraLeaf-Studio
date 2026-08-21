@@ -31,6 +31,46 @@ Unlike traditional lightweight editors, NarraLeaf Studio does not require users 
 
 For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility.md).
 
+### Building from the command line
+
+Studio builds a project without an interface, for a machine that has nobody at the keyboard:
+
+```bash
+narraleaf-studio --build <project>   --build-variant main   --build-target windows   --build-format nsis   --build-output ./out   --build-report ./out/build-report.json
+```
+
+`--build` takes a project folder, or a name from the recent list. One invocation produces one
+variant for one platform, in one format. The window never appears and never takes focus.
+
+| Flag | Default |
+| --- | --- |
+| `--build <project>` | required |
+| `--build-variant <id>` | `main`, the release variant |
+| `--build-target <platform>` | the host platform |
+| `--build-format <format>` | the platform's first format |
+| `--build-arch <arch>` | the host's architecture for a host build, `x64` for a cross build |
+| `--build-output <folder>` | `<project>/dist` |
+| `--build-report <file>` | no report file |
+| `--build-allow-unsigned` | off |
+
+The exit code is the contract:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The build wrote its artifacts. |
+| `1` | The build failed. |
+| `2` | The command line could not be acted on. Nothing was opened. |
+| `3` | A check refused the project, so the build never started. |
+| `4` | Studio could not run the build. This says nothing about the project. |
+
+Standard output carries the build console, in English. `--build-report` writes a JSON file holding
+the outcome, the exit code, every finding, the artifacts and their sizes, and the whole log; its
+values are fixed identifiers, so nothing that reads it depends on a language.
+
+A target that can carry a code signature and has no signing credential configured is refused, and
+`--build-allow-unsigned` is how a caller states that it accepts an unsigned artifact. The report's
+`signing` block says whether the platform can carry a signature at all and whether this build did.
+
 ## Asset protection
 
 NarraLeaf Studio is open source, with one exception: an optional asset-protection component that is **not** open source. For details, see [docs/asset-protection.md](docs/asset-protection.md).
