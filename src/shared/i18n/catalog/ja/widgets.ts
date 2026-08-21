@@ -37,6 +37,8 @@ export const widgets = {
         wrapWords: "単語単位",
         wrapCharacters: "文字単位",
         wrapNone: "折り返さない",
+        autoFit: "自動縮小",
+        autoFitMinFontSize: "最小の文字サイズ",
         alignment: "揃え",
         verticalAlignment: "縦の揃え",
         alignLeft: "左揃え",
