@@ -667,6 +667,7 @@ export const story = {
                 data: "变量",
                 utils: "其他",
                 invalid: "无效行",
+                empty: "空行",
             },
         },
     },
@@ -1040,6 +1041,7 @@ export const story = {
         jump: "跳转",
         note: "备注",
         invalid: "无效",
+        empty: "空行",
     },
     emptyPlaceholder: {
         narration: "双击输入旁白",
@@ -1047,6 +1049,7 @@ export const story = {
         choice: "双击输入选择提示",
         note: "双击输入备注",
         text: "双击输入文本",
+        blank: "双击在此书写",
     },
     characterName: {
         unassigned: "未指定角色",
@@ -1104,6 +1107,7 @@ export const story = {
         jump: "跳转 {scene}",
         note: "备注",
         invalid: "无效指令",
+        empty: "空行",
         sceneUnassigned: "未指定",
         sceneUnknown: "未知场景",
         variableFallback: "变量",

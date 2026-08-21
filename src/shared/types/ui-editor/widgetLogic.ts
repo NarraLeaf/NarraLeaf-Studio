@@ -495,7 +495,7 @@ function createCollectionWidgetLogicApi(blueprintLabel: string): WidgetLogicApi 
         ],
         writableProps: [
             { propPath: "itemsBinding", displayName: "Items binding" },
-            { propPath: "previewCount", displayName: "Preview count" },
+            { propPath: "placeholderCount", displayName: "Placeholder count" },
             { propPath: "selectedIndex", displayName: "Selected index" },
         ],
     };

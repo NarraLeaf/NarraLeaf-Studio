@@ -239,6 +239,11 @@ function projectBlockLine(
         const suffix = block.payload.defaultValue !== undefined ? ` ${formatStoryLiteral(block.payload.defaultValue)}` : "";
         return { text: `${indent}/${token} ${block.payload.name}${suffix}`, editable: false, prefix: "" };
     }
+    if (block.kind === "empty") {
+        // A blank line, printed blank - the indent goes with it, because whitespace on an empty line
+        // is trailing whitespace wherever the line sits.
+        return { text: "", editable: false, prefix: "" };
+    }
     const prefix = `${indent}// `;
     return {
         text: `${prefix}${block.payload.text.value}`,
