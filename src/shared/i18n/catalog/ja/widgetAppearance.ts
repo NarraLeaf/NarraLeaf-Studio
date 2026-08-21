@@ -135,6 +135,7 @@ export const widgetAppearance = {
         active: "押下中",
         disabled: "無効",
         focused: "フォーカス中",
+        selected: "選択中",
         when: "条件",
         toggleTitle: "{condition} = true を必須にする。押すたびに 未設定 → true → false と切り替わる",
         overridesTitle: "状態ごとの上書き（上級者向け）",

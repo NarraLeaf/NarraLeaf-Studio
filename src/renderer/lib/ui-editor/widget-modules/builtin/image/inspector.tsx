@@ -11,6 +11,7 @@ import {
     isUsableAppearanceModel,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import { createListItemFieldBindingField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { i18nStore } from "@/lib/i18n";
 import { getImageWidgetRectangleProps } from "./helpers";
 
@@ -60,6 +61,11 @@ function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     );
 }
 
+const ImageListItemFieldBinding = createListItemFieldBindingField({
+    propPath: "imageFill.assetId",
+    valueType: "string",
+});
+
 export function createImageInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
     const { t } = i18nStore.getTranslator();
@@ -74,6 +80,13 @@ export function createImageInspector(ctx: InspectorContext) {
                 id: "properties",
                 title: t("widgets.tabs.properties"),
                 fields: [
+                    // Only renders inside a list item template, where a picture that differs per row
+                    // is the point of the widget being there at all.
+                    defineField<D, any>({
+                        id: "image.listItemField",
+                        type: "custom",
+                        component: ImageListItemFieldBinding,
+                    }),
                     defineField<D, any>({
                         id: "section.appearanceAuthoring",
                         type: "section",

@@ -26,6 +26,7 @@ import { characters } from "./characters";
 import { properties } from "./properties";
 import { motion } from "./motion";
 import { saveSchema } from "./saveSchema";
+import { struct } from "./struct";
 import { storyVars } from "./storyVars";
 import { storySnapshot } from "./storySnapshot";
 import { uiEditor } from "./uiEditor";
@@ -74,6 +75,7 @@ export const ja = {
     properties,
     motion,
     saveSchema,
+    struct,
 
     storyVars,
     storySnapshot,

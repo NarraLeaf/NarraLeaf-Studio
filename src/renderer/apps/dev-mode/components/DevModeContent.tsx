@@ -637,6 +637,7 @@ function DevModeDebugOverlay(props: {
                                     storyRuntime={storyRuntime}
                                     scopeBridge={core.scopeBridge}
                                     bundle={bundle}
+                                    projectPath={projectPath}
                                     className="h-full min-h-0 w-full"
                                     chrome={panelChrome}
                                 />

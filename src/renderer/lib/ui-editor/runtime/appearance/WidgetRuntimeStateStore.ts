@@ -507,6 +507,10 @@ export class WidgetRuntimeStateStore {
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {
         return {
             hovered: this.hoverTargetIds.has(elementId),
+            // The store never sets this: selection belongs to the row a list is drawing, which this
+            // store has no dimension for. `useWidgetRuntimeElementState` merges it in from the row
+            // context, so the default here is the honest answer for anything outside a list.
+            selected: false,
             active: this.activePointerId === elementId,
             focused: this.focusedId === elementId,
             disabled: Boolean(interactionDisabled),

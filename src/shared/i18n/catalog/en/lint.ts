@@ -247,6 +247,11 @@ export const lint = {
             description: "A Page widget embedding a page the project does not have",
             message: "This Page widget embeds a page the project does not have",
         },
+        uiListItemFieldMissing: {
+            title: "Missing item field",
+            description: "A widget bound to an item field the list drawing it does not declare",
+            message: "This is bound to an item field the list does not declare, so every row shows the same value",
+        },
         blueprintSaveFieldEmpty: {
             title: "Empty save field",
             description: "A Save Game node that will run with a declared save field left empty",
