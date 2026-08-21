@@ -2429,6 +2429,12 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
         return [];
     }
 
+    if (block.kind === "empty") {
+        // A blank line: nothing to emit and nothing to say about it. Not a diagnostic of any level -
+        // an author leaves these behind by clearing a line, which is editing, not a mistake.
+        return [];
+    }
+
     return [];
 }
 

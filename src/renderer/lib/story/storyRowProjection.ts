@@ -400,14 +400,15 @@ export type StoryBlockBadgeId =
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
     | "blueprint" | "camera" | "effect" | "plugin"
-    | "label" | "goto" | "break" | "cut" | "control" | "jump" | "invalid" | "declaration" | "note";
+    | "label" | "goto" | "break" | "cut" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
 
 export type StoryBlockBadge = {
     id: StoryBlockBadgeId;
     labelKey: TranslationKey;
     /**
      * The command GROUP the row files under — the colour unit (see `storyCommandCategories`). `null`
-     * only for `invalid`: that row is an error, not another kind of action, and wears the danger hue.
+     * for the two rows that are not a kind of action: `invalid`, which is an error and wears the
+     * danger hue, and `empty`, which is a blank line and wears none.
      */
     group: StoryCommandGroupId | null;
 };
@@ -476,11 +477,21 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
     if (block.kind === "declaration") {
         return badge("declaration", `story.badge.declare.${block.payload.scope}` as TranslationKey, "data");
     }
+    // Answered before the note fallback below, and it has to be: an empty row wearing a note's badge
+    // would file a blank line under Comment in the row filter, tint it with the utils hue and put a
+    // sticky-note glyph in its gutter - three ways of saying the row is something it is not.
+    if (block.kind === "empty") return badge("empty", "story.badge.empty", null);
     return badge("note", "story.badge.note", "utils");
 }
 
 /** The row's category hue — the badge's tint, and the ink of the command glyph in a row's gutter. */
 export function storyRowAccentColor(block: StoryBlock): string {
+    // Both groupless rows are answered before the danger fallback, because they mean opposite things:
+    // an empty row is not an error, it is nothing, and painting a blank line red would report a fault
+    // every time an author cleared a line.
+    if (block.kind === "empty") {
+        return "rgb(var(--nl-fg-subtle))";
+    }
     const group = storyBlockBadge(block).group;
     // Deliberately not a category colour for `invalid`: a build will refuse that row, and it has to
     // read as wrong at a glance rather than as another kind of action.
@@ -820,6 +831,12 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
     if (block.kind === "declaration") {
         // The row reads as what it declares: `gold: number = 100`. The scope arrives via the badge.
         return describeDeclaration(block);
+    }
+    if (block.kind === "empty") {
+        // Nothing to read out of it, so the description names the row instead. This is the one place
+        // an empty row says a word: a list of rows that showed a gap where a line should be would
+        // read as a rendering fault (see the editor, where it draws as the blank line it is).
+        return translate("story.describe.empty");
     }
     return block.payload.text.value || translate("story.describe.note");
 }

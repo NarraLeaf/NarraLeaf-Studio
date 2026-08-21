@@ -372,4 +372,12 @@ export type NarralangShape =
     /** A row carried through verbatim - an unparsed command line, which must not be re-read as script. */
     | { readonly form: "raw"; readonly source: string }
     | { readonly form: "silent" }
+    /**
+     * A blank line, printed blank.
+     *
+     * Not a third "prints nothing" arm: it prints a line, and the line is empty. That matters to
+     * the reconciler, which matches the author edited text against the lines the printer would have
+     * written - a row with no line of its own reads as a row the author deleted.
+     */
+    | { readonly form: "blank" }
     | { readonly form: "transparent" };
