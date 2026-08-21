@@ -98,7 +98,6 @@ describe("printNarralangScene", () => {
         expect(result.text).toBe(
             [
                 "scene '走廊 · 傍晚':",
-                "",
                 "  bg corridor_dusk with fade 0.5",
                 "  play bgm evening_theme volume 0.7 fadein 1.5 loop",
                 "  夕阳把走廊染成橘色。",
