@@ -127,7 +127,7 @@ export const wizard = {
         addressInvalid: "プロジェクトのアドレスは末尾にプロジェクト名が必要。例：lore://studio.example.lan:41337/my-game",
         parsedServer: "サーバー",
         onServerLabel: "サーバー上のプロジェクト",
-        onServerHint: "選んでください。未追加のサーバーは下にアドレスを入力します。",
+        onServerHint: "選ぶか、下にプロジェクトのアドレスを入力する",
         onServerEmpty: "このサーバーにはまだプロジェクトがありません。",
         onServerLoading: "サーバーに問い合わせています…",
         onServerNoToken: "Studio はこのサーバーに問い合わせられません。トークンで追加し直してください。",
@@ -149,7 +149,7 @@ export const wizard = {
         error: {
             failedTitle: "クローンに失敗",
             generic: "サーバーからプロジェクトを取得できなかった",
-            // Lore サーバーが持つのはリポジトリで、リポジトリが必ず Studio のプロジェクトとは限らない。
+            // Team サーバーが持つのはリポジトリで、リポジトリが必ず Studio のプロジェクトとは限らない。
             // 実際に置かれているものなので名前を出す。このフォルダを再利用できない理由でもある。
             notAProjectTitle: "これは NarraLeaf Studio のプロジェクトではない",
             notAProject: "複製は終わったが、中に Studio のプロジェクトファイルがない。複製した中身は {path} にある",

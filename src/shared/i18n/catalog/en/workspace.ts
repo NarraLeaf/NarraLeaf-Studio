@@ -323,6 +323,12 @@ export const workspace = {
         // already titled with the product, and repeating it in the label under it reads as
         // branding rather than as a name for the row.
         destination: "Server",
+        // A label and its value. The name a collaborator clones by, and the one part of the
+        // address worth reading on its own.
+        projectOnServer: "Project name: {name}",
+        // The project is pointed at a server this machine has no account on. Said as a state,
+        // with the row that fixes it directly underneath.
+        noAccountHere: "This machine has no account on that server.",
         // Opens Settings, where a server is added to this machine and signed out of. The ellipsis
         // is this catalog's mark for a control that opens somewhere else.
         manage: "Manage servers…",
@@ -884,13 +890,11 @@ export const workspace = {
                     // The last row of the list. The ellipsis is the convention for a control
                     // that opens somewhere else: this one opens Settings and closes the dialog.
                     add: "Add a server…",
-                    manual: "Another address",
+                    // The project names a server this machine has no account on: a copy somebody
+                    // sent, or a server that was signed out of. Stated with the address it names,
+                    // because the remedy is the row under it and not a box to retype it into.
+                    unknownServer: "This project uses {host}, which has not been added on this machine.",
                 },
-                // The one field. Measured: the backend keeps only the ORIGIN of whatever URL it is
-                // given and identifies the repository by its own id, so there is genuinely nothing
-                // else to type - which is why there is no "repository name" box beside it.
-                addressLabel: "Server address",
-                addressPlaceholder: "lore://studio.example.lan:41337",
                 save: "Connect",
                 cancel: "Cancel",
                 disconnect: "Disconnect",
@@ -967,101 +971,12 @@ export const workspace = {
                  * rather than whatever was typed into a preference on this machine.
                  */
                 signIn: {
-                    required: "This server requires sign-in before a project can be connected to it.",
-                    // A quiet line, not a button: most servers ask nobody who they are, and
-                    // this is a control they can ignore rather than one they must answer.
-                    open: "Sign in to this server",
+                    // Said where a project is pointed at a server this machine has no account on.
+                    // A Team server is reached at its `nlteam://` endpoint, and adding it is the
+                    // only thing that stores one - so what follows this line is that row.
+                    required: "This server requires an account before a project can be connected to it.",
                     signedInAs: "Signed in as {name}",
                     signOut: "Sign out",
-                    // Deliberately not "auth endpoint": the author is being asked where to sign
-                    // in, and the word for the machinery behind it is not theirs to learn.
-                    addressLabel: "Sign-in address",
-                    addressPlaceholder: "https://studio.example.lan:41402",
-                    // "Access token" rather than "password", because it is not one and cannot
-                    // be chosen, remembered or reset by the person pasting it.
-                    tokenLabel: "Access token",
-                    tokenPlaceholder: "Paste the token",
-                    // Where a token comes from, in one line, because there is nowhere else to
-                    // learn it: nothing in Studio can issue one.
-                    hint: "The token is issued by the server's administrator.",
-                    /**
-                     * Trusting the authority a server's certificate is issued from.
-                     *
-                     * Two readers, and the words have to work for both. Where the token names
-                     * this authority, the comparison is already made and this is a decision.
-                     * Where it names none, the fingerprint is here to be checked against what
-                     * somebody was told - which is what everybody did before, and still works.
-                     *
-                     * Nothing here calls it a "root CA" or a "trust store": what the author is
-                     * agreeing to is said in the sentence, and the name for the machinery is
-                     * not theirs to learn.
-                     */
-                    trust: {
-                        open: "Trust this server on this computer",
-                        title: "Trust this server?",
-                        vouched: "The pasted token names this authority, and this authority is answering at that address.",
-                        compare: "Check this fingerprint against the one provided by the server's administrator, over a different channel.",
-                        authorityLabel: "Issued by",
-                        fingerprintLabel: "Fingerprint",
-                        // The cost of being wrong, in one sentence, without softening it. The
-                        // account rather than the computer is not a detail: it is what bounds
-                        // the damage, and it is the reason the per-user store is used.
-                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will accept it. Only this account on this computer is affected.",
-                        manual: "This system has no per-account trust store. Run this, then sign in again:",
-                        copy: "Copy the command",
-                        confirm: "Trust it",
-                        cancel: "Cancel",
-                    },
-                    submit: "Sign in",
-                    cancel: "Cancel",
-                    /**
-                     * How signing in ended, said once and in words.
-                     *
-                     * Not a pair of version numbers: Studio pins its half and the server runs
-                     * whatever its operator installed, and asking an author which pairs work
-                     * asks them for knowledge they have no way to have.
-                     */
-                    reach: {
-                        ready: "This server is compatible with this copy of Studio.",
-                        // Signed in, and the server will not hand over this project. A different
-                        // failure from a refused token, and the remedy is a different person's.
-                        notPermitted: "Signed in, but this account does not have access to this project. Ask the server's administrator for access.",
-                        // The sign-in address answered and the server itself did not, which is
-                        // two ports and usually two firewall rules.
-                        dataPortSilent: "Signed in, but the server itself did not answer.",
-                    },
-                    /**
-                     * Why a sign-in did not happen.
-                     *
-                     * Four of these arrive from the backend as one identical sentence, so each
-                     * is written here from the reason Studio worked out for itself. The
-                     * certificate one is the only failure in this product whose remedy is a
-                     * command a person runs outside Studio, and it says so plainly rather than
-                     * offering a button that cannot exist.
-                     */
-                    problem: {
-                        scheme: "A sign-in address has to start with https:// or ucs-auth://.",
-                        token: "That is not a token this server issued. Paste the complete token.",
-                        // Answered only after a token has been read and found to name no
-                        // endpoint, which is what reveals the address field. Most tokens name
-                        // one and nobody sees this.
-                        address: "This token carries no sign-in address. Enter the address as well.",
-                        // The token named no authority, so there is a comparison left to make
-                        // and it is a person's. Shown above the offer, not instead of it.
-                        certificate:
-                            "This computer does not trust the authority this server signs with. "
-                            + "Its fingerprint is {fingerprint}.",
-                        // The token named one authority and a different one answered. Not a
-                        // step that was missed: this is what standing in the way looks like,
-                        // and nothing here offers to trust it.
-                        mismatch:
-                            "The server at that address is not the one this token is for. The token names "
-                            + "{expected}, and {found} answered. Do not trust it; ask the server's "
-                            + "administrator what happened.",
-                        unreachable: "Nothing answered at that address ({detail}).",
-                        refused: "The server would not accept that token ({detail}).",
-                        unknown: "The sign-in did not finish ({detail}).",
-                    },
                 },
             },
             // A sync whose merge could not settle. Sticky rather than inline, because the sync

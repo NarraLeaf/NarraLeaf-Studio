@@ -7,7 +7,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
 import { VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
-import type { RevisionId, VcsAvailability, VcsMergeState, VcsServerProjectsProblem, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncState } from "@shared/types/vcs";
+import type { RevisionId, VcsAvailability, VcsMergeState, VcsServerProjectsProblem, VcsServerSession, VcsStatus, VcsSyncState } from "@shared/types/vcs";
 import type { TranslationKey } from "@shared/i18n";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import {
@@ -379,42 +379,25 @@ export interface VersionSurface {
      */
     repositoryId: string | null;
     /**
-     * How the last sign-in ended, or null when this window has not attempted one.
+     * Take the account back off this machine, stored token and all.
      *
-     * Kept apart from {@link error} because a refusal is not a fault: each reason has a
-     * different sentence and a different next act, and the string an error would carry
-     * cannot tell four identical-looking transport failures apart.
+     * Signing IN is not on this surface, and that is the point: a server is reached at its
+     * `nlteam://` endpoint, which is what tells Studio the server's name, what it can do and
+     * where its data remote lives. Only `AddServerModal` asks that question, so only it can
+     * store an account - a token box beside a project would store one that knows none of it.
      */
-    signIn: VcsSignInOutcome | null;
-    /**
-     * Present a token to the server. Answers whether it ended signed in.
-     *
-     * `authUrl` is empty for the ordinary case: a token names its own endpoint, and a
-     * sign-in that answers `address` is the one that asks for it.
-     */
-    signInToServer: (authUrl: string, token: string) => Promise<boolean>;
-    /**
-     * Tell this machine to trust a server's certificate authority. Answers whether it
-     * took.
-     *
-     * **The only thing on this surface that changes a setting of the operating system.**
-     * The rail offers it where the pasted token vouches for the authority that answered,
-     * and behind a dialog naming what is being trusted.
-     */
-    trustAuthority: (certificatePath: string) => Promise<boolean>;
-    /** Take the account back off this machine, stored token and all. */
     signOutOfServer: () => Promise<void>;
     /** Send local revisions up. Answers whether it happened. */
     pushToRemote: () => Promise<boolean>;
     /** Bring the server's revisions down; re-reads every document. Answers whether it happened. */
     syncFromRemote: () => Promise<boolean>;
     /**
-     * Whether the last attempt to point this project at a server was refused for want
-     * of a token.
+     * Whether the last attempt to put this project on a server was refused for want of an
+     * account.
      *
-     * The rail offers a way to sign in when it is true. Without it there is none: the
-     * row that offers one is drawn beside a configured server, and on a server that
-     * demands a token there is no way to configure one until after signing in.
+     * The Team panel says so and offers the way to one when it is true. Without it there is
+     * none to offer: what is drawn beside a configured server is read off `serverSession`,
+     * and a refusal here means nothing was configured.
      */
     remoteNeedsSignIn: boolean;
 }
@@ -445,7 +428,6 @@ export function useVersionSurface(): VersionSurface {
     const [serverSession, setServerSession] = useState<VcsServerSession | null>(null);
     /** This project's repository id, as the server lists it. Null until the identity read lands. */
     const [repositoryId, setRepositoryId] = useState<string | null>(null);
-    const [signIn, setSignIn] = useState<VcsSignInOutcome | null>(null);
     const [merge, setMerge] = useState<VcsMergeState | null>(null);
     const [authorName, setAuthorNameState] = useState<string | null>(null);
     const [compareBase, setCompareBase] = useState<VersionCompareBase | null>(null);
@@ -1073,74 +1055,6 @@ export function useVersionSurface(): VersionSurface {
         }
     }, [services, busy]);
 
-    /**
-     * Present a token to the server.
-     *
-     * The outcome is kept whichever way it went. A refusal is the more useful of the two
-     * to keep: it is what the form draws its sentence from, and clearing it on the next
-     * keystroke would take the explanation away while the author is still reading it.
-     */
-    const signInToServer = useCallback(async (authUrl: string, token: string): Promise<boolean> => {
-        if (!services || busy !== null) {
-            return false;
-        }
-        setBusy("remote");
-        setFailure(null);
-        try {
-            const outcome = await services.versionControl.signIn(authUrl, token);
-            if (!alive.current) return outcome.ok;
-            setSignIn(outcome);
-            if (!outcome.ok) return false;
-            // Only now. The section that reports how a sign-in went is the one this
-            // marker draws, so clearing it on the way in would take the answer off the
-            // screen at the moment there was one to read.
-            setRemoteNeedsSignIn(false);
-            setServerSession(outcome.session);
-            // The sign-in already reached the server to decide whether the two ends can
-            // work together, so the row can be right without a second two-second wait.
-            setSyncState(await services.versionControl.getSyncState());
-            return true;
-        } catch (thrown) {
-            if (alive.current) setFailure(describeFailure(thrown));
-            return false;
-        } finally {
-            if (alive.current) setBusy(null);
-        }
-    }, [services, busy]);
-
-    /**
-     * Put a server's authority into this account's trust store.
-     *
-     * Nothing is retried and the sign-in is not re-attempted here: the rail does that,
-     * because whether to try again is a question about the form's contents - the token
-     * is still in a box up there - rather than about the trust store.
-     */
-    const trustAuthority = useCallback(async (certificatePath: string): Promise<boolean> => {
-        if (!services || busy !== null) {
-            return false;
-        }
-        setBusy("remote");
-        setFailure(null);
-        try {
-            const outcome = await services.versionControl.trustAuthority(certificatePath);
-            if (!alive.current) return outcome.installed;
-            // What the operating system printed when it refused. It says something
-            // specific - a policy that forbids adding roots, a keychain left locked -
-            // and the author has nowhere else to learn which of those it was.
-            // Already a sentence rather than a thrown error, so it goes in as one: there is
-            // no code to recognise, and `describeFailure` only takes what was thrown.
-            if (!outcome.installed) {
-                setFailure(outcome.output ? { text: outcome.output, tone: "failure" } : null);
-            }
-            return outcome.installed;
-        } catch (thrown) {
-            if (alive.current) setFailure(describeFailure(thrown));
-            return false;
-        } finally {
-            if (alive.current) setBusy(null);
-        }
-    }, [services, busy]);
-
     const signOutOfServer = useCallback(async (): Promise<void> => {
         if (!services) {
             return;
@@ -1151,7 +1065,6 @@ export function useVersionSurface(): VersionSurface {
             await services.versionControl.signOut();
             if (!alive.current) return;
             setServerSession(null);
-            setSignIn(null);
             // Everything known about the server was learned as somebody who is no longer
             // signed in, so it describes a connection that no longer exists.
             setSyncState(null);
@@ -1303,9 +1216,6 @@ export function useVersionSurface(): VersionSurface {
         remoteNeedsSignIn,
         serverSession,
         repositoryId,
-        signIn,
-        signInToServer,
-        trustAuthority,
         signOutOfServer,
         pushToRemote,
         syncFromRemote,

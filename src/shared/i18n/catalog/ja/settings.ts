@@ -373,7 +373,7 @@ export const settings = {
         usePassword: "代わりにユーザー名とパスワードを使う",
         signInRefused: "サーバーはそのユーザー名とパスワードを受け付けなかった",
         signInUnavailable: "この端末ではパスワードでサインインできない",
-        noAccount: "{name} は誰にも身元を尋ねないため、サーバーは追加されない",
+        noAccount: "{name} はアカウントを発行しないため追加できない。管理者にアカウントを求めること",
         joined: {
             signedInAs: "{name} としてサインインしている",
             projects: {

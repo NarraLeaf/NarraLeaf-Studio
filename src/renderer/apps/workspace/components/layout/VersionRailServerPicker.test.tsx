@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VcsServerSession } from "@shared/types/vcs";
 import { CommitForm, ServerPickerDialog, ServerSection } from "./VersionRail";
 import { registerTeamPresenceBridge } from "../../modules/team/teamPresenceController";
@@ -51,6 +50,10 @@ vi.mock("@/lib/app/bridge", () => ({
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
             listServerProjects: bridge.listServerProjects,
+            // The add sequence is mounted from the last row of the list now. Nothing here
+            // reaches for these until it is pressed, so a stub is enough to keep it honest.
+            probeServer: () => Promise.resolve({ success: false }),
+            addServer: () => Promise.resolve({ success: false }),
         },
         app: { launchSettings: bridge.launchSettings },
     }),
@@ -181,14 +184,17 @@ describe("the server picker", () => {
             .toContain("workspace.shell.versionControl.server.picker.empty");
     });
 
-    it("opens Settings at the servers panel and closes, rather than asking for a token here", async () => {
+    it("runs the add sequence here rather than sending the reader to another window", async () => {
         const { onClose } = picker(null);
         await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-add']")).not.toBeNull());
 
         fireEvent.click(document.querySelector("[data-vcs-seam='picker-add']")!);
 
-        expect(bridge.launchSettings).toHaveBeenCalledWith({ highlight: SERVERS_PANEL_SETTING_KEY });
-        expect(onClose).toHaveBeenCalled();
+        // The same sequence Settings mounts, over the top of this dialog. It used to open
+        // Settings in another window and close this one, which lost the project being connected.
+        expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull();
+        expect(bridge.launchSettings).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it("calls a server by the name it gave, with its address still under it", async () => {
@@ -210,8 +216,7 @@ describe("the server picker", () => {
 
         await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
         expect(document.querySelector("[aria-pressed='true']")).toBeNull();
-        // The name field belongs to a chosen server, and the address field to the option below
-        // the add row; neither has been asked for yet.
+        // The name field belongs to a chosen server, and nothing has been chosen yet.
         expect(document.querySelectorAll("input")).toHaveLength(0);
     });
 
@@ -224,17 +229,16 @@ describe("the server picker", () => {
         expect(document.querySelector<HTMLInputElement>("input")?.value).toBe("my-game");
     });
 
-    it("keeps the address field, below the add row, for a server nobody signs in to", async () => {
+    it("names the server a project uses that this machine has no account on", async () => {
         bridge.servers = [session(ONE, "ada")];
         picker("lore://plain.example.lan:41337/my-game");
 
-        const body = await waitFor(() => document.querySelector("[data-vcs-seam='server-picker']")!);
-        const nodes = [...body.querySelectorAll("[data-vcs-seam='picker-add'], [data-vcs-seam='picker-address']")];
-        expect(nodes.map(node => node.getAttribute("data-vcs-seam"))).toEqual(["picker-add", "picker-address"]);
-        // Opened on it, with the address in it: this is the one place a project pointed at a
-        // bare server can read or change where its work goes.
-        expect(document.querySelector<HTMLInputElement>("input")?.value)
-            .toBe("lore://plain.example.lan:41337/my-game");
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-unknown']")).not.toBeNull());
+        // A statement with the host in it, and the add row underneath. It used to be an address
+        // field opened with the address already in it, which reads as an invitation to retype
+        // the one thing that was never wrong.
+        expect(document.querySelector("[data-vcs-seam='picker-address']")).toBeNull();
+        expect(document.querySelectorAll("input")).toHaveLength(0);
     });
 });
 
@@ -246,8 +250,8 @@ describe("the server picker", () => {
  * without it is the state this whole dialog used to leave behind - a project that pushes
  * from the one machine that set it up and cannot be cloned from any other.
  *
- * A typed address is a bare `loreserver` with nothing in front of it. There is nothing
- * to record it in, so it keeps what it always had.
+ * There is only the one kind now. A typed address wrote a remote and nothing else, which is
+ * what a `loreserver` with nothing in front of it could be given, and that field is gone.
  */
 describe("what Connect does", () => {
     it("puts the project on a server chosen from the list, rather than only pointing at it", async () => {
@@ -381,21 +385,6 @@ describe("what Connect does", () => {
         });
     });
 
-    it("writes the address alone for a server nobody signs in to, because there is nothing to ask", async () => {
-        bridge.servers = [session(ONE, "ada")];
-        const { surface } = picker(null);
-
-        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
-        fireEvent.click(seam("picker-address").querySelector("button")!);
-        fireEvent.change(document.querySelector("input")!, {
-            target: { value: "lore://plain.example.lan:41337/my-game" },
-        });
-        fireEvent.click(connectButton());
-
-        expect(surface.setRemote).toHaveBeenCalledWith("lore://plain.example.lan:41337/my-game");
-        expect(surface.publish).not.toHaveBeenCalled();
-    });
-
     it("stays open on a publish that did not go through, so the reason can be read", async () => {
         bridge.servers = [session(ONE, "ada")];
         const { onClose } = picker(null, {
@@ -418,50 +407,25 @@ describe("what Connect does", () => {
 });
 
 /**
- * Who the versions are by, asked only where nothing else will answer it.
+ * Who the versions are by, which this dialog no longer asks at all.
  *
- * A server out of the list has a session, and the recorded author then comes from that session's
- * account - `VcsManager.resolveIdentity` prefers it, keyed on the project's own remote origin. So
- * the question drawn beside a chosen server is one whose answer is thrown away moments later, asked
- * at the exact moment it looks most relevant. It survives for the address field, where a bare
- * server issues no token and records whatever it is told.
+ * Every destination it can offer is a Team server this machine has an account on, and the recorded
+ * author then comes from that account - `VcsManager.resolveIdentity` prefers it, keyed on the
+ * project's own remote origin. So a name typed here is one thrown away moments later, asked at the
+ * exact moment it looks most relevant. It used to survive for the address field, where a bare
+ * server recorded whatever it was told; there is no address field any more.
  */
 describe("the author name in the server picker", () => {
-    it("is not asked for a server out of the list", async () => {
+    it("is never asked here, chosen server or not", async () => {
         bridge.servers = [session(ONE, "ada")];
         picker(null, { authorName: null });
 
         await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
-        // Nothing chosen yet is not a destination either, so it is absent here too.
         expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
 
         fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
 
         expect(document.querySelector(`[data-server-choice='${ONE}']`)?.getAttribute("aria-pressed")).toBe("true");
-        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
-    });
-
-    it("is asked for an address the list cannot account for", async () => {
-        bridge.servers = [session(ONE, "ada")];
-        picker(null, { authorName: null });
-
-        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
-        fireEvent.click(seam("picker-address").querySelector("button")!);
-
-        expect(document.querySelector("[data-vcs-seam='author-identity']")).not.toBeNull();
-
-        // And it goes again the moment the destination is one that answers for itself.
-        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
-        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
-    });
-
-    it("stays out of the way once the name has been answered", async () => {
-        bridge.servers = [session(ONE, "ada")];
-        picker(null);
-
-        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
-        fireEvent.click(seam("picker-address").querySelector("button")!);
-
         expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
     });
 });

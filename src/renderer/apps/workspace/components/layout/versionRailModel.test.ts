@@ -8,7 +8,7 @@ import {
 } from "@shared/vcs/systemRevisionMessage";
 import { RAIL_SELECTOR_WIDTH } from "./dockLayoutModel";
 import {
-    MANUAL_SERVER,
+    UNKNOWN_SERVER,
     NO_SERVER,
     VERSION_BRANCH_MAX_CHARS,
     VERSION_CHANGE_LIST_LIMIT,
@@ -1047,10 +1047,11 @@ describe("which server the connect dialog opens on", () => {
         expect(initialServerChoice(servers, "   ")).toBe(NO_SERVER);
     });
 
-    it("opens on the address field where the project's server is not one of these", () => {
-        // A bare loreserver, which nobody signs in to and which is therefore in no list. The
-        // address field is the only place its address can be read or written.
-        expect(initialServerChoice(servers, "lore://plain.example.lan:41337/my-game")).toBe(MANUAL_SERVER);
+    it("says so where the project's server is not one this machine has an account on", () => {
+        // A copy somebody sent, or a server that was signed out of. It used to open on an
+        // address field with the address in it, which read as an invitation to retype it; the
+        // only thing that can be done about it is adding the server.
+        expect(initialServerChoice(servers, "lore://plain.example.lan:41337/my-game")).toBe(UNKNOWN_SERVER);
     });
 
     it("opens on nothing when no server has been added", () => {
