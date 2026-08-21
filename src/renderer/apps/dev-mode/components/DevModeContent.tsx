@@ -1029,9 +1029,19 @@ export function DevModeContent(props: DevModeContentProps) {
      * Returns null rather than throwing when it cannot be made. A missing clip is a scene that plays
      * without its weather and says so in the diagnostics; the story itself still runs, which is the
      * difference between a seed that failed and a session that will not start.
+     *
+     * The bundle it belongs to travels with it, because a clip is wanted by a compile rather than by
+     * a session: a reload means the game that asked is gone, and its bake - for a density the author
+     * has already typed over - should stop rather than hold the queue. Read off the ref for the same
+     * reason everything else here is: the host object is captured by plugin setup and has to outlive
+     * every revision, so it cannot be rebuilt per bundle.
      */
     const resolveWeatherClip = useCallback<NonNullable<GameAppHost["resolveWeatherClip"]>>(async spec => {
-        const result = await getInterface().devMode.resolveWeatherClip(spec);
+        const current = bundleRef.current;
+        const result = await getInterface().devMode.resolveWeatherClip(
+            spec,
+            current ? `${current.bundleId}:${current.revision}` : "",
+        );
         return result.success && result.data?.url ? result.data.url : null;
     }, []);
 

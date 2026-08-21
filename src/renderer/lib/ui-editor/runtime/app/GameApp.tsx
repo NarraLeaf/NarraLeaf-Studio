@@ -330,6 +330,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         layerStack: providedLayerStack,
     } = props;
     const bundle = host.bundle;
+    /**
+     * The bundle as of the latest render, for work that began under an older one.
+     *
+     * A hot reload replaces the bundle without remounting this component, so anything already in
+     * flight goes on holding the bundle it captured. Comparing the two is how such a job can tell
+     * that what it is about to report describes a document nobody is looking at any more.
+     */
+    const currentBundleRef = useRef(bundle);
+    currentBundleRef.current = bundle;
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
         onDebugEvent: host.onDebugEvent,
@@ -2679,7 +2688,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             audioTracks: bundle.audio?.tracks,
         };
         const compiled = await compileStudioStoryToNlr(compileInput);
-        if (compiled.diagnostics.length > 0) {
+        // Only the compile that is still the current one gets to complain. A hot reload can land
+        // while this one is waiting on something slow, and what it found then is about a document
+        // the author has already replaced.
+        //
+        // Which stopped being merely untidy once a bake could be interrupted: a weather clip dropped
+        // because the caller that wanted it moved on comes back here as "could not be produced", so
+        // every digit typed into a density would leave a warning about a number the author has
+        // already typed over, on a stage that is showing the new one perfectly.
+        const superseded = currentBundleRef.current.bundleId !== bundle.bundleId
+            || currentBundleRef.current.revision !== bundle.revision;
+        if (!superseded && compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
                 const level = diagnostic.level === "error" ? "error" : "warning";
                 host.log(level, diagnostic.message);
