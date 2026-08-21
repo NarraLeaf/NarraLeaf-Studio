@@ -178,6 +178,9 @@ export const launcher = {
             reopen: "Reopen",
             resolved: "Resolved",
             failed: "The note was not sent.",
+            // The list could not be read at all. Never the empty state, which says nobody
+            // has written anything.
+            unavailable: "This project's discussion is not available.",
         },
         forget: {
             action: "Remove from this server",
