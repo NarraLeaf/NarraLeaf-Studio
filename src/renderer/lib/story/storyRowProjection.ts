@@ -479,30 +479,12 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
     return badge("note", "story.badge.note", "utils");
 }
 
-/** The row's category hue — the badge's tint and the editor's left-edge bar. */
+/** The row's category hue — the badge's tint, and the ink of the command glyph in a row's gutter. */
 export function storyRowAccentColor(block: StoryBlock): string {
     const group = storyBlockBadge(block).group;
     // Deliberately not a category colour for `invalid`: a build will refuse that row, and it has to
     // read as wrong at a glance rather than as another kind of action.
     return group ? getCommandGroup(group).iconColor : "rgb(var(--nl-danger))";
-}
-
-/**
- * The hue a row shows *as a bar*, or `null` for the rows that carry none.
- *
- * Prose keeps zero chrome: narration, dialogue and notes are the text itself, and a colour bar down a
- * page of dialogue is noise rather than a distinction. Everything else — scene, character, sound,
- * flow — earns one. (The editor additionally drops the bar on a dialogue-group continuation row; that
- * is a grouping decision belonging to its reading layer, and the timeline has no groups.)
- */
-export function storyRowBarColor(block: StoryBlock): string | null {
-    if (block.kind === "note") {
-        return null;
-    }
-    if (block.kind === "nodeAction" && (block.payload.action === "narration" || block.payload.action === "dialogue")) {
-        return null;
-    }
-    return storyRowAccentColor(block);
 }
 
 // --- describe -------------------------------------------------------------------------------------
@@ -969,8 +951,6 @@ export type StoryRowProjection = {
     sentence: string;
     /** The dialogue speaker, when there is one. */
     speaker: StoryRowCharacter | null;
-    /** The category hue the editor bars this row with, or `null` for the prose rows that carry none. */
-    barColor: string | null;
     /** The container pill, when this row opens a container. */
     containerPill: string | null;
 };
@@ -980,7 +960,6 @@ export function projectStoryRow(block: StoryBlock, lookups: StoryRowLookups, opt
     return {
         sentence: storyRowSentence(block, lookups, options),
         speaker: storyRowSpeaker(block, lookups),
-        barColor: storyRowBarColor(block),
         containerPill: getStoryContainerHeaderInfo(block)?.pill ?? null,
     };
 }
