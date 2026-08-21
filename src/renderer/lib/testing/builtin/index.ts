@@ -1,6 +1,7 @@
 import type { ServiceRegistry } from "@/lib/workspace/services/serviceRegistry";
 import type { TestDefinition } from "../types";
 import { createProjectDiagnosticsTest } from "./projectDiagnostics";
+import { createWalkthroughTest } from "./walkthrough";
 
 /**
  * What a built-in test is handed instead of a `TestRunContext` capability.
@@ -18,9 +19,17 @@ export type BuiltInTestHost = {
     services(): ServiceRegistry;
 };
 
-/** Every test Studio ships. Phase 1 has one (ruling R11). */
+/** Every test Studio ships. */
 export function createBuiltInTests(host: BuiltInTestHost): TestDefinition[] {
-    return [createProjectDiagnosticsTest(host)];
+    return [createProjectDiagnosticsTest(host), createWalkthroughTest(host)];
 }
 
 export { PROJECT_DIAGNOSTICS_SLUG, PROJECT_DIAGNOSTICS_TEST_ID, createProjectDiagnosticsTest } from "./projectDiagnostics";
+export {
+    WALKTHROUGH_ENDING_PARAMETER,
+    WALKTHROUGH_SLUG,
+    WALKTHROUGH_TEST_ID,
+    createWalkthroughTest,
+    decodeWalkthroughEnding,
+    encodeWalkthroughEnding,
+} from "./walkthrough";

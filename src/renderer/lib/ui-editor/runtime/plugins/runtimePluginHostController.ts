@@ -124,6 +124,9 @@ const ENGINE_EVENTS: readonly EventKey[] = [
     "sceneExit",
     "dialogueEnd",
     "choiceMade",
+    // Reported by the game app as the choice slot registers its runtime rather than off an engine
+    // bus, and backed on the same terms as the rest: it exists as soon as a game environment does.
+    "choiceShown",
     "characterPrompt",
     "audioPlayed",
     "gameEnd",
@@ -354,6 +357,17 @@ export class RuntimePluginHostController {
     /** The game wrote a save. Host-side, so it is reported the same on every shell. */
     public emitSaveWritten(id: string): void {
         this.hub.emit("saveWritten", { id });
+    }
+
+    /**
+     * A choice menu went on screen.
+     *
+     * Host-side, because the engine's menu component is what mounts and the engine has no event for
+     * it: the game app hears about it as the choice slot registers its runtime, which is the one
+     * moment both the options and the index each of them answers to are in hand.
+     */
+    public emitChoiceShown(options: { index: number; text: string; disabled: boolean }[]): void {
+        this.hub.emit("choiceShown", { options });
     }
 
     /**

@@ -294,6 +294,24 @@ function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | u
     return bundle.ui.uidoc.surfaces.find(surface => surface.kind === "appSurface") ?? bundle.ui.uidoc.surfaces[0] ?? null;
 }
 
+/**
+ * The three acts a game can be driven through from outside it.
+ *
+ * Every one of them is something a player does with a pointer, and each goes through the path that
+ * pointer would take: `startStory` is the host call a title screen's Start button makes, `advance`
+ * clicks the dialogue, and `choose` goes through the choice runtime the `Select Choice` blueprint
+ * node uses. Nothing here reaches past the game to move it by hand, so a game that cannot be played
+ * cannot be driven either - which is what makes driving one evidence about it.
+ *
+ * Published to the shell rather than exported as a module handle, because they only exist while a
+ * game app is mounted and there may be more than one of those in a window.
+ */
+export type GameAppTestControls = {
+    startStory(request: { storyId: string; sceneId: string }): Promise<void>;
+    advance(): Promise<void>;
+    choose(index: number): Promise<void>;
+};
+
 export type GameAppProps = {
     host: GameAppHost;
     rendererRegistry: ElementRendererRegistry;
@@ -319,6 +337,15 @@ export type GameAppProps = {
      * every host today.
      */
     layerStack?: LayerStackController;
+    /**
+     * Called with {@link GameAppTestControls} once this app can be driven, and with `null` when it
+     * cannot any more.
+     *
+     * Only the standalone game runtime passes it, and only so a test harness on the other side of
+     * its control socket can play the game. Omitted by every other host, which is what keeps a
+     * window nobody is testing free of a handle that could move it.
+     */
+    onTestControlsChanged?: (controls: GameAppTestControls | null) => void;
 };
 
 /**
@@ -338,6 +365,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         renderOverlays,
         pluginHost,
         layerStack: providedLayerStack,
+        onTestControlsChanged,
     } = props;
     const bundle = host.bundle;
     /**
@@ -1227,7 +1255,17 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
         choiceRuntimeRef.current = runtime;
-    }, []);
+        // The one moment a choice's options and the index each of them answers to are both in hand.
+        // Announced from here rather than from the slot surface so a host that mounts no Game UI
+        // choice slot simply never reports one, instead of reporting an empty menu.
+        if (runtime) {
+            pluginHost?.emitChoiceShown(runtime.items.map(item => ({
+                index: item.index,
+                text: item.text,
+                disabled: item.disabled,
+            })));
+        }
+    }, [pluginHost]);
 
     const detachTextReadTracker = useCallback(() => {
         textReadTrackerRef.current?.detach();
@@ -3235,6 +3273,27 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => {
         startStoryInGameRef.current = startStoryInGame;
     }, [startStoryInGame]);
+
+    /**
+     * Publish the drive handle to a shell that asked for one, and take it back on unmount.
+     *
+     * Nothing is built when the prop is absent, so the handle does not exist in a window nobody is
+     * driving. Every method reaches the live game through the same callbacks the blueprint host API
+     * does, and each of them already refuses - loudly, with a sentence - when there is no game to
+     * act on, so the caller hears about a command that arrived too early rather than watching it
+     * disappear.
+     */
+    useEffect(() => {
+        if (!onTestControlsChanged) {
+            return;
+        }
+        onTestControlsChanged({
+            startStory: request => startStoryInGame({ storyId: request.storyId, sceneId: request.sceneId }),
+            advance: () => nextInGame(),
+            choose: (index: number) => selectChoiceInGame(index),
+        });
+        return () => onTestControlsChanged(null);
+    }, [nextInGame, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
 
     const createHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core) {

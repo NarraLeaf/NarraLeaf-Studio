@@ -137,6 +137,19 @@ export type RuntimePluginEventMap = {
     dialogueEnd: { textId: string | null };
     /** The player picked a choice. */
     choiceMade: { text: string };
+    /**
+     * A choice menu went on screen, with every option it is offering.
+     *
+     * The other half of {@link choiceMade}, which only says what was taken. Fires whenever the menu
+     * mounts, so a rollback into the same choice reports it again - treat it as "this is on screen
+     * now" rather than as a first visit.
+     *
+     * `index` is the engine's index for the option and is what picking one addresses. Options a
+     * condition hid are absent from the list and do NOT shift it, so the indices can have gaps.
+     */
+    choiceShown: {
+        options: { index: number; text: string; disabled: boolean }[];
+    };
     /** A character line was shown. */
     characterPrompt: { character: string | null; text: string };
     /**

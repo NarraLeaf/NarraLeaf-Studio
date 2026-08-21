@@ -24,6 +24,8 @@ export type TestRunServiceHandle = Service & {
     getAvailability(id: TestId): TestAvailability;
     /** What a test asks the author for, with every `select`'s option list already evaluated. */
     listParameters(id: TestId): ResolvedTestParameter[];
+    /** Load what those lists read. Awaited before the picker opens; never rejects. */
+    prepareParameterSources(): Promise<void>;
     /** The values each test was last run with. Never rejects: a missing cache is the ordinary state. */
     readRememberedParameters(): Promise<TestParameterMemory>;
     /** Keep what a test was just started with, for the next time the picker opens. */

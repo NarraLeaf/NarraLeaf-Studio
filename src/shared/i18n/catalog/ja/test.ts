@@ -89,5 +89,41 @@ export const test = {
                 failed: "エラー {errors} 件、警告 {warnings} 件",
             },
         },
+        walkthrough: {
+            title: "エンディング踏破",
+            description: "ストーリー自身の開始シーンからゲームを実際に動かし、指定のエンディングまで進める",
+            parameter: {
+                ending: {
+                    label: "エンディング",
+                    description: "たどり着く先のエンディング",
+                    option: "{story} / {scene} / {ending}",
+                    unnamed: "名称未設定のエンディング",
+                },
+            },
+            log: {
+                planned: "経路を決定: シーン {scenes} 件、選択 {decisions} 件",
+                choosing: "{scene}: 「{option}」を選択",
+                improvised: "経路にない選択肢を「{option}」で通過",
+            },
+            finding: {
+                endingMissing: "そのエンディングはストーリーにもうありません",
+                noEntryPoint: "{story} を開始するシーンがどこからも指定されていません",
+                unreachable: "{story} の開始地点から {ending} に至る経路がありません",
+                optionMissing: "{scene} で「{option}」が提示されず、この経路は通れません",
+                otherEnding: "{ending} ではなく {reached} に到達しました",
+                endedWithoutEnding: "{ending} に到達しないままストーリーが終わりました",
+                stalled: "{steps} ステップ進めたところで停止し、{ending} に到達しませんでした",
+                cancelled: "{steps} ステップ進めたところで取り消されました",
+                exit: {
+                    closed: "{ending} に到達する前にゲームが閉じられました",
+                    stopped: "{ending} に到達する前にゲームが停止されました",
+                    crashed: "{ending} に到達する前にゲームがクラッシュしました",
+                    failedToStart: "ゲームを開始できませんでした",
+                },
+            },
+            summary: {
+                passed: "{ending} に到達",
+            },
+        },
     },
 } satisfies LocaleNamespace<"test">;

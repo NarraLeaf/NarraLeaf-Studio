@@ -8,7 +8,7 @@ import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
-import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
+import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
 import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
@@ -269,6 +269,8 @@ export enum IPCEventType {
 
     gameTestLaunch = "gameTest.launch",
     gameTestStop = "gameTest.stop",
+    /** Studio driving a test's game: start the story, advance, pick an option. */
+    gameTestSendCommand = "gameTest.sendCommand",
     /** Pushed, unlike preview's polled status: event ordering is evidence a test reasons about. */
     workspaceGameTestEvent = "workspace.gameTest.event",
 
@@ -2636,6 +2638,20 @@ export type IPCGameTestEvents = {
             sessionId: string;
         };
         response: Record<string, never>;
+    };
+    [IPCEventType.gameTestSendCommand]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            sessionId: string;
+            command: GameTestCommand;
+        };
+        /**
+         * Whether the frame reached the game's control socket - not whether the game acted on it.
+         * What it did is told by the events it pushes back, in order, alongside everything else.
+         */
+        response: { delivered: boolean };
     };
     [IPCEventType.workspaceGameTestEvent]: {
         type: IPCMessageType.message,

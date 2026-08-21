@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ServiceRegistry } from "@/lib/workspace/services/serviceRegistry";
-import { PROJECT_DIAGNOSTICS_SLUG, PROJECT_DIAGNOSTICS_TEST_ID, type BuiltInTestHost } from "./builtin";
+import {
+    PROJECT_DIAGNOSTICS_SLUG,
+    PROJECT_DIAGNOSTICS_TEST_ID,
+    WALKTHROUGH_ENDING_PARAMETER,
+    WALKTHROUGH_SLUG,
+    WALKTHROUGH_TEST_ID,
+    type BuiltInTestHost,
+} from "./builtin";
 import { TestRegistry } from "./registry";
 import { deriveBuiltInTestSlug, type TestDefinition } from "./types";
 
@@ -113,9 +120,22 @@ describe("TestRegistry", () => {
     });
 
     it("names the built-in's i18n keys after the id they are derived from", () => {
-        // If the id is ever renamed, this fails rather than leaving `test.builtin.projectDiagnostics.*`
-        // behind as dead keys nothing addresses.
+        // If an id is ever renamed, this fails rather than leaving `test.builtin.<slug>.*` behind as
+        // dead keys nothing addresses.
         expect(deriveBuiltInTestSlug(PROJECT_DIAGNOSTICS_TEST_ID)).toBe(PROJECT_DIAGNOSTICS_SLUG);
+        expect(deriveBuiltInTestSlug(WALKTHROUGH_TEST_ID)).toBe(WALKTHROUGH_SLUG);
+    });
+
+    it("seeds the walkthrough as a windowed runtime test that asks which ending", () => {
+        const registry = new TestRegistry();
+        registry.ensureBuiltInTestsRegistered(host);
+
+        const walkthrough = registry.get(WALKTHROUGH_TEST_ID)?.definition;
+        expect(walkthrough?.presentation).toBe("windowed");
+        expect(walkthrough?.category).toBe("runtime");
+        // A game it can drive, and nothing else: the project it reads, it reads as workspace code.
+        expect(walkthrough?.requires).toEqual(["game.launch"]);
+        expect(walkthrough?.parameters?.map(parameter => parameter.id)).toEqual([WALKTHROUGH_ENDING_PARAMETER]);
     });
 
     it("lists tests in category order, then title", () => {

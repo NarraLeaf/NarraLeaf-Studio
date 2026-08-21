@@ -83,5 +83,41 @@ export const test = {
                 failed: "{errors} 个错误，{warnings} 个警告",
             },
         },
+        walkthrough: {
+            title: "结局通关",
+            description: "从故事自己的入口场景开始，实际运行游戏走到某个结局",
+            parameter: {
+                ending: {
+                    label: "结局",
+                    description: "要走到的结局",
+                    option: "{story} / {scene} / {ending}",
+                    unnamed: "未命名结局",
+                },
+            },
+            log: {
+                planned: "已规划路线：{scenes} 个场景，{decisions} 处选择",
+                choosing: "{scene}：选择「{option}」",
+                improvised: "路线之外的选择，以「{option}」通过",
+            },
+            finding: {
+                endingMissing: "该结局已不在故事中",
+                noEntryPoint: "没有任何地方指定《{story}》从哪个场景开始",
+                unreachable: "从《{story}》的起点走不到 {ending}",
+                optionMissing: "{scene} 没有给出「{option}」，这条路线走不通",
+                otherEnding: "走到的是 {reached}，不是 {ending}",
+                endedWithoutEnding: "故事结束了，但没有走到 {ending}",
+                stalled: "推进 {steps} 步后停住，没有走到 {ending}",
+                cancelled: "推进 {steps} 步后被取消",
+                exit: {
+                    closed: "游戏在走到 {ending} 之前关闭了",
+                    stopped: "游戏在走到 {ending} 之前被停止",
+                    crashed: "游戏在走到 {ending} 之前崩溃了",
+                    failedToStart: "游戏未能启动",
+                },
+            },
+            summary: {
+                passed: "已走到 {ending}",
+            },
+        },
     },
 } satisfies LocaleNamespace<"test">;
