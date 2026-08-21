@@ -28,8 +28,36 @@ export type StorySceneEditorTabPayload = {
     storyId: StoryId;
     sceneId: StorySceneId;
     activeBlockId?: StoryBlockId;
+    /**
+     * Makes a repeated navigation to the SAME row a second request.
+     *
+     * Re-opening an already-open tab replaces its payload, and the target alone cannot tell one ask
+     * apart from the one before it — so without this, "take me to the line that is playing", asked
+     * twice while the game sits on that line, would land the second time on wherever the author had
+     * scrolled to since. Same reason {@link StorySceneEditorDraftJump.token} exists.
+     *
+     * Optional because most callers navigate to a row the author picked out of a list, and picking
+     * the same row twice is one destination asked for twice.
+     */
+    revealToken?: number;
     draftJump?: StorySceneEditorDraftJump;
 };
+
+/**
+ * The next {@link StorySceneEditorTabPayload.revealToken}.
+ *
+ * ONE counter for every caller, and that is the whole point of it living here rather than in each of
+ * them. The editor marks a navigation handled by `blockId#token`, so two callers counting separately
+ * hand out the same key for the same row — a search hit for a line the Dev Mode timeline had already
+ * opened arrived as "already handled" and did nothing. Caught on the real app; a caller-local counter
+ * looks correct in isolation and can only fail against another caller.
+ */
+let revealTokenSeq = 0;
+
+export function nextStoryRevealToken(): number {
+    revealTokenSeq += 1;
+    return revealTokenSeq;
+}
 
 export function getStorySceneEditorTabId(storyId: StoryId, sceneId: StorySceneId): string {
     return `story:scene:${storyId}:${sceneId}`;

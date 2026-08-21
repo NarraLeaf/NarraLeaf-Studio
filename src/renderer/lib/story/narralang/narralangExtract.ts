@@ -1280,6 +1280,8 @@ export function narralangShapeOf(ctx: NarralangExtractContext, block: StoryBlock
             return { form: "note", text: textOf(ctx, block.id, block.payload.text, "note") };
         case "declaration":
             return declarationShape(block.payload);
+        case "empty":
+            return { form: "blank" };
         case "invalid":
             ctx.report(blockId, "invalidRow");
             return { form: "raw", source: block.payload.source };

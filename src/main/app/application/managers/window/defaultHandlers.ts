@@ -39,6 +39,13 @@ import {
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
+import {
+    TeamCallHandler,
+    TeamConnectionsHandler,
+    TeamOpenHandler,
+    TeamSubscribeHandler,
+    TeamUnsubscribeHandler,
+} from "./handlers/teamAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import {
     ProjectWizardSelectPackageHandler,
@@ -432,6 +439,13 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsDeleteServerProjectHandler(),
         new VcsListServerProjectHistoryHandler(),
         new VcsListServerMembersHandler(),
+        // The Team protocol, whole. See ./handlers/teamAction.ts for why this is five
+        // entries and stays five however many features the protocol grows.
+        new TeamOpenHandler(),
+        new TeamConnectionsHandler(),
+        new TeamCallHandler(),
+        new TeamSubscribeHandler(),
+        new TeamUnsubscribeHandler(),
     new VcsSignInWithPasswordHandler(),
         new VcsPublishProjectHandler(),
         new VcsListLocalRepositoriesHandler(),

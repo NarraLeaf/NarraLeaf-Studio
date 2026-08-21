@@ -1188,6 +1188,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const sceneId = editor.scene?.id;
     const rowCount = editor.visibleRows.length;
     const deepLinkBlockId = payload?.activeBlockId ?? null;
+    // What counts as "this navigation, already handled". The token is part of it so that asking for
+    // the same row twice is two navigations rather than one (see `StorySceneEditorTabPayload`).
+    const deepLinkKey = deepLinkBlockId === null
+        ? null
+        : payload?.revealToken == null ? deepLinkBlockId : `${deepLinkBlockId}#${payload.revealToken}`;
     const draftJump = payload?.draftJump;
     const panelStateService = useMemo(
         () => (editor.context && editor.isInitialized ? editor.context.services.get<PanelStateService>(Services.PanelState) : null),
@@ -1339,7 +1344,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Deep-link navigation: bring the payload's target block into view and focus the editor once its
     // row exists in the DOM (fresh open after the async load, or re-navigation to an already-open tab).
     useLayoutEffect(() => {
-        if (!active || !deepLinkBlockId || handledDeepLinkRef.current === deepLinkBlockId) {
+        if (!active || !deepLinkBlockId || handledDeepLinkRef.current === deepLinkKey) {
             return;
         }
         const el = scrollContainerRef.current;
@@ -1348,15 +1353,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         }
         // The row may not be in the DOM — the list is windowed — so this asks the virtualiser to put
         // it there rather than looking for a node. A `false` means the row is not in the visible set
-        // at all (still loading, or inside a collapsed parent), which is the old bail-out: the effect
-        // re-runs when the rows change.
+        // at all: the scene has not loaded yet, or the row is hidden behind the author's filter or a
+        // fold. Loading resolves itself and the effect re-runs on the rows changing; hiding does not,
+        // so `revealBlock` is asked to take the cover off, which changes the rows and brings us back
+        // here. Without it a navigation to a hidden row was a click that did nothing, for good.
         if (!scrollRowIntoView(deepLinkBlockId, "center")) {
+            editor.revealBlock(deepLinkBlockId);
             return;
         }
-        handledDeepLinkRef.current = deepLinkBlockId;
+        handledDeepLinkRef.current = deepLinkKey;
         editor.revealBlock(deepLinkBlockId);
         editor.focusRoot();
-    }, [active, deepLinkBlockId, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
+    }, [active, deepLinkBlockId, deepLinkKey, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
 
     // The scene flow map's connect gesture: open a slot with the `/jump` typed into it and the caret
     // on the end, and leave the committing to the author's Enter (see `StorySceneEditorDraftJump`).

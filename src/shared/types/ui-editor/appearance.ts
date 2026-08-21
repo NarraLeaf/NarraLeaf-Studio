@@ -11,6 +11,8 @@ export type AppearanceSystemCondition = Partial<{
     active: boolean;
     disabled: boolean;
     focused: boolean;
+    /** Inside the row a list has selected. */
+    selected: boolean;
 }>;
 
 /**

@@ -9,7 +9,7 @@ import {
     type SetStateAction,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bug, Check, ChevronsRight, EyeOff } from "lucide-react";
+import { Bug, Check, ChevronsRight, ExternalLink, EyeOff } from "lucide-react";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
@@ -49,7 +49,7 @@ import type {
     GameAppStoryRuntimeBridge,
 } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
-import { blockIdForActionId, resolveSceneIdForBlock } from "./storyRuntimeDebugModel";
+import { locatePlayHeadRow, type StoryRowLocation } from "./storyRuntimeDebugModel";
 import { LayerStackPanel } from "./LayerStackPanel";
 import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
@@ -99,6 +99,13 @@ const DEBUG_FAB_TOGGLE_BINDING = "mod+shift+d";
 
 /** Fast-forward to the next choice — shown beside its menu item for the same reason. */
 const FAST_FORWARD_BINDING = "mod+arrowright";
+
+/**
+ * Open the playing line in the workspace story editor. Bound as well as listed because this is the
+ * step an author takes over and over: read a line, go and edit it, come back to a reloaded game.
+ * Reaching it through a menu every time is the part that makes the loop expensive.
+ */
+const LOCATE_STORY_ROW_BINDING = "mod+shift+l";
 
 /** Nothing acknowledged yet. One frozen instance so a reset is not a new object every time. */
 const NO_ACKNOWLEDGED_KEYS: ReadonlySet<string> = new Set();
@@ -205,6 +212,10 @@ function DevModeDebugOverlay(props: {
     const { t } = useTranslation();
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
     const [fastForwarding, setFastForwarding] = useState(false);
+    /** The row the play head is on, kept current by the effect below. Null while nothing is playing. */
+    const [playHeadRow, setPlayHeadRow] = useState<StoryRowLocation | null>(null);
+    /** Set when the workspace could not be pointed at the row; cleared whenever the menu opens. */
+    const [locateFailed, setLocateFailed] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
@@ -242,43 +253,55 @@ function DevModeDebugOverlay(props: {
         core.debug.setVerboseCaptureEnabled(outputLogLevels.has("verbose"));
     }, [core.debug, outputLogLevels]);
 
+    /** The row the running story is on, or null while nothing is playing. */
+    const readPlayHeadRow = useCallback(
+        () => locatePlayHeadRow(
+            bundle.storyLibrary?.documents,
+            storyRuntime.getStoryContext(),
+            storyRuntime.getActionIdBindings(),
+            storyRuntime.getCurrentActionId(),
+        ),
+        [bundle, storyRuntime],
+    );
+
     // Mirror the play head to the workspace story editor (row highlight) whenever a story runs, even
     // with the debug panels closed. Coalesced to one forward per frame; the workspace reveals the row
     // in-place without stealing focus, and quietly ignores it when no matching editor is open.
+    //
+    // The same pass keeps `playHeadRow` current, which is what tells the menu whether there is a line
+    // to open. Held rather than read on render because the play head advances outside React, and a
+    // menu item that says "no line" while a line is on screen is worse than no item at all. The
+    // click re-reads it anyway (see `handleLocateStoryRow`), so this state decides the affordance,
+    // never the destination.
     useEffect(() => {
-        if (!projectPath) {
-            return;
-        }
         let raf = 0;
-        let lastBlockId: string | null = null;
+        let last: StoryRowLocation | null = null;
         const flush = (): void => {
             raf = 0;
-            const context = storyRuntime.getStoryContext();
-            if (!context) {
+            const located = readPlayHeadRow();
+            // Compared field by field rather than through a joined key: the three ids are opaque
+            // strings, and any separator picked for them is a separator one of them could contain.
+            if (
+                located?.storyId === last?.storyId
+                && located?.sceneId === last?.sceneId
+                && located?.blockId === last?.blockId
+            ) {
                 return;
             }
-            const blockId = blockIdForActionId(storyRuntime.getActionIdBindings(), storyRuntime.getCurrentActionId());
-            if (!blockId || blockId === lastBlockId) {
+            last = located;
+            setPlayHeadRow(located);
+            if (!located || !projectPath) {
                 return;
             }
-            lastBlockId = blockId;
-            // The play head can be in a scene reached by a jump, not the launched one, so forward the
-            // scene that actually owns the block — otherwise the workspace editor could not match it.
-            const document = bundle.storyLibrary?.documents[context.storyId];
-            const sceneId = document
-                ? resolveSceneIdForBlock(document, blockId, context.sceneId)
-                : context.sceneId;
             try {
-                getInterface().devMode.forwardStoryRow({
-                    projectPath,
-                    storyId: context.storyId,
-                    sceneId,
-                    blockId,
-                });
+                getInterface().devMode.forwardStoryRow({ projectPath, ...located });
             } catch (error) {
                 console.warn("[DevMode] failed to forward story row", error);
             }
         };
+        // Seeded rather than waiting for the next action: a session sitting on a line — paused at a
+        // choice, or freshly restored — has a play head the menu has to know about already.
+        flush();
         const unsubscribe = storyRuntime.subscribeCurrentAction(() => {
             if (!raf) {
                 raf = requestAnimationFrame(flush);
@@ -290,7 +313,36 @@ function DevModeDebugOverlay(props: {
             }
             unsubscribe();
         };
-    }, [projectPath, storyRuntime, bundle]);
+    }, [projectPath, storyRuntime, readPlayHeadRow]);
+
+    /**
+     * Open the line that is playing in the workspace story editor, and bring that window forward.
+     *
+     * Deliberately the rude channel — it opens a tab and takes focus — because it only ever runs
+     * because the author asked for it. The quiet one is the highlight forwarded above.
+     *
+     * The row is read at click time, not taken from `playHeadRow`: the two are the same value for
+     * all but the frame the head moves in, and the one the author is looking at is the one on
+     * screen now.
+     */
+    const handleLocateStoryRow = useCallback(async () => {
+        const located = readPlayHeadRow();
+        if (!projectPath || !located) {
+            return;
+        }
+        setLocateFailed(false);
+        const result = await getInterface().devMode.openStoryRowInWorkspace({ projectPath, ...located });
+        if (!result.success) {
+            // Said in the menu, and the menu is opened to say it: this window has no other surface to
+            // report from, and a chord that quietly does nothing is the one failure mode worth
+            // spending two lines on. A hidden button has no menu, and stays hidden — what may cover
+            // the game is the author's decision, not a failure's.
+            setLocateFailed(true);
+            setDevtoolsMenuOpen(true);
+            return;
+        }
+        setDevtoolsMenuOpen(false);
+    }, [projectPath, readPlayHeadRow]);
 
     const handleFastForward = useCallback(async () => {
         setDevtoolsMenuOpen(false);
@@ -321,10 +373,16 @@ function DevModeDebugOverlay(props: {
                 setDevtoolsMenuOpen(false);
                 setFabHidden(previous => !previous);
             }
+            // Ctrl/Cmd + Shift + L : open the playing line in Studio. Listened for while the button
+            // is hidden too — it is an author's shortcut back to the editor, not a debug tool.
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "l") {
+                e.preventDefault();
+                void handleLocateStoryRow();
+            }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [handleFastForward, setFabHidden]);
+    }, [handleFastForward, handleLocateStoryRow, setFabHidden]);
 
     useEffect(() => {
         if (!devtoolsMenuOpen) {
@@ -485,6 +543,12 @@ function DevModeDebugOverlay(props: {
     );
     const activePanelLabel = panels.find(([id]) => id === activePanel)?.[1] ?? "";
 
+    /**
+     * Whether there is a line to open. A story that is not running has none, and neither does a
+     * window with no project behind it (the workspace is named by path).
+     */
+    const canLocateRow = playHeadRow !== null && projectPath !== null;
+
     // Rendered once for the platform rather than per item: the chord a menu shows has to be the one
     // the key handler above actually listens for, and `mod` is not what either of them is called.
     const shortcuts = useMemo(() => {
@@ -492,6 +556,7 @@ function DevModeDebugOverlay(props: {
         return {
             fastForward: formatKeybinding(FAST_FORWARD_BINDING, mac),
             hideFab: formatKeybinding(DEBUG_FAB_TOGGLE_BINDING, mac),
+            locateRow: formatKeybinding(LOCATE_STORY_ROW_BINDING, mac),
         };
     }, []);
 
@@ -572,6 +637,7 @@ function DevModeDebugOverlay(props: {
                                     storyRuntime={storyRuntime}
                                     scopeBridge={core.scopeBridge}
                                     bundle={bundle}
+                                    projectPath={projectPath}
                                     className="h-full min-h-0 w-full"
                                     chrome={panelChrome}
                                 />
@@ -614,12 +680,47 @@ function DevModeDebugOverlay(props: {
                 <div className="pointer-events-auto absolute bottom-3 left-3">
                     <div className="relative flex w-11 flex-col items-start">
                         {devtoolsMenuOpen ? (
+                            // 18rem, not the 15rem that fitted when every item was a one-word panel
+                            // name: the two action items carry a sentence AND a chord, and measured
+                            // against all three locales the shorter box cut the label in half.
                             <div
                                 ref={devtoolsMenuRef}
                                 role="menu"
                                 aria-label={t("devMode.devtools.menuAria")}
-                                className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-overlay py-1 shadow-lg"
+                                className="absolute bottom-full left-0 z-10 mb-2 w-[min(18rem,calc(100vw-1.5rem))] rounded-md border border-edge bg-surface-overlay py-1 shadow-lg"
                             >
+                                {/* First, and above the panels: this is the one an author reaches
+                                    for while READING a line rather than while debugging one — the
+                                    step back to the editor that the whole edit-and-reload loop is
+                                    made of. Disabled rather than hidden while nothing is playing,
+                                    so the menu does not change shape between two runs. */}
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    disabled={!canLocateRow}
+                                    className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                                        canLocateRow
+                                            ? "text-fg-muted hover:bg-fill hover:text-fg"
+                                            : "text-fg-subtle"
+                                    }`}
+                                    onClick={() => { void handleLocateStoryRow(); }}
+                                >
+                                    <span
+                                        className="flex h-3.5 w-3.5 shrink-0 items-center justify-center"
+                                        aria-hidden
+                                    >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate">
+                                        {t("devMode.devtools.locateRow")}
+                                    </span>
+                                    <span className="shrink-0 text-2xs text-fg-subtle">{shortcuts.locateRow}</span>
+                                </button>
+                                {locateFailed ? (
+                                    <p className="px-3 pb-1.5 text-2xs text-fg-subtle">
+                                        {t("devMode.openInStudioFailed")}
+                                    </p>
+                                ) : null}
                                 <button
                                     type="button"
                                     role="menuitem"
@@ -702,7 +803,10 @@ function DevModeDebugOverlay(props: {
                             aria-label={devtoolsMenuOpen ? t("devMode.devtools.closeMenu") : t("devMode.devtools.openMenu")}
                             aria-expanded={devtoolsMenuOpen}
                             aria-haspopup="menu"
-                            onClick={() => setDevtoolsMenuOpen(prev => !prev)}
+                            onClick={() => {
+                                setLocateFailed(false);
+                                setDevtoolsMenuOpen(prev => !prev);
+                            }}
                         >
                             <Bug className="h-5 w-5 text-fg-muted" aria-hidden />
                         </button>

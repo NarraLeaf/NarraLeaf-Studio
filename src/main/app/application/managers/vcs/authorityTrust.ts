@@ -1,6 +1,9 @@
 import { spawn } from "child_process";
+import { readdirSync, readFileSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { join } from "path";
+import tls from "tls";
 import type { VcsServerAuthority } from "@shared/types/vcs";
 
 /**
@@ -212,4 +215,32 @@ export function describeAuthority(options: {
         canInstall: plan.canInstall,
         command: plan.command,
     };
+}
+
+/**
+ * Every authority this machine believes, plus the ones the author accepted here.
+ *
+ * The stored copies are the half that matters on the day somebody trusts a server: node's
+ * view of the system store is fixed when this process first asks for it, so a certificate
+ * installed a moment ago is not in it. The file `authorityTrust` wrote is.
+ */
+export function trustedCertificates(userDataDir: string): string[] | undefined {
+    const collected: string[] = [];
+    if (typeof tls.getCACertificates === "function") {
+        try {
+            collected.push(...tls.getCACertificates("default"), ...tls.getCACertificates("system"));
+        } catch {
+            // Left out rather than fatal: what is below may be enough on its own.
+        }
+    }
+    try {
+        const directory = authorityDirectory(userDataDir);
+        for (const entry of readdirSync(directory)) {
+            if (!entry.endsWith(".crt")) continue;
+            collected.push(readFileSync(join(directory, entry), "utf-8"));
+        }
+    } catch {
+        // No directory means nothing was ever accepted here, which is ordinary.
+    }
+    return collected.length === 0 ? undefined : collected;
 }

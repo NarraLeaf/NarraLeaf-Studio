@@ -112,6 +112,10 @@ export const UNCHECKED_OPTIONS_SOURCES: ReadonlySet<string> = new Set([
     // onto another bus rather than breaking it. That is a quieter problem than this rule's other
     // members and does not belong at their severity.
     "audioTracks",
+    // Scoped to whichever list the node targets, not to the project: a field id is only meaningful
+    // against one shape, and the set of all shapes would call every id in the project valid.
+    // `ui/list-item-field-missing` asks the question against the right shape.
+    "listItemFields",
 ]);
 
 const REFERENCE_MESSAGE_KEY: Readonly<Record<BlueprintReferenceKind, TranslationKey>> = {

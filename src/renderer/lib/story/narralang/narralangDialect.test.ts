@@ -149,7 +149,6 @@ describe("a swapped dialect", () => {
         expect(result.text).toBe(
             [
                 "SCENE '走廊 · 傍晚' {",
-                "",
                 "    BG corridor_dusk WITH FADE 0.5",
                 "    PLAY bgm evening_theme VOLUME 0.7 FADEIN 1.5 loop",
                 "    夕阳把走廊染成橘色。",
@@ -183,7 +182,6 @@ describe("a swapped dialect", () => {
         expect(result.text).toBe(
             [
                 "scene '走廊 · 傍晚':",
-                "",
                 "  bg corridor_dusk with fade 0.5",
                 "  play bgm evening_theme volume 0.7 fadein 1.5 loop",
                 "  夕阳把走廊染成橘色。",
