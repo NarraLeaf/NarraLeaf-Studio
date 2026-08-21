@@ -50,6 +50,13 @@ type PreviewSession = {
 type PreviewLaunchAttempt = {
     cancelled: boolean;
     compileWorker: UtilityProcess | null;
+    /**
+     * Lets go of the weather bake this compile is sitting in, if it is.
+     *
+     * Separate from the worker above because it covers the window before that worker exists: the
+     * clips are produced first, and a cancel arriving then used to reach nothing at all.
+     */
+    abandonWeatherBake: (() => void) | null;
     session: PreviewSession | null;
 };
 
@@ -150,7 +157,7 @@ export class PreviewManager {
             return Promise.reject(new Error(message));
         }
         const key = this.projectKey(projectPath);
-        const attempt: PreviewLaunchAttempt = { cancelled: false, compileWorker: null, session: null };
+        const attempt: PreviewLaunchAttempt = { cancelled: false, compileWorker: null, abandonWeatherBake: null, session: null };
         const attempts = this.launchAttempts.get(key) ?? new Set<PreviewLaunchAttempt>();
         attempts.add(attempt);
         this.launchAttempts.set(key, attempts);
@@ -217,6 +224,10 @@ export class PreviewManager {
             if (attempt.session) {
                 attempt.session.status = "stopping";
             }
+            // Before the worker: a launch cancelled while its clips are being made has no worker
+            // to kill yet, and the bake is the long half.
+            attempt.abandonWeatherBake?.();
+            attempt.abandonWeatherBake = null;
             attempt.compileWorker?.kill();
             attempt.compileWorker = null;
         }
@@ -326,6 +337,7 @@ export class PreviewManager {
                 // Tracked so `cancelLaunches` can kill the compile mid-flight; without this a stop
                 // could only ever be honoured once the compile had run to completion.
                 onStart: worker => { attempt.compileWorker = worker; },
+                onWeatherBake: abandon => { attempt.abandonWeatherBake = abandon; },
                 cancelled: () => attempt.cancelled,
             });
             attempt.compileWorker = null;

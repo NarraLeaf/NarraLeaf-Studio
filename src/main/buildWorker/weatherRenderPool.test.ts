@@ -1,3 +1,4 @@
+import { SCREEN_EFFECT_THREAD_CHOICES } from "@shared/constants/screenEffects";
 import { describe, expect, it } from "vitest";
 import type { WeatherBakeSpec } from "@shared/weather/model";
 import {
@@ -122,13 +123,28 @@ describe("the weather render pool", () => {
 });
 
 describe("how many threads a bake asks for", () => {
-    it("asks for two however big the machine is, because the encoder wants the rest", () => {
-        // Measured rather than reasoned: eight threads made a 4K clip take 93 s where two took 27 s,
-        // because libvpx runs row-mt across every core and the drawing was taking them away from it.
+    it("stops at the ceiling however big the machine is, because the encoder wants the rest", () => {
+        // Measured rather than reasoned, and the ceiling is not a fraction of the machine: threads
+        // buy back the drawing half of a pipeline and nothing else, so they stop paying the moment
+        // drawing is no longer the wall. See the tables in `weatherRenderPool.ts`.
         expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 24))
             .toBe(WEATHER_RENDER_THREADS);
-        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 12))
+        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 64))
             .toBe(WEATHER_RENDER_THREADS);
+    });
+
+    it("leaves the encoder half the machine on a small one", () => {
+        // The ceiling is not the only bound, and on a four-core laptop it is not the binding one:
+        // taking three of four cores to draw would hand the encoder a machine it cannot work on.
+        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 4)).toBe(2);
+        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 6)).toBe(3);
+    });
+
+    it("never asks for more than the largest stop the settings offer", () => {
+        // So the automatic answer can never land somewhere an author cannot also choose. If this
+        // ever fails, the settings row and this ceiling have drifted apart.
+        expect(WEATHER_RENDER_THREADS)
+            .toBe(Math.max(...SCREEN_EFFECT_THREAD_CHOICES.filter(c => c !== "auto").map(Number)));
     });
 
     it("draws on one thread when there is no core to spare", () => {
@@ -149,13 +165,28 @@ describe("how many threads a bake asks for", () => {
         expect(weatherRenderThreadCount({ width: 640, height: 360, frames: 1 }, 64)).toBe(1);
     });
 
-    it("lets an operator pin the count, which is how the threads were measured at all", () => {
-        expect(resolveWeatherRenderThreads(SPEC, { NLS_WEATHER_BAKE_THREADS: "1" })).toBe(1);
-        expect(resolveWeatherRenderThreads(SPEC, { NLS_WEATHER_BAKE_THREADS: "3" })).toBe(3);
-        // Nonsense is ignored rather than obeyed: this is a measuring knob, not a way to wedge a bake.
-        expect(resolveWeatherRenderThreads(SPEC, { NLS_WEATHER_BAKE_THREADS: "0" }))
+    it("takes the count the author asked for, still bounded by the machine", () => {
+        // The settings row offers a small number of stops, but the clip does not: one 4K thread
+        // carries a 166 MB accumulator, and a choice made on a 1080p project follows the author to
+        // the next one. So an explicit count is clamped exactly as the automatic one is.
+        expect(resolveWeatherRenderThreads(SPEC, 3, {})).toBe(3);
+        expect(resolveWeatherRenderThreads({ ...SPEC, frames: 2 }, 4, {})).toBe(2);
+        // Reverse control: without the clamp this would answer 4 rather than the machine's share.
+        expect(resolveWeatherRenderThreads(SPEC, 4, {})).toBeLessThanOrEqual(4);
+    });
+
+    it("reads the machine when the author asked for auto", () => {
+        expect(resolveWeatherRenderThreads(SPEC, null, {}))
             .toBe(weatherRenderThreadCount(SPEC, require("os").cpus().length));
-        expect(resolveWeatherRenderThreads(SPEC, { NLS_WEATHER_BAKE_THREADS: "lots" }))
+    });
+
+    it("lets an operator pin the count, which is how the threads were measured at all", () => {
+        expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "1" })).toBe(1);
+        expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "3" })).toBe(3);
+        // Nonsense is ignored rather than obeyed: this is a measuring knob, not a way to wedge a bake.
+        expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "0" }))
+            .toBe(weatherRenderThreadCount(SPEC, require("os").cpus().length));
+        expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "lots" }))
             .toBe(weatherRenderThreadCount(SPEC, require("os").cpus().length));
     });
 });

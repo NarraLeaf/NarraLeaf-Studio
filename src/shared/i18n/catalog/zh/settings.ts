@@ -46,6 +46,10 @@ export const settings = {
             label: "工作区",
             description: "启动行为、工作区历史与自动保存",
         },
+        performance: {
+            label: "性能",
+            description: "Studio 占用本机多少资源，以及你要等多久",
+        },
         shortcuts: {
             label: "快捷键",
             description: "Studio 中各条命令绑定的按键",
@@ -77,6 +81,13 @@ export const settings = {
         developerMode: {
             label: "开发者选项",
             description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
+        },
+        screenEffectThreads: {
+            label: "屏幕效果的线程数",
+            description: "编码器运行时用多少个线程画帧。自动会读取本机情况",
+            options: {
+                auto: "自动",
+            },
         },
         screenEffectQuality: {
             label: "开发模式中的屏幕效果",

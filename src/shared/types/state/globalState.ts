@@ -1,6 +1,11 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
 import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
-import { SCREEN_EFFECT_QUALITY_DEFAULT, SCREEN_EFFECT_QUALITY_KEY } from "@shared/constants/screenEffects";
+import {
+    SCREEN_EFFECT_QUALITY_DEFAULT,
+    SCREEN_EFFECT_QUALITY_KEY,
+    SCREEN_EFFECT_THREADS_DEFAULT,
+    SCREEN_EFFECT_THREADS_KEY,
+} from "@shared/constants/screenEffects";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
@@ -71,6 +76,13 @@ export interface GlobalStateType extends Record<string, any> {
      * produce is what a player receives. See `@shared/constants/screenEffects`.
      */
     [SCREEN_EFFECT_QUALITY_KEY]: "draft" | "final" | string;
+    /**
+     * How many threads draw frames while a bake's encoder runs, or `auto`.
+     *
+     * Every bake, not just Dev Mode's: this one is a statement about the machine rather than about
+     * the file, and drawing a frame on another thread cannot change it.
+     */
+    [SCREEN_EFFECT_THREADS_KEY]: "auto" | "2" | "3" | "4" | string;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -415,6 +427,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.updateCheckOnLaunch": true,
     "app.confirmQuit": CONFIRM_QUIT_DEFAULT,
     [SCREEN_EFFECT_QUALITY_KEY]: SCREEN_EFFECT_QUALITY_DEFAULT,
+    [SCREEN_EFFECT_THREADS_KEY]: SCREEN_EFFECT_THREADS_DEFAULT,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
@@ -485,6 +498,10 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
  * Swept off disk once, at startup, by `GlobalStateManager.sweepRetiredKeys`.
  */
 export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
+    // Lived for one commit on develop under a `devMode.` prefix, before the setting gained a
+    // neighbour that is not Dev Mode's and both moved under `screenEffects.`. Swept rather than
+    // migrated because the value it could hold is the default anyway - nobody had time to change it.
+    "devMode.screenEffectQuality",
     "app.showHint",
     "app.notificationsEnabled",
     "app.autoCheckUpdates",
