@@ -181,8 +181,17 @@ function buildVariant(locale) {
         for (const chapter of document.value.chapters ?? []) {
             chapter.name = say(chapter.name);
         }
-        for (const scene of Object.values(document.value.scenes ?? {})) {
-            scene.name = say(scene.name);
+        // A scene name is read by the player on the load screen, so it carries a translation unit of
+        // its own - promoted here exactly as a spoken line is, rather than taken from the table. The
+        // table is still the answer for a scene that has no unit.
+        for (const [sceneId, scene] of Object.entries(document.value.scenes ?? {})) {
+            const unitId = `scene:${scene.id ?? sceneId}`;
+            if (translations.units?.[unitId]) {
+                flipped.set(unitId, { source: scene.name, translated: unitTarget(unitId) });
+                scene.name = unitTarget(unitId);
+            } else {
+                scene.name = say(scene.name);
+            }
         }
         // Depth-first over the whole document: a spoken line is `{ textId, value }` wherever it
         // sits, and blocks nest (choices hold branches, branches hold more lines).
@@ -199,12 +208,15 @@ function buildVariant(locale) {
                 node.value = unitTarget(node.textId);
                 return;
             }
-            // A variable's value can be text a player reads: the skeleton writes the place it is
-            // in into a persistent variable, and the save screen shows that string on every slot.
-            // It is not a translation unit - nothing in the story SAYS it - so it comes from the
-            // table, like the interface does.
+            // A variable's value can be text a player reads: the skeleton writes the place it is in
+            // into a persistent variable, and the save screen shows that string on every slot.
+            //
+            // Two kinds, and only one of them is text. A value that names a translation unit is a
+            // reference, and the same reference in every language - translating it would leave the
+            // save screen looking up an id nothing has. Anything else is a string the author typed,
+            // which the table answers for, like the interface does.
             if (node.action === "setVariable" && typeof node.value === "string") {
-                node.value = say(node.value);
+                node.value = translations.units?.[node.value] ? node.value : say(node.value);
                 return;
             }
             Object.values(node).forEach(walk);
