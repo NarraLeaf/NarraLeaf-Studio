@@ -35,6 +35,8 @@ export const widgets = {
         wrapWords: "Words",
         wrapCharacters: "Characters",
         wrapNone: "No wrap",
+        autoFit: "Auto fit",
+        autoFitMinFontSize: "Smallest size",
         alignment: "Alignment",
         verticalAlignment: "Vertical alignment",
         alignLeft: "Align left",

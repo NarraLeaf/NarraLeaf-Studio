@@ -36,6 +36,8 @@ export const widgets = {
         wrapWords: "按词",
         wrapCharacters: "按字符",
         wrapNone: "不换行",
+        autoFit: "自动缩小",
+        autoFitMinFontSize: "最小字号",
         alignment: "对齐",
         verticalAlignment: "垂直对齐",
         alignLeft: "左对齐",

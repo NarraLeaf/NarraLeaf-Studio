@@ -42,6 +42,14 @@ export type LiveTextStyles = {
         writingMode?: TextWritingMode;
         textOrientation?: TextOrientation;
         tateChuYoko?: boolean | number;
+        /**
+         * Auto fit is settled by the engine, not here: what has to fit the box is the whole line,
+         * and until the typewriter has finished only the engine holds it.
+         *
+         * Present only while the widget asks for it, for the same reason the vertical settings are.
+         */
+        autoFit?: boolean;
+        autoFitMinFontSize?: number;
     };
 };
 
@@ -120,6 +128,12 @@ export function useLiveTextStyles({
                   }
                 : {}),
             ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
+            ...(p.textAutoFit
+                ? {
+                      autoFit: true,
+                      autoFitMinFontSize: p.textAutoFitMinFontSize,
+                  }
+                : {}),
         },
     };
 }
