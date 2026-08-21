@@ -18,8 +18,19 @@ import {
     BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN,
     BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL,
     BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INDEX_OF,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_RANGE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INSERT,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_JOIN,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LENGTH,
@@ -186,11 +197,18 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_RECT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_LENGTH,
+    BLUEPRINT_NODE_TYPE_LIST_FIND_ITEM_BY_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_KEY,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS,
+    BLUEPRINT_NODE_TYPE_LIST_GET_LENGTH,
     BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -339,6 +357,7 @@ import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
 import type { BehaviorGraphValueExecution } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import { findItemIndexByField, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import {
@@ -2350,7 +2369,10 @@ function resolveListNodeOutput(
     const isElementTarget =
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_INDEX ||
-        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM;
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_LENGTH ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD;
     const elementId = resolveListElementIdInput(
         graph,
         nodeId,
@@ -2389,6 +2411,42 @@ function resolveListNodeOutput(
         return props.selectedIndex >= 0 && props.selectedIndex < props.items.length
             ? props.items[props.selectedIndex]
             : null;
+    }
+    if (
+        (type === BLUEPRINT_NODE_TYPE_LIST_GET_LENGTH || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_LENGTH) &&
+        portId === "length"
+    ) {
+        return props.items.length;
+    }
+    if (
+        (type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT) &&
+        portId === "item"
+    ) {
+        const index = toInteger(
+            resolveDataPinValue(graph, nodeId, "index", params, blueprintLocals, depth + 1, runtime),
+            -1,
+        );
+        // `null` rather than `undefined` for an index nobody has a row at: `undefined` is this
+        // resolver's word for "this node does not answer that pin", and returning it would send the
+        // caller on to the next resolver family instead of telling it there is no row.
+        return index >= 0 && index < props.items.length ? props.items[index] : null;
+    }
+    if (
+        type === BLUEPRINT_NODE_TYPE_LIST_FIND_ITEM_BY_FIELD ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD
+    ) {
+        const fieldId = typeof params.field === "string" ? params.field : "";
+        const wanted = resolveDataPinValue(graph, nodeId, "value", params, blueprintLocals, depth + 1, runtime);
+        const index = findItemIndexByField(props.items, props.struct, fieldId, wanted);
+        if (portId === "index") {
+            return index;
+        }
+        if (portId === "item") {
+            return index >= 0 ? props.items[index] : null;
+        }
+        if (portId === "found") {
+            return index >= 0;
+        }
     }
     return undefined;
 }
@@ -2642,6 +2700,49 @@ function resolveTimeNodeOutput(
     return undefined;
 }
 
+/** One property of a record entry, for the key-driven array operations. */
+function readRecordKey(entry: unknown, key: string): unknown {
+    if (!key || !entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return undefined;
+    }
+    return (entry as Record<string, unknown>)[key];
+}
+
+/**
+ * Order records by one of their properties.
+ *
+ * Numbers compare as numbers and everything else as text; a missing value sorts last either way, so
+ * the rows that have the property an author sorted by stay at the top. Ties keep their original
+ * order, which is what makes a second sort on a second key behave the way an author expects.
+ */
+function sortRecordsByKey(array: readonly unknown[], key: string, descending: boolean): unknown[] {
+    if (!key) {
+        return [...array];
+    }
+    return array
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => {
+            const av = readRecordKey(a.item, key);
+            const bv = readRecordKey(b.item, key);
+            const aMissing = av === undefined || av === null || av === "";
+            const bMissing = bv === undefined || bv === null || bv === "";
+            if (aMissing || bMissing) {
+                const missingOrder = aMissing === bMissing ? 0 : aMissing ? 1 : -1;
+                return missingOrder !== 0 ? missingOrder : a.index - b.index;
+            }
+            let ordered: number;
+            if (typeof av === "number" && typeof bv === "number") {
+                ordered = av - bv;
+            } else if (typeof av === "boolean" && typeof bv === "boolean") {
+                ordered = Number(av) - Number(bv);
+            } else {
+                ordered = String(av).localeCompare(String(bv));
+            }
+            return ordered !== 0 ? (descending ? -ordered : ordered) : a.index - b.index;
+        })
+        .map(entry => entry.item);
+}
+
 function resolveDataNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -2663,6 +2764,33 @@ function resolveDataNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH && portId === "length") {
         const value = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
         return Array.isArray(value) ? value.length : 0;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INDEX_OF && portId === "index") {
+        const array = normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime));
+        const item = resolveInput(graph, nodeId, "item", params, blueprintLocals, depth, runtime);
+        return array.findIndex(value => jsonValueEquals(value, item));
+    }
+    if (
+        (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST || type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST) &&
+        portId === "item"
+    ) {
+        const array = normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime));
+        if (array.length === 0) {
+            return null;
+        }
+        return type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST ? array[0] : array[array.length - 1];
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND) {
+        const array = normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime));
+        const key = String(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime) ?? "");
+        const wanted = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
+        const index = array.findIndex(entry => jsonValueEquals(readRecordKey(entry, key), wanted));
+        if (portId === "index") {
+            return index;
+        }
+        if (portId === "item") {
+            return index >= 0 ? array[index] : null;
+        }
     }
     // The geometry make/break family, placed above the `result` guard because these are the only
     // Data nodes that publish on named pins: a Break has four of them, and a Make answers on
@@ -2703,6 +2831,54 @@ function resolveDataNodeOutput(
     }
     if (portId !== "result") {
         return undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY) {
+        return normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime)).length === 0;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE) {
+        return [...normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime))].reverse();
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT) {
+        return [
+            ...normalizeArrayValue(resolveInput(graph, nodeId, "a", params, blueprintLocals, depth, runtime)),
+            ...normalizeArrayValue(resolveInput(graph, nodeId, "b", params, blueprintLocals, depth, runtime)),
+        ];
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE) {
+        const array = normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime));
+        const out: unknown[] = [];
+        for (const value of array) {
+            if (!out.some(kept => jsonValueEquals(kept, value))) {
+                out.push(value);
+            }
+        }
+        return out;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_RANGE) {
+        const start = toInteger(resolveInput(graph, nodeId, "start", params, blueprintLocals, depth, runtime), 0);
+        const rawStep = toInteger(resolveInput(graph, nodeId, "step", params, blueprintLocals, depth, runtime), 1);
+        // A zero step would produce `count` copies of `start`, which is a loop that never advances
+        // wearing the shape of a range. Read as one.
+        const step = rawStep === 0 ? 1 : rawStep;
+        const count = clampInteger(
+            resolveInput(graph, nodeId, "count", params, blueprintLocals, depth, runtime),
+            0,
+            MAX_JSON_ARRAY_INDEX,
+            0,
+        );
+        return Array.from({ length: count }, (_, index) => start + index * step);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT) {
+        const array = normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime));
+        const key = String(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime) ?? "");
+        const descending = resolveInput(graph, nodeId, "descending", params, blueprintLocals, depth, runtime) === true;
+        return sortRecordsByKey(array, key, descending);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER) {
+        const array = normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime));
+        const key = String(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime) ?? "");
+        const wanted = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
+        return array.filter(entry => jsonValueEquals(readRecordKey(entry, key), wanted));
     }
     if (type === BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SET) {
         const array = normalizeArrayValue(resolveInput(graph, nodeId, "array", params, blueprintLocals, depth, runtime));
@@ -2910,6 +3086,14 @@ function resolveSelfOutput(
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_KEY && portId === "key") {
         return runtime?.listItemScope?.key ?? "";
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD && portId === "value") {
+        // Read off the scope, not the list: the row being drawn is the whole context this node has,
+        // and it already carries the shape the list resolved for its own columns.
+        const scope = runtime?.listItemScope;
+        const fieldId = typeof selfNode.params?.field === "string" ? selfNode.params.field : "";
+        const value = readUIStructFieldValue(scope?.struct ?? null, fieldId, scope?.item);
+        return value === undefined ? null : value;
     }
     if (portId === "value") {
         if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL) {

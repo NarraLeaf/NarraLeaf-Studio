@@ -61,7 +61,7 @@ import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/v
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
-import { makeDefaultStructItem } from "@shared/types/ui-editor/struct";
+import { makeDefaultStructItem, type UIStructDef } from "@shared/types/ui-editor/struct";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
@@ -179,6 +179,14 @@ export type BlueprintTextInputPropertiesPatch = Partial<Pick<UITextInputWidgetPr
 export type BlueprintListProperties = {
     items: unknown[];
     selectedIndex: number;
+    /**
+     * The shape the list declares, or null when it declares none.
+     *
+     * Carried with the items rather than fetched separately, because every node that reads a field
+     * needs both and reading them apart is how the two drift: a graph that sorted by a field the
+     * list no longer declares would sort by nothing and report success.
+     */
+    struct: UIStructDef | null;
 };
 
 export type BlueprintDisplayableProperties = {
@@ -1240,6 +1248,10 @@ function readListProperties(
     return {
         items,
         selectedIndex,
+        struct: resolveUIStruct(
+            document,
+            getListProps(requireDocumentElement(document, elementId, "list")).itemStructId,
+        ),
     };
 }
 

@@ -7,7 +7,18 @@ import {
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INSERT,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INDEX_OF,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_JOIN,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_RANGE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LENGTH,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_PUSH,
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE,
@@ -68,6 +79,7 @@ function collectionNode(input: {
     displayName: string;
     keywords: string[];
     pins: BlueprintNodePinDef[];
+    hideInPalette?: boolean;
 }): BlueprintNodeDef {
     return {
         type: input.type,
@@ -76,6 +88,7 @@ function collectionNode(input: {
         keywords: input.keywords,
         graphKinds: [...GRAPH_KINDS],
         isPure: true,
+        hideInPalette: input.hideInPalette,
         pins: input.pins,
         execute: dataOnlyExecute,
     };
@@ -143,6 +156,93 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         pins: [arrayIn("array", "Array"), stringIn("separator", "Separator"), outPin("result", "Text", "string")],
     }),
     collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INDEX_OF,
+        displayName: "Array Index Of",
+        keywords: ["array", "index", "of", "find", "position", "collection"],
+        pins: [arrayIn("array", "Array"), anyIn("item", "Item"), outPin("index", "Index", "integer")],
+    }),
+    collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
+        displayName: "Array First",
+        keywords: ["array", "first", "head", "front", "collection"],
+        pins: [arrayIn("array", "Array"), jsonOut("item", "Item")],
+    }),
+    collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST,
+        displayName: "Array Last",
+        keywords: ["array", "last", "tail", "back", "collection"],
+        pins: [arrayIn("array", "Array"), jsonOut("item", "Item")],
+    }),
+    collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY,
+        displayName: "Array Is Empty",
+        keywords: ["array", "empty", "none", "blank", "collection"],
+        pins: [arrayIn("array", "Array"), outPin("result", "Empty", "boolean")],
+    }),
+    collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE,
+        displayName: "Array Reverse",
+        keywords: ["array", "reverse", "flip", "backwards", "collection"],
+        pins: [arrayIn("array", "Array"), arrayOut("result", "Array")],
+    }),
+    collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT,
+        displayName: "Array Concat",
+        keywords: ["array", "concat", "join", "append", "combine", "collection"],
+        pins: [arrayIn("a", "A"), arrayIn("b", "B"), arrayOut("result", "Array")],
+    }),
+    collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE,
+        displayName: "Array Unique",
+        keywords: ["array", "unique", "distinct", "dedupe", "collection"],
+        pins: [arrayIn("array", "Array"), arrayOut("result", "Array")],
+    }),
+    collectionNode({
+        // Counts rather than bounds: "ten rows starting at one" is the question an author is asking,
+        // and an end-exclusive bound is the form that produces an off-by-one every time.
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_RANGE,
+        displayName: "Array Range",
+        keywords: ["array", "range", "sequence", "numbers", "count", "collection"],
+        pins: [intIn("start", "Start"), intIn("count", "Count"), intIn("step", "Step"), arrayOut("result", "Array")],
+    }),
+    collectionNode({
+        // Keyed by a property name rather than by a comparator graph. A comparator is a function
+        // value, which is the abstraction this whole round exists to stop asking authors for; sorting
+        // records by one of their fields is what a list actually needs, and it needs no callback.
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT,
+        displayName: "Array Sort By Key",
+        keywords: ["array", "sort", "order", "key", "field", "collection"],
+        pins: [
+            arrayIn("array", "Array"),
+            stringIn("key", "Key"),
+            inPin("descending", "Descending", "boolean", true),
+            arrayOut("result", "Array"),
+        ],
+    }),
+    collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER,
+        displayName: "Array Filter By Key",
+        keywords: ["array", "filter", "where", "key", "field", "collection"],
+        pins: [
+            arrayIn("array", "Array"),
+            stringIn("key", "Key"),
+            anyIn("value", "Value"),
+            arrayOut("result", "Array"),
+        ],
+    }),
+    collectionNode({
+        type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
+        displayName: "Array Find By Key",
+        keywords: ["array", "find", "search", "key", "field", "collection"],
+        pins: [
+            arrayIn("array", "Array"),
+            stringIn("key", "Key"),
+            anyIn("value", "Value"),
+            jsonOut("item", "Item"),
+            outPin("index", "Index", "integer"),
+        ],
+    }),
+    collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_KEYS,
         displayName: "Object Keys",
         keywords: ["object", "keys", "fields", "collection"],
@@ -161,14 +261,20 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         pins: [jsonIn("a", "A"), jsonIn("b", "B"), jsonOut("result", "Object")],
     }),
     collectionNode({
+        // Superseded by Set JSON Field, which takes a dotted path and so reaches a nested field this
+        // one cannot. Kept registered for graphs that hold one, out of the palette so there is one
+        // way to write a field rather than two that differ only in reach.
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD,
         displayName: "Object Set Field",
+        hideInPalette: true,
         keywords: ["object", "set", "field", "collection"],
         pins: [jsonIn("object", "Object"), stringIn("field", "Field"), anyIn("value", "Value"), jsonOut("result", "Object")],
     }),
     collectionNode({
+        // Superseded by Remove JSON Field; see the note on Object Set Field.
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_REMOVE_FIELD,
         displayName: "Object Remove Field",
+        hideInPalette: true,
         keywords: ["object", "remove", "field", "collection"],
         pins: [jsonIn("object", "Object"), stringIn("field", "Field"), jsonOut("result", "Object")],
     }),

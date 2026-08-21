@@ -338,3 +338,81 @@ export function readUIStructFieldValue(
     const source = item && typeof item === "object" && !Array.isArray(item) ? (item as Record<string, unknown>) : null;
     return coerceUIStructFieldValue(field.type, source ? source[field.key] : undefined);
 }
+
+/** Structural equality for two field values, which may be records (an image envelope, a json bag). */
+function structValuesEqual(a: unknown, b: unknown): boolean {
+    if (a === b) {
+        return true;
+    }
+    try {
+        return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Order two field values.
+ *
+ * Numbers compare as numbers and everything else as text, which is what makes "sort the slots by
+ * save time" and "sort the gallery by title" the same node. A row missing the field sorts last in
+ * either direction: it has no place in the ordering, and putting it first would push the rows the
+ * author sorted for off the top of the list.
+ */
+function compareFieldValues(a: unknown, b: unknown): number {
+    const aMissing = a === undefined || a === null || a === "";
+    const bMissing = b === undefined || b === null || b === "";
+    if (aMissing || bMissing) {
+        return aMissing === bMissing ? 0 : aMissing ? 1 : -1;
+    }
+    if (typeof a === "number" && typeof b === "number") {
+        return a - b;
+    }
+    if (typeof a === "boolean" && typeof b === "boolean") {
+        return Number(a) - Number(b);
+    }
+    return String(a).localeCompare(String(b));
+}
+
+export function sortItemsByField(
+    items: readonly unknown[],
+    struct: UIStructDef | null,
+    fieldId: string,
+    descending: boolean,
+): unknown[] {
+    const field = findUIStructField(struct, fieldId);
+    if (!field) {
+        return [...items];
+    }
+    const read = (item: unknown): unknown =>
+        item && typeof item === "object" && !Array.isArray(item)
+            ? (item as Record<string, unknown>)[field.key]
+            : undefined;
+    // Decorated with the original position so equal keys keep the order the author wrote them in.
+    return items
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => {
+            const ordered = compareFieldValues(read(a.item), read(b.item));
+            return ordered !== 0 ? (descending ? -ordered : ordered) : a.index - b.index;
+        })
+        .map(entry => entry.item);
+}
+
+export function findItemIndexByField(
+    items: readonly unknown[],
+    struct: UIStructDef | null,
+    fieldId: string,
+    value: unknown,
+): number {
+    const field = findUIStructField(struct, fieldId);
+    if (!field) {
+        return -1;
+    }
+    const wanted = coerceUIStructFieldValue(field.type, value);
+    return items.findIndex(item => {
+        const stored = item && typeof item === "object" && !Array.isArray(item)
+            ? (item as Record<string, unknown>)[field.key]
+            : undefined;
+        return structValuesEqual(coerceUIStructFieldValue(field.type, stored), wanted);
+    });
+}
