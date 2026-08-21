@@ -73,6 +73,12 @@ import type {
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
+import type {
+    TeamCallOutcome,
+    TeamConnection,
+    TeamEventMessage,
+    TeamSubscribeOutcome,
+} from "./team";
 import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
@@ -975,6 +981,44 @@ export interface RendererPreloadedInterface {
          * destination until it finishes.
          */
         clone(url: string, destination: string): Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>>;
+    };
+
+    /**
+     * The Team protocol: everything a server can be asked, and how it says something changed.
+     *
+     * Deliberately five members however many things a server can do. `call` names a method
+     * the server declared it serves, and what that method takes and answers is typed in
+     * `@shared/types/team` rather than here. Nothing in a renderer should reach this
+     * directly - `lib/team` wraps each call so the parameters and the answer are typed
+     * together in one place.
+     */
+    team: {
+        /**
+         * Open a session with one server, and say where it stands.
+         *
+         * Answers at once, usually with `connecting`. What tells a screen it is ready is
+         * {@link onConnectionChanged}; waiting here would be a screen that hangs on a
+         * server that is switched off.
+         */
+        open(remoteOrigin: string): Promise<RequestStatus<TeamConnection>>;
+        /** Where every server Studio knows about stands. Local; opens nothing. */
+        connections(): Promise<RequestStatus<{ connections: TeamConnection[] }>>;
+        /** Ask a server something, over its session. Opens one if there is none. */
+        call(remoteOrigin: string, method: string, params?: unknown): Promise<RequestStatus<TeamCallOutcome>>;
+        /**
+         * Ask to be told about a topic.
+         *
+         * Held for this window and dropped when it closes, so a screen that forgets to
+         * unsubscribe costs nothing beyond its own lifetime. The sequence that comes back
+         * says where the topic stood; anything other than the number last seen means read
+         * the collection again.
+         */
+        subscribe(remoteOrigin: string, topic: string): Promise<RequestStatus<TeamSubscribeOutcome>>;
+        unsubscribe(remoteOrigin: string, topic: string): Promise<RequestStatus<void>>;
+        /** Something happened on a topic this window asked about. */
+        onEvent(handler: (message: TeamEventMessage) => void): AppEventToken;
+        /** A session opened, dropped, or was refused. Sent to every window. */
+        onConnectionChanged(handler: (payload: { connection: TeamConnection }) => void): AppEventToken;
     };
 
     gameBuild: {
