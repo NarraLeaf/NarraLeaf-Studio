@@ -1,5 +1,5 @@
 /**
- * Which of a pack's images the web export may re-encode, decided from the bytes
+ * Which of a project's images a build may re-encode, decided from the bytes
  * themselves.
  *
  * The whole file is about reasons to say no. Re-encoding an image is cheap to
@@ -20,10 +20,10 @@
  * is really a JPEG is treated as what it is.
  */
 
-import type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
+import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
 import { readImageDimensions } from "@shared/utils/imageDimensions";
 
-export type WebImageSkipReason =
+export type AssetImageSkipReason =
     /** Not an image asset, or not a format this pipeline decodes. */
     | "unsupported"
     /** A file inside a model bundle; its name is referenced from the model's own manifest. */
@@ -32,17 +32,17 @@ export type WebImageSkipReason =
     | "animated"
     /** Carries an embedded ICC profile, so its pixels are not plain sRGB. */
     | "color-managed"
-    /** The policy has nothing enabled that applies to this format. */
+    /** Nothing in the policy applies to this format: a JPEG with lossy re-encoding off. */
     | "not-enabled";
 
-export type WebImageTranscodePlan =
+export type AssetImageTranscodePlan =
     /** Re-encode as lossless WebP, keep the result only if it is smaller and decodes identically. */
     | { action: "lossless" }
     /** Re-encode as lossy WebP at the authored quality, keep the result only if it is smaller. */
     | { action: "lossy" }
-    | { action: "skip"; reason: WebImageSkipReason };
+    | { action: "skip"; reason: AssetImageSkipReason };
 
-export type WebImageCandidate = {
+export type AssetImageCandidate = {
     /**
      * The asset manifest key. A bundle member is keyed `{assetId}/{pathInBundle}`,
      * which is the second signal that it is one.
@@ -68,10 +68,10 @@ export type WebImageCandidate = {
  */
 const BUNDLE_ASSET_TYPES: ReadonlySet<string> = new Set(["model"]);
 
-export function planWebImageTranscode(
-    candidate: WebImageCandidate,
-    config: WebOptimizationConfiguration,
-): WebImageTranscodePlan {
+export function planAssetImageTranscode(
+    candidate: AssetImageCandidate,
+    config: AssetOptimizationConfiguration,
+): AssetImageTranscodePlan {
     if (!candidate.assetType
         || BUNDLE_ASSET_TYPES.has(candidate.assetType)
         || candidate.manifestKey.includes("/")) {
@@ -95,12 +95,14 @@ export function planWebImageTranscode(
     if (config.lossyImages) {
         return { action: "lossy" };
     }
+    // The lossless pass answers to nothing in the configuration: it cannot alter
+    // the image, so there is nobody to ask. What it does answer to is the format.
     // A JPEG is already an entropy-coded lossy image, and packing those exact
     // pixels losslessly is reliably *larger* than the JPEG was - measured at
     // 1.2x to 1.8x on real backgrounds. The size guard downstream would throw
     // every one of them away, so the work is skipped rather than done and
     // discarded.
-    if (config.losslessImages && format === "png") {
+    if (format === "png") {
         return { action: "lossless" };
     }
     return { action: "skip", reason: "not-enabled" };
@@ -114,7 +116,7 @@ export function planWebImageTranscode(
  * has on disk, and "the export mysteriously renamed my files" is a worse trade
  * than 40 bytes. One percent, or 1 KiB, whichever is met first.
  */
-export function webImageWorthKeeping(originalBytes: number, encodedBytes: number): boolean {
+export function assetImageWorthKeeping(originalBytes: number, encodedBytes: number): boolean {
     if (encodedBytes <= 0 || encodedBytes >= originalBytes) {
         return false;
     }

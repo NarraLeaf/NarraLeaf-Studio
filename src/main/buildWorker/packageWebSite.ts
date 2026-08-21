@@ -24,7 +24,11 @@ export async function packageWebSite(
     // compiled site because that directory is also the payload of the Android
     // and iOS packages, which serve their files straight out of the package and
     // have nothing to negotiate content encoding with.
-    const precompressedDir = web.precompress ? await buildPrecompressed(web.sourceDir, log) : null;
+    //
+    // Unconditional, and there is nothing to ask an author here: the variants sit
+    // beside the originals, a host that knows nothing about them serves the
+    // originals, and nothing a player sees can differ either way.
+    const precompressedDir = await buildPrecompressed(web.sourceDir, log);
     try {
         const artifacts: string[] = [];
         for (const format of web.formats) {

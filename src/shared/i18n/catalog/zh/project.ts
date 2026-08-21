@@ -376,17 +376,10 @@ export const project = {
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
         signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",
-        webLosslessImagesTitle: "图像转为 WebP",
-        webLosslessImagesDescription: "在体积更小时，将导出的图像重编码为无损 WebP",
-        webLosslessImagesHint: "转换后的图像解码结果与原图完全一致；Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
-        webPrecompressTitle: "预压缩文本文件",
-        webPrecompressDescription: "为站点的脚本、样式与剧本数据额外生成 Brotli 与 Gzip 副本",
-        webPrecompressHint: "只有配置了预压缩支持的服务器会用到该副本，其余主机提供原文件",
-        webLossyImagesTitle: "重压缩图像",
-        webLossyImagesDescription: "将导出的图像重编码为有损 WebP；体积明显更小，损失的画面细节无法恢复",
-        webLossyQualityTitle: "图像质量",
-        webLossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
-        webSharedWithMobileHint: "Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
+        lossyImagesTitle: "重压缩图像",
+        lossyImagesDescription: "将图像重编码为有损 WebP，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
+        lossyQualityTitle: "图像质量",
+        lossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
         // 不叫「移动端方向」：它就在「移动端」小标题底下，重复那个词还会让标签在 318px 面板里换行。
         orientationTitle: "屏幕方向",
         orientationDescription: "移动端构建启动时锁定的屏幕方向",

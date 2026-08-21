@@ -442,6 +442,10 @@ export const settings = {
                     label: "スペル辞書",
                     description: "スペルチェック用にダウンロードした単語リスト。プロジェクト自身の用語はここにはない",
                 },
+                optimizedImages: {
+                    label: "ビルド用最適化画像",
+                    description: "ビルド時に再エンコードした画像。次のビルドで再生成される",
+                },
                 psdImports: {
                     label: "PSD 読み込みの残り物",
                     description: "PSD を読み込むときに書き出したレイヤーの画像",

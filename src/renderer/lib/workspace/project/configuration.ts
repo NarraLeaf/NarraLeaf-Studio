@@ -29,7 +29,7 @@ import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VfxConfiguration } from "@shared/types/vfx";
 import type { VoiceConfiguration } from "@shared/types/voice";
-import type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
+import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
 import type { LintRuleSeverity } from "@/lib/lint/types";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
@@ -60,12 +60,13 @@ export {
 } from "@shared/types/vfx";
 export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
 export {
-    DEFAULT_WEB_OPTIMIZATION_CONFIGURATION,
-    normalizeWebOptimizationConfiguration,
-    WEB_LOSSY_QUALITY_MAX,
-    WEB_LOSSY_QUALITY_MIN,
-} from "@shared/types/webOptimization";
-export type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
+    ASSET_LOSSY_QUALITY_MAX,
+    ASSET_LOSSY_QUALITY_MIN,
+    DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
+    normalizeAssetOptimizationConfiguration,
+    readAssetOptimizationConfiguration,
+} from "@shared/types/assetOptimization";
+export type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
 export {
     AUTO_SAVE_INTERVAL_SECONDS_MAX,
     AUTO_SAVE_INTERVAL_SECONDS_MIN,
@@ -397,8 +398,8 @@ export type ProjectAppConfiguration = {
     security?: SecurityConfiguration;
     /** What the shipped game does when it stops working; absent until configured. */
     crash?: CrashConfiguration;
-    /** What the exported static site may do to the author's bytes; absent until configured. */
-    webOptimization?: WebOptimizationConfiguration;
+    /** What a build may do to the author's artwork, on every target; absent until configured. */
+    assetOptimization?: AssetOptimizationConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
     mobile?: MobileConfiguration;
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */

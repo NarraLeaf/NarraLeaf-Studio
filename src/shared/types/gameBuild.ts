@@ -221,7 +221,7 @@ export type BuildPreflightCode =
      * shared file to write, and the mobile shells serve that same page.
      */
     | "progress-carry-unsupported"
-    | "web-lossy-images"
+    | "lossy-images"
     | "mobile-template-missing"
     | "mobile-payload-too-large"
     | "version-uncodable"

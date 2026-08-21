@@ -87,7 +87,7 @@ export const HELP_TOPIC_IDS = [
     "signing",
     "assetProtection",
     "networkAllowlist",
-    "webOptimization",
+    "assetOptimization",
     "screenEffects",
     "plugins",
 ] as const;
@@ -217,7 +217,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "mediaConversion",
         section: "content",
-        related: ["assets", "webOptimization"],
+        related: ["assets", "assetOptimization"],
     },
     {
         id: "characters",
@@ -431,7 +431,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "assetProtection",
         section: "ship",
-        related: ["build", "webOptimization", "plugins", "networkNodes"],
+        related: ["build", "assetOptimization", "plugins", "networkNodes"],
     },
     {
         id: "networkAllowlist",
@@ -439,7 +439,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["networkNodes", "assetProtection", "plugins", "lint"],
     },
     {
-        id: "webOptimization",
+        id: "assetOptimization",
         section: "ship",
         related: ["build", "assets"],
     },
@@ -449,7 +449,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "screenEffects",
         section: "ship",
-        related: ["build", "webOptimization", "storyCommands"],
+        related: ["build", "assetOptimization", "storyCommands"],
     },
     {
         id: "plugins",
