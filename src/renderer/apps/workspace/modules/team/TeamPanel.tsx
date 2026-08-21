@@ -10,6 +10,8 @@ import { AddServerModal } from "@/apps/settings/panels";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
+import type { TeamProjectSurface } from "../../hooks/useTeamProject";
+import { TeamCollaboration } from "./TeamCollaboration";
 import { serverFace } from "../../components/layout/versionRailModel";
 import { ServerPickerDialog } from "../../components/layout/VersionRail";
 import { AuthorIdentity } from "../../components/layout/AuthorIdentity";
@@ -71,8 +73,16 @@ function TeamAction({ label, onClick, disabled, tone }: {
  * that does not answer (measured), so it is a row somebody presses rather than something this
  * dialog does on the way to being seen.
  */
-export function TeamPanel({ surface, isOpen, onClose }: {
+export function TeamPanel({ surface, team, isOpen, onClose }: {
     surface: VersionSurface;
+    /**
+     * What the server itself says, as opposed to what is written on this disk.
+     *
+     * Held by the status cell rather than opened here, so that the session, the
+     * subscriptions and this window's presence belong to the cell's lifetime rather than
+     * to a dialog somebody happens to have open.
+     */
+    team: TeamProjectSurface;
     isOpen: boolean;
     onClose: () => void;
 }) {
@@ -160,9 +170,28 @@ export function TeamPanel({ surface, isOpen, onClose }: {
                                     </p>
                                 )}
                                 <p className="mt-0.5 truncate text-2xs text-fg-subtle">{remote}</p>
+                                {/* What the server itself answered, drawn only where there is
+                                    something to do about it. A project that checks out says
+                                    nothing: a line reporting that everything is fine, on every
+                                    working day, is a line that stops being read. */}
+                                {(team.state.kind === "not-there" || team.state.kind === "unreachable") && (
+                                    <p data-team-seam="verify" className="mt-1 text-2xs text-warning">
+                                        {t(team.state.kind === "not-there"
+                                            ? "workspace.shell.team.notThere"
+                                            : "workspace.shell.team.unreachable")}
+                                    </p>
+                                )}
                             </>
                         )}
                     </div>
+
+                    {/* Who is on this project, what room is open, and what is attached to it -
+                        every one of them read from the server rather than from this disk. Draws
+                        nothing at all until the server has confirmed it holds this project. */}
+                    <TeamCollaboration
+                        team={team}
+                        {...(team.instance === undefined ? {} : { instance: team.instance })}
+                    />
 
                     {/* Who the next version is recorded as. Two shapes for two mechanisms, and the
                         dialog never shows both: a session's account wins over anything in settings

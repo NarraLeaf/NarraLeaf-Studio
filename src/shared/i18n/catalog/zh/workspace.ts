@@ -306,6 +306,24 @@ export const workspace = {
         noAccountHere: "本机在这台服务器上没有账号",
         // 打开设置。添加服务器与退出登录都在那里。
         manage: "管理服务器…",
+        // 向服务器问到的结果，只在有事可做时才画出来。一切正常的工程什么都不写：
+        // 每天都在的一行「一切正常」没有人会读。
+        notThere: "该服务器上没有这个项目",
+        unreachable: "该服务器没有响应",
+        // 谁在场、开着什么的小标题。
+        presence: "协作",
+        hereAlone: "只有本机",
+        hereMany: "{count} 台设备",
+        // 这个面板里唯一一个需要主动去做的动作，其余都是打开窗口的附带结果。
+        liveOpen: "开始实时会话",
+        liveUntitled: "实时会话",
+        liveMembers: "{count} 人",
+        liveJoin: "加入",
+        liveLeave: "离开",
+        liveEnd: "结束",
+        // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
+        attached: "附加数据 {count} 条",
+        attachedOutdated: "{count} 条已过时",
     },
         errorTitle: "工作区初始化失败",
         showStackTrace: "显示堆栈跟踪",

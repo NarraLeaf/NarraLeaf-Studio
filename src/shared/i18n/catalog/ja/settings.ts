@@ -310,6 +310,10 @@ export const settings = {
         servers: {
             label: "サーバー",
         },
+        teamMachineLabel: {
+            label: "この端末の名前",
+            description: "共同作業者にアカウント名と並べて表示される。空欄のときはホスト名を使う",
+        },
         settingsTransfer: {
             label: "設定を端末間で移す",
         },

@@ -4,6 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import { serverDisplayName, serverHost } from "@/lib/vcs/servers";
 import { StatusEntry } from "../status-bar/StatusEntry";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
+import { useTeamProject } from "../../hooks/useTeamProject";
 import { isVersionSurfaceVisible, serverFace } from "../../components/layout/versionRailModel";
 import { TeamPanel } from "./TeamPanel";
 import { registerTeamPresenceBridge } from "./teamPresenceController";
@@ -39,6 +40,19 @@ export function TeamStatusEntry() {
     // and the palette entry cannot open a dialog for a project that has no repository to point
     // anywhere.
     const drawn = isVersionSurfaceVisible(surface.state) && surface.state.kind !== "not-a-repository";
+
+    /**
+     * **The one place the server stops being an address on disk and becomes a source.**
+     *
+     * Opened here rather than in the panel, because this cell is drawn for as long as the project
+     * is: a session, its subscriptions and this window's presence on that project all belong to
+     * the window's lifetime, not to a dialog somebody happens to have open. That is what makes the
+     * check automatic - nobody presses anything - and it is what lets the cell say that a server
+     * has stopped holding this project before Send is refused.
+     *
+     * Nulls where the cell is not drawn, so a project with no repository opens nothing.
+     */
+    const team = useTeamProject(drawn ? surface.remote : null, drawn ? surface.repositoryId : null);
     useEffect(() => {
         if (!drawn) {
             return;
@@ -55,9 +69,17 @@ export function TeamStatusEntry() {
         ? null
         : serverSession ? serverDisplayName(serverSession) : serverHost(remote);
     const face = serverFace(surface.syncState);
+    // What the server itself answered wins over what the last local check left behind: the
+    // sentence a reader needs is the one about the thing that is actually wrong, and "that server
+    // does not hold this project" outranks anything a sync state can say about a branch.
+    const verdict = team.state.kind === "not-there"
+        ? t("workspace.shell.team.notThere")
+        : team.state.kind === "unreachable"
+            ? t("workspace.shell.team.unreachable")
+            : t(face.detail);
     const tooltip = remote === null
         ? t("workspace.shell.versionControl.server.none")
-        : `${name} - ${t(face.detail)}`;
+        : `${name} - ${verdict}`;
     /**
      * The one state the cell raises its voice for: something is standing between this project and
      * its server, and nothing else on screen says so.
@@ -69,6 +91,8 @@ export function TeamStatusEntry() {
      */
     const wrong = remote !== null
         && (serverSession === null
+            || team.state.kind === "not-there"
+            || team.state.kind === "unreachable"
             || face.tone === "text-danger"
             || face.tone === "text-warning");
 
@@ -84,7 +108,7 @@ export function TeamStatusEntry() {
                 {remote === null ? <CloudOff className="h-3 w-3" /> : <Cloud className="h-3 w-3" />}
                 {name !== null && <span className="max-w-[18ch] truncate">{name}</span>}
             </StatusEntry>
-            <TeamPanel surface={surface} isOpen={open} onClose={() => setOpen(false)} />
+            <TeamPanel surface={surface} team={team} isOpen={open} onClose={() => setOpen(false)} />
         </>
     );
 }
