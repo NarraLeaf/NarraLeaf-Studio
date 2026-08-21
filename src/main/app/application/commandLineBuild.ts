@@ -13,10 +13,16 @@ import {
     type CommandLineBuildLogLine,
     type CommandLineBuildOutcome,
     type CommandLineBuildReport,
+    type CommandLineBuildReportExperimental,
 } from "@shared/types/commandLineBuild";
+import { experimentalCondition } from "@shared/types/experimental";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import type { BuildCommandLineOptions } from "./commandLine";
-import { planCommandLineBuild, type CommandLineBuildPlan } from "./commandLineBuildPlan";
+import {
+    planCommandLineBuild,
+    resolveCommandLineBuildExperimental,
+    type CommandLineBuildPlan,
+} from "./commandLineBuildPlan";
 import { resolveStartupProject } from "./startupProject";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
 import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
@@ -57,6 +63,26 @@ import { hasAppTag, type ProjectAppTag } from "@shared/types/appTag";
  * line has nobody to show. So the run stops unless `--build-allow-unsigned` says the caller knows.
  * A credential that *is* configured and cannot be used here is already an error finding, and the
  * pipeline throws on it besides - see `resolveSigningForBuild`.
+ *
+ * ## Experimental mode
+ *
+ * The same shape as signing, for the same reason. `--experimental --x-debuggable-build` changes what
+ * comes out - no asar integrity, a runtime that will attach - and nothing about the file records it,
+ * so the human traces the mode leaves elsewhere are a warning modal in the workspace and a line on
+ * the build console. This run has neither reader: the notice is a renderer `Modal` mounted in
+ * `WorkspaceLayout`, which a `--build` window never renders (see `CommandLineBuildGate`), and the
+ * console goes into a file.
+ *
+ * So two things. The mode's state goes into the report as identifiers rather than being left to the
+ * prose on the log - see `CommandLineBuildReportExperimental` - and a launch that asked for the mode
+ * and did not get it is refused as a bad invocation instead of quietly building the other thing. The
+ * reasoning for refusing is on `resolveCommandLineBuildExperimental`.
+ *
+ * Entering the mode from here is deliberate and not an accident of inheritance. `--build` is not
+ * dev-gated, but experimental mode is packaged-gated, which is the stronger of the two for this: no
+ * installed Studio can produce a build the mode changed, whatever the line says. What is left is a
+ * developer reproducing a debuggable build from a script against a checkout, which is what the
+ * condition is for.
  */
 
 /** How the project named on the command line is looked up. Injected so `App` keeps its own helpers. */
@@ -106,6 +132,19 @@ export class CommandLineBuildRun {
     private plan: CommandLineBuildPlan | null = null;
     private findings: BuildPreflightFinding[] = [];
     private finished = false;
+    /**
+     * What the report says about experimental mode.
+     *
+     * Seeded with the answer for a launch that asked for nothing, so a run refused before the mode
+     * is even looked at - a malformed flag, a project that resolves to nothing - still writes a
+     * report whose `experimental` block is present and true.
+     */
+    private experimental: CommandLineBuildReportExperimental = {
+        state: "off",
+        conditions: [],
+        requestedConditions: [],
+        unknownConditionFlags: [],
+    };
 
     constructor(
         private readonly app: App,
@@ -129,6 +168,20 @@ export class CommandLineBuildRun {
         if (!options.selector) {
             return this.finish("invocation", "Missing --build value: expected a project path or a recent project's name");
         }
+
+        // Before the project is even looked for. The line is a well-formed build request by this
+        // point, and whether the mode it asked for can be honoured is decided by this process alone
+        // - so a launch that is going to be refused for it is refused in the same second it started
+        // rather than after a large project has been read off the disk.
+        const experimental = resolveCommandLineBuildExperimental(
+            this.app.getRequestedExperimental(),
+            this.app.getExperimentalState(),
+        );
+        this.experimental = experimental.report;
+        if (experimental.refusal) {
+            return this.finish("invocation", experimental.refusal);
+        }
+        this.announceExperimentalMode();
 
         const resolution = resolveStartupProject(options.selector, this.lookup, "--build");
         if (!resolution.ok) {
@@ -168,6 +221,32 @@ export class CommandLineBuildRun {
         }
 
         return this.runInWorkspace(planned.plan);
+    }
+
+    /**
+     * Say on the log that this run is in experimental mode, and what it turned on.
+     *
+     * The first lines of the run, ahead of what is being built, because they say what *kind* of
+     * thing is being built. `GameBuildManager` says something too - one line per condition that
+     * reaches the packager - and the two are not the same statement: this one says the launch was in
+     * the mode at all, which is the news when a condition affects a build that never gets that far.
+     *
+     * Warnings rather than info. A run this quiet has one reader, a job's captured output, and the
+     * level is what a job filters on.
+     */
+    private announceExperimentalMode(): void {
+        if (this.experimental.state !== "on") {
+            return;
+        }
+        this.emit("warning", "experimental mode is on: this launch runs test conditions that are not"
+            + " part of the product, and what it builds is not a product build.");
+        if (this.experimental.conditions.length === 0) {
+            this.emit("warning", "no experimental condition is active, so nothing about this build changes.");
+            return;
+        }
+        for (const id of this.experimental.conditions) {
+            this.emit("warning", `experimental condition ${id}: ${experimentalCondition(id).summary}`);
+        }
     }
 
     /**
@@ -405,6 +484,7 @@ export class CommandLineBuildRun {
                     && !this.findings.some(finding => UNSIGNED_FINDING_CODES.includes(finding.code)),
                 unsignedAccepted: this.plan?.allowUnsigned ?? false,
             },
+            experimental: this.experimental,
             findings: this.findings,
             artifacts: (event?.artifacts ?? []).map(artifactPath => {
                 const size = event?.artifactSizes?.find(entry => entry.path === artifactPath);

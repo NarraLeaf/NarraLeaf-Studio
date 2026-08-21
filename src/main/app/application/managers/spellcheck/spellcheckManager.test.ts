@@ -131,7 +131,9 @@ describe("SpellcheckManager", () => {
         expect(await fs.readdir(cacheDir())).toEqual(expect.arrayContaining(["en-GB.json", "en-GB.txt.gz"]));
         const installed = await spellcheck.listInstalled();
         expect(installed.languages).toEqual([
-            { code: "en-GB", name: "English (United Kingdom)", bytes: PACKED.byteLength },
+            // The digest travels with it: it is the only thing that can tell a corrected list from
+            // the one on disk, and the settings panel compares it against the registry.
+            { code: "en-GB", name: "English (United Kingdom)", bytes: PACKED.byteLength, sha256: DIGEST },
         ]);
 
         const { ranges } = await spellcheck.check(windowA, "the quick brwn fox", "en-GB");
@@ -148,6 +150,18 @@ describe("SpellcheckManager", () => {
         // dictionary on the next run.
         expect(await fs.readdir(cacheDir()).catch(() => [])).toEqual([]);
         expect((await spellcheck.listInstalled()).languages).toEqual([]);
+    });
+
+    it("offers what it holds under its published digest, so a corrected list can be noticed", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+
+        const [offered] = (await spellcheck.listAvailable()).entries;
+        const [held] = (await spellcheck.listInstalled()).languages;
+        // Equal here, which is what makes the settings panel hide the row. A republished list moves
+        // the registry's digest, the two stop matching, and the language is offered again.
+        expect(offered.sha256).toBe(held.sha256);
+        expect(offered.sha256).toBe(DIGEST);
     });
 
     it("refuses to download a code the registry does not offer", async () => {

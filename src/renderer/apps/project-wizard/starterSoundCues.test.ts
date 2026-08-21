@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
@@ -103,11 +104,18 @@ function only(graph: Graph, type: string): GraphNode {
     return found[0]!;
 }
 
-/** The single node an exec output runs. */
+/**
+ * The single node an exec output runs, stepping over a Memo.
+ *
+ * A Memo does nothing a player can hear; it is there because a value is read twice and a pure pin
+ * may only feed one consumer. Stopping at one would make these assertions about where a graph holds
+ * its values rather than about which sound answers which press.
+ */
 function next(graph: Graph, fromId: string, port: string): GraphNode {
     const out = graph.edges.filter(edge => edge.from.nodeId === fromId && edge.from.port === port);
     expect(out, `${fromId}.${port} leads to ${out.length} nodes`).toHaveLength(1);
-    return graph.nodes[out[0]!.to.nodeId]!;
+    const node = graph.nodes[out[0]!.to.nodeId]!;
+    return node.type === BLUEPRINT_NODE_TYPE_DATA_MEMO ? next(graph, node.id, "next") : node;
 }
 
 function assertCue(cue: GraphNode, clipName: string): void {

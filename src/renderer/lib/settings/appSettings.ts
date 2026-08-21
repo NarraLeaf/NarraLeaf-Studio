@@ -155,10 +155,12 @@ export const AppSettingCategories: SettingCategory[] = [
         // Its own category rather than a panel under Version control: a server is signed in to
         // once and then serves every project pointed at it, so it outlives any of them. Filing
         // it under version control would say the opposite - that it is a property of a project.
+        // Named after the product, in full: "Team" alone reads as an untranslated word. The key
+        // stays `servers` because it is what the stored category id has always been.
         key: "servers",
-        label: "Servers",
+        label: "NarraLeaf Team",
         labelKey: "settings.categories.servers.label",
-        description: "Servers this installation is signed in to, and the accounts it uses.",
+        description: "NarraLeaf Team servers this installation is signed in to, and the accounts it uses.",
         descriptionKey: "settings.categories.servers.description",
         order: 6,
     },
