@@ -43,25 +43,31 @@ const CHIP_PLACEHOLDER = " ";
  * something other than one character on a chip stays a one-line change here rather than a silent
  * mis-mapping everywhere else.
  */
-export function buildSpellcheckText(runs: readonly StoryRichRun[]): { text: string; unitAt: number[] } {
+export function buildSpellcheckText(runs: readonly StoryRichRun[]): { text: string; unitAt: number[]; rubyAt: boolean[] } {
     let text = "";
     const unitAt: number[] = [];
+    const rubyAt: boolean[] = [];
     let unit = 0;
     for (const run of runs) {
         if (isTextRun(run)) {
+            const annotated = Boolean(run.marks?.ruby);
             for (const character of run.text) {
                 text += character;
                 unitAt.push(unit);
+                rubyAt.push(annotated);
                 unit += 1;
             }
             continue;
         }
         text += CHIP_PLACEHOLDER;
         unitAt.push(unit);
+        // A chip carries no reading of its own, and a reading offered across one would span a unit
+        // that is not text at all.
+        rubyAt.push(true);
         unit += 1;
     }
     unitAt.push(unit);
-    return { text, unitAt };
+    return { text, unitAt, rubyAt };
 }
 
 /**

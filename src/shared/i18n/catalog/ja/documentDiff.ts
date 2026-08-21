@@ -74,7 +74,7 @@ export const documentDiff = {
         brandFonts: "既定のフォント",
         characterGroups: "キャラクターグループ",
         characters: "キャラクター",
-        dictionaryWords: "辞書の語",
+        dictionaryTerms: "辞書の項目",
         localizationKeys: "ローカライズのキー",
         saveFields: "セーブ項目",
         storyBlocks: "ストーリーの行",

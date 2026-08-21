@@ -1,6 +1,7 @@
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
+import { devModeScreenEffectQuality } from "../../weather/screenEffectQuality";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
@@ -236,6 +237,10 @@ export class DevModeResolveWeatherClipHandler extends IPCHandler<IPCEventType.de
             projectRoot: projectPath,
             specs: [spec],
             priority: "blocking",
+            // The same reader the pre-baker uses. If these two ever disagreed the pre-bake would be a
+            // different task from the one Dev Mode waits on, and the speculative work - which is the
+            // whole point of pre-baking - would be silently thrown away every time.
+            quality: devModeScreenEffectQuality(window.getApp()),
             claim: { owner: WeatherBakeOwner.devMode(projectPath), attempt },
         });
         const key = weatherBakeKey(spec);

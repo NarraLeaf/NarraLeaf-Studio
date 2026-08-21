@@ -27,6 +27,7 @@ import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayl
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -100,6 +101,8 @@ export interface RendererPrivilegedInterface {
         requestWriteBatch(actor: PrivilegedActor, entries: PrivilegedWriteBatchEntry[]): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
+        /** See `PrivilegedFileSystemCall`'s `writeFileNoFollowOrCreate`. */
+        writeFileNoFollowOrCreate(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         recoverCorruptedJsonFile(actor: PrivilegedActor, path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         createDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteFile(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -341,6 +344,12 @@ export interface RendererPreloadedInterface {
          * a window showing the "not a project" screen must not have consumed the window it came from.
          */
         reportLoadResult(ok: boolean): void;
+        /**
+         * Report on the build this workspace was opened by `--build` to run: each console line as
+         * it is written, then the outcome. Sent by nothing else - a workspace somebody opened has
+         * no command-line build to report on.
+         */
+        reportCommandLineBuild(event: CommandLineBuildEvent): void;
         /**
          * Tell main whether this workspace's project data is frozen; null means it is writable.
          *

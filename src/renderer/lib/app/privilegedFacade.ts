@@ -114,6 +114,10 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
                 refuseFrozenWrite(path)
                     ? frozenNoOp()
                     : privileged().fs.writeFileNoFollow(actor(), path, data, encoding),
+            writeFileNoFollowOrCreate: (path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>> =>
+                refuseFrozenWrite(path)
+                    ? frozenNoOp()
+                    : privileged().fs.writeFileNoFollowOrCreate(actor(), path, data, encoding),
             recoverCorruptedJsonFile: (path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>> =>
                 refuseFrozenWrite(path)
                     ? frozenNoOp()

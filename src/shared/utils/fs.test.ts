@@ -257,4 +257,99 @@ describe("Fs atomic writes", () => {
             expect(await readdir(root)).toEqual(["shard.json"]);
         });
     });
+
+    /**
+     * The create-capable sibling, which is what a document service needs: the same rejection
+     * contract for a path that exists, plus the one case `writeFileNoFollow` cannot serve - the file
+     * is not there yet, on the first open of a project that predates it.
+     *
+     * The pair of "refuses" tests below is the whole cost of taking the story writers off the write
+     * grant: `Fs.write` would have followed the symlink and written through it, and would not have
+     * looked at the link count at all. Both refusals are asserted on **every** platform this runs
+     * on, not just POSIX - a hard link needs no privilege on NTFS, and the whole question "is the
+     * contract acceptable on Windows" is answered by whether these hold there.
+     */
+    describe("writeFileNoFollowOrCreate", () => {
+        it("creates the file when it is absent, leaving no scratch behind", async () => {
+            const target = join(root, "fresh.json");
+
+            const result = await Fs.writeFileNoFollowOrCreate(target, "{\"new\":true}");
+
+            expect(result.ok).toBe(true);
+            expect(await readFile(target, "utf-8")).toBe("{\"new\":true}");
+            expect(await readdir(root)).toEqual(["fresh.json"]);
+        });
+
+        it("replaces an existing file rather than truncating it", async () => {
+            const target = join(root, "doc.json");
+            await writeFile(target, "old");
+            const before = await stat(target);
+
+            expect((await Fs.writeFileNoFollowOrCreate(target, "new")).ok).toBe(true);
+
+            expect(await readFile(target, "utf-8")).toBe("new");
+            if (!isWindows) expect((await stat(target)).ino).not.toBe(before.ino);
+        });
+
+        it("refuses a symlink instead of writing through it", async () => {
+            const real = join(root, "real.json");
+            const link_ = join(root, "link.json");
+            await writeFile(real, "original");
+            try {
+                await symlink(real, link_);
+            } catch {
+                // Unprivileged Windows cannot create one (EPERM without Developer Mode), which is
+                // also why nothing puts one in a project tree there.
+                return;
+            }
+
+            const result = await Fs.writeFileNoFollowOrCreate(link_, "attacker");
+
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.INVALID_PATH);
+            expect(await readFile(real, "utf-8")).toBe("original");
+            expect((await lstat(link_)).isSymbolicLink()).toBe(true);
+        });
+
+        it("refuses a hard-linked file, on Windows too", async () => {
+            const target = join(root, "shared.json");
+            await writeFile(target, "original");
+            try {
+                await link(target, join(root, "other-name.json"));
+            } catch {
+                return; // filesystem without hard links (FAT, some network shares)
+            }
+            // The gate is the link count, and it has to be readable here or the refusal is vacuous.
+            expect((await lstat(target)).nlink).toBe(2);
+
+            const result = await Fs.writeFileNoFollowOrCreate(target, "changed");
+
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.INVALID_PATH);
+            expect(await readFile(target, "utf-8")).toBe("original");
+        });
+
+        it("refuses a directory", async () => {
+            const target = join(root, "adir");
+            await mkdir(target);
+
+            const result = await Fs.writeFileNoFollowOrCreate(target, "nope");
+
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.INVALID_PATH);
+            expect((await stat(target)).isDirectory()).toBe(true);
+        });
+
+        /**
+         * The answer the write-grant route used to give from `allocateWrite`, which stat'd the
+         * parent before minting a URL. `StoryService.ensureDir` accepts a stale "this directory
+         * exists" on the strength of the write failing loudly if it does not.
+         */
+        it("reports NOT_FOUND when the parent directory is gone", async () => {
+            const result = await Fs.writeFileNoFollowOrCreate(join(root, "missing-dir", "doc.json"), "{}");
+
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.NOT_FOUND);
+        });
+    });
 });

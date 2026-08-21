@@ -10,6 +10,7 @@ import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayl
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type {
@@ -347,6 +348,7 @@ export enum IPCEventType {
     menuAction = "app.menu.action",
     workspaceMenuSync = "workspace.menu.sync",
     workspaceReportLoadResult = "workspace.reportLoadResult",
+    workspaceCommandLineBuild = "workspace.commandLineBuild",
     workspaceOpenView = "workspace.openView",
     settingsHighlight = "settings.highlight",
 
@@ -3473,6 +3475,21 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: { ok: boolean },
+        response: never;
+    };
+    /**
+     * A workspace opened by `--build` reporting on the build it was opened to run.
+     *
+     * One event for the whole run rather than one per kind of news: the log lines and the outcome
+     * are one ordered stream that ends up in one report, and a second event would be a second thing
+     * to keep in step. A message rather than a request, because the main process is listening to a
+     * build rather than asking a question - a build takes minutes, and no reply timeout is the right
+     * one for that.
+     */
+    [IPCEventType.workspaceCommandLineBuild]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: CommandLineBuildEvent,
         response: never;
     };
     /**

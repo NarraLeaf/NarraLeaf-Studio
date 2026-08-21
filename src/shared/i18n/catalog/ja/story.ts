@@ -406,6 +406,12 @@ export const story = {
         noSuggestions: "候補なし",
         addToDictionary: "プロジェクトの辞書に追加",
     },
+    /** 辞書の印を右クリックしたときのパネル。操作は一つ、その背後に項目。 */
+    dictionary: {
+        replaceWith: "{term} に置換",
+        applyReading: "ルビ {reading} を振る",
+        openEntry: "辞書で編集",
+    },
     interpolation: {
         title: "値を差し込む",
         kindVariable: "変数",
