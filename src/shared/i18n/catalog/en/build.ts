@@ -222,10 +222,6 @@ export const build = {
         artifacts: "Artifacts",
         artifactsEmpty: "Select a target to list the files it produces.",
         openWhenDone: "Open the output folder when done",
-        compression: "Compression",
-        compressionMaximum: "Maximum (smallest)",
-        compressionNormal: "Normal",
-        compressionStore: "None (fastest)",
     },
     /**
      * What a finished build came to on disk, printed under the list of artifacts in the console.
@@ -300,7 +296,7 @@ export const build = {
         "progress-carry-unsupported":
             "{blueprints} carries progress between editions, and a {platform} build refuses it. Both nodes take "
             + "their failure branch.",
-        "web-lossy-images": "Exported images are re-encoded at quality {quality} and lose detail permanently.",
+        "lossy-images": "Images are re-encoded at quality {quality} and lose detail permanently.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",
         "mobile-payload-too-large": "This project's assets ({size}) exceed what a mobile package can hold.",
         "version-uncodable": "Version {version} cannot be encoded as an Android version code (major up to 2099, minor and patch up to 999).",

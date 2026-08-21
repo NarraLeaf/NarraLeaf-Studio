@@ -17,6 +17,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
@@ -111,7 +112,29 @@ function onlyGraph(blueprint: Blueprint) {
         }
         return false;
     };
-    return { nodes, edges, byType, wired, reaches };
+    /**
+     * Whether a value reaches a pin, allowed to pass through a Memo on the way.
+     *
+     * Narrower than {@link reaches}: only a Memo may sit in between, and only by taking the value in
+     * and handing the same one back. It is there because the pressed index is read twice - once as
+     * the answer, once to pick which sound to play - and a pure pin may feed only one consumer.
+     */
+    const carries = (from: { nodeId: string; port: string }, to: { nodeId: string; port: string }): boolean => {
+        if (wired(from, to)) {
+            return true;
+        }
+        return edges.some(edge => {
+            if (edge.from.nodeId !== from.nodeId || edge.from.port !== from.port) {
+                return false;
+            }
+            const hop = nodes[edge.to.nodeId];
+            if (hop?.type !== BLUEPRINT_NODE_TYPE_DATA_MEMO || edge.to.port !== "value") {
+                return false;
+            }
+            return carries({ nodeId: hop.id, port: "result" }, to);
+        });
+    };
+    return { nodes, edges, byType, wired, reaches, carries };
 }
 
 /** Pin ids the shipping catalogue declares for a node type. */
@@ -153,7 +176,7 @@ describe("the Confirm page in the starter template", () => {
         const blueprint = blueprints.find(
             candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === list.id,
         )!;
-        const { byType, wired, reaches } = onlyGraph(blueprint);
+        const { byType, carries, reaches } = onlyGraph(blueprint);
         const click = byType(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)!;
         const close = byType(BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF)!;
         expect(pinIds(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toEqual(expect.arrayContaining(["then", "index"]));
@@ -162,7 +185,7 @@ describe("the Confirm page in the starter template", () => {
         // answers do not sound alike, so a branch and a cue sit between the press and the close.
         // Every route still ends there - an answer that closed nothing would be a dead dialog.
         expect(reaches({ nodeId: click.id, port: "then" }, close.id)).toBe(true);
-        expect(wired({ nodeId: click.id, port: "index" }, { nodeId: close.id, port: "result" })).toBe(true);
+        expect(carries({ nodeId: click.id, port: "index" }, { nodeId: close.id, port: "result" })).toBe(true);
     });
 
     /**

@@ -17,12 +17,19 @@ import type { FileSystemService } from "./FileSystem";
  * has to read them for a diff), and a revision reader (which has no disk at all). This adapter is
  * one of the two ends; `src/main/app/application/utils/documentStorage.ts` is the other.
  *
- * Writes go through {@link FileSystemService.write} and nothing else. That is not indirection for
- * its own sake: that path is the atomic temp-file-and-rename writer, and it is the path
- * `SaveStatusService` observes, so a document save that fails is reported to the author by
+ * Writes go through {@link FileSystemService.writeFileNoFollowOrCreate} and nothing else. That is
+ * not indirection for its own sake: that path is the atomic temp-file-and-rename writer, and it is
+ * the path `SaveStatusService` observes, so a document save that fails is reported to the author by
  * machinery that already exists. A second way to put bytes on disk would silently opt out of both.
+ *
+ * **Not `FileSystemService.write`**, which is what this used to call. That verb mints a write grant
+ * over IPC and then `PUT`s the payload back through the app protocol, and the pair costs about the
+ * same whatever the payload weighs - so the eleven services on this port each paid two round trips
+ * per save for one file's worth of bytes. `writeFileNoFollowOrCreate` is the same atomic write core
+ * reached in one structured-clone call. See `BaseFileSystemService.writeFileNoFollowOrCreate` for
+ * the measurement and for what the stricter rejection contract gives up.
  */
-export type DocumentFileSystem = Pick<FileSystemService, "read" | "write" | "createDir" | "copyFile">;
+export type DocumentFileSystem = Pick<FileSystemService, "read" | "writeFileNoFollowOrCreate" | "createDir" | "copyFile">;
 
 export class RendererDocumentStorage implements DocumentStorage {
     public constructor(
@@ -45,9 +52,18 @@ export class RendererDocumentStorage implements DocumentStorage {
         throw new RendererError(`Failed to read ${path}: ${result.error.message}`);
     }
 
+    /**
+     * The port declares this `Promise<void>`, so a *refused* write - a frozen workspace, a working
+     * tree being re-read - is indistinguishable here from one that landed. That is unchanged by the
+     * route swap and deliberately not fixed here: the shape is the port's, shared with the main
+     * process and with a revision reader that has no disk, and a caller that needs the distinction
+     * has to ask `FileSystemService` directly the way `StoryService` does. The author still learns:
+     * the latch announces the refusal on `observeRefusedWrites`, which is what puts the *frozen*
+     * notice on the save-status surface.
+     */
     public async write(path: string, text: string): Promise<void> {
         await this.ensureParentDirectory(path);
-        const result = await this.fs.write(this.absolute(path), text, "utf-8");
+        const result = await this.fs.writeFileNoFollowOrCreate(this.absolute(path), text, "utf-8");
         if (!result.ok) {
             throw new RendererError(`Failed to write ${path}: ${result.error.message}`);
         }

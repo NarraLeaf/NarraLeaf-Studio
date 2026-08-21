@@ -117,10 +117,44 @@ vi.mock("@/apps/workspace/context", () => ({
     }),
 }));
 
+/** The jump the findings list makes, recorded rather than performed. */
+const jumps: unknown[] = [];
+vi.mock("../search/searchJump", () => ({
+    jumpToSearchTarget: (target: unknown) => { jumps.push(target); return true; },
+}));
+
+vi.mock("@/apps/workspace/registry", () => ({
+    useRegistry: () => ({ openEditorTab: () => undefined, setPanelVisibility: () => undefined }),
+}));
+
+/** The project pass. Stubbed so the panel is tested without a story library behind it. */
+let scanFindings: unknown[] = [];
+vi.mock("@/lib/workspace/services/dictionary/dictionaryScan", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/workspace/services/dictionary/dictionaryScan")>(
+        "@/lib/workspace/services/dictionary/dictionaryScan",
+    );
+    return {
+        ...actual,
+        scanProjectForVariants: async (_context: unknown, _needles: unknown, options?: {
+            onProgress?: (progress: { done: number; total: number }) => void;
+        }) => {
+            options?.onProgress?.({ done: 1, total: 1 });
+            return { findings: scanFindings, scanned: 1, total: 1, complete: true };
+        },
+    };
+});
+
 vi.mock("@/lib/i18n", () => ({
     // The panel's own strings, resolved from the English catalog so a renamed key fails here rather
     // than rendering the key at an author.
     useTranslation: () => ({
+        tn: (key: string, count: number, values?: Record<string, string | number>) => {
+            const leaf = key.replace(/^dictionary\./, "").split(".")
+                .reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], enDictionary);
+            const forms = (leaf ?? {}) as Record<string, string>;
+            const text = (count === 1 ? forms.one : undefined) ?? forms.other ?? key;
+            return text.replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name] ?? `{${name}}`));
+        },
         t: (key: string, values?: Record<string, string>) => {
             const leaf = key.replace(/^dictionary\./, "").split(".")
                 .reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], enDictionary);
@@ -135,6 +169,8 @@ vi.mock("@/lib/i18n", () => ({
 const originalScrollIntoView = Element.prototype.scrollIntoView;
 beforeEach(() => {
     service = new FakeDictionary();
+    scanFindings = [];
+    jumps.length = 0;
     // jsdom has no layout and no `scrollIntoView`; nothing here asserts about it.
     Element.prototype.scrollIntoView = function scrollIntoView(this: Element) {
         return undefined;
@@ -215,6 +251,44 @@ describe("the dictionary panel", () => {
 
         const term = await screen.findByLabelText(enDictionary.field.term);
         expect((term as HTMLInputElement).value).toBe("Kamurocho");
+    });
+
+    it("reads the project on request, and says where each term is written the other way", async () => {
+        service.addTerm("color");
+        service.updateEntry("color", { variants: ["colour"] });
+        scanFindings = [
+            {
+                term: "color",
+                written: "colour",
+                replacement: "color",
+                preview: "The colour of the sky.",
+                target: {
+                    kind: "storyBlock", storyId: "s1", sceneId: "sc1", blockId: "b1",
+                    storyName: "Main", sceneName: "Opening",
+                },
+            },
+        ];
+        panel();
+
+        fireEvent.click(screen.getByText(enDictionary.check));
+
+        // The count lands on the term, so the answer is readable without opening anything.
+        await waitFor(() => expect(screen.getAllByText("1 row").length).toBeGreaterThan(0));
+
+        fireEvent.click(screen.getByText("color"));
+        const row = await screen.findByText("The colour of the sky.");
+        fireEvent.click(row);
+        expect(jumps).toEqual([(scanFindings[0] as { target: unknown }).target]);
+    });
+
+    it("says so when the project writes every term the project's way", async () => {
+        service.addTerm("color");
+        panel();
+
+        fireEvent.click(screen.getByText(enDictionary.check));
+
+        // Distinguishable from "not checked yet", which says nothing at all.
+        await waitFor(() => expect(screen.getByText(enDictionary.checkClean)).toBeTruthy());
     });
 
     it("turns a check off for the whole project", () => {

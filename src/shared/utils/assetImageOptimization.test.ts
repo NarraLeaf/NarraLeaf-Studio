@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-    DEFAULT_WEB_OPTIMIZATION_CONFIGURATION,
-    type WebOptimizationConfiguration,
-} from "@shared/types/webOptimization";
+    DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
+    type AssetOptimizationConfiguration,
+} from "@shared/types/assetOptimization";
 import {
     jpegHasIccProfile,
-    planWebImageTranscode,
+    planAssetImageTranscode,
     pngHasIccProfile,
     pngIsAnimated,
-    webImageWorthKeeping,
-} from "./webImageOptimization";
+    assetImageWorthKeeping,
+} from "./assetImageOptimization";
 
 function ascii(value: string): number[] {
     return [...value].map(character => character.charCodeAt(0));
@@ -64,12 +64,7 @@ function webp(): Uint8Array {
     return Uint8Array.from(bytes);
 }
 
-const LOSSY: WebOptimizationConfiguration = { ...DEFAULT_WEB_OPTIMIZATION_CONFIGURATION, lossyImages: true };
-const OFF: WebOptimizationConfiguration = {
-    ...DEFAULT_WEB_OPTIMIZATION_CONFIGURATION,
-    losslessImages: false,
-    lossyImages: false,
-};
+const LOSSY: AssetOptimizationConfiguration = { ...DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, lossyImages: true };
 
 /** Manifest keys for ordinary assets are UUIDs, so a "/" only ever means a bundle member. */
 const ASSET_ID = "3f2a1c04-5b6d-4e7f-8a9b-0c1d2e3f4a5b";
@@ -135,82 +130,80 @@ describe("ICC profile detection", () => {
     });
 });
 
-describe("planWebImageTranscode", () => {
-    it("converts a plain PNG losslessly by default", () => {
-        expect(planWebImageTranscode(candidate(png()), DEFAULT_WEB_OPTIMIZATION_CONFIGURATION))
+describe("planAssetImageTranscode", () => {
+    // The lossless arm answers to nothing in the configuration, which is the whole reason it is
+    // not a setting: there is no policy under which a PNG is left as it is.
+    it("converts a plain PNG losslessly, with nothing in the policy turned on", () => {
+        expect(planAssetImageTranscode(candidate(png()), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
             .toEqual({ action: "lossless" });
     });
 
-    it("leaves a JPEG alone in lossless mode, because lossless WebP of one is bigger", () => {
-        expect(planWebImageTranscode(candidate(jpeg()), DEFAULT_WEB_OPTIMIZATION_CONFIGURATION))
+    it("leaves a JPEG alone unless lossy is on, because lossless WebP of one is bigger", () => {
+        expect(planAssetImageTranscode(candidate(jpeg()), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
             .toEqual({ action: "skip", reason: "not-enabled" });
     });
 
     it("converts both PNG and JPEG once lossy is turned on", () => {
-        expect(planWebImageTranscode(candidate(png()), LOSSY)).toEqual({ action: "lossy" });
-        expect(planWebImageTranscode(candidate(jpeg()), LOSSY)).toEqual({ action: "lossy" });
+        expect(planAssetImageTranscode(candidate(png()), LOSSY)).toEqual({ action: "lossy" });
+        expect(planAssetImageTranscode(candidate(jpeg()), LOSSY)).toEqual({ action: "lossy" });
     });
 
     it("refuses an APNG even when it would otherwise qualify", () => {
         const apng = png([chunk("acTL", [...be32(4), ...be32(0)])]);
-        expect(planWebImageTranscode(candidate(apng), LOSSY)).toEqual({ action: "skip", reason: "animated" });
+        expect(planAssetImageTranscode(candidate(apng), LOSSY)).toEqual({ action: "skip", reason: "animated" });
     });
 
     it("refuses a colour-managed image in either mode", () => {
         const managed = png([chunk("iCCP", ascii("Display P3"))]);
-        expect(planWebImageTranscode(candidate(managed), DEFAULT_WEB_OPTIMIZATION_CONFIGURATION))
+        expect(planAssetImageTranscode(candidate(managed), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
             .toEqual({ action: "skip", reason: "color-managed" });
-        expect(planWebImageTranscode(candidate(jpeg([app2("ICC_PROFILE")])), LOSSY))
+        expect(planAssetImageTranscode(candidate(jpeg([app2("ICC_PROFILE")])), LOSSY))
             .toEqual({ action: "skip", reason: "color-managed" });
     });
 
     it("refuses a model bundle member, by type and by key shape", () => {
-        expect(planWebImageTranscode(candidate(png(), { assetType: "model" }), LOSSY))
+        expect(planAssetImageTranscode(candidate(png(), { assetType: "model" }), LOSSY))
             .toEqual({ action: "skip", reason: "bundle-member" });
-        expect(planWebImageTranscode(candidate(png(), { manifestKey: `${ASSET_ID}/texture_00.png` }), LOSSY))
+        expect(planAssetImageTranscode(candidate(png(), { manifestKey: `${ASSET_ID}/texture_00.png` }), LOSSY))
             .toEqual({ action: "skip", reason: "bundle-member" });
     });
 
     it("still converts a baked character avatar, whose id is synthetic but slash-free", () => {
-        expect(planWebImageTranscode(candidate(png(), { manifestKey: "character-avatar:yuki:a1%2Bb2" }), LOSSY))
+        expect(planAssetImageTranscode(candidate(png(), { manifestKey: "character-avatar:yuki:a1%2Bb2" }), LOSSY))
             .toEqual({ action: "lossy" });
     });
 
     it("refuses a format it does not convert, including WebP itself", () => {
-        expect(planWebImageTranscode(candidate(webp()), LOSSY)).toEqual({ action: "skip", reason: "unsupported" });
-        expect(planWebImageTranscode(candidate(Uint8Array.from([1, 2, 3, 4])), LOSSY))
+        expect(planAssetImageTranscode(candidate(webp()), LOSSY)).toEqual({ action: "skip", reason: "unsupported" });
+        expect(planAssetImageTranscode(candidate(Uint8Array.from([1, 2, 3, 4])), LOSSY))
             .toEqual({ action: "skip", reason: "unsupported" });
     });
 
     it("goes by the bytes, not the manifest type", () => {
         // An audio asset cannot be a PNG, but the type is authored metadata and
         // the bytes are the truth; a mislabelled entry must not be transcoded.
-        expect(planWebImageTranscode(candidate(Uint8Array.from(ascii("ID3")), { assetType: "image" }), LOSSY))
+        expect(planAssetImageTranscode(candidate(Uint8Array.from(ascii("ID3")), { assetType: "image" }), LOSSY))
             .toEqual({ action: "skip", reason: "unsupported" });
-    });
-
-    it("does nothing when the policy has both steps off", () => {
-        expect(planWebImageTranscode(candidate(png()), OFF)).toEqual({ action: "skip", reason: "not-enabled" });
     });
 });
 
-describe("webImageWorthKeeping", () => {
+describe("assetImageWorthKeeping", () => {
     it("keeps a real saving", () => {
-        expect(webImageWorthKeeping(1_000_000, 500_000)).toBe(true);
+        expect(assetImageWorthKeeping(1_000_000, 500_000)).toBe(true);
     });
 
     it("rejects a larger or equal result", () => {
-        expect(webImageWorthKeeping(1000, 1000)).toBe(false);
-        expect(webImageWorthKeeping(1000, 1200)).toBe(false);
-        expect(webImageWorthKeeping(1000, 0)).toBe(false);
+        expect(assetImageWorthKeeping(1000, 1000)).toBe(false);
+        expect(assetImageWorthKeeping(1000, 1200)).toBe(false);
+        expect(assetImageWorthKeeping(1000, 0)).toBe(false);
     });
 
     it("rejects a saving too small to be worth renaming the file over", () => {
         // 0.5% of a 100 KB image is ~500 bytes: under both floors.
-        expect(webImageWorthKeeping(100_000, 99_500)).toBe(false);
+        expect(assetImageWorthKeeping(100_000, 99_500)).toBe(false);
     });
 
     it("accepts a small-percentage saving once it is a kilobyte in absolute terms", () => {
-        expect(webImageWorthKeeping(10_000_000, 9_998_000)).toBe(true);
+        expect(assetImageWorthKeeping(10_000_000, 9_998_000)).toBe(true);
     });
 });

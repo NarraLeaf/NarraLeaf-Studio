@@ -2,6 +2,9 @@
 
 本文汇总 UI Editor 蓝图系统建议提供的节点。列表包含当前已实现、已规划和建议新增的节点；节点按面向视觉小说 UI 制作的使用场景分类。
 
+> 这份表是**路线图**，手工维护，只说「有没有」，不说引脚和字段。要查一个节点真正长什么样，问注册表本身：
+> `node project/app/blueprint.js node <类型 id>`、`node project/app/blueprint.js nodes <搜索词>`。完整用法见 `project/app/blueprint.md`。
+
 ## Events
 
 | 节点 | 类型 ID 建议 | 说明 |

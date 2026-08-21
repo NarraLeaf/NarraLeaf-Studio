@@ -769,15 +769,16 @@ export const help = {
                 + "\n"
                 + "Ambience clips imported as assets keep the frame rate they were made at.",
         },
-        webOptimization: {
+        assetOptimization: {
             title: "Reducing download size",
             body:
-                "The exported site can be reduced two ways. Android and iOS builds serve the same site, so both "
-                + "are reduced too.\n"
+                "Every build converts images to a smaller format where that loses no detail, and writes "
+                + "precompressed copies of the text files a browser export serves.\n"
                 + "\n"
-                + "- Converting images loses no detail.\n"
+                + "- Converted images are identical to the originals.\n"
                 + "- Recompressing images is lossy. It produces much smaller files, and the detail it drops "
                 + "cannot be recovered.\n"
+                + "- Recompression applies to every package the project builds, on every platform.\n"
                 + "- Precompressed text files are used only by a server configured to serve them. Every other "
                 + "host serves the originals.",
         },

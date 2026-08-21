@@ -22,7 +22,7 @@ import {
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
-    WebOptimizationConfiguration,
+    AssetOptimizationConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeCrashConfiguration,
@@ -39,7 +39,7 @@ import {
     normalizeSigningConfiguration,
     normalizeVfxConfiguration,
     normalizeVoiceConfiguration,
-    normalizeWebOptimizationConfiguration,
+    readAssetOptimizationConfiguration,
     normalizeDistributionConfiguration,
     type DistributionConfiguration,
 } from "../../project/configuration";
@@ -298,31 +298,35 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
-     * Read the effective web export optimization policy, falling back to the
-     * defaults (lossless steps on, lossy off) for projects that predate
-     * `app.webOptimization`.
+     * Read the effective asset optimization policy, falling back to the default
+     * (lossy off) for projects that predate `app.assetOptimization`.
      */
-    public getWebOptimizationConfiguration(): WebOptimizationConfiguration {
-        return normalizeWebOptimizationConfiguration(this.getProjectConfig().app?.webOptimization);
+    public getAssetOptimizationConfiguration(): AssetOptimizationConfiguration {
+        return readAssetOptimizationConfiguration(this.getProjectConfig().app);
     }
 
     /**
-     * Merge a partial patch into the web export optimization policy. Written by
-     * the project settings UI and read by the build, which applies it to the
-     * compiled static site.
+     * Merge a partial patch into the asset optimization policy. Written by the
+     * project settings UI and read by the build, which applies it to every
+     * package it produces.
+     *
+     * Writing lands on `app.assetOptimization`, and the key this used to live
+     * under is left where it is rather than deleted: a project opened by an
+     * older Studio then still finds the settings it knows about, and the read
+     * above prefers the new key whenever both are present.
      */
-    public async updateWebOptimizationConfiguration(
-        patch: Partial<WebOptimizationConfiguration>,
+    public async updateAssetOptimizationConfiguration(
+        patch: Partial<AssetOptimizationConfiguration>,
     ): Promise<ProjectConfig> {
         return this.updateProjectConfig(config => {
-            const webOptimization: WebOptimizationConfiguration = {
-                ...normalizeWebOptimizationConfiguration(config.app?.webOptimization),
+            const assetOptimization: AssetOptimizationConfiguration = {
+                ...readAssetOptimizationConfiguration(config.app),
                 ...patch,
             };
             const app: ProjectAppConfiguration = {
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
-                webOptimization,
+                assetOptimization,
             };
             return {
                 ...config,

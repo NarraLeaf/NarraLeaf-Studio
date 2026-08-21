@@ -72,8 +72,20 @@ export function DictionariesPanel() {
         await readInstalled(true);
     }, [readInstalled]);
 
-    const installedCodes = new Set((installed ?? []).map(entry => entry.code));
-    const offered = (available ?? []).filter(entry => !installedCodes.has(entry.code));
+    /**
+     * What the registry offers that this machine does not already have - including a language it
+     * has under an older digest.
+     *
+     * A word list is corrected after it is published (the English one shipped without a single
+     * contraction in it), and Studio fetches nothing in the background, so the only moment it can
+     * notice is the one where the author asked to see what is on offer. An entry whose digest has
+     * moved is therefore listed again, saying `Update` rather than `Download` - and one that
+     * matches stays hidden, because there is nothing to do with it.
+     */
+    const digests = new Map((installed ?? []).map(entry => [entry.code, entry.sha256] as const));
+    const offered = (available ?? [])
+        .map(entry => ({ entry, installed: digests.has(entry.code) }))
+        .filter(row => !row.installed || digests.get(row.entry.code) !== row.entry.sha256);
 
     return (
         <div className="flex flex-col gap-3">
@@ -124,7 +136,7 @@ export function DictionariesPanel() {
                     <p className="px-1 py-1 text-xs text-fg-subtle">{t("settings.dictionaries.available.none")}</p>
                 ) : (
                     <div className="flex flex-col">
-                        {offered.map(entry => (
+                        {offered.map(({ entry, installed: isInstalled }) => (
                             <div key={entry.code} className="flex min-h-7 items-center gap-3 rounded-md px-1 hover:bg-fill-subtle">
                                 <span className="min-w-0 flex-1 truncate text-sm text-fg-muted">{entry.name}</span>
                                 <span className="shrink-0 text-2xs text-fg-subtle">{entry.code}</span>
@@ -141,7 +153,9 @@ export function DictionariesPanel() {
                                 >
                                     {busy === entry.code
                                         ? t("settings.dictionaries.downloading")
-                                        : t("settings.dictionaries.download")}
+                                        : t(isInstalled
+                                            ? "settings.dictionaries.update"
+                                            : "settings.dictionaries.download")}
                                 </Button>
                             </div>
                         ))}

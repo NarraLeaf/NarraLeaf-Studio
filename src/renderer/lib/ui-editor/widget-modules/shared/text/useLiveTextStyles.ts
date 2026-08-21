@@ -43,10 +43,11 @@ export type LiveTextStyles = {
         textOrientation?: TextOrientation;
         tateChuYoko?: boolean | number;
         /**
-         * Auto fit is settled by the engine, not here: what has to fit the box is the whole line,
-         * and until the typewriter has finished only the engine holds it.
+         * Text scaling is the engine's, not ours: the line is measured as it is typed, and only the
+         * engine knows what is on screen at each character.
          *
-         * Present only while the widget asks for it, for the same reason the vertical settings are.
+         * Always passed, in both directions: the engine scales a dialogue line by default, so a
+         * widget the author turned it off on has to say so.
          */
         autoFit?: boolean;
         autoFitMinFontSize?: number;
@@ -128,12 +129,8 @@ export function useLiveTextStyles({
                   }
                 : {}),
             ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
-            ...(p.textAutoFit
-                ? {
-                      autoFit: true,
-                      autoFitMinFontSize: p.textAutoFitMinFontSize,
-                  }
-                : {}),
+            autoFit: p.textAutoFit,
+            ...(p.textAutoFit ? { autoFitMinFontSize: p.textAutoFitMinFontSize } : {}),
         },
     };
 }

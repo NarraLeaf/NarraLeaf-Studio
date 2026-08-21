@@ -37,9 +37,9 @@ import {
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
-    normalizeWebOptimizationConfiguration,
-    WEB_LOSSY_QUALITY_MAX,
-    WEB_LOSSY_QUALITY_MIN,
+    readAssetOptimizationConfiguration,
+    ASSET_LOSSY_QUALITY_MAX,
+    ASSET_LOSSY_QUALITY_MIN,
     type MobileConfiguration,
     type MobileCropAnchorX,
     type MobileCropAnchorY,
@@ -48,7 +48,7 @@ import {
     type CrashConfiguration,
     type NetworkConfiguration,
     type SecurityConfiguration,
-    type WebOptimizationConfiguration,
+    type AssetOptimizationConfiguration,
 } from "@/lib/workspace/project/configuration";
 import { GAME_CRASH_POLICIES } from "@shared/types/gameRuntime";
 import type { ProjectSectionProps } from "./types";
@@ -62,8 +62,8 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
     const [network, setNetwork] = useState<NetworkConfiguration>(() => normalizeNetworkConfiguration(config.app?.network));
     const [security, setSecurity] = useState<SecurityConfiguration>(() => normalizeSecurityConfiguration(config.app?.security));
     const [mobile, setMobile] = useState<MobileConfiguration>(() => normalizeMobileConfiguration(config.app?.mobile));
-    const [webOptimization, setWebOptimization] = useState<WebOptimizationConfiguration>(
-        () => normalizeWebOptimizationConfiguration(config.app?.webOptimization),
+    const [assetOptimization, setAssetOptimization] = useState<AssetOptimizationConfiguration>(
+        () => readAssetOptimizationConfiguration(config.app),
     );
     const [crash, setCrash] = useState<CrashConfiguration>(() => normalizeCrashConfiguration(config.app?.crash));
     const [savingCrash, setSavingCrash] = useState(false);
@@ -71,7 +71,7 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
     const [pluginNetwork, setPluginNetwork] = useState<readonly NetworkPluginAllowlistEntry[]>([]);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
     const [savingMobile, setSavingMobile] = useState(false);
-    const [savingWeb, setSavingWeb] = useState<keyof WebOptimizationConfiguration | null>(null);
+    const [savingOptimization, setSavingOptimization] = useState<keyof AssetOptimizationConfiguration | null>(null);
 
     /**
      * Move the project between the three positions.
@@ -193,27 +193,27 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         }
     }, [mobile, onConfigChange, projectService, savingMobile, uiService]);
 
-    const commitWebOptimization = useCallback(async (
-        field: keyof WebOptimizationConfiguration,
-        patch: Partial<WebOptimizationConfiguration>,
+    const commitAssetOptimization = useCallback(async (
+        field: keyof AssetOptimizationConfiguration,
+        patch: Partial<AssetOptimizationConfiguration>,
     ) => {
-        if (savingWeb) {
+        if (savingOptimization) {
             return;
         }
-        const previous = webOptimization;
-        setSavingWeb(field);
-        setWebOptimization(current => ({ ...current, ...patch }));
+        const previous = assetOptimization;
+        setSavingOptimization(field);
+        setAssetOptimization(current => ({ ...current, ...patch }));
         try {
-            const updated = await projectService.updateWebOptimizationConfiguration(patch);
-            setWebOptimization(normalizeWebOptimizationConfiguration(updated.app?.webOptimization));
+            const updated = await projectService.updateAssetOptimizationConfiguration(patch);
+            setAssetOptimization(readAssetOptimizationConfiguration(updated.app));
             onConfigChange(updated);
         } catch (error) {
-            setWebOptimization(previous);
+            setAssetOptimization(previous);
             uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
         } finally {
-            setSavingWeb(null);
+            setSavingOptimization(null);
         }
-    }, [onConfigChange, projectService, savingWeb, uiService, webOptimization]);
+    }, [assetOptimization, onConfigChange, projectService, savingOptimization, uiService]);
 
     const orientationOptions: SelectOption[] = useMemo(
         () => MOBILE_ORIENTATIONS.map(orientation => ({
@@ -318,47 +318,36 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 off (see SettingsGroup). */}
             <ProjectSigningSection {...props} />
 
+            {/* One decision, and the steps that cannot change what a player sees are not on this
+                page at all: a build applies those to every target on its own. What is left is the
+                one thing only the author can answer, and it answers for every package the build
+                produces rather than for a platform. See @shared/types/assetOptimization. */}
             <SettingsGroup
                 title={t("project.group.optimization")}
-                helpTopic="webOptimization"
-                trailing={<HelpTrigger topic="webOptimization" />}
+                helpTopic="assetOptimization"
+                trailing={<HelpTrigger topic="assetOptimization" />}
             >
                 <SettingRow
-                    title={t("project.settings.webLosslessImagesTitle")}
-                    description={t("project.settings.webLosslessImagesDescription")}
-                    hint={t("project.settings.webLosslessImagesHint")}
-                    checked={webOptimization.losslessImages}
-                    loading={savingWeb === "losslessImages"}
-                    onChange={value => void commitWebOptimization("losslessImages", { losslessImages: value })}
-                />
-                <SettingRow
-                    title={t("project.settings.webPrecompressTitle")}
-                    description={t("project.settings.webPrecompressDescription")}
-                    hint={t("project.settings.webPrecompressHint")}
-                    checked={webOptimization.precompress}
-                    loading={savingWeb === "precompress"}
-                    onChange={value => void commitWebOptimization("precompress", { precompress: value })}
-                />
-                <SettingRow
-                    title={t("project.settings.webLossyImagesTitle")}
-                    description={t("project.settings.webLossyImagesDescription")}
-                    hint={t("project.settings.webSharedWithMobileHint")}
-                    checked={webOptimization.lossyImages}
-                    loading={savingWeb === "lossyImages"}
-                    onChange={value => void commitWebOptimization("lossyImages", { lossyImages: value })}
+                    title={t("project.settings.lossyImagesTitle")}
+                    description={t("project.settings.lossyImagesDescription")}
+                    checked={assetOptimization.lossyImages}
+                    loading={savingOptimization === "lossyImages"}
+                    onChange={value => void commitAssetOptimization("lossyImages", { lossyImages: value })}
                 />
                 <SettingShell
-                    title={t("project.settings.webLossyQualityTitle")}
-                    description={t("project.settings.webLossyQualityDescription")}
+                    title={t("project.settings.lossyQualityTitle")}
+                    description={t("project.settings.lossyQualityDescription")}
                     tooltip={freeze.writes()["data-tip"]}
                 >
                     <NumberField
-                        value={webOptimization.lossyQuality}
-                        min={WEB_LOSSY_QUALITY_MIN}
-                        max={WEB_LOSSY_QUALITY_MAX}
-                        disabled={freeze.writes(!webOptimization.lossyImages || savingWeb === "lossyQuality").disabled}
-                        ariaLabel={t("project.settings.webLossyQualityTitle")}
-                        onCommit={value => void commitWebOptimization("lossyQuality", { lossyQuality: value })}
+                        value={assetOptimization.lossyQuality}
+                        min={ASSET_LOSSY_QUALITY_MIN}
+                        max={ASSET_LOSSY_QUALITY_MAX}
+                        disabled={freeze.writes(
+                            !assetOptimization.lossyImages || savingOptimization === "lossyQuality",
+                        ).disabled}
+                        ariaLabel={t("project.settings.lossyQualityTitle")}
+                        onCommit={value => void commitAssetOptimization("lossyQuality", { lossyQuality: value })}
                     />
                 </SettingShell>
             </SettingsGroup>
