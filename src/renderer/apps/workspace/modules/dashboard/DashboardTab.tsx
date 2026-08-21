@@ -38,20 +38,28 @@ import {
 
 const BUILD_HISTORY_LIMIT = 8;
 
-function useProjectStats(statsService: ProjectStatsService | null): ProjectStatsV1 {
+/**
+ * @param live Whether the tab is on screen. The stats record changes on every keystroke the author
+ * commits, and a hidden dashboard that takes the push re-renders its whole page - chart, tiles and
+ * all - inside the very Enter that produced the change. Measured on a twenty-line scene, that was
+ * about a fifth of the blocked frame, spent drawing a curve nobody was looking at. Unsubscribing
+ * while hidden costs nothing on the way back: the effect re-reads the current record on the
+ * false -> true edge, exactly as the snapshot refresh below does.
+ */
+function useProjectStats(statsService: ProjectStatsService | null, live: boolean): ProjectStatsV1 {
     const [stats, setStats] = useState<ProjectStatsV1>(
         () => statsService?.getStats() ?? createEmptyProjectStats(),
     );
 
     useEffect(() => {
-        if (!statsService) {
+        if (!statsService || !live) {
             return;
         }
         // The service mutates its record in place and emits the same reference, so a plain
         // `setStats(next)` would be a no-op bail-out. Shallow-cloning is what makes the push land.
         setStats({ ...statsService.getStats() });
         return statsService.onChanged(next => setStats({ ...next }));
-    }, [statsService]);
+    }, [statsService, live]);
 
     return stats;
 }
@@ -175,7 +183,7 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
             return null;
         }
     }, [context]);
-    const stats = useProjectStats(statsService);
+    const stats = useProjectStats(statsService, active);
 
     const projectName = useMemo(() => {
         try {
