@@ -58,7 +58,7 @@
  */
 
 import {
-    WEATHER_LOOP_SECONDS,
+    WEATHER_PARAMS,
     WEATHER_SEEDS,
     type ResolvedWeatherParams,
     type WeatherSeedId,
@@ -235,17 +235,23 @@ export function buildWeatherField(
 
     const count = Math.max(0, Math.round((params.density * fallSpan * vSpan) / 1_000_000));
     const spread = Math.max(1, Math.round(params.depthSpread));
+    // Both rates are stated per SECOND and converted here against the loop this effect asked for,
+    // which is what lets an author lengthen the clip without re-timing everything in it.
+    const loopSeconds = Math.max(1, params.loopSeconds);
     // NOT rounded, unlike each particle's own count below. This is the base the depth scales, and
     // rounding it made the smallest change an author could ask for a doubling of the whole field.
-    const baseFall = Math.max(0.25, params.fallSpeed);
+    const baseFall = Math.max(0.001, params.fallSpeed) * loopSeconds;
     // Cycles a second into cycles a loop. The rounding is where the seam is bought: a whole number
     // of cycles per loop returns every particle to its starting attitude at phase 1.
-    const flutterHarm = Math.max(1, Math.round(params.flutter * WEATHER_LOOP_SECONDS));
+    const flutterHarm = Math.max(1, Math.round(params.flutter * loopSeconds));
     // Whether this seed flutters at all. Listing the rate is how a seed says so, and rain does not:
     // a drop has no face to turn, so it has no drag cycle and must not hang. It falls at one speed,
     // which is also the only speed its fixed-length streak is drawn for - a drop that slowed while
     // its smear stayed the same length would be a streak that had come loose from its own motion.
     const flutters = seed.params.includes("flutter");
+    // How far above the neutral 1 the author has pushed the solidity, as a fraction of the room
+    // there is. Nothing below 1 lifts anything: dimmer than the ramp is just dimmer.
+    const push = Math.max(0, Math.min(1, (params.solidity - 1) / (WEATHER_PARAMS.solidity.max - 1)));
     const particles: Particle[] = [];
     for (let i = 0; i < count; i++) {
         // 0 = far, 1 = near. Drives size, brightness and fall rate together, which is what reads as
@@ -277,10 +283,13 @@ export function buildWeatherField(
             spinPhase: rnd(),
             radius,
             length: seed.streaked ? Math.max(radius, params.streak * (0.35 + depth * 0.65)) : radius,
-            // The depth ramp, scaled by what the author asked for. Not clamped to 1: the accumulator
-            // is float and the clamp happens once at write-out, so a solidity above 1 clips the
-            // falloff into a flat core rather than overflowing anything.
-            gain: (0.28 + depth * 0.67) * params.solidity,
+            // The depth ramp, lifted toward 1 as the author pushes for opacity and then scaled by
+            // what they asked for. Not clamped: the accumulator is float and the clamp happens once
+            // at write-out, so a gain above 1 clips the falloff into a flat core rather than
+            // overflowing anything. The LIFT is what lets the far field reach opaque at all - a
+            // plain multiple leaves it at 0.28 of whatever the near field is, which measured 55%
+            // opaque at solidity 4 and was still short of 90% at 32.
+            gain: liftedGain(depth, params.solidity, push),
         });
     }
 
@@ -342,6 +351,20 @@ const HANG_FRACTION = 0.06;
  * twice an integer harmonic is still an integer, so it is free of the seam.
  */
 const SWAY_OCTAVE = 0.32;
+
+/**
+ * How much light one particle lays down: the depth ramp, lifted toward flat, times the solidity.
+ *
+ * The ramp alone runs 0.28 to 0.95 and is the seed's depth cue. Multiplying it cannot make the far
+ * end opaque, only the near end - so `push` lerps the whole ramp toward 1 in proportion to how far
+ * up its range the solidity has been driven. At the top every particle is equally solid, which
+ * costs the brightness half of the depth cue and keeps the size half. That trade is the only way
+ * "as opaque as it goes" can mean the field rather than its nearest few particles.
+ */
+function liftedGain(depth: number, solidity: number, push: number): number {
+    const shade = 0.28 + depth * 0.67;
+    return (shade + (1 - shade) * push) * solidity;
+}
 
 /** Positive remainder. The hang can carry the along-fall term below zero, where `%` alone answers negative. */
 function wrap(value: number, span: number): number {

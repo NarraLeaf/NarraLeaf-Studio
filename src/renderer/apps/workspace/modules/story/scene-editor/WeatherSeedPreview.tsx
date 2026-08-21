@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from "react";
 import { buildWeatherField, createWeatherRenderer, scaleWeatherParams } from "@shared/weather/field";
 import {
     resolveWeatherParams,
-    WEATHER_LOOP_SECONDS,
     type ResolvedWeatherParams,
     type WeatherParamKey,
     type WeatherSeedId,
@@ -98,13 +97,17 @@ export function WeatherSeedPreview(props: {
             return;
         }
 
+        const full = JSON.parse(paramsKey) as ResolvedWeatherParams;
         // Lengths by the scale and density by its square, so this is the stage's own composition
         // photographed smaller rather than a sparser weather that happens to fit. Shared with
         // nothing else drawing it, which is the point - see `scaleWeatherParams`.
-        const scaled = scaleWeatherParams(JSON.parse(paramsKey) as ResolvedWeatherParams, scale);
+        const scaled = scaleWeatherParams(full, scale);
 
         const field = buildWeatherField(props.seed, scaled, PREVIEW_WIDTH, height);
-        const frames = WEATHER_LOOP_SECONDS * fps;
+        // The effect's own length, not a constant: an author who lengthened the loop to slow the
+        // fall down would otherwise watch a preview running the old one, which is the one thing
+        // this panel exists not to do.
+        const frames = Math.max(1, Math.round(full.loopSeconds * fps));
         // No `subSteps`: the renderer's own default is the bake's, which is the point.
         const renderer = createWeatherRenderer(field, PREVIEW_WIDTH, height, { frames });
         // The canvas's own buffer, filled from the renderer's each frame. Wrapping the renderer's

@@ -17,8 +17,8 @@ import type { UIDocument } from "@shared/types/ui-editor/document";
 import { vfxFrameRateOf, type VfxConfiguration } from "@shared/types/vfx";
 import { weatherBakeKey } from "./bakeKey";
 import {
-    WEATHER_LOOP_SECONDS,
     weatherBakeSize,
+    weatherFrameCountOf,
     type WeatherBakeSpec,
     type WeatherSeedRef,
 } from "./model";
@@ -91,10 +91,12 @@ export function weatherSpecForStage(
     const design = weatherStageSize(uidoc);
     const { width, height } = weatherBakeSize(design.width, design.height);
     const fps = vfxFrameRateOf(vfx);
-    // The loop length is fixed and the rate is not, so the frame count is derived here rather than
+    // Neither the loop length nor the rate is fixed, so the frame count is derived here rather than
     // stored: the seam guarantee is that the renderer is asked for phases `i / frames`, and a frames
     // value that did not match the rate the encoder is handed would put a stutter in every loop.
-    return { ref, width, height, fps, frames: WEATHER_LOOP_SECONDS * fps };
+    // The length is the effect's own (`loopSeconds`), which is why this reads the ref and not a
+    // constant - a caller holding the old constant would address a clip nothing ever bakes.
+    return { ref, width, height, fps, frames: weatherFrameCountOf(ref, fps) };
 }
 
 /**

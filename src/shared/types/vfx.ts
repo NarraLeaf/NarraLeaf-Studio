@@ -21,10 +21,14 @@
 /**
  * The rates offered, slowest first.
  *
- * Four positions rather than a free number. A bake is `WEATHER_LOOP_SECONDS` long, so the frame
- * count and with it the bake time and the packaged bytes are strictly proportional to this value -
- * a typed 97 would cost 3.2x what 30 does and buy nothing an eye can find over 120. The four are
- * the rates displays and video actually run at.
+ * Four positions rather than a free number. A clip's frame count is its own length times this, so
+ * the bake time and the packaged bytes are strictly proportional to it - a typed 97 would cost 3.2x
+ * what 30 does and buy nothing an eye can find over 120. The four are the rates displays and video
+ * actually run at.
+ *
+ * The LENGTH is per effect (`WEATHER_PARAMS.loopSeconds`) and this is per project, which is the
+ * split it sounds like: how smooth the motion is belongs to the game, how long before a particular
+ * effect repeats belongs to that effect.
  */
 export const VFX_FRAME_RATES = [30, 48, 60, 120] as const;
 

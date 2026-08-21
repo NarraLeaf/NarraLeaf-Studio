@@ -253,6 +253,7 @@ export const storyInspector = {
         fallSpeed: "落下速度",
         flutter: "舞い",
         solidity: "濃さ",
+        loopSeconds: "ループ長",
         depthSpread: "奥行き差",
     },
 
