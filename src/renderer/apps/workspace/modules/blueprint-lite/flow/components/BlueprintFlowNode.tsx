@@ -50,6 +50,7 @@ import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
+import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -169,7 +170,13 @@ const BLUEPRINT_CARD_PIN_BODY_CLASS = "min-w-[200px] max-w-[280px]";
 const COMMENT_DEFAULT_WIDTH = 360;
 const COMMENT_DEFAULT_HEIGHT = 180;
 
-function useImageAssetDisplayName(assetId: string | null): string | null {
+/**
+ * What to print for an asset id a pin holds - the file's name, or the set's when it names one.
+ *
+ * Shared by the picture card and the clip row: neither may print "missing" for a set the picker
+ * itself just offered, and a set has no row in the library to read a name off.
+ */
+function useAssetPinDisplayName(assetId: string | null): string | null {
     let context: ReturnType<typeof useWorkspace>["context"] | null = null;
     try {
         context = useWorkspace().context;
@@ -207,22 +214,39 @@ function AudioAssetPickerRow({
     const assetId = typeof value === "string" && value.trim() ? value.trim() : null;
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
-    let context: ReturnType<typeof useWorkspace>["context"] | null = null;
+    let workspace: ReturnType<typeof useWorkspace> | null = null;
     try {
-        context = useWorkspace().context;
+        workspace = useWorkspace();
     } catch {
-        context = null;
+        workspace = null;
     }
+    const context = workspace?.context ?? null;
+    const isInitialized = workspace?.isInitialized ?? false;
+    // A clip pin may be answered by a set, for the same reason a picture pin may: one sound with one
+    // job, sung or spoken in each language the game ships. The build writes the answer onto the node
+    // that stores the id - see `@shared/build/blueprintAssetSets`.
+    const { virtualGroups } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Audio,
+        enabled: true,
+    });
     const assetLibraryRevision = useAssetLibraryRevision();
     const asset = useMemo(() => {
         if (!assetId || !context) {
             return null;
         }
-        return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[assetId] ?? null;
-        // `assetLibraryRevision`: this row prints the clip's name and reads its in/out marks, and
-        // both are edited elsewhere on the record this holds.
+        // A set stands for a file, and what this row reads off the record - the in/out marks below -
+        // is a property of the file. The editor previews in the project's own language, so that is
+        // the member whose marks describe what an author would hear here.
+        const fileId = resolveEditorAssetSetMember(context, assetId) ?? assetId;
+        return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[fileId] ?? null;
+        // `assetLibraryRevision`: this row reads the clip's in/out marks, which are edited elsewhere
+        // on the record this holds - and a retag can move which file a set resolves to.
     }, [assetId, assetLibraryRevision, context]);
-    const assetName = asset?.name ?? null;
+    // The name is the set's when the id names one, so a reference the picker just offered does not
+    // read back as a clip the project does not have.
+    const assetName = useAssetPinDisplayName(assetId);
     // Whether the author marked in/out points on this clip decides whether Loop loops the body or
     // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),
     // so the node has to say which it is.
@@ -281,6 +305,7 @@ function AudioAssetPickerRow({
                     onChange?.(assets[0]?.id ?? null);
                     setSelectorOpen(false);
                 }}
+                {...(virtualGroups ? { virtualGroups } : {})}
             />
         </div>
     );
@@ -300,7 +325,7 @@ function ImageAssetPickerCard({
     const { t } = useTranslation();
     const normalized = normalizeBlueprintImageAssetValue(value);
     const assetId = normalized?.assetId ?? null;
-    const assetName = useImageAssetDisplayName(assetId);
+    const assetName = useAssetPinDisplayName(assetId);
     const { url, loading, error } = useAssetObjectUrl(assetId);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
