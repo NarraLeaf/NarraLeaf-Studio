@@ -33,6 +33,18 @@ vi.mock("@/lib/app/bridge", () => ({
             listServers: () => Promise.resolve({ success: true, data: { servers: [] } }),
             listServerProjects: () => Promise.resolve({ success: true, data: { ok: true, projects: [] } }),
         },
+        // The cell opens a session with this project's server the moment it is drawn - that
+        // is what makes the check automatic - so a stand-in for the whole team side of the
+        // bridge is what any mount of it needs. Answering "no session" throughout is the
+        // state every assertion below is written against.
+        team: {
+            open: () => Promise.resolve({ success: false }),
+            call: () => Promise.resolve({ success: false }),
+            subscribe: () => Promise.resolve({ success: false }),
+            unsubscribe: () => Promise.resolve({ success: false }),
+            onConnectionChanged: () => ({ cancel: vi.fn() }),
+            onEvent: () => ({ cancel: vi.fn() }),
+        },
         app: { launchSettings: vi.fn() },
     }),
 }));

@@ -5,6 +5,7 @@ import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VcsServerSession } from "@shared/types/vcs";
 import { TeamPanel } from "./TeamPanel";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
+import type { TeamProjectSurface } from "../../hooks/useTeamProject";
 
 /**
  * The Team panel is where a project's destination and this machine's account are settled.
@@ -35,6 +36,7 @@ const bridge = vi.hoisted(() => ({
     servers: [] as VcsServerSession[],
     launchSettings: vi.fn(),
     listServerProjects: vi.fn(),
+    teamCall: vi.fn(),
 }));
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
@@ -45,6 +47,9 @@ vi.mock("@/lib/app/bridge", () => ({
             probeServer: () => Promise.resolve({ success: false }),
             addServer: () => Promise.resolve({ success: false }),
         },
+        // The panel itself opens no session - the cell above it does - but the collaboration
+        // rows call through this bridge, so what a press reached is readable here.
+        team: { call: bridge.teamCall },
         app: { launchSettings: bridge.launchSettings },
     }),
 }));
@@ -57,6 +62,7 @@ afterEach(() => {
         success: true,
         data: { ok: true, projects: [] },
     });
+    bridge.teamCall.mockReset().mockResolvedValue({ success: true, data: { ok: true, value: null } });
 });
 
 const ONE = "lore://one.example.lan:41337";
@@ -70,7 +76,33 @@ function session(displayName: string, name?: string): VcsServerSession {
     } as VcsServerSession;
 }
 
-function panel(overrides: Partial<VersionSurface> = {}) {
+/**
+ * What the server itself is saying, which the cell above this panel holds.
+ *
+ * Defaults to a project the server has confirmed it holds and offers nothing else about,
+ * because that is the state every other assertion here is written against. The states
+ * that say something - a project the server does not hold, a room open on it - are passed
+ * in by the tests that are about them.
+ */
+function team(overrides: Partial<TeamProjectSurface> = {}): TeamProjectSurface {
+    return {
+        state: {
+            kind: "verified",
+            project: { id: "abc", name: "my-game", description: "", createdAt: 0, remote: `${ONE}/my-game` },
+        },
+        remoteOrigin: ONE,
+        clients: [],
+        live: [],
+        overlay: null,
+        canLive: false,
+        canOverlay: false,
+        canSeeClients: false,
+        refresh: vi.fn(),
+        ...overrides,
+    } as TeamProjectSurface;
+}
+
+function panel(overrides: Partial<VersionSurface> = {}, server: TeamProjectSurface = team()) {
     const onClose = vi.fn();
     const surface = {
         authorName: "Ada Blackwood",
@@ -91,7 +123,7 @@ function panel(overrides: Partial<VersionSurface> = {}) {
         signOutOfServer: vi.fn(() => Promise.resolve()),
         ...overrides,
     } as unknown as VersionSurface;
-    render(<TeamPanel surface={surface} isOpen onClose={onClose} />);
+    render(<TeamPanel surface={surface} team={server} isOpen onClose={onClose} />);
     return { surface, onClose };
 }
 
@@ -248,5 +280,171 @@ describe("the account the Team panel names", () => {
 
         expect(seam("needs-account")?.textContent).toBe("workspace.shell.team.noAccountHere");
         expect(action("workspace.shell.versionControl.server.picker.add")).toBeTruthy();
+    });
+});
+
+/**
+ * What the server itself says, as opposed to what is written on this disk.
+ *
+ * Everything above this point in the panel is read locally and was true before this round:
+ * the address out of the repository, the account out of the machine's session list. None
+ * of it is a fact about the server, and a project can point at one that is switched off,
+ * or that no longer holds it, and read as connected right up until Send is refused.
+ *
+ * So what is pinned here is the half that contacts it: that a project the server does not
+ * hold says so rather than looking fine, that a project it does hold says nothing at all,
+ * and that the three things only the server can answer - who else is here, what room is
+ * open, what is attached - are drawn from it rather than from anything kept on this side.
+ */
+describe("what the server answered", () => {
+    function seam(name: string): HTMLElement | null {
+        return document.querySelector(`[data-team-seam="${name}"]`);
+    }
+
+    it("says connected where the server holds this project", () => {
+        panel();
+        // The state slot, and only the state slot. Said twice - once as this word and once
+        // as a line under the address - it read as two problems on a real machine.
+        expect(seam("server-state")?.textContent).toBe("workspace.shell.team.connected");
+    });
+
+    it("says so where that server does not hold this project", () => {
+        panel({}, team({ state: { kind: "not-there" } }));
+        expect(seam("server-state")?.textContent).toBe("workspace.shell.team.notThere");
+    });
+
+    it("says so where that server is not answering", () => {
+        panel({}, team({ state: { kind: "unreachable", detail: "ECONNREFUSED" } }));
+        expect(seam("server-state")?.textContent).toBe("workspace.shell.team.unreachable");
+        // The transport's own sentence is for a log. What a reader is given is the one
+        // line about what to do, in their language.
+        expect(seam("destination")?.textContent).not.toContain("ECONNREFUSED");
+    });
+
+    it("draws nothing about collaboration until the project is confirmed", () => {
+        panel({}, team({ state: { kind: "connecting" }, canLive: true, canSeeClients: true }));
+        expect(seam("collaboration")).toBeNull();
+    });
+
+    it("counts the machines on this project, and says when it is alone", () => {
+        panel({}, team({
+            canSeeClients: true,
+            clients: [
+                { id: "a", account: "ada", label: "Nomen", agent: "", since: 1 },
+                { id: "b", account: "bob", label: "iMac", agent: "", since: 1 },
+            ],
+        }));
+        expect(seam("clients")?.textContent).toContain("workspace.shell.team.hereMany");
+
+        cleanup();
+        panel({}, team({ canSeeClients: true, clients: [{ id: "a", account: "ada", label: "Nomen", agent: "", since: 1 }] }));
+        expect(seam("clients")?.textContent).toContain("workspace.shell.team.hereAlone");
+    });
+
+    it("offers a live session where the server has rooms, and opens one at the read head", () => {
+        panel({}, team({ canLive: true, head: "rev-9" }));
+        const open = seam("live-open");
+        expect(open?.textContent).toBe("workspace.shell.team.liveOpen");
+
+        fireEvent.click(open as HTMLElement);
+        expect(bridge.teamCall).toHaveBeenCalledWith(
+            ONE,
+            "live.open",
+            // The version the server last read, which is what everybody in the room has in
+            // common. Never one this side invented.
+            { project: "abc", revision: "rev-9" },
+        );
+    });
+
+    it("offers to join a room this window is not in", () => {
+        panel({}, team({
+            canLive: true,
+            live: [{
+                id: "room-1",
+                project: "abc",
+                title: "act one",
+                openedBy: "bob",
+                openedByInstance: "bob-1",
+                openedAt: 1,
+                members: [{ instance: "bob-1", account: "bob", label: "iMac", joinedAt: 1 }],
+            }],
+        }));
+        expect(seam("live")?.textContent).toContain("act one");
+        fireEvent.click(seam("live-join") as HTMLElement);
+        expect(bridge.teamCall).toHaveBeenCalledWith(ONE, "live.join", { session: "room-1" });
+    });
+
+    it("offers to leave the room it is in, and to end only the one it opened", () => {
+        const room = {
+            id: "room-1",
+            project: "abc",
+            openedBy: "ada",
+            openedByInstance: "mine",
+            openedAt: 1,
+            members: [{ instance: "mine", account: "ada", label: "Nomen", joinedAt: 1 }],
+        };
+        panel({}, team({ canLive: true, instance: "mine", live: [room] }));
+        expect(seam("live-leave")).not.toBeNull();
+        expect(seam("live-end")).not.toBeNull();
+
+        cleanup();
+        // The same room, opened by somebody else. Leaving is still offered; ending is not.
+        panel({}, team({
+            canLive: true,
+            instance: "mine",
+            live: [{ ...room, openedByInstance: "theirs", members: [...room.members] }],
+        }));
+        expect(seam("live-leave")).not.toBeNull();
+        expect(seam("live-end")).toBeNull();
+    });
+
+    it("counts what is attached, and how much of it is about an older version", () => {
+        const attached = (revision: string, id: string) => ({
+            id,
+            project: "abc",
+            anchor: { document: "story/act-one.json", element: "row-14", revision },
+            kind: "review",
+            body: "{}",
+            createdAt: 1,
+            updatedAt: 1,
+        });
+        panel({}, team({
+            canOverlay: true,
+            overlay: {
+                total: 3,
+                head: "rev-9",
+                records: [attached("rev-9", "a"), attached("rev-8", "b"), attached("rev-7", "c")],
+            },
+        }));
+        expect(seam("attached")?.textContent).toContain("workspace.shell.team.attached");
+        expect(seam("attached-outdated")?.textContent).toBe("workspace.shell.team.attachedOutdated");
+    });
+
+    it("calls nothing outdated while the server has not read a head", () => {
+        panel({}, team({
+            canOverlay: true,
+            overlay: {
+                total: 1,
+                records: [{
+                    id: "a",
+                    project: "abc",
+                    anchor: { document: "story/act-one.json", revision: "rev-1" },
+                    kind: "review",
+                    body: "{}",
+                    createdAt: 1,
+                    updatedAt: 1,
+                }],
+            },
+        }));
+        // ⚠ A missing head is "this server has not read that repository yet", never "there
+        // are no revisions". Comparing against it would mark everything stale for a minute
+        // after every restart.
+        expect(seam("attached")).not.toBeNull();
+        expect(seam("attached-outdated")).toBeNull();
+    });
+
+    it("says nothing about attached data where there is none", () => {
+        panel({}, team({ canOverlay: true, overlay: { total: 0, records: [] } }));
+        expect(seam("attached")).toBeNull();
     });
 });

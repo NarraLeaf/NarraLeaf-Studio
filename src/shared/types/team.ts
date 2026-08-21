@@ -39,12 +39,26 @@ export const TEAM_SOCKET_PATH = "/api/team/v1/socket";
 /** What the shapes in this file are, as a whole. Compared with the server's opening frame. */
 export const TEAM_PROTOCOL_VERSION = 1;
 
-/** The names a server announces, and Studio matches literally. */
+/**
+ * The names a server announces, and Studio matches literally.
+ *
+ * **Two different things are called a session in this file and it is worth being clear
+ * once.** A *link session* is the socket: one per server, opened by Studio on its own the
+ * moment a screen needs that server, and never seen by anybody. A *live session* is a
+ * room somebody opens on a project so that the machines working on it together can be
+ * found and spoken to. The first is `session`; the second is `live`.
+ */
 export type TeamCapability =
-    /** The session exists at all. Everything below implies it. */
+    /** The link session exists at all. Everything below implies it. */
     | "session"
     /** Threads and comments anchored in a project. */
-    | "comments";
+    | "comments"
+    /** Which installations are connected, and what each has open. */
+    | "clients"
+    /** Live sessions: rooms on a project, for finding installations and broadcasting to them. */
+    | "live"
+    /** Data attached to a project at a revision, which never enters the repository. */
+    | "overlay";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -115,6 +129,53 @@ export function teamProjectTopic(projectId: string): string {
 export function teamProjectThreadsTopic(projectId: string): string {
     return `project:${projectId}/threads`;
 }
+
+/** What is attached to one project without being in its repository. */
+export function teamProjectOverlayTopic(projectId: string): string {
+    return `project:${projectId}/overlay`;
+}
+
+/** Which installations have one project open. */
+export function teamProjectClientsTopic(projectId: string): string {
+    return `project:${projectId}/clients`;
+}
+
+/** The live sessions open on one project. */
+export function teamProjectLiveTopic(projectId: string): string {
+    return `project:${projectId}/live`;
+}
+
+/**
+ * What is being said inside one live session.
+ *
+ * The only topic here that is not about something stored. Nothing published on it is
+ * kept: it reaches whoever is subscribed at that instant and is forgotten. A window that
+ * was not connected missed it and has nothing to re-read, because anything that had to
+ * survive was written through `overlay.put` or pushed to the repository.
+ */
+export function teamLiveTopic(sessionId: string): string {
+    return `live:${sessionId}`;
+}
+
+/* ------------------------------------------------------------------ limits */
+
+/** The most one anchor field the server stores may be. */
+export const TEAM_ANCHOR_FIELD_LIMIT = 512;
+
+/** The most a comment may be. */
+export const TEAM_COMMENT_BODY_LIMIT = 8 * 1024;
+
+/** The most a suggestion may carry. */
+export const TEAM_SUGGESTION_LIMIT = 64 * 1024;
+
+/** The most one overlay record may carry. */
+export const TEAM_OVERLAY_BODY_LIMIT = 64 * 1024;
+
+/** The most one thing said in a live session may be. */
+export const TEAM_LIVE_PAYLOAD_LIMIT = 16 * 1024;
+
+/** The most any single field describing an installation may be. */
+export const TEAM_INSTANCE_FIELD_LIMIT = 256;
 
 /* ----------------------------------------------------------------- anchors */
 
@@ -205,6 +266,131 @@ export type TeamProjectsEvent =
     | { kind: "project-forgotten"; project: string }
     | { kind: "project-read"; project: string };
 
+/* ------------------------------------------------------- client instances */
+
+/**
+ * One installation of Studio, as a server knows it while it is connected.
+ *
+ * **An instance is a window, not a person and not a machine.** The account says who; the
+ * instance says which project on which installation, because that is the unit anything
+ * real-time has to address. Studio composes the id out of its own installation id and the
+ * repository id of the project the window holds, so the same window reopened after a
+ * restart is recognisably the same instance - see `teamInstanceId`.
+ *
+ * Nothing about one is stored on the server. It is a fact about who is here now, and it
+ * ends when the socket does.
+ */
+export interface TeamClientInstance {
+    id: string;
+    /** Which account it is connected as, by username. */
+    account: string;
+    /** What a person would call this machine, as this installation chose to say it. */
+    label: string;
+    /** Which client and which build, for a line in a log. */
+    agent: string;
+    /** The project this window has open, absent for an installation that named none. */
+    project?: string;
+    /** What that project stands at on that machine, as it reported it. */
+    revision?: string;
+    /** When it announced itself on its current link session. Epoch ms, the server's clock. */
+    since: number;
+}
+
+/** What arrives on a project's clients topic. */
+export type TeamClientsEvent =
+    | { kind: "client-here"; client: TeamClientInstance }
+    | { kind: "client-gone"; client: string };
+
+/* ---------------------------------------------------------- live sessions */
+
+/**
+ * A room on one project, opened by a person.
+ *
+ * It exists to answer which installations are working on this together right now, and to
+ * give the server somewhere to send what one of them says to the others. **It holds
+ * nothing**: everything produced inside one is written through overlay or pushed to the
+ * repository, both of which are still there when the room is not. So it lives in the
+ * server's memory, a restart ends every one of them, and nothing is lost.
+ */
+export interface TeamLiveSession {
+    id: string;
+    project: string;
+    /** What the project stood at when it was opened, as the opener reported it. */
+    revision?: string;
+    title?: string;
+    /** Who opened it, by username. */
+    openedBy: string;
+    openedByInstance: string;
+    openedAt: number;
+    /** Who is in it now. Never empty: the last one out closes it. */
+    members: TeamLiveMember[];
+}
+
+export interface TeamLiveMember {
+    instance: string;
+    account: string;
+    label: string;
+    joinedAt: number;
+}
+
+/** What arrives on a project's live topic. */
+export type TeamLiveEvent =
+    | { kind: "live-opened"; session: TeamLiveSession }
+    | { kind: "live-changed"; session: TeamLiveSession }
+    | { kind: "live-closed"; session: string };
+
+/**
+ * One thing said inside a live session, as it arrives on that session's topic.
+ *
+ * `payload` is Studio's own and the server never reads it. Every participant receives
+ * every message including their own, which is what lets a window tell a round trip it
+ * made from one it did not.
+ */
+export interface TeamLiveMessage {
+    session: string;
+    /** The instance that said it. */
+    from: string;
+    account: string;
+    at: number;
+    payload: unknown;
+}
+
+/* --------------------------------------------------------------- overlay */
+
+/**
+ * Something attached to a project at a revision, which is not in the repository.
+ *
+ * **The third place a project's content can live, and the only one that is neither the
+ * repository nor a version of it.** A revision is what an author recorded; a thread is a
+ * conversation about one; a record here is anything else Studio wants kept beside a place
+ * in a project without changing what that project is - a review mark on a story row, a
+ * translator's flag, a note from a playtest.
+ *
+ * `kind` and `body` are Studio's, and the server groups by the first and never opens the
+ * second. Whether a record is still about anything is Studio's question too: the server
+ * hands back the revision each record was written against and the head it last read, and
+ * makes no comparison, because only this side is holding the document.
+ */
+export interface TeamOverlayRecord {
+    id: string;
+    project: string;
+    /** Where it is attached. `revision` is always there, unlike a thread's. */
+    anchor: TeamAnchor & { revision: string };
+    kind: string;
+    body: string;
+    /** Who wrote it, by username, and absent for an account the server no longer has. */
+    author?: string;
+    /** Which installation wrote it, absent for one that did not say. */
+    instance?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+/** What arrives on a project's overlay topic. */
+export type TeamOverlayEvent =
+    | { kind: "overlay-put"; record: TeamOverlayRecord }
+    | { kind: "overlay-dropped"; record: string; anchor: TeamAnchor };
+
 /* ------------------------------------------------------------ method names */
 
 /**
@@ -225,7 +411,35 @@ export const TeamMethod = {
     threadsResolve: "threads.resolve",
     commentsEdit: "comments.edit",
     commentsDelete: "comments.delete",
+    clientsAnnounce: "clients.announce",
+    clientsWithdraw: "clients.withdraw",
+    clientsList: "clients.list",
+    liveList: "live.list",
+    liveOpen: "live.open",
+    liveJoin: "live.join",
+    liveLeave: "live.leave",
+    liveClose: "live.close",
+    liveSay: "live.say",
+    overlayList: "overlay.list",
+    overlayPut: "overlay.put",
+    overlayDrop: "overlay.drop",
 } as const;
+
+/**
+ * The id this installation announces for one project's window.
+ *
+ * **Composed rather than random, and composed of both halves on purpose.** The
+ * installation id alone would make two windows of one Studio a single instance, and they
+ * would overwrite each other's presence; a fresh id per connection would make the same
+ * window a stranger every time it reconnected. This is stable across restarts and
+ * distinct per project, which is exactly what a room's membership needs.
+ *
+ * The server never takes this apart. It is one opaque string to it, like every other id
+ * Studio hands over.
+ */
+export function teamInstanceId(installation: string, projectId: string | null): string {
+    return projectId === null ? installation : `${installation}.${projectId}`;
+}
 
 export type TeamMethodName = (typeof TeamMethod)[keyof typeof TeamMethod];
 
@@ -282,6 +496,17 @@ export interface TeamConnection {
     serverVersion?: string;
     /** Why it is not ready, in English, for a log. Absent while it is. */
     detail?: string;
+    /**
+     * Why there is no session, where the reason is Studio's rather than the server's.
+     *
+     * **`offline` covers two things a screen has to say differently**: a host that is not
+     * answering, and a server this installation cannot open a session with at all -
+     * because it has no record of it, or because the sealed token cannot be read. The
+     * second never reaches a socket, so there is no transport sentence to report and no
+     * amount of waiting that fixes it. Absent for the ordinary case, where `detail`
+     * carries what the transport said.
+     */
+    problem?: TeamProblem;
     /** When this state began. Epoch ms. */
     since: number;
 }

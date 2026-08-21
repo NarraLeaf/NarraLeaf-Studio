@@ -865,6 +865,27 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: null,
     },
     {
+        // What a collaborator sees this machine called, beside the account name, wherever a
+        // Team server lists who has a project open. Read by the main process as each session
+        // opens (`managers/team/clientInstance.ts`), so a change reaches the next server this
+        // machine connects to rather than the next launch.
+        //
+        // Empty falls back to the host name, which is what most people would put here anyway.
+        // It is a field rather than a fact because a host name is published to everybody on
+        // that server, and somebody who would rather it were not has to have somewhere to say
+        // so. Nothing here identifies the installation - that is a separate id which is never
+        // shown and never leaves the main process.
+        key: "team.machineLabel",
+        category: "servers",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "This machine's name",
+        labelKey: "settings.items.teamMachineLabel.label",
+        description: "Shown to collaborators beside your account. Leave empty to use the host name.",
+        descriptionKey: "settings.items.teamMachineLabel.description",
+        defaultValue: "",
+    },
+    {
         // Rendered by `SETTING_PANELS.cacheInventory`. Nothing is stored under this key; the panel
         // measures the buckets over IPC and clears them the same way.
         key: "data.cache",

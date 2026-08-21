@@ -125,13 +125,20 @@ function harness(options: { token?: string | null; servers?: VcsServerSession[] 
     const windows: FakeWindow[] = [];
     const clients: FakeClient[] = [];
     const closed = new EventEmitter();
+    const stored = new Map<string, string>();
     const app = {
         windowManager: {
             events: closed,
             getWindows: () => windows,
         },
         logger: { info: () => undefined, debug: () => undefined },
-        getGlobalState: () => ({}),
+        // A store rather than an empty object: opening a client reads this installation's
+        // own id out of it and mints one on the way past if there is none.
+        getGlobalState: () => ({
+            get: (key: string) => stored.get(key),
+            set: (key: string, value: string) => stored.set(key, value),
+        }),
+        getAppInfo: () => ({ version: "0.0.0-test" }),
         getUserDataDir: () => "/tmp/userdata",
     };
     const manager = new TeamManager(

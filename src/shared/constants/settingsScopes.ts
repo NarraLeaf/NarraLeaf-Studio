@@ -110,4 +110,10 @@ export const UNEXPORTED_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundBlur",
     "versionControl.authorName",
     "versionControl.authorEmail",
+    // Also the identity, for the same reason and one more of its own. The label is what
+    // collaborators see this machine called, which is as personal as a host name; the id
+    // is what a Team server tells one installation from another by, and two machines
+    // sharing one would be two windows claiming to be the same window.
+    "team.machineLabel",
+    "team.installationId",
 ];
