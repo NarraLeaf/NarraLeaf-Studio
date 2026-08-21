@@ -712,20 +712,6 @@ export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcs
     }
 }
 
-/** Ask a server to make a project. */
-export class VcsCreateServerProjectHandler extends IPCHandler<IPCEventType.vcsCreateServerProject> {
-    readonly name = IPCEventType.vcsCreateServerProject;
-    readonly type = IPCMessageType.request;
-
-    public async handle(
-        window: AppWindow,
-        { remoteOrigin, name, description }: IPCEvents[IPCEventType.vcsCreateServerProject]["data"],
-    ): Promise<RequestStatus<VcsServerProjectOutcome>> {
-        return this.tryUse(async () =>
-            window.app.getVcsManager().createServerProject(remoteOrigin, name, description));
-    }
-}
-
 /** Put the project that is open on to a server, in the three steps that make it reachable. */
 export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublishProject> {
     readonly name = IPCEventType.vcsPublishProject;

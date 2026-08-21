@@ -3,7 +3,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { translate, useTranslation } from "@/lib/i18n";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
-import { CloneFailure, CloneStatus, ImportFailure, ImportStatus, ProjectData, ProjectFlow, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
+import { CloneFailure, CloneStatus, ImportFailure, ImportStatus, ProjectData, ProjectFlow, PublishTarget, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
 import { defaultProjectData, WIZARD_FLOW_STEPS } from "../constants";
 import { ValidationService } from "../services/validationService";
 import { DirectoryService } from "../services/directoryService";
@@ -53,6 +53,23 @@ export function useProjectWizard() {
     const [cloneFailure, setCloneFailure] = useState<CloneFailure | null>(null);
     const [importStatus, setImportStatus] = useState<ImportStatus>("idle");
     const [importFailure, setImportFailure] = useState<ImportFailure | null>(null);
+    /**
+     * The server this project is being made for, when the wizard was opened from one.
+     *
+     * Read once off the window's props and never written here. Nothing in this hook sends
+     * anything: what it changes is what the wizard asks - the origin is answered, version
+     * control is answered, and the review page has a server to name.
+     */
+    const [publishTo, setPublishTo] = useState<PublishTarget | null>(null);
+    /**
+     * Whether the address on screen is still the one this window was handed.
+     *
+     * The picker above the address field exists for the author who came here with nothing:
+     * it turns "paste a repository address" into "choose one off a server". Somebody who
+     * arrived by choosing a project has already used it, and showing it again offers the
+     * choice they just made as though it had not been made.
+     */
+    const [addressGiven, setAddressGiven] = useState(false);
 
     const [projectData, setProjectData] = useState<ProjectData>(defaultProjectData);
 
@@ -116,7 +133,19 @@ export function useProjectWizard() {
                     // The source page, not the last one: where the copy lands is still the
                     // author's to choose, and it is chosen through the native picker there.
                     setCurrentStep("source");
+                    setAddressGiven(true);
                     setProjectData(prev => ({ ...prev, remoteUrl }));
+                    return;
+                }
+                const target = props.data?.publishTo;
+                if (target) {
+                    // The create flow, on its first page. That page is where the template is
+                    // picked, so it is not skipped - only the column of origins on it is, and
+                    // that is `OriginStep`'s business. Version control is settled here rather
+                    // than offered: a project with no repository has nothing to send.
+                    setFlow("create");
+                    setPublishTo(target);
+                    setProjectData(prev => ({ ...prev, versionControl: "lore" }));
                 }
             } catch {
                 // A wizard that cannot say how it was opened is still a wizard: it opens on its
@@ -292,6 +321,9 @@ export function useProjectWizard() {
         setProjectData(prevData => ({ ...prevData, remoteUrl }));
         // A new address is a new attempt; the last one's verdict no longer describes anything.
         setCloneFailure(null);
+        // Changing it is the author saying the project they were handed is not the one they
+        // meant, so the list of projects to choose from comes back.
+        setAddressGiven(false);
     }, []);
 
     /**
@@ -570,6 +602,8 @@ export function useProjectWizard() {
         cloneFailure,
         importStatus,
         importFailure,
+        publishTo,
+        addressGiven,
         locationInputDirty,
         locationInputFocused,
         appIdManuallyEdited,
