@@ -38,6 +38,7 @@ export const project = {
         appTags: "Build variants",
         userData: "Player files",
         icons: "Icons",
+        screenEffects: "Screen effects",
         dependencies: "Dependencies",
         saving: "Saving",
         olderSaves: "Older saves",
@@ -466,6 +467,16 @@ export const project = {
             center: "Center",
             right: "Right",
         },
+    },
+    // Project -> App -> Screen effects. The `/vfx` sources Studio makes for a project, and the one
+    // decision that is the same for all of them. What the rate costs is the `screenEffects` help
+    // topic, reached by the `?` on this heading.
+    screenEffects: {
+        // Named for the sources this reaches rather than for the command they belong to. A clip the
+        // author imported plays at the rate it was made at, and nothing here changes that.
+        frameRateTitle: "Weather frame rate",
+        frameRateDescription: "Applies to snow, rain and sakura. Imported clips keep the frame rate they were made at.",
+        frameRateOption: "{rate} fps",
     },
     dependencies: {
         rescan: "Rescan",

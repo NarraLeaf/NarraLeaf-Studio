@@ -34,6 +34,7 @@ import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
+import { useStableVisibleRows } from "./storyRowIdentity";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
@@ -849,6 +850,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Read once for the whole list. As a prop it crosses the rows' memo boundary, which is what makes
     // them all repaint when the author changes it in the (separate) Settings window.
     const rowHighlight = useStoryRowHighlight();
+    /**
+     * Hold each mounted row's projection at one identity for as long as it projects the same line.
+     *
+     * Applied here rather than in the controller because it is only wanted for the rows about to
+     * mount: the list is windowed, and signing every row of a long scene to serve the screenful on it
+     * would cost more than the repaint this saves. See `storyRowIdentity`.
+     */
+    const stabilizeRow = useStableVisibleRows();
     const estimatedRowHeight = STORY_DENSITY_METRICS[editor.density].rowBox + ROW_VERTICAL_PADDING_PX;
     const rowVirtualizer = useVirtualizer({
         count: editor.visibleRows.length,
@@ -2195,10 +2204,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
                     <div ref={rowListRef} style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
                         {rowVirtualizer.getVirtualItems().map(virtualRow => {
-                            const row = editor.visibleRows[virtualRow.index];
-                            if (!row) {
+                            const projected = editor.visibleRows[virtualRow.index];
+                            if (!projected) {
                                 return null;
                             }
+                            const row = stabilizeRow(projected);
                             return (
                             <div
                                 key={row.block.id}
@@ -2261,7 +2271,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                 <StoryBlockRow
                                     row={row}
                                     scene={scene}
-                                    document={document}
+                                    document={editor.documentForRows ?? document}
                                     characters={editor.characters}
                                     commandContext={editor.commandContext}
                                     selected={!insertActive && editor.selectedBlockIds.has(row.block.id)}

@@ -2648,11 +2648,15 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
-            // Forwarded, and the size decided here: a weather clip is baked to the project's own
-            // stage, which this component knows and the compiler deliberately does not. A host with
-            // no baker passes nothing and its weather rows compile to a diagnostic.
+            // Forwarded, and the size and frame rate decided here: a weather clip is baked to the
+            // project's own stage at the project's own rate, both of which this component knows and
+            // the compiler deliberately does not. A host with no baker passes nothing and its
+            // weather rows compile to a diagnostic.
             ...(host.resolveWeatherClip
-                ? { resolveWeatherClip: (ref: WeatherSeedRef) => host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc)) }
+                ? {
+                      resolveWeatherClip: (ref: WeatherSeedRef) =>
+                          host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc, bundle.vfx)),
+                  }
                 : {}),
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,

@@ -12,6 +12,7 @@ import { ProjectDetailsSection } from "../sections/ProjectDetailsSection";
 import { ProjectAppTagsSection } from "../sections/ProjectAppTagsSection";
 import { ProjectUserDataSection } from "../sections/ProjectUserDataSection";
 import { ProjectIconsSection } from "../sections/ProjectIconsSection";
+import { ProjectScreenEffectsSection } from "../sections/ProjectScreenEffectsSection";
 import { ProjectDependenciesSection } from "../sections/ProjectDependenciesSection";
 import type { ProjectSectionProps } from "../sections/types";
 
@@ -26,6 +27,9 @@ export function ProjectAppPage(props: ProjectSectionProps) {
                 player's files to is named after the identifier, and this is where it is changed. */}
             <ProjectUserDataSection {...props} />
             <ProjectIconsSection {...props} />
+            {/* Also a property of the application rather than of the game: it decides what the
+                package carries and what a build spends producing it, and no player ever meets it. */}
+            <ProjectScreenEffectsSection {...props} />
             <ProjectDependenciesSection {...props} />
         </div>
     );
