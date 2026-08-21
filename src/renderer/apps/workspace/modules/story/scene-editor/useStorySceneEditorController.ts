@@ -2284,12 +2284,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (document) {
             // Every other line already speaking as this name comes along; leaving them behind would
             // fork one speaker into two that merely look alike.
-            promoteTempSpeaker(document, trimmed, characterId);
+            //
+            // This reaches the live blocks - the document held here is a shallow copy - so it is the
+            // one edit in the editor that does not go through StoryService. It rewrites dialogue
+            // payloads in any scene, so the story's asset locks are re-derived after it rather than
+            // left to a scoped sync that only knows about the scene on screen.
+            if (promoteTempSpeaker(document, trimmed, characterId) > 0 && storyId) {
+                storyService?.resyncAssetLocks(storyId);
+            }
         }
         setDialogueSpeaker(block, { characterId });
         uiService?.panels.show(CHARACTERS_PANEL_ID);
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
-    }, [characterService, document, setDialogueSpeaker, uiService]);
+    }, [characterService, document, setDialogueSpeaker, storyId, storyService, uiService]);
 
     /**
      * The rows among `blockIds` that speak as ONE unresolved speaker, and which speaker that is.
