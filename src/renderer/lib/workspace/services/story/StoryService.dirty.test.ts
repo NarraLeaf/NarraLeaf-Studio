@@ -301,6 +301,59 @@ describe("StoryService per-file dirty tracking", () => {
         expect(service.isDirty()).toBe(false);
     });
 
+    it("asks the disk about each directory once, not once per save", async () => {
+        const { service, fs } = harness;
+        const story = await seedStory(service, "Repeat");
+        fs.isDirExists.mockClear();
+
+        for (let i = 0; i < 3; i++) {
+            service.renameScene(story.entry.id, story.sceneId, `Pass ${i}`);
+            await service.flushPendingChanges();
+        }
+
+        // Seven per save before this: three for the story tree, one for the document's own
+        // directory, then the same three again for the library index.
+        expect(fs.isDirExists).not.toHaveBeenCalled();
+    });
+
+    it("re-checks the directories after a write fails, so the retry can re-create them", async () => {
+        const { service, failing, fs } = harness;
+        const story = await seedStory(service, "Vanishing");
+        fs.isDirExists.mockClear();
+
+        // What a VCS checkout or another window removing the directory looks like from here: the
+        // write fails even though this service last saw the directory present.
+        failing.add(story.entry.id);
+        service.renameScene(story.entry.id, story.sceneId, "Into the void");
+        await expect(service.flushPendingChanges()).rejects.toThrow();
+
+        failing.clear();
+        fs.isDirExists.mockClear();
+        await (service as never as { flush: () => Promise<void> }).flush();
+
+        // A memo kept across a failure would make every rung of the retry ladder repeat the same
+        // doomed write against a directory nothing ever re-creates.
+        expect(fs.isDirExists).toHaveBeenCalled();
+        expect(service.isDirty()).toBe(false);
+    });
+
+    it("re-checks a restored story's directory, which its deletion removed", async () => {
+        const { service, history, fs } = harness;
+        const story = await seedStory(service, "Undeleted");
+        expect(await service.deleteStory(story.entry.id)).toBe(true);
+        await service.flushPendingChanges();
+        fs.isDirExists.mockClear();
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        await history.settled();
+
+        // The directory went with the story. Still believing in it here is how the restoring write
+        // lands in a directory that no longer exists - the one case a memo cannot be allowed to
+        // answer from, because this service is the thing that removed it.
+        const asked = fs.isDirExists.mock.calls.map(call => call[0] as string);
+        expect(asked.some(path => path.includes(story.entry.id))).toBe(true);
+    });
+
     it("writes a motion asset only when that motion changed", async () => {
         const { service, reset, written } = harness;
         const first = await service.createAnimationAsset({ name: "First" });
