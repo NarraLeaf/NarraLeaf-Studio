@@ -96,7 +96,12 @@ import type {
 } from "@shared/types/appTag";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
-import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
+import type {
+    DictionaryEntryPatch,
+    ProjectDictionaryDocument,
+    ProjectDictionaryEntry,
+    ProjectDictionaryOptions,
+} from "@shared/types/dictionary";
 import type { SpellcheckStatus } from "@shared/types/spellcheck";
 import type { SaveSchema, SaveSchemaField, SaveSchemaFieldType } from "@shared/types/saveSchema";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
@@ -642,28 +647,37 @@ interface IBrandService extends IService {
 }
 
 /**
- * The words the project spells on purpose - character names, place names, invented terms. See
- * `@shared/types/dictionary` for the model.
+ * The terms the project writes on purpose - character names, place names, invented vocabulary - and
+ * how it writes them. See `@shared/types/dictionary` for the model.
  *
- * Besides owning the document it *publishes*: every change pushes the list into Chromium's session
- * dictionary, which is machine-scoped and therefore has to be handed back when the project closes.
+ * Besides owning the document it *publishes*: every change pushes the accepted spellings into the
+ * main process, which holds them per window and therefore has to be handed them back when the
+ * project closes.
  */
 interface IDictionaryService extends IService {
-    load(): Promise<string[]>;
+    load(): Promise<void>;
     save(document: ProjectDictionaryDocument): Promise<void>;
     getDocument(): ProjectDictionaryDocument;
-    listWords(): string[];
+    listEntries(): ProjectDictionaryEntry[];
+    listTerms(): string[];
+    getEntry(term: string): ProjectDictionaryEntry | null;
+    hasTerm(term: string): boolean;
+    /** Whether the spellchecker should leave this word alone: a term, or a variant of one. */
     hasWord(word: string): boolean;
-    /** `false` when there was nothing to add: a blank, or a word the project already spells. */
-    addWord(word: string): boolean;
+    getOptions(): ProjectDictionaryOptions;
+    /** `false` when there was nothing to add: a blank, or a spelling the project already holds. */
+    addTerm(term: string, patch?: Omit<DictionaryEntryPatch, "term">): boolean;
+    /** `false` when there is no such term, or a rename would collide with one. */
+    updateEntry(term: string, patch: DictionaryEntryPatch): boolean;
     /** `false` when the project never held it. */
-    removeWord(word: string): boolean;
+    removeTerm(term: string): boolean;
+    setOptions(patch: Partial<ProjectDictionaryOptions>): void;
     replaceDocument(document: ProjectDictionaryDocument): void;
     /** What the spellchecker settled on at the last push; `null` before the first one. */
     getSpellcheckStatus(): SpellcheckStatus | null;
     /** The language settled on, whenever it changes - so an open story row can re-check. */
     onStatusChanged(handler: (status: SpellcheckStatus | null) => void): () => void;
-    onWordsChanged(handler: (words: string[]) => void): () => void;
+    onEntriesChanged(handler: (entries: ProjectDictionaryEntry[]) => void): () => void;
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;

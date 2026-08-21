@@ -112,7 +112,7 @@ export function SpellSuggestionPopover(props: {
 
     const addWord = useCallback(() => {
         try {
-            dictionaryService?.addWord(word);
+            dictionaryService?.addTerm(word);
         } catch {
             // A recovery-mode workspace never loaded the document. It also freezes project writes,
             // so this row is already disabled - the catch only makes an unanticipated state cost a

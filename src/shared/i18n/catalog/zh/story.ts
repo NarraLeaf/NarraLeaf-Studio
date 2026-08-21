@@ -375,6 +375,12 @@ export const story = {
         noSuggestions: "没有建议",
         addToDictionary: "加入工程词典",
     },
+    /** 右键点击词典标记时弹出的面板：一个动作，以及它背后的词条。 */
+    dictionary: {
+        replaceWith: "替换为 {term}",
+        applyReading: "添加注音 {reading}",
+        openEntry: "在词典中编辑",
+    },
     interpolation: {
         title: "插入值",
         kindVariable: "变量",
