@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React, { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
-import type { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installVirtualLayoutStub } from "@/lib/utils/virtualLayoutTestStub";
+import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetSource, type Asset, type AssetGroup } from "@/lib/workspace/services/assets/types";
 import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from "../AssetsPanelContext";
 import { createEmptyAssetCategoryRecord } from "../state/assetCategoryRecord";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
@@ -18,7 +19,15 @@ vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
     return { ...actual, useFreezeGuard: () => actual.makeFreezeGuard(false, "") };
 });
 
-afterEach(cleanup);
+// The grid is windowed, and a virtualiser reads a layout jsdom does not run. See the stub's note.
+let restoreLayout: () => void = () => undefined;
+beforeEach(() => {
+    restoreLayout = installVirtualLayoutStub({ viewport: 800, row: 180, width: 420 });
+});
+afterEach(() => {
+    cleanup();
+    restoreLayout();
+});
 
 function group(id: string, name: string, parentGroupId?: string): AssetGroup {
     return { id, name, category: AssetCategory.Image, parentGroupId, createdAt: 0, updatedAt: 0 };
@@ -33,18 +42,37 @@ const INNER = group("g-inner", "Buttons", OUTER.id);
  * to pass, and the grid has to settle anyway - it publishes its "leave this folder" handler into the
  * panel's own state, so a handler identity that moves every render is a render loop.
  */
-function Harness({ onRender }: { onRender?: () => void }) {
+/**
+ * A clip rather than a picture: an image tile draws a real thumbnail, which reaches for a cache this
+ * test has no window to stand it up in. What is being counted is tiles, and a clip is one.
+ */
+function clip(index: number): Asset {
+    return {
+        id: `a-${index}`,
+        type: AssetType.Audio,
+        name: `line-${index}.ogg`,
+        hash: `h-${index}`,
+        source: AssetSource.Local,
+        meta: {} as Asset["meta"],
+        tags: [],
+        description: "",
+    };
+}
+
+function Harness({ onRender, library = [] }: { onRender?: () => void; library?: Asset[] }) {
     const [pathIds, setPathIds] = useState<string[]>([]);
     const [toolbarCenter, setToolbarCenter] = useState<AssetsIconViewToolbarCenter | null>(null);
     onRender?.();
 
     const groups = createEmptyAssetCategoryRecord<AssetGroup>();
     groups[AssetCategory.Image] = [OUTER, INNER];
+    const assets = createEmptyAssetCategoryRecord<Asset>();
+    assets[AssetCategory.Media] = library;
 
     const contextValue = {
-        assets: createEmptyAssetCategoryRecord<Asset>(),
+        assets,
         groups,
-        filteredAssets: createEmptyAssetCategoryRecord<Asset>(),
+        filteredAssets: assets,
         filteredGroups: groups,
         matchedGroupIds: new Set<string>(),
         selectedItems: new Set<string>(),
@@ -108,6 +136,18 @@ function enter(groupId: string): void {
     expect(tile).not.toBeNull();
     fireEvent.click(tile as HTMLElement);
 }
+
+describe("AssetsIconView on a large library", () => {
+    it("draws a screenful of tiles, not the library", () => {
+        render(<Harness library={Array.from({ length: 2000 }, (_, index) => clip(index))} />);
+
+        // Three columns at this width, a screenful of rows plus the overscan. What this rules out is
+        // the shape the grid had before: a thumbnail in the DOM for every file in the project.
+        const tiles = document.querySelectorAll("[data-tip]").length;
+        expect(tiles).toBeGreaterThan(0);
+        expect(document.querySelectorAll("[data-index]").length).toBeLessThan(30);
+    });
+});
 
 describe("AssetsIconView breadcrumb on a compact toolbar", () => {
     it("settles after entering a folder", () => {
