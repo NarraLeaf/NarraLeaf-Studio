@@ -271,8 +271,8 @@ function AudioAssetPickerRow({
                 <Music size={11} className="shrink-0 text-fg-subtle" />
                 <span className={`min-w-0 flex-1 truncate ${assetId ? "text-fg" : "text-fg-subtle"}`}>
                     {assetId
-                        ? assetName ?? t("blueprint.image.missing")
-                        : t("blueprint.image.select")}
+                        ? assetName ?? t("blueprint.audio.missing")
+                        : t("blueprint.audio.select")}
                 </span>
                 {marked && (
                     <span className="shrink-0 rounded-md bg-fill-subtle px-1 text-2xs text-fg-subtle">
@@ -283,7 +283,7 @@ function AudioAssetPickerRow({
                     <span
                         role="button"
                         tabIndex={-1}
-                        aria-label={t("common.clear")}
+                        aria-label={t("blueprint.audio.clear")}
                         className="shrink-0 text-fg-subtle hover:text-danger"
                         onClick={event => {
                             event.stopPropagation();
@@ -299,6 +299,7 @@ function AudioAssetPickerRow({
                 assetType={AssetType.Audio}
                 multiple={false}
                 anchorRef={anchorRef}
+                title={t("blueprint.audio.selectTitle")}
                 selectedIds={assetId ? [assetId] : []}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={assets => {

@@ -302,7 +302,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, assetIdIn, loopIn, volumeIn, fadeInIn, execNext, handleOut],
         inspectorParams: [
-            { key: BLUEPRINT_SOUND_PARAM_ASSET, label: "Clip", kind: "audioAsset" },
+            { key: BLUEPRINT_SOUND_PARAM_ASSET, label: "Audio Clip", kind: "audioAsset" },
             audioTrackParam,
         ],
         async execute(ctx) {
