@@ -15,6 +15,7 @@ import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
+    WidgetRuntimeInstanceProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import {
@@ -497,7 +498,10 @@ export function ListRenderer(props: WidgetRendererProps) {
     const listBody = items.slice(0, count).map((item, i) => {
         const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
         const instanceKey = `list-${element.id}-${key}`;
-        const scope: UIListItemScope = { item, index: i, count, key, struct: itemStruct };
+        // On the canvas nothing is selected: `selectedIndex` defaults to a row, and drawing the
+        // template in its selected state would show the author a row most rows will never look like.
+        const selected = isRuntime && i === selectedIndex;
+        const scope: UIListItemScope = { item, index: i, count, key, struct: itemStruct, selected };
         return (
             <div
                 key={`${element.id}__list__${key}`}
@@ -521,11 +525,13 @@ export function ListRenderer(props: WidgetRendererProps) {
                     scope={scope}
                     instanceKey={instanceKey}
                 />
-                {renderChildren?.({
-                    childrenIds: itemTemplateIds,
-                    listItemScope: scope,
-                    instanceKey,
-                })}
+                <WidgetRuntimeInstanceProvider instance={{ key: instanceKey, selected }}>
+                    {renderChildren?.({
+                        childrenIds: itemTemplateIds,
+                        listItemScope: scope,
+                        instanceKey,
+                    })}
+                </WidgetRuntimeInstanceProvider>
             </div>
         );
     });

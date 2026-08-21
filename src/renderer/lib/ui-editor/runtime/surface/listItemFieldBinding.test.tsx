@@ -203,4 +203,25 @@ describe("list item field bindings", () => {
         // it shows is the field's empty value, which is what it will show once there is content.
         expect(renderedTexts(container)).toEqual(["[]", "[]", "[]", "[]"]);
     });
+
+    it("hides a row's own element from a boolean field", () => {
+        const document = listDocument({
+            items: [
+                { id: "a", title: "First", visible: true },
+                { id: "b", title: "Second", visible: false },
+                { id: "c", title: "Third", visible: true },
+            ],
+            boundFieldId: "f-title",
+        });
+        document.structs![STRUCT.id] = {
+            ...STRUCT,
+            fields: [...STRUCT.fields, { id: "f-visible", key: "visible", type: "boolean" }],
+        };
+        document.elements.row!.valueBindings = {
+            ...(document.elements.row!.valueBindings ?? {}),
+            "layout.visible": { kind: "listItemField", fieldId: "f-visible" },
+        };
+        const { container } = mount(document);
+        expect(renderedTexts(container)).toEqual(["[First]", "[Third]"]);
+    });
 });

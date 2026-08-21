@@ -49,6 +49,14 @@ export type UIListItemScope = {
     count: number;
     key: string;
     /**
+     * Whether this is the selected row.
+     *
+     * On the scope because it belongs to the row rather than to any one widget in it: everything in
+     * a selected row reads as selected, and each widget decides for itself whether it has an
+     * appearance row that says so.
+     */
+    selected?: boolean;
+    /**
      * The shape the owning list declared, carried rather than looked up.
      *
      * A field binding is resolved deep inside the element merge, which holds an element and a scope
