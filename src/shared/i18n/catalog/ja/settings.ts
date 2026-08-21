@@ -66,10 +66,11 @@ export const settings = {
             description: "チェックポイントと、そこに記録される作者の情報",
         },
         servers: {
-            // 製品名。プロジェクト作成時とワークスペースの隅で出会う名前と同じものを使う。
+            // 製品名を省略せずに書く。Team だけでは訳し忘れた英単語に見える。
+            // プロジェクト作成時とワークスペースの隅で出会う名前と同じものを使う。
             // パネル内では引き続き個々の機械をサーバーと呼ぶ。
-            label: "Team",
-            description: "このインストールがサインインしている Team サーバーと、使用しているアカウント",
+            label: "NarraLeaf Team",
+            description: "このインストールがサインインしている NarraLeaf Team サーバーと、使用しているアカウント",
         },
         network: {
             label: "ネットワーク",
@@ -359,6 +360,7 @@ export const settings = {
         refresh: "再取得",
         browsing: "読み込んでいます…",
         download: "ダウンロード",
+        update: "更新",
         downloading: "ダウンロードしています…",
         failed: "辞書の一覧を取得できませんでした。設定のネットワークポリシーを確認してください。",
         installed: {
@@ -452,6 +454,10 @@ export const settings = {
                 spellcheckDictionaries: {
                     label: "スペル辞書",
                     description: "スペルチェック用にダウンロードした単語リスト。プロジェクト自身の用語はここにはない",
+                },
+                optimizedImages: {
+                    label: "ビルド用最適化画像",
+                    description: "ビルド時に再エンコードした画像。次のビルドで再生成される",
                 },
                 psdImports: {
                     label: "PSD 読み込みの残り物",

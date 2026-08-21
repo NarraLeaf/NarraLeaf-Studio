@@ -49,6 +49,9 @@ const SPELLCHECK_DICTIONARIES_RELATIVE = path.join(
     CacheNamespace.SpellcheckDictionaries,
 );
 
+/** Re-encoded build images; must agree with `optimizeProjectImages`. */
+const OPTIMIZED_IMAGES_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.OptimizedImages);
+
 export function psdTempRoot(tempDir: string = os.tmpdir()): string {
     return path.join(tempDir, PSD_TEMP_DIR_NAME);
 }
@@ -109,6 +112,11 @@ function bucketDefinitions(userDataDir: string): BucketDefinition[] {
             id: "spellcheckDictionaries",
             dirs: [path.join(userDataDir, SPELLCHECK_DICTIONARIES_RELATIVE)],
             displayPath: path.join(userDataDir, SPELLCHECK_DICTIONARIES_RELATIVE),
+        },
+        {
+            id: "optimizedImages",
+            dirs: [path.join(userDataDir, OPTIMIZED_IMAGES_RELATIVE)],
+            displayPath: path.join(userDataDir, OPTIMIZED_IMAGES_RELATIVE),
         },
         {
             id: "buildDependencies",

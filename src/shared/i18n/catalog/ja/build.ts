@@ -218,10 +218,6 @@ export const build = {
         artifacts: "成果物",
         artifactsEmpty: "作られるファイルを見るには対象を選ぶ",
         openWhenDone: "終わったら出力フォルダを開く",
-        compression: "圧縮",
-        compressionMaximum: "最大（最小サイズ）",
-        compressionNormal: "標準",
-        compressionStore: "なし（最速）",
     },
     /**
      * ビルドが終わったあと、成果物の一覧の下に出す大きさの読み。数字そのものは訳さない。
@@ -290,7 +286,7 @@ export const build = {
         "progress-carry-unsupported":
             "{blueprints} は版と版のあいだで進行状況を引き継ぐが、{platform} のビルドはそれを拒む。"
             + "どちらのノードも失敗の枝に進む",
-        "web-lossy-images": "書き出す画像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
+        "lossy-images": "画像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
         "mobile-template-missing": "モバイルのシェルテンプレートを使えない：{reason}",
         "mobile-payload-too-large": "このプロジェクトのアセット（{size}）は、モバイルのパッケージに収まる大きさを超えている",
         "version-uncodable": "バージョン {version} は Android のバージョンコードに変換できない。メジャーは 2099 まで、マイナーとパッチは 999 まで",

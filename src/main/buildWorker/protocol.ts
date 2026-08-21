@@ -1,6 +1,5 @@
 import type {
     GameBuildArch,
-    GameBuildCompression,
     GameBuildDesktopPlatform,
     GameBuildFormat,
 } from "@shared/types/gameBuild";
@@ -240,13 +239,6 @@ export type GameBuildWorkerWebJob = {
     dirName: string;
     /** File name (under outputDir) the "zip" format is written to. */
     zipName: string;
-    /**
-     * Write `.br`/`.gz` siblings for the site's text files, for a host that
-     * serves precompressed variants. Only the web output gets them - the mobile
-     * packages share `sourceDir` and serve their files directly, so a variant
-     * there is dead weight (see precompressWebSite.ts).
-     */
-    precompress: boolean;
 };
 
 /**
@@ -372,8 +364,6 @@ export type GameBuildWorkerConfig = {
      * a player is meant to read cannot live inside an archive. Unset when the project has none.
      */
     copyrightFile?: string;
-    /** Payload compression; unset uses electron-builder's default ("maximum"). */
-    compression?: GameBuildCompression;
     /** Download mirror for Electron dists (cross builds); empty = official. */
     electronMirror?: string;
     /**

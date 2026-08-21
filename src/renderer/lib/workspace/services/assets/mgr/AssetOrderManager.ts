@@ -79,18 +79,25 @@ export class AssetOrderManager {
         this.orders[category] = document;
 
         const filesystemService = this.context.services.get<FileSystemService>(Services.FileSystem);
-        // `write`, not `writeFileNoFollow`: the no-follow writer opens with an unconditional `lstat`
-        // so it can inspect and refuse a symlink, which means it can only ever *overwrite*. This
-        // file does not exist on the one open that matters most — the first open of any project that
-        // predates it, i.e. every project in existence — and that write failing is not a cosmetic
-        // loss: it is the open on which the author's row order is still recoverable from key order.
-        // The sibling shards use `write` for the same reason. See `GroupAssetsManager`.
-        const result = await filesystemService.write(
+        // `writeFileNoFollowOrCreate`, not `write`. This used to say `write` because the only
+        // no-grant writer that carried the rejection contract, `writeFileNoFollow`, opens with an
+        // unconditional `lstat` and so can only ever *overwrite* - and this file does not exist on
+        // the one open that matters most, the first open of any project that predates it. That
+        // reason is gone: `writeFileNoFollowOrCreate` creates as well as replaces, both branches
+        // atomically. So this write drops the grant round trip and the protocol `PUT`, and gains the
+        // refusal of a symlinked or hard-linked shard. The sibling shards moved with it - see
+        // `GroupAssetsManager`.
+        const result = await filesystemService.writeFileNoFollowOrCreate(
             this.context.project.resolve(ProjectNameConvention.AssetsOrderShard(category)),
             serializeAssetOrderDocument(document),
             "utf-8",
         );
-        if (result.ok) {
+        // `ok` alone is not "on disk". A frozen workspace, or one whose working tree is being
+        // re-read, answers `ok` with `refused` having written nothing (see `FsRequestResult`), and
+        // this set means precisely "the file is not there yet". Forgetting a category on a refusal
+        // is a lie about the disk that costs the author's row order: the recovery from key order is
+        // only available until some later open rewrites the shard sorted.
+        if (result.ok && result.refused !== true) {
             this.missingCategories.delete(category);
         }
         return result;

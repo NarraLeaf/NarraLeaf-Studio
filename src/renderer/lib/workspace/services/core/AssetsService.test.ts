@@ -178,6 +178,7 @@ function createHarness(assets: Asset<AssetType, AssetSource.Local>[], options: H
                 if (serviceId === Services.FileSystem) {
                     return {
                         writeFileNoFollow: async () => ({ ok: true, data: undefined }),
+                        writeFileNoFollowOrCreate: async () => ({ ok: true, data: undefined }),
                         write: async () => ({ ok: true, data: undefined }),
                     };
                 }
