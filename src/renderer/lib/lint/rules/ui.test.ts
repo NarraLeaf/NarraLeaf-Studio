@@ -516,3 +516,73 @@ describe("ui/frame-target-missing", () => {
         ).toEqual([]);
     });
 });
+
+const LAYOUT = { x: 0, y: 0, width: 100, height: 100 };
+
+describe("ui/list-item-field-missing", () => {
+    const STRUCT = { id: "s1", fields: [{ id: "f-title", key: "title", type: "string" as const }] };
+
+    function listPage(bindingFieldId: string, structId: string | null = STRUCT.id): UIDocument {
+        return {
+            schemaVersion: 11,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "page",
+                    name: "Page",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 100, height: 100 },
+                    rootElementId: "root",
+                },
+            ],
+            structs: { [STRUCT.id]: STRUCT },
+            elements: {
+                root: { id: "root", type: "nl.root", parentId: null, childrenIds: ["list"], layout: LAYOUT },
+                list: {
+                    id: "list",
+                    type: "nl.list",
+                    parentId: "root",
+                    childrenIds: ["row"],
+                    layout: LAYOUT,
+                    props: { itemStructId: structId },
+                },
+                row: {
+                    id: "row",
+                    type: "nl.text",
+                    parentId: "list",
+                    childrenIds: [],
+                    layout: LAYOUT,
+                    extra: { listSlot: "itemTemplate" },
+                    valueBindings: { text: { kind: "listItemField", fieldId: bindingFieldId } },
+                },
+            },
+        } as unknown as UIDocument;
+    }
+
+    it("says nothing when the field is declared", async () => {
+        const findings = await run(
+            "ui/list-item-field-missing",
+            createTestLintContext({ uiDocument: listPage("f-title") }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a binding whose field the list no longer declares", async () => {
+        const findings = await run(
+            "ui/list-item-field-missing",
+            createTestLintContext({ uiDocument: listPage("f-gone") }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]?.location).toMatchObject({ surfaceId: "page", elementId: "row" });
+    });
+
+    it("reports a binding on a list that declares no shape at all", async () => {
+        const findings = await run(
+            "ui/list-item-field-missing",
+            createTestLintContext({ uiDocument: listPage("f-title", null) }),
+        );
+        expect(findings).toHaveLength(1);
+    });
+});

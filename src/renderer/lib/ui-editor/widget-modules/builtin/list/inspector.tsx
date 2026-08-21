@@ -28,6 +28,11 @@ import { i18nStore, useTranslation } from "@/lib/i18n";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiStructFieldLabel, type UIStructDef, type UIStructField } from "@shared/types/ui-editor/struct";
 import { ListContentModal } from "./ListContentModal";
+import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
+import {
+    isDefaultUIPageAnimationSettings,
+    normalizeUIPageAnimationSettings,
+} from "@shared/types/ui-editor/pageAnimation";
 import type {
     UIListItemsBinding,
     UIListScrollbarPartStyle,
@@ -811,6 +816,34 @@ function ListContentField(props: CustomFieldProps<UIInspectorData>) {
     );
 }
 
+/**
+ * How a row arrives and leaves.
+ *
+ * The Surface's own animation editor, with the child-timing half shown: on a list, "stagger" is the
+ * gap between one row and the next, which is the same sentence it means on a container. It is the
+ * list that owns this rather than the item template, so that turning it on is one decision about
+ * the list rather than a property hidden on whichever element happens to be the row's root.
+ */
+function ListItemAnimationField(props: CustomFieldProps<UIInspectorData>) {
+    const data = props.data;
+    const current = getLiveListProps(data);
+    const settings = normalizeUIPageAnimationSettings(current.itemAnimation);
+    return (
+        <PageAnimationEditor
+            settings={settings}
+            showExitBlocking={false}
+            showChildTiming
+            onChange={next =>
+                patchListProps(data, {
+                    // Back to defaults is back to having none, so a list nobody animated carries no
+                    // record - the same rule an element's own animation follows.
+                    itemAnimation: isDefaultUIPageAnimationSettings(next) ? null : next,
+                })
+            }
+        />
+    );
+}
+
 export function createListInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
     const { t } = i18nStore.getTranslator();
@@ -973,6 +1006,20 @@ export function createListInspector(ctx: InspectorContext) {
                                 id: "list.layout.compact",
                                 type: "custom",
                                 component: ListLayoutField,
+                            }),
+                        ],
+                    }),
+                    defineField<D, any>({
+                        id: "section.itemAnimation",
+                        type: "section",
+                        title: t("widgets.list.sectionItemAnimation"),
+                        collapsible: true,
+                        defaultCollapsed: true,
+                        fields: [
+                            defineField<D, any>({
+                                id: "list.itemAnimation",
+                                type: "custom",
+                                component: ListItemAnimationField,
                             }),
                         ],
                     }),

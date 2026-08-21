@@ -8,6 +8,11 @@ import type {
 import { isUIListItemsBindingKind } from "@shared/types/ui-editor/list";
 import { normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
 import {
+    isDefaultUIPageAnimationSettings,
+    normalizeUIPageAnimationSettings,
+    type UIPageAnimationSettings,
+} from "@shared/types/ui-editor/pageAnimation";
+import {
     normalizeVerticalTypography,
     type TextWritingMode,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
@@ -166,6 +171,20 @@ function normalizeScrollbar(value: unknown): UIListScrollbarProps {
     };
 }
 
+/**
+ * A stored row animation, or null when the list was never given one.
+ *
+ * Null and "all defaults" are the same thing to the renderer - nothing moves - so an untouched list
+ * keeps no record at all, exactly as an element without an animation does.
+ */
+function normalizeListItemAnimation(value: unknown): UIPageAnimationSettings | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const settings = normalizeUIPageAnimationSettings(value);
+    return isDefaultUIPageAnimationSettings(settings) ? null : settings;
+}
+
 export function getListProps(element: UIElement): ListWidgetProps {
     const raw = (element.props ?? {}) as Partial<ListWidgetProps>;
     return {
@@ -177,6 +196,7 @@ export function getListProps(element: UIElement): ListWidgetProps {
         itemKeyFieldId:
             typeof raw.itemKeyFieldId === "string" && raw.itemKeyFieldId.trim() ? raw.itemKeyFieldId.trim() : null,
         placeholderCount: clampNumber(raw.placeholderCount, defaultListWidgetProps.placeholderCount, 1, 128),
+        itemAnimation: normalizeListItemAnimation(raw.itemAnimation),
         selectedIndex: clampNumber(raw.selectedIndex, defaultListWidgetProps.selectedIndex, -1, 127),
         itemGap: clampNumber(raw.itemGap, defaultListWidgetProps.itemGap, 0, 512),
         repeatDirection:
