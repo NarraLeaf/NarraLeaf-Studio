@@ -970,9 +970,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         registerActionGroup({
             id: groupId,
             label: t("common.edit"),
-            order: 20,
-            // These are this panel's versions of the standard editing commands, so on macOS they
-            // belong under the system Edit menu rather than in a second menu also called Edit.
+            // Behind the history menu's own 20, which is what puts Undo and Redo at the top of the
+            // Edit menu these two now share. Equal orders left the two of them swapping places
+            // whenever the history menu re-registered, which is every undo.
+            order: 21,
+            // These are this panel's versions of the standard editing commands, so they belong under
+            // the standard editing items rather than in a second menu also called Edit - on the
+            // macOS menu bar, and in the title bar, which folds this slot the same way
+            // (`foldActionGroupsByMenuSlot`).
             menuSlot: "edit",
             actions: [
                 {

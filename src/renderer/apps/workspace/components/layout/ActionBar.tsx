@@ -10,6 +10,7 @@ import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from 
 import { isActionFrozenOut, resolveFrozenActionDisabled } from "../ui/freezeActionPolicy";
 import { RunControl } from "../../modules/actions/RunControl";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useTitleBarActionGroups } from "../../hooks/useTitleBarActionGroups";
 import { useTranslation } from "@/lib/i18n";
 import { WorkspaceMenuAction } from "@shared/types/menu";
 import { TooltipGroup } from "@/lib/tooltip";
@@ -54,7 +55,10 @@ interface ActionBarProps {
  */
 export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     const { t } = useTranslation();
-    const { actions, actionGroups } = useRegistry();
+    const { actions } = useRegistry();
+    // Folded, so a panel that contributes to the Edit menu lands inside it rather than opening a
+    // second dropdown that reads the same word (`useTitleBarActionGroups`).
+    const actionGroups = useTitleBarActionGroups();
     const { workspace, context } = useWorkspace();
     const frozen = useWorkspaceFrozen();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
