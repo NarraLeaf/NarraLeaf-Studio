@@ -24,6 +24,24 @@ import {
 } from "./model";
 
 /**
+ * The stage a weather clip covers, in the coordinates the author authored it in.
+ *
+ * Separate from {@link weatherSpecForStage} because the inspector's live preview needs the same
+ * answer and does not want a spec: a preview shows the picture at panel size, so it needs the stage
+ * to scale AGAINST, not the frame count or the id. Two callers deriving "which surface is the
+ * stage?" for themselves is how a preview comes to be a picture of a different composition than the
+ * clip - which is exactly what happened, and what the preview is now scaled from this to avoid.
+ *
+ * The fallbacks are the clip's own: the first surface when nothing is marked as the stage, and
+ * 1080p when there is no document at all. The clip is `cover`-fitted either way, so a size that is
+ * merely close costs nothing an eye can find.
+ */
+export function weatherStageSize(uidoc: UIDocument | undefined): { width: number; height: number } {
+    const stage = uidoc?.surfaces.find(surface => surface.kind === "stageSurface") ?? uidoc?.surfaces[0];
+    return stage?.designSize ?? { width: 1920, height: 1080 };
+}
+
+/**
  * The synthetic asset id a baked clip is addressed by.
  *
  * Baked clips are deliberately not project-library assets: they are derived from the story document
@@ -70,8 +88,7 @@ export function weatherSpecForStage(
     uidoc: UIDocument | undefined,
     vfx: VfxConfiguration | undefined,
 ): WeatherBakeSpec {
-    const stage = uidoc?.surfaces.find(surface => surface.kind === "stageSurface") ?? uidoc?.surfaces[0];
-    const design = stage?.designSize ?? { width: 1920, height: 1080 };
+    const design = weatherStageSize(uidoc);
     const { width, height } = weatherBakeSize(design.width, design.height);
     const fps = vfxFrameRateOf(vfx);
     // The loop length is fixed and the rate is not, so the frame count is derived here rather than

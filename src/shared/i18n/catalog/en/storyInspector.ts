@@ -249,6 +249,7 @@ export const storyInspector = {
         streak: "Streak",
         wind: "Wind (deg)",
         fallSpeed: "Fall speed",
+        flutter: "Flutter",
         depthSpread: "Depth spread",
     },
 

@@ -10,12 +10,36 @@
  * ## The seam is structural
  *
  * Every time-varying term is a function of `phase = frame / frameCount` whose only dependence on
- * phase is `k * phase` with **integer k** — an integer number of fall-lengths, an integer sway
- * harmonic, an integer tumble harmonic. At phase 1 every particle is therefore exactly where it was
- * at phase 0, so the last frame hands over to the first with nothing to interpolate. This is a
- * property of the construction, not a tuning: no parameter an author can move breaks it. `fallSpeed`
- * is the one that reaches into it, and it is admitted precisely because it is a WHOLE number of
- * fall-lengths — it moves the field along the same grid the seam is built on rather than off it.
+ * phase is `k * phase` with **integer k** — an integer number of fall-lengths, an integer flutter
+ * harmonic and its integer octaves. At phase 1 every particle is therefore exactly where it was at
+ * phase 0, so the last frame hands over to the first with nothing to interpolate. This is a property
+ * of the construction, not a tuning: no parameter an author can move breaks it.
+ *
+ * Two things are worth naming because they look like they should break it and do not. `fallSpeed`
+ * reaches into the along-fall term, and is admitted because it is only the BASE from which each
+ * particle's whole number of fall-lengths is derived — the author's figure may be a half, the
+ * particle's count never is. And the flutter's hang (below) displaces a particle along its own fall
+ * line, but does it with a **zero-mean periodic** term at an integer harmonic, which returns to
+ * where it started at phase 1 exactly as the sway does.
+ *
+ * ## What a flutter rate is measured in, and why it is not a harmonic
+ *
+ * A harmonic is cycles per LOOP, and a loop is twelve seconds. Three rounds of this file drew the
+ * sway and tumble harmonics from `1..3` and nothing said that was wrong, because the expression
+ * never mentions how long a loop is. It meant every petal took four to twelve seconds to complete
+ * one turn — 0.08 to 0.25 Hz, a drift rather than a flutter, and a slow pale blob is a snowflake
+ * whatever sprite it was drawn from. The rate is therefore stated in cycles per SECOND on the seed
+ * and converted here, so the loop length is present in the arithmetic instead of implied by it.
+ *
+ * ## The flutter is one motion, not three independent ones
+ *
+ * A petal that sways on one sine, turns its face on a second and descends at a constant rate reads
+ * as machinery, because nothing about it is a consequence of anything else. A real falling plate
+ * couples them: the face it presents is what decides its drag, so it hangs when it shows its face
+ * and drops when it turns edge-on, and it banks into the direction it is sliding. So one flutter
+ * phase drives all three here — the sway across the fall line, the face turn, and a hang along the
+ * fall line that is fastest exactly where the face is thinnest. That coupling is the difference
+ * between a petal and a dot on a sine wave, and it costs one extra term.
  *
  * ## Wind rotates the field, it does not shear it
  *
@@ -34,6 +58,7 @@
  */
 
 import {
+    WEATHER_LOOP_SECONDS,
     WEATHER_SEEDS,
     type ResolvedWeatherParams,
     type WeatherSeedId,
@@ -50,10 +75,30 @@ type Particle = {
     /** Whole fall-spans travelled per loop. Integer — this is what makes the seam exact. */
     fall: number;
     swayAmp: number;
-    /** Integer sway harmonic. */
+    /**
+     * Integer flutter harmonic: cycles per loop, converted from the seed's rate in cycles a second.
+     * Drives the sway, the face turn and the hang together, which is what couples them.
+     */
     swayHarm: number;
     swayPhase: number;
-    /** Integer tumble harmonic. */
+    /**
+     * How far the flutter's hang displaces the particle along its own fall line, in px.
+     *
+     * Bounded at build time so the descent never actually reverses: the term is
+     * `-bobAmp * sin(2 * flutter)`, so its steepest slope against phase is `bobAmp * 4pi * swayHarm`,
+     * and holding that under the particle's own fall rate is what keeps a petal from visibly
+     * floating upward at the top of its hang.
+     */
+    bobAmp: number;
+    /** How far the petal banks into its sway, in radians. */
+    rockAmp: number;
+    /**
+     * Integer harmonic of the SLOW reorientation, on top of the banking.
+     *
+     * One to three turns per loop is right for this one and wrong for the flutter: a petal drifts
+     * round to face a new way over several seconds while it rocks several times a second, and having
+     * both makes the two beat against each other instead of repeating visibly.
+     */
     spinHarm: number;
     spinPhase: number;
     /** Radius across the fall line. */
@@ -70,6 +115,8 @@ export type WeatherField = {
     /** Drawn from the petal bitmap rather than as an ellipse of light. */
     sprite: boolean;
     particles: readonly Particle[];
+    /** How much of a frame the shutter is open for; the seed's, see `WeatherSeedDefinition`. */
+    shutter: number;
     /** Fall direction in screen space, as a unit vector. */
     dirX: number;
     dirY: number;
@@ -105,6 +152,35 @@ function seedNumber(id: WeatherSeedId): number {
         hash = Math.imul(hash, 16777619);
     }
     return hash >>> 0;
+}
+
+/**
+ * The same weather, described for a picture `scale` times the size.
+ *
+ * Every parameter that is a LENGTH shrinks with the picture; `density`, being per unit of area,
+ * shrinks with its square; and everything that is a rate, a count or an angle is untouched. The
+ * result is that {@link buildWeatherField} lays out the same number of particles, each keeping its
+ * share of the frame, crossing it in the same time and fluttering at the same rate - the stage's
+ * composition photographed smaller, rather than a sparser weather that happens to fit.
+ *
+ * This exists because the inspector's preview draws at panel size and the bake draws at stage size,
+ * and they have to be the same picture. Deriving the reduction in the component was how they came to
+ * differ: a preview built at panel size from unscaled parameters is a WINDOW onto the stage, which
+ * shows a dozen enormous particles where the clip has hundreds of small ones.
+ *
+ * ⚠ The result is not clamped to {@link WEATHER_PARAMS} and must not be: a scaled density routinely
+ * exceeds the range an author may type, because the range describes a stage-sized picture.
+ */
+export function scaleWeatherParams(params: ResolvedWeatherParams, scale: number): ResolvedWeatherParams {
+    const k = Math.max(1e-6, scale);
+    return {
+        ...params,
+        density: params.density / (k * k),
+        sizeNear: params.sizeNear * k,
+        sizeFar: params.sizeFar * k,
+        sway: params.sway * k,
+        streak: params.streak * k,
+    };
 }
 
 /**
@@ -152,27 +228,44 @@ export function buildWeatherField(
 
     const count = Math.max(0, Math.round((params.density * fallSpan * vSpan) / 1_000_000));
     const spread = Math.max(1, Math.round(params.depthSpread));
-    // Whole fall-lengths, because the seam is built on that grid (see the header). Rounded here
-    // rather than trusted from the document: this arrives from a stored row an older or newer Studio
-    // may have written, and a fractional one would put a visible jump in every loop.
-    const baseFall = Math.max(1, Math.round(params.fallSpeed));
+    // NOT rounded, unlike each particle's own count below. This is the base the depth scales, and
+    // rounding it made the smallest change an author could ask for a doubling of the whole field.
+    const baseFall = Math.max(0.25, params.fallSpeed);
+    // Cycles a second into cycles a loop. The rounding is where the seam is bought: a whole number
+    // of cycles per loop returns every particle to its starting attitude at phase 1.
+    const flutterHarm = Math.max(1, Math.round(params.flutter * WEATHER_LOOP_SECONDS));
+    // Whether this seed flutters at all. Listing the rate is how a seed says so, and rain does not:
+    // a drop has no face to turn, so it has no drag cycle and must not hang. It falls at one speed,
+    // which is also the only speed its fixed-length streak is drawn for - a drop that slowed while
+    // its smear stayed the same length would be a streak that had come loose from its own motion.
+    const flutters = seed.params.includes("flutter");
     const particles: Particle[] = [];
     for (let i = 0; i < count; i++) {
         // 0 = far, 1 = near. Drives size, brightness and fall rate together, which is what reads as
         // depth: a big flake close to the lens is also the one that crosses the frame fastest.
         const depth = rnd();
         const radius = params.sizeFar + depth * (params.sizeNear - params.sizeFar);
+        // Speed times the depth ratio, rounded to a whole number of lengths - THIS is where the seam
+        // needs a whole number, not on the author's figure. Multiplying rather than adding is what
+        // keeps `depthSpread` meaning the same thing at every speed: the near field stays `spread`
+        // times the far field instead of the ratio flattening as the speed goes up.
+        const fall = Math.max(1, Math.round(baseFall * (1 + depth * (spread - 1))));
+        // Each particle a little off the seed's rate, so the field does not pulse in unison. Phase
+        // alone would not do it: particles sharing a rate stay in step for ever, they merely start
+        // apart. Kept inside a third either way, because a petal drifting at half its neighbour's
+        // rate reads as two different weathers in one picture.
+        const harm = Math.max(1, Math.round(flutterHarm * (0.72 + rnd() * 0.56)));
         particles.push({
             u0: rnd() * fallSpan,
             v0: rnd() * vSpan,
-            // Speed times the depth ratio, rounded to a whole number of lengths. Multiplying rather
-            // than adding is what keeps `depthSpread` meaning the same thing at every speed: the near
-            // field stays `spread` times the far field instead of the ratio flattening as speed goes
-            // up. At `fallSpeed` 1 this is exactly the expression it replaced, to the bit.
-            fall: Math.max(1, Math.round(baseFall * (1 + depth * (spread - 1)))),
+            fall,
             swayAmp: params.sway * (0.4 + rnd() * 0.6),
-            swayHarm: 1 + Math.floor(rnd() * 3),
+            swayHarm: harm,
             swayPhase: rnd(),
+            // A fraction of the distance one flutter cycle covers. `HANG_FRACTION` is under the
+            // 1/4pi that would let the hang out-run the fall itself; see the constant.
+            bobAmp: flutters ? (HANG_FRACTION * fall * fallSpan) / harm : 0,
+            rockAmp: 0.3 + rnd() * 0.5,
             spinHarm: 1 + Math.floor(rnd() * 3),
             spinPhase: rnd(),
             radius,
@@ -186,6 +279,7 @@ export function buildWeatherField(
         tint: seed.tint,
         tumbles: seed.tumbles,
         sprite: seed.sprite ?? false,
+        shutter: seed.shutter,
         particles,
         dirX,
         dirY,
@@ -207,19 +301,42 @@ export function buildWeatherField(
  * field of instantaneous dots reads as strobing rather than as falling. Eight sub-steps is enough
  * for the fastest thing here (a near raindrop crosses about twenty pixels per frame, so the samples
  * overlap) and it is affordable for a reason worth stating: **rasterising is about 2% of a bake, the
- * encoder is the other 98%**. Eight times the cheap half is a few percent on the whole, which is why
- * the editor's live preview drops it and the bake does not.
+ * encoder is the other 98%**. Eight times the cheap half is a few percent on the whole.
+ *
+ * The editor's live preview used to turn this down to one and no longer does. Turning it down looks
+ * free - the blur is not a parameter anybody is there to tune - but it is a function of SPEED, so a
+ * preview without it stayed crisp exactly as an author raised the slider that provokes it. At panel
+ * size the honest answer costs a few milliseconds a frame against a budget of thirty-three, so there
+ * was never anything to buy. How much of a frame the shutter is open for is the seed's own
+ * (`WeatherSeedDefinition.shutter`) and is shared by both hosts for the same reason.
  */
 export const WEATHER_SUB_STEPS = 8;
 
 /**
- * The shutter is open for the whole frame interval rather than the half a film camera would use.
+ * How much of one flutter cycle's travel the hang moves a particle along its own fall line.
  *
- * A shorter shutter would leave gaps between one frame's streak and the next one's, and the gap is
- * exactly the artefact being removed. It also needs no per-seed tuning: a particle that barely moves
- * in a frame barely blurs, whichever shutter it is given.
+ * The ceiling is arithmetic rather than taste. The term is `-bobAmp * sin(2 * flutter)` with
+ * `bobAmp = k * fall * fallSpan / harm`, so its steepest slope against phase is `k * 4pi` times the
+ * particle's own fall rate. At `k = 1/4pi` the hang exactly cancels the fall for an instant and
+ * beyond it the particle climbs, which no falling thing does. 0.06 sits under that with room to
+ * spare and still varies the descent rate by about seven to one across a cycle, which is what
+ * "hangs, then drops" has to look like to read as one.
  */
-const SHUTTER = 1;
+const HANG_FRACTION = 0.06;
+
+/**
+ * How much of the sway is carried by its second octave.
+ *
+ * A single sine is a pendulum, and a field of pendulums in a picture reads as a mechanism. Adding
+ * the octave at a third of the amplitude bends each swing without changing what a swing IS - and
+ * twice an integer harmonic is still an integer, so it is free of the seam.
+ */
+const SWAY_OCTAVE = 0.32;
+
+/** Positive remainder. The hang can carry the along-fall term below zero, where `%` alone answers negative. */
+function wrap(value: number, span: number): number {
+    return ((value % span) + span) % span;
+}
 
 export type WeatherRenderer = {
     /** RGBA, four bytes per pixel, alpha opaque. Rewritten by every {@link WeatherRenderer.render}. */
@@ -376,29 +493,39 @@ function accumulateInstant(
     const crossY = -dirX;
 
     for (const p of field.particles) {
-        // Along the fall line: an integer number of spans per loop, wrapped out of sight.
-        const u = originU + ((p.u0 + phase * p.fall * fallSpan) % fallSpan);
-        // Across it: a periodic sway, so the position at phase 1 equals the position at phase 0.
-        const v = originV + p.v0 + p.swayAmp * Math.sin(twoPi * (p.swayHarm * phase + p.swayPhase));
+        // The one phase the whole flutter is built on: the sway, the face and the hang all read it,
+        // which is what makes them consequences of each other rather than three coincidences.
+        const flutter = twoPi * (p.swayHarm * phase + p.swayPhase);
+        // How much of its face the particle is showing, 0 = edge on, 1 = flat on. Also its drag.
+        const face = Math.abs(Math.cos(flutter));
+
+        // Along the fall line: an integer number of spans per loop, wrapped out of sight, less the
+        // hang. The hang is steepest against the fall exactly where `face` is largest, so the
+        // particle slows as it turns its face down and drops away as it goes edge-on. Inside the
+        // wrap rather than outside it, so a hang can never carry a particle past the padded band and
+        // into view at the moment it repeats.
+        const u = originU + wrap(p.u0 + phase * p.fall * fallSpan - p.bobAmp * Math.sin(2 * flutter), fallSpan);
+        // Across it: the sway and its octave, both periodic, so phase 1 is phase 0's position.
+        const sway = (Math.sin(flutter) + SWAY_OCTAVE * Math.sin(2 * flutter + twoPi * p.spinPhase)) / (1 + SWAY_OCTAVE);
+        const v = originV + p.v0 + p.swayAmp * sway;
 
         const cx = u * dirX + v * crossX;
         const cy = u * dirY + v * crossY;
 
         if (field.sprite) {
-            // Two turns at once, both on integer harmonics so phase 1 lands where phase 0 was: one in
-            // the plane (the petal spinning as it falls) and one across it (the face turning away).
-            // The in-plane angle starts from the fall direction, so a tilted field carries its petals
-            // with it instead of leaving them upright in a slanted wind.
-            const spin = twoPi * (p.spinHarm * phase + p.spinPhase);
-            const angle = Math.atan2(dirX, dirY) + spin;
-            const squash = 0.34 + 0.66 * Math.abs(Math.cos(twoPi * (p.swayHarm * phase + p.spinPhase)));
-            addPetal(acc, width, height, cx, cy, p.radius, angle, squash, p.gain * weight, tint);
+            // The petal banks INTO its sway rather than spinning through it - a petal sliding left
+            // leans left - and drifts slowly round on top of that, so its attitude never repeats at
+            // the rate its position does. The angle starts from the fall direction, so a tilted
+            // field carries its petals with it instead of leaving them upright in a slanted wind.
+            const bank = p.rockAmp * Math.sin(flutter);
+            const drift = twoPi * (p.spinHarm * phase + p.spinPhase);
+            const angle = Math.atan2(dirX, dirY) + bank + drift;
+            // Never quite zero: a petal exactly edge-on for one frame reads as a flicker, not a turn.
+            addPetal(acc, width, height, cx, cy, p.radius, angle, 0.3 + 0.7 * face, p.gain * weight, tint);
             continue;
         }
 
-        const across = field.tumbles
-            ? p.radius * (0.35 + 0.65 * Math.abs(Math.cos(twoPi * (p.spinHarm * phase + p.spinPhase))))
-            : p.radius;
+        const across = field.tumbles ? p.radius * (0.35 + 0.65 * face) : p.radius;
         addParticle(acc, width, height, cx, cy, across, p.length, dirX, dirY, p.gain * weight, tint);
     }
 }
@@ -420,10 +547,11 @@ export function createWeatherRenderer(
     height: number,
     options: { frames: number; subSteps?: number },
 ): WeatherRenderer {
-    // The shutter is one frame long, so the renderer has to be told how long a frame IS in phase
-    // units. Both hosts pass the same loop length for the same reason they share this file: a preview
-    // integrating over a different shutter than the bake would be a preview of something else.
+    // The shutter is a fraction of a frame, so the renderer has to be told how long a frame IS in
+    // phase units. Both hosts pass the same loop length for the same reason they share this file: a
+    // preview integrating over a different shutter than the bake would be a preview of something else.
     const frames = Math.max(1, Math.round(options.frames));
+    const shutter = field.shutter;
     const subSteps = Math.max(1, Math.round(options.subSteps ?? WEATHER_SUB_STEPS));
     const acc = new Float32Array(width * height * 3);
     const frame = new Uint8ClampedArray(width * height * 4);
@@ -442,7 +570,7 @@ export function createWeatherRenderer(
                 // Sub-phases spread across ONE frame's shutter. Every one of them is still a phase, so
                 // every one is still periodic: a frame rendered at phase 1 integrates the same set of
                 // instants as the frame at phase 0, and the seam survives the blur.
-                accumulateInstant(acc, field, width, height, phase + (SHUTTER * step) / (subSteps * frames), weight);
+                accumulateInstant(acc, field, width, height, phase + (shutter * step) / (subSteps * frames), weight);
             }
             for (let pixel = 0, rgb = 0, rgba = 0; pixel < width * height; pixel++, rgb += 3, rgba += 4) {
                 frame[rgba] = acc[rgb];
