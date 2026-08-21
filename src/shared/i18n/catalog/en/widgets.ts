@@ -93,6 +93,7 @@ export const widgets = {
         editContent: "Edit content",
         keyField: "Row key",
         keyFieldByIndex: "By position",
+        sectionItemAnimation: "Row animation",
         sectionLayout: "Layout",
         sectionTemplate: "Item template",
         sectionScrollbar: "Scrollbar",

@@ -94,6 +94,7 @@ export const widgets = {
         editContent: "编辑内容",
         keyField: "行标识",
         keyFieldByIndex: "按位置",
+        sectionItemAnimation: "行动效",
         sectionLayout: "布局",
         sectionTemplate: "项模板",
         sectionScrollbar: "滚动条",

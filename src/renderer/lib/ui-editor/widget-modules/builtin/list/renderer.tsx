@@ -4,7 +4,9 @@ import type {
     UIListItemScope,
     UIListScrollbarPartStyle,
 } from "@shared/types/ui-editor/list";
+import { AnimatePresence, motion } from "motion/react";
 import { getUIListChildSlot } from "@shared/types/ui-editor/list";
+import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { makeDefaultStructItem, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
@@ -495,6 +497,13 @@ export function ListRenderer(props: WidgetRendererProps) {
         },
         [dispatchListItemEvent],
     );
+    // Resolved once for the whole list rather than per row: every row gets the same motion, and only
+    // the delay differs. `initial={false}` on the presence below is what keeps a list that is simply
+    // on screen from replaying its arrival every time an unrelated prop changes.
+    const itemMotion = p.itemAnimation && isRuntime
+        ? resolvePageAnimationMotion({ settings: p.itemAnimation })
+        : null;
+    const rowStaggerMs = Math.max(0, (p.itemAnimation?.childStaggerSeconds ?? 0) * 1000);
     const listBody = items.slice(0, count).map((item, i) => {
         const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
         const instanceKey = `list-${element.id}-${key}`;
@@ -502,22 +511,23 @@ export function ListRenderer(props: WidgetRendererProps) {
         // template in its selected state would show the author a row most rows will never look like.
         const selected = isRuntime && i === selectedIndex;
         const scope: UIListItemScope = { item, index: i, count, key, struct: itemStruct, selected };
-        return (
-            <div
-                key={`${element.id}__list__${key}`}
-                data-ui-list-item-key={key}
-                data-ui-list-item-index={i}
-                style={{
-                    display: "flex",
-                    flexDirection: innerDir,
-                    gap: p.templateGap,
-                    flexShrink: 0,
-                    pointerEvents: isRuntime || i === 0 ? "auto" : "none",
-                    ...listItemContentAlignment,
-                }}
-                onClick={isRuntime ? () => handleListItemClick(scope) : undefined}
-                onPointerEnter={isRuntime ? () => handleListItemHover(scope) : undefined}
-            >
+        const rowStyle: CSSProperties = {
+            display: "flex",
+            flexDirection: innerDir,
+            gap: p.templateGap,
+            flexShrink: 0,
+            pointerEvents: isRuntime || i === 0 ? "auto" : "none",
+            ...listItemContentAlignment,
+        };
+        const rowProps = {
+            "data-ui-list-item-key": key,
+            "data-ui-list-item-index": i,
+            style: rowStyle,
+            onClick: isRuntime ? () => handleListItemClick(scope) : undefined,
+            onPointerEnter: isRuntime ? () => handleListItemHover(scope) : undefined,
+        };
+        const rowChildren = (
+            <>
                 <ListItemRenderEvent runtime={blueprintRuntime} elementId={element.id} scope={scope} />
                 <ListItemRefreshEvent
                     runtime={blueprintRuntime}
@@ -532,7 +542,32 @@ export function ListRenderer(props: WidgetRendererProps) {
                         instanceKey,
                     })}
                 </WidgetRuntimeInstanceProvider>
-            </div>
+            </>
+        );
+        if (!itemMotion) {
+            return (
+                <div key={`${element.id}__list__${key}`} {...rowProps}>
+                    {rowChildren}
+                </div>
+            );
+        }
+        // Staggered by position, so a menu of five arrives one after another. The exit delay runs the
+        // other way round on purpose: the row nearest the end leaves first, which reads as the list
+        // rolling back up rather than unravelling from the top.
+        const staggered = resolvePageAnimationMotion({
+            settings: p.itemAnimation,
+            delays: { enterMs: i * rowStaggerMs, exitMs: (count - 1 - i) * rowStaggerMs },
+        });
+        return (
+            <motion.div
+                key={`${element.id}__list__${key}`}
+                {...rowProps}
+                initial={staggered.initial}
+                animate={staggered.animate}
+                exit={staggered.exit}
+            >
+                {rowChildren}
+            </motion.div>
         );
     });
 
@@ -889,7 +924,16 @@ export function ListRenderer(props: WidgetRendererProps) {
                 onPointerDown={handleContentDragPointerDown}
                 onClickCapture={handleContentDragClickCapture}
             >
-                <div style={flexHost}>{listBody}</div>
+                <div style={flexHost}>
+                    {itemMotion ? (
+                        // `initial={false}` so the rows a list is already showing do not replay their
+                        // arrival on an unrelated re-render; a row added later still animates in,
+                        // because it was not there when the presence first mounted.
+                        <AnimatePresence initial={false}>{listBody}</AnimatePresence>
+                    ) : (
+                        listBody
+                    )}
+                </div>
             </div>
             {authoredScrollbar}
             {fallbackScrollbar}

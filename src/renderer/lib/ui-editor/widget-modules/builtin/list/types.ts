@@ -3,6 +3,7 @@ export type ListDirection = "horizontal" | "vertical";
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { TextWritingMode } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import type { UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type {
     UIListItemsBinding,
     UIListScrollbarPartStyle,
@@ -51,6 +52,15 @@ export type ListWidgetProps = {
     contentPaddingRight: number;
     contentPaddingBottom: number;
     contentPaddingLeft: number;
+    /**
+     * How a row arrives and leaves, and how far apart successive rows are staggered.
+     *
+     * The element animation record, because a row arrives and leaves exactly the way anything else
+     * on a Surface does; `childStaggerSeconds` is read as the gap between one row and the next, which
+     * is the same sentence it means on a container. Null is "rows appear and disappear", which is
+     * what every list did before and what a list showing a static menu still wants.
+     */
+    itemAnimation?: UIPageAnimationSettings | null;
     /** Layout of template children inside each item. */
     templateDirection: ListDirection;
     templateGap: number;
@@ -102,6 +112,7 @@ export const defaultListWidgetProps: ListWidgetProps = {
     items: [],
     itemKeyFieldId: null,
     placeholderCount: 4,
+    itemAnimation: null,
     selectedIndex: -1,
     itemGap: 8,
     repeatDirection: "vertical",

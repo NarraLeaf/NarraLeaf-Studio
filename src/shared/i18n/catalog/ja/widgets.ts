@@ -95,6 +95,7 @@ export const widgets = {
         editContent: "内容を編集",
         keyField: "行キー",
         keyFieldByIndex: "位置で識別",
+        sectionItemAnimation: "行のアニメーション",
         sectionLayout: "レイアウト",
         sectionTemplate: "項目のテンプレート",
         sectionScrollbar: "スクロールバー",
