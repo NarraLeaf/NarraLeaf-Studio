@@ -20,11 +20,21 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 import {
+    TEAM_ANCHOR_FIELD_LIMIT,
+    TEAM_COMMENT_BODY_LIMIT,
+    TEAM_INSTANCE_FIELD_LIMIT,
+    TEAM_LIVE_PAYLOAD_LIMIT,
+    TEAM_OVERLAY_BODY_LIMIT,
     TEAM_PROTOCOL_VERSION,
     TEAM_SOCKET_PATH,
+    TEAM_SUGGESTION_LIMIT,
     TEAM_TOPIC_MEMBERS,
     TEAM_TOPIC_PROJECTS,
     TeamMethod,
+    teamLiveTopic,
+    teamProjectClientsTopic,
+    teamProjectLiveTopic,
+    teamProjectOverlayTopic,
     teamProjectThreadsTopic,
     teamProjectTopic,
     type TeamCapability,
@@ -51,7 +61,7 @@ const contract = JSON.parse(
  * Kept beside the assertion rather than exported: their only reader is this file, and a
  * list of capability names exported from a test is a list somebody would use.
  */
-const CAPABILITIES: TeamCapability[] = ["session", "comments"];
+const CAPABILITIES: TeamCapability[] = ["session", "comments", "clients", "live", "overlay"];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",
     "bad-params",
@@ -85,5 +95,24 @@ describe("the protocol contract", () => {
         expect(teamProjectThreadsTopic("abc")).toBe(
             contract.topics["projectThreads"]?.replace("{project}", "abc"),
         );
+        expect(teamProjectOverlayTopic("abc")).toBe(
+            contract.topics["projectOverlay"]?.replace("{project}", "abc"),
+        );
+        expect(teamProjectClientsTopic("abc")).toBe(
+            contract.topics["projectClients"]?.replace("{project}", "abc"),
+        );
+        expect(teamProjectLiveTopic("abc")).toBe(
+            contract.topics["projectLive"]?.replace("{project}", "abc"),
+        );
+        expect(teamLiveTopic("xyz")).toBe(contract.topics["live"]?.replace("{session}", "xyz"));
+    });
+
+    it("bounds what it sends at the sizes the contract states", () => {
+        expect(TEAM_ANCHOR_FIELD_LIMIT).toBe(contract.limits["anchorField"]);
+        expect(TEAM_COMMENT_BODY_LIMIT).toBe(contract.limits["commentBody"]);
+        expect(TEAM_SUGGESTION_LIMIT).toBe(contract.limits["suggestion"]);
+        expect(TEAM_OVERLAY_BODY_LIMIT).toBe(contract.limits["overlayBody"]);
+        expect(TEAM_LIVE_PAYLOAD_LIMIT).toBe(contract.limits["livePayload"]);
+        expect(TEAM_INSTANCE_FIELD_LIMIT).toBe(contract.limits["instanceField"]);
     });
 });
