@@ -58,7 +58,7 @@ export function useStorySpellcheck(): StorySpellcheckBinding {
         };
         sync();
         const offStatus = service.onStatusChanged(sync);
-        const offWords = service.onWordsChanged(sync);
+        const offWords = service.onEntriesChanged(sync);
         return () => {
             offStatus();
             offWords();

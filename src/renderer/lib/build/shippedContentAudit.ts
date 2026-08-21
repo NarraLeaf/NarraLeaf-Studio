@@ -214,6 +214,13 @@ const ASSET_ID_PROPERTY_NAMES = UI_ASSET_ID_PROPERTY_NAMES;
  * They are a demand like any other - every line of text the game draws asks for them - and they are
  * named in the bundle rather than in a widget, so a package that dropped them would fail at the
  * first painted character with nothing in the walk having asked about it.
+ *
+ * **Every rung, whatever language it is restricted to.** A rung may say which languages it serves
+ * (see `@shared/types/typography`), and it is tempting to demand only the ones a build's languages
+ * reach. It would also be wrong twice over: one package carries every language the game ships, and
+ * a patch may add a language after the base build was cut - the fonts are in the base package and a
+ * patch has no chance to put one back. The same argument that rules out subsetting rules this out,
+ * and for the same reason.
  */
 export function collectProjectFontDemands(pack: GameRuntimePackV1): ShippedAssetDemand[] {
     return (pack.bundle.fonts ?? []).map(entry => ({

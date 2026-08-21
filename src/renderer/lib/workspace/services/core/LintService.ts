@@ -14,6 +14,7 @@ import type {
     LintStoryEntry,
 } from "@/lib/lint/context";
 import type { LintReport, LintReportEntry } from "@/lib/lint/types";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
@@ -542,6 +543,25 @@ export class LintService extends Service<LintService> implements ILintService {
                     // must not take the other forty-two rules' findings down with it.
                     return { ok: false, reason: error instanceof Error ? error.message : "probe threw" };
                 }
+            }),
+            probeFontCoverage: (assetId: string) => probeQueue(async (): Promise<FontCoverageResult> => {
+                const asset = assetsService.getAssets()[AssetType.Font]?.[assetId] as
+                    | Asset<AssetType.Font>
+                    | undefined;
+                if (!asset) {
+                    // A built-in system stack (`builtin:font:*`) lands here, and so does a rung whose
+                    // asset was deleted. Neither has bytes to read, and neither is this probe's
+                    // finding to make - `assets/missing` reports the second one, with the row that
+                    // named it attached.
+                    return { ok: false, reason: "not-a-font" };
+                }
+                // Through `FontService` rather than straight to the bridge, for the memo: the rule
+                // asks once per language of the project, and re-reading a CJK face for each is a
+                // cost nothing about the answer requires.
+                const fontService = assetsService.fontService;
+                return fontService
+                    ? fontService.readCoverage(asset)
+                    : { ok: false as const, reason: "malformed" as const };
             }),
             probeImage: (assetId: string) => probeQueue(async (): Promise<LintImageProbe> => {
                 const asset = assetsService.getAssets()[AssetType.Image]?.[assetId] as

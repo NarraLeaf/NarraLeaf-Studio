@@ -10,6 +10,7 @@ import { TEXT_LINT_RULES } from "./text";
 import { LOCALIZATION_LINT_RULES } from "./localization";
 import { VOICE_LINT_RULES } from "./voice";
 import { BRAND_LINT_RULES } from "./brand";
+import { TYPOGRAPHY_LINT_RULES } from "./typography";
 
 /**
  * The rule registry - the one place that knows every rule exists.
@@ -32,6 +33,7 @@ export const LINT_RULES: readonly LintRule[] = [
     ...LOCALIZATION_LINT_RULES,
     ...VOICE_LINT_RULES,
     ...BRAND_LINT_RULES,
+    ...TYPOGRAPHY_LINT_RULES,
 ];
 
 const RULES_BY_ID: ReadonlyMap<LintRuleId, LintRule> = new Map(LINT_RULES.map(rule => [rule.id, rule]));
@@ -61,3 +63,4 @@ export { TEXT_LINT_RULES } from "./text";
 export { LOCALIZATION_LINT_RULES } from "./localization";
 export { VOICE_LINT_RULES } from "./voice";
 export { BRAND_LINT_RULES, classifyBrandLink, collectBrokenBrandLinks } from "./brand";
+export { TYPOGRAPHY_LINT_RULES, findLanguagesWithoutFonts, findMissingCharacters } from "./typography";

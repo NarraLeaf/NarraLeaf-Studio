@@ -386,7 +386,16 @@ export const help = {
                 + "their own default color, and the project check reports them.\n"
                 + "- The fonts are a list in priority order: text is set in the first of them that has the "
                 + "character. A widget that names no font of its own is set in this list, and one that "
-                + "names a font falls back to the list for the characters that font does not have.",
+                + "names a font falls back to the list for the characters that font does not have.\n"
+                + "- A font in the list can be limited to some of the project's languages. A language "
+                + "then uses the list with the fonts limited to other languages left out, so one list "
+                + "serves every language and adding a language asks for nothing. A font that is not "
+                + "limited is used for every language, which is how every font starts.\n"
+                + "- Limits appear only once the project has a second language. When a font is added, "
+                + "Studio reads the font file and fills the limit in if the font states which language "
+                + "it was made for; it leaves it empty otherwise.\n"
+                + "- The project check reports characters the script uses that no font in the list can "
+                + "draw, for each language.",
         },
         uiSurfaces: {
             title: "Game screens",

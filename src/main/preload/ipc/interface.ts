@@ -234,6 +234,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
+    probeFontCoverage: (path: string) => ipcClient.invoke(IPCEventType.fontProbeCoverage, { path }),
     /** What long work Studio is doing. See `@shared/types/studioTask`. */
     studioTasks: {
         getOverview: () =>

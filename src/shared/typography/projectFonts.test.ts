@@ -3,13 +3,17 @@ import {
     getActiveProjectFontIds,
     getActiveProjectFonts,
     getActiveProjectFontsRevision,
+    getActiveProjectLocale,
     resolveFontStackIds,
+    resolveFontStackIdsForLocale,
     setActiveProjectFonts,
+    setActiveProjectLocale,
     subscribeActiveProjectFonts,
 } from "./projectFonts";
 
 afterEach(() => {
     setActiveProjectFonts([]);
+    setActiveProjectLocale("");
 });
 
 describe("setActiveProjectFonts", () => {
@@ -70,5 +74,109 @@ describe("resolveFontStackIds", () => {
     it("is the chosen font alone when the project has no stack", () => {
         expect(resolveFontStackIds("z")).toEqual(["z"]);
         expect(resolveFontStackIds(null)).toEqual([]);
+    });
+});
+
+describe("setActiveProjectLocale", () => {
+    const STACK = [
+        {assetId: "jp", locales: ["ja"]},
+        {assetId: "sc", locales: ["zh-Hans"]},
+        {assetId: "serif"},
+    ];
+
+    it("narrows the published ids to the rungs that serve the language", () => {
+        setActiveProjectFonts(STACK);
+        expect(getActiveProjectFontIds()).toEqual(["jp", "sc", "serif"]);
+
+        setActiveProjectLocale("ja");
+        expect(getActiveProjectFontIds()).toEqual(["jp", "serif"]);
+
+        setActiveProjectLocale("zh-Hans-CN");
+        expect(getActiveProjectFontIds()).toEqual(["sc", "serif"]);
+
+        setActiveProjectLocale("en");
+        expect(getActiveProjectFontIds()).toEqual(["serif"]);
+    });
+
+    /**
+     * The pre-existing behaviour, and what a project with no localization set up must see. A host
+     * that has published no language cannot be shown a stack with rungs missing from it.
+     */
+    it("filters nothing when no language has been published", () => {
+        setActiveProjectFonts(STACK);
+        setActiveProjectLocale("ja");
+        setActiveProjectLocale("");
+        expect(getActiveProjectFontIds()).toEqual(["jp", "sc", "serif"]);
+    });
+
+    it("leaves the full list on `getActiveProjectFonts`, whatever the language", () => {
+        setActiveProjectFonts(STACK);
+        setActiveProjectLocale("ja");
+        expect(getActiveProjectFonts().map(entry => entry.assetId)).toEqual(["jp", "sc", "serif"]);
+        expect(getActiveProjectLocale()).toBe("ja");
+    });
+
+    it("does not repaint when the language resolves to the same fonts", () => {
+        setActiveProjectFonts([{assetId: "a"}, {assetId: "b"}]);
+        const listener = vi.fn();
+        const unsubscribe = subscribeActiveProjectFonts(listener);
+
+        // Nothing in this stack is restricted, so every language resolves to the same two fonts.
+        setActiveProjectLocale("ja");
+        setActiveProjectLocale("en");
+        expect(listener).not.toHaveBeenCalled();
+
+        // Restrict one rung and the two languages part company, so the switch does repaint.
+        setActiveProjectFonts([{assetId: "a", locales: ["ja"]}, {assetId: "b"}]);
+        expect(getActiveProjectFontIds()).toEqual(["b"]);
+        listener.mockClear();
+        setActiveProjectLocale("ja");
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(getActiveProjectFontIds()).toEqual(["a", "b"]);
+        unsubscribe();
+    });
+
+    /**
+     * The stacks resolve identically here, but what `getActiveProjectFonts` answers did change and
+     * the Design surface is reading that.
+     */
+    it("announces a restriction that moved even when the active language sees no difference", () => {
+        setActiveProjectFonts([{assetId: "a"}]);
+        setActiveProjectLocale("ja");
+        const listener = vi.fn();
+        const unsubscribe = subscribeActiveProjectFonts(listener);
+
+        setActiveProjectFonts([{assetId: "a", locales: ["ja"]}]);
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(getActiveProjectFontIds()).toEqual(["a"]);
+        unsubscribe();
+    });
+});
+
+describe("resolveFontStackIds / language", () => {
+    it("resolves a widget's stack in the active language", () => {
+        setActiveProjectFonts([{assetId: "jp", locales: ["ja"]}, {assetId: "serif"}]);
+        setActiveProjectLocale("en");
+        expect(resolveFontStackIds(null)).toEqual(["serif"]);
+        setActiveProjectLocale("ja");
+        expect(resolveFontStackIds(null)).toEqual(["jp", "serif"]);
+    });
+
+    /**
+     * A restriction says which language a *default* is for. The author naming a face on a widget has
+     * already answered the question it would be filtering, so filtering it would delete their choice.
+     */
+    it("never drops the font the widget itself chose", () => {
+        setActiveProjectFonts([{assetId: "jp", locales: ["ja"]}, {assetId: "serif"}]);
+        setActiveProjectLocale("en");
+        expect(resolveFontStackIds("jp")).toEqual(["jp", "serif"]);
+    });
+
+    it("answers for a language that is not the active one", () => {
+        setActiveProjectFonts([{assetId: "jp", locales: ["ja"]}, {assetId: "serif"}]);
+        setActiveProjectLocale("en");
+        expect(resolveFontStackIdsForLocale(null, "ja")).toEqual(["jp", "serif"]);
+        expect(resolveFontStackIdsForLocale(null, "")).toEqual(["jp", "serif"]);
+        expect(resolveFontStackIdsForLocale("z", "en")).toEqual(["z", "serif"]);
     });
 });
