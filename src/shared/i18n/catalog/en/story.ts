@@ -139,6 +139,7 @@ export const story = {
             customTransition: "This transition carries properties the script does not name.",
             effectProps: "This effect carries properties the script does not name.",
             unresolvedRef: "This row points at something that no longer exists.",
+            endingPage: "This ending names its own page, and the script does not carry it.",
             unknownPayload: "This row is of a kind the script does not cover.",
         },
         // Why a line of a script could not be read back into the scene. Keyed by the parser's own
@@ -548,6 +549,7 @@ export const story = {
         target: "Target",
         lineText: "Text",
         labelName: "Label",
+        endingName: "Ending",
         scene: "Scene",
         track: "Audio Track",
         appTag: "Build Variant",
@@ -1127,6 +1129,10 @@ export const story = {
         // in an editor that has one. The detail carries the half the name cannot, which is that the
         // line belongs to one build and to no other.
         cut: { label: "Cut point", detail: "End one build variant's story at this line. Other builds do not have this line" },
+        // Named for the row it makes. The detail states both halves of what the row does, because
+        // the second one is the reason to write it rather than simply stopping: the ending is recorded,
+        // which is what a gallery screen and a walkthrough test read.
+        ending: { label: "Ending", detail: "End the story at this line and record which ending the player reached" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
@@ -1181,6 +1187,7 @@ export const story = {
         goto: "Go to",
         break: "Break",
         cut: "Cut point",
+        ending: "Ending",
         jump: "Jump",
         note: "Note",
         invalid: "Invalid",
@@ -1256,6 +1263,7 @@ export const story = {
         // list to ask. Says only what is true in both cases; the row's own mark, which does have the
         // list, is where a deleted variant is named as deleted.
         cutUnknown: "Cut point",
+        ending: "Ending {name}",
         jump: "Jump {scene}",
         note: "Note",
         invalid: "Invalid command",

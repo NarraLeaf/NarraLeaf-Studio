@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, memo, useRef, useId } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { TextFieldDefinition, TextareaFieldDefinition } from "../types";
 import { FIELD_INPUT_CLASS, FIELD_TEXTAREA_CLASS } from "../../fieldControlClass";
 
@@ -53,11 +54,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
         const textareaField = field as TextareaFieldDefinition<TData>;
         return (
             <div>
-                {field.label && (
-                    <label htmlFor={inputId} className="block text-xs font-medium text-fg-muted mb-1">
-                        {field.label}
-                    </label>
-                )}
+                <FieldLabelRow field={field} htmlFor={inputId} />
                 <textarea
                     id={inputId}
                     value={localValue}
@@ -80,11 +77,7 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
     const textField = field as TextFieldDefinition<TData>;
     return (
         <div>
-            {field.label && (
-                <label htmlFor={inputId} className="block text-xs font-medium text-fg-muted mb-1">
-                    {field.label}
-                </label>
-            )}
+            <FieldLabelRow field={field} htmlFor={inputId} />
             <input
                 id={inputId}
                 type="text"

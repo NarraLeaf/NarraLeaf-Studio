@@ -52,6 +52,7 @@ const EVERY_REASON: Record<NarralangIssueReason, true> = {
     customTransition: true,
     effectProps: true,
     unresolvedRef: true,
+    endingPage: true,
     unknownPayload: true,
 };
 

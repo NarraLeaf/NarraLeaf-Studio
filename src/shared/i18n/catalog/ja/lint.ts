@@ -140,6 +140,16 @@ export const lint = {
             description: "プロジェクトに存在しないバリアントと比べている行",
             message: "「{name}」という名前のビルドバリアントはないため、この行はどのビルドにも入らない",
         },
+        storyRowsAfterEnding: {
+            title: "エンディングより後の行",
+            description: "同じ並びの /ending 行より後に書かれ、決して再生されない行",
+            message: "この行はエンディングより後にあり、決して再生されない。エンディングより前に移すか、削除する",
+        },
+        storyEndingNameDuplicate: {
+            title: "同じ名前の 2 つのエンディング",
+            description: "表示名を共有しているエンディングが複数ある",
+            message: "別のエンディングも「{name}」という名前である。エンディングを並べる画面には同じ名前が 2 回出る",
+        },
         storyCutPointOrphan: {
             title: "ビルドバリアントのないカットポイント",
             description: "ビルドバリアントが 1 つも無いまま書かれたカットポイント",

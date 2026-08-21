@@ -462,6 +462,9 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         goto: { keyword: "goto", slots: [{ slot: "label", value: "name" }] },
         break: { keyword: "break", slots: [] },
         cut: { keyword: "cut", slots: [{ slot: "variant", value: "name" }] },
+        // The name only. The page the row lands on is picked in the inspector and has no spelling
+        // here; a row that overrides it says so as an issue rather than dropping it in silence.
+        ending: { keyword: "ending", slots: [{ slot: "ending", value: "name" }] },
     },
 };
 

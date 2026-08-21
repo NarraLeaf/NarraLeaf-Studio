@@ -127,6 +127,9 @@ const ENGINE_EVENTS: readonly EventKey[] = [
     "characterPrompt",
     "audioPlayed",
     "gameEnd",
+    // Sourced from the story compile rather than from an engine bus, but backed on exactly the same
+    // terms: it exists as soon as a game environment does.
+    "endingReached",
     "beforeRestore",
     "afterRestore",
 ];
@@ -351,6 +354,19 @@ export class RuntimePluginHostController {
     /** The game wrote a save. Host-side, so it is reported the same on every shell. */
     public emitSaveWritten(id: string): void {
         this.hub.emit("saveWritten", { id });
+    }
+
+    /**
+     * An `/ending` row ran.
+     *
+     * Host-side, because the engine has no idea an ending exists: the row is a `Script` the compile
+     * put there, and reaching one does not drain the action stack, so `event:state.end` never fires
+     * for it. Both events go out, in this order - a listener that only knows `gameEnd` still hears
+     * every ending, and one that wants to name it reads the payload of the second.
+     */
+    public emitEndingReached(ending: { endingId: string; name: string }): void {
+        this.hub.emit("gameEnd", undefined);
+        this.hub.emit("endingReached", { endingId: ending.endingId, name: ending.name });
     }
 
     /** Wire the shell-owned event sources. Call once, from the shell. */

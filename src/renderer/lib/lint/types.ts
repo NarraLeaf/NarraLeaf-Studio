@@ -100,6 +100,8 @@ export type LintRuleId =
     | "story/app-tag-unknown"
     | "story/cut-point-orphan"
     | "story/cut-point-unreachable"
+    | "story/rows-after-ending"
+    | "story/ending-name-duplicate"
     | "story/stage-object-missing"
     | "story/stage-object-duplicate"
     | "story/declared-never-shown"

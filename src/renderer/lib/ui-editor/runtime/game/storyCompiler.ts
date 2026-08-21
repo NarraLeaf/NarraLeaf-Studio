@@ -62,6 +62,7 @@ import type {
     StoryControlPayload,
     StoryDisplayableTargetRef,
     StoryDocument,
+    StoryEndingPage,
     StoryExpr,
     StoryExpression,
     StoryInlineEvent,
@@ -192,6 +193,22 @@ import {
 export type StoryPersistenceBridge = {
     get: (storageKey: string) => unknown;
     set: (storageKey: string, value: unknown) => void | Promise<void>;
+};
+
+/**
+ * What an `/ending` row hands the host when it runs.
+ *
+ * Carries the row's own values and nothing derived: the id is the identity everything records
+ * against, the name is what a screen shows, and the page is the row's override of the build's own
+ * ending page. Resolving the page against the build is the host's job, because the build is what the
+ * host knows and the compiler deliberately does not.
+ */
+export type StoryEndingReach = {
+    /** The `ending` row's block id. */
+    endingId: string;
+    /** Trimmed display name. Empty when the author has not named the ending. */
+    name: string;
+    page?: StoryEndingPage;
 };
 
 /** Single NLR Storable namespace holding all Story "saved" variables. */
@@ -740,6 +757,8 @@ type SceneCompileContext = {
     persistentVariables: PersistentVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); absent outside Dev Mode host. */
     persistence?: StoryPersistenceBridge;
+    /** Host hook for an `/ending` row; see {@link CompileInput.onEndingReached}. */
+    onEndingReached?: (ending: StoryEndingReach) => void;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -836,6 +855,19 @@ type CompileInput = {
     savedVariables?: SavedVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
     persistence?: StoryPersistenceBridge;
+    /**
+     * Called when an `/ending` row runs.
+     *
+     * The row itself does nothing else: recording the ending, telling the plugins and putting the
+     * player on a page are all host acts, and the host is the only thing that can do them in one
+     * order. So the compiler's whole contribution is a statement that says which ending was reached.
+     *
+     * Absent is a normal state, not a degraded one. The build sweeps compile the same document to
+     * read what it references, and the scene preview compiles one scene to a settled stage; neither
+     * is playing a story, so neither may be told that one ended. Their ending rows compile to
+     * nothing.
+     */
+    onEndingReached?: (ending: StoryEndingReach) => void;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -1047,6 +1079,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistentKeys,
             persistentVariables,
             persistence: input.persistence,
+            onEndingReached: input.onEndingReached,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1275,6 +1308,7 @@ async function buildLaunchEntryScene(params: {
         persistentKeys: params.persistentKeys,
         persistentVariables: params.persistentVariables,
         persistence: input.persistence,
+        onEndingReached: input.onEndingReached,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -2127,8 +2161,20 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
         statements.push(...await compileBlock(ctx, blockId));
+        // An `/ending` row is where this list stops. Not an optimisation: the engine has no primitive
+        // that halts a running story, so a row written after an ending would otherwise play after it
+        // - with the stage already hidden, on its way to a page. Rows nested further out are beyond
+        // what this can reach and are reported by `story/ending-not-last` instead.
+        if (endsPlayback(ctx.scene.blocks[blockId])) {
+            break;
+        }
     }
     return statements;
+}
+
+/** Whether this row is an `/ending` that is actually in the build (a disabled row is not). */
+function endsPlayback(block: StoryBlock | undefined): boolean {
+    return Boolean(block && !block.disabled && block.kind === "control" && block.payload.control === "ending");
 }
 
 /** A runtime flag whose predicate the compiler reads back internally to build a guard. */
@@ -2393,6 +2439,9 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             // fall into the group arm below and compile as an empty container.
             return [];
         }
+        if (block.payload.control === "ending") {
+            return compileEnding(ctx, block, block.payload);
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -2481,6 +2530,11 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
         }
         if (block.payload.control === "cut") {
             // A marker, not an action: no statement here and none in the walk above.
+            return [];
+        }
+        if (block.payload.control === "ending") {
+            // The preview settles one scene's stage. Ending the story is not a stage state, and this
+            // path has no host to end it for - `onEndingReached` is absent here by construction.
             return [];
         }
         return compileControlGroup(ctx, block);
@@ -4033,6 +4087,44 @@ function compileLabelControl(
         return [];
     }
     return [recordStatement(ctx, Control.jump(target), block)];
+}
+
+/**
+ * `/ending <name>` - the story reached one of its endings.
+ *
+ * One statement, and it only tells the host. What follows from an ending - recording it so a gallery
+ * can ask, telling the plugins, and putting the player on a page - has to happen in one order and in
+ * one place, and that place is the host: it owns the persistence that outlives the save, the plugin
+ * event hub, and the session it is about to tear down.
+ *
+ * **Nothing here stops the engine, because the engine has no way to be stopped.** Its own ending is
+ * the action stack running dry, and `Control.sleep` cannot stand in for one: a player who is
+ * fast-forwarding skips straight through it (`ControlAction`'s sleep resolves immediately while
+ * `isFastForwarding`). Three things cover the gap instead, in the order they apply: the rows written
+ * after an ending in the SAME list are dropped at compile time (see {@link compileBlockList}), so
+ * the ordinary shape - an ending as the last row of a branch - has nothing left to play; a host with
+ * a page to show tears the session down; and rows further out, which neither of those reaches, are
+ * reported by `story/ending-not-last` as the authoring mistake they are.
+ */
+function compileEnding(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "control" }>,
+    payload: Extract<StoryControlPayload, { control: "ending" }>,
+): NlrStatement[] {
+    const notify = ctx.onEndingReached;
+    if (!notify) {
+        return [];
+    }
+    // Built once, at compile time, and frozen into the closure: the row cannot change under a
+    // running game, and reading it out here keeps the statement free of the document.
+    const reached: StoryEndingReach = {
+        endingId: block.id,
+        name: payload.name.trim(),
+        ...(payload.page ? { page: payload.page } : {}),
+    };
+    return [recordStatement(ctx, Script.execute(() => {
+        notify(reached);
+    }), block)];
 }
 
 /**
