@@ -111,6 +111,33 @@ describe("checking this project's server", () => {
         await waitFor(() => expect(result.current.instance).toBe(`me.${REPO}`));
     });
 
+    it("verifies a project whose address and id arrive after the window is drawn", async () => {
+        // ⚠ **This is the shape a real window has**, and the reason it is a test of its
+        // own: the version surface reads the remote and the repository id off the disk
+        // asynchronously, so the cell mounts with neither. On a real machine that
+        // sequence left the window announced but never verified - the render where the
+        // id arrived started a read and then voided its own ticket, and nothing asked
+        // again. Mounting with both already known does not exercise it.
+        bridge.open.mockResolvedValue(ready());
+        answers({
+            "projects.list": { projects: [project(REPO)] },
+            "clients.announce": { client: { id: `me.${REPO}`, account: "ada", label: "Nomen", agent: "", since: 1 } },
+            "clients.list": { clients: [] },
+            "live.list": { sessions: [] },
+            "overlay.list": { records: [], total: 0 },
+        });
+
+        const { result, rerender } = renderHook(
+            ({ remote, id }: { remote: string | null; id: string | null }) => useTeamProject(remote, id),
+            { initialProps: { remote: null as string | null, id: null as string | null } },
+        );
+        expect(result.current.state).toEqual({ kind: "none" });
+
+        rerender({ remote: `${ONE}/my-game`, id: REPO });
+
+        await waitFor(() => expect(result.current.state.kind).toBe("verified"));
+    });
+
     it("says the server does not hold it when the id is not in the list", async () => {
         bridge.open.mockResolvedValue(ready());
         answers({ "projects.list": { projects: [project("a".repeat(32))] } });

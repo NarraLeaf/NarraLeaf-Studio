@@ -5,7 +5,8 @@ import { serverDisplayName, serverHost } from "@/lib/vcs/servers";
 import { StatusEntry } from "../status-bar/StatusEntry";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
 import { useTeamProject } from "../../hooks/useTeamProject";
-import { isVersionSurfaceVisible, serverFace } from "../../components/layout/versionRailModel";
+import { isVersionSurfaceVisible } from "../../components/layout/versionRailModel";
+import { teamServerFace } from "./teamFace";
 import { TeamPanel } from "./TeamPanel";
 import { registerTeamPresenceBridge } from "./teamPresenceController";
 
@@ -68,18 +69,13 @@ export function TeamStatusEntry() {
     const name = remote === null
         ? null
         : serverSession ? serverDisplayName(serverSession) : serverHost(remote);
-    const face = serverFace(surface.syncState);
     // What the server itself answered wins over what the last local check left behind: the
     // sentence a reader needs is the one about the thing that is actually wrong, and "that server
     // does not hold this project" outranks anything a sync state can say about a branch.
-    const verdict = team.state.kind === "not-there"
-        ? t("workspace.shell.team.notThere")
-        : team.state.kind === "unreachable"
-            ? t("workspace.shell.team.unreachable")
-            : t(face.detail);
+    const face = teamServerFace(team.state, surface.syncState);
     const tooltip = remote === null
         ? t("workspace.shell.versionControl.server.none")
-        : `${name} - ${verdict}`;
+        : `${name} - ${t(face.detail)}`;
     /**
      * The one state the cell raises its voice for: something is standing between this project and
      * its server, and nothing else on screen says so.

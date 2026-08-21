@@ -336,6 +336,11 @@ export const workspace = {
         // about it. A project that checks out is silent: a line saying everything is fine,
         // every working day, is a line nobody reads.
         notThere: "That server does not hold this project.",
+        // A server that answered and holds this project. Said where the sync state has
+        // nothing to report yet, because the chip beside the address is read as being
+        // about the server, and "not checked" stopped being true the moment the
+        // workspace began checking on its own.
+        connected: "Connected",
         unreachable: "That server is not answering.",
         // The eyebrow over who is here and what is open.
         presence: "Collaboration",

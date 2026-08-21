@@ -12,7 +12,7 @@ import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import type { TeamProjectSurface } from "../../hooks/useTeamProject";
 import { TeamCollaboration } from "./TeamCollaboration";
-import { serverFace } from "../../components/layout/versionRailModel";
+import { teamServerFace } from "./teamFace";
 import { ServerPickerDialog } from "../../components/layout/VersionRail";
 import { AuthorIdentity } from "../../components/layout/AuthorIdentity";
 
@@ -91,7 +91,7 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
     const [adding, setAdding] = useState(false);
     const { remote, serverSession, syncState, busy } = surface;
     const running = busy !== null;
-    const face = serverFace(syncState);
+    const verdict = teamServerFace(team.state, syncState);
     // The name the server answers to. `serverSession` is null for a server this machine has no
     // account on, and that is the single case with no name to read - its address is then all
     // there is to call it by.
@@ -156,12 +156,17 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                                     <span data-team-seam="server-name" className="min-w-0 truncate text-sm text-fg">
                                         {name}
                                     </span>
+                                    {/* The sync state, except where the workspace's own check has
+                                        something to say and the sync has not. "Not checked" beside
+                                        the address was read as being about the server, and it
+                                        stopped being true the moment the workspace began checking
+                                        on its own. */}
                                     <span
                                         data-team-seam="server-state"
-                                        data-tip={t(face.detail)}
-                                        className={cn("ml-auto shrink-0 text-2xs", face.tone)}
+                                        data-tip={t(verdict.detail)}
+                                        className={cn("ml-auto shrink-0 text-2xs", verdict.tone)}
                                     >
-                                        {t(face.key)}
+                                        {t(verdict.key)}
                                     </span>
                                 </div>
                                 {projectName !== "" && (
@@ -170,17 +175,6 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                                     </p>
                                 )}
                                 <p className="mt-0.5 truncate text-2xs text-fg-subtle">{remote}</p>
-                                {/* What the server itself answered, drawn only where there is
-                                    something to do about it. A project that checks out says
-                                    nothing: a line reporting that everything is fine, on every
-                                    working day, is a line that stops being read. */}
-                                {(team.state.kind === "not-there" || team.state.kind === "unreachable") && (
-                                    <p data-team-seam="verify" className="mt-1 text-2xs text-warning">
-                                        {t(team.state.kind === "not-there"
-                                            ? "workspace.shell.team.notThere"
-                                            : "workspace.shell.team.unreachable")}
-                                    </p>
-                                )}
                             </>
                         )}
                     </div>

@@ -301,24 +301,24 @@ describe("what the server answered", () => {
         return document.querySelector(`[data-team-seam="${name}"]`);
     }
 
-    it("says nothing where the server holds this project", () => {
+    it("says connected where the server holds this project", () => {
         panel();
-        // Quiet on purpose. A line reporting that everything is fine, on every working
-        // day, is a line that stops being read.
-        expect(seam("verify")).toBeNull();
+        // The state slot, and only the state slot. Said twice - once as this word and once
+        // as a line under the address - it read as two problems on a real machine.
+        expect(seam("server-state")?.textContent).toBe("workspace.shell.team.connected");
     });
 
     it("says so where that server does not hold this project", () => {
         panel({}, team({ state: { kind: "not-there" } }));
-        expect(seam("verify")?.textContent).toBe("workspace.shell.team.notThere");
+        expect(seam("server-state")?.textContent).toBe("workspace.shell.team.notThere");
     });
 
     it("says so where that server is not answering", () => {
         panel({}, team({ state: { kind: "unreachable", detail: "ECONNREFUSED" } }));
-        expect(seam("verify")?.textContent).toBe("workspace.shell.team.unreachable");
+        expect(seam("server-state")?.textContent).toBe("workspace.shell.team.unreachable");
         // The transport's own sentence is for a log. What a reader is given is the one
         // line about what to do, in their language.
-        expect(seam("verify")?.textContent).not.toContain("ECONNREFUSED");
+        expect(seam("destination")?.textContent).not.toContain("ECONNREFUSED");
     });
 
     it("draws nothing about collaboration until the project is confirmed", () => {

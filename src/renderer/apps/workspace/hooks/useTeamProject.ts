@@ -263,14 +263,18 @@ export function useTeamProject(
         };
     }, [remoteOrigin, ready, topics, refresh]);
 
-    // Keyed on `since` as well as on readiness, so a session that dropped and came back
-    // reads again. That is the whole of the reconnect recovery: nothing is ever replayed.
-    useEffect(() => {
-        refresh();
-    }, [refresh, connection.since]);
-
-    // A project pointed somewhere else, or at nothing, must not go on showing the last
-    // server's answers.
+    /**
+     * A project pointed somewhere else, or at nothing, must not go on showing the last
+     * server's answers.
+     *
+     * ⚠ **Declared before the read below, and the order is load-bearing.** React runs
+     * effects in declaration order, and this one voids whatever read is in flight by
+     * moving the ticket. With it declared last, the render where the repository id first
+     * arrives ran the read, took a ticket, and then had this throw that ticket away - so
+     * the answer was discarded and nothing ever asked again. The window announced itself
+     * and then sat for ever on "connecting", which is what it did on a real machine
+     * before this line moved.
+     */
     useEffect(() => {
         latest.current += 1;
         setProject(null);
@@ -280,6 +284,12 @@ export function useTeamProject(
         setOverlay(null);
         setInstance(null);
     }, [remoteOrigin, repositoryId]);
+
+    // Keyed on `since` as well as on readiness, so a session that dropped and came back
+    // reads again. That is the whole of the reconnect recovery: nothing is ever replayed.
+    useEffect(() => {
+        refresh();
+    }, [refresh, connection.since]);
 
     if (remoteOrigin === null || repositoryId === null) return NOTHING;
 
