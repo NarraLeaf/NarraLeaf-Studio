@@ -152,7 +152,17 @@ export function useStableVisibleRows(): (row: VisibleStoryRow) => VisibleStoryRo
         if (held && held.signature === signature) {
             return held.row;
         }
+        // Scrolling a long scene would otherwise leave a signature here for every line ever mounted -
+        // a copy of the whole document, in strings, for the sake of the screenful in front of the
+        // author. Dropping the lot costs one extra repaint of the window and nothing else, since a
+        // miss is only ever "this row re-renders once".
+        if (cache.current.size >= ROW_SIGNATURE_CACHE_LIMIT) {
+            cache.current.clear();
+        }
         cache.current.set(row.block.id, { signature, row });
         return row;
     }, []);
 }
+
+/** Comfortably more than any window plus its overscan, small enough that the strings stay bounded. */
+const ROW_SIGNATURE_CACHE_LIMIT = 512;
