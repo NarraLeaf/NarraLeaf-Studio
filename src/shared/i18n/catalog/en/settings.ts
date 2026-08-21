@@ -63,8 +63,10 @@ export const settings = {
             description: "Checkpoints and the identity recorded on them.",
         },
         servers: {
-            label: "Servers",
-            description: "Servers this installation is signed in to, and the accounts it uses.",
+            // The product, not the machinery. An author meets this name in the project wizard and
+            // in the corner of the workspace; the panel under it still calls each machine a server.
+            label: "Team",
+            description: "Team servers this installation is signed in to, and the accounts it uses.",
         },
         network: {
             label: "Network",

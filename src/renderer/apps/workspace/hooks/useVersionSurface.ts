@@ -715,6 +715,22 @@ export function useVersionSurface(): VersionSurface {
         });
     }, [services, readIdentity, refreshHistoryIfRead]);
 
+    // The same argument as the subscription above, for the other half of what these surfaces name.
+    // Where a project sends its versions and who this machine is on that server are settled in the
+    // Team panel and read by the rail, which are two instances of this hook: without this the rail
+    // goes on drawing the server it read when the project opened, under buttons that now send
+    // somewhere else. `syncState` is dropped rather than re-read - it describes a server this
+    // project may no longer be pointed at, and asking costs a network round trip nobody requested.
+    useEffect(() => {
+        if (!services) {
+            return;
+        }
+        return services.versionControl.onServerChanged(() => {
+            setSyncState(null);
+            void readIdentity();
+        });
+    }, [services, readIdentity]);
+
     const loadHistory = useCallback(() => {
         if (!services) {
             return;

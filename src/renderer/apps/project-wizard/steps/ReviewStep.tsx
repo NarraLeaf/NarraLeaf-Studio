@@ -1,6 +1,7 @@
 import { useTranslation } from "@/lib/i18n";
 import { localeAutonym } from "@shared/types/localization";
 import { formatStageSize, parseStageSize } from "@shared/types/stageSize";
+import { NARRALEAF_TEAM } from "@shared/constants/servers";
 import { ProjectData, ProjectTemplate, PublishTarget } from "../types";
 
 interface ReviewStepProps {
@@ -42,7 +43,7 @@ export function ReviewStep({ projectData, template, publishTo = null }: ReviewSt
         ...(publishTo === null
             ? [{
                 label: t("wizard.fields.versionControl"),
-                value: projectData.versionControl === "none" ? t("common.none") : "Lore",
+                value: projectData.versionControl === "none" ? t("common.none") : NARRALEAF_TEAM,
             }]
             : [
                 { label: t("wizard.review.server"), value: publishTo.server },

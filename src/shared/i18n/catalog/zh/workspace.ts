@@ -288,6 +288,23 @@ export const workspace = {
         },
     },
     shell: {
+    /**
+     * 窗口角落里的 NarraLeaf Team。
+     *
+     * 单元格背后的面板承担版本轨道原来带着的两个问题：这个项目的版本发往哪台服务器，
+     * 以及这台机器在那台服务器上是谁。凡是关于服务器的措辞都与版本轨道共用同一批键，
+     * 这里只放这个面板独有的。
+     */
+    team: {
+        // 产品名，写全称：作者是在这里认识它的。面板里其余各行仍称服务器为服务器。
+        title: "NarraLeaf Team",
+        command: {
+            open: "打开 NarraLeaf Team",
+        },
+        destination: "服务器",
+        // 打开设置。添加服务器与退出登录都在那里。
+        manage: "管理服务器…",
+    },
         errorTitle: "工作区初始化失败",
         showStackTrace: "显示堆栈跟踪",
         retry: "重试",
@@ -460,6 +477,9 @@ export const workspace = {
             openCurrentScene: "打开当前场景",
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
+                // The brand, not a description of the cell: it is where an author learns the
+                // name of the thing their project is shared through.
+                team: "NarraLeaf Team",
                 runStatus: "运行状态",
         studioTasks: "后台工作",
                 unsavedChanges: "未保存的更改",
