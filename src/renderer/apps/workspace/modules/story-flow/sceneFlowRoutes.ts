@@ -1,13 +1,23 @@
 /**
  * Pure derivation: scene graph -> endings and routes (路线图).
  *
- * Free of React and of the story document's block layer — everything here is read off
- * {@link SceneFlowGraph}, which has already decided which arm owns which jump. Keeping the two
- * apart is what stops the route map from re-deriving branch ownership a second, drifting way; if
- * the map and the rail disagree about which option leaves a scene, the rail is lying about a path
- * the author can see drawn.
+ * Free of React, and free of any second opinion about branch ownership — which arm owns which jump
+ * is read off {@link SceneFlowGraph}, which has already decided it. Keeping the two apart is what
+ * stops the route map from re-deriving that a second, drifting way; if the map and the rail disagree
+ * about which option leaves a scene, the rail is lying about a path the author can see drawn.
  *
- * Two limits are structural rather than oversights, and the rail should not pretend otherwise:
+ * **An ending is an `/ending` row.** The author says where the story stops, so every ending here is
+ * one of those rows (`listStoryEndings`) and is keyed by the row's block id — which is what lets one
+ * scene hold several of them, one behind each arm of a fork, and lets a route name the one it
+ * reached rather than only the scene it came out in.
+ *
+ * A story that marks no endings at all keeps the derivation this map was built on: a scene the story
+ * cannot leave is read as an ending and keyed by its scene id. All-or-nothing on purpose. Mixing the
+ * two would put a scene that merely forgot its `/ending` in the same list as the ones that have it,
+ * which is the exact distinction a project adopting endings is drawing — and it leaves the rail of a
+ * project that has never written one exactly as it was.
+ *
+ * Three limits are structural rather than oversights, and the rail should not pretend otherwise:
  *
  * - **An `if` with no `else` has no arm standing for "the condition was false".** The graph models
  *   arms the author wrote, and nobody wrote that one, so no route takes it. Synthesising it would
@@ -16,10 +26,15 @@
  *   first continues to the scene's unguarded exits without being made to answer the second, so such
  *   a route under-states its decisions. Modelling it properly means walking scene-internal control
  *   flow, which is a different machine from the one the graph hands over.
+ * - **Rows are not put in order against each other inside a scene.** A jump written after an
+ *   `/ending` never runs, and an ending written after an unconditional jump never runs either, but
+ *   both are listed — the same way two unconditional jumps in one scene are both listed today.
+ *   `story/rows-after-ending` is the report that names the dead row; deciding it here would need
+ *   that same scene-internal walk.
  */
 
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
-import { listSceneBlocksInDocumentOrder } from "@shared/types/story";
+import { isStoryEndingBlock, listSceneBlocksInDocumentOrder, listSceneEndings, listStoryEndings } from "@shared/types/story";
 import type { SceneFlowBranchEdgeModel, SceneFlowGraph } from "./sceneFlowModel";
 
 /**
@@ -32,13 +47,34 @@ import type { SceneFlowBranchEdgeModel, SceneFlowGraph } from "./sceneFlowModel"
  */
 export const MAX_ROUTES = 200;
 
-/** A scene the story can stop in. Derived from the graph — no schema field, no migration. */
+/** Where an ending in this map came from. See the header for why the two never mix. */
+export type SceneFlowEndingSource =
+    /** An `/ending` row the author wrote. */
+    | "authored"
+    /** A scene the story cannot leave, in a story that marks no endings at all. */
+    | "derived";
+
+/** Somewhere the story stops. */
 export type SceneFlowEnding = {
+    /**
+     * The ending's identity: the `/ending` row's block id, or the scene id when derived.
+     *
+     * The row's id is the same identity `listStoryEndings` hands every other consumer, so a rail
+     * selection, an unlock record and a walkthrough test all name the same thing.
+     */
+    id: string;
+    /** Which of the two {@link id} is, so nothing has to guess what it addresses. */
+    source: SceneFlowEndingSource;
+    /** The scene the ending is in. Several endings can share one. */
     sceneId: StorySceneId;
+    /** The ending's name, or the scene's when derived. Empty when the row is unnamed. */
     name: string;
     /**
      * Reachable from the entry scene. An unreachable terminal is a defect worth surfacing, not an
      * ending the player can get.
+     *
+     * An authored ending inherits its scene's answer: an ending is a row in a scene, so a scene
+     * nothing reaches holds nothing a player can reach either.
      *
      * With no `entrySceneId` declared this is `true` for every scene — the same non-claim
      * `SceneFlowNodeModel.reachable` makes, carried through rather than re-invented here. "No entry"
@@ -61,14 +97,22 @@ export type SceneFlowRoute = {
     /** Stable across rebuilds: the entry scene plus every (arm, edge) the path took, in order. */
     id: string;
     /**
-     * Where the path stopped.
+     * The scene the path stopped in.
      *
-     * Usually one of {@link SceneFlowRouteMap.endings}, but not always: a path that ran off the end
-     * of a fall-through arm, or one cut at a cycle, stops in a scene that still has other exits and
-     * so is not a terminal scene. Group by this id and take the name from the scene, never from a
-     * lookup into `endings` that is assumed to hit.
+     * Not necessarily an ending's scene: a path that ran off the end of a fall-through arm, or one
+     * cut at a cycle, stops in a scene that still has other exits. Take the name from the scene,
+     * never from a lookup into `endings` that is assumed to hit.
      */
     endingSceneId: StorySceneId;
+    /**
+     * The ending this path reached — a {@link SceneFlowEnding.id} — or null when it stopped without
+     * reaching one.
+     *
+     * Null is the half worth reading: a fall-through arm that ran out, a path cut at a cycle, or a
+     * scene with no way out in a story that marks its endings elsewhere. All of those stop, and none
+     * of them is an ending, which is the distinction `/ending` exists to draw.
+     */
+    endingId: string | null;
     steps: SceneFlowRouteStep[];
     /** Scene ids on this route including entry and ending, in order. Each appears at most once. */
     sceneIds: StorySceneId[];
@@ -93,13 +137,13 @@ export type SceneFlowRouteMap = {
      */
     truncated: boolean;
     /**
-     * Endings no enumerated route reaches.
+     * Endings no enumerated route reaches, as {@link SceneFlowEnding.id}s.
      *
      * When `truncated` is set this is a claim about *what was enumerated*, not about the story: an
      * ending only the 4000th route reaches lands here. Render it accordingly. Empty when the story
      * declares no entry scene — with no "from", nothing can be called unreached.
      */
-    unreachableEndings: StorySceneId[];
+    unreachableEndings: string[];
     /**
      * Branch arms that lie on no enumerated route — dead options.
      *
@@ -111,18 +155,34 @@ export type SceneFlowRouteMap = {
 };
 
 /**
- * One way out of a scene.
+ * One way out of a scene, or one way it stops.
  *
  * `stop` is the fall-through arm with nothing to fall through *into*: the option runs, the scene has
- * no unconditional exit left, and the story ends there. It is not the same as having no arm — "this
- * option just continues, and continuing is the end" is a path the author needs listed.
+ * no unconditional exit left, and the run has nowhere to go. It is not the same as having no arm —
+ * "this option just continues, and continuing is the end" is a path the author needs listed.
+ *
+ * `ending` is an `/ending` row. Kept apart from `stop` because the two are opposite verdicts on the
+ * same shape: one is where the author said the story ends, the other is where it merely ran out. A
+ * consumer that folded them together could not tell a finished route from an unfinished one, which
+ * is the whole question the ending row was added to answer.
  */
-type SceneFlowContinuation =
+export type SceneFlowContinuation =
     | { kind: "edge"; branchId: string | null; edgeId: string; target: StorySceneId }
-    | { kind: "stop"; branchId: string };
+    | { kind: "stop"; branchId: string }
+    | { kind: "ending"; branchId: string | null; endingId: StoryBlockId };
 
 /** A scene exit no fork guards, as the scene-pair edge draws it. */
 type SceneFlowPlainExit = { edgeId: string; target: StorySceneId };
+
+/** Append to a list held in a map, creating the list on first use. */
+function pushInto<K, V>(into: Map<K, V[]>, key: K, value: V): void {
+    const list = into.get(key);
+    if (list) {
+        list.push(value);
+    } else {
+        into.set(key, [value]);
+    }
+}
 
 /** Whether `block` sits anywhere under `ancestorId`, guarded against a corrupted parent cycle. */
 function isDescendantOf(scene: StoryScene, block: StoryBlock, ancestorId: StoryBlockId): boolean {
@@ -139,14 +199,17 @@ function isDescendantOf(scene: StoryScene, block: StoryBlock, ancestorId: StoryB
 }
 
 /**
- * Jumps that only a fall-through arm can reach: the ones written after a root-level `choice`.
+ * Rows that only a fall-through arm can reach: the ones written after a root-level `choice`.
  *
  * A choice fork is **exhaustive** — the engine's menu makes the player pick exactly one arm, and
- * nothing gets past it without going through one. So a jump the author wrote after the menu is
- * reached only by picking an option that does not jump; offering it as a continuation of its own
+ * nothing gets past it without going through one. So a row the author wrote after the menu is
+ * reached only by picking an option that does not leave; offering it as a continuation of its own
  * invents a route on which the player made no choice at all, which is the one thing the scene
- * guarantees cannot happen. A jump written *before* the menu is not gated: it leaves before the
+ * guarantees cannot happen. A row written *before* the menu is not gated: it runs before the
  * menu is ever shown.
+ *
+ * Jumps and `/ending` rows alike, and for the same reason: both are ways the scene hands the run on,
+ * and gating one while offering the other would let a route reach an ending having answered nothing.
  *
  * **Only `choice`, never a condition group.** An `if` with no `else` is skipped whole when the
  * condition is false and control walks straight into what follows, so a condition fork guarantees
@@ -156,7 +219,7 @@ function isDescendantOf(scene: StoryScene, block: StoryBlock, ancestorId: StoryB
  * **Only root-level forks.** A choice nested inside an `if` arm gates the rest of *that arm*, not
  * the rest of the scene: the scene continues past the `if` whether or not the arm ever ran.
  */
-function findGatedJumpIds(scene: StoryScene): Set<StoryBlockId> {
+function findGatedBlockIds(scene: StoryScene): Set<StoryBlockId> {
     const blocks = listSceneBlocksInDocumentOrder(scene);
     const position = new Map<StoryBlockId, number>(blocks.map((block, index) => [block.id, index]));
 
@@ -182,11 +245,11 @@ function findGatedJumpIds(scene: StoryScene): Set<StoryBlockId> {
 
     const gated = new Set<StoryBlockId>();
     for (const block of blocks) {
-        if (block.kind !== "jump") {
+        if (block.kind !== "jump" && !isStoryEndingBlock(block)) {
             continue;
         }
         const at = position.get(block.id) ?? 0;
-        // A jump inside the menu's own subtree is not gated by it: it is what an option does, and
+        // A row inside the menu's own subtree is not gated by it: it is what an option does, and
         // the arm that owns it already accounts for it.
         if (gates.some(gate => gate.at < at && !isDescendantOf(scene, block, gate.id))) {
             gated.add(block.id);
@@ -196,12 +259,42 @@ function findGatedJumpIds(scene: StoryScene): Set<StoryBlockId> {
 }
 
 /**
- * Every way out of every scene, in a fixed order so the enumeration — and therefore which routes
- * survive the cap — is the same on every rebuild.
+ * The arm that guards a row, or null when nothing does.
  *
- * Arms come first, in the graph's fork-then-arm order, and unguarded exits after them.
+ * Nearest wins — the same rule `resolveOwningArm` applies to a jump, so an `/ending` under an option
+ * nested in an `if` belongs to the option. Which blocks *are* arms comes from the graph rather than
+ * being recognised a second time here, which is what keeps this and the drawn map from disagreeing
+ * about what a fork is.
  */
-function collectContinuations(
+function resolveGuardingArmId(
+    scene: StoryScene,
+    block: StoryBlock,
+    armIdByBlockId: ReadonlyMap<StoryBlockId, string>,
+): string | null {
+    const seen = new Set<StoryBlockId>();
+    let parentId = block.parentId;
+    // A corrupted parent cycle must not hang the editor, hence the visited set.
+    while (parentId && !seen.has(parentId)) {
+        seen.add(parentId);
+        const armId = armIdByBlockId.get(parentId);
+        if (armId) {
+            return armId;
+        }
+        parentId = scene.blocks[parentId]?.parentId ?? null;
+    }
+    return null;
+}
+
+/**
+ * Every way out of every scene — and every way each one stops — in a fixed order, so the
+ * enumeration, and therefore which routes survive the cap, is the same on every rebuild.
+ *
+ * Arms come first, in the graph's fork-then-arm order, then unguarded exits, then unguarded endings.
+ *
+ * Exported because this is the one place that decides where a run can go next: a check that walked
+ * the graph its own way could report a path the map does not draw, or miss one it does.
+ */
+export function collectSceneFlowContinuations(
     graph: SceneFlowGraph,
     document: StoryDocument,
 ): Map<StorySceneId, SceneFlowContinuation[]> {
@@ -224,28 +317,16 @@ function collectContinuations(
     // "this option just continues" as a route.
     const plainExitsBySceneId = new Map<StorySceneId, SceneFlowPlainExit[]>();
     const standaloneExitsBySceneId = new Map<StorySceneId, SceneFlowPlainExit[]>();
-    const gatedJumpIdsBySceneId = new Map<StorySceneId, Set<StoryBlockId>>();
-    const gatedJumpIds = (sceneId: StorySceneId): Set<StoryBlockId> => {
-        const cached = gatedJumpIdsBySceneId.get(sceneId);
+    const gatedBlockIdsBySceneId = new Map<StorySceneId, Set<StoryBlockId>>();
+    const gatedBlockIds = (sceneId: StorySceneId): Set<StoryBlockId> => {
+        const cached = gatedBlockIdsBySceneId.get(sceneId);
         if (cached) {
             return cached;
         }
         const scene = document.scenes[sceneId];
-        const gated = scene ? findGatedJumpIds(scene) : new Set<StoryBlockId>();
-        gatedJumpIdsBySceneId.set(sceneId, gated);
+        const gated = scene ? findGatedBlockIds(scene) : new Set<StoryBlockId>();
+        gatedBlockIdsBySceneId.set(sceneId, gated);
         return gated;
-    };
-    const pushExit = (
-        into: Map<StorySceneId, SceneFlowPlainExit[]>,
-        sceneId: StorySceneId,
-        exit: SceneFlowPlainExit,
-    ): void => {
-        const exits = into.get(sceneId);
-        if (exits) {
-            exits.push(exit);
-        } else {
-            into.set(sceneId, [exit]);
-        }
     };
     for (const edge of graph.edges) {
         const unowned = edge.jumps.filter(jump => !ownedJumpIds.has(jump.blockId));
@@ -253,21 +334,54 @@ function collectContinuations(
             continue;
         }
         const exit = { edgeId: edge.id, target: edge.target };
-        pushExit(plainExitsBySceneId, edge.source, exit);
-        const gated = gatedJumpIds(edge.source);
+        pushInto(plainExitsBySceneId, edge.source, exit);
+        const gated = gatedBlockIds(edge.source);
         if (unowned.some(jump => !gated.has(jump.blockId))) {
-            pushExit(standaloneExitsBySceneId, edge.source, exit);
+            pushInto(standaloneExitsBySceneId, edge.source, exit);
+        }
+    }
+
+    // Arms by the block each one is, per scene, so an `/ending` row can be attributed to the arm
+    // that guards it. Per scene rather than per document because a fixture may reuse a block id
+    // across scenes, and an ending merged into a stranger's arm would read as a routing defect.
+    const armIdsBySceneId = new Map<StorySceneId, Map<StoryBlockId, string>>();
+    for (const branch of graph.branches) {
+        const arms = armIdsBySceneId.get(branch.sceneId);
+        if (arms) {
+            arms.set(branch.blockId, branch.id);
+        } else {
+            armIdsBySceneId.set(branch.sceneId, new Map([[branch.blockId, branch.id]]));
+        }
+    }
+
+    // Endings, split the same two ways the exits are, and for the same reason. An ending under an
+    // arm belongs to that arm instead and is in neither list: it is that arm's way of stopping.
+    const endingsByBranchId = new Map<string, StoryBlockId[]>();
+    const plainEndingsBySceneId = new Map<StorySceneId, StoryBlockId[]>();
+    const standaloneEndingsBySceneId = new Map<StorySceneId, StoryBlockId[]>();
+    for (const node of graph.nodes) {
+        const scene = document.scenes[node.sceneId];
+        if (!scene) {
+            continue;
+        }
+        const arms = armIdsBySceneId.get(node.sceneId);
+        for (const ending of listSceneEndings(scene)) {
+            const block = scene.blocks[ending.endingId];
+            const armId = block && arms ? resolveGuardingArmId(scene, block, arms) : null;
+            if (armId) {
+                pushInto(endingsByBranchId, armId, ending.endingId);
+                continue;
+            }
+            pushInto(plainEndingsBySceneId, node.sceneId, ending.endingId);
+            if (!gatedBlockIds(node.sceneId).has(ending.endingId)) {
+                pushInto(standaloneEndingsBySceneId, node.sceneId, ending.endingId);
+            }
         }
     }
 
     const branchEdgesByBranchId = new Map<string, SceneFlowBranchEdgeModel[]>();
     for (const edge of graph.branchEdges) {
-        const owned = branchEdgesByBranchId.get(edge.sourceBranchId);
-        if (owned) {
-            owned.push(edge);
-        } else {
-            branchEdgesByBranchId.set(edge.sourceBranchId, [edge]);
-        }
+        pushInto(branchEdgesByBranchId, edge.sourceBranchId, edge);
     }
 
     const continuations = new Map<StorySceneId, SceneFlowContinuation[]>();
@@ -283,16 +397,29 @@ function collectContinuations(
 
     for (const branch of graph.branches) {
         const list = listFor(branch.sceneId);
+        const owned = endingsByBranchId.get(branch.id) ?? [];
+        for (const endingId of owned) {
+            list.push({ kind: "ending", branchId: branch.id, endingId });
+        }
         if (branch.fallsThrough) {
+            // An arm holding an ending does not fall through: the run stops at the row rather than
+            // returning to the scene and continuing past the fork.
+            if (owned.length > 0) {
+                continue;
+            }
             // The arm owns no exit, so control returns to the scene and continues past the fork —
-            // which, as far as the graph knows, means the scene's unguarded exits.
+            // which, as far as the graph knows, means the scene's unguarded exits and endings.
             const onward = plainExitsBySceneId.get(branch.sceneId) ?? [];
-            if (onward.length === 0) {
+            const onwardEndings = plainEndingsBySceneId.get(branch.sceneId) ?? [];
+            if (onward.length === 0 && onwardEndings.length === 0) {
                 list.push({ kind: "stop", branchId: branch.id });
                 continue;
             }
             for (const exit of onward) {
                 list.push({ kind: "edge", branchId: branch.id, edgeId: exit.edgeId, target: exit.target });
+            }
+            for (const endingId of onwardEndings) {
+                list.push({ kind: "ending", branchId: branch.id, endingId });
             }
             continue;
         }
@@ -311,24 +438,55 @@ function collectContinuations(
         }
     }
 
+    for (const [sceneId, endingIds] of standaloneEndingsBySceneId) {
+        const list = listFor(sceneId);
+        for (const endingId of endingIds) {
+            list.push({ kind: "ending", branchId: null, endingId });
+        }
+    }
+
     return continuations;
 }
 
 /**
  * Endings and every decision path that reaches one.
  *
- * `document` supplies the entry scene — the only thing the walk needs that the graph does not carry
- * unambiguously — and is guarded exactly as `buildSceneFlowGraph` guards it, so a story pointing at
- * a deleted scene is treated as having no entry rather than as having a broken one.
+ * `document` supplies the two things the graph does not carry: the `/ending` rows, and the entry
+ * scene. The entry is guarded exactly as `buildSceneFlowGraph` guards it, so a story pointing at a
+ * deleted scene is treated as having no entry rather than as having a broken one.
  */
 export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDocument): SceneFlowRouteMap {
+    const authored = listStoryEndings(document);
+    const reachableBySceneId = new Map(graph.nodes.map(node => [node.sceneId, node.reachable]));
     // A scene with no outgoing edge is a scene the story cannot leave. Self and dangling jumps
     // produce no edge in the graph, so "only dangling/self ones" is already covered here rather than
     // needing a second reading of the jump counts.
     const scenesWithExit = new Set<StorySceneId>(graph.edges.map(edge => edge.source));
-    const endings: SceneFlowEnding[] = graph.nodes
-        .filter(node => !scenesWithExit.has(node.sceneId))
-        .map(node => ({ sceneId: node.sceneId, name: node.name, reachable: node.reachable }));
+    const endings: SceneFlowEnding[] = authored.length > 0
+        ? authored.map(ending => ({
+            id: ending.endingId,
+            source: "authored" as const,
+            sceneId: ending.sceneId,
+            name: ending.name,
+            reachable: reachableBySceneId.get(ending.sceneId) ?? true,
+        }))
+        : graph.nodes
+            .filter(node => !scenesWithExit.has(node.sceneId))
+            .map(node => ({
+                id: node.sceneId,
+                source: "derived" as const,
+                sceneId: node.sceneId,
+                name: node.name,
+                reachable: node.reachable,
+            }));
+    // A path that stops in one of these scenes reached the derived ending that IS the scene. Empty
+    // once the story marks an ending of its own, where stopping somewhere with no `/ending` row is
+    // exactly the thing worth telling apart from finishing.
+    const derivedEndingSceneIds = new Set(
+        endings.filter(ending => ending.source === "derived").map(ending => ending.sceneId),
+    );
+    const derivedEndingAt = (sceneId: StorySceneId): string | null =>
+        derivedEndingSceneIds.has(sceneId) ? sceneId : null;
 
     const entrySceneId = document.entrySceneId && document.scenes[document.entrySceneId]
         ? document.entrySceneId
@@ -340,7 +498,7 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
         return { endings, routes: [], truncated: false, unreachableEndings: [], deadBranchIds: [] };
     }
 
-    const continuations = collectContinuations(graph, document);
+    const continuations = collectSceneFlowContinuations(graph, document);
     const routes: SceneFlowRoute[] = [];
     let truncated = false;
 
@@ -353,10 +511,16 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
      * Freeze the path as it stands into a route.
      *
      * `tail` is the token that tells two routes with the same steps apart — the arm that stopped,
-     * or the edge that looped back. Without it, "picked option A and the scene ended" and "picked
-     * option B and the scene ended" collapse into one id, and the rail keys two list rows the same.
+     * the ending that was reached, or the edge that looped back. Without it, "picked option A and
+     * the scene ended" and "picked option B and the scene ended" collapse into one id, and the rail
+     * keys two list rows the same.
      */
-    const emit = (tail: string | null, tailBranchId: string | null, truncatedByCycle: boolean): void => {
+    const emit = (
+        tail: string | null,
+        tailBranchId: string | null,
+        truncatedByCycle: boolean,
+        endingId: string | null,
+    ): void => {
         const parts = [entrySceneId, ...steps.map(step => `${step.branchId ?? "-"}@${step.edgeId}`)];
         if (tail) {
             parts.push(tail);
@@ -366,6 +530,7 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
             // risk, and a selection landing on the wrong path is worse than a long string.
             id: `scene-flow:route:${parts.join("/")}`,
             endingSceneId: sceneIds[sceneIds.length - 1],
+            endingId,
             steps: steps.map(step => ({ ...step })),
             sceneIds: [...sceneIds],
             branchIds: tailBranchId ? [...branchIds, tailBranchId] : [...branchIds],
@@ -376,7 +541,7 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
     const walk = (sceneId: StorySceneId): void => {
         const exits = continuations.get(sceneId) ?? [];
         if (exits.length === 0) {
-            emit(null, null, false);
+            emit(null, null, false, derivedEndingAt(sceneId));
             return;
         }
         for (const exit of exits) {
@@ -387,15 +552,21 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
                 truncated = true;
                 return;
             }
+            if (exit.kind === "ending") {
+                emit(`~end:${exit.endingId}`, exit.branchId, false, exit.endingId);
+                continue;
+            }
             if (exit.kind === "stop") {
-                emit(`~stop:${exit.branchId}`, exit.branchId, false);
+                // The arm ran out. In the derived fallback the scene it ran out in may itself be an
+                // ending, in which case that is what the path reached and the arm is how it got here.
+                emit(`~stop:${exit.branchId}`, exit.branchId, false, derivedEndingAt(sceneId));
                 continue;
             }
             if (visited.has(exit.target)) {
                 // Cut here rather than following the loop: the route is the part of the path that is
                 // a path, and the flag says it did not stop because the story ended. The closing hop
                 // is deliberately not a step — `sceneIds` promises no repeats.
-                emit(`~cut:${exit.branchId ?? "-"}@${exit.edgeId}`, exit.branchId, true);
+                emit(`~cut:${exit.branchId ?? "-"}@${exit.edgeId}`, exit.branchId, true, null);
                 continue;
             }
             steps.push({ sceneId, branchId: exit.branchId, edgeId: exit.edgeId });
@@ -416,11 +587,14 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
 
     walk(entrySceneId);
 
-    const visitedScenes = new Set<StorySceneId>();
+    // Reached, not merely visited: an ending is reached by a route that STOPS at it. A route passing
+    // through the scene on its way somewhere else has not reached the ending in it, which is the
+    // difference several endings in one scene made visible.
+    const reachedEndingIds = new Set<string>();
     const usedBranchIds = new Set<string>();
     for (const route of routes) {
-        for (const sceneId of route.sceneIds) {
-            visitedScenes.add(sceneId);
+        if (route.endingId) {
+            reachedEndingIds.add(route.endingId);
         }
         for (const branchId of route.branchIds) {
             usedBranchIds.add(branchId);
@@ -431,7 +605,7 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
         endings,
         routes,
         truncated,
-        unreachableEndings: endings.filter(ending => !visitedScenes.has(ending.sceneId)).map(ending => ending.sceneId),
+        unreachableEndings: endings.filter(ending => !reachedEndingIds.has(ending.id)).map(ending => ending.id),
         deadBranchIds: graph.branches.filter(branch => !usedBranchIds.has(branch.id)).map(branch => branch.id),
     };
 }

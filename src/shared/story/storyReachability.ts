@@ -188,6 +188,47 @@ export function scanStoryEntryPoints(
     return { byStory, sites, undecidable };
 }
 
+/**
+ * Where play can begin in a whole project: each story's own `entrySceneId`, plus every scene a
+ * blueprint's `Start Story` node names.
+ *
+ * Both halves are author intent rather than a guess, and "the first scene in document order" is
+ * deliberately not among them - a project that simply never marked an entry would then have every
+ * scene but one declared unreachable. A caller that wants that fallback asks for it by name; see
+ * {@link StoryEntryFallback}.
+ *
+ * One function because the callers that ask must not be able to disagree. The project report tells
+ * an author a scene is unreachable, the `reachable-endings` test tells them a path never finishes,
+ * and a build sweep decides what to ship: two of those finding different entry points would mean
+ * one of them is describing a project nobody has.
+ *
+ * `undecidable` is what a caller has to look at first. A `Start Story` node whose target only the
+ * running game knows means no reachability claim can be made at all, and a check that reported
+ * everything as unreachable because it could not find the entry is one an author switches off.
+ */
+export function scanProjectStoryEntryPoints(
+    stories: readonly { id: string; document: StoryDocument }[],
+    blueprintDocument: BlueprintDocument | null | undefined,
+): StoryEntryPointScan {
+    const scan = scanStoryEntryPoints(
+        blueprintDocumentGraphCarriers(blueprintDocument),
+        (storyId, sceneId) => Boolean(stories.find(story => story.id === storyId)?.document.scenes[sceneId]),
+    );
+    for (const entry of stories) {
+        const entrySceneId = entry.document.entrySceneId;
+        if (!entrySceneId || !entry.document.scenes[entrySceneId]) {
+            continue;
+        }
+        const scenes = scan.byStory.get(entry.id);
+        if (scenes) {
+            scenes.add(entrySceneId);
+        } else {
+            scan.byStory.set(entry.id, new Set([entrySceneId]));
+        }
+    }
+    return scan;
+}
+
 /** Why one scene is in the answer. The first reason the walk found, which is the shortest one. */
 export type StorySceneReach =
     /** The scene the author marked as the story's entry. */

@@ -119,5 +119,27 @@ export const test = {
                 passed: "已走到 {ending}",
             },
         },
+        reachableEndings: {
+            title: "结局可达性",
+            description: "故事的每一条路径是否都能走到 /ending",
+            // 跳过是正常状态：只说工程当前的样子，以及缺的那一样东西，不写成作者做错了什么。
+            skipped: {
+                noEndings: "有入口的故事都没有写 /ending",
+                noEntryPoint: "没有任何故事标出开始的位置",
+                undecidableEntry: "Start Story 节点在运行时才决定场景，读不出从哪里开始",
+                storiesUnread: "有故事无法读取",
+            },
+            finding: {
+                pathRunsOut: "推进在这里停住，没有到达任何结局",
+                optionRunsOut: "「{option}」走到头也没有到达任何结局",
+                endingUnreached: "没有路径能到达「{name}」",
+                endingUnreachedUnnamed: "没有路径能到达这个结局",
+            },
+            // 数字放在冒号后面，任何数量都读得通；通过的这次也照样报出没人到得了的结局。
+            summary: {
+                passed: "每条路径都到达了结局。无人到达的结局：{unreached} / {endings}",
+                failed: "走到头的路径：{errors} 条。无人到达的结局：{unreached} / {endings}",
+            },
+        },
     },
 } satisfies LocaleNamespace<"test">;
