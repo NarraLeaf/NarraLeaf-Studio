@@ -431,6 +431,17 @@ export const documentDiff = {
         fileRemoved: "Removed",
         fileMoved: "Moved",
         /**
+         * In a row's tooltip, for a document that is stored as several files.
+         *
+         * Never on the row itself: one line per document is the one structural rule this pane has,
+         * and a second number on the line would put "3 changes" and "2 files" side by side, which
+         * reads as a contradiction.
+         */
+        setFiles: {
+            one: "{count} file in this document changed",
+            other: "{count} files in this document changed",
+        },
+        /**
          * Said once under a heading, never on a row.
          *
          * Covers both shortfalls at once because the author's next move is the same for either: a
@@ -452,8 +463,8 @@ export const documentDiff = {
         empty: "Nothing differs between these two versions",
         emptyWorkingTree: "Nothing has changed since the last version",
         readFailure: "The bytes for this comparison could not be read: {error}",
-        incomplete: "{shown} of {total} changed paths were compared. The rest were left out.",
-        documentsOmitted: "{count} more files are not listed here.",
+        incomplete: "{shown} of {total} changed documents were compared. The rest were left out.",
+        documentsOmitted: "{count} more documents are not listed here.",
         unavailable: "Version control is not available in this project.",
     },
     /**

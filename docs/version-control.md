@@ -980,7 +980,8 @@ window[RendererInterfaceKey].vcs
 
 左边是**索引**，右边是**详情**，这个分工是这块界面唯一的结构性约定：
 
-- **索引每个文件恒占一行**，与它内部有多少条改动、走的哪一档、被截断与否都无关。行尾放改动数。
+- **索引每份文档恒占一行**，与它内部有多少条改动、走的哪一档、被截断与否都无关。行尾放改动数。
+  多数文档就是一个文件；一份 document set（见 §9.2）由 manifest 加成员组成，同样只占一行。
 - **详情区一次只挂一个 presenter**（`ChangeDetailHost`，`data-change-presenter` 是它的抓手）。
 - 文件按**分类**分组（故事／人物／界面／素材／本地化／音频／工程／其他，见
   `renderer/lib/vcs/changeCategory.ts`），组头带文件数，超过 `GROUP_COLLAPSE_THRESHOLD` 默认折叠。
@@ -1029,6 +1030,93 @@ window[RendererInterfaceKey].vcs
 
 **改动数与蒙版数必须对得上**，这是作者信任这个界面的全部依据：`accountedChanges` /
 `accountedGraphChanges` 对着真 spec diff 断言，定位不到的元素**计入一行说明而不是静默丢掉**。
+
+## 9.2 一份文档由多个文件组成：document set
+
+`shared/documents/documentSet.ts`。**本仓目前一个都没注册**，故事仍是单文件；这一层是先落地的那半。
+
+背景是故事文档要拆成一个场景一个文件（`storydoc.json` 只剩章节、场景桩、入口场景，旁边是
+`scenes/<sceneId>.json`）。拆之前必须先有这一层，因为版本控制层**在「一个文件」之上没有任何概念**：
+`resolve()` 一条路径对一个 spec，`merge3(base, mine, theirs)` 每边只收一个值，比较预算按路径花。
+
+设计只由一条要求决定：**格式自己的 `diff` / `merge3` / `summarize` 一行都不用改。**
+`diffStoryDocument` 要整份文档才答得出任何东西（场景顺序、`sceneRank`、共有场景集、schema 版本闸
+都是整份文档的事实）。所以 set spec 就是**整份文档**的普通 `DocumentSpec`，外加一张
+`DocumentSetLayout` 说明这份文档怎么摊在文件上、怎么拼回去：`assemble(parts) → 生值`（`parse` 随后
+在它上面跑）、`disassemble(document) → 各部分的生值`。`paths` 由 manifest 与 member 两个模式导出，于是
+注册表原样认领成员路径，`pathFor({storyId})` 给 manifest、`pathFor({storyId, sceneId})` 给成员。
+
+三条规则，下游全部建在它们上面：
+
+1. **成员按路径枚举，绝不按 manifest 的内容。** 每个调用方手里都只有一份路径清单，而且都付不起
+   「先解析 manifest」：修订比较有两次 tree walk，工作树比较有 status 加一次 tree walk，合并只有一个
+   目录。而且 manifest 驱动会造出第二个「这份文档由哪些文件组成」的事实源，两者恰好会在最要紧的时候
+   不一致——**没被 manifest 列出的成员文件，正是一次坏合并留下的形状**。所以：匹配 member 模式且 set
+   key 相同的路径就是成员，`assemble` 拿到找到的一切，由**格式**决定收下、丢掉还是 `corrupt`。
+2. **决定回写到哪个文件，靠拆解，不靠路径算术。** 作者的答案由**原样不动的** `applyMergeDecisions`
+   贴回整份文档，然后把结果重新 `disassemble`；改动落在哪一部分，那个文件就是它的归属。若改用
+   `DocumentChange.path` 推导归属，就多出第三套寻址要跟 `diff`、`merge3` 同步，而且表达不了一次合法地
+   动两个文件的改动（改场景名同时动 manifest 的桩和成员本身）。
+3. **一个 set 是一个预算单位、一行、一个冲突。**
+
+### 预算的单位从「路径」改成了「文档」
+
+`DIFF_PATH_LIMIT`（2000）已更名为 **`DIFF_UNIT_LIMIT`**，数值不变。旧的前提是「一个文件就是一份
+文档」；一旦一份文档能是很多文件，这个前提就朝最贵的方向失效：**四部 560 场景的故事是 2244 个文件、
+4 份文档**，按路径数它会超限，于是**整个工程里每一份文档**——人物、译文、素材——都会被报成「未读取」，
+只因为作者没碰过的某个故事很大。现在先折叠再计数；没注册 set 的工程数出来的和以前一模一样。
+
+数值没有上调，这是刻意的：调大是吸收同一道算术的另一种办法，只买到再翻一倍的时间，
+**错的是单位不是数字**。
+
+另有 **`DOCUMENT_SET_MEMBER_LIMIT`（2000）**：一份文档的文件数超过它就不再组装，答成**一行**
+「改了，没读」，并通过 `onDegrade` 说明原因。**不回落成每个成员一行**——那正是 `DIFF_UNIT_LIMIT`
+要挡的洪水从另一扇门进来。`DIFF_PARSE_BYTE_CEILING` 对 set 按**总字节**计。
+
+### 比较与索引
+
+`revisionDiff` / `workingTreeDiff` 先折叠再花预算，`DocumentDiffEntry` 多了一个 `members`：这一行
+代表的**发生了改动的**那些路径。行本身报在 manifest 上，而 manifest 常常自己没变——日常编辑改的是
+成员。索引仍是每份文档一行（`ChangeIndexRow.memberCount`，只在**悬浮提示**里说文件数，绝不加第二行）。
+
+set 只有四档：**没有 `structural`**。「值不同的那些 JSON 路径」需要每边一份 JSON，而 set 有 N 个
+文件；逐文件走一遍会产出第四套寻址，`diff`、`merge3`、解决界面谁都用不了。组装不起来就直接落到
+`opaque`，并把原因交给 `onDegrade`。
+
+### 合并
+
+`mergeDocument.ts` 按 §4.23 的附属文件组装，一份文件一组：
+
+- 旁边有 `~mine` / `~theirs` 的文件贡献这两边，有 `~base` 就贡献 base；
+- **旁边什么都没有的文件，把工作树里的字节同时给三边。** 它已经被 automerge settle 了（或根本没动），
+  三边一致就是在说这件事：`merge3` 那里不会生出任何决定，字节保持后端留下的样子，提交按 §4.25 逐字节
+  记录。拿 automerge 的结果当那个文件的 base 是个小小的虚构，但三边一致，由它生不出任何决定。
+- **manifest 自己冲突且没有 `~base` = 整份文档 add/add**，由 `documentSetPartsFrom` 拒绝组装没有
+  manifest 的 set 来表达。`~base` 存在但解析不了**不降级成 add/add**（理由同单文件那条）。
+
+`VcsMergeDocument.members` 报出这一次回答会 settle 的**每一条**冲突路径，`resolveDocumentChanges`
+返回同一张表，`VcsManager.completeMerge` 拿它去调 `branch_merge_resolve`。**必须传全部**：漏一条，
+提交会被拒并点名它（§4.32），而先前那几条的附属文件已经被那次失败提交的 stage 删掉了。`merge.ts` 的
+`resolveConflicts` 同理，把属于同一 set 的路径展开成它全部的冲突路径再逐个拷附属文件——
+**拷附属文件加普通 `branch_merge_resolve` 那套一个字没改**（§4.31）。
+
+settle 之后 set 只重写**字节真的变了**的那些文件；settle 后的文档里不再有的成员**会被删掉**——
+成员按路径枚举，留着的文件下次会被原样折回来，作者接受的删除会自己悄悄撤销。
+
+### 拆故事的人还欠什么
+
+- **`workspaceProjectPreflight` 那条 `mergeConflictReads` 现在是对的，别去动它。** 它装的是
+  `readMergeState().conflicts`，而那份清单来自 `findConflictedPaths` 的**附属文件遍历**——与路径形状
+  无关，所以每个冲突的成员文件都会各自被替换成 `~mine`，§4.33 那条链不会因为拆文件而重开。
+  **一旦有人把冲突清单折叠成「每份文档一行」，preflight 必须继续拿未折叠的那份**，否则成员读不到
+  `~mine`，工作区又打不开了。
+- **解决面板仍是每个冲突文件一行。** 主进程这半已经能「从 set 的任一路径组装整份文档、一次 settle
+  全部成员」，但 `VcsMergeState.conflicts` 没有折叠，所以面板会给同一份文档画 N 行。逐变更 settle
+  会写全部成员，之后再对其中一行按「保留我的」就会把它盖掉。折叠面板的行是**必须做**的一步。
+- **delete/modify 冲突后端写什么，没测过。** 只有 `~mine` 或只有 `~theirs` 的文件，这里按
+  `blocked: "unreadable"` 拒绝整份文档（与单文件那条同规则）。要支持得先量 Lore 到底写了什么。
+- **删掉的成员路径还要不要 settle，没测过。** 现在照 settle：路径仍在返回的清单里。
+  Lore 对一条工作树里已不存在的冲突路径怎么反应，未测。
 
 ## 10. 待解问题
 
