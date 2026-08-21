@@ -489,9 +489,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         },
         {
             // Backspace first tries the blank-line closure - a single selected leaf action row becomes an
-            // empty narration line with the caret in it, and the *next* Backspace is the empty-line rung
-            // that already exists. Everything it declines (multi-selection, containers, text rows) falls
-            // through to the delete this binding has always been.
+            // empty line with the caret in it, and the *next* Backspace on that line is what removes the
+            // row. Everything it declines (multi-selection, containers, text rows) falls through to the
+            // delete this binding has always been.
             id: "backspace",
             key: "backspace",
             description: t("story.keybindings.deleteRowsConfirm"),

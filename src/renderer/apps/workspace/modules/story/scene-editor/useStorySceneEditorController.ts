@@ -1122,21 +1122,23 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [scene]);
 
     /**
-     * Re-open a row as an editable line, seeded with its source.
+     * Re-open a row as an editable line, seeded with its source - or with `seed`, when the caller
+     * brings its own text for the line. `""` is the Backspace demote's blank line, which is the same
+     * slot standing in the same place, only empty (see {@link replaceRowWithBlankLine}).
      *
      * The slot lands *where the row is* (after its previous sibling, inside its parent) and carries
      * `replaceBlockId`, so committing swaps the row in place and Escape leaves it exactly as it was.
-     * Only invalid rows use this today: they are the one kind whose whole content is raw text the
-     * author still needs to fix.
+     * An invalid row is what the unseeded call is for: it is the one kind whose whole content is raw
+     * text the author still needs to fix.
      */
-    const startLineEdit = useCallback((block: StoryBlock) => {
+    const startLineEdit = useCallback((block: StoryBlock, seed?: string) => {
         if (!scene) {
             return;
         }
         const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
         const index = siblings.indexOf(block.id);
         slotDiscardedRef.current = false;
-        insertDraftRef.current = block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "";
+        insertDraftRef.current = seed ?? (block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "");
         setEditorMode({
             kind: "insert",
             slot: {
@@ -1801,8 +1803,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [editorMode, insertBlock, slashAtAlias, startInsertAfter, uuidService]);
 
 
-    // Backspace on an empty insert slot: dismiss the blank line and step back onto the row above it -
-    // re-entering it for editing when it holds text - so the demote ladder keeps walking upward.
+    // Backspace on an empty insert slot: dismiss the blank line - taking the row it stands in for, when
+    // it stands in for one - and step back onto the row above it, re-entering it for editing when it
+    // holds text, so the demote ladder keeps walking upward.
     const handleInsertBackspaceEmpty = useCallback(() => {
         if (editorMode.kind !== "insert") {
             return;
@@ -1812,6 +1815,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // step-back would land while that dialogue row still sits between the two.
         if (returnFromCharacterActionSlot()) {
             return;
+        }
+        // A slot standing *in place of* a row - the Backspace demote's blank line, or a draft row whose
+        // text the author has just cleared - still has that row underneath it, uncommitted and intact.
+        // This press is what finally removes it: the ladder's last rung. Without it the slot would only
+        // close, handing back the row the previous press emptied, and Backspace would loop instead of
+        // finishing. One `recordHistory` here, so the row comes back whole on `Mod+Z`.
+        const replacedId = editorMode.slot.replaceBlockId;
+        if (replacedId && storyService && storyId && sceneId && scene?.blocks[replacedId]) {
+            recordHistory();
+            storyService.deleteBlock(storyId, sceneId, replacedId);
         }
         const afterId = editorMode.slot.afterBlockId;
         const afterBlock = afterId ? scene?.blocks[afterId] : null;
@@ -1830,7 +1843,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setEditorMode({ kind: "idle" });
         focusRoot();
-    }, [editorMode, focusRoot, returnFromCharacterActionSlot, scene]);
+    }, [editorMode, focusRoot, recordHistory, returnFromCharacterActionSlot, scene, sceneId, storyId, storyService]);
 
     /**
      * Build a block from a plugin-registered story action. The registration's
@@ -2476,13 +2489,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [activeBlockId, deleteRows, selectedBlockIds]);
 
     /**
-     * `Backspace` on a selected row that is not being edited: the row is replaced by a blank narration
-     * line with the caret in it, rather than deleted. Pressing Backspace again is then the *existing*
-     * empty-line rung ({@link handleBackspaceAtEmptyStart}), so an action row degrades to "blank line
-     * → gone" over two presses - the closure a text editor trained the author to expect. `Delete` is
+     * `Backspace` on a selected row that is not being edited: the row becomes a blank line with the
+     * caret in it, rather than being deleted. Pressing Backspace again on that blank line removes the
+     * row for good ({@link handleInsertBackspaceEmpty}), so an action row degrades to "blank line →
+     * gone" over two presses - the closure a text editor trained the author to expect. `Delete` is
      * untouched and still removes the row outright: the two keys stay two paths.
      *
-     * The insert and the delete run under one `recordHistory` (`insertBlock`'s own), so a single
+     * The blank line is a slot standing *in place of* the row ({@link startLineEdit}), not a committed
+     * narration row: it is the same empty line the empty-dialogue rung drops to, so both ladders land
+     * on one thing - a line that can still become anything the author types next (prose, the action
+     * trigger, `#` for a speaker). A narration row there would have answered the Backspace by naming
+     * the line before the author had, and every author who wanted an action back had to clear it again.
+     *
+     * Nothing is written until something commits: the row waits underneath the slot, so Escape hands
+     * it straight back, and a commit swaps it out under `insertBlock`'s single `recordHistory`. One
      * `Mod+Z` brings the original row back with its payload - the point of the whole closure, since
      * two-step undo would hand the author a blank line and call it a restore.
      *
@@ -2498,18 +2518,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!plan) {
             return false;
         }
-        const block = createBlock("narration");
+        const block = scene.blocks[plan.replaceBlockId];
         if (!block) {
             return false;
         }
-        insertBlock(block, null, false, { target: plan.target, replaceBlockId: plan.replaceBlockId });
-        selectionAnchorRef.current = block.id;
-        // Overrides the idle mode `insertBlock` leaves behind: the row is a text row now and the author
-        // is inside it. It also drops any inspector that was open on the row being replaced, so the
-        // panel cannot go on showing a block that no longer exists.
-        setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
+        // Empty, whatever the row held: this is the author clearing the line, not re-opening it.
+        startLineEdit(block, "");
         return true;
-    }, [activeBlockId, createBlock, editorMode, insertBlock, scene, selectedBlockIds]);
+    }, [activeBlockId, editorMode, scene, selectedBlockIds, startLineEdit]);
 
     const indentSelection = useCallback((direction: "in" | "out") => {
         if (!storyService || !storyId || !sceneId || !scene) {
