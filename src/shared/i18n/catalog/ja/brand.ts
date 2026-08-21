@@ -48,6 +48,13 @@ export const brand = {
         moveUp: "{name}を上へ",
         moveDown: "{name}を下へ",
         missing: "フォントが見つからない",
+        locales: {
+            edit: "{name}の言語",
+            title: "言語",
+            all: "すべての言語",
+        },
+        preview: "プレビュー言語",
+        excluded: "{language}では使わない",
     },
 
     panel: {

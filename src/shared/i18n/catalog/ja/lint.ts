@@ -324,6 +324,20 @@ export const lint = {
             messageChain: "{where} が使っている {color} は {missing} へつながっているが、その色は配色に無い",
             messageCycle: "{where} が使っている {color} は、リンクが自分自身に戻っている",
         },
+        typographyGlyphCoverage: {
+            title: "グリフ不足",
+            description: "プロジェクトのどのフォントにも無い文字を使っている",
+            message: "プロジェクトのフォントに「{character}」が無い（{count} 箇所）",
+            messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{count} 箇所）",
+            messageMore: "他に {count} 文字、プロジェクトのフォントに無い",
+            messageMoreInLanguage: "{language}で他に {count} 文字、プロジェクトのフォントに無い",
+            messageUnreadable: "{font} を読み取れないため、グリフ確認を行わなかった",
+        },
+        typographyLocaleNoFont: {
+            title: "フォントの無い言語",
+            description: "プロジェクトのフォントがすべて他の言語に限定されている",
+            message: "{language}に使えるプロジェクトフォントが無い",
+        },
     },
     message: {
         ruleFailed: "{rule} を実行できなかった",
@@ -343,6 +357,7 @@ export const lint = {
         voice: "ボイス",
         // リンクのプロトコルではなく、作者が直しに行くパネルの名前を付ける。
         brand: "ブランドの配色",
+        typography: "タイポグラフィ",
     },
     severity: {
         error: "エラー",

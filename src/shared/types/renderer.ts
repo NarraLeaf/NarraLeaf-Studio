@@ -14,6 +14,7 @@ import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConv
 import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -236,6 +237,13 @@ export interface RendererPreloadedInterface {
      * explicit step.
      */
     probeMedia(path: string): Promise<RequestStatus<{ outcome: MediaProbeOutcome }>>;
+    /**
+     * What a font file can draw, read out of its own `cmap` in the main process.
+     *
+     * There rather than here because WOFF2 needs a Brotli decompressor, which a renderer has
+     * not got, and because what comes back is a range list rather than a thirty-megabyte face.
+     */
+    probeFontCoverage(path: string): Promise<RequestStatus<{ result: FontCoverageResult }>>;
     /**
      * Converting a media file, polled the way a production build is.
      *
