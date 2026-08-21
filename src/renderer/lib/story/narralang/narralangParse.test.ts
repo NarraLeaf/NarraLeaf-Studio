@@ -182,10 +182,38 @@ describe("structure", () => {
     });
 
     it("reads the scene header's name and nests by indentation", () => {
-        const result = parse("scene '走廊 · 傍晚':", "", "  menu:", "    「说吧。」:", "      wait click");
+        const result = parse("scene '走廊 · 傍晚':", "  menu:", "    「说吧。」:", "      wait click");
 
         expect(result.name).toBe("走廊 · 傍晚");
         expect(rows(result).map((block) => block.kind)).toEqual(["nodeAction", "nodeAction", "action"]);
+    });
+
+    it("reads a blank line as an empty row, at the level of the line below it", () => {
+        // The blank between the two waits is inside the menu option, because that is where the line
+        // after it sits. A blank carries no indent of its own, so the line below is the only thing
+        // that can say where it belongs - and reading it as level 0 would close the option.
+        const result = parse("scene 'X':", "  menu:", "    'A':", "      wait click", "", "      wait click");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(rows(result).map((block) => block.kind)).toEqual(["nodeAction", "nodeAction", "action", "empty", "action"]);
+        const option = rows(result)[1];
+        expect(option.childrenIds).toHaveLength(3);
+    });
+
+    it("takes the level of the line above when nothing follows the blank line", () => {
+        const result = parse("scene 'X':", "  menu:", "    'A':", "      wait click", "");
+
+        expect(result.diagnostics).toEqual([]);
+        expect(rows(result).map((block) => block.kind)).toEqual(["nodeAction", "nodeAction", "action"]);
+    });
+
+    it("does not read the terminating newline as a blank row", () => {
+        // One trailing empty element is the end of the text; two is a line the author left there.
+        const once = parseNarralangScene(["scene 'X':", "  wait click", ""].join("\n"), lookups);
+        const twice = parseNarralangScene(["scene 'X':", "  wait click", "", ""].join("\n"), lookups);
+
+        expect(rows(once).map((block) => block.kind)).toEqual(["action"]);
+        expect(rows(twice).map((block) => block.kind)).toEqual(["action", "empty"]);
     });
 
     it("reports indentation that skips a level rather than guessing at the tree", () => {

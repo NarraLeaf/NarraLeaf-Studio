@@ -118,7 +118,16 @@ function walk(ctx: Ctx, blockIds: readonly StoryBlockId[], depth: number): void 
         }
 
         const line = renderNarralangShape(shape, ctx.dialect);
-        if (line !== null && line !== "") {
+        // The empty line is claimed by the SHAPE, not by the text: a prose row whose text is empty
+        // also renders to "", and it is not a blank row - it is a line the author has not written yet.
+        // Reading the two off the same empty string turned every unfinished line into a blank one.
+        if (shape.form === "blank") {
+            // A blank row is emitted like any other, id and all: the reconciler matches rows to the
+            // lines the printer WOULD have written, so a row whose line never reached the trace reads
+            // as one the author deleted. `disabled` is not spelled onto it - there is nothing on the
+            // line to switch off, and a marker alone would read back as an empty note.
+            emit(ctx, depth, "", block.id);
+        } else if (line !== null) {
             emit(ctx, depth, block.disabled ? `${ctx.dialect.prefix.disabled} ${line}` : line, block.id);
         }
         if (block.childrenIds.length > 0) {
@@ -175,12 +184,15 @@ export function printNarralangSceneLines(
         },
     };
     ctx.lines.push(`${dialect.sceneKeyword} ${narralangName(scene.name, dialect)}${dialect.block.open}`);
-    ctx.lines.push("");
+    // No blank line under the header any more. A blank line is a ROW now (schema v20), so a decorative
+    // one here would come back from every parse as an empty first row the author never wrote.
     walk(ctx, scene.rootBlockIds, 1);
     if (dialect.block.close !== null) {
         ctx.lines.push(dialect.block.close);
     }
-    return { text: `${ctx.lines.join("\n").replace(/\n+$/, "")}\n`, issues, lines: ctx.trace };
+    // Joined as it stands: the trailing-newline strip predates blank rows, and it would eat the line
+    // of a blank row that ends a scene. The reader drops the one empty element the terminator makes.
+    return { text: `${ctx.lines.join("\n")}\n`, issues, lines: ctx.trace };
 }
 
 /** One scene as a script, plus every row in it that has no spelling. */
