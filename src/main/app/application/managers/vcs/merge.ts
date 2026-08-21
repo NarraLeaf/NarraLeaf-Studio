@@ -1,5 +1,9 @@
 import fs from "fs";
 import path from "path";
+import {
+    documentSetAt,
+    type DocumentSetLookup,
+} from "@shared/documents/documentSet";
 import type {
     VcsConflictChoice,
     VcsMergeResolveResult,
@@ -203,8 +207,10 @@ export async function resolveConflicts(
     root: string,
     relativePaths: readonly string[],
     choice: VcsConflictChoice,
+    sets: DocumentSetLookup = documentSetAt,
 ): Promise<VcsMergeResolveResult> {
-    const absolute = relativePaths.map((relative) => repositoryPath(root, relative));
+    const expanded = await expandDocumentSets(root, relativePaths, sets);
+    const absolute = expanded.map((relative) => repositoryPath(root, relative));
     if (choice !== "working-tree") {
         // Every path first, then one settle call: a copy that fails must not leave half the
         // selection settled and the other half not, which is a state nothing can read back.
@@ -213,6 +219,103 @@ export async function resolveConflicts(
     const result = await branchMergeResolve(globals, absolute);
     await flushRepository(globals);
     return { files: result.files, state: await readMergeState(globals, root) };
+}
+
+/**
+ * Add to any path that belongs to a multi-file document every OTHER conflicted path of that
+ * document.
+ *
+ * **"Take one side" is a decision about a DOCUMENT, not about a file.** Half a story taken from
+ * one author and half from the other is a script neither of them wrote, which nevertheless
+ * compiles - the silent, late failure `DocumentMergeRefusal` exists to name. So a set is settled
+ * whole, and this is where "whole" is worked out.
+ *
+ * It changes nothing about how a side is taken: the copy is still `~mine`/`~theirs` over the
+ * conflicted file, and the settle is still the plain verb, for the reason set out above - the two
+ * verbs named after the sides mean the opposite of their names on a merge that came from a sync
+ * (§4.31), and Studio can only produce that kind.
+ *
+ * **It ADDS rather than replaces, and that is a fix for a data-losing defect rather than a
+ * refinement.** The first version dropped every incoming set path and re-derived the list from
+ * {@link findConflictedPaths}, which requires the conflicted file itself to be on disk. But a
+ * per-change settle DELETES a member the author decided against keeping (`writeDocumentSet`), so
+ * exactly the path that most needs settling is the one the walk can no longer see. It was never
+ * handed to the resolve verb, the commit was refused naming it, and by then the members that did
+ * settle had already lost their sidecars to the failed commit's stage (§4.32) - the unrecoverable
+ * state `writeDocumentSet` promises to avoid.
+ *
+ * An incoming set path is kept when **the merge's own copies are still beside it**, which is the
+ * question that actually matters and is true for a deleted member. It is not simply kept
+ * unconditionally: a folded surface names a set by its MANIFEST, and a manifest that automerged
+ * cleanly has no sidecars - {@link takeSide} would throw on it and "keep mine" would fail on every
+ * set whose manifest was not itself in conflict.
+ *
+ * Costs a walk only when a path really belongs to a set. No set is registered today, so this is
+ * `relativePaths` unchanged and no `readdir` happens at all.
+ *
+ * Exported for its own test: it reaches no backend, and driving it through `resolveConflicts`
+ * would need a repository just to observe which paths a settle was given.
+ */
+export async function expandDocumentSets(
+    root: string,
+    relativePaths: readonly string[],
+    sets: DocumentSetLookup,
+): Promise<readonly string[]> {
+    const manifests = new Set<string>();
+    for (const relative of relativePaths) {
+        try {
+            const location = sets(relative);
+            if (location) manifests.add(location.manifestPath);
+        } catch {
+            // A lookup is asked about paths the backend chose; one odd path must not stop a settle.
+        }
+    }
+    if (manifests.size === 0) {
+        return relativePaths;
+    }
+
+    const expanded = new Set<string>();
+    for (const relative of relativePaths) {
+        const manifest = setOf(sets, relative);
+        if (manifest === undefined || !manifests.has(manifest)) {
+            expanded.add(relative);
+            continue;
+        }
+        if (hasMergeSides(root, relative)) {
+            expanded.add(relative);
+        }
+    }
+
+    // Then every other conflicted path of the same documents - the same walk `readMergeState`
+    // reports from, so the expansion cannot name a path the surface never saw.
+    for (const relative of await findConflictedPaths(root)) {
+        const manifest = setOf(sets, relative);
+        if (manifest && manifests.has(manifest)) {
+            expanded.add(relative);
+        }
+    }
+    return [...expanded];
+}
+
+/**
+ * Whether the merge's two recorded sides are still beside this path.
+ *
+ * The half of {@link findConflictedPaths} that does NOT ask whether the conflicted file itself is
+ * there. A per-change settle can delete the file and leaves the sidecars alone (the commit removes
+ * them), so this is what still identifies such a path as one of the merge's own.
+ */
+function hasMergeSides(root: string, relativePath: string): boolean {
+    const absolute = repositoryPath(root, relativePath);
+    return fs.existsSync(`${absolute}${SIDECAR_SUFFIXES.mine}`)
+        && fs.existsSync(`${absolute}${SIDECAR_SUFFIXES.theirs}`);
+}
+
+function setOf(sets: DocumentSetLookup, relativePath: string): string | undefined {
+    try {
+        return sets(relativePath)?.manifestPath;
+    } catch {
+        return undefined;
+    }
 }
 
 /**

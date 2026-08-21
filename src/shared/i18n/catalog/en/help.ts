@@ -745,6 +745,21 @@ export const help = {
                 + "game is still possible.\n"
                 + "- The other switch on this page decides whether the game may use the network.",
         },
+        screenEffects: {
+            title: "Screen effect frame rate",
+            body:
+                "Snow, rain and sakura are baked for the project, and the rate set on Project ▸ App is how "
+                + "many frames a second each one holds.\n"
+                + "\n"
+                + "30 is smooth for falling particles. A higher rate is more frames, so the bake takes "
+                + "proportionally longer and the effect adds proportionally more to the download: 120 costs "
+                + "four times what 30 does.\n"
+                + "\n"
+                + "A new rate applies to the next bake. Effects already baked at another rate stay in the "
+                + "cache and are used again if the rate is set back.\n"
+                + "\n"
+                + "Ambience clips imported as assets keep the frame rate they were made at.",
+        },
         webOptimization: {
             title: "Reducing download size",
             body:
