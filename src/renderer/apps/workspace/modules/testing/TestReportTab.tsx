@@ -123,7 +123,9 @@ export function TestReportTab({ payload }: EditorTabComponentProps<TestReportPay
         if (!testRun || !record) {
             return;
         }
-        void testRun.start(record.testId).catch(error => {
+        // The record's own parameters, not the picker's defaults: Run again has to mean this check
+        // again, and a walkthrough restarted against a different ending is a different check.
+        void testRun.start(record.testId, record.parameters).catch(error => {
             console.warn("[TestReportTab] starting the test again failed", error);
         });
     }, [testRun, record]);

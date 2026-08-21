@@ -173,6 +173,7 @@ export { TEST_PROTOCOL_VERSION } from "@/lib/testing/types";
 export type {
     TestAvailability,
     TestAvailabilityContext,
+    TestBooleanParameterDefinition,
     TestCapability,
     TestCategory,
     TestDefinition,
@@ -186,11 +187,16 @@ export type {
     TestGameSession,
     TestId,
     TestLogLevel,
+    TestParameterDefinition,
+    TestParameterOption,
+    TestParameterValue,
+    TestParameterValues,
     TestPresentation,
     TestProgress,
     TestProjectHandle,
     TestRunContext,
     TestSceneRef,
+    TestSelectParameterDefinition,
     TestStoryRef,
     TestText,
     TestVerdict,
@@ -292,6 +298,10 @@ export type PluginTextEditorService = {
  *    `errored` are the host's verdicts about you. Cancellation reaches you as `ctx.signal`.
  *  - **What you did not declare in `requires` is absent, not throwing.** `ctx.game` is `undefined`
  *    unless you asked for `game.launch`, so a test must read the handle rather than assume it.
+ *  - **Ask the author for input with `parameters`.** The picker draws a control per declaration and
+ *    hands the answers back as `ctx.parameters`, which carries your declared ids and nothing else.
+ *    A `select` lists its options through a function the host calls when the picker opens, so the
+ *    list can be drawn from the project; an empty list greys the test out naming the parameter.
  */
 export type PluginTestService = {
     /**

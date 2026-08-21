@@ -57,6 +57,7 @@
 | `editor/cache/thumbnail/` | 资产缩略图 | 两级分片，`<encodedId>.png` |
 | `editor/cache/puppet/` | 每个 puppet 模型上次挂载时自述的动作/皮肤/参数 | 平铺 `<key>.json`，**每条带输入指纹**，对不上就算未命中 |
 | `editor/cache/media/support.json` | 媒体探测结果：引擎能不能播、播不了转成什么 | 单文档，按内容哈希键 |
+| `editor/cache/test-parameters.json` | 每个测试上次运行时作者填的参数值 | 单文档，键 `<testId>`；**不带指纹**——取值是否还成立由读的时候拿实时声明核对，对不上就退回默认 |
 | `editor/assets/remote/` | 远程资产的本地副本 | 分片；**受版控的是引用，不是副本** |
 | `.nlstudio/build/staging*`、`build/mobile-icons/` | 构建产物 | |
 | `.nlstudio/preview/` | 预览构建产物 | |

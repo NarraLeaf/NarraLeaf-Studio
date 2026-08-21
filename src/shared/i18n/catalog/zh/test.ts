@@ -30,6 +30,7 @@ export const test = {
         title: "运行测试",
         start: "开始",
         empty: "尚未注册任何测试",
+        parameters: "参数",
     },
     status: {
         running: "运行中",
@@ -58,6 +59,7 @@ export const test = {
     reason: {
         frozen: "工作区冻结时不可用",
         alreadyRunning: "已有测试正在运行",
+        parameterEmpty: "本工程中「{parameter}」没有可选值",
     },
     console: {
         channel: "测试",
