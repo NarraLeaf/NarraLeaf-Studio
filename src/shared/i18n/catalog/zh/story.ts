@@ -1049,7 +1049,7 @@ export const story = {
         choice: "双击输入选择提示",
         note: "双击输入备注",
         text: "双击输入文本",
-        blank: "双击在此书写",
+        blank: "点击键入",
     },
     characterName: {
         unassigned: "未指定角色",

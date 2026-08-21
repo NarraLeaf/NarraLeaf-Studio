@@ -1105,7 +1105,7 @@ export const story = {
         option: "ダブルクリックで選択肢の文を入力",
         choice: "ダブルクリックで選択の問いかけを入力",
         note: "ダブルクリックでメモを入力",
-        blank: "ダブルクリックでここに書く",
+        blank: "クリックして入力",
         text: "ダブルクリックでテキストを入力",
     },
     characterName: {
