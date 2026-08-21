@@ -292,6 +292,10 @@ export const settings = {
         servers: {
             label: "服务器",
         },
+        teamMachineLabel: {
+            label: "本机名称",
+            description: "会与你的账号一同显示给协作者。留空则使用主机名",
+        },
         cacheInventory: {
             label: "缓存文件",
         },

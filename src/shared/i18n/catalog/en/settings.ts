@@ -316,6 +316,10 @@ export const settings = {
         servers: {
             label: "Servers",
         },
+        teamMachineLabel: {
+            label: "This machine's name",
+            description: "Shown to collaborators beside your account. Leave empty to use the host name.",
+        },
         settingsTransfer: {
             label: "Move settings between machines",
         },

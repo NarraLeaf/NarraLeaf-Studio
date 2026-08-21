@@ -27,6 +27,8 @@
 import {
     TEAM_PROTOCOL_VERSION,
     TEAM_SOCKET_PATH,
+    TeamMethod,
+    teamInstanceId,
     type TeamCallOutcome,
     type TeamCapability,
     type TeamConnection,
@@ -57,6 +59,14 @@ export interface TeamClientOptions {
     authUrl: string;
     token: string;
     userDataDir: string;
+    /**
+     * Who this installation is, which is the one thing a window may not state for itself.
+     *
+     * Filled into `clients.announce` here rather than sent across IPC and back: see
+     * `clientInstance.ts` for why an identity a renderer could state is one a plugin
+     * could state.
+     */
+    identity: TeamIdentity;
     log?: (line: string) => void;
     onEvent: (event: { topic: string; seq: number; payload: unknown }) => void;
     onStatus: (connection: TeamConnection) => void;
@@ -68,6 +78,16 @@ export interface TeamClientOptions {
      * to the real one, so nothing in the product passes it.
      */
     openSocket?: (options: TeamSocketOptions) => TeamSocketLike;
+}
+
+/** What this installation calls itself, as a server is told it. */
+export interface TeamIdentity {
+    /** This installation's own id, minted once and kept. */
+    installation: string;
+    /** What a collaborator sees this machine called. */
+    label: string;
+    /** Which client and which build. */
+    agent: string;
 }
 
 /** What the client needs of a socket. {@link TeamSocket} is the one that does it. */
@@ -98,6 +118,16 @@ export class TeamClient {
 
     /** The topics a screen has asked for, which is what a new session re-subscribes to. */
     private readonly topics = new Set<string>();
+
+    /**
+     * What this installation has said about itself, by project, and re-said on reconnect.
+     *
+     * Kept for the same reason topics are: presence lives in the server's memory and dies
+     * with the socket, so a session that came back would be a session nobody could see.
+     * Keyed by project because one Studio has a window per project and all of them travel
+     * down this one connection.
+     */
+    private readonly announced = new Map<string, Record<string, unknown>>();
 
     private backoff = BACKOFF_FIRST_MS;
     private retry: NodeJS.Timeout | undefined;
@@ -226,6 +256,18 @@ export class TeamClient {
 
     /** Ask the server something. */
     async call(method: string, params?: unknown): Promise<TeamCallOutcome> {
+        // The two calls whose subject is this installation rather than a project's
+        // contents. Recorded before anything is attempted, so that an announcement made
+        // while the socket happens to be down is still replayed when one opens.
+        let sending = params;
+        if (method === TeamMethod.clientsAnnounce) {
+            const complete = this.stated(params);
+            this.announced.set(projectOf(complete) ?? "", complete);
+            sending = complete;
+        } else if (method === TeamMethod.clientsWithdraw) {
+            this.announced.delete(projectOf(params) ?? "");
+        }
+
         const ready = await this.ready();
         if (!ready.ok) return ready;
         if (!this.has(method)) {
@@ -234,7 +276,26 @@ export class TeamClient {
             // is a screen that is not drawn.
             return { ok: false, problem: { kind: "unsupported" } };
         }
-        return (await this.ask({ t: "call", method, params }, false)) as TeamCallOutcome;
+        return (await this.ask({ t: "call", method, params: sending }, false)) as TeamCallOutcome;
+    }
+
+    /**
+     * An announcement with this installation's own name filled in.
+     *
+     * The window says which project it has open and what revision it stands at; the id,
+     * the label and the build come from here. A renderer that named its own instance
+     * could name somebody else's, and the whole of presence is which window is which.
+     */
+    private stated(params: unknown): Record<string, unknown> {
+        const said = typeof params === "object" && params !== null && !Array.isArray(params)
+            ? (params as Record<string, unknown>)
+            : {};
+        return {
+            ...said,
+            instance: teamInstanceId(this.options.identity.installation, projectOf(said) ?? null),
+            label: this.options.identity.label,
+            agent: this.options.identity.agent,
+        };
     }
 
     /** Ask to be told about a topic, and keep asking after every reconnect. */
@@ -256,6 +317,7 @@ export class TeamClient {
     dispose(): void {
         this.disposed = true;
         this.topics.clear();
+        this.announced.clear();
         if (this.retry !== undefined) {
             clearTimeout(this.retry);
             this.retry = undefined;
@@ -382,6 +444,17 @@ export class TeamClient {
             `[Team] Session with ${this.options.remoteOrigin} as ${frame.account.username}`,
         );
 
+        // Said again rather than remembered by the server: presence lives in its memory
+        // and went with the socket, so a reconnected session that did not re-announce
+        // would be a window nobody could see. Before the subscriptions, so that the first
+        // events to arrive are about somebody who is already there.
+        for (const announcement of this.announced.values()) {
+            void this.ask(
+                { t: "call", method: TeamMethod.clientsAnnounce, params: announcement },
+                false,
+            );
+        }
+
         // Asked for again rather than remembered by the server: a session is new, and
         // what the last one was told is not something this one knows.
         for (const topic of this.topics) {
@@ -433,6 +506,18 @@ export class TeamClient {
 
 /** The problem shape this hands back, named so the two returns above share it. */
 type TeamProblemOf = Extract<TeamCallOutcome, { ok: false }>["problem"];
+
+/**
+ * The project a set of call parameters names, or null.
+ *
+ * Null for an announcement made by a window with no project - the launcher, whose
+ * presence is "this Studio is here" and nothing more.
+ */
+function projectOf(params: unknown): string | null {
+    if (typeof params !== "object" || params === null || Array.isArray(params)) return null;
+    const project = (params as Record<string, unknown>)["project"];
+    return typeof project === "string" && project !== "" ? project : null;
+}
 
 /**
  * The host and port behind a stored `authUrl`.
