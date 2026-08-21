@@ -25,9 +25,14 @@ export type BoundPrivilegedFacade = ReturnType<typeof createBoundPrivilegedFacad
  * author left the historical revision - which is precisely the write this gate exists to stop. A
  * refusal has to end the write, not defer it. Visibility comes from the refusal observers
  * (`SaveStatusService` raises the notice), never from this return value.
+ *
+ * `refused` marks it all the same, for the one kind of caller the paragraph above does not cover: a
+ * writer that remembers what it still owes the disk. To that caller "succeeded" and "was dropped"
+ * are different answers, and reading them as the same one loses the author's edit rather than
+ * writing it late. Ignoring the flag keeps the historical meaning exactly.
  */
 function frozenNoOp(): Promise<RequestStatus<FsRequestResult<void>>> {
-    return Promise.resolve({ success: true, data: { ok: true, data: undefined } });
+    return Promise.resolve({ success: true, data: { ok: true, data: undefined, refused: true } });
 }
 
 /**

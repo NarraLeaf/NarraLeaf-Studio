@@ -782,9 +782,15 @@ export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetSer
         window: AppWindow,
         { remoteOrigin }: IPCEvents[IPCEventType.vcsForgetServer]["data"],
     ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
-        return this.tryUse(async () => ({
-            servers: await window.app.getVcsManager().forgetServer(remoteOrigin),
-        }));
+        return this.tryUse(async () => {
+            // The session goes first, and here rather than inside the manager: a client
+            // holding a token that has just been deleted would go on reconnecting with
+            // it until something else closed it. Ending it before the record goes means
+            // there is never a moment where Studio is signed in to a server it has
+            // forgotten.
+            window.app.getTeamManager().forget(remoteOrigin);
+            return { servers: await window.app.getVcsManager().forgetServer(remoteOrigin) };
+        });
     }
 }
 

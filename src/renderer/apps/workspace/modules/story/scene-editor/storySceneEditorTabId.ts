@@ -43,6 +43,22 @@ export type StorySceneEditorTabPayload = {
     draftJump?: StorySceneEditorDraftJump;
 };
 
+/**
+ * The next {@link StorySceneEditorTabPayload.revealToken}.
+ *
+ * ONE counter for every caller, and that is the whole point of it living here rather than in each of
+ * them. The editor marks a navigation handled by `blockId#token`, so two callers counting separately
+ * hand out the same key for the same row — a search hit for a line the Dev Mode timeline had already
+ * opened arrived as "already handled" and did nothing. Caught on the real app; a caller-local counter
+ * looks correct in isolation and can only fail against another caller.
+ */
+let revealTokenSeq = 0;
+
+export function nextStoryRevealToken(): number {
+    revealTokenSeq += 1;
+    return revealTokenSeq;
+}
+
 export function getStorySceneEditorTabId(storyId: StoryId, sceneId: StorySceneId): string {
     return `story:scene:${storyId}:${sceneId}`;
 }

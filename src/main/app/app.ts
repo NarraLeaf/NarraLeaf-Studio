@@ -15,6 +15,7 @@ import { StudioTaskScheduler } from "./application/managers/tasks/StudioTaskSche
 import { WeatherBakeManager } from "./application/managers/weather/WeatherBakeManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
+import { TeamManager } from "./application/managers/team/TeamManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
@@ -141,6 +142,12 @@ export class App extends BaseApp {
             }
         });
 
+        // A server is now a place Studio holds a session with, and that is a thing of
+        // its own rather than a corner of version control. It is given the list of
+        // servers rather than the manager that keeps it: what it needs is an address and
+        // a name, and a session has nothing to do with a repository.
+        this.teamManager = new TeamManager(this, () => this.vcsManager.listServers());
+
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
         // Everything is read through a function rather than captured: this constructor runs before
@@ -182,6 +189,7 @@ export class App extends BaseApp {
     private readonly taskScheduler: StudioTaskScheduler;
     private readonly weatherBakeManager: WeatherBakeManager;
     private readonly vcsManager: VcsManager;
+    private readonly teamManager: TeamManager;
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
     private readonly spellcheckManager: SpellcheckManager;
@@ -231,6 +239,18 @@ export class App extends BaseApp {
 
     public getVcsManager(): VcsManager {
         return this.vcsManager;
+    }
+
+    /**
+     * The sessions Studio holds with Team servers.
+     *
+     * Separate from {@link getVcsManager} on purpose. Version control is what Studio does
+     * with a repository; this is what it does with a server, and the two stopped being
+     * the same question the moment a server could be asked something that is not about a
+     * repository at all.
+     */
+    public getTeamManager(): TeamManager {
+        return this.teamManager;
     }
 
     /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */

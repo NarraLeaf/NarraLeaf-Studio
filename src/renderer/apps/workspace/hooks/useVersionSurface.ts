@@ -371,6 +371,14 @@ export interface VersionSurface {
      */
     serverSession: VcsServerSession | null;
     /**
+     * This project's repository id, or null before the identity read lands.
+     *
+     * **The only identity that survives a rename**, and therefore the only honest way to
+     * ask whether a server already holds this project: two projects are called the same
+     * thing often enough, and the first thing anybody does with a copy is rename its folder.
+     */
+    repositoryId: string | null;
+    /**
      * How the last sign-in ended, or null when this window has not attempted one.
      *
      * Kept apart from {@link error} because a refusal is not a fault: each reason has a
@@ -435,6 +443,8 @@ export function useVersionSurface(): VersionSurface {
     const [remoteNeedsSignIn, setRemoteNeedsSignIn] = useState(false);
     const [syncState, setSyncState] = useState<VcsSyncState | null>(null);
     const [serverSession, setServerSession] = useState<VcsServerSession | null>(null);
+    /** This project's repository id, as the server lists it. Null until the identity read lands. */
+    const [repositoryId, setRepositoryId] = useState<string | null>(null);
     const [signIn, setSignIn] = useState<VcsSignInOutcome | null>(null);
     const [merge, setMerge] = useState<VcsMergeState | null>(null);
     const [authorName, setAuthorNameState] = useState<string | null>(null);
@@ -522,6 +532,7 @@ export function useVersionSurface(): VersionSurface {
             setBranch(null);
             setRemoteUrl(null);
             setServerSession(null);
+            setRepositoryId(null);
             setMerge(null);
             return;
         }
@@ -548,6 +559,11 @@ export function useVersionSurface(): VersionSurface {
         // the third at all - the revision graph does not carry a branch name.
         const info = await services.versionControl.getInfo();
         if (!alive.current) return;
+        // What this project IS, as every server that holds a copy of it knows it. Read here
+        // because the identity read is the one place that already has it, and used by the
+        // dialog that connects a project: "already on that server" is an id match and
+        // nothing else - a name match would be two projects that happen to share a word.
+        setRepositoryId(info?.repositoryId ?? null);
         setHead(info?.head ?? null);
         // Zero is the backend's "no revisions", which is the same thing an absent head says.
         setHeadNumber(info?.head && info.headNumber > 0 ? info.headNumber : null);
@@ -959,6 +975,13 @@ export function useVersionSurface(): VersionSurface {
             // no longer pointed at. Left in place, disconnecting would leave the row
             // reporting "2 versions ahead" of nothing.
             setSyncState(null);
+            // **The session is keyed by the address that just changed.** It is read once,
+            // when the project opens, and nothing else re-read it - so a project connected
+            // to a server this installation is signed in to went on saying it was signed
+            // in to nothing: the row drew the address instead of the server's name and
+            // offered to sign in, under two buttons that were already working. Re-read
+            // here rather than in the rail, because this is where the address moved.
+            setServerSession(await services.versionControl.getServerSession().catch(() => null));
             return true;
         } catch (thrown) {
             if (alive.current) {
@@ -1014,6 +1037,9 @@ export function useVersionSurface(): VersionSurface {
             }
             setRemoteUrl(await services.versionControl.getRemote());
             setSyncState(await services.versionControl.getSyncState());
+            // For the reason {@link setRemote} re-reads it: the address this project answers
+            // to has just changed, and the session is looked up by that address.
+            setServerSession(await services.versionControl.getServerSession().catch(() => null));
             return true;
         } catch (thrown) {
             if (alive.current) {
@@ -1260,6 +1286,7 @@ export function useVersionSurface(): VersionSurface {
         publish,
         remoteNeedsSignIn,
         serverSession,
+        repositoryId,
         signIn,
         signInToServer,
         trustAuthority,
