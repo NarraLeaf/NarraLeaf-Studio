@@ -102,17 +102,17 @@ import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics"
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 
 /**
- * One story row.
+ * One story row's data.
  *
- * Memoised, and the props above are why it can be: they are data. Everything the row can *do* comes
- * from `StoryRowActionsContext` as one object that never changes identity, so a state change hands
- * each row the same props it had and only the rows whose data actually moved re-render. Before that
- * split, the tab built ~25 arrow functions per row inside its `map`, which made every render a full
- * re-render of the document — 100ms per keystroke on a 400-row scene, growing with the scene.
+ * Every one of these is data, which is what lets the row be memoised: everything the row can *do*
+ * comes from `StoryRowActionsContext` as one object that never changes identity, so a state change
+ * hands each row the same props it had and only the rows whose data actually moved re-render. Before
+ * that split, the tab built ~25 arrow functions per row inside its `map`, which made every render a
+ * full re-render of the document — 100ms per keystroke on a 400-row scene, growing with the scene.
  *
- * Closures built *inside* this function (see `on` below) are free: memo compares props, not internals.
+ * Closures built *inside* the body (see `on` below) are free: memo compares props, not internals.
  */
-export const StoryBlockRow = memo(function StoryBlockRow(props: {
+type StoryBlockRowProps = {
     row: VisibleStoryRow;
     scene: StoryScene;
     document: StoryDocument;
@@ -147,7 +147,81 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     dragGroupSize: number;
     /** This row is in the air with the row being dragged, and dims with it. */
     coDragging: boolean;
-}) {
+};
+
+/**
+ * What the sortable shell hands down: the grip's half of dnd-kit, and whether this row is the one in
+ * the air. Every field here keeps its identity for the life of the row, which is what lets them cross
+ * the memo boundary below without re-opening the hole the shell exists to close.
+ */
+type StoryBlockRowDragProps = {
+    attributes: ReturnType<typeof useSortable>["attributes"];
+    /** Already through the freeze guard: withheld whole while frozen, never half-attached. */
+    dragListeners: NonNullable<ReturnType<typeof useSortable>["listeners"]>;
+    setActivatorNodeRef: ReturnType<typeof useSortable>["setActivatorNodeRef"];
+    dragging: boolean;
+};
+
+/**
+ * The row's sortable shell — and the reason it is a component of its own rather than a hook call at
+ * the top of the row.
+ *
+ * `useSortable` subscribes to dnd-kit's contexts, and `SortableContext`'s value is rebuilt whenever
+ * its item list or the measured rects change — which is to say, every time a line is written. A
+ * context change re-renders every consumer *regardless of `memo`*, so with the hook inside the row,
+ * writing one line repainted every row on screen even though `memo` had already agreed that none of
+ * their props had moved. Measured on a twenty-line scene: two full repaints of the window per Enter,
+ * one from the props (see `storyRowIdentity`) and one from here.
+ *
+ * The shell absorbs that render. It carries the transform and the transition — the only two things
+ * dnd-kit changes between renders — on an element of its own, and hands the row the three handles
+ * that do not change. The row underneath then bails out on identical props the way it was meant to.
+ */
+export function StoryBlockRow(props: StoryBlockRowProps) {
+    // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
+    // its text, hovering its portrait - does not, and is left alone.
+    const freeze = useFreezeGuard();
+    const reduceMotion = useReduceMotion();
+    const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
+        id: props.row.block.id,
+        // Off at dnd-kit rather than only in the handle, so a keyboard activation of the grip cannot
+        // start a drag either.
+        disabled: freeze.frozen,
+        // Reduce-motion means the sort animation is off at the source, not merely overridden in CSS:
+        // dnd-kit writes this transition as an inline style, which the stylesheet's blanket rule
+        // cannot reach.
+        transition: reduceMotion ? null : undefined,
+    });
+    // Withheld whole while frozen rather than left attached and inert: a grip that picks the row up and
+    // then refuses to drop it reads as a broken editor. Memoised because it is a prop now, and a fresh
+    // object every render would undo the whole point of the shell.
+    const dragListeners = useMemo(() => freeze.gesture(listeners) ?? {}, [freeze, listeners]);
+    // A multi-row drag lifts one row under the pointer; the rest of the group stays put. They dim with
+    // it so the gesture reads as "these lines are in the air" rather than "one line is, and the others
+    // happen to be selected".
+    const sortableStyle: CSSProperties = {
+        // Positioned as well as the row's own root: z-index does nothing on a static box, and the
+        // lifted row has to come out over its neighbours from whichever element carries the transform.
+        position: "relative",
+        transform: toSortableTransform(transform),
+        transition,
+        zIndex: isDragging ? 20 : undefined,
+        opacity: isDragging || props.coDragging ? 0.72 : undefined,
+    };
+    return (
+        <div ref={setNodeRef} style={sortableStyle}>
+            <StoryBlockRowBody
+                {...props}
+                attributes={attributes}
+                dragListeners={dragListeners}
+                setActivatorNodeRef={setActivatorNodeRef}
+                dragging={isDragging}
+            />
+        </div>
+    );
+}
+
+const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowProps & StoryBlockRowDragProps) {
     const { t, tn } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
     // The name column carries the editor's body type, so the nametag and the words it introduces are
@@ -267,7 +341,6 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     const diagnostic = diagnoseRow({ block, context: props.commandContext });
     const [hovered, setHovered] = useState(false);
     const [gripFocused, setGripFocused] = useState(false);
-    const reduceMotion = useReduceMotion();
     const showRowActions = hovered || active;
     // Whether this row's trailing controls land on the artwork strip rather than on the row's own
     // surface (see `.nl-on-media` in styles.css). The same condition the strip itself is drawn on —
@@ -278,38 +351,15 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         && Boolean(block.payload.assetId || block.payload.color);
     // The grip and the line number occupy one box, so exactly one of them is visible at a time.
     const showGrip = hovered || gripFocused;
-    // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
-    // its text, hovering its portrait - does not, and is left alone.
+    // The grip's half of the drag, handed down by the sortable shell above.
+    const { attributes, dragListeners, setActivatorNodeRef, dragging: isDragging } = props;
+    // The shell already refused dnd-kit while frozen; this is what the grip itself says about why.
     const freeze = useFreezeGuard();
-    const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
-        id: row.block.id,
-        // Off at dnd-kit rather than only in the handle, so a keyboard activation of the grip cannot
-        // start a drag either.
-        disabled: freeze.frozen,
-        // Reduce-motion means the sort animation is off at the source, not merely overridden in CSS:
-        // dnd-kit writes this transition as an inline style, which the stylesheet's blanket rule
-        // cannot reach.
-        transition: reduceMotion ? null : undefined,
-    });
-    // Withheld whole while frozen rather than left attached and inert: a grip that picks the row up and
-    // then refuses to drop it reads as a broken editor.
-    const dragListeners = freeze.gesture(listeners) ?? {};
-    // A multi-row drag lifts one row under the pointer; the rest of the group stays put. They dim with
-    // it so the gesture reads as "these lines are in the air" rather than "one line is, and the others
-    // happen to be selected".
-    const sortableStyle: CSSProperties = {
-        transform: toSortableTransform(transform),
-        transition,
-        zIndex: isDragging ? 20 : undefined,
-        opacity: isDragging || props.coDragging ? 0.72 : undefined,
-    };
     const dragsGroup = props.dragGroupSize > 1;
     const dragLabel = dragsGroup ? tn("story.rows.dragRows", props.dragGroupSize) : t("story.rows.dragRow");
 
     return (
         <div
-            ref={setNodeRef}
-            style={sortableStyle}
             data-story-row-block-id={block.id}
             className={[
                 // Height comes from the density's single-line box plus the content column's `py-1`, so
