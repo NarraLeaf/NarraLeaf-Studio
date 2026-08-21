@@ -107,15 +107,31 @@ describe("story spec: reading", () => {
         expect(() => parseStory(STORY_PATH, {...story(), chapters: {}})).toThrow(/"chapters" must be an array/);
     });
 
-    /**
-     * The deliberate limit of this spec, pinned so it cannot be quietly removed. `parse` does not run
-     * the story migration - it lives in the renderer's `storyModel.ts` - so writing a document back
-     * would save an unmigrated one under the current schema version. The refusal is what makes
-     * adopting this format for writing a deliberate act rather than an accident.
-     */
-    it("refuses to serialize, naming why", () => {
-        expect(() => storyDocumentSpec.serialize(story())).toThrow(/read-only/);
-        expect(() => storyDocumentSpec.serialize(story())).toThrow(/StoryService/);
+    it("refuses a scene whose rows are the wrong shape rather than emptying it", () => {
+        // The data-loss shape, pinned. `normalizeStoryDocument` reads `blocks` as a map, so an array
+        // would normalize to a scene with nothing in it - and now that `serialize` is real, that
+        // empty scene would be written back over every row the author had.
+        const broken = story(scene("s1", "Prologue", [block("b1", "hello")]));
+        expect(() => parseStory(STORY_PATH, {...broken, scenes: {s1: {...broken.scenes.s1, blocks: []}}}))
+            .toThrow(/scene "s1".*blocks/);
+        expect(() => parseStory(STORY_PATH, {...broken, scenes: {s1: {...broken.scenes.s1, rootBlockIds: {}}}}))
+            .toThrow(/scene "s1".*rootBlockIds/);
+        expect(() => parseStory(STORY_PATH, {...broken, scenes: {s1: 7}}))
+            .toThrow(/scene "s1" must be an object/);
+    });
+
+    it("refuses a document whose schema version is not a number, which is the hole beside it", () => {
+        // `rejectNewerSchema` compares numbers and so says nothing at all about a version that is a
+        // string, while the ladder reads a non-numeric version as v1 and walks the whole thing over
+        // it - so `"schemaVersion": "21"` would be migrated DOWN and stamped. That is the precise
+        // silent down-level the old serialize refusal existed to prevent, and with serialize real it
+        // has to be refused here instead.
+        expect(() => parseStory(STORY_PATH, {...story(), schemaVersion: "21"}))
+            .toThrow(/"schemaVersion" must be a number/);
+        expect(() => parseStory(STORY_PATH, {...story(), schemaVersion: null}))
+            .toThrow(/"schemaVersion" must be a number/);
+        expect(() => parseStory(STORY_PATH, {...story(), schemaVersion: "21"}))
+            .toThrow(DocumentCorruptError);
     });
 
     it("counts scenes, chapters and rows", () => {
@@ -130,6 +146,101 @@ describe("story spec: reading", () => {
             {key: "storyChapters", value: 1},
             {key: "storyBlocks", value: 3},
         ]);
+    });
+});
+
+/**
+ * The invariant `story.ts` states, held as tests rather than as prose.
+ *
+ * > Every value that leaves `parse` is stamped at exactly `STORY_DOCUMENT_SCHEMA_VERSION`, and is a
+ * > fixed point of `parse` itself.
+ *
+ * This is what replaced the old `serialize` refusal. That refusal existed because `parse` did not
+ * run the story migration, so a round trip could stamp an unmigrated document with the current
+ * version - a silent down-level. The refusal is gone; what makes the round trip safe now is the
+ * property below, so the property is what has to be pinned.
+ */
+describe("story spec: the parse/serialize round trip", () => {
+    /** Exactly what a resolve does: encode, and read the encoding back. */
+    function roundTrip(document: StoryDocument): StoryDocument {
+        const text = storyDocumentSpec.serialize(document);
+        return parseStory(STORY_PATH, JSON.parse(text));
+    }
+
+    it("stamps the current schema version on every version the ladder knows", () => {
+        // Every rung, not only the current one: a document at any older version must come out at the
+        // current one or not come out at all. There is no third answer, and "half-migrated" is the
+        // one the DocumentSpec contract singles out as the outcome that must not happen.
+        for (let version = 1; version <= STORY_DOCUMENT_SCHEMA_VERSION; version += 1) {
+            const parsed = parseStory(STORY_PATH, {
+                ...story(scene("s1", "Prologue", [block("b1", "hello")])),
+                schemaVersion: version,
+            });
+            expect(parsed.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        }
+    });
+
+    it("treats a document with no schemaVersion as the oldest, not as the newest", () => {
+        const {schemaVersion: _omitted, ...withoutVersion} = story(scene("s1", "Prologue", [block("b1", "hi")]));
+        expect(parseStory(STORY_PATH, withoutVersion).schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("is a fixed point: parse, write, read gives the same document and the same bytes", () => {
+        // The property the whole write-back path rests on. Parsing may legitimately change a
+        // document once - it migrates it and fills in what normalize derives - but it must not keep
+        // changing it, or the bytes a merge commits would not be the bytes its decision list
+        // described, and every save would land in history as a change to the whole file.
+        const raw = story(
+            scene("s1", "Prologue", [block("b1", "hello"), block("b2", "there")]),
+            scene("s2", "Act One", [block("b3", "again")]),
+        );
+
+        const once = parseStory(STORY_PATH, raw);
+        const twice = roundTrip(once);
+
+        expect(twice).toStrictEqual(once);
+        expect(storyDocumentSpec.serialize(twice)).toBe(storyDocumentSpec.serialize(once));
+    });
+
+    it("is a fixed point for an OLD document too, where the migration actually does work", () => {
+        // The case that matters: at v1 the ladder rewrites payloads on the way up. The second pass
+        // must then be a no-op, or a merge of a partner's older document would drift on every write.
+        const once = parseStory(STORY_PATH, {
+            ...story(scene("s1", "Prologue", [block("b1", "hello")])),
+            schemaVersion: 1,
+        });
+
+        expect(roundTrip(once)).toStrictEqual(once);
+        expect(storyDocumentSpec.serialize(roundTrip(once))).toBe(storyDocumentSpec.serialize(once));
+    });
+
+    it("does not read the clock, so the same bytes always parse to the same document", () => {
+        // `normalizeStoryDocument` stamps `meta.updatedAt` from a clock when it is given one, and
+        // `parse` gives it none. If it did, the three sides of a merge would be stamped at three
+        // different instants and this would fail - which is how it would fail in production too,
+        // silently, as a whole-file diff on every read.
+        const raw = story(scene("s1", "Prologue", [block("b1", "hello")]));
+        expect(parseStory(STORY_PATH, raw)).toStrictEqual(parseStory(STORY_PATH, raw));
+        expect(parseStory(STORY_PATH, raw).meta).toBeUndefined();
+    });
+
+    it("never produces a key holding undefined, whatever the document left out", () => {
+        // The half of this that made the format unwritable before. `JSON.stringify` drops an
+        // assigned `undefined` in silence; the canonical encoder throws on it. A scene with an
+        // unplayable `bgm` and a whitespace background id is the shape that used to produce two.
+        const withCleared = story(scene("s1", "Prologue", [block("b1", "hello")]));
+        const parsed = parseStory(STORY_PATH, {
+            ...withCleared,
+            chapters: [],
+            scenes: {s1: {...withCleared.scenes.s1, bgm: {assetId: "  "}, defaultBackgroundAssetId: "   "}},
+        });
+
+        expect(() => storyDocumentSpec.serialize(parsed)).not.toThrow();
+        expect("bgm" in parsed.scenes.s1).toBe(false);
+        expect("defaultBackgroundAssetId" in parsed.scenes.s1).toBe(false);
+        // No chapter to take one from, so there is no entry scene - and the key is absent rather
+        // than present-and-undefined, which is the difference the encoder refuses on.
+        expect("entrySceneId" in parsed).toBe(false);
     });
 });
 

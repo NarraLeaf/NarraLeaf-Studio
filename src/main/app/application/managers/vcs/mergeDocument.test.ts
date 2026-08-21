@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { afterAll, describe, expect, it } from "vitest";
 import { mergeDecisionKey } from "@shared/documents/mergeApply";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story/document";
 import { MERGE_DECISION_LIMIT, readMergeDocument, resolveDocumentChanges } from "./mergeDocument";
 
 /**
@@ -21,6 +22,7 @@ import { MERGE_DECISION_LIMIT, readMergeDocument, resolveDocumentChanges } from 
 
 const LOCALE_PATH = "editor/localization/ja.json";
 const ASSETS_PATH = "assets/assets.metadata.image.json";
+const STORY_PATH = "editor/story/stories/story-1/storydoc.json";
 
 const roots: string[] = [];
 
@@ -56,6 +58,61 @@ function conflictedLocale(root: string, options: { base?: boolean } = {}): void 
     }
     write(root, `${LOCALE_PATH}~mine`, locale({ greeting: unit("mine"), fromMine: unit("only mine") }));
     write(root, `${LOCALE_PATH}~theirs`, locale({ greeting: unit("theirs"), fromTheirs: unit("only theirs") }));
+}
+
+/**
+ * One story with one scene, whose rows are `id -> narration text`.
+ *
+ * Written at schema v1 unless told otherwise, deliberately: v1 is where the migration ladder does
+ * real work, so a merge that came back with rows intact and `schemaVersion` at the current value has
+ * demonstrated the whole parse-migrate-normalize-serialize path rather than just the JSON.
+ */
+function storyText(options: { schemaVersion?: number; rows: Record<string, string> }): string {
+    const blocks = Object.fromEntries(Object.entries(options.rows).map(([id, value]) => [id, {
+        id,
+        kind: "nodeAction",
+        parentId: null,
+        childrenIds: [],
+        payload: { action: "narration", text: { textId: `t-${id}`, value } },
+    }]));
+    return `${JSON.stringify({
+        schemaVersion: options.schemaVersion ?? 1,
+        id: "story-1",
+        name: "A Story",
+        chapters: [{ id: "ch1", name: "Chapter One", sceneIds: ["s1"] }],
+        scenes: {
+            s1: {
+                id: "s1",
+                name: "Prologue",
+                runtimeName: "Prologue",
+                rootBlockIds: Object.keys(blocks),
+                blocks,
+            },
+        },
+    }, null, 2)}\n`;
+}
+
+/**
+ * `shared` is edited by both - the only real question - and each side rewrites one other row that
+ * nothing disputes.
+ *
+ * All three rows exist in the base, and that is not incidental: `merge3Story` refuses a scene whose
+ * rows BOTH sides rearranged (`scene-restructured`), and adding a row rearranges `rootBlockIds`. Two
+ * people adding a row each to one scene is therefore a whole-document conflict by design, not a
+ * per-row merge - so a fixture built that way would exercise the refusal and prove nothing about the
+ * write-back path.
+ */
+function conflictedStory(root: string): void {
+    write(root, STORY_PATH, "<<<<<<< ours\n not json\n");
+    write(root, `${STORY_PATH}~base`, storyText({
+        rows: { shared: "base", fromMine: "untouched", fromTheirs: "untouched" },
+    }));
+    write(root, `${STORY_PATH}~mine`, storyText({
+        rows: { shared: "mine", fromMine: "only mine", fromTheirs: "untouched" },
+    }));
+    write(root, `${STORY_PATH}~theirs`, storyText({
+        rows: { shared: "theirs", fromMine: "untouched", fromTheirs: "only theirs" },
+    }));
 }
 
 afterAll(() => {
@@ -223,6 +280,66 @@ describe("resolveDocumentChanges", () => {
 
         await expect(resolveDocumentChanges(root, LOCALE_PATH, {})).rejects.toThrow(/greeting/);
         expect(fs.readFileSync(path.join(root, LOCALE_PATH), "utf-8")).toBe(before);
+    });
+
+    /**
+     * **The story format, end to end, and the case this whole change was for.**
+     *
+     * Stories used to come back `blocked: "read-only"` here: `storySpec.parse` did not run the story
+     * migration, so `serialize` refused rather than write back a document that had been silently
+     * down-levelled. Both halves of the migration are in shared code now, the serialize probe in
+     * `readMergeDocument` passes on its own - it is a probe, not a list of spec names - and the
+     * biggest documents in a project can be settled one row at a time.
+     *
+     * Two people editing two different rows of one scene is the shape that makes the tier worth
+     * having: nothing is in dispute, and taking the file whole from either side would throw the
+     * other's row away.
+     */
+    it("settles a story one row at a time, keeping both sides' work", async () => {
+        const root = tmp();
+        conflictedStory(root);
+
+        const answer = await readMergeDocument(root, STORY_PATH);
+        expect(answer.blocked).toBeUndefined();
+        expect(answer.documentKind).toBe("story");
+        expect(answer.conflicts).toBe(1);
+
+        const conflict = answer.decisions.find(one => one.outcome === "conflict");
+        await resolveDocumentChanges(root, STORY_PATH, {
+            [mergeDecisionKey(conflict!.path)]: "theirs",
+        });
+
+        const written = JSON.parse(fs.readFileSync(path.join(root, STORY_PATH), "utf-8"));
+        const text = (blockId: string) => written.scenes.s1.blocks[blockId].payload.text.value;
+        // The disputed row went the way it was answered; the two undisputed ones - one added by each
+        // side - both survived.
+        expect(text("shared")).toBe("theirs");
+        expect(text("fromMine")).toBe("only mine");
+        expect(text("fromTheirs")).toBe("only theirs");
+        // And the result is at the current schema version, migrated rather than stamped: the
+        // sidecars below are written at v1, which is where the ladder does the most work.
+        expect(written.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("refuses a story whose side came from a newer Studio rather than down-levelling it", async () => {
+        // The failure the old `serialize` refusal existed to prevent, checked where it can now
+        // actually happen. A partner on a newer Studio must stop this at `parse` - the alternative
+        // is migrating their document DOWN to this build's schema and committing that over their
+        // work, silently. Tier one (take the file whole) still works, which is the point of
+        // answering with a blocker rather than throwing.
+        const root = tmp();
+        conflictedStory(root);
+        write(root, `${STORY_PATH}~theirs`, storyText({
+            schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION + 1,
+            rows: { shared: "theirs", fromMine: "untouched", fromTheirs: "only theirs" },
+        }));
+
+        const answer = await readMergeDocument(root, STORY_PATH);
+
+        expect(answer.blocked).toBe("unreadable");
+        expect(answer.detail).toMatch(/newer version of Studio/);
+        expect(answer.decisions).toEqual([]);
+        await expect(resolveDocumentChanges(root, STORY_PATH, {})).rejects.toThrow(/unreadable/);
     });
 
     it("refuses a document that has no per-change tier, naming the reason", async () => {

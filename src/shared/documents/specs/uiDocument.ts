@@ -7,11 +7,17 @@ import {diffUIDocument} from "./uiDocumentDiff";
  * `editor/ui/uidoc.json` - every Surface in the project, the component library, and the one flat map
  * of elements they are all built out of. The largest document a project holds.
  *
- * **Read-side only, for the same reason the story spec is.** `parse` here is a shape gate, not a
+ * **Read-side only, for the reason the story spec USED to be.** `parse` here is a shape gate, not a
  * migration: eleven schema versions' worth of `migrateFromV*Document` live on the renderer's
  * `UIDocumentService`, shared code cannot import them, and an unmigrated document written back would
  * turn "read as v7" into "saved as v11 with the migration never having run". So `serialize` refuses,
  * and `UIDocumentService` keeps owning writing.
+ *
+ * `story.ts` is the worked example of lifting exactly this refusal: move both halves of the
+ * migration into shared code, run them in `parse`, and hold the resulting round trip - a value at
+ * the current version that is a fixed point of `parse` - as the invariant `serialize` rests on. The
+ * `read-only` blocker in `mergeDocument.ts` is a probe rather than a list of spec names, so this
+ * file becomes resolvable change by change on the day that lands, with nothing else to update.
  *
  * The reason it is a document at all is the diff. Without a spec this file falls to the structural
  * tier, which walks JSON positionally over a document that is nothing but generated ids, absolute
@@ -43,7 +49,7 @@ export const uiDocumentSpec = defineDocumentSpec<UIDocument>({
         // refuses for that exact reason.
         return record as unknown as UIDocument;
     },
-    /** Refused for the reason the story spec refuses; see the note at the top of this module. */
+    /** Refused; see the note at the top of this module for what has to land before it can write. */
     serialize: () => {
         throw new Error(
             "The ui-document spec is read-only in this build: `parse` does not run the interface "

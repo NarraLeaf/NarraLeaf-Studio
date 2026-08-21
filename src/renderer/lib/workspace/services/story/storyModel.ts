@@ -1,5 +1,4 @@
 import {
-    deriveUnassignedSceneIds,
     listSceneBlocksInDocumentOrder,
     listScenesInDocumentOrder,
     STORY_ANIMATION_SCHEMA_VERSION,
@@ -33,6 +32,12 @@ import {
 } from "@shared/types/story";
 import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
 import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument";
+import {
+    assertSupportedStoryDocument,
+    normalizeOptionalNonNegativeNumber,
+    normalizeOptionalString,
+    normalizeStoryDocument,
+} from "@shared/story/normalizeStoryDocument";
 
 export type StoryIdFactory = () => string;
 
@@ -186,15 +191,6 @@ export function assertSupportedStoryLibraryIndex(index: StoryLibraryIndex): void
     }
 }
 
-export function assertSupportedStoryDocument(document: StoryDocument): void {
-    if (document.schemaVersion > STORY_DOCUMENT_SCHEMA_VERSION) {
-        throw new Error("Story document schema is newer than this Studio version");
-    }
-    if (document.schemaVersion !== STORY_DOCUMENT_SCHEMA_VERSION) {
-        throw new Error("Story document migration is not implemented");
-    }
-}
-
 export function assertSupportedStoryAnimationIndex(index: StoryAnimationIndex): void {
     if (index.schemaVersion > STORY_ANIMATION_SCHEMA_VERSION) {
         throw new Error("Story animation index schema is newer than this Studio version");
@@ -284,45 +280,13 @@ export function normalizeStoryAnimationIndex(index: StoryAnimationIndex, now: st
  * Re-exported rather than defined here: the ladder moved to `@shared/story/migrateStoryDocument`
  * so the main process can run it on a document it read off disk (see that module's note). This is
  * the import path the renderer has always used.
+ *
+ * `normalizeStoryDocument` and `assertSupportedStoryDocument` made the same move, one milestone
+ * later and for the next reason along: the main process now has to WRITE a story back - the
+ * per-change conflict resolver composes one out of three sides and hands it to
+ * `storySpec.serialize`. See `@shared/story/normalizeStoryDocument`.
  */
-export { migrateStoryDocumentToLatest };
-
-export function normalizeStoryDocument(document: StoryDocument, now: string): StoryDocument {
-    const migrated = migrateStoryDocumentToLatest(document);
-    assertSupportedStoryDocument(migrated);
-    assertValidStoryId(migrated.id);
-    const scenes: Record<StorySceneId, StoryScene> = {};
-    for (const [sceneId, scene] of Object.entries(migrated.scenes)) {
-        const normalized = normalizeScene(scene);
-        scenes[sceneId] = normalized;
-    }
-    const chapters = migrated.chapters.map(chapter => ({
-        ...chapter,
-        sceneIds: chapter.sceneIds.filter(sceneId => scenes[sceneId]),
-    }));
-    const entrySceneId = migrated.entrySceneId && scenes[migrated.entrySceneId]
-        ? migrated.entrySceneId
-        : firstSceneId(chapters);
-    // The only writer of `unassignedSceneIds`. Recomputing here rather than having every chapter
-    // mutation maintain it is the difference between a stale id that self-heals on the next load and
-    // a missed call site that loses an order nothing can reconstruct. It is omitted when empty -
-    // which is nearly every document - so a project that never had a chapter-less scene carries no
-    // trace of the field and no diff line for it.
-    const normalized: StoryDocument = { ...migrated, chapters, scenes, entrySceneId };
-    const unassignedSceneIds = deriveUnassignedSceneIds(normalized);
-    if (unassignedSceneIds.length > 0) {
-        normalized.unassignedSceneIds = unassignedSceneIds;
-    } else {
-        delete normalized.unassignedSceneIds;
-    }
-    return {
-        ...normalized,
-        meta: {
-            ...migrated.meta,
-            updatedAt: migrated.meta?.updatedAt ?? now,
-        },
-    };
-}
+export { assertSupportedStoryDocument, migrateStoryDocumentToLatest, normalizeStoryDocument };
 
 export function normalizeStoryAnimationAsset(asset: StoryAnimationAsset, now: string): StoryAnimationAsset {
     assertSupportedStoryAnimationAsset(asset);
@@ -505,73 +469,6 @@ export function canAcceptChildren(block: StoryBlock | undefined): boolean {
         return block.payload.action === "choice" || block.payload.action === "choiceOption";
     }
     return false;
-}
-
-function normalizeScene(scene: StoryScene): StoryScene {
-    const blocks: Record<StoryBlockId, StoryBlock> = {};
-    for (const [id, block] of Object.entries(scene.blocks)) {
-        blocks[id] = {
-            ...block,
-            id,
-            childrenIds: block.childrenIds.filter(childId => scene.blocks[childId]),
-        } as StoryBlock;
-    }
-    const rootBlockIds = scene.rootBlockIds.filter(blockId => blocks[blockId]);
-    for (const block of Object.values(blocks)) {
-        if (block.parentId && !blocks[block.parentId]) {
-            block.parentId = null;
-            if (!rootBlockIds.includes(block.id)) {
-                rootBlockIds.push(block.id);
-            }
-        }
-        if (block.kind === "jump") {
-            block.childrenIds = [];
-        }
-    }
-    const bgm = normalizeSceneBgm(scene.bgm);
-    return {
-        ...scene,
-        description: typeof scene.description === "string" ? scene.description : "",
-        defaultBackgroundAssetId: normalizeOptionalString(scene.defaultBackgroundAssetId),
-        ...(bgm ? { bgm } : { bgm: undefined }),
-        rootBlockIds,
-        blocks,
-    };
-}
-
-/**
- * The scene's opening track. A record with no asset id names nothing playable, so it is dropped
- * rather than carried - which also means a cleared picker leaves no residue in the document.
- */
-function normalizeSceneBgm(value: StoryScene["bgm"]): StoryScene["bgm"] {
-    const assetId = normalizeOptionalString(value?.assetId);
-    if (!value || !assetId) {
-        return undefined;
-    }
-    const volume = typeof value.volume === "number" && Number.isFinite(value.volume)
-        ? Math.min(1, Math.max(0, value.volume))
-        : undefined;
-    const fadeMs = normalizeOptionalNonNegativeNumber(value.fadeMs);
-    const audioTrackId = normalizeOptionalString(value.audioTrackId);
-    return {
-        assetId,
-        // Kept as authored even when no track of that id exists: a reference to a deleted track
-        // resolves to its bus's built-in at compile time, and dropping the id here would silently
-        // discard the author's choice the moment they deleted a track they meant to re-create.
-        ...(audioTrackId !== undefined ? { audioTrackId } : {}),
-        ...(volume !== undefined ? { volume } : {}),
-        ...(typeof value.loop === "boolean" ? { loop: value.loop } : {}),
-        ...(fadeMs !== undefined ? { fadeMs } : {}),
-    };
-}
-
-function normalizeOptionalString(value: string | undefined): string | undefined {
-    const trimmed = typeof value === "string" ? value.trim() : "";
-    return trimmed || undefined;
-}
-
-function normalizeOptionalNonNegativeNumber(value: unknown): number | undefined {
-    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function normalizeOptionalPositiveNumber(value: unknown): number | undefined {
@@ -916,15 +813,6 @@ function createDefaultAnimationTimeline(id: string): StoryAnimationTimeline {
             },
         ],
     };
-}
-
-function firstSceneId(chapters: StoryChapter[]): StorySceneId | undefined {
-    for (const chapter of chapters) {
-        if (chapter.sceneIds[0]) {
-            return chapter.sceneIds[0];
-        }
-    }
-    return undefined;
 }
 
 function insertId(ids: string[], id: string, beforeId: string | null): void {
