@@ -2078,16 +2078,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock, slashAtAlias]);
 
     /**
-     * Enter on a line with nothing on it: the author is asking for the blank line itself.
+     * Enter **in a blank line**: the next blank line, below it. Returns false when the line is not one,
+     * leaving the caller to close the slot as Enter on an empty line always did.
      *
-     * Enter has always meant "this line is finished, open the next one", and it means the same here -
-     * an empty line finished is a blank row (schema v20), and the caret moves down to the next one.
-     * Holding Enter therefore walks a column of blank lines, the way it does in every text editor. It
-     * used to close the slot and write nothing, which left Escape and Enter saying the same thing and
-     * no way at all to type an empty line on purpose.
+     * Enter has always meant "this line is finished, open the next one", and a blank line finished is
+     * another blank line (schema v20) - so holding Enter walks a column of them, the way it does in
+     * every text editor. What makes the line a blank one is the row underneath the slot, not the
+     * absence of text: a slot opened to insert something is a line nothing has been typed into yet,
+     * and that is a different thing from a line that IS blank.
      *
-     * A slot standing over a row that is ALREADY blank adds the next one after it rather than
-     * rewriting it: the line this keystroke would write is the line the slot is sitting on.
+     * The row the slot covers is left alone and the new line goes after it - the line this keystroke
+     * would write is the line the slot is already sitting on.
      *
      * The caret lands in a slot standing *over* the new row rather than in one below it, and that is
      * what makes the keystroke read as one line. An open slot draws a blank line of its own, so
@@ -2100,38 +2101,35 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * nothing for an empty draft). Clicking away from a slot the author never typed in has to leave
      * the scene as it was, or every abandoned slot in a session would leave a blank row behind.
      */
-    const commitBlankRowFromInsert = useCallback(() => {
+    const commitBlankRowFromInsert = useCallback((): boolean => {
         if (editorMode.kind !== "insert" || !uuidService) {
-            return;
+            return false;
         }
-        const slot = editorMode.slot;
-        const covered = (slot.replaceBlockId ? scene?.blocks[slot.replaceBlockId] : null) ?? null;
+        // Only a line that IS a blank row makes another one. A slot the author opened to insert
+        // something - Shift+Enter, the row's own `+`, the palette - is not a blank line, it is a line
+        // nothing has been typed into yet, and Enter there has always meant "never mind": it closes
+        // and writes nothing. Fabricating a row for it would leave a blank line behind every time an
+        // author opened a slot and changed their mind, which is not what asking for a row means.
+        const covered = (editorMode.slot.replaceBlockId ? scene?.blocks[editorMode.slot.replaceBlockId] : null) ?? null;
+        if (!covered || covered.kind !== "empty") {
+            return false;
+        }
         const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
-        // Where the new line lands, and which row ends up above it - both read before the document
-        // moves, because the caret's slot has to be built against the place the row is going.
-        const addingAfterBlank = covered !== null && covered.kind === "empty";
-        const parentId = covered
-            ? covered.parentId
-            : slot.target?.parentId ?? (slot.afterBlockId ? scene?.blocks[slot.afterBlockId]?.parentId ?? null : null);
-        const above = addingAfterBlank ? covered.id : slot.afterBlockId;
-        if (addingAfterBlank) {
-            insertBlock(block, covered.id, false);
-        } else {
-            insertBlock(block, slot.afterBlockId, false, { target: slot.target, replaceBlockId: slot.replaceBlockId });
-        }
+        insertBlock(block, covered.id, false);
         slotDiscardedRef.current = false;
         insertDraftRef.current = "";
         setEditorMode({
             kind: "insert",
             slot: {
-                afterBlockId: above,
+                afterBlockId: covered.id,
                 focusToken: Date.now(),
-                target: { parentId, beforeBlockId: block.id },
+                target: { parentId: covered.parentId, beforeBlockId: block.id },
                 replaceBlockId: block.id,
             },
             initialValue: "",
         });
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
+        return true;
     }, [editorMode, insertBlock, scene, uuidService]);
 
     /**
@@ -2146,7 +2144,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const value = insertDraftRef.current;
         if (!value.trim()) {
-            commitBlankRowFromInsert();
+            // A blank line makes the next blank line; a slot that was never typed into just closes.
+            if (!commitBlankRowFromInsert()) {
+                setEditorMode({ kind: "idle" });
+            }
             return;
         }
         if (isActionCommandLine(value, slashAtAlias)) {
