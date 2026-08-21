@@ -454,6 +454,14 @@ export const story = {
         noSuggestions: "No suggestions",
         addToDictionary: "Add to project dictionary",
     },
+    /**
+     * The popover a right click on a dictionary mark opens: one action, and the entry behind it.
+     */
+    dictionary: {
+        replaceWith: "Replace with {term}",
+        applyReading: "Add ruby {reading}",
+        openEntry: "Edit in dictionary",
+    },
     interpolation: {
         title: "Insert value",
         kindVariable: "Variable",

@@ -329,6 +329,25 @@ export const lint = {
             messageChain: "{where} uses {color}, which links on to {missing}, a color the palette does not have",
             messageCycle: "{where} uses {color}, whose links lead back to themselves",
         },
+        typographyGlyphCoverage: {
+            title: "Missing glyphs",
+            description: "Text using characters no font of the project can draw",
+            // The character itself, because nothing in the location can carry it and it is the only
+            // thing that tells one of these findings from the next. Its count travels with it: one
+            // finding per line would be thousands of them when the font is simply the wrong one.
+            message: "No project font can draw “{character}” ({count} times)",
+            messageInLanguage: "No project font can draw “{character}” in {language} ({count} times)",
+            messageMore: "{count} more characters no project font can draw",
+            messageMoreInLanguage: "{count} more characters no project font can draw in {language}",
+            // Not a coverage finding at all: the check could not be made. Said out loud because a
+            // check that quietly did not run reads on screen as a check that passed.
+            messageUnreadable: "{font} could not be read, so glyph coverage was not checked",
+        },
+        typographyLocaleNoFont: {
+            title: "Language with no font",
+            description: "A language every font of the project is restricted away from",
+            message: "No project font is set for {language}",
+        },
     },
     message: {
         ruleFailed: "{rule} could not run",
@@ -349,6 +368,10 @@ export const lint = {
         voice: "Voice",
         // Named after the panel the author fixes one of these in, not after the link protocol.
         brand: "Brand palette",
+        // The word for the subject rather than for the panel, unlike `brand` above: the fonts
+        // are edited on the same page as the palette, so naming this one after the page too
+        // would give two categories one name.
+        typography: "Typography",
     },
     severity: {
         error: "Error",

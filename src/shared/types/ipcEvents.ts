@@ -37,6 +37,7 @@ import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConv
 import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
@@ -214,6 +215,7 @@ export enum IPCEventType {
     psdOpen = "psd.open",
     psdBake = "psd.bake",
     mediaProbe = "media.probe",
+    fontProbeCoverage = "font.probeCoverage",
     mediaConvertStart = "media.convert.start",
     mediaConvertCancel = "media.convert.cancel",
     mediaConvertGetStatus = "media.convert.getStatus",
@@ -2008,6 +2010,27 @@ export type IPCWorkspaceEvents = {
         };
         response: {
             outcome: MediaProbeOutcome;
+        };
+    };
+    /**
+     * What a font file can draw, read out of its own `cmap`.
+     *
+     * In the main process rather than the renderer for one reason that decides it: WOFF2 wraps the
+     * whole font in a Brotli stream and a renderer has no Brotli decompressor, so a font in that
+     * container simply cannot be read there. Doing it here also keeps a twenty-megabyte typeface out
+     * of the renderer's heap - what crosses back is a list of code point ranges.
+     *
+     * Read-only, and every failure is an arm of the result rather than a rejection: the callers are
+     * a lint rule that must finish its sweep and a panel that must draw its row.
+     */
+    [IPCEventType.fontProbeCoverage]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+        };
+        response: {
+            result: FontCoverageResult;
         };
     };
     /**
