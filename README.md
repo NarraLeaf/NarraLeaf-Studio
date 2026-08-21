@@ -71,6 +71,18 @@ A target that can carry a code signature and has no signing credential configure
 `--build-allow-unsigned` is how a caller states that it accepts an unsigned artifact. The report's
 `signing` block says whether the platform can carry a signature at all and whether this build did.
 
+The report's `experimental` block answers the same way for experimental mode, which a development
+launch enters with `--experimental` and one `--x-<id>` flag per condition. `state` is `off`, `on` or
+`refused`, and `conditions` lists what the mode changed about this build — a build whose list holds
+`debuggable-build` ships without asar integrity validation and is not one to distribute. Nothing
+about the artifact records this, so the report is where a job finds out which kind it has.
+
+A launch that asks for the mode and cannot have it is refused rather than built: a packaged Studio
+never enters experimental mode, a `--x-` flag without `--experimental` applies to nothing, and a
+`--x-` flag that names no condition asked for something that was never going to happen. All three
+would otherwise hand back the opposite of what was asked for, with nobody there to read the warning.
+The exit code is `2` and the report's `experimental.refusal` says which of the three it was.
+
 ## Asset protection
 
 NarraLeaf Studio is open source, with one exception: an optional asset-protection component that is **not** open source. For details, see [docs/asset-protection.md](docs/asset-protection.md).

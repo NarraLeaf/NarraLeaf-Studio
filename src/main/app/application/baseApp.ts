@@ -32,7 +32,12 @@ import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
 import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
-import { isMainDevMode, parseMainCommandLine, type BuildCommandLineOptions } from "./commandLine";
+import {
+    isMainDevMode,
+    parseMainCommandLine,
+    type BuildCommandLineOptions,
+    type ExperimentalCommandLineOptions,
+} from "./commandLine";
 import {
     EXPERIMENTAL_FLAG,
     EXPERIMENTAL_OFF,
@@ -731,6 +736,19 @@ export class BaseApp {
      */
     public getCommandLineBuild(): BuildCommandLineOptions | null {
         return this.commandLine.build.requested ? this.commandLine.build : null;
+    }
+
+    /**
+     * What the command line asked experimental mode for, before anything decided whether it could
+     * be honoured.
+     *
+     * {@link getExperimentalState} is the honoured answer and is what every other reader wants; the
+     * two differ exactly where a launch asked for something it did not get. `--build` is the one
+     * caller that has to see the difference, because it is the one with nobody to read the warning
+     * the log leaves about it.
+     */
+    public getRequestedExperimental(): ExperimentalCommandLineOptions {
+        return this.commandLine.experimental;
     }
 
     public getAppEntry(type: WindowAppType): string {

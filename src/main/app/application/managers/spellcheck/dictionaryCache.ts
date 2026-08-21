@@ -86,7 +86,7 @@ export class DictionaryCache {
                 // nothing that can be checked against, so it is not offered as installed.
                 continue;
             }
-            installed.push({ code, name: manifest.name, bytes });
+            installed.push({ code, name: manifest.name, bytes, sha256: manifest.sha256 });
         }
         return installed.sort((left, right) => (left.code < right.code ? -1 : left.code > right.code ? 1 : 0));
     }

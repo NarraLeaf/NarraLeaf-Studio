@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { planCommandLineBuild } from "./commandLineBuildPlan";
-import type { BuildCommandLineOptions } from "./commandLine";
+import type { ExperimentalState } from "@shared/types/experimental";
+import { planCommandLineBuild, resolveCommandLineBuildExperimental } from "./commandLineBuildPlan";
+import type { BuildCommandLineOptions, ExperimentalCommandLineOptions } from "./commandLine";
 
 const BASE: BuildCommandLineOptions = {
     requested: true,
@@ -132,5 +133,138 @@ describe("planCommandLineBuild", () => {
         const result = plan({ platform: "windows" }, "linux");
 
         expect(result.ok && result.plan.arch).toBe("x64");
+    });
+});
+
+/**
+ * What the launch asked experimental mode for, and what `BaseApp.getExperimentalState` gave it.
+ *
+ * Two arguments rather than one because that is the whole subject: everything below is about the
+ * cases where they differ.
+ */
+function asked(options: Partial<ExperimentalCommandLineOptions>): ExperimentalCommandLineOptions {
+    return { requested: false, conditions: [], unknownConditionFlags: [], ...options };
+}
+
+function honoured(options: Partial<ExperimentalState>): ExperimentalState {
+    return { enabled: false, conditions: [], unknownConditionFlags: [], ...options };
+}
+
+describe("resolveCommandLineBuildExperimental", () => {
+    it("is off when nothing asked for it", () => {
+        const result = resolveCommandLineBuildExperimental(asked({}), honoured({}));
+
+        expect(result.refusal).toBeNull();
+        expect(result.report).toEqual({
+            state: "off",
+            conditions: [],
+            requestedConditions: [],
+            unknownConditionFlags: [],
+        });
+    });
+
+    it("reports the conditions an honoured run turned on", () => {
+        const result = resolveCommandLineBuildExperimental(
+            asked({ requested: true, conditions: ["debuggable-build"] }),
+            honoured({ enabled: true, conditions: ["debuggable-build"] }),
+        );
+
+        expect(result.refusal).toBeNull();
+        expect(result.report).toEqual({
+            state: "on",
+            conditions: ["debuggable-build"],
+            requestedConditions: ["debuggable-build"],
+            unknownConditionFlags: [],
+        });
+    });
+
+    it("is on with nothing changed when the mode was opened and no condition followed", () => {
+        const result = resolveCommandLineBuildExperimental(
+            asked({ requested: true }),
+            honoured({ enabled: true }),
+        );
+
+        expect(result.refusal).toBeNull();
+        expect(result.report.state).toBe("on");
+        expect(result.report.conditions).toEqual([]);
+    });
+
+    /**
+     * The case the whole field exists for: a packaged Studio turns the mode off whatever the line
+     * said, so this launch would have archived a production artifact believing it was debuggable.
+     */
+    it("refuses a mode this Studio cannot enter, and says what was asked for", () => {
+        const result = resolveCommandLineBuildExperimental(
+            asked({ requested: true, conditions: ["debuggable-build"] }),
+            honoured({ enabled: false }),
+        );
+
+        expect(result.refusal).toContain("cannot enter experimental mode");
+        expect(result.refusal).toContain("--x-debuggable-build");
+        expect(result.report).toEqual({
+            state: "refused",
+            refusal: "unavailable",
+            conditions: [],
+            requestedConditions: ["debuggable-build"],
+            unknownConditionFlags: [],
+        });
+    });
+
+    it("refuses `--experimental` on its own when it cannot be honoured", () => {
+        // No carve-out for "the mode would have changed nothing anyway": deciding that means
+        // knowing what each condition does, in the one place that must not have to know.
+        const result = resolveCommandLineBuildExperimental(
+            asked({ requested: true }),
+            honoured({ enabled: false }),
+        );
+
+        expect(result.report.refusal).toBe("unavailable");
+        expect(result.refusal).toContain("--experimental");
+    });
+
+    it("refuses a condition flag given without --experimental", () => {
+        const result = resolveCommandLineBuildExperimental(
+            asked({ conditions: ["debuggable-build"] }),
+            honoured({ enabled: false }),
+        );
+
+        expect(result.report).toEqual({
+            state: "refused",
+            refusal: "mode-not-opened",
+            conditions: [],
+            requestedConditions: ["debuggable-build"],
+            unknownConditionFlags: [],
+        });
+        expect(result.refusal).toContain("--experimental");
+    });
+
+    it("refuses a --x- flag that names no condition", () => {
+        // A typo of a real condition produces exactly the artifact a typo must not produce quietly.
+        const result = resolveCommandLineBuildExperimental(
+            asked({ requested: true, unknownConditionFlags: ["--x-debugable-build"] }),
+            honoured({ enabled: true }),
+        );
+
+        expect(result.report).toEqual({
+            state: "refused",
+            refusal: "unknown-condition",
+            conditions: [],
+            requestedConditions: [],
+            unknownConditionFlags: ["--x-debugable-build"],
+        });
+        expect(result.refusal).toContain("debuggable-build");
+    });
+
+    it("never reports a condition the mode did not actually turn on", () => {
+        // The report's `conditions` is what the artifact is. Nothing but an honoured run may fill
+        // it, whatever the line asked for.
+        for (const state of [honoured({}), honoured({ enabled: false, conditions: ["debuggable-build"] })]) {
+            const result = resolveCommandLineBuildExperimental(
+                asked({ requested: true, conditions: ["debuggable-build"] }),
+                state,
+            );
+
+            expect(result.report.conditions).toEqual([]);
+        }
     });
 });
