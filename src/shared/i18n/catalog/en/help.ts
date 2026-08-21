@@ -216,6 +216,38 @@ export const help = {
                 + "- Starting from a row with no snapshot offers to create one.\n"
                 + "- Snapshots do not affect the finished game.",
         },
+        dictionary: {
+            title: "Project dictionary",
+            body:
+                "The dictionary holds the words this project writes on purpose: character names, place names, "
+                + "invented vocabulary. It is part of the project and is available to everyone who opens it.\n"
+                + "\n"
+                + "An entry is a term, and three fields that may be left empty:\n"
+                + "\n"
+                + "- Reading: the ruby the term is annotated with.\n"
+                + "- Variant spellings: spellings that mean the term but are not how this project writes it.\n"
+                + "- Note: what the term is, for whoever reads the list later.\n"
+                + "\n"
+                + "A term is added in the dictionary panel, or from a story row: select the words and choose Add "
+                + "to dictionary, or right-click a marked word.",
+        },
+        dictionaryMarks: {
+            title: "Dictionary marks",
+            body:
+                "Every spelling in the dictionary is accepted when the source text is checked, terms and variant "
+                + "spellings alike.\n"
+                + "\n"
+                + "Two marks of its own appear in the row being edited. Both are switched on and off for the whole "
+                + "project at the foot of the dictionary panel.\n"
+                + "\n"
+                + "- An amber wave marks a variant spelling. Right-clicking it writes the term instead.\n"
+                + "- A dotted line marks a term the dictionary holds a reading for, where the row carries no ruby. "
+                + "Right-clicking it applies the reading.\n"
+                + "\n"
+                + "Check project reads every story for variant spellings and lists each place under the term it "
+                + "belongs to. Selecting one opens that row. Readings are left out of it: a term with a reading "
+                + "occurs wherever it appears.",
+        },
         storyMotion: {
             title: "Motion",
             body:
@@ -458,6 +490,21 @@ export const help = {
                 + "- The network policy in project settings decides whether these nodes run. With no "
                 + "network access, the project reports an error and the build is refused.\n"
                 + "- Only http and https addresses can be fetched.",
+        },
+        spellcheck: {
+            title: "Spelling",
+            body:
+                "The source text of a story is checked for spelling. Translations are not.\n"
+                + "\n"
+                + "The language follows the project's source language, and can be set to another one, or to none, "
+                + "in Settings. A language is checked once its dictionary has been downloaded, under Spelling "
+                + "dictionaries in the same place. Until then nothing is marked.\n"
+                + "\n"
+                + "- A red wave marks a misspelling. Right-clicking it offers replacements, and offers to add the "
+                + "word to the project dictionary.\n"
+                + "- Chinese and Japanese are read a word at a time against the dictionary of the language. What "
+                + "is marked is a run of characters that spells no word in it. A mistyped character that spells "
+                + "another word is not found.",
         },
         lint: {
             title: "Project checks",

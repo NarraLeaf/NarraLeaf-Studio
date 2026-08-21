@@ -15,6 +15,7 @@ import type { HelpTopicId } from "@/lib/help";
 export const PANEL_HELP_TOPICS: Readonly<Record<string, HelpTopicId>> = {
     "narraleaf-studio:story": "storyScene",
     "narraleaf-studio:story-variables": "storyVariables",
+    "narraleaf-studio:dictionary": "dictionary",
     "narraleaf-studio:story-action-creator": "storyCommands",
     "narraleaf-studio:story-snapshots": "sceneSnapshot",
     "narraleaf-studio:story-motion": "storyMotion",
