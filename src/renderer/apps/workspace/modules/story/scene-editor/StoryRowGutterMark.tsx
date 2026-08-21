@@ -132,7 +132,7 @@ export function StoryGutterCell(props: {
             className="relative flex shrink-0 flex-col items-center self-stretch"
             style={{ width: STORY_MARK_PX, minHeight: "var(--nl-story-row-box)" }}
         >
-            {props.active && !props.stretch ? (
+            {props.active && !props.stretch && props.children != null ? (
                 <span
                     aria-hidden
                     className="pointer-events-none absolute left-0 rounded-full bg-fill-subtle"

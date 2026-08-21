@@ -2042,9 +2042,41 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock, slashAtAlias]);
 
     /**
+     * Enter on a line with nothing on it: the author is asking for the blank line itself.
+     *
+     * Enter has always meant "this line is finished, open the next one", and it means the same here -
+     * an empty line finished is a blank row (schema v20), and the slot that opens after it is where
+     * the next one goes. Holding Enter down therefore walks a column of blank lines, the way it does
+     * in every text editor. It used to close the slot and write nothing, which left Escape and Enter
+     * saying the same thing and no way at all to type an empty line on purpose.
+     *
+     * A slot standing over a row that is ALREADY blank adds the next one after it rather than
+     * rewriting it: the line this keystroke would write is the line the slot is sitting on.
+     *
+     * Blur is deliberately NOT this path (see {@link commitNarrationFromInsert}, which still writes
+     * nothing for an empty draft). Clicking away from a slot the author never typed in has to leave
+     * the scene as it was, or every abandoned slot in a session would leave a blank row behind.
+     */
+    const commitBlankRowFromInsert = useCallback(() => {
+        if (editorMode.kind !== "insert" || !uuidService) {
+            return;
+        }
+        const slot = editorMode.slot;
+        const covered = slot.replaceBlockId ? scene?.blocks[slot.replaceBlockId] : null;
+        const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
+        if (covered && covered.kind === "empty") {
+            insertBlock(block, covered.id, false);
+        } else {
+            insertBlock(block, slot.afterBlockId, false, { target: slot.target, replaceBlockId: slot.replaceBlockId });
+        }
+        startInsertAfter(block.id, true);
+    }, [editorMode, insertBlock, scene, startInsertAfter, uuidService]);
+
+    /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
-     * The line has to stand on its own now: prose commits, a resolvable command commits, and anything
-     * still wearing a `/` or `#` becomes an invalid row rather than silently becoming prose.
+     * The line has to stand on its own now: prose commits, a resolvable command commits, an empty line
+     * commits as a blank row, and anything still wearing a `/` or `#` becomes an invalid row rather
+     * than silently becoming prose.
      */
     const resolveInsertLine = useCallback(() => {
         if (editorMode.kind !== "insert") {
@@ -2052,7 +2084,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const value = insertDraftRef.current;
         if (!value.trim()) {
-            setEditorMode({ kind: "idle" });
+            commitBlankRowFromInsert();
             return;
         }
         if (isActionCommandLine(value, slashAtAlias)) {
@@ -2068,7 +2100,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         commitNarrationFromInsert(true);
-    }, [commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
+    }, [commitBlankRowFromInsert, commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
 
     /**
      * Pick a speaker that no Studio character backs. Valid, not a fallback: NLR's dialogue box only
