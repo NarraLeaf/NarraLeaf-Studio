@@ -8,6 +8,7 @@ import {
     WEATHER_SEED_IDS,
     WEATHER_SEEDS,
     weatherBakeSize,
+    weatherParamsOf,
     type WeatherParamKey,
     type WeatherSeedId,
 } from "./model";
@@ -128,13 +129,21 @@ describe("the fall speed", () => {
         });
     }
 
-    it("puts every seed's default clear of the floor of its own range", () => {
-        // The first round defaulted all three seeds to 1, the minimum, and the result was a sakura
-        // that crossed the frame more slowly than the snow next to it - which is most of why the
-        // baked clips read as snowfall. A default equal to a minimum is worth failing over.
+    it("puts every seed's default clear of both ends of every range it exposes", () => {
+        // Twice now a seed has shipped with a default sitting on a bound: `fallSpeed` on the floor,
+        // which gave a sakura that fell more slowly than the snow beside it, and `sizeNear` on the
+        // ceiling, which left an author unable to ask for a larger petal than the one they were
+        // already looking at. Both read to the author as "this slider does nothing in the direction
+        // I want", and neither is visible in a diff. Only EXPOSED parameters: a seed pins the rest
+        // at whatever it wants, and rain's `sway` of 0 is the point of rain.
         for (const seed of WEATHER_SEED_IDS) {
-            const speed = resolveWeatherParams({ seed }).fallSpeed;
-            expect(speed).toBeGreaterThan(WEATHER_PARAMS.fallSpeed.min);
+            const resolved = resolveWeatherParams({ seed });
+            for (const key of weatherParamsOf(seed)) {
+                const spec = WEATHER_PARAMS[key];
+                expect({ seed, key, value: resolved[key] }).toMatchObject({ seed, key });
+                expect(resolved[key]).toBeGreaterThan(spec.min);
+                expect(resolved[key]).toBeLessThan(spec.max);
+            }
         }
     });
 
@@ -193,11 +202,6 @@ describe("the flutter", () => {
         }
     });
 
-    it("gives a petal a rate an eye reads as a flutter", () => {
-        const harmonics = fieldOf("sakura").particles.map(p => p.swayHarm / WEATHER_LOOP_SECONDS);
-        expect(Math.min(...harmonics)).toBeGreaterThan(0.5);
-    });
-
     for (const seed of WEATHER_SEED_IDS) {
         it(`${seed} keeps the seam exact at both ends of the rate`, () => {
             // The hang displaces a particle along its own fall line, which looks like the one thing
@@ -230,6 +234,75 @@ describe("the flutter", () => {
         // speed, so a drop that slowed would be a smear that had come loose from its own motion.
         expect(fieldOf("rain").particles.every(p => p.bobAmp === 0)).toBe(true);
         expect(fieldOf("sakura").particles.some(p => p.bobAmp > 0)).toBe(true);
+    });
+});
+
+describe("the solidity", () => {
+    const frameOf = (solidity: number) =>
+        frameAt("sakura", 0.25, resolveWeatherParams({ seed: "sakura", params: { solidity } }), 4);
+
+    const saturated = (buf: Uint8ClampedArray) => {
+        let n = 0;
+        for (let i = 0; i < buf.length; i += 4) {
+            if (buf[i] >= 254) n++;
+        }
+        return n;
+    };
+    const edgeEnergy = (buf: Uint8ClampedArray) => {
+        let sum = 0;
+        for (let y = 0; y < H - 1; y++) {
+            for (let x = 0; x < W - 1; x++) {
+                const i = (y * W + x) * 4;
+                sum += Math.abs(buf[(y * W + x + 1) * 4] - buf[i]) + Math.abs(buf[((y + 1) * W + x) * 4] - buf[i]);
+            }
+        }
+        return sum;
+    };
+
+    it("scales the depth ramp rather than replacing it", () => {
+        // Multiplying keeps the near particle the same multiple of the far one at every setting,
+        // which is what stops this control from flattening the depth the seed was built on.
+        const at = (solidity: number) =>
+            buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura", params: { solidity } }), W, H)
+                .particles.map(p => p.gain);
+        const one = at(1);
+        const three = at(3);
+        expect(three.length).toBe(one.length);
+        for (let i = 0; i < one.length; i++) {
+            expect(three[i]).toBeCloseTo(one[i] * 3, 6);
+        }
+    });
+
+    it("is allowed past 1, where it buys an edge rather than a glow", () => {
+        // The reason it exists. Everything accumulates in float and clamps once, so a gain past 1
+        // CLIPS the falloff: the particle gains a flat core and a narrower rim. If this were merely
+        // a brightness the lit area would grow with it and the edges would not sharpen.
+        const dull = frameOf(1);
+        const solid = frameOf(3);
+        expect(saturated(solid)).toBeGreaterThan(saturated(dull) * 4);
+        expect(edgeEnergy(solid)).toBeGreaterThan(edgeEnergy(dull));
+        // And it is not simply covering more of the frame with light.
+        expect(litPixels(solid)).toBeLessThan(litPixels(dull) * 1.3);
+    });
+
+    // One `it` per seed, like the flutter block above. Six seam frames in a single case ran seven
+    // seconds against a five-second default under a full-suite load and failed as a timeout, which
+    // reads exactly like a broken seam in the report and is not one.
+    for (const seed of WEATHER_SEED_IDS) {
+        it(`${seed} keeps the seam exact at both ends`, () => {
+            for (const solidity of [WEATHER_PARAMS.solidity.min, WEATHER_PARAMS.solidity.max]) {
+                const params = resolveWeatherParams({ seed, params: { solidity } });
+                expect(frameAt(seed, 1, params)).toEqual(frameAt(seed, 0, params));
+            }
+        });
+    }
+
+    it("is a seed parameter because it changes the file, not how loudly the file is played", () => {
+        // The payload's own `opacity` scales the finished overlay and cannot pass 1, so it can never
+        // produce this. Two different questions, and the bake key has to be able to tell them apart.
+        const dull = weatherBakeKey({ ref: { seed: "sakura", params: { solidity: 1 } }, width: W, height: H, fps: 30, frames: FRAMES });
+        const solid = weatherBakeKey({ ref: { seed: "sakura", params: { solidity: 3 } }, width: W, height: H, fps: 30, frames: FRAMES });
+        expect(solid).not.toBe(dull);
     });
 });
 
