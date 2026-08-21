@@ -43,6 +43,16 @@ function conditionBranchBlock(
     } as StoryBlock;
 }
 
+function endingBlock(id: string, name: string, parentId: string | null = null): StoryBlock {
+    return {
+        id,
+        kind: "control",
+        parentId,
+        childrenIds: [],
+        payload: { control: "ending", name },
+    } as StoryBlock;
+}
+
 function choiceBlock(id: string, childrenIds: string[], parentId: string | null = null): StoryBlock {
     return {
         id,
@@ -116,7 +126,11 @@ describe("buildSceneFlowRouteMap endings", () => {
             scene("c", "Three", []),
         ], "a"));
 
-        expect(map.endings).toEqual([{ sceneId: "c", name: "Three", reachable: true }]);
+        // Nothing marks an ending, so the ending is derived and keyed by the scene it is.
+        expect(map.endings).toEqual([
+            { id: "c", source: "derived", sceneId: "c", name: "Three", reachable: true },
+        ]);
+        expect(map.routes[0].endingId).toBe("c");
         expect(map.routes).toHaveLength(1);
         expect(map.routes[0].sceneIds).toEqual(["a", "b", "c"]);
         expect(map.routes[0].endingSceneId).toBe("c");
@@ -151,8 +165,8 @@ describe("buildSceneFlowRouteMap endings", () => {
         ], "a"));
 
         expect(map.endings).toEqual([
-            { sceneId: "b", name: "Two", reachable: true },
-            { sceneId: "z", name: "Cut content", reachable: false },
+            { id: "b", source: "derived", sceneId: "b", name: "Two", reachable: true },
+            { id: "z", source: "derived", sceneId: "z", name: "Cut content", reachable: false },
         ]);
         expect(map.unreachableEndings).toEqual(["z"]);
     });
@@ -465,5 +479,147 @@ describe("buildSceneFlowRouteMap routes", () => {
 
         expect(first.routes.map(route => route.id)).toEqual(second.routes.map(route => route.id));
         expect(new Set(first.routes.map(route => route.id)).size).toBe(first.routes.length);
+    });
+});
+
+describe("buildSceneFlowRouteMap authored endings", () => {
+    it("keys an ending on its row rather than on the scene the row is in", () => {
+        const map = routeMap(document([
+            scene("a", "One", [jumpBlock("j1", "b")]),
+            scene("b", "Epilogue", [endingBlock("end-true", "True End")]),
+        ], "a"));
+
+        expect(map.endings).toEqual([
+            { id: "end-true", source: "authored", sceneId: "b", name: "True End", reachable: true },
+        ]);
+        expect(map.routes).toHaveLength(1);
+        expect(map.routes[0].endingId).toBe("end-true");
+        expect(map.routes[0].endingSceneId).toBe("b");
+        expect(map.unreachableEndings).toEqual([]);
+    });
+
+    it("gives one scene an ending per arm, and a route to each", () => {
+        // The shape the scene-keyed reading could not express: two endings, one scene, and the
+        // decision that tells them apart is inside it.
+        const map = routeMap(document([
+            scene("a", "Last words", [
+                choiceBlock("c1", ["o0", "o1"]),
+                choiceOptionBlock("o0", ["end-stay"], "Stay", "c1"),
+                endingBlock("end-stay", "Together", "o0"),
+                choiceOptionBlock("o1", ["end-go"], "Go", "c1"),
+                endingBlock("end-go", "Alone", "o1"),
+            ]),
+        ], "a"));
+
+        expect(map.endings.map(ending => [ending.id, ending.name, ending.sceneId])).toEqual([
+            ["end-stay", "Together", "a"],
+            ["end-go", "Alone", "a"],
+        ]);
+        expect(map.routes.map(route => ({ ending: route.endingId, arms: route.branchIds }))).toEqual([
+            { ending: "end-stay", arms: ["scene-flow:branch:o0"] },
+            { ending: "end-go", arms: ["scene-flow:branch:o1"] },
+        ]);
+        expect(new Set(map.routes.map(route => route.id)).size).toBe(2);
+        expect(map.unreachableEndings).toEqual([]);
+        expect(map.deadBranchIds).toEqual([]);
+    });
+
+    it("carries a fall-through option into the scene's own ending", () => {
+        const map = routeMap(document([
+            scene("a", "Fork", [
+                choiceBlock("c1", ["o0", "o1"]),
+                choiceOptionBlock("o0", ["j0"], "Leave", "c1"),
+                jumpBlock("j0", "b", "o0"),
+                choiceOptionBlock("o1", [], "Stay", "c1"),
+                endingBlock("end-stay", "Stayed behind"),
+            ]),
+            scene("b", "Away", [endingBlock("end-away", "Away")]),
+        ], "a"));
+
+        const fallThrough = map.routes.find(route => route.branchIds.includes("scene-flow:branch:o1"));
+        expect(fallThrough?.endingId).toBe("end-stay");
+        expect(fallThrough?.endingSceneId).toBe("a");
+        expect(fallThrough?.steps).toEqual([]);
+        // Two, not three: the ending is written after the menu, and the menu is exhaustive, so
+        // nothing reaches it without having picked an option first.
+        expect(map.routes.map(route => route.endingId)).toEqual(["end-away", "end-stay"]);
+        expect(map.deadBranchIds).toEqual([]);
+    });
+
+    it("does not offer an ending written after an exhaustive menu as a path of its own", () => {
+        // Every option jumps, so nothing walks past the menu into the row below it. The ending is
+        // written and no path reaches it, which is precisely what the diagnostic is for.
+        const map = routeMap(document([
+            scene("a", "Fork", [
+                choiceBlock("c1", ["o0", "o1"]),
+                choiceOptionBlock("o0", ["j0"], "Left", "c1"),
+                jumpBlock("j0", "b", "o0"),
+                choiceOptionBlock("o1", ["j1"], "Right", "c1"),
+                jumpBlock("j1", "c", "o1"),
+                endingBlock("end-never", "Never"),
+            ]),
+            scene("b", "Left", [endingBlock("end-left", "Left End")]),
+            scene("c", "Right", [endingBlock("end-right", "Right End")]),
+        ], "a"));
+
+        expect(map.routes.map(route => route.endingId)).toEqual(["end-left", "end-right"]);
+        expect(map.unreachableEndings).toEqual(["end-never"]);
+    });
+
+    it("stops a route with no ending where an arm runs out", () => {
+        const map = routeMap(document([
+            scene("a", "Fork", [
+                choiceBlock("c1", ["o0", "o1"]),
+                choiceOptionBlock("o0", ["j0"], "Leave", "c1"),
+                jumpBlock("j0", "b", "o0"),
+                choiceOptionBlock("o1", [], "Stay", "c1"),
+            ]),
+            scene("b", "Away", [endingBlock("end-away", "Away")]),
+        ], "a"));
+
+        // The arm ran out in a scene the story does not call an ending, so the route reached none.
+        expect(map.endings.map(ending => ending.id)).toEqual(["end-away"]);
+        const stopped = map.routes.find(route => route.endingSceneId === "a");
+        expect(stopped?.endingId).toBeNull();
+        expect(stopped?.branchIds).toEqual(["scene-flow:branch:o1"]);
+        expect(map.deadBranchIds).toEqual([]);
+    });
+
+    it("names an unreached ending by its row id, and flags one in a scene nothing reaches", () => {
+        const map = routeMap(document([
+            scene("a", "One", [jumpBlock("j1", "b")]),
+            scene("b", "Epilogue", [endingBlock("end-true", "True End")]),
+            scene("z", "Cut content", [endingBlock("end-cut", "Cut End")]),
+        ], "a"));
+
+        expect(map.endings.map(ending => [ending.id, ending.reachable]))
+            .toEqual([["end-true", true], ["end-cut", false]]);
+        expect(map.unreachableEndings).toEqual(["end-cut"]);
+    });
+
+    it("drops the derived reading entirely as soon as the story marks one ending", () => {
+        // Not a mix: `b` would be a derived ending on its own, and stops being one the moment the
+        // author says where the story's endings are. A list holding both would put the scene that
+        // forgot its `/ending` beside the ones that have it.
+        const map = routeMap(document([
+            choiceScene("a", "Fork", 2, index => (index === 0 ? "b" : "c")),
+            scene("b", "Forgot", []),
+            scene("c", "Epilogue", [endingBlock("end-true", "True End")]),
+        ], "a"));
+
+        expect(map.endings.map(ending => ending.id)).toEqual(["end-true"]);
+        expect(map.routes.map(route => route.endingId)).toEqual([null, "end-true"]);
+        expect(map.routes.map(route => route.endingSceneId)).toEqual(["b", "c"]);
+    });
+
+    it("skips a disabled ending row, as the compiler does", () => {
+        const disabled = { ...endingBlock("end-off", "Switched off"), disabled: true } as StoryBlock;
+        const map = routeMap(document([
+            scene("a", "One", [jumpBlock("j1", "b")]),
+            scene("b", "Epilogue", [disabled, endingBlock("end-true", "True End")]),
+        ], "a"));
+
+        expect(map.endings.map(ending => ending.id)).toEqual(["end-true"]);
+        expect(map.routes.map(route => route.endingId)).toEqual(["end-true"]);
     });
 });

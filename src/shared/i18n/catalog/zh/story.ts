@@ -261,8 +261,10 @@ export const story = {
             noEntryScene: "未设置入口场景，无法列出路线",
             noRoutes: "没有路线",
             noDecisions: "没有分支选择",
+            // 尚未命名的结局行。行本身与通向它的路线都真实存在，列表总得有个称呼。
+            endingUnnamed: "未命名结局",
             stopsHere: "在此中断",
-            stopsHereTitle: "路径在此终止，但这里不是结局：它回到了已经过的场景，或者某个分支没有后续内容",
+            stopsHereTitle: "路径在此终止，但没有到达任何结局：它回到了已经过的场景，或者某个分支没有后续内容，又或者这个场景既没有出口也没有 /ending 行",
             diagnostics: {
                 unreachableEndings: {
                     other: "{count} 个结局没有路线到达",
