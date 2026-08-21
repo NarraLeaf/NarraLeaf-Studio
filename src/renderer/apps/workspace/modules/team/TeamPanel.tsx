@@ -10,7 +10,9 @@ import { AddServerModal } from "@/apps/settings/panels";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
-import { serverFace } from "../../components/layout/versionRailModel";
+import type { TeamProjectSurface } from "../../hooks/useTeamProject";
+import { TeamCollaboration } from "./TeamCollaboration";
+import { teamServerFace } from "./teamFace";
 import { ServerPickerDialog } from "../../components/layout/VersionRail";
 import { AuthorIdentity } from "../../components/layout/AuthorIdentity";
 
@@ -71,8 +73,16 @@ function TeamAction({ label, onClick, disabled, tone }: {
  * that does not answer (measured), so it is a row somebody presses rather than something this
  * dialog does on the way to being seen.
  */
-export function TeamPanel({ surface, isOpen, onClose }: {
+export function TeamPanel({ surface, team, isOpen, onClose }: {
     surface: VersionSurface;
+    /**
+     * What the server itself says, as opposed to what is written on this disk.
+     *
+     * Held by the status cell rather than opened here, so that the session, the
+     * subscriptions and this window's presence belong to the cell's lifetime rather than
+     * to a dialog somebody happens to have open.
+     */
+    team: TeamProjectSurface;
     isOpen: boolean;
     onClose: () => void;
 }) {
@@ -81,7 +91,7 @@ export function TeamPanel({ surface, isOpen, onClose }: {
     const [adding, setAdding] = useState(false);
     const { remote, serverSession, syncState, busy } = surface;
     const running = busy !== null;
-    const face = serverFace(syncState);
+    const verdict = teamServerFace(team.state, syncState);
     // The name the server answers to. `serverSession` is null for a server this machine has no
     // account on, and that is the single case with no name to read - its address is then all
     // there is to call it by.
@@ -146,12 +156,17 @@ export function TeamPanel({ surface, isOpen, onClose }: {
                                     <span data-team-seam="server-name" className="min-w-0 truncate text-sm text-fg">
                                         {name}
                                     </span>
+                                    {/* The sync state, except where the workspace's own check has
+                                        something to say and the sync has not. "Not checked" beside
+                                        the address was read as being about the server, and it
+                                        stopped being true the moment the workspace began checking
+                                        on its own. */}
                                     <span
                                         data-team-seam="server-state"
-                                        data-tip={t(face.detail)}
-                                        className={cn("ml-auto shrink-0 text-2xs", face.tone)}
+                                        data-tip={t(verdict.detail)}
+                                        className={cn("ml-auto shrink-0 text-2xs", verdict.tone)}
                                     >
-                                        {t(face.key)}
+                                        {t(verdict.key)}
                                     </span>
                                 </div>
                                 {projectName !== "" && (
@@ -163,6 +178,14 @@ export function TeamPanel({ surface, isOpen, onClose }: {
                             </>
                         )}
                     </div>
+
+                    {/* Who is on this project, what room is open, and what is attached to it -
+                        every one of them read from the server rather than from this disk. Draws
+                        nothing at all until the server has confirmed it holds this project. */}
+                    <TeamCollaboration
+                        team={team}
+                        {...(team.instance === undefined ? {} : { instance: team.instance })}
+                    />
 
                     {/* Who the next version is recorded as. Two shapes for two mechanisms, and the
                         dialog never shows both: a session's account wins over anything in settings

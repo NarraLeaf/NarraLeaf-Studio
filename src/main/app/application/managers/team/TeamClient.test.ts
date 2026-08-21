@@ -85,6 +85,7 @@ function drive(): Driven {
         authUrl: "https://team.example.lan:41402",
         token: "a-token",
         userDataDir: "/tmp/userdata",
+        identity: { installation: "installation-1", label: "Nomen", agent: "Studio 0.0.0-test" },
         onEvent: (event) => events.push(event),
         onStatus: (connection) => states.push(connection.state),
         openSocket: (options) => {
@@ -303,5 +304,106 @@ describe("when reconnecting would be pointless", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+/**
+ * The one thing a window may not say for itself.
+ *
+ * A renderer names the project it has open; which installation this is, what it is called
+ * and which build come from here, because an identity a renderer could state is one a
+ * plugin could state. And because presence lives in the server's memory and dies with the
+ * socket, saying it once is not enough - a reconnected session that did not say it again
+ * is a window nobody can see.
+ */
+describe("announcing this installation", () => {
+    /** A server that offers the presence methods, which the plain `greet` does not. */
+    const PRESENT = {
+        methods: ["projects.list", "clients.announce", "clients.withdraw"],
+        capabilities: ["session", "clients"],
+    };
+
+    /** Every announcement one socket carried, by the instance it named. */
+    function announcements(socket: FakeSocket): string[] {
+        return socket.sent
+            .filter((frame) => (frame as { method?: string }).method === "clients.announce")
+            .map((frame) => (frame as unknown as { params: Record<string, string> }).params["instance"] ?? "");
+    }
+
+    /** Open, greet, announce, drop, wait out the backoff, greet again. */
+    async function reconnect(driven: Driven, then: (socket: FakeSocket) => void): Promise<void> {
+        vi.useFakeTimers();
+        try {
+            current(driven).drop({ detail: "the server restarted" });
+            await vi.advanceTimersByTimeAsync(2_000);
+            current(driven).greet(PRESENT);
+            await tick();
+            then(current(driven));
+        } finally {
+            vi.useRealTimers();
+        }
+    }
+
+    it("fills in the installation, the label and the build", async () => {
+        const driven = drive();
+        driven.client.connect();
+        current(driven).greet(PRESENT);
+
+        void driven.client.call("clients.announce", { project: "repo-1" });
+        await tick();
+
+        const frame = current(driven).sent.at(-1) as unknown as {
+            method: string;
+            params: Record<string, string>;
+        };
+        expect(frame.method).toBe("clients.announce");
+        expect(frame.params).toMatchObject({
+            project: "repo-1",
+            // Composed of both halves: the installation alone would make two windows of
+            // one Studio a single instance, and they would overwrite each other.
+            instance: "installation-1.repo-1",
+            label: "Nomen",
+            agent: "Studio 0.0.0-test",
+        });
+    });
+
+    it("says it again on a session that came back, without being asked twice", async () => {
+        const driven = drive();
+        driven.client.connect();
+        current(driven).greet(PRESENT);
+        void driven.client.call("clients.announce", { project: "repo-1" });
+        await tick();
+
+        await reconnect(driven, (socket) => {
+            expect(announcements(socket)).toEqual(["installation-1.repo-1"]);
+        });
+    });
+
+    it("stops saying it once the window has been taken back", async () => {
+        const driven = drive();
+        driven.client.connect();
+        current(driven).greet(PRESENT);
+        void driven.client.call("clients.announce", { project: "repo-1" });
+        await tick();
+        void driven.client.call("clients.withdraw", { project: "repo-1" });
+        await tick();
+
+        await reconnect(driven, (socket) => {
+            expect(announcements(socket)).toEqual([]);
+        });
+    });
+
+    it("keeps one entry per project, because one socket carries every window", async () => {
+        const driven = drive();
+        driven.client.connect();
+        current(driven).greet(PRESENT);
+        void driven.client.call("clients.announce", { project: "repo-1" });
+        void driven.client.call("clients.announce", { project: "repo-2" });
+        await tick();
+
+        await reconnect(driven, (socket) => {
+            expect(announcements(socket).sort())
+                .toEqual(["installation-1.repo-1", "installation-1.repo-2"]);
+        });
     });
 });
