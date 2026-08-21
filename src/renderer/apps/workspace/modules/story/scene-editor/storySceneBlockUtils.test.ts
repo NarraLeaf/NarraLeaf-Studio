@@ -514,7 +514,9 @@ describe("planRowBackspaceReplacement", () => {
 
         const plan = planRowBackspaceReplacement(live, ["a1"]);
         expect(plan).not.toBeNull();
-        // What the controller does under one history entry: insert first, then drop the original.
+        // What the controller does when the blank line the plan opens finally commits, under one
+        // history entry: insert first, then drop the original. Backspace itself writes nothing - the
+        // row waits under the slot until this happens, or until a second Backspace deletes it.
         insertBlockInScene(live, narration("blank"), plan!.target);
         deleteBlockFromScene(live, plan!.replaceBlockId);
 
