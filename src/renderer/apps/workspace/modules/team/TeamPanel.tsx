@@ -5,13 +5,14 @@ import { getInterface } from "@/lib/app/bridge";
 import { cn } from "@/lib/utils/cn";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { Modal } from "@/lib/components/elements/Modal";
-import { serverDisplayName, serverHost } from "@/lib/vcs/servers";
+import { serverDisplayName, serverHost, signInWithPassword } from "@/lib/vcs/servers";
+import { AddServerModal } from "@/apps/settings/panels";
+import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import { serverFace } from "../../components/layout/versionRailModel";
 import { ServerPickerDialog } from "../../components/layout/VersionRail";
 import { AuthorIdentity } from "../../components/layout/AuthorIdentity";
-import { SignInSection, describeReach } from "../../components/layout/ServerSignIn";
 
 /**
  * One row of the panel's action list.
@@ -77,15 +78,19 @@ export function TeamPanel({ surface, isOpen, onClose }: {
 }) {
     const { t } = useTranslation();
     const [picking, setPicking] = useState(false);
+    const [adding, setAdding] = useState(false);
     const { remote, serverSession, syncState, busy } = surface;
     const running = busy !== null;
     const face = serverFace(syncState);
-    // The name the server answers to. `serverSession` is null for one that asks nobody who they
-    // are, and that is the single case with no name to read - its address is then all there is to
-    // call it by.
+    // The name the server answers to. `serverSession` is null for a server this machine has no
+    // account on, and that is the single case with no name to read - its address is then all
+    // there is to call it by.
     const name = remote === null
         ? null
         : serverSession ? serverDisplayName(serverSession) : serverHost(remote);
+    // What this project is called on that server, which is what a collaborator clones by and
+    // the one part of the address worth reading. Empty for an address that carries no name.
+    const projectName = remote === null ? "" : parseVcsRemoteUrl(remote)?.name ?? "";
 
     const manageServers = () => {
         void getInterface().app.launchSettings({ highlight: SERVERS_PANEL_SETTING_KEY });
@@ -102,6 +107,19 @@ export function TeamPanel({ surface, isOpen, onClose }: {
                 isOpen={picking}
                 onClose={() => setPicking(false)}
             />
+
+            {/* The same sequence Settings runs. Mounted here because the reader who needs it is
+                looking at a project pointed somewhere this machine has no account on, and the
+                remedy is an address their operator gave them - not a token pasted into a side
+                panel, which is what this dialog used to offer and which cannot say what the
+                server is called, what it can do, or where its data remote lives. */}
+            {adding && (
+                <AddServerModal
+                    onAdded={() => undefined}
+                    onClose={() => setAdding(false)}
+                    signInWithPassword={signInWithPassword}
+                />
+            )}
 
             <Modal
                 isOpen={isOpen}
@@ -136,6 +154,11 @@ export function TeamPanel({ surface, isOpen, onClose }: {
                                         {t(face.key)}
                                     </span>
                                 </div>
+                                {projectName !== "" && (
+                                    <p data-team-seam="project-name" className="mt-0.5 truncate text-2xs text-fg-muted">
+                                        {t("workspace.shell.team.projectOnServer", { name: projectName })}
+                                    </p>
+                                )}
                                 <p className="mt-0.5 truncate text-2xs text-fg-subtle">{remote}</p>
                             </>
                         )}
@@ -146,6 +169,15 @@ export function TeamPanel({ surface, isOpen, onClose }: {
                         (`VcsManager.resolveIdentity`), so a name field beside a signed-in account
                         would be a field nothing reads. */}
                     <div data-team-seam="account" className="border-t border-edge pt-3">
+                        {/* Said on a project pointed at a server this machine has no account on -
+                            a copy somebody sent, or a server that was signed out of - and where a
+                            connect was refused for want of one. The remedy is the same in both
+                            cases and it is the row underneath. */}
+                        {(surface.remoteNeedsSignIn || (!serverSession && remote !== null)) && (
+                            <p data-team-seam="needs-account" className="mb-2 text-2xs text-warning">
+                                {t("workspace.shell.team.noAccountHere")}
+                            </p>
+                        )}
                         {serverSession ? (
                             <div className="flex items-baseline gap-2">
                                 <span
@@ -173,35 +205,6 @@ export function TeamPanel({ surface, isOpen, onClose }: {
                             <AuthorIdentity surface={surface} always />
                         )}
 
-                        {/* The form, and every sentence a refusal can end in. Offered on a project
-                            pointed at a server with nobody signed in, and said outright where a
-                            connect was refused for want of a token - that refusal has no other way
-                            out, because nothing was written for a server line to be drawn beside. */}
-                        {!serverSession && remote !== null && <SignInSection surface={surface} />}
-                        {remote === null && surface.remoteNeedsSignIn && (
-                            <>
-                                <p className="mt-2 text-2xs text-danger">
-                                    {t("workspace.shell.versionControl.server.signIn.required")}
-                                </p>
-                                <SignInSection surface={surface} />
-                            </>
-                        )}
-
-                        {/* Said once, at the moment somebody signs in, and as a sentence rather
-                            than two version numbers to compare. Studio pins a client library and
-                            the server runs whatever its operator installed; knowing which pairs
-                            work is not something to ask an author for. */}
-                        {surface.signIn?.ok && (
-                            <p
-                                data-team-seam="server-reach"
-                                className={cn(
-                                    "mt-1.5 text-2xs",
-                                    surface.signIn.reach === "ready" ? "text-fg-subtle" : "text-warning",
-                                )}
-                            >
-                                {t(describeReach(surface.signIn.reach))}
-                            </p>
-                        )}
                     </div>
 
                     <div className="-mx-2 flex flex-col border-t border-edge pt-2">
@@ -216,6 +219,13 @@ export function TeamPanel({ surface, isOpen, onClose }: {
                             <TeamAction
                                 label={t("workspace.shell.versionControl.server.check")}
                                 onClick={surface.checkRemote}
+                                disabled={running}
+                            />
+                        )}
+                        {(surface.remoteNeedsSignIn || (!serverSession && remote !== null)) && (
+                            <TeamAction
+                                label={t("workspace.shell.versionControl.server.picker.add")}
+                                onClick={() => setAdding(true)}
                                 disabled={running}
                             />
                         )}

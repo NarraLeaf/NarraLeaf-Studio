@@ -106,7 +106,7 @@ export const wizard = {
         addressInvalid: "项目地址末尾需要带上项目名，例如 lore://studio.example.lan:41337/my-game",
         parsedServer: "服务器",
         onServerLabel: "服务器上的项目",
-        onServerHint: "选一个；尚未添加的服务器可在下方填地址。",
+        onServerHint: "选一个，或在下方填写项目地址",
         onServerEmpty: "这台服务器上还没有项目。",
         onServerLoading: "正在询问服务器……",
         onServerNoToken: "Studio 无法向这台服务器提问。请用令牌重新添加它。",

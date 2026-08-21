@@ -36,9 +36,9 @@ import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { Button } from "@/lib/components/elements/Button";
-import { ServerRow, serverDisplayName, serverHost, useServers } from "@/lib/vcs/servers";
+import { ServerRow, serverDisplayName, serverHost, signInWithPassword, useServers } from "@/lib/vcs/servers";
+import { AddServerModal } from "@/apps/settings/panels";
 import { getInterface } from "@/lib/app/bridge";
-import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { SERVER_PROBLEM_KEYS } from "@/apps/launcher/tabs/serverProblemKeys";
 import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
@@ -46,7 +46,7 @@ import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
     VERSION_RAIL_EXPANDED_WIDTH,
-    MANUAL_SERVER,
+    UNKNOWN_SERVER,
     NO_SERVER,
     buildChangeList,
     canCommit,
@@ -787,9 +787,9 @@ export function CommitForm({ surface }: { surface: VersionSurface }) {
                 moment saying "Signed in as Ada Lovelace" three lines up, so the panel was asking
                 who to sign versions as directly under its own answer.
 
-                A project pointed at a server that asks nobody who they are keeps the prompt, and so
-                does one pointed at no server: both leave this null, and both record whatever they
-                are told. That is the case this row exists for. */}
+                A project on no server keeps the prompt, and so does one pointed at a server this
+                machine has no account on: both leave this null, and both record whatever they are
+                told. That is the case this row exists for. */}
             {surface.serverSession === null && <AuthorIdentity surface={surface} />}
             <TextArea
                 size="sm"
@@ -841,27 +841,24 @@ const HISTORY_FILTER_THRESHOLD = 12;
 /**
  * Choosing which server this project synchronises with.
  *
- * **A project chooses a server; it does not describe one.** The servers this installation
- * is signed in to are managed in Settings, once, and every project since then picks from
- * that list - which is why this is a dialog with names in it rather than a text field. A
- * project pointed at a server nobody has signed in to would be pointed at a refusal.
+ * **A project chooses a server; it does not describe one.** Every destination Studio can
+ * reach is a Team server this installation has an account on, and there is no longer a box
+ * to type an address into: a server is reached at its `nlteam://` endpoint, which is what
+ * says where a token is presented, which `lore://` remote the repositories live on and what
+ * the deployment can do. None of that can be typed into a per-project field, and an address
+ * written without it is an address pointed at a refusal.
  *
- * Adding one is therefore not offered here at all: the last row of the list opens Settings
- * on the servers panel and closes this dialog. A token pasted into a side panel would put
- * a machine-wide credential behind a per-project control, and there would then be two
- * places that add a server and one of them would go stale.
+ * So the list is the whole question, and the row at its end runs the same add sequence
+ * Settings runs - mounted here rather than sending the reader to another window, which used
+ * to mean closing this dialog and losing the project being connected.
  *
- * The address field stays for the case the list cannot cover: a `loreserver` with nothing
- * in front of it asks nobody who they are, so there is no account to add and nothing to
- * put in that list. It sits below the add row rather than beside the list, because a
- * project that reaches one is the exception and typing an address is not the way in.
+ * A project whose server is not on that list is told so, by name, and offered that row. It
+ * used to open the address field with the address already in it, which reads as an
+ * invitation to retype something that was never the problem.
  *
- * **Reached from "Change server" in the rail's overflow menu, and from nowhere else.** It
- * covers the rail with a question about where the work goes, which is decided about once
- * per project - so it is not a press away from Send.
- *
- * That same address field is the only place the author's name is asked for here (see the
- * comment beside it): every other destination in this dialog answers that question itself.
+ * **Reached from the Team panel, and from nowhere in the rail.** It covers the screen with
+ * a question about where the work goes, which is decided about once per project - so it is
+ * not a press away from Send.
  */
 /**
  * What a repository may be called on a server.
@@ -969,17 +966,16 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
     const key = "workspace.shell.versionControl.server.picker";
     const { servers, reload } = useServers();
     const [choice, setChoice] = useState<string>(NO_SERVER);
-    const [address, setAddress] = useState("");
     const [name, setName] = useState("");
+    const [adding, setAdding] = useState(false);
     const running = surface.busy !== null;
 
     useEffect(() => {
         if (!isOpen) return;
         let cancelled = false;
-        // Read again on every open rather than once: a server added in Settings since this
-        // window was built belongs in this list, and Settings is where the last row sends
-        // people. The answer is used here rather than read back off state, because what
-        // opens on which row is decided from the list that came back.
+        // Read again on every open rather than once: a server added since this window was
+        // built belongs in this list. The answer is used here rather than read back off
+        // state, because what opens on which row is decided from the list that came back.
         void reload().then(list => {
             if (cancelled) return;
             // Seeded with the server this project already uses, so changing one is a choice
@@ -987,7 +983,6 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
             // rather than to the first server: connecting somewhere nobody asked for is the
             // one outcome a dialog about where work is sent must not make easy.
             setChoice(initialServerChoice(list, surface.remote));
-            setAddress(surface.remote ?? "");
             // The name this project answers to on the server. Its own name is the answer
             // nearly every time, so it is filled in rather than asked for - but it is a
             // field rather than a fact, because it is what a collaborator clones by and
@@ -1001,8 +996,8 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
         };
     }, [isOpen, reload, surface.remote]);
 
-    /** The server chosen out of the list, as opposed to the address field or nothing yet. */
-    const picked = choice === NO_SERVER || choice === MANUAL_SERVER ? null : choice;
+    /** The server chosen out of the list, as opposed to nothing chosen yet. */
+    const picked = choice === NO_SERVER || choice === UNKNOWN_SERVER ? null : choice;
     const held = useServerProjects(isOpen ? picked : null);
 
     /**
@@ -1039,248 +1034,209 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
 
     /** What this project will answer to on the destination, whichever of the two acts it is. */
     const chosenName = mine !== null ? mine.name : wanted;
-    const chosen = picked !== null
-        ? (chosenName === "" || nameProblem !== null || held.reading ? "" : `${picked}/${chosenName}`)
-        : choice === MANUAL_SERVER ? address.trim() : "";
+    const ready = picked !== null && chosenName !== "" && nameProblem === null && !held.reading;
 
     /**
-     * Put this project on the chosen server, or point it at the typed address.
+     * Put this project on the chosen server: record it there, point at it, send it.
      *
-     * **The two are different acts and the difference is what the list means.** A server
-     * out of the list has a session and an API: it can be asked to record this project,
-     * which is the step that makes it clonable by anybody else and the step that used to
-     * be missing - connecting alone left the author's work reachable from the one machine
-     * that set it up. So a chosen server gets the whole act: recorded, connected, sent.
-     *
-     * A typed address is a bare `loreserver` with nothing in front of it. It has no
-     * project list to be recorded in and nothing to ask, so it gets what it always got:
-     * the address written, and the author's own Send button afterwards.
+     * **One act now, where there used to be two.** A typed address wrote the remote and
+     * nothing else, which is what a `loreserver` with nothing in front of it could be given.
+     * Studio speaks to Team servers, and a Team server is asked to record the project - the
+     * step that makes it clonable by anybody else.
      */
     const connect = () => {
-        if (!chosen) return;
-        const done = picked !== null
-            // The server's own name for it where it already holds this project, and the
-            // typed one where it does not. Passing the folder name in the first case would
-            // point the project at an address that server does not answer to - it registers
-            // nothing, so nothing corrects it, and every send and get afterwards misses.
-            ? surface.publish(picked, chosenName)
-            : surface.setRemote(chosen);
-        void done.then(saved => {
+        if (!ready || picked === null) return;
+        // The server's own name for it where it already holds this project, and the typed
+        // one where it does not. Passing the folder name in the first case would point the
+        // project at an address that server does not answer to - it registers nothing, so
+        // nothing corrects it, and every send and get afterwards misses.
+        void surface.publish(picked, chosenName).then(saved => {
             if (saved) onClose();
         });
     };
 
-    // Adding one signs this installation in, which every project since then picks out of the
-    // list above, so it happens in Settings and this dialog steps out of the way. Left open,
-    // it would go on showing the list as it was read when it opened.
-    const addServer = () => {
-        void getInterface().app.launchSettings({ highlight: SERVERS_PANEL_SETTING_KEY });
-        onClose();
-    };
-
     return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={t(`${key}.title`)}
-            size="md"
-            footer={(
-                <div className="flex items-center justify-end gap-2">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className={dialogFooterButtonClass({ variant: "secondary" })}
-                    >
-                        {t("workspace.shell.versionControl.server.cancel")}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={connect}
-                        disabled={running || chosen === ""}
-                        data-vcs-seam="picker-connect"
-                        className={dialogFooterButtonClass({
-                            variant: "primary",
-                            disabled: running || chosen === "",
-                        })}
-                    >
-                        {/* Named after what pressing it does. Putting a project on a server
-                            that has never seen it records it, points at it AND sends every
-                            version on this machine; a server that already holds this project
-                            is only being pointed at. Both used to say "Connect", which is
-                            true of one of them. */}
-                        {t(picked !== null && mine === null
-                            ? "workspace.shell.versionControl.server.picker.createAndSend"
-                            : "workspace.shell.versionControl.server.save")}
-                    </button>
-                </div>
+        <>
+            {/* The same sequence Settings runs, mounted here rather than sending the reader
+                to another window for it. Adding a server and choosing one are the same
+                question a moment apart, and the answer to "my server is not in this list"
+                should not be a different window that loses the project being connected. */}
+            {adding && (
+                <AddServerModal
+                    onAdded={session => {
+                        // Chosen as well as listed: somebody who just added a server did it
+                        // to use it, and leaving the list unselected would ask them to pick
+                        // the row they were looking at a moment ago.
+                        void reload().then(() => setChoice(session.remoteOrigin));
+                    }}
+                    onClose={() => setAdding(false)}
+                    signInWithPassword={signInWithPassword}
+                />
             )}
-        >
-            <div data-vcs-seam="server-picker" className="space-y-3 text-sm text-fg-muted">
-                {servers.length === 0 && <p>{t(`${key}.empty`)}</p>}
-                <div className="flex flex-col gap-1">
-                    {servers.map(server => (
-                        <ServerRow
-                            key={server.remoteOrigin}
-                            session={server}
-                            chosen={choice === server.remoteOrigin}
-                            onChoose={() => setChoice(server.remoteOrigin)}
-                            data-server-choice={server.remoteOrigin}
-                        />
-                    ))}
-                    {/* The last row of the list, not a control beside it: adding a server and
-                        choosing one are the same question asked a moment apart, and an author
-                        looking at a list that does not hold their server looks at its end. */}
-                    <button
-                        type="button"
-                        onClick={addServer}
-                        data-vcs-seam="picker-add"
-                        className="flex min-h-9 items-center gap-2 rounded-md border border-dashed border-edge px-3 text-left text-sm transition-colors cursor-default hover:bg-fill hover:text-fg"
-                    >
-                        <Plus className="h-3.5 w-3.5 shrink-0" />
-                        {t(`${key}.add`)}
-                    </button>
-                </div>
 
-                {/* What this project becomes on the server that was chosen. Two different
-                    acts, and which one it is was the question this dialog never asked: a
-                    server that already holds this project is being pointed at, and one that
-                    does not is being given it. The answer is read off the id rather than
-                    offered as a choice, because it is a fact about the two repositories
-                    rather than a preference. */}
-                {picked !== null && (
-                    <div data-vcs-seam="picker-destination" className="space-y-1">
-                        {held.reading && (
-                            <p className="text-xs text-fg-subtle">{t(`${key}.reading`)}</p>
-                        )}
-
-                        {!held.reading && held.problem !== null && (
-                            // The list could not be read, so the dialog knows nothing about
-                            // what is on that server - and asks for a name the way it did
-                            // before there was a list. Refusing to connect over a list that
-                            // is only there to help would be the worse answer.
-                            <p className="text-xs text-fg-subtle">{t(held.problem)}</p>
-                        )}
-
-                        {!held.reading && mine !== null && (
-                            <p className="text-sm text-fg" data-vcs-seam="picker-already">
-                                {t(`${key}.already`, { name: mine.name })}
-                            </p>
-                        )}
-
-                        {!held.reading && mine === null && (
-                            <>
-                                <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
-                                <Input
-                                    size="sm"
-                                    value={name}
-                                    onChange={event => setName(event.target.value)}
-                                    onKeyDown={event => {
-                                        if (event.key === "Enter") {
-                                            event.preventDefault();
-                                            connect();
-                                        }
-                                    }}
-                                    disabled={running}
-                                    variant={nameProblem === null ? "default" : "error"}
-                                    placeholder={t(`${key}.namePlaceholder`)}
-                                />
-                                <p className={cn(
-                                    "text-xs",
-                                    nameProblem === null ? "text-fg-subtle" : "text-danger",
-                                )}>
-                                    {t(nameProblem ?? `${key}.nameHint`)}
-                                </p>
-                            </>
-                        )}
+            <Modal
+                isOpen={isOpen}
+                onClose={onClose}
+                title={t(`${key}.title`)}
+                size="md"
+                footer={(
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className={dialogFooterButtonClass({ variant: "secondary" })}
+                        >
+                            {t("workspace.shell.versionControl.server.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={connect}
+                            disabled={running || !ready}
+                            data-vcs-seam="picker-connect"
+                            className={dialogFooterButtonClass({
+                                variant: "primary",
+                                disabled: running || !ready,
+                            })}
+                        >
+                            {/* Named after what pressing it does. Putting a project on a server
+                                that has never seen it records it, points at it AND sends every
+                                version on this machine; a server that already holds this project
+                                is only being pointed at. Both used to say "Connect", which is
+                                true of one of them. */}
+                            {t(mine === null
+                                ? "workspace.shell.versionControl.server.picker.createAndSend"
+                                : "workspace.shell.versionControl.server.save")}
+                        </button>
                     </div>
                 )}
+            >
+                <div data-vcs-seam="server-picker" className="space-y-3 text-sm text-fg-muted">
+                    {servers.length === 0 && <p>{t(`${key}.empty`)}</p>}
 
-                {/* Below the add row, because a server that can be signed in to is the case
-                    this dialog is for. Kept all the same: a `loreserver` with nothing in front
-                    of it issues no token, so Settings has nothing to add for it and this field
-                    is the only place a project can be pointed at one, or read the address of
-                    the one it already uses. */}
-                <div data-vcs-seam="picker-address">
-                    <button
-                        type="button"
-                        aria-pressed={choice === MANUAL_SERVER}
-                        onClick={() => setChoice(MANUAL_SERVER)}
-                        className={cn(
-                            "flex min-h-9 w-full items-center rounded-md border px-3 text-left text-sm transition-colors cursor-default",
-                            choice === MANUAL_SERVER
-                                ? "border-primary bg-fill-subtle text-fg"
-                                : "border-edge hover:bg-fill",
-                        )}
-                    >
-                        {t(`${key}.manual`)}
-                    </button>
-                    {/* `space-y-2` rather than a margin on each child: the author row below is
-                        absent once the name is answered, and a top margin of its own would leave
-                        the gap behind it. */}
-                    {choice === MANUAL_SERVER && (
-                        <div className="mt-2 space-y-2">
-                            <Input
-                                size="sm"
-                                autoFocus
-                                value={address}
-                                onChange={event => setAddress(event.target.value)}
-                                onKeyDown={event => {
-                                    if (event.key === "Enter") {
-                                        event.preventDefault();
-                                        connect();
-                                    }
-                                }}
-                                disabled={running}
-                                placeholder={t("workspace.shell.versionControl.server.addressPlaceholder")}
+                    {/* The project is pointed at a server this machine has no account on -
+                        a copy somebody sent, or a server that was signed out of. Said as the
+                        fact it is, with the address it names, because the remedy is the row
+                        below and not a box to retype the address into. */}
+                    {choice === UNKNOWN_SERVER && surface.remote !== null && (
+                        <p data-vcs-seam="picker-unknown" className="text-sm text-fg">
+                            {t(`${key}.unknownServer`, { host: serverHost(surface.remote) })}
+                        </p>
+                    )}
+
+                    <div className="flex flex-col gap-1">
+                        {servers.map(server => (
+                            <ServerRow
+                                key={server.remoteOrigin}
+                                session={server}
+                                chosen={choice === server.remoteOrigin}
+                                onChoose={() => setChoice(server.remoteOrigin)}
+                                data-server-choice={server.remoteOrigin}
                             />
-                            {/* Here, and nowhere else in this dialog, because this is the only
-                                destination that will not answer the question itself. A server out
-                                of the list above has a session, and `VcsManager.resolveIdentity`
-                                prefers that session's account - keyed on this project's own remote
-                                origin - over anything typed into settings. Asking beside a chosen
-                                server is therefore asking for an answer that is about to be
-                                replaced by a better one, at the one moment it looks most relevant.
-                                A bare `loreserver` in front of nothing issues no token, has no
-                                account to prefer, and records whatever it is told. */}
-                            <AuthorIdentity surface={surface} />
+                        ))}
+                        {/* The last row of the list, not a control beside it: adding a server
+                            and choosing one are the same question asked a moment apart, and an
+                            author looking at a list that does not hold their server looks at
+                            its end. */}
+                        <button
+                            type="button"
+                            onClick={() => setAdding(true)}
+                            data-vcs-seam="picker-add"
+                            className="flex min-h-9 items-center gap-2 rounded-md border border-dashed border-edge px-3 text-left text-sm transition-colors cursor-default hover:bg-fill hover:text-fg"
+                        >
+                            <Plus className="h-3.5 w-3.5 shrink-0" />
+                            {t(`${key}.add`)}
+                        </button>
+                    </div>
+
+                    {/* What this project becomes on the server that was chosen. Two different
+                        acts, and which one it is was the question this dialog never asked: a
+                        server that already holds this project is being pointed at, and one that
+                        does not is being given it. The answer is read off the id rather than
+                        offered as a choice, because it is a fact about the two repositories
+                        rather than a preference. */}
+                    {picked !== null && (
+                        <div data-vcs-seam="picker-destination" className="space-y-1">
+                            {held.reading && (
+                                <p className="text-xs text-fg-subtle">{t(`${key}.reading`)}</p>
+                            )}
+
+                            {!held.reading && held.problem !== null && (
+                                // The list could not be read, so the dialog knows nothing about
+                                // what is on that server - and asks for a name the way it did
+                                // before there was a list. Refusing to connect over a list that
+                                // is only there to help would be the worse answer.
+                                <p className="text-xs text-fg-subtle">{t(held.problem)}</p>
+                            )}
+
+                            {!held.reading && mine !== null && (
+                                <p className="text-sm text-fg" data-vcs-seam="picker-already">
+                                    {t(`${key}.already`, { name: mine.name })}
+                                </p>
+                            )}
+
+                            {!held.reading && mine === null && (
+                                <>
+                                    <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
+                                    <Input
+                                        size="sm"
+                                        fullWidth
+                                        value={name}
+                                        onChange={event => setName(event.target.value)}
+                                        onKeyDown={event => {
+                                            if (event.key === "Enter") {
+                                                event.preventDefault();
+                                                connect();
+                                            }
+                                        }}
+                                        disabled={running}
+                                        variant={nameProblem === null ? "default" : "error"}
+                                        placeholder={t(`${key}.namePlaceholder`)}
+                                    />
+                                    <p className={cn(
+                                        "text-xs",
+                                        nameProblem === null ? "text-fg-subtle" : "text-danger",
+                                    )}>
+                                        {t(nameProblem ?? `${key}.nameHint`)}
+                                    </p>
+                                </>
+                            )}
                         </div>
                     )}
+
+                    {/* A refusal used to be read off the rail, because the form asking the
+                        question was in it. This dialog covers the rail, so the answer has to
+                        arrive here or pressing Connect does nothing visible. */}
+                    {surface.failure !== null && (
+                        <div data-vcs-seam="picker-failure" className="space-y-1">
+                            <p className="break-words text-xs text-danger">{surface.failure.text}</p>
+                            {surface.remoteNeedsSignIn && (
+                                <p className="text-xs text-fg-subtle">
+                                    {t("workspace.shell.versionControl.server.signIn.required")}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Only while a server is already configured: this undoes the connection,
+                        and offering it during first setup would be a control for leaving a
+                        state the author has not entered. */}
+                    {surface.remote !== null && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                void surface.setRemote(null).then(saved => {
+                                    if (saved) onClose();
+                                });
+                            }}
+                            disabled={running}
+                            className="text-xs text-fg-subtle transition-colors cursor-default hover:text-danger disabled:opacity-50"
+                        >
+                            {t("workspace.shell.versionControl.server.disconnect")}
+                        </button>
+                    )}
                 </div>
-
-                {/* A refusal used to be read off the rail, because the form asking the question
-                    was in it. This dialog covers the rail, so the answer has to arrive here or
-                    pressing Connect does nothing visible. The sign-in line is the one refusal
-                    with a remedy that is not on this screen, and the add row is the way to it. */}
-                {surface.failure !== null && (
-                    <div data-vcs-seam="picker-failure" className="space-y-1">
-                        <p className="break-words text-xs text-danger">{surface.failure.text}</p>
-                        {surface.remoteNeedsSignIn && (
-                            <p className="text-xs text-fg-subtle">
-                                {t("workspace.shell.versionControl.server.signIn.required")}
-                            </p>
-                        )}
-                    </div>
-                )}
-
-                {/* Only while a server is already configured: this undoes the connection, and
-                    offering it during first setup would be a control for leaving a state the
-                    author has not entered. */}
-                {surface.remote !== null && (
-                    <button
-                        type="button"
-                        onClick={() => {
-                            void surface.setRemote(null).then(saved => {
-                                if (saved) onClose();
-                            });
-                        }}
-                        disabled={running}
-                        className="text-xs text-fg-subtle transition-colors cursor-default hover:text-danger disabled:opacity-50"
-                    >
-                        {t("workspace.shell.versionControl.server.disconnect")}
-                    </button>
-                )}
-            </div>
-        </Modal>
+            </Modal>
+        </>
     );
 }
 
@@ -1338,9 +1294,9 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
     }
 
     const face = serverFace(syncState);
-    // The name the server answers to. `serverSession` is null for one that asks nobody who they
-    // are, and that is the single case with no name to read - its address is then all there is to
-    // call it by, which is what `serverDisplayName` falls back to for a session as well.
+    // The name the server answers to. `serverSession` is null for a server this machine has no
+    // account on - a copy somebody sent, or one that was signed out of - and that is the single
+    // case with no name to read: its address is then all there is to call it by.
     const name = surface.serverSession ? serverDisplayName(surface.serverSession) : serverHost(remote);
 
     return (

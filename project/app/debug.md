@@ -89,6 +89,9 @@ All return JSON. `GET` only.
 
 - `GET /health` — server status, version, and the live window list.
 - `GET /windows` — live windows plus buffered (including recently-closed) windows.
+  Each live window carries `visible`, which is not the same as existing: a window that
+  has not finished its first render, and a launcher held back for a project being opened,
+  are both listed and neither is on screen.
 - `GET /console?channel=&level=&source=&since=&limit=` — Console service snapshot
   from the workspace window. Returns `{ available, data: { channels, entries, matched } }`,
   or `{ available: false, reason }` when no workspace window is open yet.
