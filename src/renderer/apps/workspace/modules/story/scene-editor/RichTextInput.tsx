@@ -38,6 +38,13 @@ import {
     type UnderlineBox,
 } from "./storySpellcheck";
 import type { StorySpellcheckBinding } from "./useStorySpellcheck";
+import {
+    dictionaryMarkAtUnit,
+    dictionaryMarks,
+    sameDictionaryMarks,
+    type DictionaryMark,
+} from "./storyDictionary";
+import type { StoryDictionaryBinding } from "./useStoryDictionary";
 
 export type ActiveMarks = {
     bold: boolean;
@@ -85,6 +92,18 @@ export type SpellingClickInfo = {
     unitStart: number;
     unitEnd: number;
     word: string;
+    anchor: { top: number; left: number; bottom: number };
+};
+
+/**
+ * A right click that landed on something the project dictionary has to say about the row.
+ *
+ * Carries the mark whole rather than a word, because the two kinds are acted on differently: a
+ * variant is replaced with the term, a reading is written over the term as ruby, and both need the
+ * entry they came from to say so.
+ */
+export type DictionaryClickInfo = {
+    mark: DictionaryMark;
     anchor: { top: number; left: number; bottom: number };
 };
 
@@ -206,6 +225,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     spellcheck?: StorySpellcheckBinding;
     /** A right click landed on a marked word; the parent opens the suggestion popover over it. */
     onSpellingClick?: (info: SpellingClickInfo) => void;
+    /**
+     * The project dictionary for this field. Omitted (or holding nothing to look for), the row is
+     * read against nothing and the overlay draws no dictionary marks.
+     */
+    dictionary?: StoryDictionaryBinding;
+    /** A right click landed on a dictionary mark; the parent opens the panel over it. */
+    onDictionaryClick?: (info: DictionaryClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
     /**
      * Names the look an inline expression chip switches to. Omitted, the chip is icon-only — never an
@@ -310,8 +336,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     spellcheckRef.current = props.spellcheck;
     /** The misspellings currently believed true, in unit offsets. */
     const spellMarksRef = useRef<readonly SpellMark[]>([]);
-    /** Where they are drawn. The only part of this field React renders. */
-    const [spellBoxes, setSpellBoxes] = useState<UnderlineBox[]>([]);
+    /** What the project dictionary has to say about the row, in unit offsets. */
+    const dictionaryMarksRef = useRef<readonly DictionaryMark[]>([]);
+    /** Where all of them are drawn. The only part of this field React renders. */
+    const [markBoxes, setMarkBoxes] = useState<MarkBox[]>([]);
     /** What the sync effect below last handed the runner. Reset whenever a new runner is built. */
     const spellSyncRef = useRef<{ language: string | null; revision: number } | null>(null);
 
@@ -324,11 +352,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * that space is also why scrolling costs nothing: the underlines sit inside the same scrolled
      * content as the words, and move with them without a listener.
      */
-    const measureSpellMarks = useCallback(() => {
+    const measureMarks = useCallback(() => {
         const el = editorRef.current;
-        const marks = spellMarksRef.current;
-        if (!el || marks.length === 0) {
-            setSpellBoxes(current => (current.length === 0 ? current : []));
+        const spelling = spellMarksRef.current;
+        const dictionary = dictionaryMarksRef.current;
+        if (!el || (spelling.length === 0 && dictionary.length === 0)) {
+            setMarkBoxes(current => (current.length === 0 ? current : []));
             return;
         }
         const parent = el.offsetParent as HTMLElement | null;
@@ -339,13 +368,44 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         const scroll = parent
             ? { left: parent.scrollLeft, top: parent.scrollTop }
             : { left: globalThis.window.scrollX, top: globalThis.window.scrollY };
-        const boxes: UnderlineBox[] = [];
-        for (const mark of marks) {
-            const rects = createUnitRange(el, mark.unitStart, mark.unitEnd).getClientRects();
-            boxes.push(...underlineBoxes(Array.from(rects), origin, scroll));
+        const boxes: MarkBox[] = [];
+        const measure = (unitStart: number, unitEnd: number, kind: MarkBox["kind"]) => {
+            const rects = createUnitRange(el, unitStart, unitEnd).getClientRects();
+            for (const box of underlineBoxes(Array.from(rects), origin, scroll)) {
+                boxes.push({ ...box, kind });
+            }
+        };
+        for (const mark of spelling) {
+            measure(mark.unitStart, mark.unitEnd, "spelling");
         }
-        setSpellBoxes(current => (sameBoxes(current, boxes) ? current : boxes));
+        for (const mark of dictionary) {
+            measure(mark.unitStart, mark.unitEnd, mark.kind);
+        }
+        setMarkBoxes(current => (sameBoxes(current, boxes) ? current : boxes));
     }, []);
+
+    /**
+     * Read the row against the project dictionary and keep what it says.
+     *
+     * Recomputed outright rather than pruned, because there is nothing to be stale: the answer is
+     * worked out here, from these runs, with no round trip in between. Cheap for the same reason the
+     * needles are built by the binding rather than here - the walk over the dictionary happens once
+     * when the dictionary changes, and what remains per keystroke is a scan of one line.
+     */
+    const dictionaryRef = useRef(props.dictionary);
+    dictionaryRef.current = props.dictionary;
+    const readOnlyRef = useRef(readOnly);
+    readOnlyRef.current = readOnly;
+    const readDictionary = useCallback((runs: readonly StoryRichRun[] | null) => {
+        const needles = readOnlyRef.current ? [] : dictionaryRef.current?.needles ?? [];
+        const next = runs && needles.length > 0 ? dictionaryMarks(runs, needles) : [];
+        if (!sameDictionaryMarks(dictionaryMarksRef.current, next)) {
+            dictionaryMarksRef.current = next;
+        }
+        // Measured either way: the words can have moved on the line while the marks still say the
+        // same thing, and the boxes are drawn under the words rather than under the marks.
+        measureMarks();
+    }, [measureMarks]);
 
     /**
      * The checking loop. It owns the timing and the two staleness guards; see {@link SpellcheckRunner}.
@@ -374,7 +434,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             isKnownWord: word => spellcheckRef.current?.isKnownWord(word) ?? false,
             onMarks: marks => {
                 spellMarksRef.current = marks;
-                measureSpellMarks();
+                measureMarks();
             },
         });
         spellRunnerRef.current = runner;
@@ -388,12 +448,21 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             }
             spellMarksRef.current = [];
         };
-    }, [measureSpellMarks]);
+    }, [measureMarks]);
 
     const onSpellRuns = useCallback((runs: StoryRichRun[]) => {
         spellRunnerRef.current?.edited(runs);
-    }, []);
+        readDictionary(runs);
+    }, [readDictionary]);
     onSpellRunsRef.current = onSpellRuns;
+
+    /**
+     * The dictionary changed under a row that is already open, or the field has just mounted over
+     * runs nobody has read yet. Either way the row is read again from the live DOM.
+     */
+    useEffect(() => {
+        readDictionary(editorRef.current ? domToRuns(editorRef.current) : null);
+    }, [readDictionary, props.dictionary?.revision]);
 
     /**
      * The language, and every reason to ask again that the field does not cause itself: the author
@@ -420,13 +489,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, [spellLanguage, spellRevision]);
 
     // Re-layout the field does not announce: the pane was resized, the window was, the row rewrapped
-    // because something beside it grew. Scrolling is deliberately absent — see `measureSpellMarks`.
+    // because something beside it grew. Scrolling is deliberately absent — see `measureMarks`.
     useEffect(() => {
         const el = editorRef.current;
         if (!el) {
             return;
         }
-        const remeasure = () => measureSpellMarks();
+        const remeasure = () => measureMarks();
         const observer = typeof ResizeObserver === "function" ? new ResizeObserver(remeasure) : null;
         observer?.observe(el);
         globalThis.window.addEventListener("resize", remeasure);
@@ -434,7 +503,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             observer?.disconnect();
             globalThis.window.removeEventListener("resize", remeasure);
         };
-    }, [measureSpellMarks]);
+    }, [measureMarks]);
 
 
 
@@ -1045,6 +1114,11 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             style={{ ...props.style, caretColor: caretColor ?? undefined }}
             contentEditable={!readOnly}
             suppressContentEditableWarning
+            // What tells the workspace's editable-text menu that this field is a line of script, and
+            // so that a selection in it can be taught to the project dictionary. Every other text
+            // field in Studio names something (an asset, a variable, a scene) rather than writing
+            // the script, and offering to add those to the vocabulary would fill it with ids.
+            data-story-rich-text="true"
             // No `spellCheck` attribute, deliberately. Chromium's own checker is switched off across
             // the app (`@shared/types/spellcheck`), so asking it to check would draw nothing; the
             // squiggles below are Studio's, over text Studio checked.
@@ -1052,31 +1126,49 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 if (readOnly) {
                     return;
                 }
-                // A right click on a marked word asks about that word, and that is the only claim
-                // this field makes on the gesture. Everything else is left to bubble: the row skips
-                // a right click that landed inside the open field (see `StoryBlockRow`), so what
-                // reaches the workspace is the editable-text menu — cut, copy, paste — as before.
+                // A right click on a mark asks about what is marked there, and that is the only
+                // claim this field makes on the gesture. Everything else is left to bubble: the row
+                // skips a right click that landed inside the open field (see `StoryBlockRow`), so
+                // what reaches the workspace is the editable-text menu — cut, copy, paste — as
+                // before.
                 //
                 // Blink's own menu request no longer matters either way. It used to be the one
                 // channel carrying the spellchecker's verdict, which is why this handler was once
                 // careful never to prevent the default; there is now no checker under the page to
                 // have a verdict, and the suggestions come from the main process on request.
                 const el = editorRef.current;
-                if (!el || !props.onSpellingClick || spellMarksRef.current.length === 0) {
+                if (!el) {
                     return;
                 }
                 const unit = unitOffsetFromPoint(el, event.clientX, event.clientY);
-                const mark = unit === null ? null : markAtUnit(spellMarksRef.current, unit);
-                if (!mark) {
+                if (unit === null) {
+                    return;
+                }
+                // Spelling first. The two kinds of mark never cover the same characters in practice
+                // — the dictionary's own terms are exactly what the checker is told to accept — but
+                // the order settles it without either side having to know about the other.
+                const spelling = props.onSpellingClick ? markAtUnit(spellMarksRef.current, unit) : null;
+                if (spelling) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const rect = createUnitRange(el, spelling.unitStart, spelling.unitEnd).getBoundingClientRect();
+                    props.onSpellingClick?.({
+                        unitStart: spelling.unitStart,
+                        unitEnd: spelling.unitEnd,
+                        word: spelling.word,
+                        anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
+                    });
+                    return;
+                }
+                const entry = props.onDictionaryClick ? dictionaryMarkAtUnit(dictionaryMarksRef.current, unit) : null;
+                if (!entry) {
                     return;
                 }
                 event.preventDefault();
                 event.stopPropagation();
-                const rect = createUnitRange(el, mark.unitStart, mark.unitEnd).getBoundingClientRect();
-                props.onSpellingClick({
-                    unitStart: mark.unitStart,
-                    unitEnd: mark.unitEnd,
-                    word: mark.word,
+                const rect = createUnitRange(el, entry.unitStart, entry.unitEnd).getBoundingClientRect();
+                props.onDictionaryClick?.({
+                    mark: entry,
                     anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
                 });
             }}
@@ -1160,7 +1252,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             onBlur={() => { saveSelection(); props.onBlur(); }}
             onKeyDown={handleKeyDown}
         />
-        {spellBoxes.length > 0 ? (
+        {markBoxes.length > 0 ? (
             /*
              * The underlines, as a sibling of the field rather than as spans inside it.
              *
@@ -1169,16 +1261,20 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
              * the caret's way. A sibling shares the field's containing block, which is what lets the
              * boxes be laid out in the same coordinate space the words are.
              *
+             * One layer for all three kinds. They are drawn by the same measurement over the same
+             * ranges and differ only in what the strip is painted with, so a second layer would be a
+             * second set of boxes to keep in step with the first.
+             *
              * Inert, and aria-hidden. The squiggle is three pixels tall and sits exactly where a
              * click lands when the author aims at the bottom of a line; a strip that took the
-             * pointer would refuse the caret to the one word they most want to edit. The suggestions
-             * are reached by right-clicking the word, which hit-tests the text underneath.
+             * pointer would refuse the caret to the one word they most want to edit. What is marked
+             * is reached by right-clicking it, which hit-tests the text underneath.
              */
             <div className="story-rt-spell-layer" aria-hidden="true">
-                {spellBoxes.map((box, index) => (
+                {markBoxes.map((box, index) => (
                     <span
-                        key={`${box.top}:${box.left}:${index}`}
-                        className="story-rt-spell"
+                        key={`${box.kind}:${box.top}:${box.left}:${index}`}
+                        className={MARK_CLASS[box.kind]}
                         style={{ left: box.left, top: box.top, width: box.width, height: UNDERLINE_HEIGHT_PX }}
                     />
                 ))}
@@ -1188,10 +1284,21 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     );
 });
 
+/** One drawn strip: where it goes, and what it is saying. */
+type MarkBox = UnderlineBox & { kind: "spelling" | "variant" | "reading" };
+
+/** What each kind is painted with. See `styles.css` for the three. */
+const MARK_CLASS: Record<MarkBox["kind"], string> = {
+    spelling: "story-rt-spell",
+    variant: "story-rt-variant",
+    reading: "story-rt-reading",
+};
+
 /** Whether two measured sets of underlines are the same, so an unchanged layout costs no render. */
-function sameBoxes(a: readonly UnderlineBox[], b: readonly UnderlineBox[]): boolean {
+function sameBoxes(a: readonly MarkBox[], b: readonly MarkBox[]): boolean {
     return a.length === b.length
-        && a.every((box, index) => box.left === b[index].left && box.top === b[index].top && box.width === b[index].width);
+        && a.every((box, index) => box.kind === b[index].kind
+            && box.left === b[index].left && box.top === b[index].top && box.width === b[index].width);
 }
 
 /**

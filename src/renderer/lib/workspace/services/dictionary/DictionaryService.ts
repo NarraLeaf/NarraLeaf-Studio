@@ -4,10 +4,16 @@ import type { DocumentCorruptError } from "@shared/documents/types";
 import { RendererError } from "@shared/utils/error";
 import {
     createEmptyProjectDictionaryDocument,
+    type DictionaryEntryPatch,
+    dictionaryAcceptedWords,
+    normalizeDictionaryEntries,
+    normalizeDictionaryOptions,
+    normalizeDictionaryVariants,
     normalizeDictionaryWord,
-    normalizeDictionaryWords,
     PROJECT_DICTIONARY_SCHEMA_VERSION,
     type ProjectDictionaryDocument,
+    type ProjectDictionaryEntry,
+    type ProjectDictionaryOptions,
 } from "@shared/types/dictionary";
 import { SPELLCHECK_LANGUAGE_KEY, type SpellcheckStatus } from "@shared/types/spellcheck";
 import { getInterface } from "@/lib/app/bridge";
@@ -22,7 +28,8 @@ import { LocalizationService } from "../localization/LocalizationService";
 import { EventEmitter } from "../ui/EventEmitter";
 
 type DictionaryServiceEvents = {
-    wordsChanged: string[];
+    /** The terms, the readings, the variants or the options moved. Carries the whole list. */
+    entriesChanged: ProjectDictionaryEntry[];
     dirtyChanged: boolean;
     statusChanged: SpellcheckStatus | null;
 };
@@ -34,14 +41,15 @@ type DictionaryServiceEvents = {
  * autosave, change events, and the same refuse-to-overwrite latch - because it is the same class of
  * thing: a small project-level list many surfaces read and version control has to see row by row.
  *
- * What it does beyond its siblings is *publish to the session*. Chromium keeps its custom dictionary
- * in the Electron profile, which is one machine's, so the document is only half the feature: every
- * path that changes the list also pushes it to the main process, and {@link dispose} takes it back
- * out again. Without that second half a project's cast would accumulate in the profile and be
- * accepted in every other project opened on the same computer.
+ * What it does beyond its siblings is *publish to the session*. The spellchecker runs in the main
+ * process and is keyed to this window, so every path that changes the list also pushes it, and
+ * {@link dispose} takes it back out again. What is pushed is every spelling the checker must leave
+ * alone - the terms and their variants - because a variant is a real word written the wrong way for
+ * this project, and the dictionary marks it as such itself; having the spellchecker mark it too
+ * would read as two problems with one word.
  *
  * The language comes from the same push. It is decided in the main process (which is the only place
- * that can see what Chromium has a dictionary for) from two things this service supplies: the
+ * that can see which dictionaries are installed) from two things this service supplies: the
  * project's source locale, and the author's setting - which is why a change to either re-pushes.
  */
 export class DictionaryService extends Service<DictionaryService> implements IDictionaryService {
@@ -107,7 +115,7 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         }
     }
 
-    public async load(): Promise<string[]> {
+    public async load(): Promise<void> {
         const result = await loadDocument(dictionarySpec, this.storage(), dictionarySpec.pathFor());
         // Both cleared before the branch, not inside it: this is a singleton that re-inits on a
         // project switch, and either one carried over would be the previous project speaking for
@@ -120,7 +128,7 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
             // NOT written on first open, unlike the palette and the variable registry. Those seed
             // content every project has; this one starts genuinely empty, and a file holding an
             // empty list would appear in the first commit of every project ever created to say
-            // nothing at all. It is written the first time a word is added.
+            // nothing at all. It is written the first time a term is added.
             this.document = createEmptyProjectDictionaryDocument();
         } else if (result.status === "corrupt") {
             // Reported and survived, not thrown: this runs inside `init`, and throwing here is how
@@ -134,8 +142,7 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
 
         this.setDirty(false);
         await this.publish();
-        this.events.emit("wordsChanged", this.listWords());
-        return this.listWords();
+        this.events.emit("entriesChanged", this.listEntries());
     }
 
     public async save(document: ProjectDictionaryDocument): Promise<void> {
@@ -147,15 +154,11 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         }
         // This write supersedes whatever the timer was going to do.
         this.autoSaver.cancel();
-        const updated: ProjectDictionaryDocument = {
-            ...document,
-            schemaVersion: PROJECT_DICTIONARY_SCHEMA_VERSION,
-            words: normalizeDictionaryWords(document.words),
-        };
+        const updated = this.canonical(document);
         await saveDocument(dictionarySpec, this.storage(), dictionarySpec.pathFor(), updated);
         this.document = updated;
         this.setDirty(false);
-        this.events.emit("wordsChanged", this.listWords());
+        this.events.emit("entriesChanged", this.listEntries());
     }
 
     public getDocument(): ProjectDictionaryDocument {
@@ -165,50 +168,118 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         return this.document;
     }
 
-    /** Every word, sorted. The array is a copy; edit through the mutators. */
-    public listWords(): string[] {
-        return [...this.getDocument().words];
+    /** Every entry, sorted by term. The array is a copy; edit through the mutators. */
+    public listEntries(): ProjectDictionaryEntry[] {
+        return this.getDocument().entries.map(entry => ({ ...entry }));
     }
 
-    public hasWord(word: string): boolean {
-        const normalized = normalizeDictionaryWord(word);
-        return normalized !== null && this.getDocument().words.includes(normalized);
+    /** Every term, sorted. */
+    public listTerms(): string[] {
+        return this.getDocument().entries.map(entry => entry.term);
+    }
+
+    public getEntry(term: string): ProjectDictionaryEntry | null {
+        const normalized = normalizeDictionaryWord(term);
+        if (!normalized) {
+            return null;
+        }
+        const entry = this.getDocument().entries.find(candidate => candidate.term === normalized);
+        return entry ? { ...entry } : null;
+    }
+
+    /** Whether the project writes this term. Exact, and the identity check every mutator uses. */
+    public hasTerm(term: string): boolean {
+        return this.getEntry(term) !== null;
     }
 
     /**
-     * Teach the project a word. `false` means there was nothing to add - a blank, or a word the
-     * project already spells this way.
+     * Whether the spellchecker should leave this word alone: it is a term, or a variant of one.
+     *
+     * Case-insensitive, because a checker asked about a word at the start of a sentence hands back
+     * the capitalised form, and a term is not two terms for being written at a full stop.
      */
-    public addWord(word: string): boolean {
-        const normalized = normalizeDictionaryWord(word);
-        if (!normalized || this.hasWord(normalized)) {
+    public hasWord(word: string): boolean {
+        const normalized = normalizeDictionaryWord(word)?.toLowerCase();
+        if (!normalized) {
             return false;
         }
-        this.applyWordMutation(words => [...words, normalized]);
+        return this.getDocument().entries.some(entry =>
+            entry.term.toLowerCase() === normalized
+            || (entry.variants ?? []).some(variant => variant.toLowerCase() === normalized));
+    }
+
+    public getOptions(): ProjectDictionaryOptions {
+        return { ...this.getDocument().options };
+    }
+
+    /**
+     * Teach the project a term. `false` means there was nothing to add - a blank, or a spelling the
+     * project already holds.
+     *
+     * The one gesture that reaches here from outside the dictionary panel is "add to dictionary" on
+     * a marked word, which knows the spelling and nothing else; the patch is for the panel, which
+     * adds a term and its reading in one motion.
+     */
+    public addTerm(term: string, patch?: Omit<DictionaryEntryPatch, "term">): boolean {
+        const normalized = normalizeDictionaryWord(term);
+        if (!normalized || this.hasTerm(normalized)) {
+            return false;
+        }
+        const entry = applyPatch({ term: normalized }, patch ?? {});
+        this.applyMutation(entries => [...entries, entry]);
         return true;
     }
 
-    /** Forget a word. `false` means the project never held it. */
-    public removeWord(word: string): boolean {
-        const normalized = normalizeDictionaryWord(word);
-        if (!normalized || !this.hasWord(normalized)) {
+    /**
+     * Edit one entry. `false` means there is no such term, or the rename would collide with a term
+     * the project already writes.
+     *
+     * A collision is refused rather than merged: the two entries have their own readings, variants
+     * and notes, and picking which of each survives is a decision the author has not made.
+     */
+    public updateEntry(term: string, patch: DictionaryEntryPatch): boolean {
+        const existing = this.getEntry(term);
+        if (!existing) {
             return false;
         }
-        this.applyWordMutation(words => words.filter(entry => entry !== normalized));
+        const renamed = patch.term === undefined ? null : normalizeDictionaryWord(patch.term);
+        if (patch.term !== undefined && !renamed) {
+            return false;
+        }
+        if (renamed && renamed !== existing.term && this.hasTerm(renamed)) {
+            return false;
+        }
+        const updated = applyPatch({ ...existing, term: renamed ?? existing.term }, patch);
+        this.applyMutation(entries => entries.map(entry => (entry.term === existing.term ? updated : entry)));
         return true;
+    }
+
+    /** Forget a term. `false` means the project never held it. */
+    public removeTerm(term: string): boolean {
+        const existing = this.getEntry(term);
+        if (!existing) {
+            return false;
+        }
+        this.applyMutation(entries => entries.filter(entry => entry.term !== existing.term));
+        return true;
+    }
+
+    /** Turn one of the two checks on or off for this project. */
+    public setOptions(patch: Partial<ProjectDictionaryOptions>): void {
+        const document = this.getDocument();
+        const next = normalizeDictionaryOptions({ ...document.options, ...patch });
+        if (next.suggestReadings === document.options.suggestReadings
+            && next.checkVariants === document.options.checkVariants) {
+            return;
+        }
+        this.document = { ...document, options: next };
+        this.bump();
     }
 
     /** Replace the whole document (history restore). Sets, publishes and emits without touching history. */
     public replaceDocument(document: ProjectDictionaryDocument): void {
-        this.document = {
-            schemaVersion: PROJECT_DICTIONARY_SCHEMA_VERSION,
-            words: normalizeDictionaryWords(document.words),
-        };
-        this.revision += 1;
-        this.setDirty(true);
-        this.autoSaver.schedule();
-        void this.publish();
-        this.events.emit("wordsChanged", this.listWords());
+        this.document = this.canonical(document);
+        this.bump();
     }
 
     /** What the spellchecker settled on last time this service pushed. `null` before the first push. */
@@ -216,8 +287,9 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         return this.status;
     }
 
-    public onWordsChanged(handler: (words: string[]) => void): () => void {
-        return this.events.on("wordsChanged", handler);
+    /** The entries, whenever any of them - or the two options - move. */
+    public onEntriesChanged(handler: (entries: ProjectDictionaryEntry[]) => void): () => void {
+        return this.events.on("entriesChanged", handler);
     }
 
     /**
@@ -252,7 +324,7 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
     /**
      * Hand the session back an empty dictionary.
      *
-     * The words are the project's, and the session that holds them is the machine's, so a project
+     * The terms are the project's, and the session that holds them is the machine's, so a project
      * closed without this would leave its cast accepted in whatever opens next - including a
      * different project in a different language, where the names are simply wrong.
      */
@@ -267,28 +339,45 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         void getInterface().app.spellcheck.clear();
     }
 
-    /** The single mutation entry - mutate the list, re-normalize, bump, mark dirty, autosave, publish. */
-    private applyWordMutation(mutator: (words: string[]) => string[]): void {
+    /** The single mutation entry - mutate the list, re-normalize, then {@link bump}. */
+    private applyMutation(mutator: (entries: ProjectDictionaryEntry[]) => ProjectDictionaryEntry[]): void {
         const document = this.getDocument();
-        document.words = normalizeDictionaryWords(mutator([...document.words]));
+        this.document = {
+            ...document,
+            entries: normalizeDictionaryEntries(mutator([...document.entries])),
+        };
+        this.bump();
+    }
+
+    /** Everything that follows a change, whatever made it: revision, dirty, autosave, push, event. */
+    private bump(): void {
         this.revision += 1;
         this.setDirty(true);
         this.autoSaver.schedule();
         void this.publish();
-        this.events.emit("wordsChanged", this.listWords());
+        this.events.emit("entriesChanged", this.listEntries());
+    }
+
+    private canonical(document: ProjectDictionaryDocument): ProjectDictionaryDocument {
+        return {
+            schemaVersion: PROJECT_DICTIONARY_SCHEMA_VERSION,
+            entries: normalizeDictionaryEntries(document.entries),
+            options: normalizeDictionaryOptions(document.options),
+        };
     }
 
     /**
-     * Push the language and the words into the session.
+     * Push the language and the accepted spellings into the session.
      *
-     * Not awaited by the mutators: the author has already been given their word back in the
+     * Not awaited by the mutators: the author has already been given their term back in the
      * document, and making an edit wait on an IPC round trip would put a frame of lag on a right
-     * click. A failed push costs one session that is a word behind, which the next push corrects.
+     * click. A failed push costs one session that is a term behind, which the next push corrects.
      */
     private async publish(): Promise<void> {
         const localizationService = this.getContext().services.get<LocalizationService>(Services.Localization);
         const sourceLocale = localizationService.getConfiguration().sourceLocale;
-        const result = await getInterface().app.spellcheck.configure(sourceLocale, this.listWords());
+        const words = dictionaryAcceptedWords(this.getDocument().entries);
+        const result = await getInterface().app.spellcheck.configure(sourceLocale, words);
         const next = result.success ? result.data : null;
         // Only when it actually moved. This runs on every window focus, and an event per focus would
         // bump the binding's revision and re-check every open row for nothing.
@@ -311,4 +400,28 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
     private storage(): DocumentStorage {
         return createProjectDocumentStorage(this.getContext());
     }
+}
+
+/** One entry with a patch written over it, normalized, with absent fields left absent. */
+function applyPatch(entry: ProjectDictionaryEntry, patch: DictionaryEntryPatch): ProjectDictionaryEntry {
+    const next: ProjectDictionaryEntry = { term: entry.term };
+
+    const reading = patch.reading === undefined
+        ? entry.reading
+        : patch.reading === null ? undefined : normalizeDictionaryWord(patch.reading) ?? undefined;
+    if (reading) {
+        next.reading = reading;
+    }
+
+    const variants = normalizeDictionaryVariants(patch.variants ?? entry.variants ?? [], next.term);
+    if (variants.length > 0) {
+        next.variants = variants;
+    }
+
+    const note = patch.note === undefined ? entry.note : patch.note === null ? undefined : patch.note.trim();
+    if (note) {
+        next.note = note;
+    }
+
+    return next;
 }
