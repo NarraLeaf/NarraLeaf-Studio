@@ -7,6 +7,7 @@ import {
     type SpellcheckRange,
     type SpellcheckStatus,
 } from "@shared/types/spellcheck";
+import { isEnglishContraction, isEnglishSpellcheckLanguage } from "./contractions";
 import { DictionaryCache } from "./dictionaryCache";
 import {
     downloadDictionary,
@@ -189,6 +190,12 @@ export class SpellcheckManager {
             return { ranges: [] };
         }
         const project = this.projects.get(owner);
+        // The language's own list and the project's terms, as one question. Both are asked directly
+        // below; the contraction rule needs them together, because the word in front of an
+        // apostrophe can come from either - a character's name takes a possessive like any noun.
+        const known = (word: string): boolean =>
+            list.has(word) || Boolean(project?.words.has(word.toLowerCase()));
+        const english = isEnglishSpellcheckLanguage(language);
         const ranges: SpellcheckRange[] = [];
         for (const candidate of extractWords(text, this.lexiconFor(list, project))) {
             if (list.has(candidate.word)) {
@@ -197,6 +204,11 @@ export class SpellcheckManager {
             // The project's own vocabulary: character names, places, invented terms. Checked after
             // the dictionary because it is the smaller set and the rarer hit.
             if (project?.words.has(candidate.word.toLowerCase())) {
+                continue;
+            }
+            // Last, because it is the only test that asks a second question about a word that has
+            // already failed one. See `contractions.ts` for why a list cannot answer this alone.
+            if (english && isEnglishContraction(candidate.word, known)) {
                 continue;
             }
             ranges.push(candidate);
