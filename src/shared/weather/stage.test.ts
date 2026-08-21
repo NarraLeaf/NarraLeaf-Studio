@@ -55,10 +55,12 @@ describe("weatherSpecForStage", () => {
         expect(weatherSpecForStage({ seed: "rain" }, undefined)).toMatchObject({ width: 1920, height: 1080 });
     });
 
-    it("caps the bake so a 4K stage does not bake a 4K clip", () => {
+    it("makes the clip at the resolution the project was created at, 4K included", () => {
+        // The stage size is chosen once, in the wizard, and is the coordinate system everything else
+        // is drawn in. A clip made smaller than it would be the one layer arriving stretched.
         expect(weatherSpecForStage({ seed: "snow" }, uidoc([
             { kind: "stageSurface", designSize: { width: 3840, height: 2160 } },
-        ]))).toMatchObject({ width: 1920, height: 1080 });
+        ]))).toMatchObject({ width: 3840, height: 2160 });
     });
 });
 

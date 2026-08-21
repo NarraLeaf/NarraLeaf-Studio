@@ -292,20 +292,24 @@ export const WEATHER_LOOP_SECONDS = 12;
 export const WEATHER_FPS = 30;
 
 /**
- * The ceiling a bake renders at.
+ * The size a bake renders at: the stage's own.
  *
- * The clip is `cover`-fitted over a stage whose coordinate system is the project's `designSize`, and
- * its content is high-frequency noise, so stretching it costs nothing an eye can find. Baking one
- * clip at the stage size (capped here) is therefore the whole story — a second size per target would
- * multiply the package for a difference nobody can see.
+ * The stage size is the resolution the project was created at — asked once in the wizard and fixed
+ * for the life of the project — and it is the coordinate system the clip is `cover`-fitted over. So
+ * making the clip at that size is the only way the author sees the picture at the resolution they
+ * chose.
+ *
+ * There used to be a 1920x1080 ceiling here, on the argument that weather is high-frequency noise
+ * and stretching it costs nothing an eye can find. A 4K project's snow was therefore a 1080p clip
+ * blown up, which is exactly the trade a 4K project was created to avoid. The stage's own limit
+ * (`STAGE_SIZE_MAX`, 4K) is the only ceiling left.
+ *
+ * Density is stated per megapixel, so the same numbers describe the same weather at any size: a 4K
+ * clip has four times the particles, not four times the spacing.
  */
-export const WEATHER_MAX_BAKE_WIDTH = 1920;
-export const WEATHER_MAX_BAKE_HEIGHT = 1080;
-
 export function weatherBakeSize(designWidth: number, designHeight: number): { width: number; height: number } {
-    const scale = Math.min(1, WEATHER_MAX_BAKE_WIDTH / designWidth, WEATHER_MAX_BAKE_HEIGHT / designHeight);
     // Even dimensions: yuv420p subsamples chroma by two, and an odd edge is a whole extra code path
     // in every encoder that has to pad it.
-    const even = (n: number) => Math.max(2, Math.round(n * scale / 2) * 2);
+    const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
     return { width: even(designWidth), height: even(designHeight) };
 }
