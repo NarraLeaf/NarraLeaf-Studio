@@ -14,6 +14,9 @@ import type { UIDocument } from "./document";
 import type { UIStructDef, UIStructId } from "./struct";
 
 export const UI_STRUCT_ID_CHOICE_ITEM = "nl.choiceItem" as const;
+export const UI_STRUCT_ID_HISTORY_ENTRY = "nl.historyEntry" as const;
+export const UI_STRUCT_ID_SAVE_ENTRY = "nl.saveEntry" as const;
+export const UI_STRUCT_ID_CONFIRM_BUTTON = "nl.confirmButton" as const;
 export const UI_STRUCT_ID_NOTIFICATION_ITEM = "nl.notificationItem" as const;
 export const UI_STRUCT_ID_NVL_ITEM = "nl.nvlItem" as const;
 
@@ -51,10 +54,62 @@ const NVL_ITEM_STRUCT: UIStructDef = {
     fields: [field("index", "number"), field("nametag", "string"), field("isActive", "boolean")],
 };
 
+/**
+ * Mirrors `BlueprintGameHistoryEntry`, the rows `Get History` and `Get Future` hand out.
+ *
+ * Not a slot shape but engine-owned all the same, and declared here for the same reason: a backlog
+ * is a list of these in every project there will ever be, so binding one should not begin with an
+ * author writing down what the engine already knows.
+ */
+const HISTORY_ENTRY_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_HISTORY_ENTRY,
+    fields: [
+        field("id", "string"),
+        field("type", "string"),
+        field("text", "string"),
+        field("character", "string"),
+        field("voice", "string"),
+        field("voiceId", "string"),
+        field("selected", "string"),
+        field("isPending", "boolean"),
+    ],
+};
+
+/**
+ * Mirrors the entries the save nodes list.
+ *
+ * `metadata` stays `json`: what is in it is the project's own save schema, which differs per
+ * project and is read through the save nodes that grow pins for it.
+ */
+const SAVE_ENTRY_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_SAVE_ENTRY,
+    fields: [
+        field("id", "string"),
+        field("slot", "number"),
+        field("timestamp", "number"),
+        field("createdAt", "number"),
+        field("metadata", "json"),
+    ],
+};
+
+/** Mirrors the `buttons` prop `Show Confirm` opens its page with. */
+const CONFIRM_BUTTON_STRUCT: UIStructDef = {
+    id: UI_STRUCT_ID_CONFIRM_BUTTON,
+    fields: [
+        field("id", "string"),
+        field("text", "string"),
+        field("index", "number"),
+        field("disabled", "boolean"),
+    ],
+};
+
 export const BUILTIN_UI_STRUCTS: Readonly<Record<UIStructId, UIStructDef>> = Object.freeze({
     [UI_STRUCT_ID_CHOICE_ITEM]: CHOICE_ITEM_STRUCT,
     [UI_STRUCT_ID_NOTIFICATION_ITEM]: NOTIFICATION_ITEM_STRUCT,
     [UI_STRUCT_ID_NVL_ITEM]: NVL_ITEM_STRUCT,
+    [UI_STRUCT_ID_HISTORY_ENTRY]: HISTORY_ENTRY_STRUCT,
+    [UI_STRUCT_ID_SAVE_ENTRY]: SAVE_ENTRY_STRUCT,
+    [UI_STRUCT_ID_CONFIRM_BUTTON]: CONFIRM_BUTTON_STRUCT,
 });
 
 /** True for a shape the engine owns: its fields are shown, never edited. */
