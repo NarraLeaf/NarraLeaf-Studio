@@ -71,6 +71,7 @@ import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/Widg
 import {
     createDevModeBlueprintHostApi,
     type BlueprintLayerShowRequest,
+    type BlueprintStoryEnding,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
@@ -123,7 +124,7 @@ import {
     savedVariableDefsFromView,
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import { listStoryEndings, savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -172,7 +173,13 @@ import {
     createTextReadTracker,
     type TextReadTracker,
 } from "./textReadTracker";
-import { markEndingReached } from "./endingsRecord";
+import {
+    clearReachedEndings,
+    forgetEndingReached,
+    isEndingReached,
+    markEndingReached,
+    readReachedEndings,
+} from "./endingsRecord";
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
@@ -1311,6 +1318,81 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, []);
 
     /**
+     * The endings record, in project persistence rather than in the running game.
+     *
+     * Nothing here touches a live story, and that is the requirement rather than an accident: an
+     * endings gallery is opened from the title screen, before any game exists. The record is read
+     * off the persistence session map, which the runtime hydrates from the store when the adapter is
+     * installed, so a synchronous pure reader still sees what earlier playthroughs recorded.
+     *
+     * No runtime core at all - a Page previewed inside the editor - reads as "not reached" and makes
+     * both wipes no-ops, which lets the screen lay out rather than fault.
+     */
+    const endingsPersistence = useCallback(() => {
+        const bridge = core?.scopeBridge;
+        if (!bridge) {
+            return null;
+        }
+        return {
+            getAsync: (key: string) => bridge.persistenceGetAsync(key),
+            get: (key: string) => bridge.persistenceGet(key),
+            set: (key: string, value: unknown) => bridge.persistenceSet(key, value),
+        };
+    }, [core]);
+
+    const isEndingReachedInGame = useCallback((endingId: string): boolean => {
+        const persistence = endingsPersistence();
+        return persistence ? isEndingReached(persistence, endingId) : false;
+    }, [endingsPersistence]);
+
+    /**
+     * One story's endings, joined against the record.
+     *
+     * The list comes from the story document this build ships (`bundle.storyLibrary.documents`),
+     * scanned with the same `listStoryEndings` the compiler emits from - so a row an author disabled
+     * is absent here exactly as it is absent from the build, and the screen can never offer an
+     * ending the player could not reach.
+     *
+     * The story id is tried as a key first and then searched for, the way every other library lookup
+     * here does it: the key is the id the project filed the document under, which a build that moved
+     * a story between documents may have changed.
+     */
+    const listEndingsInGame = useCallback((storyId: string): BlueprintStoryEnding[] => {
+        const documents = bundle.storyLibrary?.documents;
+        if (!documents || !storyId) {
+            return [];
+        }
+        const document = documents[storyId]
+            ?? Object.values(documents).find(candidate => candidate.id === storyId);
+        if (!document) {
+            return [];
+        }
+        const persistence = endingsPersistence();
+        const reached = persistence ? readReachedEndings(persistence) : [];
+        return listStoryEndings(document).map(ending => ({
+            endingId: ending.endingId,
+            name: ending.name,
+            sceneId: ending.sceneId,
+            sceneName: ending.sceneName,
+            isReached: reached.includes(ending.endingId),
+        }));
+    }, [bundle.storyLibrary, endingsPersistence]);
+
+    const clearEndingStateInGame = useCallback(async (endingId: string): Promise<void> => {
+        const persistence = endingsPersistence();
+        if (persistence) {
+            await forgetEndingReached(persistence, endingId);
+        }
+    }, [endingsPersistence]);
+
+    const clearEndingsInGame = useCallback(async (): Promise<void> => {
+        const persistence = endingsPersistence();
+        if (persistence) {
+            await clearReachedEndings(persistence);
+        }
+    }, [endingsPersistence]);
+
+    /**
      * Carrying a playthrough between two editions of one title - the Export/Import Progress nodes.
      *
      * A demo and the full game are separate packages with separate app ids, so they keep separate
@@ -1930,13 +2012,9 @@ export function GameApp(props: GameAppProps): ReactNode {
      * shape - an ending as the last row of a branch - there is nothing left to play either way.
      */
     const handleEndingReached = useCallback((ending: StoryEndingReach) => {
-        const bridge = core?.scopeBridge;
-        if (bridge) {
-            void markEndingReached({
-                getAsync: key => bridge.persistenceGetAsync(key),
-                get: key => bridge.persistenceGet(key),
-                set: (key, value) => bridge.persistenceSet(key, value),
-            }, ending.endingId).catch(error => {
+        const persistence = endingsPersistence();
+        if (persistence) {
+            void markEndingReached(persistence, ending.endingId).catch(error => {
                 // Reported, never thrown: the player has reached the ending whatever the store did,
                 // and a failed write must not take the window down on the last screen of the game.
                 host.log("error", `[${host.id}] the ending could not be recorded: ${normalizeError(error)}`);
@@ -1957,7 +2035,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         void quitGame(page).catch(error => {
             host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
         });
-    }, [core, endingSurfaceId, host, pluginHost, quitGame]);
+    }, [endingSurfaceId, endingsPersistence, host, pluginHost, quitGame]);
 
     /**
      * What this build stamps into the saves it writes, and compares the saves it is asked to load
@@ -3037,6 +3115,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.setFullscreen,
         isCurrentTextReadInGame,
         clearTextReadInGame,
+        isEndingReachedInGame,
+        listEndingsInGame,
+        clearEndingStateInGame,
+        clearEndingsInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -3213,6 +3295,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsSceneVisited: isSceneVisitedInGame,
             onIsOptionPicked: isOptionPickedInGame,
             onClearVisited: clearVisitedInGame,
+            onIsEndingReached: isEndingReachedInGame,
+            onListEndings: listEndingsInGame,
+            onClearEndingState: clearEndingStateInGame,
+            onClearEndings: clearEndingsInGame,
             onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -3318,6 +3404,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
+        isEndingReachedInGame,
+        listEndingsInGame,
+        clearEndingStateInGame,
+        clearEndingsInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -3619,6 +3709,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onIsSceneVisited: isSceneVisitedInGame,
                     onIsOptionPicked: isOptionPickedInGame,
                     onClearVisited: clearVisitedInGame,
+                    onIsEndingReached: isEndingReachedInGame,
+                    onListEndings: listEndingsInGame,
+                    onClearEndingState: clearEndingStateInGame,
+                    onClearEndings: clearEndingsInGame,
                     onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
                     onSkip: skipInGame,
@@ -3755,6 +3849,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
+        isEndingReachedInGame,
+        listEndingsInGame,
+        clearEndingStateInGame,
+        clearEndingsInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
