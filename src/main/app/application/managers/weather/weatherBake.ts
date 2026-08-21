@@ -72,11 +72,55 @@ export type WeatherBakeHandle = {
     cancel(): void;
 };
 
+/**
+ * The frames of one clip, in order, however they are drawn.
+ *
+ * The bake pushes them into the encoder one after another; where they were DRAWN is not its
+ * business. {@link serialWeatherFrames} draws each one when it is asked for, which is all a test or
+ * a small clip needs; the bake worker hands in a pool that draws several at once on other threads,
+ * which it can do because a frame is a pure function of its phase.
+ *
+ * Each call answers with a buffer the caller owns until the next one. That is not a formality: a
+ * stream keeps whatever it is handed until the write completes, and the renderer overwrites its own
+ * buffer on the next frame, so a sequence that handed out its working buffer would let a queued
+ * frame be redrawn underneath the encoder - a corruption that only shows up on a machine that is
+ * fast that day.
+ */
+export type WeatherFrameSequence = {
+    /** The next frame, or null once the sequence is spent. Rejects if the frames cannot be drawn. */
+    next(): Promise<Uint8Array | null>;
+    /** Stop early and let go of whatever is drawing. Safe to call twice. */
+    close(): void;
+};
+
 export type WeatherBakeOptions = {
     onProgress?: (progress: WeatherBakeProgress) => void;
     /** Injected in tests; defaults to a real `child_process.spawn`. */
     spawnProcess?: BakeSpawn;
+    /** Where the frames come from. Defaults to drawing them here, one at a time. */
+    frameSource?: WeatherFrameSequence;
 };
+
+/** Draw every frame in this thread, one per request. The plain answer, and the fallback. */
+export function serialWeatherFrames(spec: WeatherBakeSpec): WeatherFrameSequence {
+    const params = resolveWeatherParams(spec.ref);
+    const field = buildWeatherField(spec.ref.seed, params, spec.width, spec.height);
+    const renderer = createWeatherRenderer(field, spec.width, spec.height, { frames: spec.frames });
+    let index = 0;
+    return {
+        next: async () => {
+            if (index >= spec.frames) {
+                return null;
+            }
+            renderer.render(index / spec.frames);
+            index += 1;
+            return new Uint8Array(renderer.frame);
+        },
+        close: () => {
+            index = spec.frames;
+        },
+    };
+}
 
 /** How long a `SIGTERM` is given before it becomes a `SIGKILL`. Matches the transcode path. */
 const KILL_ESCALATION_MS = 2000;
@@ -215,6 +259,7 @@ export function startWeatherBake(
         // The same close, as a bare signal the feed loop can race a stalled write against.
         const settled = closed.then(() => undefined);
 
+        let renderError: string | null = null;
         await feed();
         const { code } = await closed;
         if (escalation) {
@@ -224,6 +269,12 @@ export function startWeatherBake(
         if (cancelled) {
             await remove(tempPath);
             return { status: "cancelled" };
+        }
+        if (renderError) {
+            // Checked before the exit code: an encoder fed half a clip fails with a sentence about
+            // its input, which would name the wrong thing entirely.
+            await remove(tempPath);
+            return { status: "error", detail: renderError, stderr: stderrTail };
         }
         if (spawnError) {
             await remove(tempPath);
@@ -255,28 +306,33 @@ export function startWeatherBake(
             if (!stdin) {
                 return;
             }
-            const params = resolveWeatherParams(spec.ref);
-            const field = buildWeatherField(spec.ref.seed, params, spec.width, spec.height);
-            const renderer = createWeatherRenderer(field, spec.width, spec.height, { frames: spec.frames });
-            for (let index = 0; index < spec.frames; index++) {
-                if (cancelled || pipeBroken) {
-                    break;
+            const frames = options.frameSource ?? serialWeatherFrames(spec);
+            try {
+                for (;;) {
+                    if (cancelled || pipeBroken) {
+                        break;
+                    }
+                    // Each frame is this loop's to keep until the write completes - see
+                    // `WeatherFrameSequence`, which is where the copy that used to be here now lives.
+                    const frame = await frames.next();
+                    if (!frame) {
+                        break;
+                    }
+                    if (!stdin.write(frame)) {
+                        // Raced against the process ending: if the encoder dies while a frame is
+                        // parked here, its drain never comes. Waiting on it alone is a bake that
+                        // hangs forever rather than one that reports what ffmpeg said.
+                        await Promise.race([drained(stdin), settled]);
+                    }
                 }
-                renderer.render(index / spec.frames);
-                // A COPY, not the renderer's own buffer. A stream keeps whatever it is handed until
-                // the write completes, and the renderer overwrites its buffer on the next frame - so
-                // passing it directly means a queued frame can be rewritten underneath the encoder.
-                // In practice a frame is far larger than the pipe's watermark and every write parks
-                // on drain, which is exactly what makes the bug the kind that appears once, on a
-                // machine that is fast that day.
-                if (!stdin.write(Buffer.from(renderer.frame))) {
-                    // Raced against the process ending: if the encoder dies while a frame is parked
-                    // here, its drain never comes. Waiting on it alone is a bake that hangs forever
-                    // rather than one that reports what ffmpeg said.
-                    await Promise.race([drained(stdin), settled]);
-                }
+            } catch (error) {
+                // Nothing more can be fed, and what has been fed is half a clip. Said in our own
+                // words so the failure names the drawing rather than the encoder that choked on it.
+                renderError = describe(error);
+            } finally {
+                frames.close();
+                stdin.end();
             }
-            stdin.end();
         }
     }
 }

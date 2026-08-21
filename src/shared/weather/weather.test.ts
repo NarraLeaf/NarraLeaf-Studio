@@ -159,6 +159,29 @@ describe("determinism", () => {
         expect(frameAt("sakura", 0.42)).toEqual(frameAt("sakura", 0.42));
     });
 
+    it("answers the same pixels whatever order the phases are asked in", () => {
+        // What lets a bake draw its frames on several threads at once: the renderer zeroes its
+        // accumulator at the top of every frame, so frame 200 does not need frame 199. A renderer
+        // that carried anything across would make a clip depend on how many threads drew it.
+        const params = resolveWeatherParams({ seed: "rain" });
+        const field = buildWeatherField("rain", params, W, H);
+        const forwards = createWeatherRenderer(field, W, H, { frames: FRAMES, subSteps: 2 });
+        const backwards = createWeatherRenderer(field, W, H, { frames: FRAMES, subSteps: 2 });
+        const phases = [0, 0.2, 0.4];
+
+        const inOrder = phases.map(phase => {
+            forwards.render(phase);
+            return new Uint8ClampedArray(forwards.frame);
+        });
+        const reversed = [...phases].reverse().map(phase => {
+            backwards.render(phase);
+            return new Uint8ClampedArray(backwards.frame);
+        });
+
+        expect(reversed.reverse()).toEqual(inOrder);
+        // Six full frames at this size is seconds of real work, and this file already renders a lot.
+    }, 30000);
+
     it("gives different seeds different layouts", () => {
         const params = resolveWeatherParams({ seed: "snow" });
         const snow = buildWeatherField("snow", params, W, H);
@@ -248,10 +271,11 @@ describe("the bake size", () => {
         expect(weatherBakeSize(1280, 720)).toEqual({ width: 1280, height: 720 });
     });
 
-    it("caps a larger stage and keeps its shape", () => {
-        const { width, height } = weatherBakeSize(3840, 2160);
-        expect(width).toBe(1920);
-        expect(height).toBe(1080);
+    it("makes a 4K project's weather at 4K", () => {
+        // It used to cap here at 1080p and let the player's machine stretch it. A project created at
+        // 3840x2160 asked for that resolution on purpose, and weather is the one layer that would
+        // have arrived softer than everything drawn beside it.
+        expect(weatherBakeSize(3840, 2160)).toEqual({ width: 3840, height: 2160 });
     });
 
     it("always returns even dimensions, which yuv420p requires", () => {
