@@ -81,6 +81,11 @@ import {
 } from "@shared/constants/recentProjects";
 import { DEVELOPER_MODE_DEFAULT, DEVELOPER_MODE_KEY } from "@/lib/developer";
 import {
+    SCREEN_EFFECT_QUALITY_DEFAULT,
+    SCREEN_EFFECT_QUALITY_KEY,
+} from "@shared/constants/screenEffects";
+import { WEATHER_BAKE_QUALITIES } from "@shared/weather/model";
+import {
     TOOLTIP_DELAY_DEFAULT_MS,
     TOOLTIP_DELAY_KEY,
     TOOLTIP_DELAY_MAX_MS,
@@ -222,6 +227,39 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Right-click menus gain a section for copying the ID of what you clicked.",
         descriptionKey: "settings.items.developerMode.description",
         defaultValue: DEVELOPER_MODE_DEFAULT,
+    },
+    {
+        // Read by the main process when a Dev Mode session asks for a screen effect it has no clip
+        // for (`weather/screenEffectQuality`), and by the pre-baker beside it - both through the same
+        // reader, because two answers would make the speculative bake a different task from the one
+        // the author is waiting on.
+        //
+        // Dev Mode only, and the row says so rather than leaving it to be discovered: a preview and a
+        // build always produce the final picture, because what they produce is what a player gets.
+        // There is deliberately no option here that could change that.
+        //
+        // Names the wait, not the machinery. The author is choosing how long they sit watching a
+        // progress cell, and the encoder that decides how long that is has no business appearing in
+        // the row - the same rule the status bar's own label follows.
+        key: SCREEN_EFFECT_QUALITY_KEY,
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Screen effects in Dev Mode",
+        labelKey: "settings.items.screenEffectQuality.label",
+        description: "Draft is generated in about a third of the time. Previews and builds always use the final quality.",
+        descriptionKey: "settings.items.screenEffectQuality.description",
+        defaultValue: SCREEN_EFFECT_QUALITY_DEFAULT,
+        // Derived from the shared list so a tier added there cannot be missing here.
+        options: [...WEATHER_BAKE_QUALITIES],
+        optionLabels: {
+            draft: "Draft",
+            final: "Final quality",
+        },
+        optionLabelKeys: {
+            draft: "settings.items.screenEffectQuality.options.draft",
+            final: "settings.items.screenEffectQuality.options.final",
+        },
     },
     {
         // Applied by the main process (`ConfirmQuitManager`), which is the only place the keystroke

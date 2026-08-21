@@ -12,6 +12,9 @@ import {
     type BakeSpawn,
     type WeatherBakeResult,
 } from "./weatherBake";
+import { VP9_ARGS } from "../media/mediaTranscode";
+import { devModeScreenEffectQuality } from "./screenEffectQuality";
+import { SCREEN_EFFECT_QUALITY_KEY } from "@shared/constants/screenEffects";
 import { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
 import { WeatherBakeManager, type WeatherBakeStarter } from "./WeatherBakeManager";
 
@@ -105,7 +108,7 @@ function fakeEncoder(options: {
 }
 
 describe("weatherBakeArgs", () => {
-    const args = weatherBakeArgs(SPEC, "C:/out/snow.webm");
+    const args = weatherBakeArgs(SPEC, "final", "C:/out/snow.webm");
 
     it("declares the raw input the renderer actually writes", () => {
         expect(args).toContain("rawvideo");
@@ -130,6 +133,32 @@ describe("weatherBakeArgs", () => {
 
     it("asks the encoder to report progress", () => {
         expect(args).toContain("-progress");
+    });
+
+    it("encodes a final clip with exactly what an imported asset is converted with", () => {
+        // Not "both mention libvpx": the whole justification for one exported constant is that a
+        // project's video is ONE decision, and the two would drift silently because either set
+        // produces a playable file. Only the speed is allowed to differ, and only for a draft.
+        for (const arg of VP9_ARGS) {
+            expect(args).toContain(arg);
+        }
+        expect(args[args.indexOf("-deadline") + 1]).toBe("good");
+        expect(args[args.indexOf("-cpu-used") + 1]).toBe("2");
+    });
+
+    it("encodes a draft with the fast encoder and changes nothing else about the file", () => {
+        const draft = weatherBakeArgs(SPEC, "draft", "C:/out/snow.webm");
+
+        expect(draft[draft.indexOf("-deadline") + 1]).toBe("realtime");
+        // Four, not five: libvpx drops to its non-RD decision path at 5, which measured the same
+        // wall-clock and 27% more bytes. The number is the measurement, not a preference.
+        expect(draft[draft.indexOf("-cpu-used") + 1]).toBe("4");
+        // Everything that decides whether the clip PLAYS is the same in both tiers - the codec, the
+        // profile, the quality target. A draft has to be a legal answer to the same question, or the
+        // manager's "a better file will do" rule would be serving files a target cannot decode.
+        expect(draft[draft.lastIndexOf("-pix_fmt") + 1]).toBe("yuv420p");
+        expect(draft).toContain("libvpx-vp9");
+        expect(draft[draft.indexOf("-crf") + 1]).toBe(args[args.indexOf("-crf") + 1]);
     });
 
     it("names the container, because the file it writes has no extension to infer one from", () => {
@@ -168,7 +197,7 @@ describe("startWeatherBake", () => {
     it("feeds one frame per frame, each the size of the picture", async () => {
         const encoder = fakeEncoder();
         const target = path.join(dir, "snow.webm");
-        const result = await startWeatherBake("ffmpeg", SPEC, target, { spawnProcess: encoder.spawnProcess }).result;
+        const result = await startWeatherBake("ffmpeg", SPEC, target, { quality: "final", spawnProcess: encoder.spawnProcess }).result;
 
         expect(result.status).toBe("done");
         expect(encoder.chunks).toHaveLength(SPEC.frames);
@@ -178,7 +207,7 @@ describe("startWeatherBake", () => {
     it("lands the clip at the requested path and leaves no part file", async () => {
         const encoder = fakeEncoder();
         const target = path.join(dir, "snow.webm");
-        await startWeatherBake("ffmpeg", SPEC, target, { spawnProcess: encoder.spawnProcess }).result;
+        await startWeatherBake("ffmpeg", SPEC, target, { quality: "final", spawnProcess: encoder.spawnProcess }).result;
 
         await expect(fs.stat(target)).resolves.toBeTruthy();
         expect((await fs.readdir(dir)).filter(name => name.endsWith(".part"))).toEqual([]);
@@ -188,6 +217,7 @@ describe("startWeatherBake", () => {
         const seen: number[] = [];
         const encoder = fakeEncoder({ progressBlocks: ["frame=2\nprogress=continue\n", "frame=4\nprogress=end\n"] });
         await startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), {
+            quality: "final",
             spawnProcess: encoder.spawnProcess,
             onProgress: progress => seen.push(progress.frames),
         }).result;
@@ -198,7 +228,7 @@ describe("startWeatherBake", () => {
     it("reports a failed encode and removes the part file", async () => {
         const encoder = fakeEncoder({ exitCode: 1 });
         const target = path.join(dir, "snow.webm");
-        const result = await startWeatherBake("ffmpeg", SPEC, target, { spawnProcess: encoder.spawnProcess }).result;
+        const result = await startWeatherBake("ffmpeg", SPEC, target, { quality: "final", spawnProcess: encoder.spawnProcess }).result;
 
         expect(result.status).toBe("error");
         // An encoder that printed nothing is a finding, not a gap in the report.
@@ -233,7 +263,7 @@ describe("startWeatherBake", () => {
             kill: () => true,
         });
 
-        const result = await startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), { spawnProcess }).result;
+        const result = await startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), { quality: "final", spawnProcess }).result;
         expect(result.status).toBe("error");
     });
 
@@ -269,7 +299,7 @@ describe("startWeatherBake", () => {
             kill: () => true,
         });
 
-        await startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), { spawnProcess }).result;
+        await startWeatherBake("ffmpeg", SPEC, path.join(dir, "snow.webm"), { quality: "final", spawnProcess }).result;
         expect(written).toHaveLength(SPEC.frames);
         // Distinct objects, so a later frame cannot be rewriting an earlier one that is still queued.
         expect(new Set(written).size).toBe(SPEC.frames);
@@ -281,7 +311,7 @@ describe("startWeatherBake", () => {
     it("answers cancelled without leaving a clip behind", async () => {
         const encoder = fakeEncoder();
         const target = path.join(dir, "snow.webm");
-        const handle = startWeatherBake("ffmpeg", SPEC, target, { spawnProcess: encoder.spawnProcess });
+        const handle = startWeatherBake("ffmpeg", SPEC, target, { quality: "final", spawnProcess: encoder.spawnProcess });
         handle.cancel();
         const result = await handle.result;
 
@@ -326,7 +356,7 @@ describe("WeatherBakeManager", () => {
 
     it("keeps its clips inside the project cache, which version control excludes", () => {
         const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
-        const target = manager.pathFor(dir, SPEC);
+        const target = manager.pathFor(dir, SPEC, "final");
         expect(path.relative(dir, target).split(path.sep).slice(0, 2)).toEqual(["editor", "cache"]);
         expect(path.basename(target)).toBe(`${weatherBakeKey(SPEC)}.webm`);
     });
@@ -336,7 +366,7 @@ describe("WeatherBakeManager", () => {
         const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
         const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC, { ...SPEC }, { ...SPEC, ref: { seed: "snow", params: {} } }], priority: "blocking" },
+            { projectRoot: dir, specs: [SPEC, { ...SPEC }, { ...SPEC, ref: { seed: "snow", params: {} } }], priority: "blocking", quality: "final" },
             { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
@@ -349,18 +379,112 @@ describe("WeatherBakeManager", () => {
         let spawns = 0;
         const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
         const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
-        const target = manager.pathFor(dir, SPEC);
+        const target = manager.pathFor(dir, SPEC, "final");
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.writeFile(target, "already here");
 
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
             { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
         expect(spawns).toBe(0);
         expect(outcome.paths.get(weatherBakeKey(SPEC))).toBe(target);
         expect(outcome.failures.size).toBe(0);
+    });
+
+    it("keeps the two tiers in separate files, so neither can be mistaken for the other", () => {
+        const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
+
+        expect(path.basename(manager.pathFor(dir, SPEC, "final"))).toBe(`${weatherBakeKey(SPEC)}.webm`);
+        expect(path.basename(manager.pathFor(dir, SPEC, "draft"))).toBe(`${weatherBakeKey(SPEC)}.draft.webm`);
+        // The KEY does not move. It becomes the asset id a packaged game asks for, and a shipped
+        // game has no idea which tier made what it is looking for: fold the tier in and a build and
+        // a runtime that spell it differently produce a valid pack with no weather in it.
+        expect(weatherBakeKey(SPEC)).toBe(weatherBakeKey({ ...SPEC }));
+    });
+
+    it("hands a draft request the final clip when there is one", async () => {
+        // A project that has been built once should not re-bake its weather every time Dev Mode
+        // starts. The tier is a floor, not an equality: a better file answers the same question.
+        let spawns = 0;
+        const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
+        const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
+        const finalPath = manager.pathFor(dir, SPEC, "final");
+        await fs.mkdir(path.dirname(finalPath), { recursive: true });
+        await fs.writeFile(finalPath, "built earlier");
+
+        const outcome = await manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "draft" },
+            { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
+        );
+
+        expect(spawns).toBe(0);
+        expect(outcome.paths.get(weatherBakeKey(SPEC))).toBe(finalPath);
+    });
+
+    it("never hands a build the draft some Dev Mode session left behind", async () => {
+        // The one that matters. A draft on disk must not satisfy `final`, or a shipped game carries
+        // the copy that was made in a hurry - and nothing anywhere would say so.
+        let spawns = 0;
+        const encoder = fakeEncoder({ onSpawn: () => { spawns += 1; } });
+        const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
+        const draftPath = manager.pathFor(dir, SPEC, "draft");
+        await fs.mkdir(path.dirname(draftPath), { recursive: true });
+        await fs.writeFile(draftPath, "made while editing");
+
+        const outcome = await manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
+            { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
+        );
+
+        expect(spawns).toBe(1);
+        expect(outcome.paths.get(weatherBakeKey(SPEC))).toBe(manager.pathFor(dir, SPEC, "final"));
+    });
+
+    it("does not let a build adopt a draft that is already encoding", async () => {
+        // Same clip, two tiers, so two TASKS. Adoption is a real feature here - a blocking request
+        // for work already running at idle attaches to it instead of starting again - and across
+        // tiers it is exactly the wrong answer: the build would attach to the draft and ship
+        // whatever it produced. The evidence is the queue. With the draft held open, a build that
+        // adopted it would return without the queue ever growing.
+        const scheduler = new StudioTaskScheduler();
+        const manager = new WeatherBakeManager(app, scheduler);
+        const started: string[] = [];
+        let releaseDraft = (): void => undefined;
+        const draftGate = new Promise<void>(resolve => { releaseDraft = resolve; });
+        const starter: WeatherBakeStarter = (_binary, _spec, targetPath, options) => {
+            started.push(options.quality);
+            const done: WeatherBakeResult = { status: "done", path: targetPath, bytes: 1 };
+            return {
+                result: options.quality === "draft" ? draftGate.then(() => done) : Promise.resolve(done),
+                cancel: () => undefined,
+            };
+        };
+        const until = async (condition: () => boolean): Promise<void> => {
+            for (let i = 0; i < 400 && !condition(); i++) {
+                await new Promise(resolve => setTimeout(resolve, 5));
+            }
+        };
+
+        const draft = manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "idle", quality: "draft" },
+            { startBake: starter, ...withTool() },
+        );
+        // The draft is running and cannot finish, so anything submitted after this either queues or
+        // adopts - which is the question, with no race left in it.
+        await until(() => started.includes("draft"));
+        const built = manager.ensure(
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
+            { startBake: starter, ...withTool() },
+        );
+        await until(() => scheduler.getOverview().queued > 0);
+
+        expect(scheduler.getOverview().queued).toBe(1);
+        releaseDraft();
+        expect((await built).paths.get(weatherBakeKey(SPEC))).toBe(manager.pathFor(dir, SPEC, "final"));
+        expect((await draft).paths.get(weatherBakeKey(SPEC))).toBe(manager.pathFor(dir, SPEC, "draft"));
+        expect(started).toEqual(["draft", "final"]);
     });
 
     it("puts every clip through the scheduler, where the progress is visible", async () => {
@@ -375,7 +499,7 @@ describe("WeatherBakeManager", () => {
         const manager = new WeatherBakeManager(app, scheduler);
 
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC, { ...SPEC, ref: { seed: "rain" } }], priority: "idle" },
+            { projectRoot: dir, specs: [SPEC, { ...SPEC, ref: { seed: "rain" } }], priority: "idle", quality: "final" },
             { startBake: inThisProcess(encoder.spawnProcess), ...withTool() },
         );
 
@@ -403,11 +527,11 @@ describe("WeatherBakeManager", () => {
         };
 
         const pending = manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
             { startBake: starter, ...withTool() },
         );
         await startedOnce;
-        manager.cancel(SPEC);
+        manager.cancel(SPEC, "final");
         const outcome = await pending;
 
         expect(outcome.paths.size).toBe(0);
@@ -418,7 +542,7 @@ describe("WeatherBakeManager", () => {
     it("says a host without an encoder is missing a tool rather than broken", async () => {
         const manager = new WeatherBakeManager(app, new StudioTaskScheduler());
         const outcome = await manager.ensure(
-            { projectRoot: dir, specs: [SPEC], priority: "blocking" },
+            { projectRoot: dir, specs: [SPEC], priority: "blocking", quality: "final" },
             // A directory with no binaries in it: the resolver looks, finds nothing, and says so.
             { env: { NLS_FFMPEG_DIR: path.join(dir, "no-ffmpeg-here") } },
         );
@@ -427,5 +551,35 @@ describe("WeatherBakeManager", () => {
         // The sentence names the missing tool, which is what lets a caller say something other than
         // "this seed is broken".
         expect(outcome.failures.get(weatherBakeKey(SPEC))).toContain("ffmpeg");
+    });
+});
+
+describe("devModeScreenEffectQuality", () => {
+    const host = (value: unknown) => ({ globalState: { get: () => value } });
+
+    it("is draft when the author has never chosen", () => {
+        // Reverse control: a reader that ignored the store entirely would pass this alone, so the
+        // next case has to be able to move it.
+        expect(devModeScreenEffectQuality(host(undefined))).toBe("draft");
+    });
+
+    it("is whatever the author chose", () => {
+        expect(devModeScreenEffectQuality(host("final"))).toBe("final");
+    });
+
+    it("treats a value that is not a tier as no answer at all", () => {
+        // Global state is a JSON file on disk and this value reaches an ffmpeg argument. Trusting it
+        // costs an encoder that refuses to start, and the symptom is "the weather stopped working".
+        expect(devModeScreenEffectQuality(host("fastest"))).toBe("draft");
+        expect(devModeScreenEffectQuality(host(4))).toBe("draft");
+    });
+
+    it("reads the key the settings row writes", () => {
+        // The two halves cannot import each other's spelling by accident: the row stores under this
+        // constant, and a reader that looked at a different string would answer the default forever
+        // while the setting appeared to work.
+        const seen: string[] = [];
+        devModeScreenEffectQuality({ globalState: { get: key => { seen.push(key); return undefined; } } });
+        expect(seen).toEqual([SCREEN_EFFECT_QUALITY_KEY]);
     });
 });
