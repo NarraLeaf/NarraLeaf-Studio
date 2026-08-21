@@ -16,7 +16,7 @@ export const project = {
         // 设定要放到它旁边。
         design: {
             title: "设计",
-            description: "颜色，以及由它们上色的控件",
+            description: "颜色、字体，以及由它们上色的控件",
         },
         project: {
             title: "工程",
@@ -48,6 +48,7 @@ export const project = {
         // 命名空间里，与它们命名的那份模型放在一起。
         brandColors: "颜色",
         brandControls: "控件",
+        typography: "字体",
         distribution: "分发密钥",
         linting: "工程检查",
         security: "安全",

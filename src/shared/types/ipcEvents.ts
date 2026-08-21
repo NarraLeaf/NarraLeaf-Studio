@@ -3185,11 +3185,19 @@ export type IPCUITemplateEvents = {
         data: {
             templateId: string;
             projectPath: string;
+            /**
+             * The language the author said the story is written in.
+             *
+             * A template that writes its content in that language hands over that copy instead of
+             * the base one, so what opens is a project authored in it rather than a translated one.
+             */
+            locale?: string;
         },
-        // `locales` are the language codes the template shipped a translation file for; the
-        // creator registers them, because the registry lives in the `.nlproj` it is about to write
-        // and a template never carries one.
-        response: { filesCopied: number; locales: string[] };
+        // `locales` are the language codes the scaffolded project ends up with a translation file
+        // for; the creator registers them, because the registry lives in the `.nlproj` it is about
+        // to write and a template never carries one. `contentLocale` is the language the content
+        // itself turned out to be written in, when a variant was used.
+        response: { filesCopied: number; locales: string[]; contentLocale?: string };
     };
 };
 

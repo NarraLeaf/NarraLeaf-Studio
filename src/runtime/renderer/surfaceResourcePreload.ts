@@ -145,6 +145,21 @@ function collectElementTree(
     }
 }
 
+/**
+ * The project's default fonts, which no widget names.
+ *
+ * The walk below is keyed on property names inside the UI document, and a font that every widget
+ * inherits appears in none of them - so without this the one typeface the whole game is set in would
+ * be the only asset not warmed before the first frame, and the title screen would repaint mid-fade
+ * as it arrived. Filtered against the manifest by `addAssetId` like any other id, which is also what
+ * drops the built-in system stacks: they are CSS literals with no bytes to fetch.
+ */
+function collectProjectFontAssetIds(ctx: CollectContext, pack: GameRuntimePackV1): void {
+    for (const entry of pack.bundle.fonts ?? []) {
+        addAssetId(ctx, entry.assetId);
+    }
+}
+
 function collectSurfaceAssetIds(ctx: CollectContext, surfaceId: string): void {
     if (ctx.visitedSurfaces.has(surfaceId)) {
         return;
@@ -169,6 +184,7 @@ export function collectRuntimeSurfaceAssetIds(pack: GameRuntimePackV1, surface: 
         visitedElements: new Set(),
         visitedComponents: new Set(),
     };
+    collectProjectFontAssetIds(ctx, pack);
     collectSurfaceAssetIds(ctx, surface.id);
     return [...ctx.assetIds];
 }
@@ -186,6 +202,7 @@ export function collectRuntimePackAssetIds(pack: GameRuntimePackV1, firstSurface
         visitedElements: new Set(),
         visitedComponents: new Set(),
     };
+    collectProjectFontAssetIds(ctx, pack);
     for (const surface of pack.bundle.ui.uidoc.surfaces) {
         collectSurfaceAssetIds(ctx, surface.id);
     }

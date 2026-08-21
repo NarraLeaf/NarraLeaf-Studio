@@ -44,6 +44,7 @@ import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { BrandColor } from "@shared/types/brand";
 import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
+import type { ProjectFontEntry } from "@shared/types/typography";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import {
     APP_TAG_ID_RELEASE,
@@ -170,6 +171,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
     const brand = await loadProjectBrand(context.projectPath);
+    const fonts = await loadProjectFonts(context.projectPath);
     const saveSchema = await loadSaveSchemaTable(context.projectPath);
     return {
         bundleId: context.bundleId,
@@ -198,6 +200,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         storyHash: computeStoryContentHash(resolvedStoryLibrary?.documents),
         preferences,
         brand,
+        fonts,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -1251,6 +1254,25 @@ export async function loadProjectBrand(projectPath: string): Promise<BrandColor[
         return migrateProjectBrandDocument(raw ?? {}).colors;
     } catch {
         return normalizeProjectBrandColors([]);
+    }
+}
+
+/**
+ * The project's default font stack, out of the same document and through the same migration.
+ *
+ * Every failure path lands on the empty stack for the reason {@link loadProjectBrand} lands on the
+ * seeds: a hand-corrupted design file must not be why a preview will not start. The difference is
+ * that an empty stack is not a fallback here, it is the ordinary state - most projects have never
+ * chosen a default font, and text renders in the host's own family exactly as it did before this
+ * existed. Exported for tests.
+ */
+export async function loadProjectFonts(projectPath: string): Promise<ProjectFontEntry[]> {
+    const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
+    try {
+        const raw = await readOptionalJsonFile<unknown>(brandPath);
+        return migrateProjectBrandDocument(raw ?? {}).fonts;
+    } catch {
+        return [];
     }
 }
 

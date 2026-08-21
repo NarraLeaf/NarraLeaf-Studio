@@ -99,7 +99,8 @@ export const properties = {
     },
     fontAsset: {
         fallbackName: "字体",
-        none: "无字体",
+        projectDefault: "项目默认字体",
+        projectSection: "项目",
         choose: "选择字体",
         loadError: "字体无法加载（{error}）；在资产有效之前，预览使用回退字体",
         select: "选择字体",
@@ -153,6 +154,7 @@ export const properties = {
             uiElement: "界面",
             character: "角色",
             voice: "配音",
+            design: "设计",
         },
     },
     tags: {

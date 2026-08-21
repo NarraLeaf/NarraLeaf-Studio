@@ -7,7 +7,7 @@ import {defineDocumentSpec} from "../registry";
 import {rejectNewerSchema, requireDocumentObject} from "./parseHelpers";
 
 /**
- * `editor/brand.json` - the project's own palette.
+ * `editor/brand.json` - the project's own palette, and its default font stack.
  *
  * Owned by `BrandService`. A first-class document rather than a corner of `.nlproj` for the reason
  * the audio tracks are one, only more so: `.nlproj` is msgpack, and a colour is something an author
@@ -34,6 +34,13 @@ export const brandSpec = defineDocumentSpec<ProjectBrandDocument>({
         if (record.colors !== undefined && !Array.isArray(record.colors)) {
             context.corrupt(`"colors" must be an array, got ${typeof record.colors}`);
         }
+        // Same reading as `colors`, and for the same reason: the normalizer answers "an empty stack"
+        // for anything it cannot read, and an empty stack is a legitimate state - so a present-but-
+        // wrong `fonts` would be saved back as "this project has no default font" the next time the
+        // author touched a colour, with nothing on screen having said the field was lost.
+        if (record.fonts !== undefined && !Array.isArray(record.fonts)) {
+            context.corrupt(`"fonts" must be an array, got ${typeof record.fonts}`);
+        }
         return migrateProjectBrandDocument(record);
     },
     // No authored name: there is one of these per project and the history UI labels it by kind.
@@ -42,6 +49,11 @@ export const brandSpec = defineDocumentSpec<ProjectBrandDocument>({
         // The author's own colours, not the total. The seeds are always present and always the same
         // number, so counting them reports a change of 17 -> 17 for every edit that is not an add or
         // a delete - a row in the history that carries no information at all.
-        counts: [{key: "brandColors", value: document.colors.filter(color => !color.builtin).length}],
+        counts: [
+            {key: "brandColors", value: document.colors.filter(color => !color.builtin).length},
+            // Counted whole, unlike the colours: every rung of the stack is one the author put
+            // there, so there is no seeded floor to subtract and 0 -> 1 is the row that matters.
+            {key: "brandFonts", value: document.fonts.length},
+        ],
     }),
 });

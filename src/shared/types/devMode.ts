@@ -2,6 +2,7 @@ import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
 import type { DialogueConfiguration } from "./dialogue";
+import type { ProjectFontEntry } from "./typography";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle, LanguageChangeConfiguration } from "./localization";
 import type { PlayerPreferences } from "./preference";
@@ -400,6 +401,21 @@ export type DevModeBundle = {
      * Studio assembles carries it.
      */
     brand?: BrandColor[];
+    /**
+     * The project's default font stack, baked from `editor/brand.json` beside the palette.
+     *
+     * Carried for the same reason and read the same way: a widget that names no font of its own is
+     * set in this list, so a bundle without it is a game whose text falls back to whatever the host
+     * happens to render in - which is what the editor beside it would *not* have shown.
+     *
+     * Absent means the bundle predates the feature, which every consumer reads as an empty stack -
+     * the same state a project that has never chosen a default font holds on disk, so an old bundle
+     * and a fresh project answer identically. Every bundle this Studio assembles carries it.
+     *
+     * The ids in it are ordinary asset references: the packer's sweep sees them, so the fonts a
+     * project defaults to ship even though no widget names one.
+     */
+    fonts?: ProjectFontEntry[];
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

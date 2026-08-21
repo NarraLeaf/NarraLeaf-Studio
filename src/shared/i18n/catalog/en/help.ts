@@ -75,6 +75,7 @@ export const help = {
                 + "Build produces the files delivered to players. Dev Mode and Preview take seconds; a build "
                 + "takes minutes.\n"
                 + "\n"
+                + "- Dev Mode opens the line that is playing in the story editor, from its debug menu.\n"
                 + "- Run starts the mode chosen last.\n"
                 + "- Preview and Build are unavailable while the project is frozen. Dev Mode still runs, and "
                 + "while an old version is open it runs that version.",
@@ -373,16 +374,19 @@ export const help = {
                 + "keeping the playthrough, or apply the next time the game is started.",
         },
         brand: {
-            title: "Brand colors",
+            title: "Colors and fonts",
             body:
-                "A color decided here can be used anywhere in the project. A field set to a project color "
-                + "follows it, so changing the color here changes every place that uses it.\n"
+                "A color or a font decided here can be used anywhere in the project. A field set to a "
+                + "project color follows it, so changing the color here changes every place that uses it.\n"
                 + "\n"
                 + "- The colors at the top belong to the project. The groups under them are the parts each "
                 + "control is painted with, and every part follows one of the colors above by default.\n"
                 + "- A part can be pointed at a different color, or given a color of its own.\n"
                 + "- Deleting a color does not rewrite the places that used it. Those places fall back to "
-                + "their own default color, and the project check reports them.",
+                + "their own default color, and the project check reports them.\n"
+                + "- The fonts are a list in priority order: text is set in the first of them that has the "
+                + "character. A widget that names no font of its own is set in this list, and one that "
+                + "names a font falls back to the list for the characters that font does not have.",
         },
         uiSurfaces: {
             title: "Game screens",

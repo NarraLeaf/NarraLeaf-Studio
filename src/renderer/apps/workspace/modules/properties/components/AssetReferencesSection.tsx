@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Boxes, LayoutTemplate, Mic, Users } from "lucide-react";
+import { BookOpen, Boxes, LayoutTemplate, Mic, Palette, Users } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Services } from "@/lib/workspace/services/services";
@@ -17,10 +17,18 @@ const KIND_ICON: Record<ReferenceSiteKind, typeof BookOpen> = {
     uiElement: LayoutTemplate,
     voice: Mic,
     character: Users,
+    design: Palette,
 };
 
 /** Fixed presentation order — narrative first, then logic, then supporting material. */
-const KIND_ORDER: readonly ReferenceSiteKind[] = ["story", "blueprint", "uiElement", "character", "voice"];
+const KIND_ORDER: readonly ReferenceSiteKind[] = [
+    "story",
+    "blueprint",
+    "uiElement",
+    "character",
+    "voice",
+    "design",
+];
 
 /**
  * "Where is this asset used?" — the reverse-lookup readout in the asset properties panel.

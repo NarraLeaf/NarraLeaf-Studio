@@ -79,7 +79,6 @@ export const settings = {
         confirmQuit: {
             label: "在使用 ⌘Q 退出时二次确认",
             description: "连按两次 ⌘Q 才会退出，按一次不退出",
-            unsupportedPlatform: "此选项不适用于此操作系统",
         },
         themeMode: {
             label: "主题",
@@ -109,6 +108,10 @@ export const settings = {
                 rose: "玫瑰",
                 slate: "石板",
             },
+        },
+        uiFontFamily: {
+            label: "界面字体",
+            description: "Studio 界面使用的字体，可从本机已安装的字体中选择",
         },
         tooltipDelay: {
             label: "提示延迟",
@@ -265,6 +268,11 @@ export const settings = {
         statusBarVisible: {
             label: "显示状态栏",
             description: "工作区底部的状态栏",
+        },
+        menuBarMode: {
+            label: "主菜单",
+            description: "标题栏中「文件」「帮助」以及各面板菜单的位置",
+            unsupportedPlatform: "在 macOS 上，这些菜单位于系统菜单栏",
         },
         titleBarSearchVisible: {
             label: "显示标题栏搜索框",

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ExternalLink } from "lucide-react";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { StoryBlockId, StoryDocument, StoryLiteralValue, StoryScene, StorySceneId, StoryVariableValueType } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryLiteralValue, StoryScene, StorySceneId, StoryVariableValueType } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils/cn";
+import { getInterface } from "@/lib/app/bridge";
 import { Select } from "@/lib/components/elements/Select";
 import { Switch } from "@/lib/components/elements";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -17,6 +20,22 @@ import {
     type SceneFlowNumericVariable,
 } from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
 import { getStorySceneName, storyRowSentence, type StoryRowLookups } from "@/lib/story/storyRowProjection";
+// The editor's own row furniture, so a row reads the same in both places. All three marks are
+// plain React with no workspace service behind them, and `getBlockBadgeInfo` takes a block and
+// nothing else — the same seam the shared row projection was split along.
+import { getBlockBadgeInfo } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
+import {
+    StoryCommandGlyphMark,
+    StoryNarratorRingMark,
+    StorySpeakerDiscMark,
+    StorySpeakerName,
+    STORY_MARK_PX,
+} from "@/apps/workspace/modules/story/scene-editor/StoryRowGutterMark";
+import {
+    characterSpeakerIdentity,
+    unknownSpeakerIdentity,
+    type StorySpeakerIdentity,
+} from "@/apps/workspace/modules/story/scene-editor/storySpeakerIdentity";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 import {
     advanceStoryRunTrail,
@@ -47,6 +66,27 @@ type StoryRuntimeTabId = "variables" | "context" | "timeline" | "scene";
  * scaling its type up as the zoom drops (see `SceneFlowCanvas.minTitleRenderedPx`).
  */
 const SCENE_GRAPH_MIN_TITLE_PX = 11.5;
+
+/**
+ * The timeline's single-line box, and the two fixed columns measured against it.
+ *
+ * {@link STORY_MARK_PX} rather than the editor's own 28px row box: that number exists to clear the
+ * dialogue nametag control, which this surface does not have, so here the mark is the tallest thing
+ * in a row and the box is its height. Everything in a row centres inside this box and the row grows
+ * below it, which is what keeps a number, a mark and a sentence on one line.
+ */
+const TIMELINE_ROW_BOX_PX = STORY_MARK_PX;
+const TIMELINE_MARK_PX = STORY_MARK_PX;
+
+/** Wide enough for three digits at `text-2xs`; a scene with four is longer than anyone scrolls. */
+const TIMELINE_NUMBER_PX = 20;
+
+/**
+ * One nesting level, in px. Tighter than the editor's, and deliberately: 380px of panel spends 46 of
+ * them on the two fixed columns before a word is printed, and a choice three levels deep still has
+ * to have a sentence left.
+ */
+const TIMELINE_INDENT_PX = 8;
 
 /**
  * The lookups the shared row projection takes, from what a Dev Mode bundle actually carries.
@@ -90,6 +130,8 @@ type StoryRuntimeDebugPanelProps = {
     /** App-level persistent store (the "Persis" scope), shared with UI blueprints. */
     scopeBridge: ScopeStoreBridge;
     bundle: DevModeBundle;
+    /** The project this window is running, for the one affordance that leaves it: open a row in Studio. */
+    projectPath: string | null;
     className?: string;
     /** Dock/float mode toggle + title-bar drag, owned by DevModeContent. */
     chrome?: DevModePanelChrome;
@@ -308,7 +350,7 @@ function useStoryRunTrail(
 }
 
 export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): ReactNode {
-    const { storyRuntime, scopeBridge, bundle, className, chrome } = props;
+    const { storyRuntime, scopeBridge, bundle, projectPath, className, chrome } = props;
     const { t } = useTranslation();
     const [tab, setTab] = useState<StoryRuntimeTabId>("variables");
 
@@ -453,7 +495,13 @@ export function StoryRuntimeDebugPanel(props: StoryRuntimeDebugPanelProps): Reac
                         bundle={bundle}
                     />
                 ) : tab === "timeline" ? (
-                    <TimelineTab storyRuntime={storyRuntime} document={document} sceneId={context.sceneId} bundle={bundle} />
+                    <TimelineTab
+                        storyRuntime={storyRuntime}
+                        document={document}
+                        sceneId={context.sceneId}
+                        bundle={bundle}
+                        projectPath={projectPath}
+                    />
                 ) : (
                     <SceneTab
                         storyRuntime={storyRuntime}
@@ -833,13 +881,62 @@ function RoundCounter(props: { round?: { current: number; limit?: number }; time
 
 // --- Timeline (L2) -----------------------------------------------------------------------------
 
+/**
+ * The speaker of a dialogue row, as the disc and the nametag both need it.
+ *
+ * One function because §3.3 promises a character is ONE colour in every position they appear in, and
+ * two derivations of "which colour is this name" is the only way to break it. The colour arrives
+ * already judged for readability by the row projection, so it is honoured verbatim; a row with no
+ * speaker yet is a person nobody has named, never the narrator.
+ */
+function timelineSpeakerIdentity(row: StoryTimelineRow, unassignedLabel: string): StorySpeakerIdentity {
+    if (!row.speaker) {
+        return unknownSpeakerIdentity(unassignedLabel);
+    }
+    return characterSpeakerIdentity(row.speaker, { hasPortrait: false, color: row.speakerColor ?? undefined });
+}
+
+/**
+ * The mark at the head of a timeline row: who says it, or that nothing does.
+ *
+ * The editor's own gutter vocabulary, drawn by the editor's own components: a person is a solid disc,
+ * the narrator a hollow ring, a directive a bare glyph in its category's hue. Not an approximation of
+ * it — a `/bg` row has to be the same drawing here as in the editor, or this panel is a second
+ * reading of the script rather than the same one.
+ *
+ * The one shape this surface cannot draw is the portrait: sprites need the asset library, which no
+ * Dev Mode window has. The disc is that mark's documented downgrade — same size, same colour — so a
+ * character still reads as that character.
+ */
+function TimelineRowMark(props: {
+    row: StoryTimelineRow;
+    block: StoryBlock | undefined;
+    narratorLabel: string;
+    unassignedLabel: string;
+}): ReactNode {
+    const { row, block, narratorLabel, unassignedLabel } = props;
+    if (!block) {
+        return null;
+    }
+    if (block.kind === "nodeAction" && block.payload.action === "narration") {
+        return <StoryNarratorRingMark label={narratorLabel} />;
+    }
+    if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
+        return <StorySpeakerDiscMark identity={timelineSpeakerIdentity(row, unassignedLabel)} />;
+    }
+    const badge = getBlockBadgeInfo(block);
+    return <StoryCommandGlyphMark icon={badge.icon} label={badge.label} color={badge.iconColor} />;
+}
+
 function TimelineTab(props: {
     storyRuntime: GameAppStoryRuntimeBridge;
     document: StoryDocument;
     sceneId: StorySceneId;
     bundle: DevModeBundle;
+    /** Names the workspace a row is opened in. Absent = no project behind this window, so no button. */
+    projectPath: string | null;
 }): ReactNode {
-    const { storyRuntime, document, sceneId: entrySceneId, bundle } = props;
+    const { storyRuntime, document, sceneId: entrySceneId, bundle, projectPath } = props;
     const { t } = useTranslation();
     const currentRowRef = useRef<HTMLLIElement>(null);
 
@@ -897,59 +994,130 @@ function TimelineTab(props: {
         [runningSceneId, entrySceneId, storyRuntime],
     );
 
+    /**
+     * Open one row in the workspace story editor — the same request the debug menu makes of the play
+     * head, asked of a row the author points at instead.
+     *
+     * Swallowed on failure like its neighbour above: the only way it fails is a project with no
+     * workspace window, which cannot outlive the Dev Mode window it would have opened, and a list of
+     * rows has nowhere to put a sentence about one of them.
+     */
+    const openRowInStudio = useCallback(
+        async (row: StoryTimelineRow) => {
+            const context = storyRuntime.getStoryContext();
+            if (!projectPath || !context) {
+                return;
+            }
+            const result = await getInterface().devMode.openStoryRowInWorkspace({
+                projectPath,
+                storyId: context.storyId,
+                sceneId: runningSceneId,
+                blockId: row.blockId,
+            });
+            if (!result.success) {
+                console.warn("[DevMode] open row in Studio failed", result.error);
+            }
+        },
+        [projectPath, runningSceneId, storyRuntime],
+    );
+
     if (rows.length === 0) {
         return <p className="p-2 text-2xs text-fg-subtle">{t("devMode.runtime.noRows")}</p>;
     }
 
+    const narratorLabel = t("story.badge.narration");
+    const unassignedLabel = t("story.characterName.unassigned");
+    const boxStyle = { height: TIMELINE_ROW_BOX_PX, lineHeight: `${TIMELINE_ROW_BOX_PX}px` };
+
     return (
-        <div className="min-h-0 flex-1 overflow-auto p-1">
+        // `font-sans` cancels the panel's monospace. The other three tabs show values, and mono is
+        // what tells a value from prose; this one shows the script, and a page of dialogue set in a
+        // console face reads as a log OF the game rather than as the game.
+        <div className="min-h-0 flex-1 overflow-auto py-1 font-sans">
             <ul>
                 {rows.map(row => {
                     const isCurrent = row.blockId === currentBlockId;
+                    const block = runningScene?.blocks[row.blockId];
                     return (
                         <li
                             key={row.blockId}
                             ref={isCurrent ? currentRowRef : undefined}
-                            className={`relative flex cursor-default items-baseline gap-2 rounded-md px-1.5 py-0.5 ${
-                                isCurrent ? "bg-primary/15 text-fg" : "text-fg-muted hover:bg-fill"
-                            } ${row.disabled ? "opacity-45" : ""}`}
+                            // The editor's row shell, to the class: one left rule that is the only
+                            // thing ever coloured, and a fill that means "you are here". The 3px
+                            // category bar this row used to carry is gone for the reason the editor
+                            // dropped its own — a screen of directives became a screen of coloured
+                            // bars. That colour lives on the glyph now, where it names one command
+                            // rather than shouting a category.
+                            className={cn(
+                                "group flex cursor-default items-start gap-2 border-l-2 py-1 pl-1 pr-1",
+                                isCurrent
+                                    ? "border-primary bg-primary/15 text-fg"
+                                    : "border-transparent text-fg-muted hover:bg-fill-subtle",
+                                row.disabled ? "opacity-45" : "",
+                            )}
                             onClick={row.disabled ? undefined : () => void jumpToRow(row)}
                         >
-                            {/* The editor's own category bar, same hue and same weight - a row that is
-                                a `/bg` there has to look like a `/bg` here, or the two lists are two
-                                different readings of one story. Prose rows carry none in either. */}
-                            {row.barColor ? (
-                                <span
-                                    aria-hidden
-                                    className="pointer-events-none absolute inset-y-0 left-0 w-[3px] rounded-l-md"
-                                    style={{ backgroundColor: row.barColor, opacity: 0.85 }}
-                                />
-                            ) : null}
-                            <span className="w-7 shrink-0 select-none text-right text-2xs tabular-nums text-fg-subtle">
+                            {/* Every column is centred inside the same single-line box and the row
+                                grows below it (`items-start`), so a wrapped line would keep its first
+                                line level with its mark instead of floating to the middle. */}
+                            <span
+                                className={cn(
+                                    "shrink-0 select-none text-right text-2xs tabular-nums transition-colors",
+                                    isCurrent ? "text-primary" : "text-fg-subtle/60 group-hover:text-fg-subtle",
+                                )}
+                                style={{ ...boxStyle, width: TIMELINE_NUMBER_PX }}
+                            >
                                 {row.lineNumber}
                             </span>
                             <span
-                                className="min-w-0 flex-1 truncate text-2xs"
-                                style={{ paddingLeft: row.depth * 10 }}
+                                className="flex shrink-0 items-center justify-center"
+                                style={{
+                                    ...boxStyle,
+                                    width: TIMELINE_MARK_PX,
+                                    marginLeft: row.depth * TIMELINE_INDENT_PX,
+                                }}
+                            >
+                                <TimelineRowMark
+                                    row={row}
+                                    block={block}
+                                    narratorLabel={narratorLabel}
+                                    unassignedLabel={unassignedLabel}
+                                />
+                            </span>
+                            <span
+                                className="min-w-0 flex-1 truncate text-xs"
+                                style={boxStyle}
                                 data-tip={row.speaker ? `${row.speaker}: ${row.summary}` : row.summary}
                             >
-                                {/* Repeated on every line, unlike the editor's grouped nametag: at
-                                    380px there is no second line to hang an attribution rail from, so
-                                    the name has to ride with the words it belongs to. */}
                                 {row.speaker ? (
-                                    <span
-                                        className={row.speakerColor ? undefined : "text-fg-subtle"}
-                                        style={row.speakerColor ? { color: row.speakerColor } : undefined}
-                                    >
-                                        {row.speaker}:{" "}
-                                    </span>
+                                    <StorySpeakerName
+                                        identity={timelineSpeakerIdentity(row, unassignedLabel)}
+                                        className="mr-1.5"
+                                    />
                                 ) : null}
                                 {row.summary}
                             </span>
-                            {isCurrent ? (
-                                <span className="shrink-0 select-none text-2xs text-primary" aria-hidden>
-                                    ▶
-                                </span>
+                            {/* Painted only on the row under the pointer, but present on every one:
+                                it holds its own width, so the sentence beside it does not re-truncate
+                                as the pointer moves down the list. Opacity rather than `hidden`,
+                                because a control that leaves the DOM cannot be tabbed to. */}
+                            {projectPath ? (
+                                <button
+                                    type="button"
+                                    className="flex shrink-0 items-center justify-center rounded-md px-0.5 text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+                                    style={{ height: TIMELINE_ROW_BOX_PX }}
+                                    data-tip={t("devMode.openInStudio")}
+                                    aria-label={t("devMode.openInStudio")}
+                                    onClick={event => {
+                                        // The row underneath means "play from here"; this means "go
+                                        // and edit it". Two requests on one target, so the press must
+                                        // not reach both.
+                                        event.stopPropagation();
+                                        void openRowInStudio(row);
+                                    }}
+                                >
+                                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                                </button>
                             ) : null}
                         </li>
                     );
