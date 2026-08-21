@@ -104,6 +104,8 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "ensureRegularFile", path, data, encoding }),
             writeFileNoFollow: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollow", path, data, encoding }),
+            writeFileNoFollowOrCreate: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollowOrCreate", path, data, encoding }),
             recoverCorruptedJsonFile: (actor: PrivilegedActor, path: string, replacement: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "recoverCorruptedJsonFile", path, replacement, encoding }),
             createDir: (actor: PrivilegedActor, path: string) =>
