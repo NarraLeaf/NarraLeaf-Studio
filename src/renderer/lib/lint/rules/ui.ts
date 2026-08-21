@@ -5,6 +5,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
+import { uiTextUnitId } from "../../ui-editor/runtime/localization/GameLocalizationContext";
 import { getUIFrameWidgetProps, UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
@@ -67,7 +68,7 @@ function surfaceDisplayName(surface: UISurface): string {
     return surface.id === MAIN_APP_SURFACE_ID ? DEFAULT_APP_SURFACE_NAME : surface.name;
 }
 
-function surfaceLocation(surface: UISurface, element?: UIElement): LintLocation {
+export function surfaceLocation(surface: UISurface, element?: UIElement): LintLocation {
     const name = element?.name?.trim();
     return {
         kind: "surface",
@@ -78,7 +79,7 @@ function surfaceLocation(surface: UISurface, element?: UIElement): LintLocation 
     };
 }
 
-function surfaceTarget(surface: UISurface): SearchJumpTarget {
+export function surfaceTarget(surface: UISurface): SearchJumpTarget {
     return { kind: "uiSurface", surfaceId: surface.id };
 }
 
@@ -139,6 +140,55 @@ const LOCALIZABLE_TEXT_SITES: Readonly<
     "nl.button": { textProp: "label", keyProp: "localizationKey", optInProp: "localizable" },
     "nl.textInput": { textProp: "placeholder", keyProp: "placeholderLocalizationKey" },
 };
+
+
+/** The literal a widget shows a player, with the unit that translates it and the face it chose. */
+export type SurfaceTextSite = {
+    surface: UISurface;
+    element: UIElement;
+    /** `ui:<elementId>.<prop>` - the implicit unit, which is the row a target locale carries. */
+    unitId: string;
+    /** The author's own words, which is what renders when nothing translated them. */
+    text: string;
+    /** The widget's own typeface, when it named one. Absent means it follows the project. */
+    fontAssetId?: string;
+};
+
+/**
+ * Every literal on every page that a player will read.
+ *
+ * Shared with `typography` lint, which asks a different question of the same three props: not
+ * whether the words can be translated but whether any font can draw them. Both have to walk the same
+ * sites or they would disagree about what counts as text a player sees, and the second one to be
+ * written would be the one that quietly missed a widget kind.
+ *
+ * The literal is reported whether or not the widget is bound to a key, because a binding decides
+ * which *words* render, not whether the widget shows any: an unresolved key falls back to exactly
+ * this text.
+ */
+export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
+    const sites: SurfaceTextSite[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        if (!site) {
+            continue;
+        }
+        const props = elementProps(element);
+        const text = readStringProp(props, site.textProp);
+        if (!text.trim()) {
+            continue;
+        }
+        const fontAssetId = readStringProp(props, "fontAssetId").trim();
+        sites.push({
+            surface,
+            element,
+            unitId: uiTextUnitId(element.id, site.textProp),
+            text,
+            ...(fontAssetId ? { fontAssetId } : {}),
+        });
+    }
+    return sites;
+}
 
 /** Longest literal carried into the message; past this it is clipped, as a story excerpt is. */
 const TEXT_EXCERPT_MAX_CHARS = 48;

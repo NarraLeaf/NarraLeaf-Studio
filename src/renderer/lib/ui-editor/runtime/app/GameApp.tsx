@@ -44,6 +44,7 @@ import {
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
+import { setActiveProjectLocale } from "@shared/typography/projectFonts";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import {
@@ -432,6 +433,35 @@ export function GameApp(props: GameAppProps): ReactNode {
             getLocale: gameLocalizationRuntime.getLocale,
             sourceLocale: gameLocalizationRuntime.bundle.sourceLocale,
         });
+    }, [gameLocalizationRuntime]);
+    /**
+     * The language the project's default font stack resolves in.
+     *
+     * A rung of that stack may be restricted to some languages (see `@shared/types/typography`), so
+     * a game read in Japanese and the same game read in Simplified Chinese are set in different
+     * faces - which is the point, Han unification meaning the two want different glyphs for the same
+     * characters. Nothing below this line knows about languages: every text widget goes on asking
+     * `resolveFontStackIds` the same question, and the answer changes because this published.
+     *
+     * Here rather than in each host's boot code because both hosts of this component - Dev Mode and
+     * the shipped game - reach their language through exactly this runtime, and two publishes would
+     * be two things to keep saying the same. The editor's own publish is `BrandService`'s, and this
+     * component is never mounted in the workspace window, so the two can never fight.
+     *
+     * Subscribed, not read once. Choosing a language restarts the game, so the subscription is not
+     * what carries an in-game switch - it is what carries the *first* one, the system-language match
+     * a few lines above, which lands after this component has already mounted.
+     */
+    useEffect(() => {
+        if (!gameLocalizationRuntime) {
+            // A project with no localization set up has no language, and an empty one filters
+            // nothing - the whole stack, which is what it held before restrictions existed.
+            setActiveProjectLocale("");
+            return;
+        }
+        const publish = (): void => setActiveProjectLocale(gameLocalizationRuntime.getLocale());
+        publish();
+        return gameLocalizationRuntime.subscribe(publish);
     }, [gameLocalizationRuntime]);
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
     // Localized character nametag: NLR reports the authored (source-language)

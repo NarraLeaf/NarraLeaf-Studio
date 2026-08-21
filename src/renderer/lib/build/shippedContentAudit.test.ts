@@ -189,4 +189,24 @@ describe("the project's default fonts", () => {
 
         expect(result.failures).toEqual([{ assetId: DEFAULT_FONT, origin: "Project design", reason: "missing" }]);
     });
+
+    /**
+     * One package carries every language the game ships, and a patch can add a language after the
+     * base build was cut - with no way to add the font it needs, because fonts live in the base
+     * package. So a rung restricted to a language is demanded exactly like an unrestricted one.
+     */
+    it("demands a rung restricted to a language the build's own language is not", async () => {
+        const built = pack({ [IMAGE]: { relativePath: "assets/a.png" } });
+        (built.bundle as { fonts?: unknown }).fonts = [{ assetId: DEFAULT_FONT, locales: ["ja"] }];
+        const result = await auditShippedContent({
+            pack: built,
+            reader: { entryExists: async () => true, resolveEntryName: () => null },
+        });
+
+        expect(result.failures).toContainEqual({
+            assetId: DEFAULT_FONT,
+            origin: "Project design",
+            reason: "missing",
+        });
+    });
 });

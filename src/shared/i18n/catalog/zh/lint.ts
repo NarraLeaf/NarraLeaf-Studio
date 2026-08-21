@@ -318,6 +318,20 @@ export const lint = {
             messageChain: "{where} 使用的 {color} 指向 {missing}，配色方案中没有该颜色",
             messageCycle: "{where} 使用的 {color}，其链接指回自身",
         },
+        typographyGlyphCoverage: {
+            title: "缺少字形",
+            description: "文本用到了工程里任何字体都画不出的字符",
+            message: "工程字体画不出“{character}”（{count} 处）",
+            messageInLanguage: "{language}中工程字体画不出“{character}”（{count} 处）",
+            messageMore: "另有 {count} 个字符工程字体画不出",
+            messageMoreInLanguage: "{language}中另有 {count} 个字符工程字体画不出",
+            messageUnreadable: "{font} 读不出来，未检查字形覆盖",
+        },
+        typographyLocaleNoFont: {
+            title: "语言没有字体",
+            description: "工程里每一款字体都被限定给了别的语言",
+            message: "{language}没有可用的工程字体",
+        },
     },
     message: {
         ruleFailed: "{rule} 未能运行",
@@ -337,6 +351,7 @@ export const lint = {
         voice: "语音",
         // 跟着面板叫，作者要改的就是那个面板，不叫链接协议的名字。
         brand: "配色方案",
+        typography: "排版",
     },
     severity: {
         error: "错误",
