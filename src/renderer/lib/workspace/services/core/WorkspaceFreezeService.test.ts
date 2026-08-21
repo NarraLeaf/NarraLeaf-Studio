@@ -192,9 +192,9 @@ describe("WorkspaceFreezeService", () => {
         // Versioned project data: refused, and a caller that clears its debt on `ok` alone would lose
         // the edit here exactly as it would on the single-file route.
         expect(outcomes[0]).toMatchObject({ ok: true, refused: true });
-        // Not versioned, so it goes out - in a grant that never named the frozen path at all.
-        expect(outcomes[1].ok).toBe(true);
-        expect(outcomes[1].refused).toBeUndefined();
+        // Not versioned, so it goes out - in a grant that never named the frozen path at all. No
+        // `refused` on it: this one really did reach the disk.
+        expect(outcomes[1]).toEqual({ ok: true, data: undefined, path: `${PROJECT}/editor/cache/thumbnail/ab.png` });
         expect(privilegedFs.requestWriteBatch).toHaveBeenCalledTimes(1);
         // [0] is the actor; the facade binds it. The entries are the second argument.
         expect(privilegedFs.requestWriteBatch.mock.calls[0][1]).toEqual([
