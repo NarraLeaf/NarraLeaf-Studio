@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDismissWhenHidden } from "@/lib/components/layout";
 import { useHostWindow } from "@/lib/components/layout";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
@@ -38,6 +39,17 @@ const MENU_W = 440;
 const MENU_MAX_H = 520;
 const MENU_CHROME_H = 132;
 const WINDOW_TITLEBAR_HEIGHT = 40;
+/**
+ * Height of one entry row, which the list is windowed by.
+ *
+ * The palette runs to a few hundred entries in a real project, and every one of them carries an
+ * icon; mounting the lot took ~300ms on right-click and the same again on every keystroke in the
+ * search field. Rows are a fixed height by design, so the window needs no measuring pass — keep
+ * this in step with the row's own `h-[52px]`.
+ */
+const ROW_H = 52;
+/** The list's vertical inset, kept out of the scroll container so the window owns every offset. */
+const LIST_PAD = 8;
 
 type PaletteEntry = ReturnType<IBlueprintNodeCatalogService["listPaletteEntries"]>[number];
 
@@ -183,6 +195,21 @@ export function BlueprintAddNodeMenu({
     const itemCount = filteredEntries.length;
     const listMaxHeight = Math.max(120, Math.min(MENU_MAX_H - MENU_CHROME_H, layout.maxHeight - MENU_CHROME_H));
 
+    const virtualizer = useVirtualizer({
+        count: itemCount,
+        getScrollElement: () => listRef.current,
+        estimateSize: () => ROW_H,
+        overscan: 6,
+        // The list's own inset, moved off the scroll container and into the window's arithmetic:
+        // left on the container it would shift every row 8px past where a scroll-to lands it.
+        paddingStart: LIST_PAD,
+        paddingEnd: LIST_PAD,
+        getItemKey: index => {
+            const entry = filteredEntries[index];
+            return entry ? blueprintAddNodeEntryKey(entry) : index;
+        },
+    });
+
     useEffect(() => {
         navStateRef.current = { activeFlatIndex, itemCount };
     }, [activeFlatIndex, itemCount]);
@@ -227,17 +254,17 @@ export function BlueprintAddNodeMenu({
         });
     }, []);
 
+    // Asked of the window rather than the row: arrowing past the edge of the mounted range has no
+    // element to scroll to, and `aria-activedescendant` points at an id that only exists once the
+    // row is on screen.
     useEffect(() => {
         if (!open || activeFlatIndex < 0) {
             return;
         }
-        const root = listRef.current;
-        if (!root) {
-            return;
-        }
-        const el = root.querySelector(`[data-bp-add-node-idx="${activeFlatIndex}"]`);
-        el?.scrollIntoView({ block: "nearest" });
-    }, [activeFlatIndex, open]);
+        virtualizer.scrollToIndex(activeFlatIndex, { align: "auto" });
+        // `virtualizer` is a fresh object every render; depending on it would re-scroll continuously.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeFlatIndex, open, itemCount]);
 
     useEffect(() => {
         if (!open) {
@@ -398,7 +425,7 @@ export function BlueprintAddNodeMenu({
                     ref={listRef}
                     role="listbox"
                     aria-label={t("blueprint.addNode.listLabel")}
-                    className="min-h-0 flex-1 overflow-y-auto p-2"
+                    className="min-h-0 flex-1 overflow-y-auto px-2"
                     style={{ maxHeight: listMaxHeight }}
                 >
                     {filteredEntries.length === 0 ? (
@@ -406,17 +433,28 @@ export function BlueprintAddNodeMenu({
                             {connectMode ? t("blueprint.addNode.connectEmpty") : t("blueprint.addNode.empty")}
                         </div>
                     ) : (
-                        filteredEntries.map((entry, index) => (
-                            <BlueprintAddNodeRow
-                                key={blueprintAddNodeEntryKey(entry)}
-                                entry={entry}
-                                active={activeFlatIndex === index}
-                                flatIndex={index}
-                                itemCount={itemCount}
-                                onPick={pickEntry}
-                                onHover={setActiveFlatIndex}
-                            />
-                        ))
+                        // The sizer is scaffolding, not structure: it holds the scrollbar at the
+                        // full length of the list while only the rows on screen are mounted.
+                        <div role="presentation" className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+                            {virtualizer.getVirtualItems().map(item => {
+                                const entry = filteredEntries[item.index];
+                                if (!entry) {
+                                    return null;
+                                }
+                                return (
+                                    <BlueprintAddNodeRow
+                                        key={item.key}
+                                        entry={entry}
+                                        active={activeFlatIndex === item.index}
+                                        flatIndex={item.index}
+                                        itemCount={itemCount}
+                                        offsetY={item.start}
+                                        onPick={pickEntry}
+                                        onHover={setActiveFlatIndex}
+                                    />
+                                );
+                            })}
+                        </div>
                     )}
                 </div>
             </div>
@@ -425,11 +463,18 @@ export function BlueprintAddNodeMenu({
     );
 }
 
-function BlueprintAddNodeRow(props: {
+/**
+ * Memoised because the whole list re-renders whenever the highlight moves, and the highlight moves
+ * on every row the pointer crosses: without this, running the mouse down the palette re-rendered
+ * every mounted row (icon included) per row boundary.
+ */
+const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     entry: PaletteEntry;
     active: boolean;
     flatIndex: number;
     itemCount: number;
+    /** Where the windowed list puts this row inside its sizer. */
+    offsetY: number;
     onPick: (entry: PaletteEntry) => void;
     onHover: (flatIndex: number) => void;
 }) {
@@ -452,9 +497,10 @@ function BlueprintAddNodeRow(props: {
     return (
         <div
             className={[
-                "group flex h-[52px] items-center rounded-md transition-colors",
+                "group absolute left-0 top-0 flex h-[52px] w-full items-center rounded-md transition-colors",
                 props.active ? "bg-fill" : "hover:bg-fill",
             ].join(" ")}
+            style={{ transform: `translateY(${props.offsetY}px)` }}
         >
             <button
                 id={`bp-add-node-option-${props.flatIndex}`}
@@ -482,4 +528,4 @@ function BlueprintAddNodeRow(props: {
             </button>
         </div>
     );
-}
+});

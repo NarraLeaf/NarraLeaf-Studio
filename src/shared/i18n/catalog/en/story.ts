@@ -1185,7 +1185,7 @@ export const story = {
         note: "Double-click to enter a note",
         text: "Double-click to enter text",
         /** A blank row. Shown on hover only, so the line reads blank until it is pointed at. */
-        blank: "Double-click to write here",
+        blank: "Click to type",
     },
     characterName: {
         unassigned: "Unassigned character",

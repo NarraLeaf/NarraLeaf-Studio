@@ -1630,6 +1630,13 @@ function WeatherSeedFields(props: {
  * the drag settles ({@link useSliderDraft}) - hanging the write on every pointer move is the
  * mistake that buried the undo stack three times before that hook existed.
  *
+ * Typing is the same gesture and now ends the same way: the box hands its number over on blur or on
+ * Enter, not per keystroke. `120` typed into a density used to be three edits - 1, then 12, then
+ * 120 - and each was a different clip for Studio to go and encode, so the figure the author was
+ * waiting to see queued behind two they never meant to ask for. Studio drops the abandoned ones now
+ * - a bake carries the claim of whoever asked for it - but the cheapest bake is the one never
+ * submitted.
+ *
  * The track carries the seed table's own `step`, so a drag lands on the increments every other
  * surface offers for this parameter. A value already off that grid - rain's `sizeNear` default of
  * 2.4 against a step of 1, or anything typed into the box - would otherwise leave the thumb
@@ -1655,8 +1662,15 @@ function WeatherParamRow(props: {
             <FieldLabel as="span" className="mb-0 w-20 shrink-0 truncate">{props.label}</FieldLabel>
             <NumericDraftEnhancedInput
                 committedDisplay={String(draft.value)}
-                onFiniteNumber={props.onChange}
-                onEmpty={() => props.onChange(undefined)}
+                commitOn="blur"
+                // The thumb follows what is being typed, so the two controls still cannot print
+                // different figures - it is only the WRITE that waits for the end of the gesture.
+                onDraftNumber={draft.onValueChange}
+                onFiniteNumber={draft.onValueCommit}
+                onEmpty={() => {
+                    draft.clear();
+                    props.onChange(undefined);
+                }}
                 type="text"
                 inputMode="decimal"
                 aria-label={props.label}
@@ -1798,6 +1812,9 @@ function PuppetChannelControl(props: {
  * that draft, or the box would print the committed number while the slider showed the one under the
  * pointer. The write lands once, when the drag ends - before this, every pointer move wrote the
  * document and a single drag left dozens of undo entries behind it.
+ *
+ * The box waits the same way, for blur or Enter: a number typed digit by digit is one decision, and
+ * the rig should be posed by the figure the author meant rather than by each prefix of it.
  */
 function PuppetParamValue(props: {
     spec: { min: number; max: number } | undefined;
@@ -1823,8 +1840,10 @@ function PuppetParamValue(props: {
             ) : null}
             <NumericDraftEnhancedInput
                 committedDisplay={String(draft.value)}
-                onFiniteNumber={props.onCommit}
-                onEmpty={() => props.onCommit(0)}
+                commitOn="blur"
+                onDraftNumber={draft.onValueChange}
+                onFiniteNumber={draft.onValueCommit}
+                onEmpty={() => draft.onValueCommit(0)}
                 type="text"
                 inputMode="decimal"
                 popoverWhenNarrow={false}
