@@ -172,9 +172,11 @@ export function getListProps(element: UIElement): ListWidgetProps {
         ...defaultListWidgetProps,
         ...raw,
         itemsBinding: normalizeItemsBinding(raw.itemsBinding),
-        previewItems: Array.isArray(raw.previewItems) ? raw.previewItems : defaultListWidgetProps.previewItems,
-        itemKeyPath: typeof raw.itemKeyPath === "string" ? raw.itemKeyPath : defaultListWidgetProps.itemKeyPath,
-        previewCount: clampNumber(raw.previewCount, defaultListWidgetProps.previewCount, 1, 128),
+        itemStructId: typeof raw.itemStructId === "string" && raw.itemStructId.trim() ? raw.itemStructId.trim() : null,
+        items: Array.isArray(raw.items) ? raw.items : defaultListWidgetProps.items,
+        itemKeyFieldId:
+            typeof raw.itemKeyFieldId === "string" && raw.itemKeyFieldId.trim() ? raw.itemKeyFieldId.trim() : null,
+        placeholderCount: clampNumber(raw.placeholderCount, defaultListWidgetProps.placeholderCount, 1, 128),
         selectedIndex: clampNumber(raw.selectedIndex, defaultListWidgetProps.selectedIndex, -1, 127),
         itemGap: clampNumber(raw.itemGap, defaultListWidgetProps.itemGap, 0, 512),
         repeatDirection:

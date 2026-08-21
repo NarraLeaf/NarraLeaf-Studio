@@ -1,6 +1,7 @@
 import { ListChecks } from "lucide-react";
 import { translate } from "@/lib/i18n";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
+import { UI_STRUCT_ID_CHOICE_ITEM } from "@shared/types/ui-editor/builtinStructs";
 import { extendWidgetModule } from "@/lib/ui-editor/widget-modules/inheritance";
 import { patchListWidgetDefaultElement } from "@/lib/ui-editor/widget-modules/shared/list/listWidgetDefaults";
 import { ListWidgetModule } from "./list";
@@ -8,10 +9,13 @@ import { ListWidgetModule } from "./list";
 const CHOICE_LIST_TYPE = "nl.choice.list";
 
 /**
- * Choice (NarraLeaf menu) slot wrapper. Runtime items ({ text, index, disabled, voiceId }) are
- * injected by the choice slot bridge; hidden choices are filtered before injection. Item clicks feed
- * the `Select Choice` blueprint node through the seeded Choice widget blueprint, and `voiceId` is
- * what `Play Choice Voice` speaks.
+ * Choice (NarraLeaf menu) slot wrapper. Runtime items are injected by the choice slot bridge;
+ * hidden choices are filtered before injection. Item clicks feed the `Select Choice` blueprint node
+ * through the seeded Choice widget blueprint, and `voiceId` is what `Play Choice Voice` speaks.
+ *
+ * The shape is the engine's, so it is declared once as a built-in struct rather than authored here:
+ * the fields are what an author binds a row's text and disabled state to, and a project that could
+ * edit them could only make them disagree with what the bridge writes.
  */
 export const ChoiceListWidgetModule: UIWidgetModule = extendWidgetModule(ListWidgetModule, {
     type: CHOICE_LIST_TYPE,
@@ -21,9 +25,10 @@ export const ChoiceListWidgetModule: UIWidgetModule = extendWidgetModule(ListWid
         patchListWidgetDefaultElement(inherited, {
             layout: { width: 640, height: 360 },
             props: {
-                itemKeyPath: "index",
+                itemStructId: UI_STRUCT_ID_CHOICE_ITEM,
+                itemKeyFieldId: "index",
                 itemGap: 16,
-                previewItems: [
+                items: [
                     { text: translate("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false, voiceId: "" },
                     { text: translate("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false, voiceId: "" },
                     { text: translate("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true, voiceId: "" },

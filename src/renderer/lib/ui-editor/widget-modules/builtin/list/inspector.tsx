@@ -25,6 +25,9 @@ import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules
 import { CompactModuleCard } from "@/lib/ui-editor/widget-modules/shared/appearance/compact/CompactModuleCard";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { i18nStore, useTranslation } from "@/lib/i18n";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructFieldLabel, type UIStructDef, type UIStructField } from "@shared/types/ui-editor/struct";
+import { ListContentModal } from "./ListContentModal";
 import type {
     UIListItemsBinding,
     UIListScrollbarPartStyle,
@@ -738,6 +741,76 @@ function ListEffectsField(props: CustomFieldProps<UIInspectorData>) {
     );
 }
 
+function listStruct(data: UIInspectorData): UIStructDef | null {
+    return resolveUIStruct(data.documentService.getDocument(), getLiveListProps(data).itemStructId);
+}
+
+function listStructFields(data: UIInspectorData): UIStructField[] {
+    return listStruct(data)?.fields ?? [];
+}
+
+/**
+ * The fields a row can be keyed by, plus the position fallback.
+ *
+ * Only string and number fields are offered: a key has to survive being written into a DOM key and
+ * compared, and a picture or a nested object has no stable spelling to do that with.
+ */
+function listKeyFieldOptions(data: UIInspectorData): { value: string; label: string }[] {
+    const { t } = i18nStore.getTranslator();
+    return [
+        { value: "", label: t("widgets.list.keyFieldByIndex") },
+        ...listStructFields(data)
+            .filter(field => field.type === "string" || field.type === "number")
+            .map(field => ({ value: field.id, label: uiStructFieldLabel(field) })),
+    ];
+}
+
+/**
+ * The way in to the item table, and a readout of what the list is made of.
+ *
+ * The field names rather than a count: "title, subtitle, thumb" answers "what is a row here" in the
+ * same glance, and a count answers a question nobody asked.
+ */
+function ListContentField(props: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
+    const [open, setOpen] = useState(false);
+    const data = props.data;
+    const element = data.element;
+    const current = getLiveListProps(data);
+    const struct = listStruct(data);
+    const fields = struct?.fields ?? [];
+    const summary = fields.length > 0
+        ? fields.map(uiStructFieldLabel).join(" · ")
+        : t("struct.field.none");
+
+    return (
+        <div className="flex flex-col gap-1">
+            <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="w-full justify-center"
+                onClick={() => setOpen(true)}
+            >
+                {t("widgets.list.editContent")}
+            </Button>
+            <span className="truncate text-2xs text-fg-subtle" title={summary}>
+                {summary}
+            </span>
+            <ListContentModal
+                isOpen={open}
+                onClose={() => setOpen(false)}
+                struct={struct}
+                structId={current.itemStructId ?? null}
+                items={current.items}
+                generateFieldId={() => data.documentService.generateId()}
+                onFieldsChange={next => data.documentService.setListItemStructFields(element.id, next)}
+                onItemsChange={next => patchListProps(data, { items: next })}
+            />
+        </div>
+    );
+}
+
 export function createListInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
     const { t } = i18nStore.getTranslator();
@@ -791,12 +864,27 @@ export function createListInspector(ctx: InspectorContext) {
                 title: t("widgets.tabs.properties"),
                 fields: [
                     defineField<D, any>({
-                        id: "section.preview",
+                        id: "section.content",
                         type: "section",
-                        title: t("widgets.list.sectionPreview"),
+                        title: t("widgets.list.sectionContent"),
                         collapsible: true,
                         defaultCollapsed: false,
                         fields: [
+                            defineField<D, any>({
+                                id: "list.content",
+                                type: "custom",
+                                component: ListContentField,
+                            }),
+                            defineField<D, any>({
+                                id: "list.keyField",
+                                type: "select",
+                                label: t("widgets.list.keyField"),
+                                options: (d: D) => listKeyFieldOptions(d),
+                                hidden: (d: D) => listStructFields(d).length === 0,
+                                getValue: (d: D) => getLiveListProps(d).itemKeyFieldId ?? "",
+                                setValue: (_d: D, v: string | number) =>
+                                    patch({ itemKeyFieldId: String(v) || null }),
+                            }),
                             defineField<D, any>({
                                 id: "list.itemsBindingScope",
                                 type: "select",
@@ -840,26 +928,26 @@ export function createListInspector(ctx: InspectorContext) {
                                 setValue: (_d: D, v: string) => patchItemsBinding({ key: v }),
                             }),
                             defineField<D, any>({
-                                id: "list.previewCount",
+                                id: "list.placeholderCount",
                                 type: "inlineRow",
                                 gap: 8,
                                 wrap: false,
-                                label: t("widgets.list.previewCount"),
+                                label: t("widgets.list.placeholderCount"),
                                 items: [
                                     {
-                                        id: "list.previewCountInput",
+                                        id: "list.placeholderCountInput",
                                         className: "flex-1 min-w-0",
                                         render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                                             const current = getLiveListProps(data);
                                             return (
                                                 <NumericDraftEnhancedInput
-                                                    committedDisplay={String(current.previewCount)}
+                                                    committedDisplay={String(current.placeholderCount)}
                                                     draftResetKey={element.id}
                                                     onFiniteNumber={(v) => {
                                                         const clamped = Math.min(32, Math.max(1, Math.round(v)));
                                                         onSaving(true);
                                                         try {
-                                                            patch({ previewCount: clamped });
+                                                            patch({ placeholderCount: clamped });
                                                         } finally {
                                                             onSaving(false);
                                                         }

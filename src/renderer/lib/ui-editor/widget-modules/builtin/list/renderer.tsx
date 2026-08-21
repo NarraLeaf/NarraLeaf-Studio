@@ -5,6 +5,9 @@ import type {
     UIListScrollbarPartStyle,
 } from "@shared/types/ui-editor/list";
 import { getUIListChildSlot } from "@shared/types/ui-editor/list";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import type { UIStructDef } from "@shared/types/ui-editor/struct";
+import { makeDefaultStructItem, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
@@ -128,29 +131,24 @@ function findRenderedUiElement(root: Element | null, id: string): HTMLElement | 
     return null;
 }
 
-function readPath(source: unknown, path: string): unknown {
-    const clean = path.trim();
-    if (!clean) {
-        return undefined;
+/**
+ * What keys one row.
+ *
+ * The declared key field when it holds something usable, the row's position otherwise. Falling back
+ * to the index rather than refusing to draw is deliberate: rows arrive from graphs and from the slot
+ * bridge, and a list whose first row is missing an id should still be a list.
+ */
+function itemKey(
+    item: unknown,
+    index: number,
+    struct: UIStructDef | null,
+    fieldId: string | null | undefined,
+): string {
+    const raw = readUIStructFieldValue(struct, fieldId, item);
+    if (typeof raw === "string" && raw.length > 0) {
+        return raw;
     }
-    return clean.split(".").reduce<unknown>((current, segment) => {
-        if (current == null || !segment) {
-            return undefined;
-        }
-        if (Array.isArray(current)) {
-            const index = Number(segment);
-            return Number.isInteger(index) ? current[index] : undefined;
-        }
-        if (typeof current === "object") {
-            return (current as Record<string, unknown>)[segment];
-        }
-        return undefined;
-    }, source);
-}
-
-function itemKey(item: unknown, index: number, path: string | undefined): string {
-    const raw = path ? readPath(item, path) : undefined;
-    if (typeof raw === "string" || typeof raw === "number") {
+    if (typeof raw === "number" && Number.isFinite(raw)) {
         return String(raw);
     }
     return String(index);
@@ -336,9 +334,18 @@ export function ListRenderer(props: WidgetRendererProps) {
         return () => viewport.removeEventListener("scroll", dispatchScroll);
     }, [element.id, horizontalScrollbar, hostAdapter.blueprintRuntime]);
     const boundItems = resolveBoundItems(p, runtimeData);
+    const itemStruct = resolveUIStruct(document, p.itemStructId);
+    // Placeholder rows carry the declared shape at its empty values rather than `{index: n}`: a
+    // child bound to a field then draws that field's blank, which is what the row will look like
+    // once there is content. The old bag drew whatever a dot path happened to find in it, which
+    // was never the row the author was laying out.
+    const placeholderItems = useMemo(
+        () => Array.from({ length: p.placeholderCount }, () => makeDefaultStructItem(itemStruct)),
+        [itemStruct, p.placeholderCount],
+    );
     const items = runtimeListItems
         ? [...runtimeListItems]
-        : boundItems ?? (p.previewItems.length > 0 ? p.previewItems : Array.from({ length: p.previewCount }, (_, i) => ({ index: i })));
+        : boundItems ?? (p.items.length > 0 ? p.items : placeholderItems);
     const count = Math.min(128, items.length);
     const itemTemplateIds = element.childrenIds.filter(childId => {
         const child = document.elements[childId];
@@ -488,9 +495,9 @@ export function ListRenderer(props: WidgetRendererProps) {
         [dispatchListItemEvent],
     );
     const listBody = items.slice(0, count).map((item, i) => {
-        const key = itemKey(item, i, p.itemKeyPath);
+        const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
         const instanceKey = `list-${element.id}-${key}`;
-        const scope: UIListItemScope = { item, index: i, count, key };
+        const scope: UIListItemScope = { item, index: i, count, key, struct: itemStruct };
         return (
             <div
                 key={`${element.id}__list__${key}`}

@@ -4,10 +4,12 @@ import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import type {
     UIDocument,
     UIElement,
+    UIElementValueBinding,
     UIElementValueBindingValueType,
     UISurface,
 } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import { readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
@@ -169,14 +171,45 @@ function buildDependencySnapshotKey(document: UIDocument, dependencies: readonly
         .join("\x1e");
 }
 
-const SUPPORTED_VALUE_TARGETS: Array<{
+/**
+ * One bindable prop on one widget type.
+ *
+ * `propPath` is both the key a binding is stored under and, by default, where the resolved value
+ * lands. A target whose value does not live at the top of the prop bag carries a `write` instead -
+ * the picture on an image sits inside `imageFill`, and flattening it would produce a prop no
+ * renderer reads.
+ */
+type SupportedValueTarget = {
     elementType: string;
     propPath: string;
     valueType: UIElementValueBindingValueType;
     normalize?: (value: unknown, element: UIElement) => unknown;
-}> = [
+    write?: (element: UIElement, value: unknown) => UIElement;
+};
+
+const SUPPORTED_VALUE_TARGETS: SupportedValueTarget[] = [
     { elementType: "nl.text", propPath: "text", valueType: "string" },
     { elementType: "nl.button", propPath: "label", valueType: "string" },
+    {
+        // What makes a save-slot thumbnail, a gallery cell and a backlog portrait possible: until
+        // this existed, a picture that differs per row could not be expressed at all, because the
+        // only per-row channel was a bound prop and no image prop was bindable.
+        elementType: "nl.image",
+        propPath: "imageFill.assetId",
+        valueType: "string",
+        normalize: value => (typeof value === "string" && value.trim() ? value.trim() : null),
+        write: (element, value) => {
+            const props = (element.props ?? {}) as Record<string, unknown>;
+            const fill = props.imageFill && typeof props.imageFill === "object" ? props.imageFill : {};
+            return {
+                ...element,
+                props: {
+                    ...props,
+                    imageFill: { ...(fill as Record<string, unknown>), assetId: value },
+                },
+            };
+        },
+    },
     {
         elementType: UI_FRAME_ELEMENT_TYPE,
         propPath: "params",
@@ -259,6 +292,12 @@ export class BlueprintValueRuntimeStore {
         const runtimeScopeId = this.lastSyncContext.runtimeScopeId;
         for (const element of collectSurfaceElements(input.document, input.surface)) {
             for (const [propPath, binding] of Object.entries(element.valueBindings ?? {})) {
+                // Field bindings keep no entry here. There is no graph to run, nothing to await and
+                // nothing to invalidate - the value is read off the item scope at merge time - so an
+                // entry for one would be a subscription to something that never changes.
+                if (binding.kind !== "blueprintValue") {
+                    continue;
+                }
                 const key = valueBindingKey(input.surface.id, element.id, propPath, binding.blueprintId);
                 activeKeys.add(key);
                 const nextInput: ActiveBindingInput = {
@@ -454,46 +493,10 @@ export class BlueprintValueRuntimeStore {
     }
 }
 
-export function mergeElementWithBlueprintValues(
-    element: UIElement,
-    surfaceId: string,
-    valueRuntime: BlueprintValueRuntimeStore | null,
-    listItemScope: UIListItemScope | null = null,
-    instanceKey = "",
-): UIElement {
-    if (!valueRuntime) {
-        return element;
+function writeTargetValue(element: UIElement, target: SupportedValueTarget, value: unknown): UIElement {
+    if (target.write) {
+        return target.write(element, value);
     }
-    // Matched through the inheritance chain: the specialisations inherit the text inspector, so a
-    // Dialog Sentence offers the same bind-to-blueprint control and has to resolve it too.
-    const target = SUPPORTED_VALUE_TARGETS.find(item => isWidgetTypeOf(element.type, item.elementType));
-    if (!target) {
-        return element;
-    }
-    const binding = element.valueBindings?.[target.propPath];
-    if (!binding || binding.valueType !== target.valueType) {
-        return element;
-    }
-    valueRuntime.ensureElementValue({
-        element,
-        surfaceId,
-        propPath: target.propPath,
-        blueprintId: binding.blueprintId,
-        valueType: binding.valueType,
-        listItemScope,
-        instanceKey: listItemScope ? instanceKey : undefined,
-    });
-    const resolved = valueRuntime.getResolvedValue(
-        surfaceId,
-        element.id,
-        target.propPath,
-        binding.blueprintId,
-        listItemScope ? instanceKey : undefined,
-    );
-    if (!resolved.hasResolved) {
-        return element;
-    }
-    const value = target.normalize ? target.normalize(resolved.value, element) : resolved.value;
     return {
         ...element,
         props: {
@@ -501,4 +504,93 @@ export function mergeElementWithBlueprintValues(
             [target.propPath]: value,
         },
     };
+}
+
+/**
+ * The row's own data, read straight off the item scope.
+ *
+ * No graph, no store, no entry to keep alive - which is why it is resolved before the runtime is
+ * even checked for. A field binding on an element that is not inside an item template resolves to
+ * nothing and leaves the authored prop alone, so the same element reads its placeholder on a canvas
+ * where no list is drawing it.
+ */
+function resolveListItemFieldValue(
+    binding: Extract<UIElementValueBinding, { kind: "listItemField" }>,
+    target: SupportedValueTarget,
+    listItemScope: UIListItemScope | null,
+): { resolved: false } | { resolved: true; value: unknown } {
+    if (!listItemScope) {
+        return { resolved: false };
+    }
+    const raw = readUIStructFieldValue(listItemScope.struct ?? null, binding.fieldId, listItemScope.item);
+    if (raw === undefined) {
+        return { resolved: false };
+    }
+    // An image field carries the `{kind:"imageAsset"}` envelope every other picture-bearing value
+    // uses; a target that wants the bare id says so with `valueType: "string"`, so unwrap here
+    // rather than teaching each target about a shape only this path can produce.
+    const unwrapped =
+        raw && typeof raw === "object" && !Array.isArray(raw) && (raw as { kind?: unknown }).kind === "imageAsset"
+            ? (raw as { assetId?: unknown }).assetId
+            : raw;
+    return { resolved: true, value: coerceValue(unwrapped, target.valueType) };
+}
+
+export function mergeElementWithBlueprintValues(
+    element: UIElement,
+    surfaceId: string,
+    valueRuntime: BlueprintValueRuntimeStore | null,
+    listItemScope: UIListItemScope | null = null,
+    instanceKey = "",
+): UIElement {
+    const bindings = element.valueBindings;
+    if (!bindings) {
+        return element;
+    }
+    // Matched through the inheritance chain: the specialisations inherit the text inspector, so a
+    // Dialog Sentence offers the same bind-to-blueprint control and has to resolve it too.
+    //
+    // Every matching target is folded, not the first: one element may carry more than one bound
+    // prop, and stopping at the first would make which one worked depend on table order.
+    let out = element;
+    for (const target of SUPPORTED_VALUE_TARGETS) {
+        if (!isWidgetTypeOf(element.type, target.elementType)) {
+            continue;
+        }
+        const binding = bindings[target.propPath];
+        if (!binding) {
+            continue;
+        }
+        if (binding.kind === "listItemField") {
+            const field = resolveListItemFieldValue(binding, target, listItemScope);
+            if (field.resolved) {
+                out = writeTargetValue(out, target, target.normalize ? target.normalize(field.value, out) : field.value);
+            }
+            continue;
+        }
+        if (!valueRuntime || binding.valueType !== target.valueType) {
+            continue;
+        }
+        valueRuntime.ensureElementValue({
+            element,
+            surfaceId,
+            propPath: target.propPath,
+            blueprintId: binding.blueprintId,
+            valueType: binding.valueType,
+            listItemScope,
+            instanceKey: listItemScope ? instanceKey : undefined,
+        });
+        const resolved = valueRuntime.getResolvedValue(
+            surfaceId,
+            element.id,
+            target.propPath,
+            binding.blueprintId,
+            listItemScope ? instanceKey : undefined,
+        );
+        if (!resolved.hasResolved) {
+            continue;
+        }
+        out = writeTargetValue(out, target, target.normalize ? target.normalize(resolved.value, out) : resolved.value);
+    }
+    return out;
 }

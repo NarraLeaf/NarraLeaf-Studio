@@ -44,7 +44,11 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
         const live =
             props.data.documentService.getDocument().elements[props.data.element.id] ??
             props.data.element;
-        const binding = live.valueBindings?.[config.propPath];
+        const storedBinding = live.valueBindings?.[config.propPath];
+        // This control speaks for the blueprint binding only. A prop bound to a list item field is
+        // bound by a different control, and reading its field id as a blueprint id would have this
+        // one report a blueprint that does not exist.
+        const binding = storedBinding?.kind === "blueprintValue" ? storedBinding : undefined;
         const localBp =
             isInitialized && context
                 ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint)

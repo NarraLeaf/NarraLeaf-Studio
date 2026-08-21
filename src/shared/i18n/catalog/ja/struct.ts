@@ -1,0 +1,35 @@
+export const struct = {
+    type: {
+        string: "文字列",
+        number: "数値",
+        boolean: "真偽値",
+        image: "画像",
+        color: "色",
+        json: "JSON",
+    },
+    field: {
+        name: "名前",
+        type: "型",
+        add: "項目を追加",
+        remove: "項目を削除",
+        newName: "項目",
+        none: "項目なし",
+        engineOwned: "このリストの項目はエンジンから提供されます",
+        picker: "項目",
+        pickerEmpty: "項目なし",
+    },
+    row: {
+        add: "行を追加",
+        remove: "この行を削除",
+        duplicate: "この行を複製",
+        moveUp: "上へ",
+        moveDown: "下へ",
+        none: "内容なし",
+        number: "#",
+    },
+    image: {
+        select: "画像を選択",
+        selectTitle: "画像を選択",
+        clear: "画像を消去",
+    },
+} as const;

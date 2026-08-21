@@ -142,7 +142,7 @@ describe("the Confirm page in the starter template", () => {
         expect(list.props?.itemsBinding).toEqual({ kind: "pageProp", key: "buttons" });
         expect(list.props?.repeatDirection).toBe("horizontal");
         // Keyed by index, because two buttons may well read the same.
-        expect(list.props?.itemKeyPath).toBe("index");
+        expect(list.props?.itemKeyFieldId).toBe("index");
         const template = (list.childrenIds ?? []).map(id => document.elements[id]);
         expect(template.map(element => element.extra?.listSlot)).toEqual(["itemTemplate"]);
     });
