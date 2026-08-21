@@ -5,7 +5,7 @@ export const launcher = {
         projects: "プロジェクト",
         // 「プロジェクト」と「プラグイン」の間。同じ問いの残り半分に答えるから。
         // 「プロジェクト」はこの機械にあるもの、「サーバー」はこの機械が取ってこられるもの。
-        servers: "サーバー",
+        servers: "Team",
         plugins: "プラグイン",
         learning: "学習",
         settings: "設定",

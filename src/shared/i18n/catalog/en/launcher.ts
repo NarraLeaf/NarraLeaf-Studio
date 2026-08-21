@@ -4,7 +4,7 @@ export const launcher = {
         projects: "Projects",
         // Between Projects and Plugins because it answers the other half of the same
         // question: Projects is what this machine has, Servers is what it could have.
-        servers: "Servers",
+        servers: "Team",
         plugins: "Plugins",
         learning: "Learning",
         settings: "Settings",

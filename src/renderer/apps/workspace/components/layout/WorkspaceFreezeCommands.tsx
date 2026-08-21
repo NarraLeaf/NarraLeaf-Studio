@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import {
+    Cloud,
     GitBranch,
     GitCommitHorizontal,
     GitCompare,
@@ -24,6 +25,7 @@ import {
     openVersionRail,
     openVersionRailForCommit,
 } from "./versionRailController";
+import { isTeamPresenceReachable, openTeamPresence } from "../../modules/team/teamPresenceController";
 
 /**
  * The way into and out of the frozen workspace - and into and out of a past revision - until the
@@ -177,6 +179,20 @@ export function WorkspaceFreezeCommands() {
                 // cannot ask any other way.
                 when: () => isVersionRailReachable(),
                 run: () => openVersionRail(),
+            },
+            {
+                // Beside the rail's own entry, because the two are the feature's two panels: one
+                // moves versions, the other says where they go and as whom. It is here at all
+                // because the cell that owns it is 24px of icon in a corner - findable once
+                // somebody knows, and searchable from the moment they do not.
+                id: "vcs:open-team",
+                titleKey: "workspace.shell.team.command.open",
+                categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                icon: <Cloud className="w-4 h-4" />,
+                // The cell registers its bridge exactly while it is drawn, which is the
+                // synchronous form of "this project has a repository to point somewhere".
+                when: () => isTeamPresenceReachable(),
+                run: () => openTeamPresence(),
             },
             {
                 id: "vcs:commit",

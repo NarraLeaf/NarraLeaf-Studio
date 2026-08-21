@@ -3,6 +3,7 @@ import type {
     VcsAvailability,
     VcsFileChange,
     VcsHistoryEntry,
+    VcsSyncState,
     VcsUnavailableReason,
 } from "@shared/types/vcs";
 import { VCS_DEFAULT_BRANCH, parseVcsRemoteUrl } from "@shared/types/vcs";
@@ -956,4 +957,64 @@ export function initialServerChoice(
     if (address === "") return NO_SERVER;
     const origin = parseVcsRemoteUrl(address)?.origin ?? address;
     return servers.some((server) => server.remoteOrigin === origin) ? origin : MANUAL_SERVER;
+}
+
+/**
+ * The seven answers the last check can have given.
+ *
+ * They are NOT collapsible into "ok / not ok": the remedy differs for every one of them.
+ * Unreachable is the author's network, unauthorized is their credentials, diverged needs a sync
+ * before a push will work, and "not checked" is the honest answer to a question nobody has asked -
+ * which is where this section spends most of its life, because checking costs two seconds and
+ * never happens on its own.
+ */
+export type ServerFaceState =
+    | "notChecked"
+    | "unreachable"
+    | "unauthorized"
+    | "diverged"
+    | "localAhead"
+    | "remoteAhead"
+    | "upToDate";
+
+const SERVER_FACE_TONE: Record<ServerFaceState, string> = {
+    notChecked: "text-fg-subtle",
+    unreachable: "text-danger",
+    unauthorized: "text-danger",
+    diverged: "text-warning",
+    localAhead: "text-fg-muted",
+    remoteAhead: "text-fg-muted",
+    upToDate: "text-success",
+};
+
+/**
+ * Which of them the last check came to.
+ *
+ * Ordered by which fact dominates: a server that cannot be reached has no opinion about whether
+ * anyone is ahead, and one that refuses us cannot be trusted about that either.
+ */
+function serverFaceState(sync: VcsSyncState | null): ServerFaceState {
+    if (sync === null) return "notChecked";
+    if (!sync.remoteAvailable) return "unreachable";
+    if (!sync.remoteAuthorized) return "unauthorized";
+    if (sync.localAhead && sync.remoteAhead) return "diverged";
+    if (sync.localAhead) return "localAhead";
+    if (sync.remoteAhead) return "remoteAhead";
+    return "upToDate";
+}
+
+/**
+ * What the last check said, in two lengths.
+ *
+ * `key` is what the line reads at a glance and `detail` is the sentence behind it on hover. Both
+ * are built from one state name rather than listed twice, so a state cannot come to show one
+ * state's word over another state's explanation.
+ */
+export function serverFace(sync: VcsSyncState | null): { key: TranslationKey; detail: TranslationKey; tone: string } {
+    const state = serverFaceState(sync);
+    return {
+        key: `workspace.shell.versionControl.server.state.${state}` as TranslationKey,
+        detail: `workspace.shell.versionControl.server.${state}` as TranslationKey,
+        tone: SERVER_FACE_TONE[state],
+    };
 }
