@@ -206,7 +206,7 @@ describe("two revisions of a document stored as several files", () => {
     });
 });
 
-function fileChange(path: string, kind: VcsChangeKind): VcsFileChange {
+function fileChange(path: string, kind: VcsChangeKind, extra: Partial<VcsFileChange> = {}): VcsFileChange {
     return {
         path,
         kind,
@@ -216,6 +216,7 @@ function fileChange(path: string, kind: VcsChangeKind): VcsFileChange {
         dirty: true,
         conflicted: false,
         conflictUnresolved: false,
+        ...extra,
     };
 }
 
@@ -314,6 +315,54 @@ describe("the working tree against the last version", () => {
         expect(result.documents[0].diff.changes).toEqual([
             expect.objectContaining({ path: ["pages", "p2"], kind: "added" }),
         ]);
+    });
+
+    it("sees a renamed member as one page leaving and another arriving", async () => {
+        // **Lore reports an explicit move only at its DESTINATION** (§4.18 names the other
+        // spelling, delete+add, which arrives as two entries). So the source path is in the
+        // recorded tree and in no status entry at all - which is exactly the shape of an untouched
+        // member. Read as untouched it lands on both sides, the destination borrows the source's
+        // recorded bytes for its base, and a renamed scene reports NO CHANGES AT ALL.
+        const recorded = { [MANIFEST]: manifest(["p1"]), [P1]: page("One", ["a"]) };
+        const working = { [MANIFEST]: manifest(["p1"]), [P2]: page("One", ["a"]) };
+        const { source } = workingSource(
+            statusOf([fileChange(P2, "moved", { fromPath: P1 })]),
+            recorded,
+            working,
+        );
+
+        const result = await diffWorkingTree(source, { sets: notebookLookup });
+
+        expect(result.documents).toHaveLength(1);
+        expect(result.documents[0].path).toBe(MANIFEST);
+        expect(result.documents[0].diff.tier).toBe("semantic");
+        expect(result.documents[0].diff.changes.map((change) => [change.path[1], change.kind]).sort())
+            .toEqual([["p1", "removed"], ["p2", "added"]]);
+    });
+
+    it("spends no read budget on a set it has already decided not to assemble", async () => {
+        // A set over the member limit is reported as one unread row, so none of its bytes are worth
+        // reading - but its members are still not standalone files. Left out of the "belongs to a
+        // set" list they went back into the rename pairing and into the read plan, both of which
+        // read in full out of the one shared DIFF_TOTAL_BYTE_BUDGET, and the entry then discarded
+        // every byte. One large story the author never touched could push documents they DID touch
+        // out of the plan and flip `complete` to false, with the reason nowhere on screen.
+        const ids = Array.from({ length: DOCUMENT_SET_MEMBER_LIMIT + 2 }, (_, index) => `p${index}`);
+        const recorded: Record<string, Buffer> = { [MANIFEST]: manifest(ids) };
+        for (const id of ids) recorded[`editor/notebooks/n1/pages/${id}.json`] = page(id, ["a"]);
+        const changedPage = "editor/notebooks/n1/pages/p0.json";
+        const working = { ...recorded, [changedPage]: page("p0", ["a", "b"]) };
+        const { source, calls } = workingSource(statusOf([fileChange(changedPage, "modified")]), recorded, working);
+        const onDegrade = vi.fn();
+
+        const result = await diffWorkingTree(source, { sets: notebookLookup, onDegrade });
+
+        expect(result.documents).toHaveLength(1);
+        expect(result.documents[0].diff.changes[0].label.key).toBe("documentDiff.opaque.unread");
+        expect(calls.filter((call) => call.startsWith("readAt:"))).toEqual([]);
+        expect(calls.filter((call) => call.startsWith("working:"))).toEqual([]);
+        expect(result.complete).toBe(true);
+        expect(onDegrade).toHaveBeenCalledWith(expect.stringContaining("one document made of"));
     });
 
     it("sees a member the author deleted as a change to the document, not as a removed file", async () => {

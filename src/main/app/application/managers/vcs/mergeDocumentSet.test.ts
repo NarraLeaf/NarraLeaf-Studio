@@ -189,6 +189,25 @@ describe("reading a conflicted document that is several files", () => {
         expect(result.blocked).toBe("unreadable");
         expect(result.detail).toContain("their side");
     });
+
+    it("refuses the document when a member exists but cannot be read", async () => {
+        // **The silent version of this loses the author's file.** `documentSetFilesOnDisk` has
+        // already proved the member exists, so a null read is an existing file that could not be
+        // OPENED - a Windows lock, a directory in its place, a race with another writer. Skipping
+        // it dropped the member from all three sides with no signal, the assembled document came
+        // out without it, and the write-back's delete loop - which walks the set's files and
+        // removes whatever the settled document no longer holds - then deleted it. The single-file
+        // path refuses outright in exactly this situation.
+        const root = tmp();
+        conflictedNotebook(root);
+        // A directory where a member file should be: it exists, and `readFileSync` cannot read it.
+        fs.mkdirSync(path.join(root, pagePath("p3")));
+
+        const result = await readMergeDocument(root, pagePath("p1"), notebookLookup);
+
+        expect(result.blocked).toBe("unreadable");
+        expect(result.detail).toContain(pagePath("p3"));
+    });
 });
 
 describe("settling it", () => {
@@ -293,6 +312,26 @@ describe("settling it", () => {
         // settles an order it owns. What is under test here is the write-back's delete branch, and
         // it is the absence of a delete that matters.
         expect(fs.existsSync(path.join(root, strictPagePath("p2")))).toBe(true);
+    });
+
+    it("refuses to settle rather than deleting a member it could not read", async () => {
+        // The other half of the same defect: a member skipped because it could not be opened is
+        // absent from the settled document, and the delete loop removes whatever the settled
+        // document does not hold. Refusing is what keeps the author's file where it is.
+        const root = tmp();
+        conflictedNotebook(root);
+        fs.mkdirSync(path.join(root, pagePath("p3")));
+
+        await expect(resolveDocumentChanges(
+            root,
+            pagePath("p1"),
+            { [mergeDecisionKey(["pages", "p1"])]: "mine" },
+            notebookLookup,
+        )).rejects.toThrow(/cannot be settled change by change/);
+
+        expect(fs.existsSync(path.join(root, pagePath("p3")))).toBe(true);
+        // And nothing else was written either: a refusal is all-or-nothing.
+        expect(fs.readFileSync(path.join(root, pagePath("p1")), "utf-8")).toContain("<<<<<<<");
     });
 
     it("refuses to settle a document whose sides cannot be read", async () => {

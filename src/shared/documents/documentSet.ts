@@ -420,6 +420,15 @@ export function documentSetMemberScan(
         directory: before.join("/"),
         pathOf(entryName: string): string | undefined {
             const candidate = [...before, entryName, ...after].join("/");
+            // **A manifest is not one of its own members**, and it CAN match the member pattern:
+            // `<id>/index.json` beside `<id>/<name>.json` is a legal layout, because the literal is
+            // the more specific of the two and the registry lets the specific one win for its own
+            // path. The other two readers of a set's files - `documentSetPathsAmong` and
+            // `documentSetPartsFrom` - both take the manifest out by name; this one did not, so a
+            // scan of that layout answered with the manifest twice.
+            if (candidate === documentSetManifestPath(spec, key)) {
+                return undefined;
+            }
             const parameters = matchDocumentPath(pattern, candidate);
             if (!parameters || Object.keys(key).some(name => parameters[name] !== key[name])) {
                 return undefined;
