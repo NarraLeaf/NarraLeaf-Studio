@@ -81,6 +81,7 @@ export function useSliderDraft(value: number, onCommit: (next: number) => void):
     value: number;
     onValueChange: (next: number) => void;
     onValueCommit: (next: number) => void;
+    clear: () => void;
 } {
     const [draft, setDraft] = useState<number | null>(null);
     return {
@@ -90,5 +91,12 @@ export function useSliderDraft(value: number, onCommit: (next: number) => void):
             setDraft(null);
             onCommit(next);
         },
+        /**
+         * Drop the draft without writing anything.
+         *
+         * For the gesture that ends in no number at all - a box emptied to hand the value back to
+         * its default. Without it the control would keep showing the figure that was abandoned.
+         */
+        clear: () => setDraft(null),
     };
 }
