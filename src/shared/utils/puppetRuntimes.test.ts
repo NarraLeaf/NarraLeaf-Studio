@@ -77,11 +77,13 @@ describe("known puppet runtimes", () => {
     });
 
     /**
-     * Not a style check. Studio holds no Spine Editor licence, and integrating a Spine runtime
-     * requires the integrator to hold one (Editor License Agreement 2.1(b)) — so Studio ships no
-     * Spine glue to build from, and `sdk-zip` (which means "Studio builds the adapter here") must not
-     * appear against it. If that licence is ever bought, this test is the thing that has to change
-     * first, deliberately.
+     * Not a style check. Studio ships no Spine glue, so `sdk-zip` — which means "Studio builds the
+     * adapter here" — has nothing to build from and must not appear against Spine.
+     *
+     * Whoever integrates the Spine Runtimes takes on the condition that every user of what they
+     * produce holds their own Spine Editor licence, and that the licence and copyright notice travel
+     * with every redistribution (Spine Runtimes License Agreement). Carrying glue is a decision to
+     * take that on, and this test is the thing that has to change first when it is taken.
      */
     it("only offers to build an adapter for a runtime Studio may integrate with", () => {
         expect(knownPuppetRuntime("spine").methods).toEqual(["prebuilt"]);
