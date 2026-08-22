@@ -1167,21 +1167,24 @@ function BlueprintFlowCanvasInner({
     }, [commitBlueprintIr, getNodes]);
 
     /**
-     * Draw a frame around what is selected.
+     * Draw a frame around a set of cards.
      *
-     * The rectangle is worked out here because only the canvas knows how big the selected cards
-     * measured; the node itself is made by the owning tab, which is where ids and the blueprint
-     * document are. The colour is remembered so the next group costs one click rather than two.
+     * The rectangle is worked out here because only the canvas knows how big those cards measured;
+     * the node itself is made by the owning tab, which is where ids and the blueprint document are.
+     * The colour is remembered so the next group costs one click rather than two.
+     *
+     * The ids are passed in rather than read off the selection, because the context menu acts on
+     * what it captured when it opened - which is not always what the selection has caught up to.
      */
-    const createGroupFromSelection = useCallback(
-        (color: string) => {
+    const createGroupFromIds = useCallback(
+        (ids: readonly string[], color: string) => {
             if (!onCreateGroupFrame) {
                 return;
             }
             setGroupColor(color);
-            const selected = new Set(selectedNodeIdsRef.current);
+            const wanted = new Set(ids);
             const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]).filter(box =>
-                selected.has(box.id),
+                wanted.has(box.id),
             );
             const frame = computeBlueprintGroupFrame(boxes);
             if (!frame) {
@@ -1193,6 +1196,12 @@ function BlueprintFlowCanvasInner({
             }
         },
         [getNodes, onCreateGroupFrame, onSelectNodeIds, t],
+    );
+
+    /** The toolbar's Group button: whatever is selected, in the colour it is showing. */
+    const createGroupFromSelection = useCallback(
+        (color: string) => createGroupFromIds(selectedNodeIdsRef.current, color),
+        [createGroupFromIds],
     );
 
     /**
@@ -1492,8 +1501,30 @@ function BlueprintFlowCanvasInner({
      * time the selection may still be one beat behind what the author is looking at.
      */
     const [nodeMenu, setNodeMenu] = useState<
-        { x: number; y: number; nodeId: string; targetIds: string[] } | null
+        { x: number; y: number; nodeId: string | null; targetIds: string[]; frameIds: string[] } | null
     >(null);
+
+    /**
+     * Which of these nodes are group frames.
+     *
+     * A group is a comment card with `frame` set: it owns no members, it simply encloses whatever
+     * it is drawn around, and membership is read back off the geometry whenever it matters. So the
+     * frames are all "Ungroup" has to remove, and the cards inside them are left untouched.
+     */
+    const readFrameIds = useCallback(
+        (ids: readonly string[]) => {
+            const wanted = new Set(ids);
+            return (getNodes() as Node<BlueprintFlowNodeData>[])
+                .filter(
+                    node =>
+                        wanted.has(node.id) &&
+                        node.data.catalog.role === "comment" &&
+                        node.data.params.frame === true,
+                )
+                .map(node => node.id);
+        },
+        [getNodes],
+    );
     const onNodeContextMenu = useCallback(
         (event: ReactMouseEvent, node: Node) => {
             // The placement ghost is not a node of the graph yet; right-clicking it has nothing to
@@ -1519,15 +1550,63 @@ function BlueprintFlowCanvasInner({
             if (!inSelection) {
                 onSelectNodeIds(targetIds);
             }
-            setNodeMenu({ x: event.clientX, y: event.clientY, nodeId: node.id, targetIds });
+            setNodeMenu({
+                x: event.clientX,
+                y: event.clientY,
+                nodeId: node.id,
+                targetIds,
+                frameIds: readFrameIds(targetIds),
+            });
         },
-        [onSelectNodeIds],
+        [onSelectNodeIds, readFrameIds],
+    );
+    /**
+     * The same menu, for a right-click that lands on a box selection.
+     *
+     * After a marquee, React Flow lays its own rectangle over the picked cards and that rectangle
+     * takes the click - `onNodeContextMenu` never fires, and the pane's handler only runs for
+     * clicks on the pane itself, so without this the menu simply never appeared. The selection is
+     * kept as it stands; nothing about a right-click on what is already picked should change it.
+     *
+     * Which card the click landed on is worked out from the geometry, because the rectangle covers
+     * the gaps between the cards as well as the cards themselves. A click in a gap has no node to
+     * speak of, so the menu comes up with the rows that act on the whole selection and none of the
+     * per-node ones. Frames lose to the cards they enclose - a click inside a group is a click on
+     * the card under the cursor, not on the box drawn around it.
+     */
+    const onSelectionContextMenu = useCallback(
+        (event: ReactMouseEvent, nodes: Node[]) => {
+            const targetIds = nodes.map(n => n.id).filter(id => id !== BP_PLACEMENT_PREVIEW_ID);
+            if (targetIds.length === 0) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+            const under = readBlueprintCanvasBoxes(nodes as Node<BlueprintFlowNodeData>[])
+                .filter(
+                    box =>
+                        flow.x >= box.x &&
+                        flow.x <= box.x + box.width &&
+                        flow.y >= box.y &&
+                        flow.y <= box.y + box.height,
+                )
+                .sort((a, b) => a.width * a.height - b.width * b.height);
+            setNodeMenu({
+                x: event.clientX,
+                y: event.clientY,
+                nodeId: under[0]?.id ?? null,
+                targetIds,
+                frameIds: readFrameIds(targetIds),
+            });
+        },
+        [readFrameIds, screenToFlowPosition],
     );
     const nodeMenuItems = useMemo<ContextMenuDef>(() => {
         if (!nodeMenu) {
             return [];
         }
-        const { nodeId, targetIds } = nodeMenu;
+        const { nodeId, targetIds, frameIds } = nodeMenu;
         const items: ContextMenuDef = [
             {
                 id: "blueprint.node.delete",
@@ -1538,7 +1617,69 @@ function BlueprintFlowCanvasInner({
                 },
             },
         ];
-        if (breakpointScope) {
+        // Group and Ungroup are the same pair the toolbar offers, brought to where the cards are:
+        // grouping is about the nodes under the cursor, so reaching the far corner of the canvas
+        // for it was always a detour. The colour is the one the toolbar is showing - picking a
+        // different one stays a toolbar job, so this menu keeps to one row per action.
+        const groupRows: ContextMenuDef = [];
+        if (onCreateGroupFrame) {
+            groupRows.push({
+                id: "blueprint.node.group",
+                label: t("blueprint.group.create"),
+                onClick: () => {
+                    setNodeMenu(null);
+                    createGroupFromIds(targetIds, groupColor);
+                },
+            });
+        }
+        if (frameIds.length > 0) {
+            groupRows.push({
+                id: "blueprint.node.ungroup",
+                label: t("blueprint.group.ungroup"),
+                onClick: () => {
+                    setNodeMenu(null);
+                    deleteNodeIds(frameIds);
+                },
+            });
+        }
+        if (groupRows.length > 0) {
+            items.push({ separator: true, id: "blueprint.node.sep-group" }, ...groupRows);
+        }
+        // Formatting rearranges the whole graph rather than the selection, so it offers the two
+        // directions outright instead of quietly reusing the last one: a row that moves every card
+        // on the canvas should say which way it is about to move them.
+        if (canFormat) {
+            items.push(
+                { separator: true, id: "blueprint.node.sep-format" },
+                {
+                    id: "blueprint.node.format",
+                    label: t("blueprint.format.graph"),
+                    // Frozen, this row says so itself rather than leaving the freeze pass below to
+                    // grey the two directions inside it: a live row that opens onto two dead ones
+                    // makes the author ask for the submenu to find out they cannot have it.
+                    ...(freeze.frozen ? { disabled: true, tooltip: freeze.reason } : {}),
+                    submenu: [
+                        {
+                            id: "blueprint.node.format.horizontal",
+                            label: t("blueprint.format.horizontal"),
+                            onClick: () => {
+                                setNodeMenu(null);
+                                formatGraph("horizontal");
+                            },
+                        },
+                        {
+                            id: "blueprint.node.format.vertical",
+                            label: t("blueprint.format.vertical"),
+                            onClick: () => {
+                                setNodeMenu(null);
+                                formatGraph("vertical");
+                            },
+                        },
+                    ],
+                },
+            );
+        }
+        if (breakpointScope && nodeId) {
             const existing = breakpointScope.byKey.get(
                 blueprintBreakpointKey({
                     blueprintId: breakpointScope.blueprintId,
@@ -1577,7 +1718,19 @@ function BlueprintFlowCanvasInner({
         // the menu stays open on a frozen project instead of being withheld whole the way the
         // pane's creation menu is.
         return freezeContextMenuRows(items, freeze.frozen, BREAKPOINT_MENU_ROW_IDS, freeze.reason);
-    }, [breakpointScope, deleteNodeIds, freeze.frozen, freeze.reason, nodeMenu, t]);
+    }, [
+        breakpointScope,
+        canFormat,
+        createGroupFromIds,
+        deleteNodeIds,
+        formatGraph,
+        freeze.frozen,
+        freeze.reason,
+        groupColor,
+        nodeMenu,
+        onCreateGroupFrame,
+        t,
+    ]);
 
     const onAddMenuPickEntry = useCallback(
         (
@@ -1660,6 +1813,7 @@ function BlueprintFlowCanvasInner({
                 // click, so a frozen project never gets as far as showing a ghost it will discard.
                 onPaneContextMenu={freeze.gesture(onPaneContextMenu)}
                 onNodeContextMenu={onNodeContextMenu}
+                onSelectionContextMenu={onSelectionContextMenu}
                 onPaneClick={onPaneClick}
                 // Selection stays on - reading a frozen graph is the point - so only the two gestures
                 // that change it are switched off. React Flow keeps the handles drawn either way, so
