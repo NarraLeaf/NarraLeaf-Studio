@@ -30,6 +30,7 @@ import {
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
+import { Check, EyeOff } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -84,6 +85,14 @@ import {
     BLUEPRINT_COMMENT_DEFAULT_COLOR,
     resolveBlueprintCommentColorKey,
 } from "@/lib/ui-editor/blueprint-comment-colors";
+import { blueprintMinimapNodeFill, blueprintMinimapNodeStroke } from "./blueprintMinimapNodeColors";
+import {
+    BLUEPRINT_MINIMAP_SIZE_ORDER,
+    BLUEPRINT_MINIMAP_SIZES,
+    DEFAULT_BLUEPRINT_MINIMAP_PREFERENCE,
+    type BlueprintMinimapPreference,
+    type BlueprintMinimapSize,
+} from "./blueprintMinimapPreference";
 import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprintAutoLayout";
 import {
     blueprintGroupMemberIds,
@@ -290,6 +299,16 @@ type BlueprintFlowCanvasInnerProps = {
     initialViewport?: BlueprintFlowViewport | null;
     /** Called after pan/zoom changes so the owning editor tab can persist the view. */
     onViewportChange?: (viewport: BlueprintFlowViewport) => void;
+    /**
+     * Whether the graph overview is shown and how large, restored from editor-session state.
+     *
+     * Controlled from the owning tab for the same reason the viewport is: the canvas is remounted
+     * on every graph switch, so a preference kept here would be forgotten each time the author
+     * moved between layers.
+     */
+    minimap?: BlueprintMinimapPreference;
+    /** Called when the author picks a size or closes the overview, so the tab can persist it. */
+    onMinimapChange?: (preference: BlueprintMinimapPreference) => void;
     /** Active blueprint id; enables same-graph Fn signature snapshot sync on Call Fn nodes. */
     currentBlueprintId?: string;
     /** Resolves a callable fn signature (cross-blueprint) when a Call Fn picks a fnRef. */
@@ -416,6 +435,8 @@ function BlueprintFlowCanvasInner({
     onBindElementLiteral,
     initialViewport,
     onViewportChange,
+    minimap = DEFAULT_BLUEPRINT_MINIMAP_PREFERENCE,
+    onMinimapChange,
     currentBlueprintId,
     resolveCallableFnSignature,
     onCreateGroupFrame,
@@ -1075,6 +1096,52 @@ function BlueprintFlowCanvasInner({
         });
     }, [focusRequestKey, focusNodeId, nodes, getViewport, setCenter]);
 
+    /** Clicking the overview goes there, keeping the author's zoom - the same bargain as `setCenter` above. */
+    const jumpToMinimapPoint = useCallback(
+        (_event: ReactMouseEvent, position: { x: number; y: number }) => {
+            void setCenter(position.x, position.y, { zoom: getViewport().zoom, duration: 220 });
+        },
+        [getViewport, setCenter],
+    );
+
+    /** Where the overview's own menu is open, if it is. */
+    const [minimapMenu, setMinimapMenu] = useState<{ x: number; y: number } | null>(null);
+
+    /** Every path that changes the overview goes through here, and closes its menu behind itself. */
+    const applyMinimapPreference = useCallback(
+        (next: BlueprintMinimapPreference) => {
+            onMinimapChange?.(next);
+            setMinimapMenu(null);
+        },
+        [onMinimapChange],
+    );
+
+    const setMinimapSize = useCallback(
+        (size: BlueprintMinimapSize) => applyMinimapPreference({ visible: true, size }),
+        [applyMinimapPreference],
+    );
+
+    const minimapMenuItems = useMemo<ContextMenuDef>(() => {
+        const sizeRows: ContextMenuDef = BLUEPRINT_MINIMAP_SIZE_ORDER.map(size => ({
+            id: `minimap-size-${size}`,
+            label: t(`blueprint.minimap.size.${size}` as const),
+            // The current size wears the tick rather than being disabled: a greyed row reads as
+            // "not available here", and this one is available - it is simply already chosen.
+            icon: minimap.size === size ? <Check className="h-3.5 w-3.5" /> : undefined,
+            onClick: () => setMinimapSize(size),
+        }));
+        return [
+            ...sizeRows,
+            { id: "minimap-sep", separator: true },
+            {
+                id: "minimap-hide",
+                label: t("blueprint.minimap.hide"),
+                icon: <EyeOff className="h-3.5 w-3.5" />,
+                onClick: () => applyMinimapPreference({ ...minimap, visible: false }),
+            },
+        ];
+    }, [applyMinimapPreference, minimap, setMinimapSize, t]);
+
     const onSelectionChange = useCallback(
         ({ nodes: sel }: { nodes: Node[] }) => {
             if (suppressSelectionEventsRef.current || syncedGraphKeyRef.current !== graphKeyRef.current) {
@@ -1472,6 +1539,15 @@ function BlueprintFlowCanvasInner({
     );
 
     const onControlPanContextMenuCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+        // The overview is a React Flow `Panel`, and MiniMap forwards none of the props it does not
+        // know - `onContextMenu` included - so its right-click is caught here on the way down and
+        // kept away from the pane, whose own right-click opens the node palette.
+        if (e.target instanceof Element && e.target.closest(".react-flow__minimap")) {
+            e.preventDefault();
+            e.stopPropagation();
+            setMinimapMenu({ x: e.clientX, y: e.clientY });
+            return;
+        }
         if (!e.ctrlKey) {
             return;
         }
@@ -1855,16 +1931,45 @@ function BlueprintFlowCanvasInner({
                     formatDirection={formatDirection}
                     onFormat={formatGraph}
                     canFormat={canFormat}
+                    minimap={minimap}
+                    onMinimapChange={applyMinimapPreference}
                 />
+                {/* Shown unless the author closed it. A node-count threshold was tried first and
+                    taken back out: guessing when an overview is worth its corner reads as the
+                    control going missing, and this is the author's call to make rather than ours. */}
+                {minimap.visible ? (
                 <MiniMap
-                    // Dragging the minimap pans the viewport — the quickest way to
-                    // move across a large graph. xyflow ships no cursor affordance
-                    // for it, so add our own (grab, grabbing while held).
+                    // Dragging pans the viewport and a click jumps to it — the two quickest ways
+                    // to cross a large graph. xyflow ships no affordance for either, so the
+                    // cursor and the tip say so.
                     pannable
-                    className="!bg-surface-sunken !border-edge cursor-grab active:cursor-grabbing"
-                    maskColor="rgb(var(--nl-surface-sunken) / 0.65)"
-                    nodeColor={() => "var(--narraleaf-accent, #40a8c4)"}
+                    onClick={jumpToMinimapPoint}
+                    // The size has to go through `style`: the overview's <svg> is sized from
+                    // `style.width ?? 200`, so a width set in classes alone leaves a 200×150
+                    // drawing inside a smaller box, cropped. 16:9 because the canvas it
+                    // summarises is, and a squarer map spends its height on empty margin.
+                    style={BLUEPRINT_MINIMAP_SIZES[minimap.size]}
+                    // React Flow renders this as the <svg>'s own <title>, which is both the
+                    // accessible name and the tooltip a browser shows on hover - so the hint
+                    // about what the map does rides along with the name. Left unset it would
+                    // read as React Flow's English "Mini Map" in every language.
+                    ariaLabel={`${t("blueprint.minimap.label")} — ${t("blueprint.minimap.hint")}`}
+                    nodeColor={blueprintMinimapNodeFill}
+                    nodeStrokeColor={blueprintMinimapNodeStroke}
+                    nodeStrokeWidth={2}
+                    maskColor="rgb(var(--nl-surface-sunken) / 0.55)"
+                    // The one bright thing on the map: without an outline there is nothing to
+                    // read the viewport's position against.
+                    maskStrokeColor="rgb(var(--nl-primary))"
+                    maskStrokeWidth={1}
+                    // `border-edge` alone is a colour with no width. The shell is the toolbar's,
+                    // so the two pieces of canvas chrome read as one set, and `m-4` replaces
+                    // React Flow's own 15px panel margin with the same gap on both edges. The
+                    // border is not decoration here: it is the edge of the graph's whole extent,
+                    // without which the viewport rectangle has nothing to be positioned against.
+                    className="!m-4 !rounded-md !border !border-edge-strong !bg-surface-overlay shadow-lg transition-shadow hover:!ring-1 hover:!ring-edge-strong cursor-grab active:cursor-grabbing"
                 />
+                ) : null}
             </ReactFlow>
             <BlueprintAddNodeMenuHost
                 ref={addMenuRef}
@@ -1879,6 +1984,15 @@ function BlueprintFlowCanvasInner({
                     position={{ x: nodeMenu.x, y: nodeMenu.y }}
                     visible
                     onClose={() => setNodeMenu(null)}
+                />
+            ) : null}
+            {minimapMenu ? (
+                <ContextMenu
+                    items={minimapMenuItems}
+                    position={{ x: minimapMenu.x, y: minimapMenu.y }}
+                    visible
+                    iconsEnabled
+                    onClose={() => setMinimapMenu(null)}
                 />
             ) : null}
         </div>

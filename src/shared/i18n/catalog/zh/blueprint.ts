@@ -406,6 +406,17 @@ export const blueprint = {
         select: "选择工具",
         pan: "平移画布",
     },
+    minimap: {
+        label: "蓝图概览",
+        hint: "点击跳转，拖拽平移",
+        size: {
+            small: "小",
+            medium: "中",
+            large: "大",
+        },
+        hide: "隐藏小地图",
+        show: "显示小地图",
+    },
     format: {
         graph: "格式化蓝图",
         direction: "格式化方向",

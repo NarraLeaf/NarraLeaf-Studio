@@ -414,6 +414,17 @@ export const blueprint = {
         select: "Select tool",
         pan: "Pan the canvas",
     },
+    minimap: {
+        label: "Graph overview",
+        hint: "Click to go there, drag to pan",
+        size: {
+            small: "Small",
+            medium: "Medium",
+            large: "Large",
+        },
+        hide: "Hide overview",
+        show: "Show overview",
+    },
     format: {
         graph: "Format graph",
         direction: "Format direction",
