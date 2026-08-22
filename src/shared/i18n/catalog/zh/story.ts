@@ -91,6 +91,12 @@ export const story = {
             speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
         },
     },
+    // 因为实时会话而无法动作的控件所显示的话。会话能带走的故事操作只有固定的一组，这一组之外的
+    // 编辑只写在本机、传不到任何别处。每个界面被拿掉的都是同一样东西，所以只用一句话说，不按面
+    // 各写各的托词。
+    live: {
+        editUnavailable: "实时会话期间不可用，退出会话后再修改",
+    },
     narralang: {
         exportScene: "导出为 NarraLang…",
         exportStory: "将故事导出为 NarraLang…",

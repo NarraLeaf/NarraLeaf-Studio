@@ -3,7 +3,7 @@ import { BookOpen, Camera, Check, ChevronDown, ChevronRight, Code, FileText, Fil
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useFreezeGuard, type FreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
@@ -81,6 +81,7 @@ import {
     STORY_EDITOR_DENSITIES,
 } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
+import { storyEditGuard, useStoryLiveSessionGuard } from "../storyLiveSession";
 import { NarralangScriptView } from "../narralang/NarralangScriptView";
 import { useNarralangScript } from "../narralang/useNarralangScript";
 import { useNarralangCommit } from "../narralang/useNarralangCommit";
@@ -182,15 +183,26 @@ const EMPTY_DRAG_GROUP: Set<StoryBlockId> = new Set();
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-2xs font-medium text-fg-subtle";
 const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50";
 
-function StorySceneOverviewBlock(props: {
+/**
+ * The card above the rows: the scene's name, its description and its default backdrop.
+ *
+ * Every field here commits through `updateSceneMetadata`, which is `StoryService.updateScene` - and
+ * that is **not** one of the operations a live session carries, while the scene record it patches
+ * *is* part of what every machine in a room fingerprints. So the card is switched off, with the
+ * reason on it, while a session owns this story; the story panel's Rename still works, because a
+ * rename travels.
+ */
+export function StorySceneOverviewBlock(props: {
     document: StoryDocument;
     scene: StoryScene;
     backgroundAsset: Asset<AssetType.Image> | null;
     onUpdateScene: (patch: StorySceneUpdate) => boolean;
     panelStateService: PanelStateService | null;
+    /** A live session on this story, as a guard. See {@link useStoryLiveSessionGuard}. */
+    liveSession: FreezeGuard;
 }) {
     const { t } = useTranslation();
-    const { document, scene, backgroundAsset, onUpdateScene, panelStateService } = props;
+    const { document, scene, backgroundAsset, onUpdateScene, panelStateService, liveSession } = props;
     const [nameValue, setNameValue] = useState(scene.name);
     const [descriptionValue, setDescriptionValue] = useState(scene.description ?? "");
     const [selectorOpen, setSelectorOpen] = useState(false);
@@ -323,9 +335,9 @@ function StorySceneOverviewBlock(props: {
             >
                 <button
                     type="button"
-                    className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                    className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70 disabled:cursor-not-allowed"
                     onClick={() => setSelectorOpen(true)}
-                    data-tip={backgroundAssetId ? t("story.sceneEditor.changeBackgroundTitle") : t("story.sceneEditor.selectBackgroundTitle")}
+                    {...liveSession.writes(false, backgroundAssetId ? t("story.sceneEditor.changeBackgroundTitle") : t("story.sceneEditor.selectBackgroundTitle"))}
                 >
                     {url ? (
                         <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
@@ -355,6 +367,11 @@ function StorySceneOverviewBlock(props: {
                             className={SCENE_TEXT_FIELD_CLASS}
                             value={nameValue}
                             maxLength={120}
+                            // `readOnly` rather than `disabled`, here and on the description: a
+                            // greyed-out field cannot be selected, and the text in these two is
+                            // worth reading during a session even when it cannot be changed.
+                            readOnly={liveSession.frozen}
+                            data-tip={liveSession.frozen ? liveSession.reason : undefined}
                             onChange={event => setNameValue(event.target.value)}
                             onBlur={commitName}
                             onKeyDown={event => {
@@ -377,6 +394,8 @@ function StorySceneOverviewBlock(props: {
                             rows={3}
                             maxLength={600}
                             placeholder={t("story.sceneEditor.noDescription")}
+                            readOnly={liveSession.frozen}
+                            data-tip={liveSession.frozen ? liveSession.reason : undefined}
                             onChange={event => setDescriptionValue(event.target.value)}
                             onBlur={commitDescription}
                             onKeyDown={event => {
@@ -396,8 +415,9 @@ function StorySceneOverviewBlock(props: {
                             <button
                                 ref={selectButtonRef}
                                 type="button"
-                                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted hover:border-primary/40"
+                                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={() => setSelectorOpen(true)}
+                                {...liveSession.writes()}
                             >
                                 <ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                                 <span className={["truncate", backgroundAsset ? "" : "italic text-fg-subtle"].join(" ")}>
@@ -407,8 +427,8 @@ function StorySceneOverviewBlock(props: {
                             <button
                                 type="button"
                                 className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
-                                disabled={!backgroundAssetId}
-                                data-tip={t("story.sceneEditor.clearBackground")} aria-label={t("story.sceneEditor.clearBackground")}
+                                {...liveSession.writes(!backgroundAssetId, t("story.sceneEditor.clearBackground"))}
+                                aria-label={t("story.sceneEditor.clearBackground")}
                                 onClick={clearBackground}
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -458,6 +478,13 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // creates characters or carries translations - ask the controller's unscoped answer instead.
     const storyScope = storyDocumentFreezeScope(payload?.storyId);
     const freeze = useFreezeGuard(storyScope);
+    // The other half of the same question, and the freeze cannot answer it: a session leaves this
+    // document writable on purpose, so what it takes away is not a file but a *route*. The three
+    // surfaces below rewrite the scene by routes a session does not carry - the script view replaces
+    // the whole scene, the overview card patches the scene record, and the launch prompt mints a
+    // Scene Snapshot inside it - and every one of them would leave this machine holding a scene the
+    // room has never seen.
+    const liveSession = useStoryLiveSessionGuard(payload?.storyId);
     const editor = useStorySceneEditorController(tabId, payload);
     // The command reference overlay, opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
@@ -1469,13 +1496,17 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     /**
      * Whether the script may be written back, and what to say when it may not.
      *
-     * Two independent refusals with one surface: a scene the script cannot say is read-only for good
-     * (the gate), and a frozen workspace refuses every write of project data. The freeze reason is
-     * the shared one `useFreezeGuard` hands every other control, so the author learns what frozen
-     * looks like once instead of reading a different excuse per panel.
+     * Three independent refusals with one surface: a scene the script cannot say is read-only for
+     * good (the gate), a frozen workspace refuses every write of project data, and a live session
+     * refuses this one because a script commit rewrites the whole scene at once - which is not
+     * something a session can carry to the other machines. The freeze reason is the shared one
+     * `useFreezeGuard` hands every other control, so the author learns what frozen looks like once
+     * instead of reading a different excuse per panel; the session has a sentence of its own,
+     * because it is the case where the rest of the editor is still working.
      */
-    const scriptEditable = script.editable && !freeze.frozen;
-    const scriptReadOnlyReason = freeze.frozen ? freeze.reason : t("story.narralang.view.readOnly");
+    const scriptWrites = storyEditGuard(freeze, liveSession);
+    const scriptEditable = script.editable && !scriptWrites.frozen;
+    const scriptReadOnlyReason = scriptWrites.frozen ? scriptWrites.reason : t("story.narralang.view.readOnly");
     const scriptCommit = useNarralangCommit(
         editor.scene ?? null,
         editor.document ?? null,
@@ -1582,10 +1613,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const snapshots = storyService.listSceneSnapshots(storyId, sceneId);
         if (snapshots.length === 0) {
             uiService.panels.show(STORY_SNAPSHOT_PANEL_ID);
+            // A Scene Snapshot is stored inside the scene, and minting one is not an operation a
+            // session carries - so inside a session the offer is replaced by the reason it cannot be
+            // taken. Nothing is hidden by that: the panel this has just revealed holds the same
+            // "Add" control, greyed, which is where an author looks for it in the first place.
             uiService.notifications.warning(
                 t("storySnapshot.launch.needSnapshot"),
-                t("storySnapshot.launch.needSnapshotDetail"),
-                [{
+                liveSession.frozen ? liveSession.reason : t("storySnapshot.launch.needSnapshotDetail"),
+                liveSession.frozen ? undefined : [{
                     label: t("storySnapshot.launch.createAction"),
                     primary: true,
                     onClick: () => {
@@ -1607,7 +1642,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             blockId,
             snapshotId,
         });
-    }, [editor.context, payload?.storyId, payload?.sceneId, panelStateService, t]);
+    }, [editor.context, liveSession, payload?.storyId, payload?.sceneId, panelStateService, t]);
 
     // Row context menu. Right-clicking a row outside the current selection selects just it first,
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the
@@ -2209,6 +2244,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     backgroundAsset={backgroundAsset}
                     onUpdateScene={editor.updateSceneMetadata}
                     panelStateService={panelStateService}
+                    liveSession={liveSession}
                 />
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
                     {/* `items` stays the WHOLE list, not the window. dnd-kit tolerates a rect it has
