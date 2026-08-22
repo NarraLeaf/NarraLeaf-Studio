@@ -67,6 +67,8 @@ export type WalkthroughDriverInput = {
     maxSteps?: number;
     /** How long the game may say nothing at all before the run is called stopped. */
     idleTimeoutMs?: number;
+    /** How long the game gets to become reachable at all, before the first command lands. */
+    startTimeoutMs?: number;
     /** Injected so a test does not wait in real time. Resolves after `ms`, or when `signal` aborts. */
     wait?: (ms: number, signal: AbortSignal) => Promise<void>;
 };
@@ -97,10 +99,20 @@ const DEFAULT_MAX_STEPS = 4000;
  */
 const DEFAULT_IDLE_TIMEOUT_MS = 60_000;
 
+/**
+ * How long the game gets to become reachable before the run gives up on speaking to it.
+ *
+ * The host dials the control socket for thirty seconds after the spawn, and the compile that
+ * precedes it is unbounded in principle, so this is that window plus room for a cold one. It is
+ * not the idle deadline: nothing has been asked of the story yet, so nothing is stalling.
+ */
+const DEFAULT_START_TIMEOUT_MS = 90_000;
+
 export async function driveWalkthrough(input: WalkthroughDriverInput): Promise<WalkthroughOutcome> {
     const stepIntervalMs = input.stepIntervalMs ?? DEFAULT_STEP_INTERVAL_MS;
     const maxSteps = input.maxSteps ?? DEFAULT_MAX_STEPS;
     const idleTimeoutMs = input.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    const startTimeoutMs = input.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS;
     const wait = input.wait ?? waitForMilliseconds;
 
     let settled: WalkthroughOutcome | null = null;
@@ -207,17 +219,44 @@ export async function driveWalkthrough(input: WalkthroughDriverInput): Promise<W
         if (input.signal.aborted) {
             return { kind: "cancelled", steps };
         }
-        const started = await input.session.sendCommand({
-            kind: "start",
-            storyId: input.storyId,
-            sceneId: input.plan.entrySceneId,
-        });
-        if (!started) {
-            // Nothing is listening on the far end: the process is gone, or its control channel never
-            // opened. Either way no click will land, so the run stops here rather than clicking at
-            // nothing for the length of the ceiling.
-            return settled ?? { kind: "stalled", steps };
+        // The launch resolves when the session exists, not when the game can be spoken to: the
+        // runtime only starts listening on its control socket once it has read (and, for a protected
+        // project, decrypted) its pack, and the host dials it for up to thirty seconds. A `start`
+        // sent in that window is refused for being EARLY, which is not the same as there being
+        // nothing on the far end - so it is retried until it lands, the session ends, or the window
+        // closes. Sending it once is how a run that was working looked like a game that never moved.
+        let started = false;
+        const startDeadline = now() + startTimeoutMs;
+        // Bounded by attempts as well as by the clock. A caller may inject a `wait` that resolves
+        // instantly, and a loop that only watched the wall clock would spin against it.
+        let startAttemptsLeft = Math.max(1, Math.ceil(startTimeoutMs / Math.max(1, stepIntervalMs)));
+        while (!started) {
+            if (input.signal.aborted) {
+                return { kind: "cancelled", steps };
+            }
+            if (settled) {
+                // The process reported its exit while we were still waiting to speak to it.
+                return settled;
+            }
+            started = await input.session.sendCommand({
+                kind: "start",
+                storyId: input.storyId,
+                sceneId: input.plan.entrySceneId,
+            });
+            if (started) {
+                break;
+            }
+            startAttemptsLeft -= 1;
+            if (startAttemptsLeft <= 0 || now() >= startDeadline) {
+                // Nothing is listening on the far end and nothing is going to be. No click would
+                // land, so the run stops here rather than clicking at nothing for the ceiling.
+                return settled ?? { kind: "stalled", steps };
+            }
+            await Promise.race([reached, wait(stepIntervalMs, input.signal)]);
         }
+        // The clock the idle deadline runs on starts when the game can hear us, not when the test
+        // did - a slow compile is not the story failing to advance.
+        lastEventAt = now();
 
         while (!settled) {
             if (input.signal.aborted) {

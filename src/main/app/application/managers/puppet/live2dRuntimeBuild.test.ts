@@ -5,6 +5,7 @@ import os from "os";
 import path from "path";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildLive2DRuntime, live2dStagingDir } from "./live2dRuntimeBuild";
+import { inspectLive2DSdkArchive, readArchiveEntry } from "./live2dSdkArchive";
 
 /**
  * The build, end to end, against a real Cubism SDK archive.
@@ -52,17 +53,29 @@ describe.skipIf(!hasRealSdk)("buildLive2DRuntime", () => {
         expect(result.bytes).toBeGreaterThan(400_000);
         const bundle = await fsp.readFile(result.entryPath, "utf-8");
 
-        // The two generated files are the ones an as-shipped SDK cannot supply, and each has a
-        // signature in the output. Without the first the Framework reads an undefined global; without
-        // the second the renderer compiles empty programs and silently draws nothing.
+        // The two things an as-shipped SDK cannot supply, each with a signature in the output. Without
+        // the first the Framework reads an undefined global; without the second the renderer compiles
+        // empty programs and silently draws nothing.
         expect(bundle).toContain("globalThis.Live2DCubismCore");
         expect(bundle).toContain("SHADER_SOURCES");
         expect(bundle).toContain("vertshadersrc.vert");
 
-        // An ES module with the default export the host loader looks for, and no leftover CommonJS
-        // wrapper from the Core's emscripten glue.
+        // An ES module with the default export the host loader looks for.
         expect(bundle).toMatch(/export\s*\{/);
-        expect(bundle).not.toContain("require(\"fs\")");
+
+        // The Core is redistributed as Live2D provides it — byte for byte, at the head of the file.
+        // The Proprietary Software License Agreement grants no right to modify it (6.1) and requires
+        // it "on an as is basis" (5.2.4), so a bundler that re-prints it is a licence problem rather
+        // than a style one, and this is the assertion that says so.
+        const archive = await fsp.readFile(REAL_SDK);
+        const core = readArchiveEntry(archive, inspectLive2DSdkArchive(archive).core).toString("utf-8");
+        expect(bundle.startsWith(core)).toBe(true);
+
+        // Both copyright headers survive. Neither is a legal comment by esbuild's definition, so
+        // neither reaches the output unless it is placed there deliberately; a build without them is
+        // one the author is not allowed to distribute.
+        expect(bundle).toContain("This file corresponds to the \"Redistributable Code\" in the agreement.");
+        expect(bundle).toContain("Live2D Open Software license");
 
         // Studio's own adapter is in there, not just the SDK: the factory the host loader looks for,
         // and the class it hands back.
@@ -118,8 +131,11 @@ describe.skipIf(!hasRealSdk)("buildLive2DRuntime", () => {
         const readme = await fsp.readFile(path.join(targetDir, "README.md"), "utf-8");
         expect(readme).toContain("Live2D Inc.");
         expect(readme).toContain(result.sdkVersion!);
-        const licenses = await fsp.readdir(path.join(targetDir, "licenses"));
+        const licenses = await fsp.readdir(path.join(targetDir, "licenses"), { recursive: true });
         expect(licenses.length).toBeGreaterThan(0);
+        // The list the Proprietary Software License Agreement points at to state which files may be
+        // redistributed at all (1.15) travels with the files it names.
+        expect(licenses.some(entry => entry.toString().endsWith("RedistributableFiles.txt"))).toBe(true);
     }, 180_000);
 
     it("keys its staging on the archive's content, not its path", async () => {

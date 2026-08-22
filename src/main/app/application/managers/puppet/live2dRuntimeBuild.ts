@@ -69,19 +69,48 @@ async function writeFileEnsuringDir(target: string, data: string | Buffer): Prom
 }
 
 /**
- * Re-emit the Core so a bundler can consume it.
+ * The head of the produced file: the Core verbatim, then the notices a bundler would otherwise drop.
  *
- * The Core is a classic script: it declares `var Live2DCubismCore` at file top level and relies on that
- * becoming a property of `window`. Bundled as a module that `var` stays module-scoped, and the
- * Framework — which reads the bare global, never an import — sees nothing and fails at the first call
- * with no diagnostic that points here. The explicit publish is the fix.
+ * The Core travels as the bundler's banner rather than through the bundler because it is the one part
+ * of an SDK archive that may not be altered. The Proprietary Software License Agreement grants the
+ * right to copy and redistribute the Redistributable Code (5.1) but not to modify it (6.1), and
+ * requires it to be redistributed "on an as is basis when Live2D provides it" (5.2.4) — where the
+ * Framework's own licence expressly grants the right to alter it (Open Software License 2.1). A banner
+ * is inserted as text, so `live2dcubismcore.min.js` reaches the author's game byte for byte and its
+ * copyright header arrives with it.
+ *
+ * The line after it is NarraLeaf's, and is what makes the file work at all: the Core is a classic
+ * script declaring `var Live2DCubismCore` at what it assumes is global scope, and inside a module that
+ * `var` is module-scoped. Every Framework module reads the bare global and never an import, so without
+ * the publish they all fail at the first call with no diagnostic that points here.
  */
-function coreModule(coreSource: string): string {
+function coreBanner(coreSource: string, frameworkNotice: string): string {
     return `${coreSource}
-// Published deliberately: every Framework module reads the bare global, never an import.
 globalThis.Live2DCubismCore = Live2DCubismCore;
-export default Live2DCubismCore;
+// The Cubism Framework sources bundled below carry this header:
+${frameworkNotice}
 `;
+}
+
+/** What NarraLeaf writes when the Framework's own header cannot be read. */
+const FRAMEWORK_NOTICE_FALLBACK = `/*!
+ * Cubism Framework, (C) Live2D Inc. All rights reserved.
+ * Live2D Open Software License:
+ * https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html
+ */`;
+
+/**
+ * The Framework's copyright header, lifted from one of its sources.
+ *
+ * A bundler drops it otherwise, and a build stripped of it is one the author is not allowed to
+ * distribute (Open Software License 5.1 and 5.7). esbuild keeps a comment only when it contains
+ * `@license` or `@preserve` or opens with `//!` or `/*!`, and every Framework source opens with a
+ * plain block comment, so `legalComments` never sees one. All of them carry the same header, which is
+ * why one copy is the whole of it.
+ */
+function frameworkNotice(source: string | null): string | null {
+    const header = source ? /^\s*\/\*\*[\s\S]*?\*\//.exec(source) : null;
+    return header ? header[0].trim() : null;
 }
 
 /**
@@ -133,6 +162,9 @@ You are the party distributing them, in the game you build from this project —
 redistribute the SDK and never downloads it. Your obligations to Live2D (including the publication
 licence and its revenue threshold) are yours, and they apply to the game you ship.
 
+The licence covers redistributing them inside that game, and not a public source repository. Keep this
+directory out of any repository you publish.
+
 ## Rebuilding
 
 Delete this directory and install the runtime again from Studio, using the same or a newer SDK archive.
@@ -145,9 +177,10 @@ Do not edit \`${PUPPET_RUNTIME_ENTRY_FILE}\` by hand; the next install overwrite
 type EsbuildModule = typeof import("esbuild");
 
 /**
- * The Core's emscripten glue keeps its Node file-reading branch, guarded at runtime by checks a browser
- * never passes. The bundler still has to *resolve* those specifiers, so they are pointed at an empty
- * CommonJS module: dead code that resolves, rather than a build failure.
+ * A Node specifier that reaches the bundler fails the build rather than warning, so any source naming
+ * one is pointed at an empty CommonJS module. Written for the Core's emscripten glue, which keeps a
+ * Node file-reading branch guarded by checks a browser never passes; the Core no longer goes through
+ * the bundler, and this stays for the Framework, which ships as source and is the author's.
  */
 const stubNodeBuiltins = {
     name: "stub-node-builtins",
@@ -172,8 +205,9 @@ const stubNodeBuiltins = {
  *
  *     <staging>/sdk/framework/**    the author's Framework sources, as TypeScript
  *     <staging>/glue/index.js       Studio's adapter, copied
- *     <staging>/glue/gen/core.js    generated; see coreModule
  *     <staging>/glue/gen/shaders.js generated; see shaderModule
+ *
+ * The Core is not part of that tree. It is prepended to the output instead; see {@link coreBanner}.
  */
 export async function buildLive2DRuntime(
     request: Live2DRuntimeBuildRequest,
@@ -196,11 +230,12 @@ export async function buildLive2DRuntime(
     // Unpacking 20 MB takes well under a second and this runs once per install, by hand.
     await fs.rm(staging, { recursive: true, force: true });
 
+    // The first source doubles as the copyright header every one of them carries; see frameworkNotice.
+    let frameworkHeaderSource: string | null = null;
     for (const [relative, entry] of found.framework) {
-        await writeFileEnsuringDir(
-            path.join(staging, "sdk", "framework", ...relative.split("/")),
-            readArchiveEntry(archive, entry),
-        );
+        const bytes = readArchiveEntry(archive, entry);
+        frameworkHeaderSource ??= bytes.toString("utf-8");
+        await writeFileEnsuringDir(path.join(staging, "sdk", "framework", ...relative.split("/")), bytes);
     }
 
     const shaderSources = new Map<string, string>();
@@ -213,11 +248,16 @@ export async function buildLive2DRuntime(
         glueEntry,
         await fs.readFile(path.join(request.glueDir, PUPPET_RUNTIME_ENTRY_FILE), "utf-8"),
     );
-    await writeFileEnsuringDir(
-        path.join(staging, "glue", "gen", "core.js"),
-        coreModule(readArchiveEntry(archive, found.core).toString("utf-8")),
-    );
     await writeFileEnsuringDir(path.join(staging, "glue", "gen", "shaders.js"), shaderModule(shaderSources));
+
+    const notice = frameworkNotice(frameworkHeaderSource);
+    if (!notice) {
+        log("warning", "the Framework sources carry no copyright header; a NarraLeaf-written one is used instead");
+    }
+    const banner = coreBanner(
+        readArchiveEntry(archive, found.core).toString("utf-8"),
+        notice ?? FRAMEWORK_NOTICE_FALLBACK,
+    );
 
     const esbuild = await loadEsbuild();
     const outfile = path.join(staging, "out", PUPPET_RUNTIME_ENTRY_FILE);
@@ -229,16 +269,11 @@ export async function buildLive2DRuntime(
         format: "esm",
         platform: "browser",
         target: "es2022",
-        // The SDK's own licence headers travel into the output, which is where they belong: the file is
-        // about to be shipped inside the author's game.
+        banner: { js: banner },
+        // For anything in the archive that marks a header as a legal comment. Live2D's own headers do
+        // not, which is why the notices in the banner are placed by hand.
         legalComments: "inline",
         plugins: [stubNodeBuiltins as never],
-        logOverride: {
-            "direct-eval": "silent",
-            // All inside the minified Core, and all correct as shipped.
-            "suspicious-boolean-not": "silent",
-            "commonjs-variable-in-esm": "silent",
-        },
     });
 
     const bundle = await fs.readFile(outfile);
