@@ -20,6 +20,7 @@ import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
+import type { GameTestCommand } from "@shared/types/gameTest";
 import { readRuntimeTestCommandSource, readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import type { WeatherBakeSpec } from "@shared/weather/model";
@@ -394,9 +395,38 @@ export function GameRuntimeApp() {
      * is told by the observations above.
      */
     const testControlsRef = useRef<GameAppTestControls | null>(null);
+    /**
+     * A `start` that reached this window before the game could act on one.
+     *
+     * There are two gaps between a test being able to SEND a command and the game being able to
+     * OBEY one, and this is the second: the main process holds the first command until a listener
+     * exists here, and by then the surface that can start a story may still be mounting. Held
+     * rather than logged and dropped, because nothing re-sends a start - the run is waiting on the
+     * story it asked for, and every later advance would arrive at a game still sitting on its
+     * title. Only a `start`, and only the latest; the main process holds by the same rule.
+     */
+    const pendingTestStartRef = useRef<GameTestCommand | null>(null);
+    const runTestCommand = useCallback((command: GameTestCommand, controls: GameAppTestControls) => {
+        const acted = command.kind === "start"
+            ? controls.startStory({ storyId: command.storyId, sceneId: command.sceneId })
+            : command.kind === "advance"
+                ? controls.advance()
+                : controls.choose(command.index);
+        // A command the game refuses is a real answer about the game, not a harness fault: the
+        // line says which one, and the test sees the observation it was waiting for never come.
+        void acted.catch((error: unknown) => {
+            bridge?.log("warning", `[Runtime] test command "${command.kind}" failed: ${normalizeError(error)}`);
+        });
+    }, [bridge]);
     const onTestControlsChanged = useCallback((controls: GameAppTestControls | null) => {
         testControlsRef.current = controls;
-    }, []);
+        const pending = pendingTestStartRef.current;
+        if (!controls || !pending) {
+            return;
+        }
+        pendingTestStartRef.current = null;
+        runTestCommand(pending, controls);
+    }, [runTestCommand]);
     useEffect(() => {
         const subscribe = readRuntimeTestCommandSource(bridge);
         if (!subscribe) {
@@ -405,21 +435,16 @@ export function GameRuntimeApp() {
         return subscribe(command => {
             const controls = testControlsRef.current;
             if (!controls) {
+                if (command.kind === "start") {
+                    pendingTestStartRef.current = command;
+                    return;
+                }
                 bridge?.log("warning", `[Runtime] test command "${command.kind}" arrived before the game was up`);
                 return;
             }
-            const acted = command.kind === "start"
-                ? controls.startStory({ storyId: command.storyId, sceneId: command.sceneId })
-                : command.kind === "advance"
-                    ? controls.advance()
-                    : controls.choose(command.index);
-            // A command the game refuses is a real answer about the game, not a harness fault: the
-            // line says which one, and the test sees the observation it was waiting for never come.
-            void acted.catch((error: unknown) => {
-                bridge?.log("warning", `[Runtime] test command "${command.kind}" failed: ${normalizeError(error)}`);
-            });
+            runTestCommand(command, controls);
         });
-    }, [bridge]);
+    }, [bridge, runTestCommand]);
     // Before useRuntimePlugins' effect, which is what makes `available()` a real
     // answer by the time any plugin's setup() can ask: effects run in the order
     // their hooks were called, and this hook is declared above that one.

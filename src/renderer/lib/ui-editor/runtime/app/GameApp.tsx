@@ -3284,7 +3284,16 @@ export function GameApp(props: GameAppProps): ReactNode {
      * disappear.
      */
     useEffect(() => {
-        if (!onTestControlsChanged) {
+        // Published only once a story could actually be started, which is what the handle claims:
+        // `startStoryInGame` refuses outright until there is an active surface to start one on, and
+        // a shell holding a handle that throws has no way to tell "not yet" from "not ever". The
+        // window between the two is real - the control socket opens while this component is still
+        // mounting - and it is exactly where a driven run used to lose its start.
+        //
+        // `nlrSession` is in the condition for the second half of the same window: the boot preload
+        // mounts an environment of its own, and a start that lands mid-mount is cancelled by it
+        // (`NlrSessionSupersededError`). A mounted session is the game saying that pass is over.
+        if (!onTestControlsChanged || !activeSurface || !core || !nlrSession) {
             return;
         }
         onTestControlsChanged({
@@ -3293,7 +3302,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             choose: (index: number) => selectChoiceInGame(index),
         });
         return () => onTestControlsChanged(null);
-    }, [nextInGame, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
+    }, [activeSurface, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
 
     const createHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core) {
