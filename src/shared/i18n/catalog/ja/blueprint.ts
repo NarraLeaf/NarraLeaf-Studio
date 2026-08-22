@@ -328,6 +328,7 @@ export const blueprint = {
         ungroup: "グループ解除",
         untitled: "グループ",
         rename: "グループ名",
+        fit: "グループを中身に合わせる",
     },
     displayable: {
         propertyLabel: "プロパティ",

@@ -328,6 +328,7 @@ export const blueprint = {
         ungroup: "取消分组",
         untitled: "分组",
         rename: "分组名称",
+        fit: "自动调整分组大小",
     },
     displayable: {
         propertyLabel: "属性",
