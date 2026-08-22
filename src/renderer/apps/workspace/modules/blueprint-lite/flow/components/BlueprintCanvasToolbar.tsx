@@ -57,52 +57,52 @@ export function BlueprintCanvasToolbar({
             // Below, not above: the toolbar sits against the top of the canvas, and a tip opening
             // upwards from here would be drawn over the editor's own header.
             side="bottom"
-            className="absolute right-3 top-3 z-[5] flex items-center gap-0.5 rounded-lg border border-edge bg-surface-overlay p-0.5 shadow-lg"
+            className="absolute right-3 top-3 z-[5] flex items-center gap-2 rounded-md border border-edge-strong bg-surface-overlay px-2 py-1 shadow-lg"
             // The canvas underneath treats a press as the start of a marquee or a pan.
             onPointerDown={e => e.stopPropagation()}
         >
             <ToolbarButton
-                size="sm"
+                size="md"
                 active={tool === "select"}
                 aria-label={t("blueprint.tool.select")}
                 data-tip={t("blueprint.tool.select")}
                 aria-pressed={tool === "select"}
                 onClick={() => onToolChange("select")}
             >
-                <MousePointer2 className="h-3.5 w-3.5" />
+                <MousePointer2 className="h-4 w-4" />
             </ToolbarButton>
             <ToolbarButton
-                size="sm"
+                size="md"
                 active={tool === "pan"}
                 aria-label={t("blueprint.tool.pan")}
                 data-tip={t("blueprint.tool.pan")}
                 aria-pressed={tool === "pan"}
                 onClick={() => onToolChange("pan")}
             >
-                <Hand className="h-3.5 w-3.5" />
+                <Hand className="h-4 w-4" />
             </ToolbarButton>
-            <div className="mx-0.5 h-5 w-px bg-edge" />
+            <div className="mx-1 h-6 w-px bg-edge" />
             {/* The button groups in the colour the author last chose, and the chevron is where a
                 different one is picked - the same bargain the zoom control makes with its
                 percentage: the common answer costs one click, the rest cost two. */}
             <ToolbarButton
-                size="sm"
+                size="md"
                 aria-label={t("blueprint.group.create")}
                 {...freeze.writes(!canGroup, t("blueprint.group.create"))}
                 onClick={() => onCreateGroup(groupColor)}
             >
-                <Group className="h-3.5 w-3.5" />
+                <Group className="h-4 w-4" />
             </ToolbarButton>
             <ToolbarButton
                 ref={colors.triggerRef}
-                size="sm"
+                size="md"
                 aria-label={t("blueprint.group.color")}
                 aria-expanded={colors.open}
                 aria-haspopup="dialog"
                 {...freeze.writes(!canGroup, t("blueprint.group.color"))}
                 onClick={colors.toggle}
             >
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="h-4 w-4" />
             </ToolbarButton>
             <SurfaceToolbarPopoverPanel popover={colors} dataAttribute="blueprint-group-color">
                 {Object.entries(BLUEPRINT_COMMENT_COLORS).map(([key, color]) => (
@@ -122,14 +122,14 @@ export function BlueprintCanvasToolbar({
                     />
                 ))}
             </SurfaceToolbarPopoverPanel>
-            <div className="mx-0.5 h-5 w-px bg-edge" />
+            <div className="mx-1 h-6 w-px bg-edge" />
             <ToolbarButton
-                size="sm"
+                size="md"
                 aria-label={t("blueprint.format.graph")}
                 {...freeze.writes(!canFormat, t("blueprint.format.graph"))}
                 onClick={onFormat}
             >
-                <Wand2 className="h-3.5 w-3.5" />
+                <Wand2 className="h-4 w-4" />
             </ToolbarButton>
         </TooltipGroup>
     );

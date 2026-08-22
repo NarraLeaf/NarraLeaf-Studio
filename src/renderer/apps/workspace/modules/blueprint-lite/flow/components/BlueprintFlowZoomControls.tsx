@@ -34,7 +34,14 @@ const FIT_MODE_LABEL_KEYS = {
     width: "blueprint.zoom.fitWidth",
 } as const satisfies Record<CanvasFitMode, TranslationKey>;
 
-const STEP_BUTTON_CLASS = "!min-h-0 !px-1.5 !py-1.5";
+/**
+ * 36px square cells, the same height the surface editor's toolbar buttons are: the two canvases
+ * park the same kind of control in the same corner, so they are the same size.
+ */
+const STEP_BUTTON_CLASS = "!h-9 !min-h-9 !w-9 !px-0 !py-0";
+
+/** The percentage carries text, so it keeps the height and trades the square for padding. */
+const PERCENT_BUTTON_CLASS = "!h-9 !min-h-9 !px-2 !py-0 min-w-11 tabular-nums text-fg-muted";
 
 /**
  * The canvas's bottom-left corner is underneath the member panel, which is an `absolute` `w-56`
@@ -116,39 +123,39 @@ export function BlueprintFlowZoomControls({ memberPanelCollapsed = false }: { me
 
     return (
         <div
-            className={`absolute bottom-3 ${memberPanelCollapsed ? PANEL_CLEARANCE_CLASS.collapsed : PANEL_CLEARANCE_CLASS.open} z-[5] flex items-center gap-0.5 rounded-lg border border-edge bg-surface-overlay p-0.5 shadow-lg transition-[left] duration-200 ease-out`}
+            className={`absolute bottom-3 ${memberPanelCollapsed ? PANEL_CLEARANCE_CLASS.collapsed : PANEL_CLEARANCE_CLASS.open} z-[5] flex items-center gap-2 rounded-md border border-edge-strong bg-surface-overlay px-2 py-1 shadow-lg transition-[left] duration-200 ease-out`}
             onPointerDown={e => e.stopPropagation()}
         >
             <Button
                 type="button"
-                size="sm"
+                size="md"
                 variant="ghost"
                 className={STEP_BUTTON_CLASS}
                 aria-label={t("blueprint.zoom.out")}
                 data-tip={t("blueprint.zoom.out")}
                 onClick={() => zoomOut({ duration: 180 })}
             >
-                <ZoomOut className="h-3.5 w-3.5 text-fg-muted" />
+                <ZoomOut className="h-4 w-4 text-fg-muted" />
             </Button>
             <Button
                 type="button"
-                size="sm"
+                size="md"
                 variant="ghost"
                 className={STEP_BUTTON_CLASS}
                 aria-label={t("blueprint.zoom.in")}
                 data-tip={t("blueprint.zoom.in")}
                 onClick={() => zoomIn({ duration: 180 })}
             >
-                <ZoomIn className="h-3.5 w-3.5 text-fg-muted" />
+                <ZoomIn className="h-4 w-4 text-fg-muted" />
             </Button>
-            <div className="mx-0.5 h-5 w-px bg-edge" />
+            <div className="mx-1 h-6 w-px bg-edge" />
             {/* The percentage is the one-click way back to seeing the whole graph, which is what an
                 author wants from it nine times out of ten; the chevron opens the rest. */}
             <Button
                 type="button"
-                size="sm"
+                size="md"
                 variant="ghost"
-                className={`${STEP_BUTTON_CLASS} min-w-11 tabular-nums text-fg-muted`}
+                className={PERCENT_BUTTON_CLASS}
                 aria-label={t("blueprint.zoom.fitArea")}
                 data-tip={t("blueprint.zoom.fitArea")}
                 onClick={() => applyMode("contain")}
@@ -158,7 +165,7 @@ export function BlueprintFlowZoomControls({ memberPanelCollapsed = false }: { me
             <Button
                 ref={popover.triggerRef}
                 type="button"
-                size="sm"
+                size="md"
                 variant="ghost"
                 className={STEP_BUTTON_CLASS}
                 aria-label={t("blueprint.zoom.label")}
@@ -167,7 +174,7 @@ export function BlueprintFlowZoomControls({ memberPanelCollapsed = false }: { me
                 aria-haspopup="dialog"
                 onClick={popover.toggle}
             >
-                <ChevronDown className="h-3.5 w-3.5 text-fg-muted" />
+                <ChevronDown className="h-4 w-4 text-fg-muted" />
             </Button>
             <SurfaceToolbarPopoverPanel popover={popover} dataAttribute="blueprint-zoom">
                 {CANVAS_FIT_MODES.map(mode => (
