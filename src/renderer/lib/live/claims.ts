@@ -16,6 +16,21 @@ import type { StoryBlockId } from "@shared/types/story";
  */
 export const DEFAULT_CLAIM_TIMEOUT_MS = 30_000;
 
+/**
+ * How often a box that is being typed into says so again, in milliseconds.
+ *
+ * **This is what makes a claim survive a paragraph**, and it is deliberately not a message per
+ * keystroke: what travels here goes to every machine in the room, and a room of six people typing
+ * would otherwise be a few hundred messages a second carrying one bit of news between them.
+ *
+ * A third of {@link DEFAULT_CLAIM_TIMEOUT_MS}, so two assertions fit inside one deadline with room
+ * to spare - a claim therefore survives a lost assertion, which matters because nothing here is
+ * re-sent or acknowledged. The traffic that buys is at most one message per author per ten seconds
+ * while they are writing, and none at all while they are not: an author who stops typing lets the
+ * claim lapse, and their next keystroke takes the row again.
+ */
+export const CLAIM_REASSERT_MS = DEFAULT_CLAIM_TIMEOUT_MS / 3;
+
 /** Who is writing a row. */
 export type LiveClaimHolder = {
     /** The instance that took it. While the claim stands, only this instance may write the row. */

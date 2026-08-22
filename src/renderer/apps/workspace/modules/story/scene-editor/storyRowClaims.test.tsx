@@ -7,6 +7,7 @@ import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveSession } from "@shared/types/team";
 import {
     othersClaims,
+    rowClaimHolder,
     StoryRowClaimMark,
     StoryRowClaimsProvider,
     useStoryRowClaim,
@@ -163,6 +164,34 @@ describe("which rows are marked", () => {
         const second = othersClaims(session({ "block-2": "bob" }), STORY);
         expect(first).toEqual(second);
         expect(othersClaims(IDLE_LIVE_SESSION, STORY)).toEqual({});
+    });
+});
+
+describe("the same answer for one row, read without React", () => {
+    /**
+     * What the controller asks before a click becomes a caret. It sits outside the provider the
+     * rows read from, so the two readers must agree exactly: a row that wears the mark and still
+     * accepts typing would let an author write a paragraph the host is certain to refuse.
+     */
+    const BLOCK = "block-2" as StoryBlockId;
+
+    it("names the holder of a row somebody else is writing", () => {
+        expect(rowClaimHolder(session({ "block-2": "bob" }), STORY, BLOCK)).toBe("bob");
+    });
+
+    it("answers null for this author's own row, for a free row, and for another story", () => {
+        expect(rowClaimHolder(session({ "block-2": "ada" }), STORY, BLOCK)).toBeNull();
+        expect(rowClaimHolder(session({}), STORY, BLOCK)).toBeNull();
+        expect(rowClaimHolder(session({ "block-2": "bob" }), "story-2" as StoryId, BLOCK)).toBeNull();
+        expect(rowClaimHolder(IDLE_LIVE_SESSION, STORY, BLOCK)).toBeNull();
+    });
+
+    it("agrees with the set the rows are marked from, row for row", () => {
+        const view = session({ "block-1": "ada", "block-2": "bob" });
+        const marked = othersClaims(view, STORY);
+        for (const blockId of ["block-1", "block-2", "block-3"] as StoryBlockId[]) {
+            expect(rowClaimHolder(view, STORY, blockId)).toBe(marked[blockId] ?? null);
+        }
     });
 });
 

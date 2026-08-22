@@ -125,9 +125,15 @@ export function isStoryKeybindingReadOnlySafe(id: string): boolean {
  *    thaw - the exact loss this pass exists to prevent.
  *
  * Both call this, so there is one answer rather than two that can drift.
+ *
+ * `claimedByOther` is a row somebody else in a live session is writing, and it is refused here for
+ * the same reason a freeze is: the host would refuse the operation anyway, but letting an author
+ * type a whole paragraph and telling them afterwards is precisely the injury a claim exists to
+ * prevent. Both arguments are required rather than defaulted, so a call site that has not been told
+ * which rows are taken fails to compile instead of quietly offering one.
  */
-export function isRowTextEditable(frozen: boolean): boolean {
-    return !frozen;
+export function isRowTextEditable(frozen: boolean, claimedByOther: boolean): boolean {
+    return !frozen && !claimedByOther;
 }
 
 /**

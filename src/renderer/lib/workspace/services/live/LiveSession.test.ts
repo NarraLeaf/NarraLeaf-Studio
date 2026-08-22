@@ -32,6 +32,8 @@ const REMOTE = "lore://server";
 /* --------------------------------------------------------------------------- the room */
 
 type Bus = {
+    /** Everything any window put on the wire, in order, so traffic can be counted rather than guessed. */
+    said: unknown[];
     say(sessionId: string, payload: unknown, from: string): void;
     listen(sessionId: string, handler: (payload: unknown, from: string) => void): () => void;
     watch(project: string, handler: (event: TeamLiveEvent) => void): () => void;
@@ -52,8 +54,11 @@ function createBus(): Bus {
      * made, it moves when the effect answering it arrives.
      */
     const queue: (() => void)[] = [];
+    const said: unknown[] = [];
     return {
+        said,
         say(sessionId, payload, from) {
+            said.push(payload);
             for (const handler of [...(rooms.get(sessionId) ?? [])]) {
                 // A copy per listener: what travels is the payload of a `live.say`, and a window
                 // never holds the object another window sent.
@@ -124,10 +129,23 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
                 members: [...room.members, { instance: self, account: self, label: self, joinedAt: 1 }],
             };
             world.rooms.set(room.id, joined);
+            // The roster reaches the windows already in the room, which is what a server does and
+            // what the host needs: a claim is recorded against the ACCOUNT behind an instance, and
+            // the roster is the only thing that knows which account a window signed in as.
+            world.bus.announce(PROJECT, { kind: "live-changed", session: joined });
             return { ok: true, value: joined };
         },
         leave: async sessionId => {
             calls.push("leave");
+            const room = world.rooms.get(sessionId);
+            if (room) {
+                const remaining: TeamLiveSession = {
+                    ...room,
+                    members: room.members.filter(member => member.instance !== self),
+                };
+                world.rooms.set(sessionId, remaining);
+                world.bus.announce(PROJECT, { kind: "live-changed", session: remaining });
+            }
             return { ok: true, value: null };
         },
         close: async sessionId => {
@@ -339,6 +357,11 @@ async function drain(bus: Bus): Promise<void> {
         bus.flush();
         await Promise.resolve();
     }
+}
+
+/** How many claim SETS have crossed the room, which is the traffic this feature costs it. */
+function countClaimsMessages(world: World): number {
+    return world.bus.said.filter(payload => (payload as { kind?: unknown }).kind === "claims").length;
 }
 
 function textOf(window: Window, blockId: string): string {
@@ -623,6 +646,136 @@ describe("a live session", () => {
 
             await host.session.leave();
             expect(record()).toBe(true);
+        });
+    });
+
+    describe("who is writing which row", () => {
+        it("carries a guest's claim to the host and comes back as the whole set", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.session.claimRow(guest.storyId, "b", true);
+            // Nothing is held on the strength of having asked: the host is the only place a claim
+            // exists, and the row is somebody's when the set says so.
+            expect(guest.session.getView().claims).toEqual({});
+            await drain(world.bus);
+
+            expect(host.session.getView().claims).toEqual({ b: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ b: "instance-guest" });
+        });
+
+        it("puts the host's own row in the set, through the same door as a guest's", async () => {
+            // A host that claimed locally would hold rows nobody else can see held: no mark on any
+            // other screen, and nothing refusing a guest writing over its paragraph.
+            await openRoom();
+            await joinRoom();
+
+            host.session.claimRow(host.storyId, "a", true);
+            await drain(world.bus);
+
+            expect(host.session.getView().claims).toEqual({ a: "instance-host" });
+            expect(guest.session.getView().claims).toEqual({ a: "instance-host" });
+        });
+
+        it("takes the row out of the set when it is given back", async () => {
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            guest.session.claimRow(guest.storyId, "b", false);
+            await drain(world.bus);
+
+            expect(host.session.getView().claims).toEqual({});
+            expect(guest.session.getView().claims).toEqual({});
+        });
+
+        it("says nothing when the set has not moved, however often it is asserted", async () => {
+            // This travels to every machine in the room, and a box asserts its claim again as its
+            // author types. A set per assertion would be a message per author per few seconds
+            // carrying news nobody has not already heard.
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            const said = countClaimsMessages(world);
+            for (let assertion = 0; assertion < 20; assertion += 1) {
+                guest.session.claimRow(guest.storyId, "b", true);
+                await drain(world.bus);
+            }
+            expect(countClaimsMessages(world) - said).toBe(0);
+        });
+
+        it("refuses everybody else's edit to a claimed row, naming the holder", async () => {
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            // The host is not exempt from the rule it enforces: the row is the guest's.
+            host.story.updateBlock(host.storyId, host.sceneId, "b", note("b", "the host's own").payload);
+            await drain(world.bus);
+
+            expect(textOf(host, "b")).toBe("b");
+            expect(host.session.getView().lastRefusal).toEqual({
+                reason: "row-claimed",
+                op: "update-block",
+                heldBy: "instance-guest",
+            });
+            // And the holder still writes its own line, which is the whole point of holding it.
+            guest.story.updateBlock(guest.storyId, guest.sceneId, "b", note("b", "hers").payload);
+            await drain(world.bus);
+            expect(textOf(host, "b")).toBe("hers");
+        });
+
+        it("drops what a window that has left the room was writing", async () => {
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            await guest.session.leave();
+            await drain(world.bus);
+
+            // The one ending a give-back cannot cover: the machine that would have sent one is
+            // gone, and the row would otherwise be held until it lapsed on the clock.
+            expect(host.session.getView().claims).toEqual({});
+        });
+
+        it("holds nothing once this window's own session is over", async () => {
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+            expect(guest.session.getView().claims).toEqual({ b: "instance-guest" });
+
+            await guest.session.leave();
+            expect(guest.session.getView().claims).toEqual({});
+            // And a claim asked for outside a session reaches nobody at all.
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+            expect(guest.session.getView().claims).toEqual({});
+        });
+
+        it("tells a window that joins mid-paragraph what is already being written", async () => {
+            // The catch-up carries what the host DID. A claim is not an effect, so without this a
+            // machine arriving in the middle of somebody's paragraph would see an unmarked scene
+            // and learn the truth by being refused.
+            await openRoom();
+            host.session.claimRow(host.storyId, "a", true);
+            await joinRoom();
+
+            expect(guest.session.getView().claims).toEqual({ a: "instance-host" });
+        });
+
+        it("says nothing about a scene of any other story", async () => {
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow("story-elsewhere" as StoryId, "b", true);
+            await drain(world.bus);
+
+            expect(host.session.getView().claims).toEqual({});
         });
     });
 

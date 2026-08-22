@@ -19,6 +19,8 @@ import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { isRowTextEditable, storyDocumentFreezeScope } from "./storySceneReadOnly";
+import { rowClaimHolder } from "./storyRowClaims";
+import { useStoryRowClaimHold } from "./storyRowClaimHold";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -199,6 +201,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
+    /**
+     * Whether somebody else in a live session is writing this row.
+     *
+     * Read from the session rather than from the rows' own context, because this hook runs outside
+     * the provider the rows read - both go through `rowClaimHolder`, so a row cannot be marked as
+     * taken on screen and still open for typing. False for every row outside a session, which is
+     * the whole document most of the time.
+     */
+    const rowHeldByOther = useCallback((blockId: StoryBlockId): boolean => (
+        liveSessionService !== null
+        && rowClaimHolder(liveSessionService.getView(), storyId, blockId) !== null
+    ), [liveSessionService, storyId]);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const insertInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -368,6 +382,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, []);
 
     /**
+     * The row this window is writing, taken from whoever else might want it and given back the
+     * moment the box closes — by a commit, a blur, an Escape, a click on another line, a freeze, or
+     * the tab going away. See {@link useStoryRowClaimHold}: every one of those is the open row
+     * changing, so there is no list of endings here that a later one could fall off.
+     */
+    const noteRowTyping = useStoryRowClaimHold({
+        service: liveSessionService,
+        storyId,
+        blockId: editorMode.kind === "text" ? editorMode.blockId : null,
+    });
+
+    /**
      * A character landed in the open row. Deliberately not a state write — see {@link textDraftRef}.
      */
     const updateTextDraft = useCallback((blockId: StoryBlockId, value: string, rich: StoryRichRun[]) => {
@@ -377,7 +403,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         draft.value = value;
         draft.rich = rich;
-    }, []);
+        // The cheapest place to keep the claim alive: this already fires on every character and
+        // writes no state. It is NOT a message per keystroke — see `CLAIM_REASSERT_MS` for what the
+        // traffic actually is and why the host's deadline is measured against a pause in typing.
+        noteRowTyping(blockId);
+    }, [noteRowTyping]);
 
     /**
      * A freeze that lands while a row is open for editing closes the editor, discarding the draft.
@@ -857,8 +887,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Frozen: the row stays selected (the mousedown already did that) and the native text selection
         // stays where the author dragged it, so the line is still readable and copyable - it just does
         // not become a caret. This gesture never goes through `StoryRowActions.startTextEdit`, so the
-        // no-op there did not cover it; see `isRowTextEditable`.
-        if (!isRowTextEditable(frozen)) {
+        // no-op there did not cover it; see `isRowTextEditable`. A row somebody else in the room is
+        // writing behaves exactly the same way, and for the same reason: what the click would open is
+        // a box for typing an edit the host is certain to refuse.
+        if (!isRowTextEditable(frozen, rowHeldByOther(pending.blockId))) {
             return;
         }
         const range = getSelectionUnitRange(pending.textEl);
@@ -876,7 +908,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const segment = getTextSegment(block);
         const caret: StoryCaretTarget = range ? { start: range.start, end: range.end } : "end";
         setEditorMode({ kind: "text", blockId: pending.blockId, value: segment?.value ?? "", rich: segment?.rich, caret });
-    }, [frozen, scene, startLineEdit]);
+    }, [frozen, rowHeldByOther, scene, startLineEdit]);
 
     const runDragSelectAutoScroll = useCallback(() => {
         const container = scrollContainerRef.current;

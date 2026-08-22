@@ -201,12 +201,19 @@ describe("storyDocumentFreezeScope", () => {
 
 describe("isRowTextEditable", () => {
     it("opens a row for editing on a writable workspace", () => {
-        expect(isRowTextEditable(false)).toBe(true);
+        expect(isRowTextEditable(false, false)).toBe(true);
     });
 
     it("refuses while frozen - both the state transition and the DOM ask this", () => {
         // Gating only `StoryRowActions.startTextEdit` was measured to leave the ordinary click working:
         // it goes through the controller's window mouseup, and the field is `contentEditable` besides.
-        expect(isRowTextEditable(true)).toBe(false);
+        expect(isRowTextEditable(true, false)).toBe(false);
+    });
+
+    it("refuses a row somebody else in the room is writing", () => {
+        // The host would refuse the operation anyway. Letting an author type a paragraph and telling
+        // them afterwards is precisely the injury the claim exists to prevent.
+        expect(isRowTextEditable(false, true)).toBe(false);
+        expect(isRowTextEditable(true, true)).toBe(false);
     });
 });

@@ -814,6 +814,10 @@ function TextEditBox(props: {
     // transitions gated, a freeze can land while a row is already open, and the field would keep taking
     // keystrokes the browser applies on its own. Scoped: the text of a row is the story document.
     const freeze = useFreezeGuard(useStoryDocumentScope());
+    // The same argument for a claim, and here it is not a corner: somebody else in the room can take
+    // this row a moment after it opened, and the field would go on taking keystrokes for an edit the
+    // host is now certain to refuse.
+    const claimedByOther = useStoryRowClaim(props.block.id) !== null;
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
         ? props.block.payload
         : null;
@@ -1012,7 +1016,7 @@ function TextEditBox(props: {
                 ref={props.editorRef}
                 initialRuns={initialRuns}
                 initialCaret={props.initialCaret}
-                readOnly={!isRowTextEditable(freeze.frozen)}
+                readOnly={!isRowTextEditable(freeze.frozen, claimedByOther)}
                 // Edit in place, VS Code style: no box, no sunken background, no horizontal padding — the
                 // caret lands exactly where the read-only text sat. The active/selected row highlight is
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.

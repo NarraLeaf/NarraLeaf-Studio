@@ -83,6 +83,15 @@ type ActiveSession = {
     pendingBefore: LiveBefore | null;
     /** The host's application order. */
     seq: number;
+    /**
+     * The revision of the claim set this window last put on the wire. Host only.
+     *
+     * Compared against the store's own revision to decide whether there is anything to say, which
+     * is the whole of "broadcast the set whenever it changes" and needs no subscription: it starts
+     * at the store's starting revision, so a session in which nobody ever writes a row sends no
+     * claims message at all.
+     */
+    claimsSeq: number;
     /** Set once the copies stop agreeing; the session ends on the next turn of the loop. */
     divergence: LiveDivergence | null;
     /** How many undo or redo steps this window has sent, for the keys their answers arrive under. */
@@ -272,6 +281,69 @@ export class LiveSession {
         void this.end("left");
     }
 
+    /* -------------------------------------------------------------------- claims */
+
+    /**
+     * Say that this window is writing a row, or that it has stopped.
+     *
+     * **One method for both roles and for both halves of the statement**, because a give-back that
+     * could be wired up without its take - or taken on one role and forgotten on the other - is a
+     * row nobody can edit for the rest of the session. A guest sends the message and holds nothing;
+     * a host records it in its own store, which is the only place a claim exists, and broadcasts
+     * the set that resulted.
+     *
+     * Silent outside a session, and for a scene of any other story: the rows of a document no room
+     * is about are this author's own to write.
+     */
+    public claimRow(storyId: StoryId, blockId: StoryBlockId, holding: boolean): void {
+        const session = this.active;
+        if (!session || session.storyId !== storyId) {
+            return;
+        }
+        if (session.host) {
+            session.host.claimLocal(blockId, holding);
+            this.broadcastClaims(session);
+            this.publish(session, {});
+            return;
+        }
+        // Nothing is written here and nothing on screen moves. A guest holds the row when a set
+        // arrives naming it, and never because it asked.
+        session.guest?.claimRow(blockId, holding);
+    }
+
+    /**
+     * Put the whole claim set on the wire, if it is not the set already there.
+     *
+     * **The whole set, never the change.** A machine that missed one change would otherwise show a
+     * stale name over somebody's cursor for the rest of the session, with nothing coming along to
+     * correct it; a set is small, and the newest one is always the complete answer.
+     *
+     * Driven by the store's revision, so every way the set can move goes out by one path: a row
+     * taken, a row given back, a row that lapsed on the clock, a row forgotten because it was
+     * deleted, and everything a window that left the room was holding.
+     *
+     * ⚠ A lapse travels on the next thing that happens in the room rather than the instant it falls
+     * due, because the store keeps no timers and this has no tick to sweep on. Nothing is at stake
+     * in the delay: the host expires a claim while answering the operation that asks about it, so a
+     * row is free to be written the moment somebody tries, whatever the last set said.
+     */
+    private broadcastClaims(session: ActiveSession): void {
+        if (session.host && session.host.claims.revision !== session.claimsSeq) {
+            this.sendClaims(session);
+        }
+    }
+
+    /** The set, said whether or not it has moved. For a machine that has never been told one. */
+    private sendClaims(session: ActiveSession): void {
+        const host = session.host;
+        if (!host || this.active !== session) {
+            return;
+        }
+        const claims = host.claims.snapshot();
+        session.claimsSeq = claims.seq;
+        session.rooms.say(session.room.id, claims);
+    }
+
     /* ---------------------------------------------------------------------- undo */
 
     /**
@@ -368,6 +440,7 @@ export class LiveSession {
             mine: new WeakMap(),
             pendingBefore: null,
             seq: 0,
+            claimsSeq: 0,
             divergence: null,
             steps: 0,
             stopListening: () => undefined,
@@ -382,6 +455,11 @@ export class LiveSession {
                 readScene: sceneId => this.readScene(session, sceneId),
                 applyOp: op => this.applyOp(session, op),
                 nextSeq: () => (session.seq += 1),
+                // The room's own roster, which is the only thing that knows which account a window
+                // signed in as. Read through `session.room` rather than captured, so a claim taken
+                // by somebody who joined after this session started still names them.
+                accountOf: instance =>
+                    session.room.members.find(member => member.instance === instance)?.account ?? null,
                 // `isMember` is deliberately left permissive. The server delivers a room's messages
                 // to its members and to nobody else, so anything that arrives here is from somebody
                 // who is in the room; a second roster kept in this window could only ever be older
@@ -487,7 +565,20 @@ export class LiveSession {
         if (event.session.id !== session.room.id) {
             return;
         }
+        const before = session.room.members;
         session.room = event.session;
+        if (session.host) {
+            // The one ending a give-back cannot cover: the machine that would have sent one has
+            // gone. Whatever it was writing, it is not writing it now, and leaving the rows held
+            // until they lapse would hold them against a deadline measured in a pause in typing.
+            const present = new Set(event.session.members.map(member => member.instance));
+            for (const member of before) {
+                if (!present.has(member.instance)) {
+                    session.host.forgetInstance(member.instance);
+                }
+            }
+            this.broadcastClaims(session);
+        }
         this.publish(session, {});
     }
 
@@ -509,6 +600,19 @@ export class LiveSession {
                     }
                 }
                 session.rooms.say(session.room.id, answer);
+            }
+            // After the answer, because the two are about different things and the order they are
+            // read in matters: a delete's effect has to reach a machine before the set that no
+            // longer names the row it deleted.
+            if (payload.kind === "resync") {
+                // A window that has just joined, or one that saw a gap. The catch-up above says
+                // what the host DID; this says what is being written right this moment, which no
+                // effect describes. Without it a machine joining mid-paragraph sees an unmarked
+                // scene and learns the truth by being refused - the injury a claim exists to
+                // prevent, arriving one gesture too late.
+                this.sendClaims(session);
+            } else {
+                this.broadcastClaims(session);
             }
             this.publish(session, {});
             return;
@@ -608,6 +712,10 @@ export class LiveSession {
         this.record(session, answer, session.pendingBefore, key);
         session.pendingBefore = null;
         session.rooms.say(session.room.id, answer);
+        // The host's own delete forgets whatever claim stood on the row it removed, and that is a
+        // change to the set like any other. Said after the effect, so nobody hears that a row is
+        // free before they hear it is gone.
+        this.broadcastClaims(session);
         return answer;
     }
 
