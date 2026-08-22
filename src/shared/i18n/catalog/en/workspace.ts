@@ -590,6 +590,10 @@ export const workspace = {
             frozenTitle: "Changes are not being saved",
             frozenDetailRevision: "Version {version} is open. Nothing is saved while a version is open.",
             frozenDetailManual: "The workspace is frozen. Unfreeze it to resume saving.",
+            // A live session saves its own story and refuses the rest, so the title above
+            // would be false about the file the author is most likely typing into.
+            frozenTitleSession: "That file is not being saved",
+            frozenDetailSession: "A live session is open. Only its story is saved; leave the session to change anything else.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
             frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",

@@ -48,19 +48,26 @@ export function LiveSessionFreezeCommands() {
         };
 
         /**
-         * The story the active editor is showing, or null.
+         * The story a session would be about: the default one, or the only one there is.
          *
-         * Checked against the library rather than trusted: an editor payload is untyped, so a tab
-         * that is not a scene editor answers `undefined` here and one carrying a stale id would
-         * otherwise arm a freeze whose writable document does not exist - every write refused, with
-         * nothing on screen saying which document was meant.
+         * Asked of the story library rather than of the editor, deliberately. Which tab is in front
+         * is a question about the window and it is answered differently by the group model than by
+         * the flat list this could reach; the library is the project, and this is a test harness
+         * whose whole job is to be true about the project.
+         *
+         * Null for a project with no stories at all, which is the one case where there is nothing a
+         * session could be about.
          */
-        const activeStoryId = (): string | null => {
-            const storyId = (ui.editor.getActive()?.payload as { storyId?: unknown } | undefined)?.storyId;
-            if (typeof storyId !== "string" || storyId === "") {
+        const sessionStoryId = (): string | null => {
+            const library = stories.listStories();
+            if (library.length === 0) {
                 return null;
             }
-            return stories.listStories().some(story => story.id === storyId) ? storyId : null;
+            const preferred = stories.getDefaultStoryId();
+            if (preferred && library.some(story => story.id === preferred)) {
+                return preferred;
+            }
+            return library[0].id;
         };
 
         return commandService.registerMany([
@@ -72,15 +79,15 @@ export function LiveSessionFreezeCommands() {
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
                 // The same mark the Team panel puts on a room, because this is that state.
                 icon: <Radio className="w-4 h-4" />,
-                when: () => !freezeService.isFrozen() && activeStoryId() !== null,
+                when: () => !freezeService.isFrozen(),
                 run: async () => {
-                    const storyId = activeStoryId();
+                    const storyId = sessionStoryId();
                     const scope = storyDocumentFreezeScope(storyId ?? undefined);
                     if (!scope) {
                         // Reachable between the palette reading `when` and the entry being run.
                         notify(
-                            "No story is open",
-                            "Open a story scene editor first; the writable document is the story it shows.",
+                            "This project has no story",
+                            "A live session is about one story document, and there is none here to be about.",
                             NotificationType.Warning,
                         );
                         return;

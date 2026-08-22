@@ -546,6 +546,10 @@ export const workspace = {
             frozenTitle: "当前不保存任何改动",
             frozenDetailRevision: "当前正在查看版本 {version}，查看期间的改动不会保存",
             frozenDetailManual: "工作区已冻结，解除冻结后恢复保存",
+            // 实时会话只保存自己的那份故事，其余一律拒绝，所以上面那个标题
+            // 对作者正在打字的那份文件是假的。
+            frozenTitleSession: "该文件不会被保存",
+            frozenDetailSession: "实时会话进行中，只有会话的故事会保存；离开会话后可以改动其余内容",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
