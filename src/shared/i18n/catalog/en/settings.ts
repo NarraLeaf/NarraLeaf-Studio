@@ -281,6 +281,11 @@ export const settings = {
             label: "Record a checkpoint when a workspace closes",
             description: "Records on closing the window, independent of the interval above.",
         },
+        quitCheckpointTimeout: {
+            label: "Checkpoint deadline when quitting",
+            description:
+                "How long quitting waits for the checkpoints of every open project; a project that takes longer is left unrecorded. Set to 0 to record none when quitting.",
+        },
         versionControlAuthor: {
             label: "Author name",
             description: "Recorded on projects that are not connected to a server. Leave empty to record NarraLeaf Studio instead.",

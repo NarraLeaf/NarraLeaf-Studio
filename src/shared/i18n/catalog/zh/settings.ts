@@ -261,6 +261,10 @@ export const settings = {
             label: "关闭工作区时记录检查点",
             description: "关窗时记录一次，与上面的间隔各自独立",
         },
+        quitCheckpointTimeout: {
+            label: "退出时记录检查点的时限",
+            description: "退出时为所有打开的项目记录检查点，超出该时限的项目不记录；填 0 则退出时不记录",
+        },
         versionControlAuthor: {
             label: "作者名",
             description: "在未连接服务器的项目上记录，留空则记为 NarraLeaf Studio",
