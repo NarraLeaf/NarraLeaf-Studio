@@ -415,7 +415,7 @@ export const widgets = {
         },
         // 存储的类型名不点名任何渲染器，作者面明确点名两家——用户裁决 2026-07-29。
         puppet: {
-            name: "Spine2D / Live2D 模型",
+            name: "Spine / Live2D 模型",
         },
     },
     unsupportedType: "不支持的类型：{type}",
