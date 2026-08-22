@@ -11,7 +11,7 @@
  * Comments in English per project convention.
  */
 
-import { ChevronDown, Group, Hand, MousePointer2, Wand2 } from "lucide-react";
+import { ChevronDown, Group, Hand, MoveDown, MoveRight, MousePointer2, Wand2 } from "lucide-react";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useTranslation } from "@/lib/i18n";
@@ -22,9 +22,16 @@ import {
     useSurfaceToolbarPopover,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarPopover";
 import { BLUEPRINT_COMMENT_COLORS, blueprintCommentColorLabel } from "../blueprintCommentColors";
+import type { BlueprintLayoutDirection } from "../blueprintAutoLayout";
 
 /** What a drag on empty canvas does. */
 export type BlueprintCanvasTool = "select" | "pan";
+
+/** The two ways a graph can be laid out, in the order the menu offers them. */
+const FORMAT_DIRECTIONS = [
+    { key: "horizontal", icon: MoveRight, labelKey: "blueprint.format.horizontal" },
+    { key: "vertical", icon: MoveDown, labelKey: "blueprint.format.vertical" },
+] as const satisfies readonly { key: BlueprintLayoutDirection; icon: typeof MoveRight; labelKey: string }[];
 
 export type BlueprintCanvasToolbarProps = {
     tool: BlueprintCanvasTool;
@@ -34,7 +41,9 @@ export type BlueprintCanvasToolbarProps = {
     onCreateGroup: (color: string) => void;
     /** False with nothing selected: a group has to be a group of something. */
     canGroup: boolean;
-    onFormat: () => void;
+    /** The direction the plain Format button uses - the last one the author picked. */
+    formatDirection: BlueprintLayoutDirection;
+    onFormat: (direction: BlueprintLayoutDirection) => void;
     /** False on an empty graph, where formatting has nothing to arrange. */
     canFormat: boolean;
 };
@@ -45,12 +54,14 @@ export function BlueprintCanvasToolbar({
     groupColor,
     onCreateGroup,
     canGroup,
+    formatDirection,
     onFormat,
     canFormat,
 }: BlueprintCanvasToolbarProps) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
     const colors = useSurfaceToolbarPopover();
+    const directions = useSurfaceToolbarPopover();
 
     return (
         <TooltipGroup
@@ -123,14 +134,41 @@ export function BlueprintCanvasToolbar({
                 ))}
             </SurfaceToolbarPopoverPanel>
             <div className="mx-1 h-6 w-px bg-edge" />
+            {/* Same bargain as the group button beside it: the direction the author last formatted
+                in costs one click, the other one costs two. */}
             <ToolbarButton
                 size="md"
                 aria-label={t("blueprint.format.graph")}
                 {...freeze.writes(!canFormat, t("blueprint.format.graph"))}
-                onClick={onFormat}
+                onClick={() => onFormat(formatDirection)}
             >
                 <Wand2 className="h-4 w-4" />
             </ToolbarButton>
+            <ToolbarButton
+                ref={directions.triggerRef}
+                size="md"
+                aria-label={t("blueprint.format.direction")}
+                aria-expanded={directions.open}
+                aria-haspopup="dialog"
+                {...freeze.writes(!canFormat, t("blueprint.format.direction"))}
+                onClick={directions.toggle}
+            >
+                <ChevronDown className="h-4 w-4" />
+            </ToolbarButton>
+            <SurfaceToolbarPopoverPanel popover={directions} dataAttribute="blueprint-format-direction">
+                {FORMAT_DIRECTIONS.map(({ key, icon: Icon, labelKey }) => (
+                    <SurfaceToolbarPopoverRow
+                        key={key}
+                        icon={<Icon className="h-3.5 w-3.5" />}
+                        label={t(labelKey)}
+                        selected={formatDirection === key}
+                        onClick={() => {
+                            directions.close();
+                            onFormat(key);
+                        }}
+                    />
+                ))}
+            </SurfaceToolbarPopoverPanel>
         </TooltipGroup>
     );
 }

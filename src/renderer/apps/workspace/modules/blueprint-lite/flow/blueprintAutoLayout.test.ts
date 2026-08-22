@@ -146,4 +146,62 @@ describe("layoutBlueprintGraph", () => {
 
         expect(positions.b!.x - positions.a!.x).toBe(500 + 90);
     });
+
+    describe("vertical", () => {
+        const down = { direction: "vertical" } as const;
+
+        it("runs a chain down the page in one column", () => {
+            const positions = layoutBlueprintGraph(
+                [box("a", 0, 0), box("b", 400, 40), box("c", 900, 90)],
+                [edge("a", "b"), edge("b", "c")],
+                down,
+            );
+
+            expect(positions.a!.y).toBeLessThan(positions.b!.y);
+            expect(positions.b!.y).toBeLessThan(positions.c!.y);
+            expect(positions.a!.x).toBe(positions.b!.x);
+            expect(positions.b!.x).toBe(positions.c!.x);
+        });
+
+        it("leaves the layer gap below a card rather than beside it", () => {
+            const positions = layoutBlueprintGraph([box("a"), box("b")], [edge("a", "b")], {
+                ...down,
+                layerGap: 90,
+            });
+
+            expect(positions.b!.y - positions.a!.y).toBe(100 + 90);
+            expect(positions.b!.x).toBe(positions.a!.x);
+        });
+
+        it("puts two branches out of one card side by side", () => {
+            const positions = layoutBlueprintGraph(
+                [box("head"), box("left", 0, 0), box("right", 10, 0)],
+                [edge("head", "left"), edge("head", "right")],
+                down,
+            );
+
+            expect(positions.left!.y).toBe(positions.right!.y);
+            expect(Math.abs(positions.left!.x - positions.right!.x)).toBeGreaterThanOrEqual(200);
+        });
+
+        it("anchors at the corner the graph already occupied, as the other direction does", () => {
+            const positions = layoutBlueprintGraph([box("a", 400, 300), box("b", 400, 700)], [edge("a", "b")], down);
+
+            expect(positions.a).toEqual({ x: 400, y: 300 });
+        });
+
+        it("settles: formatting an already vertical graph moves nothing", () => {
+            const boxes = [box("a", 0, 0), box("b", 300, 10), box("c", 600, 20), box("d", 900, 30)];
+            const links = [edge("a", "b"), edge("a", "c"), edge("b", "d"), edge("c", "d")];
+
+            const first = layoutBlueprintGraph(boxes, links, down);
+            const again = layoutBlueprintGraph(
+                boxes.map(b => ({ ...b, ...first[b.id]! })),
+                links,
+                down,
+            );
+
+            expect(again).toEqual(first);
+        });
+    });
 });

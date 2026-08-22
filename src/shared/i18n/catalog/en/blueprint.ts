@@ -415,6 +415,9 @@ export const blueprint = {
     },
     format: {
         graph: "Format graph",
+        direction: "Format direction",
+        horizontal: "Left to right",
+        vertical: "Top to bottom",
     },
     zoom: {
         label: "Zoom",
