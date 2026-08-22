@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { BREAKPOINT_MENU_ROW_IDS, buildBreakpointContextMenu } from "./breakpointContextMenu";
+import {
+    BREAKPOINT_MENU_ROW_IDS,
+    buildBreakpointContextMenu,
+    canBlueprintNodeCarryBreakpoint,
+} from "./breakpointContextMenu";
 
 const labels = {
     add: "Add breakpoint",
@@ -49,5 +53,17 @@ describe("breakpoint context menu", () => {
             expect(BREAKPOINT_MENU_ROW_IDS.has(item.id)).toBe(true);
         }
         expect(new Set(emitted.map(item => item.id)).size).toBe(BREAKPOINT_MENU_ROW_IDS.size);
+    });
+});
+
+describe("canBlueprintNodeCarryBreakpoint", () => {
+    it("offers a stop on a node the graph runs through", () => {
+        expect(canBlueprintNodeCarryBreakpoint("normal")).toBe(true);
+        expect(canBlueprintNodeCarryBreakpoint(undefined)).toBe(true);
+    });
+
+    it("offers none on a comment, which is drawn on the canvas and never runs", () => {
+        // Both a note and the frame around a group are comment cards.
+        expect(canBlueprintNodeCarryBreakpoint("comment")).toBe(false);
     });
 });

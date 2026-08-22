@@ -27,6 +27,18 @@ export const BREAKPOINT_MENU_ROW_IDS: ReadonlySet<string> = new Set([
     ROW_ID_EDIT,
 ]);
 
+/**
+ * Whether these rows may be offered on a node at all.
+ *
+ * A breakpoint stops the graph on its way through a node, so it can only be set on a node the
+ * graph goes through. A comment - an author's note, or the frame drawn around a group - is painted
+ * on the canvas and never runs: offered the rows, it would take a stop that can never happen and
+ * carry a marker nothing would ever reach.
+ */
+export function canBlueprintNodeCarryBreakpoint(role: string | undefined): boolean {
+    return role !== "comment";
+}
+
 export type BreakpointContextMenuLabels = {
     add: string;
     remove: string;

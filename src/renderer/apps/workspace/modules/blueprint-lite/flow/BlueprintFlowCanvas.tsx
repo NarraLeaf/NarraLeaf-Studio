@@ -35,6 +35,7 @@ import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/Cont
 import { useTranslation } from "@/lib/i18n";
 import {
     buildBreakpointContextMenu,
+    canBlueprintNodeCarryBreakpoint,
     BREAKPOINT_MENU_ROW_IDS,
 } from "@/lib/ui-editor/blueprint-debug/breakpointContextMenu";
 import { useBlueprintBreakpointScope } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
@@ -1749,7 +1750,14 @@ function BlueprintFlowCanvasInner({
      * time the selection may still be one beat behind what the author is looking at.
      */
     const [nodeMenu, setNodeMenu] = useState<
-        { x: number; y: number; nodeId: string | null; targetIds: string[]; frameIds: string[] } | null
+        {
+            x: number;
+            y: number;
+            /** The node the breakpoint rows would act on, or null when the click landed on one that never runs. */
+            breakpointNodeId: string | null;
+            targetIds: string[];
+            frameIds: string[];
+        } | null
     >(null);
 
     /**
@@ -1770,6 +1778,24 @@ function BlueprintFlowCanvasInner({
                         node.data.params.frame === true,
                 )
                 .map(node => node.id);
+        },
+        [getNodes],
+    );
+    /**
+     * The node a breakpoint could be set on, of the one the click landed on.
+     *
+     * A breakpoint stops the graph on its way through a node, so it can only be offered on a node
+     * the graph goes through. A comment - a note or the frame around a group - is drawn on the
+     * canvas and never runs, so the rows were offering a stop that could not happen, on a card with
+     * nowhere to show it.
+     */
+    const readBreakpointNodeId = useCallback(
+        (id: string | null) => {
+            if (!id) {
+                return null;
+            }
+            const node = (getNodes() as Node<BlueprintFlowNodeData>[]).find(n => n.id === id);
+            return node && canBlueprintNodeCarryBreakpoint(node.data.catalog.role) ? id : null;
         },
         [getNodes],
     );
@@ -1801,12 +1827,12 @@ function BlueprintFlowCanvasInner({
             setNodeMenu({
                 x: event.clientX,
                 y: event.clientY,
-                nodeId: node.id,
+                breakpointNodeId: readBreakpointNodeId(node.id),
                 targetIds,
                 frameIds: readFrameIds(targetIds),
             });
         },
-        [onSelectNodeIds, readFrameIds],
+        [onSelectNodeIds, readBreakpointNodeId, readFrameIds],
     );
     /**
      * The same menu, for a right-click that lands on a box selection.
@@ -1843,18 +1869,18 @@ function BlueprintFlowCanvasInner({
             setNodeMenu({
                 x: event.clientX,
                 y: event.clientY,
-                nodeId: under[0]?.id ?? null,
+                breakpointNodeId: readBreakpointNodeId(under[0]?.id ?? null),
                 targetIds,
                 frameIds: readFrameIds(targetIds),
             });
         },
-        [readFrameIds, screenToFlowPosition],
+        [readBreakpointNodeId, readFrameIds, screenToFlowPosition],
     );
     const nodeMenuItems = useMemo<ContextMenuDef>(() => {
         if (!nodeMenu) {
             return [];
         }
-        const { nodeId, targetIds, frameIds } = nodeMenu;
+        const { breakpointNodeId, targetIds, frameIds } = nodeMenu;
         const items: ContextMenuDef = [
             {
                 id: "blueprint.node.delete",
@@ -1938,12 +1964,12 @@ function BlueprintFlowCanvasInner({
                 },
             );
         }
-        if (breakpointScope && nodeId) {
+        if (breakpointScope && breakpointNodeId) {
             const existing = breakpointScope.byKey.get(
                 blueprintBreakpointKey({
                     blueprintId: breakpointScope.blueprintId,
                     graphId: breakpointScope.graphId,
-                    nodeId,
+                    nodeId: breakpointNodeId,
                 }),
             );
             items.push(
@@ -1951,15 +1977,15 @@ function BlueprintFlowCanvasInner({
                 ...buildBreakpointContextMenu({
                     existing,
                     onToggle: () => {
-                        breakpointScope.toggle(nodeId);
+                        breakpointScope.toggle(breakpointNodeId);
                         setNodeMenu(null);
                     },
                     onSetEnabled: enabled => {
-                        breakpointScope.setEnabled(nodeId, enabled);
+                        breakpointScope.setEnabled(breakpointNodeId, enabled);
                         setNodeMenu(null);
                     },
                     onEdit: () => {
-                        breakpointScope.edit(nodeId);
+                        breakpointScope.edit(breakpointNodeId);
                         setNodeMenu(null);
                     },
                     labels: {
