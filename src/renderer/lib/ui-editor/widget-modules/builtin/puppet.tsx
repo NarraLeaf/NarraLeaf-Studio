@@ -12,7 +12,7 @@ export const PuppetWidgetModule: UIWidgetModule = {
     logicApi: getWidgetLogicApi(UI_PUPPET_ELEMENT_TYPE),
     /**
      * The stored type is renderer-agnostic; the name an author reads is not. "Puppet" tells nobody
-     * what the widget is for, so the palette says "Spine2D / Live2D Model" while the schema stays
+     * what the widget is for, so the palette says "Spine / Live2D Model" while the schema stays
      * `nl.puppet` - user ruling 2026-07-29. Adding another format later is a folder in the author's
      * project, not a document migration.
      */
@@ -25,7 +25,7 @@ export const PuppetWidgetModule: UIWidgetModule = {
         type: UI_PUPPET_ELEMENT_TYPE,
         /**
          * The short name here, not the palette's.
-         * "Spine2D / Live2D Model" is what an author has to *find*, so the palette says it; it is not
+         * "Spine / Live2D Model" is what an author has to *find*, so the palette says it; it is not
          * what four of them should be called in the outline, where every other widget is one word.
          */
         name: translate("widgets.puppet.title"),

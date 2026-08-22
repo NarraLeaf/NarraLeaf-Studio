@@ -274,7 +274,7 @@ export const widgets = {
     },
     /**
      * ウィジェットに保存される型は `nl.puppet` で、どの描画側の名前でもない。作者が読む文字列は
-     * すべて「Spine2D / Live2D モデル」と言う。「パペット」では何のためのものか誰にも伝わらない。
+     * すべて「Spine / Live2D モデル」と言う。「パペット」では何のためのものか誰にも伝わらない。
      */
     puppet: {
         title: "モデル",
@@ -377,7 +377,7 @@ export const widgets = {
         video: { name: "動画" },
         // 保存される型はどちらの名前でもないが、ここでは意図して 2 つの描画側を名指しする
         // （2026-07-29 の裁定）。Spine や Live2D を探している作者が、パレットでこれを見つけられる必要がある。
-        puppet: { name: "Spine2D / Live2D モデル" },
+        puppet: { name: "Spine / Live2D モデル" },
     },
     unsupportedType: "対応していない種類：{type}",
 } satisfies LocaleNamespace<"widgets">;
