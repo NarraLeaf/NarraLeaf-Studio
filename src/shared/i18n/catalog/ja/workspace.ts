@@ -338,6 +338,13 @@ export const workspace = {
         liveJoin: "参加",
         liveLeave: "退出",
         liveEnd: "終了",
+        // 開始・参加できない理由。ワークスペースが持つ凍結は同時に一つなので、
+        // それぞれ先に抜ける必要のある状態を示す。
+        liveBlockedRevision: "バージョンの表示を終了するとライブセッションを開始・参加できる",
+        liveBlockedManual: "ワークスペースの凍結を解除するとライブセッションを開始・参加できる",
+        liveBlockedMerge: "マージを完了するとライブセッションを開始・参加できる",
+        liveBlockedRecovery: "リカバリモードではライブセッションを利用できない",
+        liveBlockedSession: "このワークスペースはすでにライブセッションに参加している",
         // プロジェクトに付いているが、プロジェクトの中にはないデータ。そのうち
         // 現在のものではないバージョンに対して書かれた件数。
         attached: "付随データ {count} 件",

@@ -325,6 +325,12 @@ export const workspace = {
         liveJoin: "加入",
         liveLeave: "离开",
         liveEnd: "结束",
+        // 无法开始或加入的原因。工作区同一时刻只有一种冻结，每一条点名的是需要先离开的状态。
+        liveBlockedRevision: "离开正在查看的版本后才能开始或加入实时会话",
+        liveBlockedManual: "解除工作区冻结后才能开始或加入实时会话",
+        liveBlockedMerge: "完成合并后才能开始或加入实时会话",
+        liveBlockedRecovery: "恢复模式下无法使用实时会话",
+        liveBlockedSession: "该工作区已在一场实时会话中",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",
