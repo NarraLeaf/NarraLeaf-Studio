@@ -98,9 +98,16 @@ import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprint
 import {
     blueprintGroupMemberIds,
     computeBlueprintGroupFrame,
+    growBlueprintFrameToHold,
+    growBlueprintGroupFramesForDrop,
+    pickBlueprintGroupDropTarget,
     refitBlueprintGroupFrames,
     type BlueprintFrameBox,
 } from "./blueprintGroupFrame";
+import {
+    BlueprintGroupDropPreview,
+    type BlueprintGroupDropPreviewHandle,
+} from "./components/BlueprintGroupDropPreview";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
 import { SaveSchemaFieldsModal } from "../components/SaveSchemaFieldsModal";
 import {
@@ -171,6 +178,22 @@ function readBlueprintCanvasBoxes(nodes: readonly Node<BlueprintFlowNodeData>[])
         });
     }
     return out;
+}
+
+/**
+ * The colour the outline of a group's drop preview is drawn in.
+ *
+ * A frame paints itself from its own `color` param, and the preview has to agree with it or the
+ * outline would read as some other piece of chrome rather than as that group opening up. The
+ * selected border is the one used, because a frame about to take a card is a frame in play.
+ */
+const BLUEPRINT_GROUP_DROP_FALLBACK_COLOR =
+    BLUEPRINT_COMMENT_COLORS[BLUEPRINT_COMMENT_DEFAULT_COLOR]!.selectedBorder;
+
+function readBlueprintFrameOutlineColor(nodes: readonly Node<BlueprintFlowNodeData>[], id: string): string {
+    const frame = nodes.find(node => node.id === id);
+    const key = resolveBlueprintCommentColorKey(frame?.data.params.color);
+    return BLUEPRINT_COMMENT_COLORS[key]?.selectedBorder ?? BLUEPRINT_GROUP_DROP_FALLBACK_COLOR;
 }
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
@@ -722,6 +745,7 @@ function BlueprintFlowCanvasInner({
      */
     const [saveSchemaEditorOpen, setSaveSchemaEditorOpen] = useState(false);
     const openSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(true), []);
+
     const closeSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(false), []);
 
     const stableAddDynamicInputPin = useCallback((nodeId: string) => {
@@ -1170,17 +1194,53 @@ function BlueprintFlowCanvasInner({
         origin: { x: number; y: number };
     } | null>(null);
 
+    /**
+     * Where the drag would land, read once at the start of it.
+     *
+     * A group has no member list to add a card to, so a drop into one is a drop onto a rectangle -
+     * and until it is over, nothing on the canvas says which rectangle. This is what the outline and
+     * the resize are worked out from: the frames the drag is not carrying, at the size they were
+     * before it started, and every box it is carrying, at where each stood then. Both are fixed for
+     * the length of the drag, so the answer only ever changes because the pointer moved.
+     */
+    const dropTargetRef = useRef<{
+        frames: BlueprintFrameBox[];
+        colorByFrameId: Map<string, string>;
+        dragged: BlueprintFrameBox[];
+        pointerId: string;
+        origin: { x: number; y: number };
+    } | null>(null);
+    const dropPreviewRef = useRef<BlueprintGroupDropPreviewHandle>(null);
+
+    /** The frames as they would stand if the drag were let go now, and which one is taking it. */
+    const readGroupDropAt = useCallback(
+        (position: { x: number; y: number }) => {
+            const drop = dropTargetRef.current;
+            if (!drop) {
+                return null;
+            }
+            const dx = position.x - drop.origin.x;
+            const dy = position.y - drop.origin.y;
+            const moved = drop.dragged.map(box => ({ ...box, x: box.x + dx, y: box.y + dy }));
+            const pointer = moved.find(box => box.id === drop.pointerId);
+            const target = pointer ? pickBlueprintGroupDropTarget(drop.frames, pointer) : null;
+            return target ? { drop, target, moved } : null;
+        },
+        [],
+    );
+
     const onNodeDragStart = useCallback(
         (_event: MouseEvent | TouchEvent, node: Node, dragged: Node[]) => {
             isNodeDragActiveRef.current = true;
             groupDragRef.current = null;
+            dropTargetRef.current = null;
+            dropPreviewRef.current?.clear();
 
-            const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]);
+            const flowNodes = getNodes() as Node<BlueprintFlowNodeData>[];
+            const boxes = readBlueprintCanvasBoxes(flowNodes);
             const draggedIds = new Set(dragged.map(n => n.id));
             const frames = boxes.filter(box => box.isFrame && draggedIds.has(box.id));
-            if (frames.length === 0) {
-                return;
-            }
+
             // React Flow already moves everything in the selection. Anything it is moving is left
             // out here, or a card that is both selected and inside the frame would travel twice.
             const start = new Map<string, { x: number; y: number }>();
@@ -1198,6 +1258,24 @@ function BlueprintFlowCanvasInner({
             if (start.size > 0) {
                 groupDragRef.current = { start, origin: { x: node.position.x, y: node.position.y } };
             }
+
+            // A frame the drag is carrying cannot be the frame the drag is aimed at: it travels
+            // with the card, so it would claim it wherever the card went. Neither can anything
+            // inside such a frame, which is carried for the same reason.
+            const moving = new Set([...draggedIds, ...start.keys()]);
+            const candidates = boxes.filter(box => box.isFrame && !moving.has(box.id));
+            if (candidates.length === 0 || !boxes.some(box => box.id === node.id)) {
+                return;
+            }
+            dropTargetRef.current = {
+                frames: candidates,
+                colorByFrameId: new Map(
+                    candidates.map(frame => [frame.id, readBlueprintFrameOutlineColor(flowNodes, frame.id)]),
+                ),
+                dragged: boxes.filter(box => moving.has(box.id)),
+                pointerId: node.id,
+                origin: { x: node.position.x, y: node.position.y },
+            };
         },
         [getNodes],
     );
@@ -1205,28 +1283,69 @@ function BlueprintFlowCanvasInner({
     const onNodeDrag = useCallback(
         (_event: MouseEvent | TouchEvent, node: Node) => {
             const carried = groupDragRef.current;
-            if (!carried) {
+            if (carried) {
+                const dx = node.position.x - carried.origin.x;
+                const dy = node.position.y - carried.origin.y;
+                setNodes(nds =>
+                    nds.map(n => {
+                        const from = carried.start.get(n.id);
+                        return from ? { ...n, position: { x: from.x + dx, y: from.y + dy } } : n;
+                    }),
+                );
+            }
+            const landing = readGroupDropAt(node.position);
+            if (!landing) {
+                dropPreviewRef.current?.clear();
                 return;
             }
-            const dx = node.position.x - carried.origin.x;
-            const dy = node.position.y - carried.origin.y;
-            setNodes(nds =>
-                nds.map(n => {
-                    const from = carried.start.get(n.id);
-                    return from ? { ...n, position: { x: from.x + dx, y: from.y + dy } } : n;
-                }),
-            );
+            dropPreviewRef.current?.show({
+                rect: growBlueprintFrameToHold(landing.target, landing.moved),
+                color: landing.drop.colorByFrameId.get(landing.target.id) ?? BLUEPRINT_GROUP_DROP_FALLBACK_COLOR,
+            });
         },
-        [setNodes],
+        [readGroupDropAt, setNodes],
     );
 
-    const onNodeDragStop = useCallback(() => {
-        isNodeDragActiveRef.current = false;
-        groupDragRef.current = null;
-        const next = cloneBlueprintIr(irRef.current);
-        applyFlowPositionsToIr(next, getNodes() as Node[]);
-        commitBlueprintIr(next);
-    }, [commitBlueprintIr, getNodes]);
+    /**
+     * Let go: the positions are written, and the group the cards were dropped into is stretched
+     * around them so that it really holds what it looked like it was about to hold.
+     *
+     * One commit, so one undo takes back the move and the resize together - they are one gesture,
+     * and an undo that left a group standing open around nothing would be a puzzle to read.
+     */
+    const onNodeDragStop = useCallback(
+        (_event: MouseEvent | TouchEvent, node: Node) => {
+            isNodeDragActiveRef.current = false;
+            groupDragRef.current = null;
+            dropPreviewRef.current?.clear();
+
+            // A press that went nowhere is a click, and a click reshapes nothing. Without this,
+            // selecting a card that had always straddled a frame's edge would resize the frame
+            // around it - a document change the author never asked for and did not gesture at.
+            const origin = dropTargetRef.current?.origin;
+            const stayedPut = origin ? node.position.x === origin.x && node.position.y === origin.y : true;
+            const landing = stayedPut ? null : readGroupDropAt(node.position);
+            dropTargetRef.current = null;
+            const next = cloneBlueprintIr(irRef.current);
+            applyFlowPositionsToIr(next, getNodes() as Node[]);
+            if (landing) {
+                const grown = growBlueprintGroupFramesForDrop(
+                    landing.drop.frames,
+                    landing.target.id,
+                    landing.moved,
+                );
+                for (const [id, rect] of Object.entries(grown)) {
+                    const frameNode = next.nodes?.[id];
+                    if (frameNode) {
+                        frameNode.params = { ...(frameNode.params ?? {}), width: rect.width, height: rect.height };
+                        writeNodeEditorLayout(frameNode, { x: rect.x, y: rect.y });
+                    }
+                }
+            }
+            commitBlueprintIr(next);
+        },
+        [commitBlueprintIr, getNodes, readGroupDropAt],
+    );
 
     /**
      * Draw a frame around a set of cards.
@@ -1923,6 +2042,7 @@ function BlueprintFlowCanvasInner({
                 zIndexMode="manual"
             >
                 <Background color="rgb(var(--nl-fg-subtle))" gap={20} size={1} />
+                <BlueprintGroupDropPreview ref={dropPreviewRef} />
                 <BlueprintCanvasToolbar
                     tool={tool}
                     onToolChange={setTool}
