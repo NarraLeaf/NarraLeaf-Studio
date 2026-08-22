@@ -325,6 +325,7 @@ export const blueprint = {
     group: {
         create: "選択をグループ化",
         color: "グループの色",
+        ungroup: "グループ解除",
         untitled: "グループ",
         rename: "グループ名",
     },

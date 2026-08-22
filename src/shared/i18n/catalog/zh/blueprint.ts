@@ -325,6 +325,7 @@ export const blueprint = {
     group: {
         create: "创建分组",
         color: "分组颜色",
+        ungroup: "取消分组",
         untitled: "分组",
         rename: "分组名称",
     },
