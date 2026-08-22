@@ -3,7 +3,7 @@ import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Lo
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
-import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useWorkspaceOperationsFrozen } from "../../hooks/useWorkspaceFrozen";
 import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
@@ -114,11 +114,18 @@ function normalizeRunMode(value: unknown): RunMode {
  * A frozen workspace disables Preview and Production Build but not Dev Mode. This control is a fixed
  * part of the top bar rather than a registered action, so the exemption table in
  * `components/ui/freezeActionPolicy` does not reach it and the rules are spelled out below instead.
+ * Which freezes count is not spelled out here, though: `useWorkspaceOperationsFrozen` asks the same
+ * predicate the managers that start these things ask, so the button and the process agree.
  */
 export function RunControl() {
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
+    // Everything this control launches is started by the main process, which refuses on its own
+    // account - so the question here is that same refusal, not "is project data frozen". They part
+    // company for the one freeze whose working tree IS what the author is looking at; greying these
+    // rows there would leave a button that does nothing while the process behind it would have said
+    // yes.
+    const frozen = useWorkspaceOperationsFrozen();
     const [mode, setMode] = useState<RunMode>("devMode");
     const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");

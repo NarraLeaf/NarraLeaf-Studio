@@ -16,9 +16,9 @@ import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
-import { useWorkspaceFrozen } from "@/apps/workspace/hooks/useWorkspaceFrozen";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
-import { isRowTextEditable } from "./storySceneReadOnly";
+import { isRowTextEditable, storyDocumentFreezeScope } from "./storySceneReadOnly";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -165,11 +165,25 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // a Simplified-Chinese device; the user can override it in Settings (Editor).
     const slashAtAlias = useSlashAtAlias();
     /**
-     * Whether this window's project data is frozen. Read here as well as in the tab because two of the
-     * controller's entry points are simultaneously the way to READ a row and the way to start editing
-     * it, and only the controller can tell those branches apart - see the two uses below.
+     * Whether this scene's own document may not be written. Read here as well as in the tab because
+     * two of the controller's entry points are simultaneously the way to READ a row and the way to
+     * start editing it, and only the controller can tell those branches apart - see the two uses
+     * below.
+     *
+     * Scoped to the story this tab is on, so a live session - the one freeze that leaves a single
+     * document writable - leaves the rows of that document editable instead of greying out the very
+     * thing the session exists to work on. Every other kind of freeze covers it as before.
      */
-    const frozen = useWorkspaceFrozen();
+    const frozen = useFreezeGuard(storyDocumentFreezeScope(payload?.storyId)).frozen;
+    /**
+     * The same question with no scope: true whenever ANY freeze is armed.
+     *
+     * Kept apart from `frozen` because a handful of paths below write more than this story document
+     * - a paste can create characters, carry translations and import assets - and those files are
+     * exactly what a partial freeze still refuses. Letting them run on the scoped answer would offer
+     * an edit that half lands: the rows arrive, and the character they name never does.
+     */
+    const frozenBeyondThisStory = useFreezeGuard().frozen;
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
@@ -379,14 +393,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /**
      * The same answer, readable from inside an `await`.
      *
-     * A callback that closed over `frozen` would report whatever was true when it was created, and the
-     * one place that asks is on the far side of a modal confirm - precisely the window in which the
-     * author can freeze the workspace. See the bulk paste in `useStorySceneClipboardHandlers`.
+     * A callback that closed over the flag would report whatever was true when it was created, and
+     * the one place that asks is on the far side of a modal confirm - precisely the window in which
+     * the author can freeze the workspace. See the bulk paste in `useStorySceneClipboardHandlers`.
+     *
+     * Tracks the UNSCOPED answer, because the clipboard is what asks: a paste is the one gesture
+     * here that reaches past the story document into characters, translations, voice takes and
+     * imported assets, and every one of those is refused by a freeze this scene is otherwise exempt
+     * from. The scoped answer here would let a paste report success having written half of itself.
      */
-    const frozenRef = useRef(frozen);
+    const frozenRef = useRef(frozenBeyondThisStory);
     useEffect(() => {
-        frozenRef.current = frozen;
-    }, [frozen]);
+        frozenRef.current = frozenBeyondThisStory;
+    }, [frozenBeyondThisStory]);
     const isFrozenNow = useCallback(() => frozenRef.current, []);
 
     // Persist the focused row + selection so they survive the tab unmounting when the author switches
@@ -2543,7 +2562,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Closed rather than left standing: a confirm that cannot run (the workspace froze under the
         // open dialog, a service went away on a project switch) must not leave the author pressing a
         // button that does nothing.
-        if (!request || !uuidService || !characterService || !storyService || !storyId || !sceneId || frozen) {
+        // The unscoped answer: the first thing this does is create the characters the author asked
+        // for, and a freeze that spares this story document does not spare those.
+        if (!request || !uuidService || !characterService || !storyService || !storyId || !sceneId
+            || frozenBeyondThisStory) {
             cancelPasteWizard();
             return;
         }
@@ -2570,7 +2592,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setPasteWizard(null);
             resumeInsertSlotCommit();
         }
-    }, [cancelPasteWizard, characterService, frozen, insertPastedBlocks, panelStateService, pasteWizard, recordHistory, resumeInsertSlotCommit, sceneId, storyId, storyService, uuidService]);
+    }, [cancelPasteWizard, characterService, frozenBeyondThisStory, insertPastedBlocks, panelStateService, pasteWizard, recordHistory, resumeInsertSlotCommit, sceneId, storyId, storyService, uuidService]);
 
     const savePasteSeparator = useCallback((name: string, choice: PasteSeparatorChoice) => {
         saveStoryPasteSeparator(panelStateService, name, choice);

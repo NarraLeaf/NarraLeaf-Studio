@@ -26,7 +26,7 @@ describe("buildMainMenuSubmenus", () => {
         const submenus = buildMainMenuSubmenus(
             [group("narraleaf-studio:file", [action("new"), action("open")])],
             null,
-            false,
+            null,
             FROZEN_REASON,
         );
 
@@ -44,7 +44,7 @@ describe("buildMainMenuSubmenus", () => {
                 group("plugin:no-letter", [action("run")]),
             ],
             null,
-            false,
+            null,
             FROZEN_REASON,
         );
 
@@ -57,7 +57,7 @@ describe("buildMainMenuSubmenus", () => {
         const submenus = buildMainMenuSubmenus(
             [group("plugin:empty", [action("hidden", { visible: false })])],
             null,
-            false,
+            null,
             FROZEN_REASON,
         );
 
@@ -74,7 +74,7 @@ describe("buildMainMenuSubmenus", () => {
                 group("unordered", [action("b")]),
             ],
             null,
-            false,
+            null,
             FROZEN_REASON,
         );
 
@@ -85,7 +85,7 @@ describe("buildMainMenuSubmenus", () => {
         const submenus = buildMainMenuSubmenus(
             [group("plugin:writes", [action("write")])],
             null,
-            true,
+            "manual",
             FROZEN_REASON,
         );
 
@@ -101,7 +101,7 @@ describe("buildMainMenuSubmenus", () => {
                 group("plugin:writes", [action("write")]),
             ],
             null,
-            true,
+            "manual",
             FROZEN_REASON,
         );
 
@@ -117,7 +117,7 @@ describe("buildMainMenuSubmenus", () => {
     it("never writes the freeze back into the registered group", () => {
         const registered = group("plugin:writes", [action("write")]);
 
-        buildMainMenuSubmenus([registered], null, true, FROZEN_REASON);
+        buildMainMenuSubmenus([registered], null, "manual", FROZEN_REASON);
 
         expect(disabledFlags(registered.items!)).toEqual([false]);
     });

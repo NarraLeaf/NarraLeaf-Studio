@@ -1,5 +1,6 @@
 import path from "path";
 import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { WorkspaceRefusingFreezeKind } from "@shared/types/workspaceFreeze";
 import type { RevisionId } from "@shared/types/vcs";
 
 /**
@@ -22,36 +23,15 @@ import type { RevisionId } from "@shared/types/vcs";
  * Keyed per project, like every other per-project state in main (`GameBuildManager`'s sessions,
  * `PreviewManager`'s, `VcsManager`'s): Studio is one project per window, and a single flag would let
  * the window browsing history refuse the build in the window next to it.
+ *
+ * **Which kinds of freeze refuse is not decided here.** `refusesOperations`
+ * (`@shared/types/workspaceFreeze`) is the one answer, asked by main's managers below and by the
+ * renderer controls that grey themselves out; what stays in this module is main's prose - the
+ * sentence the author reads and the way out of each kind.
  */
 
 /** The operations main refuses while frozen, named as the author would name them. */
 export type WorkspaceFrozenOperation = "production build" | "preview" | "patch export";
-
-/**
- * The kinds of freeze that make main refuse those operations - which is every kind but one.
- *
- * The exception is `live-session`. The refusal above is a **consistency** guard: it exists because
- * the author is reading something other than their working tree and would have no way to know the
- * build was not of it. In a live session that sentence is false - the working tree is exactly what
- * everybody in the session is looking at, kept current by the effects arriving from the host - so
- * there is nothing to guard against and refusing would only take running the game away from a
- * collaborator for as long as the session lasts.
- *
- * Named as a type rather than checked inline at each call site so that {@link workspaceFrozenMessage}
- * can be exhaustive over it: a fifth kind that does refuse has to say what the author is told, and
- * the compiler is what asks.
- */
-export type WorkspaceRefusingFreezeKind = Exclude<WorkspaceFreezeKind, "live-session">;
-
-/**
- * Whether this kind of freeze is one that stops main starting things.
- *
- * The four call sites ask this rather than each spelling out which kinds are exempt: a comparison
- * written four times is a comparison that will one day be written three times.
- */
-export function refusesOperations(kind: WorkspaceFreezeKind): kind is WorkspaceRefusingFreezeKind {
-    return kind !== "live-session";
-}
 
 /**
  * What a frozen workspace reported: why, and - when the why is a revision - which one.
@@ -165,7 +145,8 @@ const FREEZE_REMEDIES: Record<WorkspaceRefusingFreezeKind, string> = {
  * refusal reaches them through the workspace console and the build dialog, not a log file.
  *
  * Takes only the kinds that refuse. A caller holding a plain `WorkspaceFreezeKind` has to pass it
- * through {@link refusesOperations} first, which is the same question it needed to ask anyway.
+ * through `refusesOperations` (`@shared/types/workspaceFreeze`) first, which is the same question it
+ * needed to ask anyway.
  */
 export function workspaceFrozenMessage(
     reason: WorkspaceRefusingFreezeKind,

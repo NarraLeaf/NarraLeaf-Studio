@@ -330,21 +330,29 @@ describe("collectPaletteCommands - frozen workspace", () => {
     it("drops standalone and non-exempt grouped actions once frozen", () => {
         const sources = { actions: [standalone], actionGroups: [fileGroup, pluginGroup] };
 
-        const thawed = collectPaletteCommands(build({ ...sources, frozen: false }));
+        const thawed = collectPaletteCommands(build({ ...sources, freeze: null }));
         expect(thawed.map(c => c.id)).toEqual([
             "narraleaf-studio:build",
             "narraleaf-studio:file-open",
             "some-plugin:sync",
         ]);
 
-        const frozen = collectPaletteCommands(build({ ...sources, frozen: true }));
+        const frozen = collectPaletteCommands(build({ ...sources, freeze: "manual" }));
         // File survives because it is project-level navigation - and because a frozen window you
         // cannot close or leave would be a trap.
         expect(frozen.map(c => c.id)).toEqual(["narraleaf-studio:file-open"]);
     });
 
+    it("keeps Build listed under a freeze that does not refuse the build", () => {
+        // A command has no document scope, so the palette stays conservative about writes; what it
+        // must not do is drop the one entry that only STARTS something main would have started.
+        const sources = { actions: [standalone], actionGroups: [fileGroup, pluginGroup] };
+        const commands = collectPaletteCommands(build({ ...sources, freeze: "live-session" }));
+        expect(commands.map(c => c.id)).toEqual(["narraleaf-studio:build", "narraleaf-studio:file-open"]);
+    });
+
     it("leaves the registrations themselves alone", () => {
-        collectPaletteCommands(build({ actions: [standalone], frozen: true }));
+        collectPaletteCommands(build({ actions: [standalone], freeze: "manual" }));
         // Registry state outlives a freeze; disabling by mutation would survive the thaw.
         expect(standalone.disabled).toBeUndefined();
     });

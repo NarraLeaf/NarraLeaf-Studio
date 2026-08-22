@@ -1,3 +1,5 @@
+import { createContext, useContext } from "react";
+import { storyDocumentSpec } from "@shared/documents/specs";
 import type { KeybindingDefinition } from "@/apps/workspace/hooks";
 import type { StoryRowActions } from "./storyRowActions";
 
@@ -19,6 +21,12 @@ import type { StoryRowActions } from "./storyRowActions";
  * are also the only way to READ what a row contains. `openInspector` and the Enter binding are gated
  * one level down instead, in the controller, so that they still open the inspector and no longer open
  * the line editor or an insert slot.
+ *
+ * **Whether the workspace is frozen *for this scene* is a narrower question than it used to be.**
+ * One freeze - a live session - leaves a single story document writable and refuses the rest, so the
+ * editor names the document it writes ({@link storyDocumentFreezeScope}) and the freeze guard
+ * answers from `freezeAllowsWrite` about that path. Nothing in the tables below changes: they still
+ * say what a frozen scene leaves working, for whichever freezes do apply to it.
  */
 const READ_ONLY_STORY_ROW_ACTIONS: ReadonlySet<keyof StoryRowActions> = new Set<keyof StoryRowActions>([
     // Selection, in all the shapes a row offers it.
@@ -118,6 +126,40 @@ export function isStoryKeybindingReadOnlySafe(id: string): boolean {
  */
 export function isRowTextEditable(frozen: boolean): boolean {
     return !frozen;
+}
+
+/**
+ * Which file this editor's writes land in, as the project-relative path the freeze policy takes.
+ *
+ * Derived from the document spec rather than assembled here, for the reason `writeFreeze` gives for
+ * naming its derived libraries by kind: a path spelled a second time is a path that falls behind the
+ * one `StoryService` actually saves to, and this one is compared against the set a live session
+ * declares writable. If the two ever disagree the editor offers an edit the write boundary refuses.
+ *
+ * `undefined` for a tab with no story - the answer the freeze guard reads as "I cannot say which
+ * document this is", which is the conservative one.
+ */
+export function storyDocumentFreezeScope(storyId: string | undefined): string | undefined {
+    return storyId ? storyDocumentSpec.pathFor({ storyId }) : undefined;
+}
+
+/**
+ * The scope above, for the row components that are too deep in the tree to be handed it.
+ *
+ * A context rather than a prop threaded through the row tree, but deliberately NOT something
+ * `useFreezeGuard` reads on its own: each control still has to ask for it, because the rows hold
+ * controls that write beyond this document - the nametag picker creates characters - and those must
+ * keep the conservative answer. Opting in one call site at a time is what keeps that honest.
+ *
+ * Empty by default, so a row rendered outside a scene editor is frozen by any freeze at all.
+ */
+const StoryDocumentScopeContext = createContext<string | undefined>(undefined);
+
+export const StoryDocumentScopeProvider = StoryDocumentScopeContext.Provider;
+
+/** The story document the surrounding scene editor writes, or undefined outside one. */
+export function useStoryDocumentScope(): string | undefined {
+    return useContext(StoryDocumentScopeContext);
 }
 
 /**

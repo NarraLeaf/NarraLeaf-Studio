@@ -17,7 +17,7 @@ import {
 import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
 import { MnemonicLabel, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
 import { MenuShortcut } from "./MenuShortcut";
-import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
 import { useShortcutLabels, type ShortcutLabels } from "../../hooks/useShortcutLabels";
 import { useTranslation } from "@/lib/i18n";
 
@@ -54,8 +54,8 @@ interface ActionDropdownProps {
 export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: ActionDropdownProps) {
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
-    const frozenOut = frozen && !preFrozen && !isFreezeExemptActionGroup(group.id);
+    const freeze = useWorkspaceFreezeReason();
+    const frozenOut = freeze !== null && !preFrozen && !isFreezeExemptActionGroup(group.id);
     const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
     const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
@@ -83,8 +83,9 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
         return applyFreezeToActionMenuItems(
             getVisibleActionMenuItems(getActionGroupItems(group), focusContext),
             frozenOut,
+            freeze,
         );
-    }, [group, focusContext, frozenOut]);
+    }, [group, focusContext, frozenOut, freeze]);
 
     /**
      * Accelerators this menu answers to on behalf of rows that are themselves menus.
