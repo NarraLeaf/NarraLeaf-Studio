@@ -78,10 +78,39 @@ type Particle = {
     swayAmp: number;
     /**
      * Integer flutter harmonic: cycles per loop, converted from the seed's rate in cycles a second.
-     * Drives the sway, the face turn and the hang together, which is what couples them.
+     *
+     * ⚠ There are only a handful of these in any field, and that is forced: the seam needs a whole
+     * number of cycles per loop, so a rate of 0.3 Hz over a 24-second loop can only be 5, 6, 7, 8 or
+     * 9 - five rates for forty petals, fourteen of them identical. Particles sharing one do not
+     * merely look similar, they sway at exactly the same rate for ever, and a phase offset does not
+     * hide that: neighbours visibly keep time with each other. {@link Particle.swayHarm2} is what
+     * breaks it.
      */
     swayHarm: number;
+    /**
+     * A second, faster integer harmonic mixed into the sway.
+     *
+     * Two sines at different rates make a shape neither of them has, and it is the SHAPE an eye
+     * recognises, not the rate. Drawn independently of {@link Particle.swayHarm}, so two petals that
+     * collide on the first almost never collide on both - five rates become fifty-odd waveforms, and
+     * the field stops keeping time with itself. Still an integer, so the seam is untouched.
+     */
+    swayHarm2: number;
     swayPhase: number;
+    /** Phase of the second mode, independent of the first. */
+    swayPhase2: number;
+    /** How much of the sway the second mode carries, relative to the first. */
+    swayMix: number;
+    /**
+     * Integer harmonic of the face turn, and with it the hang.
+     *
+     * Its own rather than the sway's. The face and the drag it causes are coupled to each OTHER
+     * because that is the physics; coupling them to the lateral swing as well made a petal that
+     * hesitated at the exact end of every stroke, which is the mechanism showing through.
+     */
+    faceHarm: number;
+    /** Phase of the face turn. */
+    facePhase: number;
     /**
      * How far the flutter's hang displaces the particle along its own fall line, in px.
      *
@@ -269,16 +298,35 @@ export function buildWeatherField(
         // apart. Kept inside a third either way, because a petal drifting at half its neighbour's
         // rate reads as two different weathers in one picture.
         const harm = Math.max(1, Math.round(flutterHarm * (0.72 + rnd() * 0.56)));
+        // The second mode, well clear of the first so the sum is a new shape rather than a fatter
+        // version of the same one. `+ 1` on a collision rather than a redraw: a redraw could collide
+        // again, and one cycle per loop is already a different waveform.
+        let harm2 = Math.max(1, Math.round(harm * (SWAY_SECOND_RATIO_MIN + rnd() * SWAY_SECOND_RATIO_SPAN)));
+        if (harm2 === harm) {
+            harm2 = harm + 1;
+        }
+        // The face turns at its own rate, drawn from the seed's band like the sway but independently
+        // of it, so a petal does not hesitate at the exact end of every lateral stroke.
+        const faceHarm = Math.max(1, Math.round(flutterHarm * (0.72 + rnd() * 0.56)));
         particles.push({
             u0: rnd() * fallSpan,
             v0: rnd() * vSpan,
             fall,
             swayAmp: params.sway * (0.4 + rnd() * 0.6),
             swayHarm: harm,
+            swayHarm2: harm2,
             swayPhase: rnd(),
-            // A fraction of the distance one flutter cycle covers. `HANG_FRACTION` is under the
-            // 1/4pi that would let the hang out-run the fall itself; see the constant.
-            bobAmp: flutters ? (HANG_FRACTION * fall * fallSpan) / harm : 0,
+            swayPhase2: rnd(),
+            // Scaled down by how much faster the second mode is, so it contributes a comparable
+            // SPEED rather than a comparable distance - an equal-amplitude fast mode is a jitter,
+            // not a flutter.
+            swayMix: (SWAY_SECOND_WEIGHT * harm) / harm2,
+            faceHarm,
+            facePhase: rnd(),
+            // A fraction of the distance one FACE cycle covers, because that is the cycle it rides
+            // on. `HANG_FRACTION` is under the 1/4pi that would let the hang out-run the fall
+            // itself; see the constant.
+            bobAmp: flutters ? (HANG_FRACTION * fall * fallSpan) / faceHarm : 0,
             rockAmp: 0.3 + rnd() * 0.5,
             spinHarm: 1 + Math.floor(rnd() * 3),
             spinPhase: rnd(),
@@ -345,13 +393,22 @@ export const WEATHER_SUB_STEPS = 8;
 const HANG_FRACTION = 0.06;
 
 /**
- * How much of the sway is carried by its second octave.
+ * How much of the sway the second mode carries at equal rate, before the rate scaling.
  *
- * A single sine is a pendulum, and a field of pendulums in a picture reads as a mechanism. Adding
- * the octave at a third of the amplitude bends each swing without changing what a swing IS - and
- * twice an integer harmonic is still an integer, so it is free of the seam.
+ * A single sine is a pendulum, and a field of pendulums reads as a mechanism - the more so because
+ * the seam allows only a handful of rates, so most of the pendulums are the SAME pendulum. A second
+ * sine at an unrelated rate is what makes each particle's path its own: the sum of two harmonics is
+ * a shape neither has, and a shape is what an eye matches against its neighbour.
+ *
+ * The actual weight each particle uses is this times `harm / harm2`, so a mode three times faster
+ * moves a third as far and contributes a comparable SPEED. Equal amplitudes would make the fast mode
+ * a jitter riding on a swing rather than part of one motion.
  */
-const SWAY_OCTAVE = 0.32;
+const SWAY_SECOND_WEIGHT = 0.9;
+
+/** How much faster the second mode is than the first, as a range of ratios. Clear of 1, so it never reads as one thicker sine. */
+const SWAY_SECOND_RATIO_MIN = 1.7;
+const SWAY_SECOND_RATIO_SPAN = 1.6;
 
 /**
  * How much light one particle lays down: the depth ramp, lifted toward flat, times the solidity.
@@ -527,20 +584,23 @@ function accumulateInstant(
     const crossY = -dirX;
 
     for (const p of field.particles) {
-        // The one phase the whole flutter is built on: the sway, the face and the hang all read it,
-        // which is what makes them consequences of each other rather than three coincidences.
-        const flutter = twoPi * (p.swayHarm * phase + p.swayPhase);
+        // The face turn, and with it the drag: these two are one phase because that IS the physics.
+        // The lateral sway is deliberately NOT on it - see `faceHarm`.
+        const facing = twoPi * (p.faceHarm * phase + p.facePhase);
         // How much of its face the particle is showing, 0 = edge on, 1 = flat on. Also its drag.
-        const face = Math.abs(Math.cos(flutter));
+        const face = Math.abs(Math.cos(facing));
 
         // Along the fall line: an integer number of spans per loop, wrapped out of sight, less the
         // hang. The hang is steepest against the fall exactly where `face` is largest, so the
         // particle slows as it turns its face down and drops away as it goes edge-on. Inside the
         // wrap rather than outside it, so a hang can never carry a particle past the padded band and
         // into view at the moment it repeats.
-        const u = originU + wrap(p.u0 + phase * p.fall * fallSpan - p.bobAmp * Math.sin(2 * flutter), fallSpan);
-        // Across it: the sway and its octave, both periodic, so phase 1 is phase 0's position.
-        const sway = (Math.sin(flutter) + SWAY_OCTAVE * Math.sin(2 * flutter + twoPi * p.spinPhase)) / (1 + SWAY_OCTAVE);
+        const u = originU + wrap(p.u0 + phase * p.fall * fallSpan - p.bobAmp * Math.sin(2 * facing), fallSpan);
+        // Across it: two modes at unrelated integer rates, so the path is this particle's own rather
+        // than one of the five the seam allows. Both periodic, so phase 1 is phase 0's position.
+        const sway = (Math.sin(twoPi * (p.swayHarm * phase + p.swayPhase))
+            + p.swayMix * Math.sin(twoPi * (p.swayHarm2 * phase + p.swayPhase2)))
+            / (1 + p.swayMix);
         const v = originV + p.v0 + p.swayAmp * sway;
 
         const cx = u * dirX + v * crossX;
@@ -551,7 +611,7 @@ function accumulateInstant(
             // leans left - and drifts slowly round on top of that, so its attitude never repeats at
             // the rate its position does. The angle starts from the fall direction, so a tilted
             // field carries its petals with it instead of leaving them upright in a slanted wind.
-            const bank = p.rockAmp * Math.sin(flutter);
+            const bank = p.rockAmp * Math.sin(twoPi * (p.swayHarm * phase + p.swayPhase));
             const drift = twoPi * (p.spinHarm * phase + p.spinPhase);
             const angle = Math.atan2(dirX, dirY) + bank + drift;
             // Never quite zero: a petal exactly edge-on for one frame reads as a flicker, not a turn.

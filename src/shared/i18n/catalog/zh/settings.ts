@@ -92,7 +92,7 @@ export const settings = {
         },
         screenEffectQuality: {
             label: "开发模式中的屏幕效果",
-            description: "草稿的生成时间约为三分之一。预览与构建始终使用最终画质",
+            description: "预览与构建只认最终画质，所以选草稿的工程每条特效会烘两次：现在一次，第一次运行时再一次",
             options: {
                 draft: "草稿",
                 final: "最终画质",

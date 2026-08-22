@@ -244,7 +244,9 @@ describe("the flutter", () => {
             for (const fallSpeed of [WEATHER_PARAMS.fallSpeed.min, 4, WEATHER_PARAMS.fallSpeed.max]) {
                 const field = fieldOf(seed, { fallSpeed, flutter: WEATHER_PARAMS.flutter.max });
                 for (const p of field.particles) {
-                    const slowest = p.fall * field.fallSpan - p.bobAmp * 4 * Math.PI * p.swayHarm;
+                    // `faceHarm`, because the hang is on the face's cycle - the drag is what the face
+                    // causes. Reading `swayHarm` here passed only while the two were the same number.
+                    const slowest = p.fall * field.fallSpan - p.bobAmp * 4 * Math.PI * p.faceHarm;
                     expect(slowest).toBeGreaterThan(0);
                 }
             }
@@ -257,6 +259,70 @@ describe("the flutter", () => {
         expect(fieldOf("rain").particles.every(p => p.bobAmp === 0)).toBe(true);
         expect(fieldOf("sakura").particles.some(p => p.bobAmp > 0)).toBe(true);
     });
+});
+
+describe("the sway", () => {
+    it("gives neighbours different rhythms, which one harmonic cannot", () => {
+        // The seam needs a whole number of cycles per loop, so the rates available are a handful of
+        // integers - sakura's flutter over its own loop offers five. Forty petals on five rates put
+        // fourteen of them on one, and particles sharing a rate do not merely look similar: they
+        // sway at exactly the same rate for ever, and a phase offset does not hide that. Two modes
+        // at unrelated rates make a SHAPE, and a shape is what an eye matches against its neighbour.
+        // At the STAGE's size, because this is a statement about the field an author sees: sakura
+        // ships fifteen particles per megapixel and the shared test canvas is an eighth of one, so
+        // six particles cannot demonstrate anything about how many rhythms forty of them have. No
+        // frames are drawn here, so the size costs nothing.
+        const field = buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura" }), 1920, 1080);
+        const rates = new Set(field.particles.map(p => p.swayHarm));
+        const shapes = new Set(field.particles.map(p => `${p.swayHarm}/${p.swayHarm2}/${p.faceHarm}`));
+        expect(rates.size).toBeLessThan(8);
+        expect(shapes.size).toBeGreaterThan(rates.size * 4);
+        // And no rhythm may be shared by a large fraction of the field, which is the actual report:
+        // fourteen of forty petals kept time with each other.
+        const perShape = new Map<string, number>();
+        for (const p of field.particles) {
+            const shape = `${p.swayHarm}/${p.swayHarm2}/${p.faceHarm}`;
+            perShape.set(shape, (perShape.get(shape) ?? 0) + 1);
+        }
+        expect(Math.max(...perShape.values())).toBeLessThan(field.particles.length / 8);
+    });
+
+    it("keeps the second mode clear of the first, so the sum is not one thicker sine", () => {
+        for (const seed of WEATHER_SEED_IDS) {
+            for (const p of buildWeatherField(seed, resolveWeatherParams({ seed }), W, H).particles) {
+                expect(Number.isInteger(p.swayHarm2)).toBe(true);
+                expect(p.swayHarm2).not.toBe(p.swayHarm);
+                expect(p.swayHarm2).toBeGreaterThan(p.swayHarm);
+            }
+        }
+    });
+
+    it("scales the second mode down by how much faster it is, so it is a flutter and not a jitter", () => {
+        // Equal amplitudes at three times the rate would be three times the speed sideways. The
+        // weight carries `harm / harm2`, so what the two modes contribute is comparable.
+        for (const p of buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura" }), 1920, 1080).particles) {
+            expect(p.swayMix).toBeGreaterThan(0);
+            expect(p.swayMix).toBeLessThan(1);
+            expect(p.swayMix * p.swayHarm2).toBeCloseTo(0.9 * p.swayHarm, 6);
+        }
+    });
+
+    it("turns the face on its own rate rather than on the sway's", () => {
+        // Coupled to the sway, a petal hesitated at the exact end of every lateral stroke, which is
+        // the mechanism showing through. The face stays coupled to the HANG, because that pair is
+        // the physics: it is the face that causes the drag.
+        const field = buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura" }), 1920, 1080);
+        const differing = field.particles.filter(p => p.faceHarm !== p.swayHarm).length;
+        expect(differing).toBeGreaterThan(field.particles.length / 2);
+    });
+
+    for (const seed of WEATHER_SEED_IDS) {
+        it(`${seed} keeps the seam exact with both modes running`, () => {
+            // Both harmonics are whole numbers, so both return to where they started at phase 1.
+            const params = resolveWeatherParams({ seed, params: { flutter: WEATHER_PARAMS.flutter.max, sway: 200 } });
+            expect(frameAt(seed, 1, params)).toEqual(frameAt(seed, 0, params));
+        });
+    }
 });
 
 describe("the solidity", () => {
@@ -564,10 +630,20 @@ describe("the field", () => {
     it("holds its density when the wind tilts the field", () => {
         // Tilting enlarges the area that has to be covered; the areal density is what stays fixed, so
         // the visible amount must not fall away as the angle grows.
-        const upright = litPixels(frameAt("snow", 0.2));
-        const tilted = litPixels(frameAt("snow", 0.2, resolveWeatherParams({ seed: "snow", params: { wind: 45 } })));
-        expect(tilted).toBeGreaterThan(upright * 0.6);
-        expect(tilted).toBeLessThan(upright * 1.6);
+        //
+        // Density stated rather than the seed's own, and stated high. This asks a question about a
+        // STATISTIC and the seed's default resolves to thirty-four particles on this canvas, which
+        // is few enough that the answer is really about where those thirty-four happened to land:
+        // measured across the same ten phases, the ratio wanders between 0.93 and 1.60 at that count
+        // and settles at 1.0 by eighty-five. It passed for as long as it did because nothing had
+        // disturbed the draw - and then something did, and it failed for a reason that had nothing
+        // to do with density. The file's own header says not to do this; this test did it anyway.
+        const params = (over: Partial<Record<WeatherParamKey, number>>) =>
+            resolveWeatherParams({ seed: "snow", params: { density: 600, ...over } });
+        const upright = litPixels(frameAt("snow", 0.2, params({})));
+        const tilted = litPixels(frameAt("snow", 0.2, params({ wind: 45 })));
+        expect(tilted).toBeGreaterThan(upright * 0.7);
+        expect(tilted).toBeLessThan(upright * 1.4);
     });
 
     it("integrates several instants into one frame", () => {

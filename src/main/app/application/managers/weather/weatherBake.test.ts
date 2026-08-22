@@ -14,7 +14,7 @@ import {
 } from "./weatherBake";
 import { VP9_ARGS } from "../media/mediaTranscode";
 import { devModeScreenEffectQuality, screenEffectBakeThreads } from "./screenEffectQuality";
-import { SCREEN_EFFECT_QUALITY_KEY, SCREEN_EFFECT_THREADS_KEY } from "@shared/constants/screenEffects";
+import { SCREEN_EFFECT_QUALITY_DEFAULT, SCREEN_EFFECT_QUALITY_KEY, SCREEN_EFFECT_THREADS_KEY } from "@shared/constants/screenEffects";
 import { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
 import { WeatherBakeManager, WeatherBakeOwner, type WeatherBakeStarter } from "./WeatherBakeManager";
 
@@ -658,21 +658,26 @@ describe("WeatherBakeManager", () => {
 describe("devModeScreenEffectQuality", () => {
     const host = (value: unknown) => ({ globalState: { get: () => value } });
 
-    it("is draft when the author has never chosen", () => {
+    it("is final when the author has never chosen, so nothing is baked twice", () => {
+        // The compile path - preview, test run and build alike - only ever accepts `final`, so a
+        // draft made for Dev Mode is discarded the first time anything is run. Defaulting to the
+        // tier everything accepts is what makes one bake enough.
+        //
         // Reverse control: a reader that ignored the store entirely would pass this alone, so the
-        // next case has to be able to move it.
-        expect(devModeScreenEffectQuality(host(undefined))).toBe("draft");
+        // next case has to be able to move it - and it names the OTHER tier for that reason.
+        expect(devModeScreenEffectQuality(host(undefined))).toBe("final");
+        expect(SCREEN_EFFECT_QUALITY_DEFAULT).toBe("final");
     });
 
     it("is whatever the author chose", () => {
-        expect(devModeScreenEffectQuality(host("final"))).toBe("final");
+        expect(devModeScreenEffectQuality(host("draft"))).toBe("draft");
     });
 
     it("treats a value that is not a tier as no answer at all", () => {
         // Global state is a JSON file on disk and this value reaches an ffmpeg argument. Trusting it
         // costs an encoder that refuses to start, and the symptom is "the weather stopped working".
-        expect(devModeScreenEffectQuality(host("fastest"))).toBe("draft");
-        expect(devModeScreenEffectQuality(host(4))).toBe("draft");
+        expect(devModeScreenEffectQuality(host("fastest"))).toBe(SCREEN_EFFECT_QUALITY_DEFAULT);
+        expect(devModeScreenEffectQuality(host(4))).toBe(SCREEN_EFFECT_QUALITY_DEFAULT);
     });
 
     it("is auto by default, is whatever the author chose, and refuses nonsense", () => {
