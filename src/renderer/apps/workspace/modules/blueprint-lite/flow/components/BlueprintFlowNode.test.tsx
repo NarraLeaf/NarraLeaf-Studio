@@ -143,4 +143,13 @@ describe("BlueprintFlowNode", () => {
         expect(renderComment({ text: "note" })).toContain("aria-pressed");
         expect(renderComment({ text: "group", frame: true, background: false })).not.toContain("aria-pressed");
     });
+
+    /**
+     * Fit is the way back from a frame that only ever grows, so it belongs on the frame and only
+     * there - a note encloses nothing to be fitted to.
+     */
+    it("offers Fit on a group frame and not on a note", () => {
+        expect(renderComment({ text: "group", frame: true, background: false })).toContain("lucide-shrink");
+        expect(renderComment({ text: "note" })).not.toContain("lucide-shrink");
+    });
 });

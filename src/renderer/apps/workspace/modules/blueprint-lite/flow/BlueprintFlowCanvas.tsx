@@ -98,11 +98,13 @@ import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprint
 import {
     blueprintGroupMemberIds,
     computeBlueprintGroupFrame,
+    fitBlueprintGroupFrame,
     growBlueprintFrameToHold,
     growBlueprintGroupFramesForDrop,
     pickBlueprintGroupDropTarget,
     refitBlueprintGroupFrames,
     type BlueprintFrameBox,
+    type BlueprintFrameRect,
 } from "./blueprintGroupFrame";
 import {
     BlueprintGroupDropPreview,
@@ -746,6 +748,60 @@ function BlueprintFlowCanvasInner({
     const [saveSchemaEditorOpen, setSaveSchemaEditorOpen] = useState(false);
     const openSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(true), []);
 
+    /**
+     * Groups sized to the cards they hold, from the frame's own title row or the context menu.
+     *
+     * The counterpart to a frame that only ever grows: dropping a card into a group stretches it,
+     * and this is how the author takes the slack back. Membership is read from the canvas at the
+     * moment of the click - the same containment test the drop used - so what a frame closes around
+     * is exactly what it was holding when the button was pressed.
+     *
+     * Smallest first, each answer feeding the next, so fitting a group and the group around it in
+     * one gesture wraps the result rather than the rectangle the inner frame started at. One
+     * commit for the lot: it is one gesture, and one undo should take all of it back.
+     */
+    const fitGroupFrames = useCallback(
+        (frameIds: readonly string[]) => {
+            const wanted = new Set(frameIds);
+            const working = new Map(
+                readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]).map(box => [box.id, box]),
+            );
+            const innermostFirst = [...working.values()]
+                .filter(box => box.isFrame && wanted.has(box.id))
+                .sort((a, b) => a.width * a.height - b.width * b.height || (a.id < b.id ? -1 : 1));
+            const fitted: Array<readonly [string, BlueprintFrameRect]> = [];
+            for (const frame of innermostFirst) {
+                const rect = fitBlueprintGroupFrame(frame, [...working.values()]);
+                if (
+                    rect.x === frame.x &&
+                    rect.y === frame.y &&
+                    rect.width === frame.width &&
+                    rect.height === frame.height
+                ) {
+                    continue;
+                }
+                working.set(frame.id, { ...frame, ...rect });
+                fitted.push([frame.id, rect]);
+            }
+            if (fitted.length === 0) {
+                return;
+            }
+            const next = cloneBlueprintIr(irRef.current);
+            for (const [id, rect] of fitted) {
+                const node = next.nodes?.[id];
+                if (node) {
+                    node.params = { ...(node.params ?? {}), width: rect.width, height: rect.height };
+                    writeNodeEditorLayout(node, { x: rect.x, y: rect.y });
+                }
+            }
+            commitBlueprintIr(next);
+        },
+        [commitBlueprintIr, getNodes],
+    );
+
+    /** The button on a frame's title row acts on that one frame. */
+    const fitGroupFrame = useCallback((frameId: string) => fitGroupFrames([frameId]), [fitGroupFrames]);
+
     const closeSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(false), []);
 
     const stableAddDynamicInputPin = useCallback((nodeId: string) => {
@@ -981,6 +1037,7 @@ function BlueprintFlowCanvasInner({
                     displayableTargetVariantsByNodeId,
                     onBindElementLiteral,
                     openSaveSchemaEditor,
+                    fitGroupFrame,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
@@ -1058,6 +1115,7 @@ function BlueprintFlowCanvasInner({
         displayableTargetVariantsSig,
         onBindElementLiteral,
         openSaveSchemaEditor,
+        fitGroupFrame,
         setEdges,
         setNodes,
     ]);
@@ -1823,6 +1881,17 @@ function BlueprintFlowCanvasInner({
             });
         }
         if (frameIds.length > 0) {
+            // Fit sits with the group rows because it is one: it closes the frame around whatever
+            // the group is holding now, which is the only way back from a frame that stretched to
+            // take a card and never shrank again.
+            groupRows.push({
+                id: "blueprint.node.fit",
+                label: t("blueprint.group.fit"),
+                onClick: () => {
+                    setNodeMenu(null);
+                    fitGroupFrames(frameIds);
+                },
+            });
             groupRows.push({
                 id: "blueprint.node.ungroup",
                 label: t("blueprint.group.ungroup"),
@@ -1913,6 +1982,7 @@ function BlueprintFlowCanvasInner({
         canFormat,
         createGroupFromIds,
         deleteNodeIds,
+        fitGroupFrames,
         formatGraph,
         freeze.frozen,
         freeze.reason,

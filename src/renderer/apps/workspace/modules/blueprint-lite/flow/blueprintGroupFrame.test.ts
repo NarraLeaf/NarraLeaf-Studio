@@ -5,6 +5,7 @@ import {
     BLUEPRINT_GROUP_MIN_WIDTH,
     blueprintGroupMemberIds,
     computeBlueprintGroupFrame,
+    fitBlueprintGroupFrame,
     growBlueprintFrameToHold,
     growBlueprintGroupFramesForDrop,
     pickBlueprintGroupDropTarget,
@@ -206,5 +207,40 @@ describe("growBlueprintGroupFramesForDrop", () => {
 
     it("lists nothing for a frame that is not on the canvas", () => {
         expect(growBlueprintGroupFramesForDrop([], "gone", [{ x: 0, y: 0, width: 10, height: 10 }])).toEqual({});
+    });
+});
+
+describe("fitBlueprintGroupFrame", () => {
+    it("closes the frame around the cards it holds", () => {
+        const frame = box("frame", 0, 0, 900, 900);
+        const fitted = fitBlueprintGroupFrame(frame, [frame, box("a", 200, 200), box("far", 2000, 2000)]);
+
+        expect(fitted).toEqual({
+            x: 200 - PAD.left,
+            y: 200 - PAD.top,
+            width: 200 + PAD.left + PAD.right,
+            height: 100 + PAD.top + PAD.bottom,
+        });
+    });
+
+    it("collapses an empty group where it stands", () => {
+        const frame = box("frame", 40, 60, 900, 900);
+        const fitted = fitBlueprintGroupFrame(frame, [frame, box("outside", 2000, 2000)]);
+
+        expect(fitted).toEqual({
+            x: 40,
+            y: 60,
+            width: BLUEPRINT_GROUP_MIN_WIDTH,
+            height: BLUEPRINT_GROUP_MIN_HEIGHT,
+        });
+    });
+
+    it("takes a nested group in with it, so the inner frame stays enclosed", () => {
+        const frame = box("frame", 0, 0, 900, 900);
+        const inner = box("inner", 300, 300, 260, 200);
+        const fitted = fitBlueprintGroupFrame(frame, [frame, inner, box("deep", 320, 340, 200, 100)]);
+
+        expect(fitted.x).toBe(inner.x - PAD.left);
+        expect(fitted.width).toBe(inner.width + PAD.left + PAD.right);
     });
 });

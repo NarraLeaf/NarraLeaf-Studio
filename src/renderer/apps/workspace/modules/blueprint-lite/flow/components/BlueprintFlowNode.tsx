@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X, SlidersHorizontal } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, Shrink, X, SlidersHorizontal } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
@@ -117,6 +117,12 @@ export type BlueprintFlowNodeData = {
     onAddDynamicInputPin?: (nodeId: string) => void;
     /** Open the project save-field editor. Present on the two save nodes; see SaveSchemaFieldsModal. */
     onEditSaveSchema?: () => void;
+    /**
+     * Size a group frame around the cards it currently holds. Only the canvas knows where those
+     * cards ended up and how big they measured, so the frame asks for the fit rather than working
+     * one out from a document that carries neither.
+     */
+    onFitGroupFrame?: (nodeId: string) => void;
     /** Remove a user-added input pin and clean edges / literals. */
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void;
     /** Accessible variables for variableRef inspector controls. */
@@ -2063,12 +2069,14 @@ function BlueprintCommentNodeCard({
     params,
     selected,
     onPatchNodeParam,
+    onFitGroupFrame,
 }: {
     nodeId: string;
     displayName: string;
     params: Record<string, unknown>;
     selected?: boolean;
     onPatchNodeParam?: BlueprintNodeParamPatch;
+    onFitGroupFrame?: (nodeId: string) => void;
 }) {
     const { t } = useTranslation();
     // The resize corner IS the gesture affordance, so while frozen it is not drawn at all - a grab
@@ -2224,6 +2232,24 @@ function BlueprintCommentNodeCard({
                             }}
                         />
                     ))}
+                    {/* Fit is the way back from a frame that only ever grows: dropping a card in
+                        stretches the group around it, and nothing shrinks it again until the author
+                        asks. Next to the swatches because both are things done to the frame itself,
+                        and a frame is the only comment that encloses anything to be fitted to. */}
+                    {isFrame && onFitGroupFrame ? (
+                        <button
+                            type="button"
+                            className="flex h-4 w-4 items-center justify-center rounded-full border border-edge-strong bg-fill-subtle text-fg-muted hover:text-fg"
+                            data-tip={t("blueprint.group.fit")}
+                            aria-label={t("blueprint.group.fit")}
+                            onClick={e => {
+                                e.stopPropagation();
+                                onFitGroupFrame(nodeId);
+                            }}
+                        >
+                            <Shrink className="h-2.5 w-2.5" aria-hidden />
+                        </button>
+                    ) : null}
                     {/* Which layer a note sits in is the author's call; a frame has no such call
                         to make. A frame is drawn around other cards, so the only place it can be is
                         behind them - offered the switch, it would come forward and cover the graph
@@ -2476,6 +2502,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         onPatchNodeParam,
         onAddDynamicInputPin,
         onEditSaveSchema,
+        onFitGroupFrame,
         onRemoveDynamicInputPin,
         memberVariables,
         persistentVariables,
@@ -2569,6 +2596,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 params={params}
                 selected={Boolean(selected)}
                 onPatchNodeParam={onPatchNodeParam}
+                onFitGroupFrame={onFitGroupFrame}
             />
         );
     }

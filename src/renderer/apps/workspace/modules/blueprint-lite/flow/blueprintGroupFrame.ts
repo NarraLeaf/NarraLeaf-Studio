@@ -209,3 +209,26 @@ export function growBlueprintGroupFramesForDrop(
     }
     return changed;
 }
+
+/**
+ * One frame sized to what it currently holds - the author's way of taking back the room a group
+ * gathered while cards were dropped into it, since a frame never shrinks on its own.
+ *
+ * A group holding nothing collapses to its smallest grabbable size where it stands, which is the
+ * honest answer to "fit around your contents" when there are none.
+ */
+export function fitBlueprintGroupFrame(
+    frame: BlueprintFrameBox,
+    boxes: readonly BlueprintFrameBox[],
+): BlueprintFrameRect {
+    const memberIds = new Set(blueprintGroupMemberIds(frame.id, frame, boxes));
+    const members = boxes.filter(box => memberIds.has(box.id));
+    return (
+        computeBlueprintGroupFrame(members) ?? {
+            x: frame.x,
+            y: frame.y,
+            width: BLUEPRINT_GROUP_MIN_WIDTH,
+            height: BLUEPRINT_GROUP_MIN_HEIGHT,
+        }
+    );
+}

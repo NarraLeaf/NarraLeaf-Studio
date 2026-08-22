@@ -334,6 +334,7 @@ export const blueprint = {
         ungroup: "Ungroup",
         untitled: "Group",
         rename: "Group name",
+        fit: "Fit group to its nodes",
     },
     displayable: {
         propertyLabel: "Property",
