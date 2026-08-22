@@ -473,8 +473,11 @@ export type BlueprintPersistenceProjectRef = {
  * ("leave the revision" vs "unfreeze"). The revision id and label are the renderer's business.
  * A third kind added to the reason will fail to compile at the reporting call site, which is the
  * right place to be asked what to say about it.
+ *
+ * `live-session` is the one kind main does **not** refuse operations for; the reasoning and the
+ * predicate that says so are in `main/.../utils/workspaceFreeze.ts`.
  */
-export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery" | "live-session";
 
 /**
  * Which part of the close a workspace is currently waiting on.

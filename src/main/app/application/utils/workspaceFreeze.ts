@@ -28,6 +28,32 @@ import type { RevisionId } from "@shared/types/vcs";
 export type WorkspaceFrozenOperation = "production build" | "preview" | "patch export";
 
 /**
+ * The kinds of freeze that make main refuse those operations - which is every kind but one.
+ *
+ * The exception is `live-session`. The refusal above is a **consistency** guard: it exists because
+ * the author is reading something other than their working tree and would have no way to know the
+ * build was not of it. In a live session that sentence is false - the working tree is exactly what
+ * everybody in the session is looking at, kept current by the effects arriving from the host - so
+ * there is nothing to guard against and refusing would only take running the game away from a
+ * collaborator for as long as the session lasts.
+ *
+ * Named as a type rather than checked inline at each call site so that {@link workspaceFrozenMessage}
+ * can be exhaustive over it: a fifth kind that does refuse has to say what the author is told, and
+ * the compiler is what asks.
+ */
+export type WorkspaceRefusingFreezeKind = Exclude<WorkspaceFreezeKind, "live-session">;
+
+/**
+ * Whether this kind of freeze is one that stops main starting things.
+ *
+ * The four call sites ask this rather than each spelling out which kinds are exempt: a comparison
+ * written four times is a comparison that will one day be written three times.
+ */
+export function refusesOperations(kind: WorkspaceFreezeKind): kind is WorkspaceRefusingFreezeKind {
+    return kind !== "live-session";
+}
+
+/**
  * What a frozen workspace reported: why, and - when the why is a revision - which one.
  *
  * The revision is here rather than in a table of its own because the two facts have exactly one
@@ -116,23 +142,35 @@ export function forgetWorkspaceFreeze(projectPath: string): void {
 }
 
 /**
+ * The way out of each kind of freeze, in the author's terms.
+ *
+ * A record rather than a chain of comparisons so that it is exhaustive: a new kind that refuses
+ * operations does not compile until somebody has written the sentence the author will read.
+ */
+const FREEZE_REMEDIES: Record<WorkspaceRefusingFreezeKind, string> = {
+    revision: "Leave the revision you are looking at, or unfreeze the workspace, and try again.",
+    // A merge has no "unfreeze": the working tree holds two sides at once, and what a build
+    // produced from it is something nobody wrote. Finishing the merge is the only way out, and
+    // naming it is the difference between a refusal and a dead end.
+    merge: "Finish the merge in the version panel - choose which side to keep for each file - and try again.",
+    // Recovery mode has no "unfreeze" either, and refusing here is not merely consistency:
+    // the shell starts almost none of the services a build reads from, so what it produced
+    // would be a game missing most of the project rather than a build of it.
+    recovery: "Leave recovery mode - this window reopens as a normal workspace - and try again.",
+    manual: "Unfreeze the workspace and try again.",
+};
+
+/**
  * What the author is told. Written for a person, because it is the only explanation they get: the
  * refusal reaches them through the workspace console and the build dialog, not a log file.
+ *
+ * Takes only the kinds that refuse. A caller holding a plain `WorkspaceFreezeKind` has to pass it
+ * through {@link refusesOperations} first, which is the same question it needed to ask anyway.
  */
-export function workspaceFrozenMessage(reason: WorkspaceFreezeKind, operation: WorkspaceFrozenOperation): string {
-    const remedy = reason === "revision"
-        ? "Leave the revision you are looking at, or unfreeze the workspace, and try again."
-        // A merge has no "unfreeze": the working tree holds two sides at once, and what a build
-        // produced from it is something nobody wrote. Finishing the merge is the only way out, and
-        // naming it is the difference between a refusal and a dead end.
-        : reason === "merge"
-            ? "Finish the merge in the version panel - choose which side to keep for each file - and try again."
-            // Recovery mode has no "unfreeze" either, and refusing here is not merely consistency:
-            // the shell starts almost none of the services a build reads from, so what it produced
-            // would be a game missing most of the project rather than a build of it.
-            : reason === "recovery"
-                ? "Leave recovery mode - this window reopens as a normal workspace - and try again."
-                : "Unfreeze the workspace and try again.";
+export function workspaceFrozenMessage(
+    reason: WorkspaceRefusingFreezeKind,
+    operation: WorkspaceFrozenOperation,
+): string {
     return `The ${operation} is unavailable while this workspace is frozen: what it produced would `
-        + `not be what you are looking at. ${remedy}`;
+        + `not be what you are looking at. ${FREEZE_REMEDIES[reason]}`;
 }

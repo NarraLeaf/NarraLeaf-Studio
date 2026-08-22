@@ -59,7 +59,26 @@ export type WorkspaceFreezeReason =
      * The lore actions the recovery panel offers are unaffected: those run in the main process,
      * which is not behind this gate.
      */
-    | { kind: "recovery" };
+    | { kind: "recovery" }
+    /**
+     * A live session is open on this project, and only its story document may be written.
+     *
+     * **The one freeze that is partial.** Every other kind here is all-or-nothing over
+     * {@link isVersioned}; this one carries the set of project-relative paths that are still
+     * writable - the story document the session is about - and refuses the rest. The reason is that
+     * only story operations travel between the people in a session, so a character created here
+     * would never reach them, and the row referring to it would point at nothing on their machines.
+     *
+     * `session` is the room's id. Held so a stale freeze can be told from the current one: the latch
+     * is module-level, and a session that ended while a slower path was still finishing must not be
+     * able to arm one for a room nobody is in.
+     */
+    | {
+        kind: "live-session";
+        session: string;
+        /** Project-relative, in the repository's own spelling - the input {@link isVersioned} takes. */
+        writable: readonly string[];
+    };
 
 export type WorkspaceFreeze = {
     /** The project whose data is frozen. Writes anywhere else are none of this module's business. */

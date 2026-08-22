@@ -192,6 +192,21 @@ describe("GameBuildManager.start while the workspace is frozen", () => {
             expect(manager.getStatus(projectPath).error).toContain("banana");
         });
     });
+
+    it("builds during a live session, which is the one freeze that guards nothing here", async () => {
+        // The refusal is about the author reading something other than their working tree. In a
+        // session the working tree is exactly what everybody is looking at, so there is nothing to
+        // be inconsistent with - and taking the build away for the length of a session would cost a
+        // collaborator the ability to run the game at all.
+        reportWorkspaceFreeze(projectPath, "live-session");
+        const manager = makeManager();
+        const snapshot = manager.start(projectPath, entry, request);
+
+        expect(snapshot.status).toBe("preparing");
+        await vi.waitFor(() => {
+            expect(manager.getStatus(projectPath).error).toContain("banana");
+        });
+    });
 });
 
 describe("gameFusesForPlatform", () => {

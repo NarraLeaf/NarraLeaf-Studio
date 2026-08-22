@@ -19,7 +19,7 @@ import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
-import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
+import { getWorkspaceFreeze, refusesOperations, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { resolveRunVariant } from "../../utils/runVariant";
 import {
@@ -320,7 +320,7 @@ export class GameTestManager {
         const key = this.projectKey(projectPath);
 
         const frozen = getWorkspaceFreeze(projectPath);
-        if (frozen) {
+        if (frozen !== null && refusesOperations(frozen)) {
             // Named "preview" because a test's game session *is* a preview process - same runner,
             // same pack, same reason the refusal exists (what it ran would not be what the author is
             // looking at). The remedy sentence is the part the author needs.

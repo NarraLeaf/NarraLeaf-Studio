@@ -208,6 +208,21 @@ describe("GameTestManager.launch refusals", () => {
         expect(compileGameRuntimeArtifactInWorker).not.toHaveBeenCalled();
     });
 
+    it("launches during a live session, whose freeze guards nothing a test could break", async () => {
+        // Everybody in a session is looking at their own working tree, kept current by the effects
+        // the host broadcasts, so a game started from it is a game of what is on screen.
+        vi.mocked(compileGameRuntimeArtifactInWorker)
+            .mockRejectedValue(new Error("compile stopped here on purpose"));
+        reportWorkspaceFreeze(projectPath, "live-session");
+
+        const result = await makeManager().launch({ projectPath, runId: "run-1" });
+
+        // Reached the compile, which is what proves it was not refused at the gate.
+        expect(result.ok).toBe(false);
+        expect(result).toEqual({ ok: false, reason: expect.stringContaining("compile stopped here") });
+        expect(compileGameRuntimeArtifactInWorker).toHaveBeenCalled();
+    });
+
     it("refuses a second session for the same project rather than letting it win silently", async () => {
         // Two game processes contend for the same compiled artifact directory; the second would
         // overwrite the first's and both would misbehave. R7: one run at a time, per project.

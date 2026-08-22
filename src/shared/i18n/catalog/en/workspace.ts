@@ -355,6 +355,13 @@ export const workspace = {
         liveJoin: "Join",
         liveLeave: "Leave",
         liveEnd: "End",
+        // Why one may not be started or joined. A workspace holds one freeze at a time, so
+        // each of these names the state that has to be left first.
+        liveBlockedRevision: "Leave the version you are looking at to start or join a live session.",
+        liveBlockedManual: "Unfreeze the workspace to start or join a live session.",
+        liveBlockedMerge: "Finish the merge to start or join a live session.",
+        liveBlockedRecovery: "Live sessions are unavailable in recovery mode.",
+        liveBlockedSession: "This workspace is already in a live session.",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",
