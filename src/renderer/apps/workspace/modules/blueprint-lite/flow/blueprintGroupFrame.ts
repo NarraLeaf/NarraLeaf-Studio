@@ -12,6 +12,14 @@
  * Comments in English per project convention.
  */
 
+// Re-exported so the canvas keeps reading its geometry from one import, while the rule itself
+// lives beside the document types the interface panel's thumbnail also has to obey.
+export {
+    BLUEPRINT_COMMENT_DEFAULT_HEIGHT,
+    BLUEPRINT_COMMENT_DEFAULT_WIDTH,
+    readBlueprintCommentSize,
+} from "@shared/blueprint/blueprintCommentGeometry";
+
 export type BlueprintFrameRect = { x: number; y: number; width: number; height: number };
 export type BlueprintFrameBox = BlueprintFrameRect & { id: string };
 

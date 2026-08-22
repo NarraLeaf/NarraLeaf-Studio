@@ -65,7 +65,8 @@ import {
     BLUEPRINT_COMMENT_COLORS,
     blueprintCommentColorLabel,
     resolveBlueprintCommentColorKey,
-} from "../blueprintCommentColors";
+} from "@/lib/ui-editor/blueprint-comment-colors";
+import { readBlueprintCommentSize } from "../blueprintGroupFrame";
 import {
     resolveBlueprintCategoryLabel,
     resolveBlueprintLabel,
@@ -172,8 +173,6 @@ const INPUT_NUMBER_NO_SPINNER =
 
 /** Pin body: fixed min width, cap max — avoid equal flex-1 columns hollowing the middle on inline inputs. */
 const BLUEPRINT_CARD_PIN_BODY_CLASS = "min-w-[200px] max-w-[280px]";
-const COMMENT_DEFAULT_WIDTH = 360;
-const COMMENT_DEFAULT_HEIGHT = 180;
 
 /**
  * What to print for an asset id a pin holds - the file's name, or the set's when it names one.
@@ -2045,18 +2044,6 @@ function DisplayableAnimatePropertyCard({
     );
 }
 
-function readPositiveNumberParam(
-    params: Record<string, unknown>,
-    key: string,
-    fallback: number,
-): number {
-    const n = Number(params[key] ?? fallback);
-    if (!Number.isFinite(n) || n <= 0) {
-        return fallback;
-    }
-    return n;
-}
-
 function BlueprintCommentNodeCard({
     nodeId,
     displayName,
@@ -2090,8 +2077,7 @@ function BlueprintCommentNodeCard({
     const colorKey = resolveBlueprintCommentColorKey(params.color);
     const color = BLUEPRINT_COMMENT_COLORS[colorKey]!;
     const backgroundEnabled = params.background !== false;
-    const width = readPositiveNumberParam(params, "width", COMMENT_DEFAULT_WIDTH);
-    const height = readPositiveNumberParam(params, "height", COMMENT_DEFAULT_HEIGHT);
+    const { width, height } = readBlueprintCommentSize(params);
     const [draftSize, setDraftSize] = useState({ width, height });
     const isResizingRef = useRef(false);
 

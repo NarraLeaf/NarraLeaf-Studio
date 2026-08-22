@@ -28,7 +28,7 @@ import {
     SurfaceToolbarPopoverRow,
     useSurfaceToolbarPopover,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarPopover";
-import { BLUEPRINT_COMMENT_COLORS, blueprintCommentColorLabel } from "../blueprintCommentColors";
+import { BLUEPRINT_COMMENT_COLORS, blueprintCommentColorLabel } from "@/lib/ui-editor/blueprint-comment-colors";
 import { BlueprintZoomMenu } from "./BlueprintZoomMenu";
 import type { BlueprintLayoutDirection } from "../blueprintAutoLayout";
 
