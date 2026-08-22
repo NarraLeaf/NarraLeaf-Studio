@@ -272,7 +272,7 @@ export const widgets = {
     },
     /**
      * The widget's stored type is `nl.puppet` and names no renderer; every string an author reads
-     * says "Spine2D / Live2D Model" instead, because "Puppet" tells nobody what it is for.
+     * says "Spine / Live2D Model" instead, because "Puppet" tells nobody what it is for.
      */
     puppet: {
         title: "Model",
@@ -375,7 +375,7 @@ export const widgets = {
         video: { name: "Video" },
         // Names the two renderers on purpose while the stored type names neither - user ruling
         // 2026-07-29. An author looking for Spine or Live2D has to be able to find this in a palette.
-        puppet: { name: "Spine2D / Live2D Model" },
+        puppet: { name: "Spine / Live2D Model" },
     },
     unsupportedType: "Unsupported type: {type}",
 } as const;
