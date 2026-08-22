@@ -15,6 +15,7 @@ import {
 } from "@shared/live/ops";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
+import { LiveClaimStore } from "./claims";
 import { DeletedPositions, resolveInsertTarget } from "./deletedPositions";
 import { LiveEffectLog } from "./effectLog";
 import { LiveReceipts, type LiveReceipt } from "./receipts";
@@ -53,13 +54,21 @@ export type LiveHostDeps = {
      */
     isMember?(instance: string): boolean;
     /**
+     * The host's record of who is writing which row. One is built when none is given, which is the
+     * ordinary case - the claim store is the host's own memory and nothing outside a session has a
+     * use for it. Injecting one is how a caller sets the clock a claim lapses against.
+     */
+    claims?: LiveClaimStore;
+    /**
      * Who holds this row against this sender, or null when the sender may write it.
      *
-     * Consulted only for the operations in `CLAIMED_OPS`, and permissive when absent - claims are
-     * the host's own memory and live elsewhere. The answer is an ACCOUNT name rather than an
-     * instance id because it goes into a refusal, and a refusal names a person: "no" without a name
-     * is a mystery. Comparing the holder against the sender is this predicate's business, since it
-     * is the only thing here that knows which accounts an instance belongs to.
+     * Consulted only for the operations in `CLAIMED_OPS`. Absent is the ordinary case: the answer
+     * then comes from the host's own {@link claims} store, which says yes to everything while
+     * nothing is claimed. A predicate given here answers INSTEAD of that store, for an embedder that
+     * keeps the record somewhere else. The answer is an ACCOUNT name rather than an instance id
+     * because it goes into a refusal, and a refusal names a person: "no" without a name is a
+     * mystery. Comparing the holder against the sender is the answerer's business, since it is the
+     * only thing that knows which accounts an instance belongs to.
      */
     claimBlocking?(blockId: StoryBlockId, by: string): string | null;
     /** How many answers to remember for idempotency. See {@link LiveReceipts}. */
@@ -104,12 +113,19 @@ type LivePlan =
 export class LiveHost {
     /** The host's application order, for catching a guest up. */
     public readonly log = new LiveEffectLog();
+    /**
+     * Who is writing which row. Public because it is the host's memory but not the host's decision:
+     * rows are taken and given back as the interface opens and closes boxes, and the set it holds is
+     * what {@link LiveClaimStore.snapshot} hands to a transport to broadcast.
+     */
+    public readonly claims: LiveClaimStore;
 
     private readonly receipts: LiveReceipts;
     private readonly positions = new DeletedPositions();
 
     public constructor(private readonly deps: LiveHostDeps) {
         this.receipts = new LiveReceipts(deps.receiptLimit);
+        this.claims = deps.claims ?? new LiveClaimStore();
     }
 
     /**
@@ -196,6 +212,10 @@ export class LiveHost {
             }
         }
         this.deps.applyOp(applied);
+        if (applied.op === "delete-block") {
+            // Nobody is writing a row that is gone.
+            this.claims.forgetRow(applied.blockId);
+        }
         if (applied.op === "insert-block") {
             // A row that exists again has a real position, and a remembered one would outrank it.
             this.positions.forget(applied.sceneId, applied.block.id);
@@ -338,7 +358,9 @@ export class LiveHost {
         if (blockId === null) {
             return null;
         }
-        const heldBy = this.deps.claimBlocking?.(blockId, by) ?? null;
+        const heldBy = this.deps.claimBlocking
+            ? this.deps.claimBlocking(blockId, by)
+            : this.claims.blocking(blockId, by);
         return heldBy === null ? null : { refuse: "row-claimed", heldBy };
     }
 
