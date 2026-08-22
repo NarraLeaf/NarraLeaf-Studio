@@ -28,9 +28,9 @@ const H = 270;
 /** Few frames and few sub-steps: the tests are about geometry and identity, not about the blur. */
 const FRAMES = 60;
 
-function frameAt(seed: WeatherSeedId, phase: number, params = resolveWeatherParams({ seed }), subSteps = 2) {
+function frameAt(seed: WeatherSeedId, phase: number, params = resolveWeatherParams({ seed }), subSteps = 2, frames = FRAMES) {
     const field = buildWeatherField(seed, params, W, H);
-    const renderer = createWeatherRenderer(field, W, H, { frames: FRAMES, subSteps });
+    const renderer = createWeatherRenderer(field, W, H, { frames, subSteps });
     renderer.render(phase);
     // Copied: the renderer reuses its buffer, so two frames compared without this would be one frame
     // compared with itself - a seam test that can never fail.
@@ -346,7 +346,12 @@ describe("the solidity", () => {
     // below would be a question about where those two happened to land.
     const paramsAt = (solidity: number) =>
         resolveWeatherParams({ seed: "sakura", params: { solidity, density: 400 } });
-    const frameOf = (solidity: number) => frameAt("sakura", 0.25, paramsAt(solidity), 4);
+    // The one block that states its own frame count, because the shutter is a fraction of a FRAME:
+    // at the file's sixty a frame spans two fifths of a second of fall, so every petal arrives as a
+    // smear four times its own length and the shape these cases are about is not on the canvas to
+    // measure. Thirty a second over the seed's own loop is what a bake writes.
+    const REAL_FRAMES = Math.round(weatherLoopSeconds(resolveWeatherParams({ seed: "sakura" })) * 30);
+    const frameOf = (solidity: number) => frameAt("sakura", 0.25, paramsAt(solidity), 4, REAL_FRAMES);
 
     const saturated = (buf: Uint8ClampedArray) => {
         let n = 0;
@@ -415,7 +420,13 @@ describe("the solidity", () => {
         const solid = frameOf(WEATHER_PARAMS.solidity.max);
         // Not "none at 1": a dense field saturates by OVERLAP wherever two particles cross, because
         // the accumulator adds them. What the control buys is that the shapes themselves saturate.
-        expect(saturated(solid)).toBeGreaterThan(saturated(dull) * 8);
+        //
+        // Six rather than the eight this held before coverage was clamped per particle. The missing
+        // two are the motion smear: a pixel the petal crossed for part of the shutter used to write
+        // full anyway, because a fraction of a large gain is still over 1. It now writes the
+        // fraction, which is what a shutter is for - so the number here is the property's floor
+        // rather than the last measurement of it.
+        expect(saturated(solid)).toBeGreaterThan(saturated(dull) * 6);
         expect(edgeEnergy(solid)).toBeGreaterThan(edgeEnergy(dull));
         // And it is not simply covering more of the frame with light.
         expect(litPixels(solid)).toBeLessThan(litPixels(dull) * 1.6);
@@ -433,25 +444,81 @@ describe("the solidity", () => {
         });
     }
 
-    it("reaches opaque at the top of its range, which a multiple alone never did", () => {
+    it("reaches full coverage at the top of its range, which a multiple alone never did", () => {
         // The complaint this range was widened for: at the old ceiling of 4 the field still read as
         // a wash. Measured on the shape's interior rather than on a luminance floor, because a
         // luminance floor grows with the gain and would flatter the answer.
+        //
+        // Full coverage is the seed's TINT, not white. This asked for white until the rasteriser
+        // began clamping coverage before tinting, and asking for white is what quietly required
+        // every solid seed to be colourless - see `addPetal`.
         const buf = frameOf(WEATHER_SEEDS.sakura.params.includes("solidity") ? WEATHER_PARAMS.solidity.max : 1);
+        const [tr, tg, tb] = WEATHER_SEEDS.sakura.tint;
         let inside = 0;
-        let opaque = 0;
+        let full = 0;
         for (let i = 0; i < buf.length; i += 4) {
             const luminance = buf[i] * 0.299 + buf[i + 1] * 0.587 + buf[i + 2] * 0.114;
             if (luminance > 24) {
                 inside++;
-                if (Math.min(buf[i], buf[i + 1], buf[i + 2]) >= 250) {
-                    opaque++;
+                // Within a couple of counts of the tint on every channel, or brighter - two petals
+                // crossing add, and the pair is allowed to be brighter than either.
+                if (buf[i] >= tr - 2 && buf[i + 1] >= tg - 2 && buf[i + 2] >= tb - 2) {
+                    full++;
                 }
             }
         }
         expect(inside).toBeGreaterThan(0);
         // Not 100%: what is left is the antialiased rim, and a rim is what an edge IS.
-        expect(opaque / inside).toBeGreaterThan(0.8);
+        expect(full / inside).toBeGreaterThan(0.8);
+    });
+
+    it("does not spend the seed's colour on the way up, which is what it used to do", () => {
+        // The regression this guards is the one an author reported as "the petals are too white to
+        // be cherry blossom". Coverage used to be left unclamped, so a gain past 1 pushed all three
+        // channels past 255 and the clamp at write-out took the brightest first: the middle of every
+        // petal - the part the control exists to make solid - arrived white. At sakura's shipping
+        // defaults seven tenths of the lit area was pure white.
+        //
+        // Stated against the seed's own tint rather than against a colour, so it is a question about
+        // the renderer and not about what anybody thinks cherry blossom looks like.
+        //
+        // Drawn at the seed's OWN composition rather than at this block's crowded one: a field at
+        // twenty-six times the shipping density loses a third of its saturation to particles simply
+        // overlapping, which is correct additive behaviour and has nothing to do with what is being
+        // asked here. `scaleWeatherParams` is what puts a stage-sized picture on a small canvas.
+        const shipping = (solidity: number) =>
+            frameAt(
+                "sakura",
+                0.25,
+                scaleWeatherParams(resolveWeatherParams({ seed: "sakura", params: { solidity } }), W / 1920),
+                4,
+                REAL_FRAMES,
+            );
+        const hueOf = (buf: Uint8ClampedArray) => {
+            let n = 0;
+            let sum = 0;
+            for (let i = 0; i < buf.length; i += 4) {
+                if (Math.max(buf[i], buf[i + 1], buf[i + 2]) < 24) {
+                    continue;
+                }
+                n++;
+                const max = Math.max(buf[i], buf[i + 1], buf[i + 2]);
+                sum += (max - Math.min(buf[i], buf[i + 1], buf[i + 2])) / max;
+            }
+            return sum / Math.max(1, n);
+        };
+        const declared = (() => {
+            const [r, g, b] = WEATHER_SEEDS.sakura.tint;
+            return (Math.max(r, g, b) - Math.min(r, g, b)) / Math.max(r, g, b);
+        })();
+        // A tinted seed keeps its own saturation at every solidity it offers, including the top -
+        // where the whole shape is at full coverage and therefore at exactly the tint. Not "most of"
+        // it: away from an overlap the ratio between the channels is the tint's ratio at every
+        // coverage, so anything short of this is a channel having clipped on its own.
+        expect(declared).toBeGreaterThan(0.2);
+        for (const solidity of [1, 6, WEATHER_PARAMS.solidity.max]) {
+            expect(hueOf(shipping(solidity))).toBeGreaterThan(declared * 0.95);
+        }
     });
 
     it("is a seed parameter because it changes the file, not how loudly the file is played", () => {

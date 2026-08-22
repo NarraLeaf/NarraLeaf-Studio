@@ -156,9 +156,11 @@ type Particle = {
     /**
      * How much light this particle lays down: its depth ramp times the seed's `solidity`.
      *
-     * May exceed 1, and is meant to. Everything accumulates in float and is clamped once when the
-     * frame is written, so a gain past 1 saturates the particle's core and compresses its falloff
-     * into a narrower rim - which is what makes a large petal read as a shape rather than a wash.
+     * May exceed 1, and is meant to - but what it buys past 1 is SHAPE rather than brightness. A
+     * particle's coverage is clamped at full before its tint is applied, so nothing it draws is ever
+     * brighter than the tint; what a gain past 1 does is push the falloff out of the core and
+     * compress it into a narrower rim, which is what makes a large petal read as an object rather
+     * than as a wash.
      */
     gain: number;
 };
@@ -473,8 +475,13 @@ export type WeatherRenderer = {
  * Add one ellipse of light, oriented along the fall direction, into the accumulator.
  *
  * Additive with a squared falloff: the core reads solid and the rim dies out without leaving the ring
- * a linear falloff produces. It accumulates in **float** rather than saturating per write, so two
- * particles crossing do not clip early — the clamp happens once, when the frame is written out.
+ * a linear falloff produces. Two particles crossing still accumulate in **float** and are clamped
+ * once, when the frame is written out, so neither clips early against the other.
+ *
+ * Coverage is clamped at full before the tint, and `weight` — this sub-step's share of the shutter —
+ * is applied after. {@link addPetal} carries the reasoning for both; it is the seed those two rules
+ * were written for, and this path has to follow them or the two would disagree about what a
+ * `solidity` above 1 means.
  */
 function addParticle(
     acc: Float32Array,
@@ -487,6 +494,7 @@ function addParticle(
     dirX: number,
     dirY: number,
     gain: number,
+    weight: number,
     tint: WeatherTint,
 ): void {
     const bound = Math.max(across, along);
@@ -515,7 +523,7 @@ function addParticle(
             if (d2 >= 1) {
                 continue;
             }
-            const falloff = (1 - d2) * (1 - d2) * gain;
+            const falloff = Math.min(1, (1 - d2) * (1 - d2) * gain) * weight;
             acc[index] += tr * falloff;
             acc[index + 1] += tg * falloff;
             acc[index + 2] += tb * falloff;
@@ -533,6 +541,29 @@ function addParticle(
  * `squash` is the tumble across the plane - the petal turning its face away - applied to the across
  * axis only. It never reaches zero, because a petal exactly edge-on for one frame reads as a
  * flicker rather than as a turn.
+ *
+ * ## Coverage is clamped per particle, and that is what keeps the tint
+ *
+ * `value` is how much of this particle covers the pixel, and it is clamped at 1 BEFORE the tint is
+ * applied. Left unclamped, a `gain` above 1 sends all three channels past 255 and the clamp at
+ * write-out arrives channel by channel - the brightest first, the others a moment behind. Any tint
+ * whose channels are near each other therefore turns WHITE across the middle of the shape, which is
+ * precisely where the shape is most solid: the setting that exists to give a petal an edge was
+ * spending the seed's colour to do it. Measured on sakura's shipping defaults, 70% of the lit area
+ * was pure white and the frame averaged 5% saturation.
+ *
+ * Clamping coverage separates the two questions. `solidity` still decides how much of the petal is
+ * at full - the falloff is still pushed into a narrow rim - and the tint decides what full LOOKS
+ * like. A white seed is unaffected: for a white tint, clamping each particle and then summing writes
+ * the same byte as summing and then clamping.
+ *
+ * ## `weight` is applied after the clamp, and has to be
+ *
+ * A frame is integrated over several sub-steps, each contributing `1 / subSteps`, so a particle
+ * arrives here already divided. Clamping the divided value would clamp nothing; clamping the sum
+ * would undo the shutter, because a pixel the petal crossed for three sub-steps out of eight would
+ * still write full - three eighths of a gain of six is over 1. That is why a fast petal used to
+ * carry a hard white smear where it should have carried a blurred one.
  */
 function addPetal(
     acc: Float32Array,
@@ -544,6 +575,7 @@ function addPetal(
     angle: number,
     squash: number,
     gain: number,
+    weight: number,
     tint: WeatherTint,
 ): void {
     const sprite = petalSprite();
@@ -591,7 +623,7 @@ function addPetal(
             const p11 = ix1 >= 0 && ix1 < PETAL_SPRITE_SIZE && iy1 >= 0 && iy1 < PETAL_SPRITE_SIZE ? sprite[iy1 * PETAL_SPRITE_SIZE + ix1] : 0;
             const top = p00 + (p10 - p00) * fx;
             const bottom = p01 + (p11 - p01) * fx;
-            const value = (top + (bottom - top) * fy) * scale;
+            const value = Math.min(1, (top + (bottom - top) * fy) * scale) * weight;
             if (value <= 0) {
                 continue;
             }
@@ -660,13 +692,13 @@ function accumulateInstant(
             const drift = twoPi * (p.spinHarm * phase + p.spinPhase);
             const angle = Math.atan2(dirX, dirY) + bank + drift;
             // Never quite zero: a petal exactly edge-on for one frame reads as a flicker, not a turn.
-            addPetal(acc, width, height, cx, cy, p.radius * swirlScale, angle, 0.3 + 0.7 * face, p.gain * swirlGain * weight, tint);
+            addPetal(acc, width, height, cx, cy, p.radius * swirlScale, angle, 0.3 + 0.7 * face, p.gain * swirlGain, weight, tint);
             continue;
         }
 
         const radius = p.radius * swirlScale;
         const across = field.tumbles ? radius * (0.35 + 0.65 * face) : radius;
-        addParticle(acc, width, height, cx, cy, across, p.length * swirlScale, dirX, dirY, p.gain * swirlGain * weight, tint);
+        addParticle(acc, width, height, cx, cy, across, p.length * swirlScale, dirX, dirY, p.gain * swirlGain, weight, tint);
     }
 }
 
