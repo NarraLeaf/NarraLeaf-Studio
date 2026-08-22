@@ -408,6 +408,17 @@ export const blueprint = {
         select: "選択ツール",
         pan: "キャンバスを動かす",
     },
+    minimap: {
+        label: "グラフ全体図",
+        hint: "クリックで移動、ドラッグで表示範囲を動かす",
+        size: {
+            small: "小",
+            medium: "中",
+            large: "大",
+        },
+        hide: "全体図を隠す",
+        show: "全体図を表示",
+    },
     format: {
         graph: "グラフを整列",
         direction: "整列の方向",

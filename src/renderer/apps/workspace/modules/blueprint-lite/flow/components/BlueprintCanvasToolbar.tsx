@@ -14,7 +14,7 @@
  * Comments in English per project convention.
  */
 
-import { ChevronDown, Group, Hand, MoveDown, MoveRight, MousePointer2, Wand2 } from "lucide-react";
+import { ChevronDown, Group, Hand, Map, MoveDown, MoveRight, MousePointer2, Wand2 } from "lucide-react";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -31,6 +31,7 @@ import {
 import { BLUEPRINT_COMMENT_COLORS, blueprintCommentColorLabel } from "@/lib/ui-editor/blueprint-comment-colors";
 import { BlueprintZoomMenu } from "./BlueprintZoomMenu";
 import type { BlueprintLayoutDirection } from "../blueprintAutoLayout";
+import type { BlueprintMinimapPreference } from "../blueprintMinimapPreference";
 
 /** What a drag on empty canvas does. */
 export type BlueprintCanvasTool = "select" | "pan";
@@ -54,6 +55,9 @@ export type BlueprintCanvasToolbarProps = {
     onFormat: (direction: BlueprintLayoutDirection) => void;
     /** False on an empty graph, where formatting has nothing to arrange. */
     canFormat: boolean;
+    /** Whether the graph overview is up, and how large. */
+    minimap: BlueprintMinimapPreference;
+    onMinimapChange: (preference: BlueprintMinimapPreference) => void;
 };
 
 export function BlueprintCanvasToolbar({
@@ -65,11 +69,14 @@ export function BlueprintCanvasToolbar({
     formatDirection,
     onFormat,
     canFormat,
+    minimap,
+    onMinimapChange,
 }: BlueprintCanvasToolbarProps) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
     const colors = useSurfaceToolbarPopover();
     const directions = useSurfaceToolbarPopover();
+    const minimapToggleLabel = minimap.visible ? t("blueprint.minimap.hide") : t("blueprint.minimap.show");
 
     return (
         <TooltipGroup
@@ -99,6 +106,23 @@ export function BlueprintCanvasToolbar({
                 <Hand className="h-4 w-4" />
             </SurfaceEditorToolbarButton>
             <BlueprintZoomMenu />
+            {/* A view control, so it sits with the tools and the zoom rather than with the two
+                buttons that edit the graph. One button, not a group: how large the overview is
+                belongs to the overview, and its own right-click menu is where that is asked - a
+                second way in from up here would be a chevron for a question nobody arrives at the
+                toolbar to ask.
+
+                No freeze guard: this changes what the author is looking at, not the document, and a
+                frozen workspace still has to be readable. */}
+            <SurfaceEditorToolbarButton
+                active={minimap.visible}
+                aria-label={minimapToggleLabel}
+                data-tip={minimapToggleLabel}
+                aria-pressed={minimap.visible}
+                onClick={() => onMinimapChange({ ...minimap, visible: !minimap.visible })}
+            >
+                <Map className="h-4 w-4" />
+            </SurfaceEditorToolbarButton>
             {/* The button groups in the colour the author last chose, and the chevron is where a
                 different one is picked - the same bargain the zoom control makes with its
                 percentage: the common answer costs one click, the rest cost two. */}

@@ -57,6 +57,10 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { buildBlueprintPaletteContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
+import {
+    normalizeBlueprintMinimapPreference,
+    type BlueprintMinimapPreference,
+} from "../flow/blueprintMinimapPreference";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
 import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
@@ -188,6 +192,14 @@ type BlueprintEditorViewportPanelState = {
 };
 
 const BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID = "blueprintEditor.memberPanel";
+/**
+ * The graph overview's size and whether it is up.
+ *
+ * One record for every blueprint rather than one per graph: it is a preference about the editor,
+ * not about a particular layer, and an overview that came and went as the author moved between
+ * layers would read as a bug rather than a setting.
+ */
+const BLUEPRINT_EDITOR_MINIMAP_STATE_ID = "blueprintEditor.minimap";
 const BLUEPRINT_EDITOR_FLOW_VIEWPORT_STATE_PREFIX = "blueprintEditor.flowViewport";
 const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "global", "persistent"];
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
@@ -571,6 +583,23 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID,
             ),
         ),
+    );
+    const [minimapPreference, setMinimapPreference] = useState<BlueprintMinimapPreference>(() =>
+        normalizeBlueprintMinimapPreference(
+            panelStateService.getPanelState<Partial<BlueprintMinimapPreference>>(
+                BLUEPRINT_EDITOR_MINIMAP_STATE_ID,
+            ),
+        ),
+    );
+    const onMinimapChange = useCallback(
+        (next: BlueprintMinimapPreference) => {
+            setMinimapPreference(next);
+            panelStateService.replacePanelState<BlueprintMinimapPreference>(
+                BLUEPRINT_EDITOR_MINIMAP_STATE_ID,
+                next,
+            );
+        },
+        [panelStateService],
     );
     useEffect(() => uidoc.onDocumentChanged(() => setUiDocumentRevision(uidoc.getRevision())), [uidoc]);
     useEffect(
@@ -2098,6 +2127,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         onBindElementLiteral={onBindElementLiteral}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}
+                        minimap={minimapPreference}
+                        onMinimapChange={onMinimapChange}
                         currentBlueprintId={payload.blueprintId}
                         resolveCallableFnSignature={resolveCallableFnSignature}
                         onCreateGroupFrame={onCreateGroupFrame}
