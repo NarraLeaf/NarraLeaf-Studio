@@ -251,7 +251,6 @@ export const storyInspector = {
         fallSpeed: "Fall speed",
         flutter: "Flutter",
         solidity: "Solidity",
-        loopSeconds: "Loop length",
         depthSpread: "Depth spread",
     },
 
