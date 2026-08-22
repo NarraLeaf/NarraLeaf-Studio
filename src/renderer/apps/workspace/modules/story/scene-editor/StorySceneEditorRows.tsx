@@ -100,6 +100,7 @@ import { BlockOverview } from "./storyQuickParams";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { useStoryRowActions } from "./storyRowActions";
+import { StoryRowClaimMark, useStoryRowClaim } from "./storyRowClaims";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 
@@ -361,6 +362,15 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
     const freeze = useFreezeGuard(useStoryDocumentScope());
     const dragsGroup = props.dragGroupSize > 1;
     const dragLabel = dragsGroup ? tn("story.rows.dragRows", props.dragGroupSize) : t("story.rows.dragRow");
+    /**
+     * Who else is writing this row right now, or null. Null for every row outside a live session,
+     * which is the whole document most of the time.
+     *
+     * A context read rather than a component of its own on every row: the answer has to be known
+     * before anything can be mounted for it, and mounting a component that says "not me" on every
+     * row of the screenful costs a subscription apiece.
+     */
+    const claimedBy = useStoryRowClaim(blockId);
 
     return (
         <div
@@ -672,6 +682,11 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                 </div>
                 </>
             </div>
+            {/* Last, so it draws over the background strip on a `/bg` row, and absolute, so a claim
+                taken and dropped while somebody types never re-wraps the words on this line. */}
+            {claimedBy !== null ? (
+                <StoryRowClaimMark account={claimedBy} onArtwork={controlsOverArtwork} />
+            ) : null}
         </div>
     );
 });

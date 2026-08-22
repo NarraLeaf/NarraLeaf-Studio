@@ -362,6 +362,33 @@ export const workspace = {
         liveBlockedMerge: "Finish the merge to start or join a live session.",
         liveBlockedRecovery: "Live sessions are unavailable in recovery mode.",
         liveBlockedSession: "This workspace is already in a live session.",
+        // Where this window stands in the room it is in, in the slot the member count uses
+        // outside one. Values with no labels, like every other fact in this panel.
+        liveHost: "Host",
+        liveGuest: "Guest",
+        liveEntering: "Entering",
+        liveLeaving: "Leaving",
+        // Joined, and still applying everything the room did before this window arrived.
+        liveCatchingUp: "Catching up with the session.",
+        // What stands between this project and a session, each naming the one thing that
+        // has to be true before a room can be opened or joined.
+        liveNoStory: "Add a story to start a live session.",
+        liveNoServer: "Connect this project to a server to start or join a live session.",
+        liveNoInstance: "That server has not answered this machine yet.",
+        liveNoRepository: "This project has no version history.",
+        liveNoRevision: "Record a version to start a live session.",
+        liveCloneRequired: "That session is on {project}. Open that project to join it.",
+        liveVersionMismatch: "That session opened on an older version than this project holds.",
+        liveRoomGone: "That session is no longer open.",
+        liveRefused: "That server refused the session.",
+        liveFailed: "The live session could not be started.",
+        // How a session ended, for the two endings the author did not ask for. Leaving is
+        // silent: they pressed the control and watched the row change.
+        liveEndedHostLeft: "The host left. The session is over.",
+        // Said as what happened to this copy rather than as a goodbye: the session is gone
+        // AND what is on this disk is not what the others are looking at.
+        liveEndedDiverged: "This copy stopped matching the session and left it.",
+        liveEndedDivergedNext: "Get from the server before joining again.",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",

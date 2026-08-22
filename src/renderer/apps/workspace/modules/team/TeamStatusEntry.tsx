@@ -7,6 +7,7 @@ import { useVersionSurface } from "../../hooks/useVersionSurface";
 import { useTeamProject } from "../../hooks/useTeamProject";
 import { isVersionSurfaceVisible } from "../../components/layout/versionRailModel";
 import { teamServerFace } from "./teamFace";
+import { LiveSessionNotices } from "./LiveSessionNotices";
 import { TeamPanel } from "./TeamPanel";
 import { registerTeamPresenceBridge } from "./teamPresenceController";
 
@@ -94,6 +95,10 @@ export function TeamStatusEntry() {
 
     return (
         <>
+            {/* What a session says while nobody has this panel open: a refused edit, a refused undo,
+                and an ending the author did not ask for. Mounted here because this cell lasts as
+                long as the project does, and a session outlives every tab. */}
+            <LiveSessionNotices />
             <StatusEntry
                 onClick={() => setOpen(true)}
                 tone={wrong ? "text-warning" : undefined}

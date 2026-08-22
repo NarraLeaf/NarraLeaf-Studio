@@ -341,62 +341,22 @@ describe("what the server answered", () => {
         expect(seam("clients")?.textContent).toContain("workspace.shell.team.hereAlone");
     });
 
-    it("offers a live session where the server has rooms, and opens one at the read head", () => {
+    it("offers a room where the server has them, and says nothing about one where it has not", () => {
         panel({}, team({ canLive: true, head: "rev-9" }));
-        const open = seam("live-open");
-        expect(open?.textContent).toBe("workspace.shell.team.liveOpen");
-
-        fireEvent.click(open as HTMLElement);
-        expect(bridge.teamCall).toHaveBeenCalledWith(
-            ONE,
-            "live.open",
-            // The version the server last read, which is what everybody in the room has in
-            // common. Never one this side invented.
-            { project: "abc", revision: "rev-9" },
-        );
-    });
-
-    it("offers to join a room this window is not in", () => {
-        panel({}, team({
-            canLive: true,
-            live: [{
-                id: "room-1",
-                project: "abc",
-                title: "act one",
-                openedBy: "bob",
-                openedByInstance: "bob-1",
-                openedAt: 1,
-                members: [{ instance: "bob-1", account: "bob", label: "iMac", joinedAt: 1 }],
-            }],
-        }));
-        expect(seam("live")?.textContent).toContain("act one");
-        fireEvent.click(seam("live-join") as HTMLElement);
-        expect(bridge.teamCall).toHaveBeenCalledWith(ONE, "live.join", { session: "room-1" });
-    });
-
-    it("offers to leave the room it is in, and to end only the one it opened", () => {
-        const room = {
-            id: "room-1",
-            project: "abc",
-            openedBy: "ada",
-            openedByInstance: "mine",
-            openedAt: 1,
-            members: [{ instance: "mine", account: "ada", label: "Nomen", joinedAt: 1 }],
-        };
-        panel({}, team({ canLive: true, instance: "mine", live: [room] }));
-        expect(seam("live-leave")).not.toBeNull();
-        expect(seam("live-end")).not.toBeNull();
+        expect(seam("live-open")?.textContent).toBe("workspace.shell.team.liveOpen");
 
         cleanup();
-        // The same room, opened by somebody else. Leaving is still offered; ending is not.
-        panel({}, team({
-            canLive: true,
-            instance: "mine",
-            live: [{ ...room, openedByInstance: "theirs", members: [...room.members] }],
-        }));
-        expect(seam("live-leave")).not.toBeNull();
-        expect(seam("live-end")).toBeNull();
+        panel({}, team({ canLive: false }));
+        expect(seam("live")).toBeNull();
     });
+
+    /*
+     * What pressing that control does is `TeamCollaboration.test.tsx`'s subject, not this file's.
+     * The room row drives `Services.Live` now rather than calling the server: opening a room is one
+     * step of entering a session - the tree is checkpointed and pushed first, the workspace freezes
+     * behind it - and everything the row then says (who is in it, whether it is catching up, why it
+     * could not be entered, how it ended) comes from the session rather than from the server list.
+     */
 
     it("counts what is attached, and how much of it is about an older version", () => {
         const attached = (revision: string, id: string) => ({
