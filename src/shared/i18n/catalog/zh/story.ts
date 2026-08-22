@@ -195,6 +195,8 @@ export const story = {
         },
         bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
         scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+        // 实时会话期间从其他工程粘贴的行。每场会话只提示一次。
+        sessionRowsOnly: "实时会话期间，从其他工程粘贴的行只带来行本身；离开会话后重新粘贴，才能带上译文、配音与资产",
         translationsCarried: {
             other: "已带入 {count} 条译文",
         },
