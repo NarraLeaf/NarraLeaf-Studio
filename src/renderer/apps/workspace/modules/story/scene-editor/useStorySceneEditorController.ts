@@ -179,9 +179,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * The same question with no scope: true whenever ANY freeze is armed.
      *
      * Kept apart from `frozen` because a handful of paths below write more than this story document
-     * - a paste can create characters, carry translations and import assets - and those files are
-     * exactly what a partial freeze still refuses. Letting them run on the scoped answer would offer
-     * an edit that half lands: the rows arrive, and the character they name never does.
+     * - turning a typed speaker into a cast member, and a paste, which can do the same as well as
+     * carrying translations and importing assets - and those files are exactly what a partial freeze
+     * still refuses. Letting them run on the scoped answer would offer an edit that half lands: the
+     * rows arrive, and the character they name never does.
      */
     const frozenBeyondThisStory = useFreezeGuard().frozen;
 
@@ -2333,6 +2334,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!characterService || !trimmed || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
             return;
         }
+        // The unscoped answer, because the first thing this does is mint a character document, and a
+        // freeze that spares this story does not spare the cast. The picker's rung is greyed for the
+        // same reason (`useCreateCharacterFreeze`), so what reaches here is a freeze that landed
+        // after the menu was already open - and half of this landing is worse than none of it: the
+        // row would point at a character the write boundary refused to write.
+        if (frozenBeyondThisStory) {
+            return;
+        }
         const created = characterService.createCharacter(trimmed);
         const characterId = created.profile.getId();
         if (document) {
@@ -2350,7 +2359,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setDialogueSpeaker(block, { characterId });
         uiService?.panels.show(CHARACTERS_PANEL_ID);
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
-    }, [characterService, document, setDialogueSpeaker, storyId, storyService, uiService]);
+    }, [characterService, document, frozenBeyondThisStory, setDialogueSpeaker, storyId, storyService, uiService]);
 
     /**
      * The rows among `blockIds` that speak as ONE unresolved speaker, and which speaker that is.
@@ -2562,10 +2571,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Closed rather than left standing: a confirm that cannot run (the workspace froze under the
         // open dialog, a service went away on a project switch) must not leave the author pressing a
         // button that does nothing.
-        // The unscoped answer: the first thing this does is create the characters the author asked
-        // for, and a freeze that spares this story document does not spare those.
+        //
+        // Two freeze questions, because a paste is two writes and only one of them is this story.
+        // The rows go into the document the scoped answer is about, so a live session on it may
+        // paste; the characters the plan names go into the cast, which no partial freeze covers, so
+        // that half is asked with no scope and only when the plan actually asks for one. The wizard
+        // greys the target for the same reason, so a plan that still carries one is a dialog that
+        // was open when the workspace changed underneath it.
         if (!request || !uuidService || !characterService || !storyService || !storyId || !sceneId
-            || frozenBeyondThisStory) {
+            || frozen
+            || (plan.charactersToCreate.length > 0 && frozenBeyondThisStory)) {
             cancelPasteWizard();
             return;
         }
@@ -2592,7 +2607,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setPasteWizard(null);
             resumeInsertSlotCommit();
         }
-    }, [cancelPasteWizard, characterService, frozenBeyondThisStory, insertPastedBlocks, panelStateService, pasteWizard, recordHistory, resumeInsertSlotCommit, sceneId, storyId, storyService, uuidService]);
+    }, [cancelPasteWizard, characterService, frozen, frozenBeyondThisStory, insertPastedBlocks, panelStateService, pasteWizard, recordHistory, resumeInsertSlotCommit, sceneId, storyId, storyService, uuidService]);
 
     const savePasteSeparator = useCallback((name: string, choice: PasteSeparatorChoice) => {
         saveStoryPasteSeparator(panelStateService, name, choice);

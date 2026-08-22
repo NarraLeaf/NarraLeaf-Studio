@@ -846,6 +846,8 @@ export const story = {
         cutPointInactiveTitle: "この行が終わらせていたバリアントは削除されたので、何も終わらせていない",
         tempSpeaker: "名前だけ",
         createCharacter: "キャラクター「{name}」を作成",
+        // 上の行が灰色のときと、貼り付けウィザードの「新しいキャラクター」に出る。どちらも同じ申し出。
+        createCharacterUnavailable: "ライブセッション中は使えない。既存のキャラクターを選ぶ",
         voiceOutdated: "ボイスが古い。ボイスの表を開く",
         voiceManage: "ボイスの表を開く",
         voicePlay: "ボイスのテイクを再生",

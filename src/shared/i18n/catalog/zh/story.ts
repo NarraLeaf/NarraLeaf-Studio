@@ -804,6 +804,8 @@ export const story = {
         cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
         tempSpeaker: "仅名字",
         createCharacter: "创建角色「{name}」",
+        // 上面那一项变灰时的悬停提示，也用在粘贴向导的「新建角色」上：同一件事的两个入口。
+        createCharacterUnavailable: "实时会话期间不可用，改选已有角色",
         voiceOutdated: "配音待更新，打开配音表",
         voiceManage: "打开配音表",
         voicePlay: "试听配音",
