@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { CLAIMED_OPS, isLiveMessage, opBlockId, opSceneId, type LiveOp } from "./ops";
+import { CLAIMED_OPS, isLiveMessage, opBlockId, opBlockIds, opSceneId, type LiveOp } from "./ops";
 import { sceneDigest } from "./sceneDigest";
 
 const BLOCK: StoryBlock = {
@@ -12,8 +12,10 @@ const BLOCK: StoryBlock = {
 const EVERY_OP: LiveOp[] = [
     { op: "insert-block", sceneId: "s1", block: BLOCK, target: { parentId: null } },
     { op: "update-block", sceneId: "s1", blockId: "block-1", payload: BLOCK.payload },
+    { op: "update-blocks", edits: [{ sceneId: "s1", blockId: "block-1", payload: BLOCK.payload }] },
     { op: "delete-block", sceneId: "s1", blockId: "block-1" },
     { op: "move-block", sceneId: "s1", blockId: "block-1", target: { parentId: null, beforeBlockId: "block-2" } },
+    { op: "move-blocks", sceneId: "s1", moves: [{ blockIds: ["block-1"], target: { parentId: null } }] },
     { op: "set-block-disabled", sceneId: "s1", blockId: "block-1", disabled: true },
     { op: "rename-scene", sceneId: "s1", name: "Corridor" },
     { op: "set-entry-scene", sceneId: "s1" },
@@ -38,23 +40,74 @@ describe("the operation vocabulary", () => {
         expect(byOp.get("reorder-chapters")).toBeNull();
     });
 
+    it("answers no single block for a batch, because a batch is about many", () => {
+        // The answer feeds a lookup of ONE claim. A batch that named one of its rows here would be
+        // checked against that row and let the rest through - half a gesture applied, which is the
+        // one outcome batching exists to prevent.
+        const byOp = new Map(EVERY_OP.map(op => [op.op, opBlockId(op)]));
+        expect(byOp.get("update-blocks")).toBeNull();
+        expect(byOp.get("move-blocks")).toBeNull();
+    });
+
+    it("names every row a batch touches, which is what a claim check has to ask", () => {
+        const edits: LiveOp = {
+            op: "update-blocks",
+            edits: [
+                { sceneId: "s1", blockId: "block-1", payload: BLOCK.payload },
+                { sceneId: "s2", blockId: "block-2", payload: BLOCK.payload },
+            ],
+        };
+        const moves: LiveOp = {
+            op: "move-blocks",
+            sceneId: "s1",
+            moves: [
+                { blockIds: ["block-1", "block-2"], target: { parentId: null } },
+                { blockIds: ["block-3"], target: { parentId: "g" } },
+            ],
+        };
+        expect(opBlockIds(edits)).toEqual(["block-1", "block-2"]);
+        expect(opBlockIds(moves)).toEqual(["block-1", "block-2", "block-3"]);
+        // The single verbs answer with the one row they are about, so a claim check written against
+        // this helper needs no second shape for them.
+        expect(opBlockIds({ op: "delete-block", sceneId: "s1", blockId: "block-1" })).toEqual(["block-1"]);
+        expect(opBlockIds({ op: "rename-story", name: "Skeleton" })).toEqual([]);
+    });
+
     it("answers a scene for the operations that live inside one", () => {
         const byOp = new Map(EVERY_OP.map(op => [op.op, opSceneId(op)]));
-        for (const kind of ["insert-block", "update-block", "delete-block", "move-block", "set-block-disabled", "rename-scene"] as const) {
+        for (const kind of ["insert-block", "update-block", "update-blocks", "delete-block", "move-block", "move-blocks", "set-block-disabled", "rename-scene"] as const) {
             expect(byOp.get(kind)).toBe("s1");
         }
         expect(byOp.get("rename-story")).toBeNull();
         expect(byOp.get("reorder-chapters")).toBeNull();
     });
 
+    it("answers no scene for a batch that reaches across scenes, because a digest fingerprints one", () => {
+        expect(opSceneId({
+            op: "update-blocks",
+            edits: [
+                { sceneId: "s1", blockId: "block-1", payload: BLOCK.payload },
+                { sceneId: "s2", blockId: "block-2", payload: BLOCK.payload },
+            ],
+        })).toBeNull();
+    });
+
     it("claims only the operations that would destroy a paragraph somebody is typing", () => {
         // The line between the two is what a loser loses. Editing, deleting or disabling a row while
         // its author is mid-paragraph takes the paragraph; renaming a scene under somebody takes a
         // word. The first is worth the ceremony of a claim and the second is not.
-        expect([...CLAIMED_OPS].sort()).toEqual(["delete-block", "set-block-disabled", "update-block"]);
-        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "insert-block"] as const) {
+        expect([...CLAIMED_OPS].sort()).toEqual(["delete-block", "set-block-disabled", "update-block", "update-blocks"]);
+        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
+    });
+
+    it("gives a batch the claim status of the single operation it batches", () => {
+        // Batching changes how many rows are at stake, never what a loser loses: `update-blocks`
+        // writes prose over rows and is claimed, `move-blocks` rearranges rows without touching a
+        // word of them and is not - exactly as their single-row counterparts.
+        expect(CLAIMED_OPS.has("update-blocks")).toBe(CLAIMED_OPS.has("update-block"));
+        expect(CLAIMED_OPS.has("move-blocks")).toBe(CLAIMED_OPS.has("move-block"));
     });
 
     it("claims by row rather than by field, so a claimed row is claimed whole", () => {
