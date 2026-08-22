@@ -487,8 +487,12 @@ export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
  * checkpoint is one call into the backend that answers when it answers. Naming what is happening
  * is the honest amount of detail, and it is also the part that answers "why is this taking so
  * long" - "recording a version" is a reason, "43%" is not.
+ *
+ * "switching" comes before the close rather than during it: when a project is opened in this
+ * window, the replacement loads out of sight first, and this window is the only one on screen for
+ * that wait. Everything after it is the close itself.
  */
-export type WorkspaceCloseStage = "saving" | "checkpoint" | "launcher";
+export type WorkspaceCloseStage = "switching" | "saving" | "checkpoint" | "launcher";
 
 /**
  * Which part of a renderer noticed a failure, so the log line says where to look.
