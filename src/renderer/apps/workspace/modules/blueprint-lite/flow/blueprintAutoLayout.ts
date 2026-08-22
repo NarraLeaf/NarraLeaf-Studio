@@ -18,6 +18,12 @@
  *     handful of helper nodes. Each is laid out on its own and they are stacked down the page in
  *     the order the author already had them, so formatting never shuffles which one is on top.
  *
+ * All three describe the horizontal layout, which is the one a blueprint is drawn for. A vertical
+ * one is the same layout with the page turned: transpose the cards, run those passes, transpose the
+ * answer back. Doing it that way rather than parameterising every axis in the passes is what keeps
+ * the two directions from drifting apart - there is one layout here, and only one of them can have
+ * a bug.
+ *
  * Deliberately no dependency: dagre and elk are an order of magnitude more layout than a blueprint
  * graph needs, and a pure function over boxes and edges is what makes this testable without
  * mounting React Flow.
@@ -40,12 +46,21 @@ export type BlueprintLayoutBox = {
 
 export type BlueprintLayoutEdge = { from: string; to: string };
 
+/**
+ * Which way the layers run: `horizontal` walks them left to right, the way pins are drawn and the
+ * way a blueprint is normally read; `vertical` walks them down the page, which suits a long chain
+ * with little branching on a tall window.
+ */
+export type BlueprintLayoutDirection = "horizontal" | "vertical";
+
 export type BlueprintLayoutOptions = {
-    /** Horizontal room between one layer's right edge and the next layer's left edge. */
+    /** Which way the layers advance. Defaults to `horizontal`. */
+    direction?: BlueprintLayoutDirection;
+    /** Room between one layer and the next, along the direction the layers advance. */
     layerGap?: number;
-    /** Vertical room between two cards in the same layer. */
+    /** Room between two cards in the same layer, across that direction. */
     nodeGap?: number;
-    /** Vertical room between two disconnected islands. */
+    /** Room between two disconnected islands, across that direction. */
     componentGap?: number;
 };
 
@@ -95,6 +110,18 @@ export function layoutBlueprintGraph(
         return {};
     }
 
+    if (options.direction === "vertical") {
+        // Turn the page, lay the graph out the only way this file knows how, and turn it back. The
+        // gaps transpose with everything else: `layerGap` still separates one layer from the next,
+        // which down here means vertically.
+        const turned = layoutBlueprintGraph(boxes.map(transpose), edges, { ...options, direction: "horizontal" });
+        const positions: BlueprintLayoutPositions = {};
+        for (const [id, point] of Object.entries(turned)) {
+            positions[id] = { x: point.y, y: point.x };
+        }
+        return positions;
+    }
+
     const layerGap = options.layerGap ?? DEFAULT_LAYER_GAP;
     const nodeGap = options.nodeGap ?? DEFAULT_NODE_GAP;
     const componentGap = options.componentGap ?? DEFAULT_COMPONENT_GAP;
@@ -124,6 +151,11 @@ export function layoutBlueprintGraph(
     }
 
     return positions;
+}
+
+/** Swap a box's two axes, so a layout that only runs left to right can be read top to bottom. */
+function transpose(box: BlueprintLayoutBox): BlueprintLayoutBox {
+    return { id: box.id, x: box.y, y: box.x, width: box.height, height: box.width };
 }
 
 /** Drop self-loops, duplicates, and edges naming a node that is not being laid out. */
