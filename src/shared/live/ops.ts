@@ -237,6 +237,17 @@ export type LiveRefusal = {
  */
 export type LiveClaims = {
     kind: "claims";
+    /**
+     * Which version of the claim set this is - **not a position in the effect order**.
+     *
+     * The two numbers answer different questions and must not be drawn from one counter. A gap in
+     * {@link LiveEffect.seq} means a message was lost and something has to be re-read; claim sets
+     * are whole, so a client that missed one has lost nothing and needs only the newest. Spending
+     * effect numbers on them would manufacture gaps that mean nothing, and reusing one would leave
+     * two different sets indistinguishable.
+     *
+     * Rises only when the set would actually differ, so an unchanged set is not re-broadcast.
+     */
     seq: number;
     /** Block id to the account holding it. */
     held: Readonly<Record<StoryBlockId, string>>;
