@@ -286,7 +286,9 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
     const { t } = useTranslation();
     // Declaring a UI key writes the localization document. Guarded at the collapsed "+" so the draft
     // row never opens - a form that accepts a name and then throws it away is the measured failure this
-    // milestone exists to remove.
+    // milestone exists to remove - and again at the submit, because the opener only decides whether the
+    // form appears. A row already expanded when the freeze arrives keeps both its Enter keys and its
+    // tick, and neither of them consults the button that is no longer on screen.
     const freeze = useFreezeGuard();
     const [expanded, setExpanded] = useState(false);
     const [nameDraft, setNameDraft] = useState("");
@@ -299,6 +301,9 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
     };
 
     const submit = () => {
+        if (freeze.frozen) {
+            return;
+        }
         if (props.onSubmit(nameDraft, sourceDraft)) {
             cancel();
         }
@@ -353,9 +358,10 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
             />
             <button
                 type="button"
-                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
+                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={submit}
-                data-tip={t("workspace.localization.table.addKey")} aria-label={t("workspace.localization.table.addKey")}
+                aria-label={t("workspace.localization.table.addKey")}
+                {...freeze.writes(false, t("workspace.localization.table.addKey"))}
             >
                 <Check className="h-3.5 w-3.5" />
             </button>

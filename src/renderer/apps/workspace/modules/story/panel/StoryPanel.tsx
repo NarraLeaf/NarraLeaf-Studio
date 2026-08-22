@@ -16,6 +16,7 @@ import type { PanelComponentProps } from "../../types";
 import { closeStoryEditorTabs, closeStorySceneEditorTabs } from "./closeStoryEditorTabs";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { getStorySceneEditorTabId } from "../scene-editor/storySceneEditorTabId";
+import { storyDocumentFreezeScope } from "../scene-editor/storySceneReadOnly";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
@@ -52,9 +53,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
-    // Creating, renaming and deleting write the story document; opening a scene, opening the flow,
-    // exporting a script and picking which story is selected do not, and stay live so a frozen
-    // project can still be read.
+    // Opening a scene, opening the flow, exporting a script and picking which story is selected write
+    // nothing, and stay live so a frozen project can still be read. What does write is split in two,
+    // because this panel edits at two levels and only one of them is a story document.
+    //
+    // The library: creating, renaming and deleting a story, and choosing the default. All four write
+    // `StoryService`'s index - a separate document that no partial freeze leaves writable - so they
+    // name no scope and stay frozen by any freeze at all.
     const freeze = useFreezeGuard();
     const { beginExport: beginScriptExport, beginImport: beginScriptImport, dialogs: scriptDialogs } = useStoryScriptIo();
     const { beginExport: beginNarralangExport, dialogs: narralangDialogs } = useNarralangExport();
@@ -69,6 +74,17 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const [stateReady, setStateReady] = useState(false);
     const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
     const { menuState, showMenu, hideMenu } = useContextMenu();
+    /**
+     * The other half of the freeze answer: the outline - chapters and scenes - which lives inside the
+     * selected story's own document.
+     *
+     * Scoped to that document, so a live session leaves its structure editable: adding a scene to the
+     * story everybody is in writes the same file as typing a line into it, and a panel that refused
+     * the first while the editor allowed the second would be saying two things about one document.
+     * `undefined` while no story is selected, which is the conservative answer and also the state in
+     * which none of these controls is reachable.
+     */
+    const outlineFreeze = useFreezeGuard(storyDocumentFreezeScope(selectedStoryId ?? undefined));
 
     const storyService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -345,6 +361,9 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 onClick: () => beginNarralangExport({ storyId: entry.id, sceneId: null }),
             },
             {
+                // Unscoped for two reasons: this row names whichever story was right-clicked rather
+                // than the selected one, and an import replaces whole scenes from a file on this
+                // machine's disk - see the same row on a scene.
                 id: "import-story-script",
                 label: t("story.script.import"),
                 ...freeze.menuRow(),
@@ -505,7 +524,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "set-entry-scene",
                 label: t("story.panel.setEntryScene"),
-                ...freeze.menuRow(isEntry),
+                ...outlineFreeze.menuRow(isEntry),
                 onClick: () => handleSetEntryScene(scene),
             },
             { id: "scene-script-separator", separator: true },
@@ -530,6 +549,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 // Story-scoped despite sitting on a scene row: the file decides which scenes it
                 // carries, and the confirm dialog names every one of them before anything is written.
+                //
+                // The one outline row that keeps the unscoped answer. What it writes is the story
+                // document, so a partial freeze would allow it - but it replaces whole scenes from a
+                // file on this machine's disk, and inside a live session the other participants have
+                // nothing to derive that from. Left conservative until a session has a way to carry it.
                 id: "import-scene-script",
                 label: t("story.script.import"),
                 ...freeze.menuRow(),
@@ -543,7 +567,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "rename-scene",
                 label: t("common.rename"),
-                ...freeze.menuRow(),
+                ...outlineFreeze.menuRow(),
                 onClick: () => {
                     void handleRenameScene(scene);
                 },
@@ -551,19 +575,19 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "delete-scene",
                 label: t("common.delete"),
-                ...freeze.menuRow(),
+                ...outlineFreeze.menuRow(),
                 onClick: () => {
                     void handleDeleteScene(scene);
                 },
             },
         ];
-    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, selectedStoryId, t]);
+    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, outlineFreeze, selectedStoryId, t]);
 
     const buildChapterContextMenu = useCallback((chapter: StoryChapter): ContextMenuDef => [
         {
             id: "new-scene-in-chapter",
             label: t("story.panel.newSceneInChapter"),
-            ...freeze.menuRow(),
+            ...outlineFreeze.menuRow(),
             onClick: () => {
                 void handleCreateScene(chapter.id);
             },
@@ -572,7 +596,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         {
             id: "rename-chapter",
             label: t("common.rename"),
-            ...freeze.menuRow(),
+            ...outlineFreeze.menuRow(),
             onClick: () => {
                 void handleRenameChapter(chapter);
             },
@@ -580,12 +604,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         {
             id: "delete-chapter",
             label: t("common.delete"),
-            ...freeze.menuRow(),
+            ...outlineFreeze.menuRow(),
             onClick: () => {
                 void handleDeleteChapter(chapter);
             },
         },
-    ], [freeze, handleCreateScene, handleDeleteChapter, handleRenameChapter, t]);
+    ], [handleCreateScene, handleDeleteChapter, handleRenameChapter, outlineFreeze, t]);
 
     const handleOpenChapterMenu = useCallback((event: React.MouseEvent, chapter: StoryChapter) => {
         event.preventDefault();
@@ -715,7 +739,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     <button
                                         type="button"
                                         className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
-                                        {...freeze.writes(false, t("story.panel.newChapter"))}
+                                        {...outlineFreeze.writes(false, t("story.panel.newChapter"))}
                                         onClick={handleCreateChapter}
                                     >
                                         <Plus className="h-3 w-3" />
@@ -750,7 +774,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                     <button
                                                         type="button"
                                                         className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
-                                                        {...freeze.writes(false, t("story.panel.newSceneInChapter"))}
+                                                        {...outlineFreeze.writes(false, t("story.panel.newSceneInChapter"))}
                                                         onClick={() => handleCreateScene(chapter.id)}
                                                     >
                                                         <Plus className="h-3 w-3" />
