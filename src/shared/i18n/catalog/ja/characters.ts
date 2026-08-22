@@ -117,7 +117,7 @@ export const characters = {
             customDocsLink: "ランタイムの書き方を読む",
             neverDownloads: "Studio はダウンロードしない。提供元から入手する。ライセンスに同意するのもその場",
             live2dTerms: "Live2D Cubism のライセンスは Live2D Inc. が出しており、NarraLeaf ではない。Cubism SDK のライセンスにはダウンロード時に同意することになり、ビルドしたゲームでそれを配布するのは作者自身。Live2D が定める年間売上の基準を超える商用リリースには、Live2D との別途の出版ライセンスが要る。単一のタイトルに複数の独立した作品を収める場合、またはビルド時に含まれていないモデルを読み込む場合は、無償リリースであってもリリース前に Live2D の承認が要る",
-            spineTerms: "Spine Runtimes のライセンスは Esoteric Software が出している。Spine を扱う人はそれぞれ自分の Spine Editor ライセンスが必要で、配布するゲームには Spine Runtimes License を同梱しなければならない。NarraLeaf は Spine のライセンスを持たないため、Studio は Spine のコードを同梱せず、アダプタを代わりにビルドすることもできない",
+            spineTerms: "Spine Runtimes のライセンスは Esoteric Software が出している。Spine を扱う人はそれぞれ自分の Spine Editor ライセンスが必要で、配布するゲームには Spine Runtimes License を同梱しなければならない。Spine Essential と Professional は、売上と資金調達が 50 万米ドル未満の場合にのみ有効で、それを超える場合は Spine Enterprise が要る。Studio は Spine のコードを同梱せず、アダプタを代わりにビルドすることもない",
             sdkStep: "ダウンロードした {product} SDK のアーカイブを選ぶ。展開しないこと",
             sdkPick: "SDK のアーカイブを選ぶ…",
             prebuiltStep: "ビルド済みのアダプタを選ぶ。フォルダはそのまま複製され、単一のファイルはランタイムの index.js になる",
