@@ -100,7 +100,7 @@ export const settings = {
         },
         screenEffectQuality: {
             label: "開発モードでの画面エフェクト",
-            description: "下書きは生成時間がおよそ 3 分の 1 になる。プレビューとビルドは常に最終品質を使う",
+            description: "プレビューとビルドは最終品質しか受け取らないため、下書きを選ぶと各エフェクトを二度焼くことになる。いま一度、初めて実行したときにもう一度",
             options: {
                 draft: "下書き",
                 final: "最終品質",

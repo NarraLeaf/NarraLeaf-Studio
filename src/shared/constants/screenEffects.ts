@@ -22,14 +22,30 @@ import type { WeatherBakeQuality } from "@shared/weather/model";
 export const SCREEN_EFFECT_QUALITY_KEY = "screenEffects.devModeQuality";
 
 /**
- * Draft, because the wait is the thing an author notices.
+ * Final, because a draft is never the last word and so is never the only bake.
  *
- * Measured at 1080p60: a twelve-second clip is roughly three seconds at `draft` against nine at
- * `final`, and there are usually two or three of them. The picture is indistinguishable on the
- * content the seeds produce, so the default costs nothing anyone can see and saves the wait every
- * time a compile touches a weather row.
+ * This was `draft`, on a measurement that counted the right numbers and the wrong total. A draft
+ * IS about three times cheaper — at the shipped sakura, 24 seconds at 1080p30, the frames take 3.2s
+ * to draw across four threads and the encoder 2.4s at `draft` against 8.7s at `final`, so a bake
+ * is 3.2s or 8.7s depending on the tier. What that arithmetic left out is that the compile path —
+ * preview, test run and build alike — only ever accepts `final`. So the draft is not a cheaper
+ * answer to the question, it is a cheaper answer to a DIFFERENT question, discarded the first time
+ * the author runs anything:
+ *
+ *  - at `draft`: 3.2s now, then 8.7s the first time they press Run. **11.9s and two files.**
+ *  - at `final`: 8.7s now, and nothing ever again. **8.7s and one file.**
+ *
+ * The 5.5s the tier saves is real and it is paid back with interest by everyone who runs their game,
+ * which is everyone. It matters more now than it did: clips were twelve seconds when this was
+ * decided and are twenty-four to ninety now, because the length is derived from how slowly the
+ * weather falls.
+ *
+ * The setting stays. An author hammering sliders with Dev Mode open genuinely wants the 3.2s, and
+ * the picture is indistinguishable either way — 94% of the tint survives `draft` against 95% at
+ * `final`. What changed is which of the two is the answer for somebody who has not thought about
+ * it, and the second bake is now named where the setting is chosen rather than left to be noticed.
  */
-export const SCREEN_EFFECT_QUALITY_DEFAULT: WeatherBakeQuality = "draft";
+export const SCREEN_EFFECT_QUALITY_DEFAULT: WeatherBakeQuality = "final";
 
 /**
  * How many threads draw frames while the encoder runs, or `auto`.

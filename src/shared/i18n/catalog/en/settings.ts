@@ -101,7 +101,7 @@ export const settings = {
         },
         screenEffectQuality: {
             label: "Screen effects in Dev Mode",
-            description: "Draft is generated in about a third of the time. Previews and builds always use the final quality.",
+            description: "Previews and builds only accept the final quality, so choosing draft bakes every effect twice: once now, once the first time you run.",
             options: {
                 draft: "Draft",
                 final: "Final quality",
