@@ -140,6 +140,16 @@ export const lint = {
             description: "プロジェクトに存在しないバリアントと比べている行",
             message: "「{name}」という名前のビルドバリアントはないため、この行はどのビルドにも入らない",
         },
+        storyRowsAfterEnding: {
+            title: "エンディングより後の行",
+            description: "同じ並びの /ending 行より後に書かれ、決して再生されない行",
+            message: "この行はエンディングより後にあり、決して再生されない。エンディングより前に移すか、削除する",
+        },
+        storyEndingNameDuplicate: {
+            title: "同じ名前の 2 つのエンディング",
+            description: "表示名を共有しているエンディングが複数ある",
+            message: "別のエンディングも「{name}」という名前である。エンディングを並べる画面には同じ名前が 2 回出る",
+        },
         storyCutPointOrphan: {
             title: "ビルドバリアントのないカットポイント",
             description: "ビルドバリアントが 1 つも無いまま書かれたカットポイント",
@@ -192,6 +202,7 @@ export const lint = {
             messageStory: "開始する対象のストーリーが存在しない",
             messageScene: "指しているシーンが存在しない",
             messageChoice: "指している選択肢が存在しない",
+            messageEnding: "指しているエンディングが存在しない",
             messageCharacter: "指しているキャラクターが存在しない",
             messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
         },
@@ -199,6 +210,14 @@ export const lint = {
             title: "ウィジェットの欠落",
             description: "プロジェクトに存在しないウィジェットに結び付いたノード",
             message: "結び付いているウィジェットが存在しない",
+        },
+        blueprintFnTargetMissing: {
+            title: "関数の欠落",
+            description: "呼び出す関数がこのスコープに存在しない Call Fn ノード",
+            // シグネチャのスナップショットを持たない呼び出し用の受け皿。残るのは id の対だけで、
+            // それを報告に出すのは作者がプロジェクト内を検索できない語を出すことになる。
+            message: "呼び出している関数がこのスコープに存在しない",
+            messageNamed: "呼び出している「{name}」がこのスコープに存在しない",
         },
         blueprintUnreachableNode: {
             title: "到達できないノード",
@@ -234,6 +253,11 @@ export const lint = {
             title: "存在しない埋め込みページ",
             description: "プロジェクトにないページを埋め込んでいるページウィジェット",
             message: "このページウィジェットはプロジェクトにないページを埋め込んでいる",
+        },
+        uiListItemFieldMissing: {
+            title: "項目が見つかりません",
+            description: "描画元のリストが宣言していない項目に紐づいたウィジェット",
+            message: "リストが宣言していない項目に紐づいているため、どの行も同じ内容になります",
         },
         blueprintSaveFieldEmpty: {
             title: "未入力のセーブ項目",
@@ -311,6 +335,21 @@ export const lint = {
             messageChain: "{where} が使っている {color} は {missing} へつながっているが、その色は配色に無い",
             messageCycle: "{where} が使っている {color} は、リンクが自分自身に戻っている",
         },
+        typographyGlyphCoverage: {
+            title: "グリフ不足",
+            description: "プロジェクトのどのフォントにも無い文字を使っている",
+            message: "プロジェクトのフォントに「{character}」が無い（{count} 箇所）",
+            messageInLanguage: "{language}でプロジェクトのフォントに「{character}」が無い（{count} 箇所）",
+            messageMore: "他に {count} 文字、プロジェクトのフォントに無い",
+            messageMoreInLanguage: "{language}で他に {count} 文字、プロジェクトのフォントに無い",
+            messageUnreadable: "{font} を読み取れないため、グリフ確認を行わなかった",
+            messageUnloadable: "{font} は .{format} フォントで、ゲームでは描画できない",
+        },
+        typographyLocaleNoFont: {
+            title: "フォントの無い言語",
+            description: "プロジェクトのフォントがすべて他の言語に限定されている",
+            message: "{language}に使えるプロジェクトフォントが無い",
+        },
     },
     message: {
         ruleFailed: "{rule} を実行できなかった",
@@ -330,6 +369,7 @@ export const lint = {
         voice: "ボイス",
         // リンクのプロトコルではなく、作者が直しに行くパネルの名前を付ける。
         brand: "ブランドの配色",
+        typography: "タイポグラフィ",
     },
     severity: {
         error: "エラー",

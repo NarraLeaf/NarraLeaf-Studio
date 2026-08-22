@@ -4,6 +4,7 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageManager } from "../storageManager";
 import type { AppWindow } from "../window/appWindow";
+import { encodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
 import { FileSystemHandler, FileSystemHashHandler } from "./fileSystemHandler";
 
 vi.mock("electron", () => ({
@@ -170,5 +171,110 @@ describe("FileSystemHashHandler grant lifetimes", () => {
 
         const goneHash = storageManager.allocateHash(path.join(tempDir, "not-here.png"), true, "read");
         await expect(storageManager.stabilizeSessionRead(goneHash, 42)).resolves.toBeNull();
+    });
+});
+
+/**
+ * One grant, N files, one `PUT`. The properties under test are the two that let a caller trust it:
+ * a payload cannot land anywhere the grant did not already name, and a batch where only some files
+ * made it says so per file rather than failing as a lump.
+ */
+describe("FileSystemHashHandler batched writes", () => {
+    let tempDir: string;
+    let storageManager: StorageManager;
+    let handler: FileSystemHashHandler;
+
+    beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-fs-batch-"));
+        storageManager = new StorageManager({
+            logger: { error: vi.fn(), warn: vi.fn() },
+        } as any);
+        handler = new FileSystemHashHandler("app", {}, storageManager);
+    });
+
+    afterEach(async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    function grant(entries: { path: string; raw: boolean; encoding?: string }[]): string {
+        const hash = storageManager.allocateWriteBatchHash(entries as never);
+        storageManager.updateStatus(hash, "ready");
+        return hash;
+    }
+
+    function putRequest(hash: string, body: Uint8Array): Request {
+        return {
+            url: `app://fs/${hash}`,
+            method: "PUT",
+            arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+        } as unknown as Request;
+    }
+
+    function results(response: { data: unknown }): { ok: boolean; error?: { message: string } }[] {
+        return JSON.parse(String(response.data)).results;
+    }
+
+    const text = (value: string) => new TextEncoder().encode(value);
+
+    it("writes every file the grant names, from one request", async () => {
+        const paths = ["one.json", "two.json", "three.json"].map(name => path.join(tempDir, name));
+        const hash = grant(paths.map(target => ({ path: target, raw: false, encoding: "utf-8" })));
+
+        const response = await handler.handle(putRequest(hash, encodeWriteBatchFrame([
+            text("{\"n\":1}"), text("{\"n\":2}"), text("{\"n\":3}"),
+        ])));
+
+        expect(response.statusCode).toBe(200);
+        expect(results(response).every(result => result.ok)).toBe(true);
+        for (const [index, target] of paths.entries()) {
+            expect(JSON.parse(await fs.readFile(target, "utf-8")).n).toBe(index + 1);
+        }
+    });
+
+    it("is one-shot, like every other write grant", async () => {
+        const target = path.join(tempDir, "once.txt");
+        const hash = grant([{ path: target, raw: true }]);
+
+        expect((await handler.handle(putRequest(hash, encodeWriteBatchFrame([text("first")])))).statusCode).toBe(200);
+        expect((await handler.handle(putRequest(hash, encodeWriteBatchFrame([text("second")])))).statusCode).toBe(404);
+        expect(await fs.readFile(target, "utf-8")).toBe("first");
+    });
+
+    it("reports per file when only some of them land", async () => {
+        const good = path.join(tempDir, "good.json");
+        // A directory that is not there - what a VCS checkout looks like from under a running save.
+        const orphan = path.join(tempDir, "gone", "orphan.json");
+        const alsoGood = path.join(tempDir, "also-good.json");
+        const hash = grant([good, orphan, alsoGood].map(target => ({ path: target, raw: false, encoding: "utf-8" })));
+
+        const response = await handler.handle(putRequest(hash, encodeWriteBatchFrame([
+            text("1"), text("2"), text("3"),
+        ])));
+
+        expect(response.statusCode).toBe(200);
+        const reported = results(response);
+        expect(reported.map(result => result.ok)).toEqual([true, false, true]);
+        expect(reported[1].error!.message).toContain("Directory does not exist");
+        // The failure of one must not cost the file behind it: a caller that had to re-owe the whole
+        // set on any failure would be paying for the batch twice.
+        expect(await fs.readFile(good, "utf-8")).toBe("1");
+        expect(await fs.readFile(alsoGood, "utf-8")).toBe("3");
+    });
+
+    it("refuses a body whose payload count disagrees with the grant, writing nothing", async () => {
+        const paths = ["a.json", "b.json"].map(name => path.join(tempDir, name));
+        const hash = grant(paths.map(target => ({ path: target, raw: false, encoding: "utf-8" })));
+
+        const response = await handler.handle(putRequest(hash, encodeWriteBatchFrame([text("only one")])));
+
+        expect(response.statusCode).toBe(400);
+        for (const target of paths) {
+            await expect(fs.readFile(target)).rejects.toThrow();
+        }
+    });
+
+    it("refuses a GET against a batched write grant", async () => {
+        const hash = grant([{ path: path.join(tempDir, "nope.json"), raw: true }]);
+        expect((await handler.handle(makeRequest(hash))).statusCode).toBe(405);
     });
 });

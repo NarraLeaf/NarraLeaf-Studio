@@ -15,7 +15,7 @@ import { BlueprintService } from "../assets/BlueprintService";
 import { AssetOrderManager } from "../assets/mgr/AssetOrderManager";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
-import { LocalAssetsManager, type CreateLocalAssetFromBytesOptions, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
+import { LocalAssetsManager, type CreateLocalAssetFromBytesOptions, type CreateLocalBundleAssetOptions, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
 import type { ExpandImportPathsResult } from "../assets/importPathExpansion";
@@ -233,6 +233,13 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             if (!result.ok) {
                 this.dirtyOrderCategories.add(category);
                 console.warn(`[AssetsService] failed to write ${category} asset order: ${result.error.message}`);
+            } else if (result.refused === true) {
+                // A refusal is not a failure and is not reported as one - the freeze latch has its
+                // own notice - but the bytes did not leave either, so the debt is still owed. The
+                // first open of a project that predates the order file is exactly when a freeze can
+                // be armed (a revision view, an open merge, recovery mode), and that is the one open
+                // on which the row order is still recoverable from shard key order.
+                this.dirtyOrderCategories.add(category);
             }
         }
     }
@@ -1138,6 +1145,21 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         options?: CreateLocalAssetFromBytesOptions,
     ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
         return this.getLocalAssetsManager().createLocalAssetFromBytes(type, name, bytes, groupId, options);
+    }
+
+    /**
+     * Create a bundle asset by copying a directory Studio was pointed at rather than one the author
+     * picked - the directory-backed counterpart of {@link createLocalAssetFromBytes}.
+     *
+     * See {@link LocalAssetsManager.createLocalBundleAssetFromDirectory} for what a caller-chosen id
+     * is refused for, and for why a tree that arrives incomplete lands as nothing at all.
+     */
+    public async createLocalBundleAssetFromDirectory<T extends AssetType>(
+        type: T,
+        sourceDir: string,
+        options?: CreateLocalBundleAssetOptions,
+    ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        return this.getLocalAssetsManager().createLocalBundleAssetFromDirectory(type, sourceDir, options);
     }
 
     /**

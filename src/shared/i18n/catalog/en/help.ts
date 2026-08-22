@@ -53,6 +53,23 @@ export const help = {
         engine: "narraleaf-react, the engine",
     },
     topics: {
+        // First in the list, so it is what the browser opens on and what `F1` reaches when
+        // nothing under the pointer has a topic of its own.
+        gettingHelp: {
+            title: "Getting help",
+            body:
+                "Press F1 for help on whatever has focus, or whatever the pointer is over. The topic "
+                + "opens beside it and closes on Escape.\n"
+                + "\n"
+                + "Panel headers and dialogs show a question mark under the pointer. It opens the topic "
+                + "for that panel.\n"
+                + "\n"
+                + "- See also moves to a related topic, and the back arrow in the header returns to the "
+                + "previous one.\n"
+                + "- This list holds every topic. The search field above it matches titles and bodies.\n"
+                + "- The command palette lists every topic by name under Help.\n"
+                + "- Where there is no topic, F1 opens this list.",
+        },
         workspaceLayout: {
             title: "Workspace layout",
             body:
@@ -75,6 +92,7 @@ export const help = {
                 + "Build produces the files delivered to players. Dev Mode and Preview take seconds; a build "
                 + "takes minutes.\n"
                 + "\n"
+                + "- Dev Mode opens the line that is playing in the story editor, from its debug menu.\n"
                 + "- Run starts the mode chosen last.\n"
                 + "- Preview and Build are unavailable while the project is frozen. Dev Mode still runs, and "
                 + "while an old version is open it runs that version.",
@@ -214,6 +232,38 @@ export const help = {
                 + "- A snapshot belongs to one scene and gives every variable in its scope a starting value.\n"
                 + "- Starting from a row with no snapshot offers to create one.\n"
                 + "- Snapshots do not affect the finished game.",
+        },
+        dictionary: {
+            title: "Project dictionary",
+            body:
+                "The dictionary holds the words this project writes on purpose: character names, place names, "
+                + "invented vocabulary. It is part of the project and is available to everyone who opens it.\n"
+                + "\n"
+                + "An entry is a term, and three fields that may be left empty:\n"
+                + "\n"
+                + "- Reading: the ruby the term is annotated with.\n"
+                + "- Variant spellings: spellings that mean the term but are not how this project writes it.\n"
+                + "- Note: what the term is, for whoever reads the list later.\n"
+                + "\n"
+                + "A term is added in the dictionary panel, or from a story row: select the words and choose Add "
+                + "to dictionary, or right-click a marked word.",
+        },
+        dictionaryMarks: {
+            title: "Dictionary marks",
+            body:
+                "Every spelling in the dictionary is accepted when the source text is checked, terms and variant "
+                + "spellings alike.\n"
+                + "\n"
+                + "Two marks of its own appear in the row being edited. Both are switched on and off for the whole "
+                + "project at the foot of the dictionary panel.\n"
+                + "\n"
+                + "- An amber wave marks a variant spelling. Right-clicking it writes the term instead.\n"
+                + "- A dotted line marks a term the dictionary holds a reading for, where the row carries no ruby. "
+                + "Right-clicking it applies the reading.\n"
+                + "\n"
+                + "Check project reads every story for variant spellings and lists each place under the term it "
+                + "belongs to. Selecting one opens that row. Readings are left out of it: a term with a reading "
+                + "occurs wherever it appears.",
         },
         storyMotion: {
             title: "Motion",
@@ -385,7 +435,16 @@ export const help = {
                 + "their own default color, and the project check reports them.\n"
                 + "- The fonts are a list in priority order: text is set in the first of them that has the "
                 + "character. A widget that names no font of its own is set in this list, and one that "
-                + "names a font falls back to the list for the characters that font does not have.",
+                + "names a font falls back to the list for the characters that font does not have.\n"
+                + "- A font in the list can be limited to some of the project's languages. A language "
+                + "then uses the list with the fonts limited to other languages left out, so one list "
+                + "serves every language and adding a language asks for nothing. A font that is not "
+                + "limited is used for every language, which is how every font starts.\n"
+                + "- Limits appear only once the project has a second language. When a font is added, "
+                + "Studio reads the font file and fills the limit in if the font states which language "
+                + "it was made for; it leaves it empty otherwise.\n"
+                + "- The project check reports characters the script uses that no font in the list can "
+                + "draw, for each language.",
         },
         uiSurfaces: {
             title: "Game screens",
@@ -452,6 +511,21 @@ export const help = {
                 + "network access, the project reports an error and the build is refused.\n"
                 + "- Only http and https addresses can be fetched.",
         },
+        spellcheck: {
+            title: "Spelling",
+            body:
+                "The source text of a story is checked for spelling. Translations are not.\n"
+                + "\n"
+                + "The language follows the project's source language, and can be set to another one, or to none, "
+                + "in Settings. A language is checked once its dictionary has been downloaded, under Spelling "
+                + "dictionaries in the same place. Until then nothing is marked.\n"
+                + "\n"
+                + "- A red wave marks a misspelling. Right-clicking it offers replacements, and offers to add the "
+                + "word to the project dictionary.\n"
+                + "- Chinese and Japanese are read a word at a time against the dictionary of the language. What "
+                + "is marked is a run of characters that spells no word in it. A mistyped character that spells "
+                + "another word is not found.",
+        },
         lint: {
             title: "Project checks",
             body:
@@ -470,6 +544,8 @@ export const help = {
                 + "\n"
                 + "- The list contains Studio's own tests and the tests added by plugins. A windowed test opens "
                 + "a game window, a headless test runs without one.\n"
+                + "- A test can ask for a value before it starts, such as which ending to play to. It opens on "
+                + "what that test was last run with in this project.\n"
                 + "- A test that cannot start remains in the list, disabled, with the reason beside it.\n"
                 + "- Starting a test closes this dialog. The output appears in the console, and the report "
                 + "opens when the run finishes.\n"
@@ -542,7 +618,9 @@ export const help = {
                 + "- Send uploads submitted versions to the server.\n"
                 + "- Get downloads the versions on the server and merges them into the local project.\n"
                 + "- When both sides have new versions, Get first and Send afterwards.\n"
-                + "- Checking the current state contacts the server.",
+                + "- Checking the current state contacts the server.\n"
+                + "- The server, and the account versions are recorded under, are set from NarraLeaf Team "
+                + "in the bottom-left corner of the window.",
         },
         versionViewing: {
             title: "Viewing an old version",
@@ -745,15 +823,31 @@ export const help = {
                 + "game is still possible.\n"
                 + "- The other switch on this page decides whether the game may use the network.",
         },
-        webOptimization: {
+        screenEffects: {
+            title: "Screen effect frame rate",
+            body:
+                "Snow, rain and sakura are baked for the project, and the rate set on Project ▸ App is how "
+                + "many frames a second each one holds.\n"
+                + "\n"
+                + "30 is smooth for falling particles. A higher rate is more frames, so the bake takes "
+                + "proportionally longer and the effect adds proportionally more to the download: 120 costs "
+                + "four times what 30 does.\n"
+                + "\n"
+                + "A new rate applies to the next bake. Effects already baked at another rate stay in the "
+                + "cache and are used again if the rate is set back.\n"
+                + "\n"
+                + "Ambience clips imported as assets keep the frame rate they were made at.",
+        },
+        assetOptimization: {
             title: "Reducing download size",
             body:
-                "The exported site can be reduced two ways. Android and iOS builds serve the same site, so both "
-                + "are reduced too.\n"
+                "Every build converts images to a smaller format where that loses no detail, and writes "
+                + "precompressed copies of the text files a browser export serves.\n"
                 + "\n"
-                + "- Converting images loses no detail.\n"
+                + "- Converted images are identical to the originals.\n"
                 + "- Recompressing images is lossy. It produces much smaller files, and the detail it drops "
                 + "cannot be recovered.\n"
+                + "- Recompression applies to every package the project builds, on every platform.\n"
                 + "- Precompressed text files are used only by a server configured to serve them. Every other "
                 + "host serves the originals.",
         },

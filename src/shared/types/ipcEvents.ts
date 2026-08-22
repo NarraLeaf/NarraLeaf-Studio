@@ -8,8 +8,9 @@ import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
-import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
+import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type {
@@ -36,6 +37,7 @@ import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConv
 import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
@@ -109,6 +111,12 @@ import type {
     VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "./vcs";
+import type {
+    TeamCallOutcome,
+    TeamConnection,
+    TeamEventMessage,
+    TeamSubscribeOutcome,
+} from "./team";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -207,6 +215,7 @@ export enum IPCEventType {
     psdOpen = "psd.open",
     psdBake = "psd.bake",
     mediaProbe = "media.probe",
+    fontProbeCoverage = "font.probeCoverage",
     mediaConvertStart = "media.convert.start",
     mediaConvertCancel = "media.convert.cancel",
     mediaConvertGetStatus = "media.convert.getStatus",
@@ -260,6 +269,8 @@ export enum IPCEventType {
 
     gameTestLaunch = "gameTest.launch",
     gameTestStop = "gameTest.stop",
+    /** Studio driving a test's game: start the story, advance, pick an option. */
+    gameTestSendCommand = "gameTest.sendCommand",
     /** Pushed, unlike preview's polled status: event ordering is evidence a test reasons about. */
     workspaceGameTestEvent = "workspace.gameTest.event",
 
@@ -339,6 +350,7 @@ export enum IPCEventType {
     menuAction = "app.menu.action",
     workspaceMenuSync = "workspace.menu.sync",
     workspaceReportLoadResult = "workspace.reportLoadResult",
+    workspaceCommandLineBuild = "workspace.commandLineBuild",
     workspaceOpenView = "workspace.openView",
     settingsHighlight = "settings.highlight",
 
@@ -383,13 +395,42 @@ export enum IPCEventType {
     vcsListServerProjectHistory = "vcs.listServerProjectHistory",
     vcsListServerMembers = "vcs.listServerMembers",
     vcsSignInWithPassword = "vcs.signInWithPassword",
-    vcsCreateServerProject = "vcs.createServerProject",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
     vcsClone = "vcs.clone",
+
+    /**
+     * The whole of the Team protocol's surface, and it is meant to stay this size.
+     *
+     * Everything the version-control side of a server needed arrived here as its own
+     * event: a list of projects, one project, its history, the members, deleting one.
+     * Five features, five events, and each of them an enum entry, a shape below, a
+     * handler, a line of preload and a renderer type - roughly eight places for one
+     * question. A protocol that is going to grow real features cannot be paid for at
+     * that rate.
+     *
+     * So these five carry all of them. `teamCall` names a method the server declared and
+     * hands back what it answered; `teamSubscribe` asks to be told about a topic and
+     * `teamEvent` is how being told arrives. Adding a feature is a method on the server
+     * and a hook in the renderer, and nothing in this file changes.
+     *
+     * What is deliberately given up: the shapes are not checked here. A call's parameters
+     * and its answer are typed where the protocol is - see `@shared/types/team` - and
+     * that is the trade. The alternative is this list growing a member per verb, which is
+     * the thing being replaced.
+     */
+    teamOpen = "team.open",
+    teamConnections = "team.connections",
+    teamCall = "team.call",
+    teamSubscribe = "team.subscribe",
+    teamUnsubscribe = "team.unsubscribe",
+    /** Pushed: something happened on a topic this window asked about. */
+    teamEvent = "team.event",
+    /** Pushed: a session opened, dropped, or was refused. */
+    teamConnectionChanged = "team.connectionChanged",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -1010,7 +1051,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCServerTrustEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1450,19 +1491,6 @@ export type IPCVcsEvents = {
         response: VcsPasswordSignInOutcome;
     };
     /**
-     * Ask a server to make a project, and get back the one it made.
-     *
-     * The server records it and creates the repository together. Studio never asks
-     * `loreserver` for a repository itself — one made that way is one the server has
-     * no row for, and nobody can open it.
-     */
-    [IPCEventType.vcsCreateServerProject]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; name: string; description?: string },
-        response: VcsServerProjectOutcome;
-    };
-    /**
      * Put the project that is open on to a server: register it, connect it, send it.
      *
      * **Goes to the network three times and writes on both ends.** The opposite act to
@@ -1561,6 +1589,58 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { url: string; destination: string },
         response: { root: string; branch: string; fileCount: number };
+    };
+};
+
+/**
+ * The Team protocol, as it crosses to a window.
+ *
+ * One pair of shapes for asking and one for being told, whatever the question is. See the
+ * note on {@link IPCEventType.teamCall} for why this is five members rather than one per
+ * feature, and `@shared/types/team` for what a method takes and answers.
+ */
+export type IPCTeamEvents = {
+    [IPCEventType.teamOpen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: TeamConnection;
+    };
+    [IPCEventType.teamConnections]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { connections: TeamConnection[] };
+    };
+    [IPCEventType.teamCall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; method: string; params?: unknown },
+        response: TeamCallOutcome;
+    };
+    [IPCEventType.teamSubscribe]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; topic: string },
+        response: TeamSubscribeOutcome;
+    };
+    [IPCEventType.teamUnsubscribe]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; topic: string },
+        response: void;
+    };
+    [IPCEventType.teamEvent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: TeamEventMessage,
+        response: never;
+    };
+    [IPCEventType.teamConnectionChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { connection: TeamConnection },
+        response: never;
     };
 };
 
@@ -1935,6 +2015,27 @@ export type IPCWorkspaceEvents = {
         };
     };
     /**
+     * What a font file can draw, read out of its own `cmap`.
+     *
+     * In the main process rather than the renderer for one reason that decides it: WOFF2 wraps the
+     * whole font in a Brotli stream and a renderer has no Brotli decompressor, so a font in that
+     * container simply cannot be read there. Doing it here also keeps a twenty-megabyte typeface out
+     * of the renderer's heap - what crosses back is a list of code point ranges.
+     *
+     * Read-only, and every failure is an arm of the result rather than a rejection: the callers are
+     * a lint rule that must finish its sweep and a panel that must draw its row.
+     */
+    [IPCEventType.fontProbeCoverage]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+        };
+        response: {
+            result: FontCoverageResult;
+        };
+    };
+    /**
      * Convert one media file, in the shape `gameBuild` uses for a long task: `start` returns a job
      * id straight away, `getStatus` is polled while it runs, `cancel` stops it.
      *
@@ -1980,6 +2081,15 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host;
         data: {
             spec: WeatherBakeSpec;
+            /**
+             * Which compile is asking, so the one before it can be dropped.
+             *
+             * A reload is a new compile, and the game that wanted the previous clip no longer exists
+             * - which is exactly the case an author makes three of by typing three digits into a
+             * parameter. Carried from the renderer rather than read off the session in main, because
+             * only the renderer knows which bundle the rows being compiled came from.
+             */
+            attempt: string;
         };
         response: {
             url: string;
@@ -2528,6 +2638,20 @@ export type IPCGameTestEvents = {
             sessionId: string;
         };
         response: Record<string, never>;
+    };
+    [IPCEventType.gameTestSendCommand]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            sessionId: string;
+            command: GameTestCommand;
+        };
+        /**
+         * Whether the frame reached the game's control socket - not whether the game acted on it.
+         * What it did is told by the events it pushes back, in order, alongside everything else.
+         */
+        response: { delivered: boolean };
     };
     [IPCEventType.workspaceGameTestEvent]: {
         type: IPCMessageType.message,
@@ -3367,6 +3491,21 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: { ok: boolean },
+        response: never;
+    };
+    /**
+     * A workspace opened by `--build` reporting on the build it was opened to run.
+     *
+     * One event for the whole run rather than one per kind of news: the log lines and the outcome
+     * are one ordered stream that ends up in one report, and a second event would be a second thing
+     * to keep in step. A message rather than a request, because the main process is listening to a
+     * build rather than asking a question - a build takes minutes, and no reply timeout is the right
+     * one for that.
+     */
+    [IPCEventType.workspaceCommandLineBuild]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: CommandLineBuildEvent,
         response: never;
     };
     /**

@@ -5,6 +5,7 @@ import {
     GitBranch,
     Images,
     MessageSquare,
+    Minus,
     MonitorPlay,
     Music,
     Puzzle,
@@ -46,13 +47,16 @@ export type StoryRowFacetId =
     | "flow"
     | "data"
     | "utils"
-    | "invalid";
+    | "invalid"
+    | "empty";
 
 /**
  * The prose facets — the rows that survive "narrative only". Their order is the order they are read
- * in: what a person says, what the story says, what the player picks, what the author noted.
+ * in: what a person says, what the story says, what the player picks, what the author noted, and the
+ * blank lines that space them. A blank line is prose the way white space is: hiding it with the
+ * staging rows would close up the gaps the author put between their paragraphs.
  */
-export const STORY_ROW_NARRATIVE_FACETS: readonly StoryRowFacetId[] = ["dialogue", "narration", "choice", "note"];
+export const STORY_ROW_NARRATIVE_FACETS: readonly StoryRowFacetId[] = ["dialogue", "narration", "choice", "note", "empty"];
 
 /** The staging facets, in the command palette's category order so the two surfaces read alike. */
 export const STORY_ROW_STAGING_FACETS: readonly StoryRowFacetId[] = [
@@ -99,11 +103,13 @@ const STORY_ROW_FACET_BY_BADGE: Record<StoryBlockBadgeId, StoryRowFacetId> = {
     goto: "flow",
     break: "flow",
     cut: "flow",
+    ending: "flow",
     variable: "data",
     declaration: "data",
     blueprint: "utils",
     plugin: "utils",
     invalid: "invalid",
+    empty: "empty",
 };
 
 /**
@@ -129,6 +135,8 @@ const STORY_ROW_FACET_STYLE: Record<StoryRowFacetId, { icon: LucideIcon; categor
     data: { icon: Database, category: "data" },
     utils: { icon: Puzzle, category: "utils" },
     invalid: { icon: TriangleAlert, category: null },
+    // No category, and unlike `invalid` no danger tone either - see {@link storyRowFacetColor}.
+    empty: { icon: Minus, category: null },
 };
 
 export function storyRowFacetIcon(facet: StoryRowFacetId): LucideIcon {
@@ -136,6 +144,12 @@ export function storyRowFacetIcon(facet: StoryRowFacetId): LucideIcon {
 }
 
 export function storyRowFacetColor(facet: StoryRowFacetId): string {
+    // Two facets name no category, for opposite reasons: an invalid row wears the danger tone, and a
+    // blank line wears the quietest one there is. Answered before the fallback, or the tick that hides
+    // blank lines would sit in the menu wearing an error's red.
+    if (facet === "empty") {
+        return "rgb(var(--nl-fg-subtle))";
+    }
     const category = STORY_ROW_FACET_STYLE[facet].category;
     return category ? getCommandCategory(category).iconColor : "rgb(var(--nl-danger))";
 }

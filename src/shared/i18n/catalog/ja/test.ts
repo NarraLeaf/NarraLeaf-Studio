@@ -34,6 +34,7 @@ export const test = {
         title: "テストを実行",
         start: "開始",
         empty: "登録されているテストはない",
+        parameters: "パラメーター",
     },
     status: {
         running: "実行中",
@@ -64,6 +65,7 @@ export const test = {
     reason: {
         frozen: "ワークスペースの凍結中は実行できない",
         alreadyRunning: "別の実行が進行中",
+        parameterEmpty: "このプロジェクトに{parameter}の選択肢がない",
     },
     console: {
         channel: "テスト",
@@ -85,6 +87,65 @@ export const test = {
             summary: {
                 passed: "問題なし",
                 failed: "エラー {errors} 件、警告 {warnings} 件",
+            },
+        },
+        walkthrough: {
+            title: "エンディング踏破",
+            description: "ストーリー自身の開始シーンからゲームを実際に動かし、指定のエンディングまで進める",
+            parameter: {
+                ending: {
+                    label: "エンディング",
+                    description: "たどり着く先のエンディング",
+                    option: "{story} / {scene} / {ending}",
+                    unnamed: "名称未設定のエンディング",
+                },
+            },
+            log: {
+                planned: "経路を決定: シーン {scenes} 件、選択 {decisions} 件",
+                choosing: "{scene}: 「{option}」を選択",
+                improvised: "経路にない選択肢を「{option}」で通過",
+            },
+            finding: {
+                endingMissing: "そのエンディングはストーリーにもうありません",
+                noEntryPoint: "{story} を開始するシーンがどこからも指定されていません",
+                unreachable: "{story} の開始地点から {ending} に至る経路がありません",
+                optionMissing: "{scene} で「{option}」が提示されず、この経路は通れません",
+                otherEnding: "{ending} ではなく {reached} に到達しました",
+                endedWithoutEnding: "{ending} に到達しないままストーリーが終わりました",
+                stalled: "{steps} ステップ進めたところで停止し、{ending} に到達しませんでした",
+                cancelled: "{steps} ステップ進めたところで取り消されました",
+                exit: {
+                    closed: "{ending} に到達する前にゲームが閉じられました",
+                    stopped: "{ending} に到達する前にゲームが停止されました",
+                    crashed: "{ending} に到達する前にゲームがクラッシュしました",
+                    failedToStart: "ゲームを開始できませんでした",
+                },
+            },
+            summary: {
+                passed: "{ending} に到達",
+            },
+        },
+        reachableEndings: {
+            title: "エンディングへの到達",
+            description: "物語のどの道もエンディング（/ending）に届くかどうか",
+            // 実行できないのは異常ではなく普通の状態。作者の落ち度ではなくプロジェクトの現状を述べ、
+            // 走らせるために足りていない一点だけを名指しする。
+            skipped: {
+                noEndings: "開始地点のあるストーリーに /ending が一つも無い",
+                noEntryPoint: "どのストーリーにも開始地点が設定されていない",
+                undecidableEntry: "Start Story ノードが実行時にシーンを決めるので、開始地点を読み取れない",
+                storiesUnread: "読み込めないストーリーがある",
+            },
+            finding: {
+                pathRunsOut: "ここで進行が止まり、エンディングに届かない",
+                optionRunsOut: "「{option}」はエンディングに届かないまま止まる",
+                endingUnreached: "「{name}」に届く道が無い",
+                endingUnreachedUnnamed: "このエンディングに届く道が無い",
+            },
+            // 数を先に置かず件数として読ませる。合格した実行でも、届かないエンディングは伝える価値がある。
+            summary: {
+                passed: "どの道もエンディングに届く。届かないエンディング {unreached} / {endings}",
+                failed: "止まってしまう道 {errors} 件。届かないエンディング {unreached} / {endings}",
             },
         },
     },

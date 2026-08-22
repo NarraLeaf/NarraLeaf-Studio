@@ -5,6 +5,10 @@ export const devMode = {
     surfaceUnavailable: "Surface not available",
     waitingPayload: "Waiting for Dev Mode payload…",
     surfaceNotFound: "Surface not found: {surfaceId}",
+    // Said by the three places that point Studio at a row: the Issues panel, the debug menu,
+    // and a timeline row. Held once - three copies of one sentence is how they drift apart.
+    openInStudio: "Open in Studio",
+    openInStudioFailed: "No workspace window is open for this project.",
     issues: {
         // One word, like every other panel in the drawer.
         title: "Issues",
@@ -19,8 +23,6 @@ export const devMode = {
         onSurface: "On {surface}",
         noLocation: "Could not be traced to a line",
         viaPlayHead: "where playback was",
-        openInStudio: "Open in Studio",
-        openFailed: "No workspace window is open for this project.",
         stack: "Stack",
         dismissAll: "Dismiss all ({count})",
         summary: "{errors} errors · {warnings} warnings",
@@ -35,6 +37,9 @@ export const devMode = {
         openMenu: "Open preview debug tools menu",
         closeMenu: "Close preview debug tools menu",
         panelsAria: "Interface panels",
+        // The line the game is on right now, opened in the story editor. Named for the row
+        // rather than for the window, because what the author is after is the line.
+        locateRow: "Open this line in Studio",
         skipToNextChoice: "Skip to next choice",
         skipToNextChoiceBusy: "Skipping…",
         // Takes the debug button off the game for this window. The item shows its own chord, which

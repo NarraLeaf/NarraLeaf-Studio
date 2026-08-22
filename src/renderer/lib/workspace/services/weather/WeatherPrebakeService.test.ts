@@ -18,9 +18,11 @@ const submissions: Submission[] = [];
 let storyChanged: (() => void) | null = null;
 let libraryChanged: (() => void) | null = null;
 let uiChanged: (() => void) | null = null;
+let configChanged: (() => void) | null = null;
 let documents: Record<string, unknown> = {};
 let loads: string[] = [];
 let stageSize = { width: 1920, height: 1080 };
+let frameRate = 30;
 
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
@@ -86,6 +88,14 @@ async function mount(): Promise<WeatherPrebakeService> {
                             },
                             getDocument: () => ({ surfaces: [{ kind: "stageSurface", designSize: stageSize }] }),
                         };
+                    case Services.Project:
+                        return {
+                            onConfigChanged: (handler: () => void) => {
+                                configChanged = handler;
+                                return () => { configChanged = null; };
+                            },
+                            getVfxConfiguration: () => ({ frameRate }),
+                        };
                     default:
                         throw new Error(`Unexpected service lookup: ${String(id)}`);
                 }
@@ -107,8 +117,10 @@ describe("WeatherPrebakeService", () => {
         storyChanged = null;
         libraryChanged = null;
         uiChanged = null;
+        configChanged = null;
         documents = {};
         stageSize = { width: 1920, height: 1080 };
+        frameRate = 30;
     });
 
     afterEach(() => {
@@ -174,6 +186,26 @@ describe("WeatherPrebakeService", () => {
         service.dispose();
     });
 
+    it("says so when the last weather row goes, because a bake for it may still be running", async () => {
+        // The other side reads a submission as the whole of what this project wants, so silence here
+        // reads as "the same as last time" - and the clip for a row the author has deleted goes on
+        // encoding. An empty ask is the only thing that stops it.
+        const service = await mount();
+        documents["story-1"] = storyWith("story-1", ["snow"]);
+        storyChanged?.();
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(submissions).toHaveLength(1);
+
+        documents["story-1"] = storyWith("story-1", []);
+        storyChanged?.();
+        await vi.advanceTimersByTimeAsync(6000);
+
+        expect(submissions).toHaveLength(2);
+        expect(submissions[1].specs).toEqual([]);
+
+        service.dispose();
+    });
+
     it("asks again after a stage resize, because the size is half of a clip's identity", async () => {
         const service = await mount();
         documents["story-1"] = storyWith("story-1", ["snow"]);
@@ -187,6 +219,39 @@ describe("WeatherPrebakeService", () => {
 
         expect(submissions).toHaveLength(2);
         expect(submissions[1].specs[0]).toMatchObject({ width: 1280, height: 720 });
+
+        service.dispose();
+    });
+
+    it("asks again after a frame-rate change, because the rate is the other half of it", async () => {
+        const service = await mount();
+        documents["story-1"] = storyWith("story-1", ["snow"]);
+        storyChanged?.();
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(submissions[0].specs[0]).toMatchObject({ fps: 30 });
+
+        frameRate = 60;
+        configChanged?.();
+        await vi.advanceTimersByTimeAsync(6000);
+
+        expect(submissions).toHaveLength(2);
+        expect(submissions[1].specs[0]).toMatchObject({ fps: 60 });
+
+        service.dispose();
+    });
+
+    it("submits nothing for a manifest write that changed no clip", async () => {
+        // Every project setting writes the same file, so this fires for the icon, the version and
+        // the network policy alike. None of them is a reason to start an encoder.
+        const service = await mount();
+        documents["story-1"] = storyWith("story-1", ["snow"]);
+        storyChanged?.();
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(submissions).toHaveLength(1);
+
+        configChanged?.();
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(submissions).toHaveLength(1);
 
         service.dispose();
     });

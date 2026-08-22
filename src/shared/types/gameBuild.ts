@@ -42,12 +42,6 @@ export type GameBuildMobileFormat = "apk" | "aab" | "ipa";
 export type GameBuildArch = "x64" | "arm64" | "universal";
 
 /**
- * How hard the packager compresses the payload. "store" trades artifact size
- * for a much faster build - the point of a throwaway local check.
- */
-export type GameBuildCompression = "store" | "normal" | "maximum";
-
-/**
  * One packaging job: a platform, the formats to emit, and (desktop only) the
  * single arch to emit them for.
  *
@@ -86,8 +80,6 @@ export type GameBuildRequest = {
      * folder picker). When absent, defaults to "<project>/dist".
      */
     outputDir?: string;
-    /** Payload compression; defaults to "maximum" (electron-builder's own default). */
-    compression?: GameBuildCompression;
     /** Reveal the output folder when the build finishes. Defaults to true. */
     openWhenDone?: boolean;
 };
@@ -221,7 +213,7 @@ export type BuildPreflightCode =
      * shared file to write, and the mobile shells serve that same page.
      */
     | "progress-carry-unsupported"
-    | "web-lossy-images"
+    | "lossy-images"
     | "mobile-template-missing"
     | "mobile-payload-too-large"
     | "version-uncodable"

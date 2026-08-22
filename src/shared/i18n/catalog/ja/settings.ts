@@ -53,6 +53,10 @@ export const settings = {
             label: "ワークスペース",
             description: "起動時の動作、ワークスペースの履歴、自動保存",
         },
+        performance: {
+            label: "パフォーマンス",
+            description: "Studio がこのマシンをどれだけ使い、どれだけ待たせるか",
+        },
         shortcuts: {
             label: "ショートカット",
             description: "Studio 全体で各コマンドに割り当てたキー",
@@ -62,8 +66,11 @@ export const settings = {
             description: "チェックポイントと、そこに記録される作者の情報",
         },
         servers: {
-            label: "サーバー",
-            description: "このインストールがサインインしているサーバーと、使用しているアカウント",
+            // 製品名を省略せずに書く。Team だけでは訳し忘れた英単語に見える。
+            // プロジェクト作成時とワークスペースの隅で出会う名前と同じものを使う。
+            // パネル内では引き続き個々の機械をサーバーと呼ぶ。
+            label: "NarraLeaf Team",
+            description: "このインストールがサインインしている NarraLeaf Team サーバーと、使用しているアカウント",
         },
         network: {
             label: "ネットワーク",
@@ -83,6 +90,21 @@ export const settings = {
         developerMode: {
             label: "開発者オプション",
             description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わる",
+        },
+        screenEffectThreads: {
+            label: "画面エフェクトのスレッド数",
+            description: "エンコーダーの実行中にフレームを描くスレッドの数。自動はこのマシンを見て決める",
+            options: {
+                auto: "自動",
+            },
+        },
+        screenEffectQuality: {
+            label: "開発モードでの画面エフェクト",
+            description: "プレビューとビルドは最終品質しか受け取らないため、下書きを選ぶと各エフェクトを二度焼くことになる。いま一度、初めて実行したときにもう一度",
+            options: {
+                draft: "下書き",
+                final: "最終品質",
+            },
         },
         confirmQuit: {
             label: "⌘Q で終了するときに確認する",
@@ -308,6 +330,10 @@ export const settings = {
         servers: {
             label: "サーバー",
         },
+        teamMachineLabel: {
+            label: "この端末の名前",
+            description: "共同作業者にアカウント名と並べて表示される。空欄のときはホスト名を使う",
+        },
         settingsTransfer: {
             label: "設定を端末間で移す",
         },
@@ -334,6 +360,7 @@ export const settings = {
         refresh: "再取得",
         browsing: "読み込んでいます…",
         download: "ダウンロード",
+        update: "更新",
         downloading: "ダウンロードしています…",
         failed: "辞書の一覧を取得できませんでした。設定のネットワークポリシーを確認してください。",
         installed: {
@@ -371,7 +398,7 @@ export const settings = {
         usePassword: "代わりにユーザー名とパスワードを使う",
         signInRefused: "サーバーはそのユーザー名とパスワードを受け付けなかった",
         signInUnavailable: "この端末ではパスワードでサインインできない",
-        noAccount: "{name} は誰にも身元を尋ねないため、サーバーは追加されない",
+        noAccount: "{name} はアカウントを発行しないため追加できない。管理者にアカウントを求めること",
         joined: {
             signedInAs: "{name} としてサインインしている",
             projects: {
@@ -427,6 +454,10 @@ export const settings = {
                 spellcheckDictionaries: {
                     label: "スペル辞書",
                     description: "スペルチェック用にダウンロードした単語リスト。プロジェクト自身の用語はここにはない",
+                },
+                optimizedImages: {
+                    label: "ビルド用最適化画像",
+                    description: "ビルド時に再エンコードした画像。次のビルドで再生成される",
                 },
                 psdImports: {
                     label: "PSD 読み込みの残り物",

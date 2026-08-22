@@ -4,11 +4,27 @@ import type { StoryDocument, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { Fs } from "@shared/utils/fs";
 import { isValidStoryId } from "@shared/utils/storyId";
+import { normalizeVfxConfiguration, type VfxConfiguration } from "@shared/types/vfx";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
-import type { WeatherBakeManager } from "./WeatherBakeManager";
+import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
+import type { StudioTaskClaim } from "@shared/types/studioTask";
+import { WeatherBakeOwner, type WeatherBakeManager } from "./WeatherBakeManager";
 
 const logger = new Logger("WeatherBake");
+
+export type WeatherPackBakeOptions = {
+    /** How many threads may draw, or `null` to read the machine. The author's setting, resolved. */
+    threads: number | null;
+    /**
+     * Handed a function that abandons the bake, before it begins.
+     *
+     * The twin of `CompileWorkerHooks.onStart`, and it exists for the window that hook cannot cover:
+     * the clips are produced before the compile worker is forked, so for the length of a bake the
+     * caller's `worker.kill()` has nothing to kill.
+     */
+    onStart?: (abandon: () => void) => void;
+};
 
 /**
  * Produce every weather clip a project's stories ask for, so the pack can carry them.
@@ -33,18 +49,48 @@ const logger = new Logger("WeatherBake");
  * Never throws. A clip that could not be produced is logged and left out, and the compile reports it
  * as a story diagnostic on the row that wanted it - a scene that plays without weather rather than a
  * build that refuses over an overlay.
+ *
+ * ## Why the ask is claimed
+ *
+ * Because a build can be cancelled, and this runs before the compile worker exists - so the caller's
+ * usual cancel, which is to kill that worker, has nothing to kill yet. An **unclaimed** task is
+ * immune to `supersede` by design ("a caller saying it has moved on is not a caller speaking for
+ * everybody else"), so submitting anonymously here made the encoder unstoppable: an author who
+ * pressed Cancel watched the build report itself cancelled while the clip kept encoding. A claim is
+ * what gives the cancel something to let go of, and it still cannot stop a clip Dev Mode is waiting
+ * on, because that session's own claim keeps it alive.
  */
 export async function bakeWeatherClipsForPack(
     manager: WeatherBakeManager,
     projectPath: string,
+    options: WeatherPackBakeOptions,
 ): Promise<PackedWeatherClip[]> {
+    // A fresh owner per compile rather than one per project: two of these must never retire each
+    // other, and unlike the pre-baker there is no sense in which a later ask replaces an earlier one.
+    // A preview and a build of the same project are two asks, and both want their clips.
+    const claim: StudioTaskClaim = { owner: WeatherBakeOwner.pack(), attempt: "1" };
+    options.onStart?.(() => manager.abandon(claim));
     const uidoc = await readJson<UIDocument>(path.join(projectPath, "editor", "ui", "uidoc.json"));
-    const specs = collectWeatherSpecs(await readStories(projectPath), uidoc ?? undefined);
+    const specs = collectWeatherSpecs(
+        await readStories(projectPath),
+        uidoc ?? undefined,
+        await readVfxConfiguration(projectPath),
+    );
     if (specs.length === 0) {
         return [];
     }
 
-    const outcome = await manager.ensure({ projectRoot: projectPath, specs, priority: "blocking" });
+    // `final`, and not from a setting. What this function produces is what a player receives, so the
+    // one tier a preference could offer it is the one it must never use - and a preview is on this
+    // path too, deliberately: a preview exists to show the author what they are about to ship.
+    const outcome = await manager.ensure({
+        projectRoot: projectPath,
+        specs,
+        priority: "blocking",
+        quality: "final",
+        threads: options.threads,
+        claim,
+    });
     const clips: PackedWeatherClip[] = [];
     for (const spec of specs) {
         const key = weatherBakeKey(spec);
@@ -83,6 +129,27 @@ async function readStories(projectPath: string): Promise<StoryDocument[]> {
         }
     }
     return stories;
+}
+
+/**
+ * The frame rate this project bakes its screen effects at, read from the `.nlproj`.
+ *
+ * Read here rather than taken from the assembled bundle for the same reason the documents are: the
+ * bundle is put together inside the compile worker, and this runs before it in the main process.
+ * Both ends read the same file, which is what keeps the ids this produces and the ids the packer
+ * narrows by from ever naming different clips.
+ *
+ * An unreadable project is the default rate rather than a refusal. The clips then baked are the
+ * ones a project that never opened the setting asks for, which is what the packer will look for too.
+ */
+async function readVfxConfiguration(projectPath: string): Promise<VfxConfiguration> {
+    try {
+        const config = await readProjectConfigFromDir(projectPath);
+        const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+        return normalizeVfxConfiguration(app?.vfx);
+    } catch {
+        return normalizeVfxConfiguration(undefined);
+    }
 }
 
 /** Null for anything that is not there or will not parse: a project with no stories asks for no clips. */

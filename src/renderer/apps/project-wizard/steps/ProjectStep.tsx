@@ -20,6 +20,15 @@ interface ProjectStepProps {
     onLocationFocus: () => void;
     onSelectDirectory: () => Promise<void>;
     isSelectingDirectory: boolean;
+    /**
+     * Whether version control has already been decided by what opened this window.
+     *
+     * True for a project being made for a server. The field is then not drawn: a project
+     * with no repository has nothing to send, so there is no choice left in it, and a
+     * control with one taken answer is a control that invites a wrong one. The review page
+     * names the server in its place.
+     */
+    versionControlSettled?: boolean;
 }
 
 /**
@@ -48,32 +57,34 @@ export function ProjectStep({
     onLocationFocus,
     onSelectDirectory,
     isSelectingDirectory,
+    versionControlSettled = false,
 }: ProjectStepProps) {
     const { t } = useTranslation();
     const [appIdError, setAppIdError] = useState("");
     const vcsAvailability = useVcsAvailability();
     // Absent while the probe is in flight, which is the honest state: neither "available" nor
-    // "not". Offering Lore before the answer arrives and withdrawing it a moment later is worse
-    // than a field that is briefly short one option.
-    const loreOffered = vcsAvailability?.available === true;
+    // "not". Offering version control before the answer arrives and withdrawing it a moment later
+    // is worse than a field that is briefly short one option.
+    const versioningOffered = vcsAvailability?.available === true;
     const localizedVersionControlOptions = versionControlOptions
         // Removed rather than shown disabled: `Select` has no per-option disabled state, and a
         // choice that cannot be taken is not information the author of a new project needs -
         // the line under the field says why it is missing.
-        .filter(option => option.value !== "lore" || loreOffered)
+        .filter(option => option.value !== "lore" || versioningOffered)
         .map(option => ({
             ...option,
             label: option.labelKey ? t(option.labelKey) : option.label,
         }));
 
-    // Nobody can create a Lore repository on this host, so the field must not be left saying it
+    // Nobody can create a repository on this host, so the field must not be left saying it
     // will. Written back into the wizard's own data instead of only being displayed as `none`,
     // because `ProjectService.createProject` reads that data and not this render.
     useEffect(() => {
+        if (versionControlSettled) return;
         if (vcsAvailability && !vcsAvailability.available && projectData.versionControl !== "none") {
             updateProjectData({ versionControl: "none" });
         }
-    }, [vcsAvailability, projectData.versionControl, updateProjectData]);
+    }, [versionControlSettled, vcsAvailability, projectData.versionControl, updateProjectData]);
 
     const handleAppIdChange = (value: string) => {
         updateAppId(value);
@@ -140,7 +151,7 @@ export function ProjectStep({
                     />
                 </InputGroup>
 
-                <InputGroup
+                {!versionControlSettled && <InputGroup
                     label={t("wizard.fields.versionControl")}
                     helper={vcsAvailability && !vcsAvailability.available
                         ? t(vcsAvailability.reason === "unsupported-platform"
@@ -157,7 +168,7 @@ export function ProjectStep({
                         fullWidth
                         ariaLabel={t("wizard.fields.versionControl")}
                     />
-                </InputGroup>
+                </InputGroup>}
 
                 <Accordion className="pt-1">
                     <AccordionItem id="more" title={t("wizard.project.moreDetails")}>

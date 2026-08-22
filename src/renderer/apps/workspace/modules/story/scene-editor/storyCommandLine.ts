@@ -1693,6 +1693,12 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                 })],
             };
         }
+        // The name is written straight, exactly as a label's is: it is the author's own words, it is
+        // what the line was typed with, and it is the only part of the row a line can carry - the
+        // page the ending lands on is picked in the inspector.
+        if (block.payload.control === "ending") {
+            return { commandId: "ending", args: [positional("name", block.payload.name)] };
+        }
         // Containers lead with their own pill and hold children; a one-line command would be a header
         // that lies about what the row is.
         return null;

@@ -1,0 +1,183 @@
+/**
+ * Holding a session from a screen.
+ *
+ * Three hooks, and between them they are the whole of what a screen has to know about a
+ * server being a live thing rather than a series of requests:
+ *
+ *  - {@link useTeamConnection} - open a session with one server and follow where it
+ *    stands. Drawing "connecting" and "that token has expired" differently is the reason
+ *    the state is a word rather than a boolean.
+ *  - {@link useTeamTopic} - be told when something changes, and be told again after a
+ *    reconnect. **The recovery is a re-read, not a replay**: whenever the session becomes
+ *    ready the reader runs again, which covers the first connection and every drop after
+ *    it with one rule.
+ *  - {@link useTeamCapability} - whether this deployment offers something at all. Checked
+ *    before drawing, never by calling and reading the refusal.
+ *
+ * What is deliberately not here is caching. A screen reads what it needs when it opens
+ * and when it is told something changed, and two screens showing the same thing ask
+ * twice. A cache would be a second copy of the server's state to keep honest, and the
+ * events that would invalidate it are the same events these hooks already act on.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { getInterface } from "@/lib/app/bridge";
+import type { TeamCapability, TeamConnection, TeamProblem } from "@shared/types/team";
+
+import type { TeamOutcome } from "./teamCall";
+
+/** The state of a server nothing has asked for yet. */
+function idle(remoteOrigin: string): TeamConnection {
+    return { remoteOrigin, state: "idle", capabilities: [], since: 0 };
+}
+
+/**
+ * Open a session with one server, and follow it.
+ *
+ * Opening is what mounting this does. A server Studio knows about but nobody is looking
+ * at holds no session, which is what keeps a machine with a dozen servers from holding a
+ * dozen sockets to servers that are switched off.
+ *
+ * Pass null for "no server yet" - a screen whose server is still being chosen - and
+ * nothing is opened.
+ */
+export function useTeamConnection(remoteOrigin: string | null): TeamConnection {
+    const [connection, setConnection] = useState<TeamConnection>(() => idle(remoteOrigin ?? ""));
+
+    useEffect(() => {
+        if (remoteOrigin === null) {
+            setConnection(idle(""));
+            return;
+        }
+        let alive = true;
+        // The listener goes on before the open, not after: a session that becomes ready
+        // between the two would otherwise announce itself to nobody, and the screen would
+        // sit on "connecting" until something else changed.
+        const token = getInterface().team.onConnectionChanged(({ connection: announced }) => {
+            if (alive && announced.remoteOrigin === remoteOrigin) setConnection(announced);
+        });
+        void getInterface().team.open(remoteOrigin).then((answered) => {
+            if (alive && answered?.success) setConnection(answered.data);
+        }).catch(() => undefined);
+
+        return () => {
+            alive = false;
+            token.cancel();
+        };
+    }, [remoteOrigin]);
+
+    return connection;
+}
+
+/** Whether a connected server offers something. False while there is no session. */
+export function useTeamCapability(
+    connection: TeamConnection,
+    capability: TeamCapability,
+): boolean {
+    return connection.capabilities.includes(capability);
+}
+
+/**
+ * Read something off a server, and read it again whenever it may have changed.
+ *
+ * `read` runs when the session becomes ready, and again on every event on one of
+ * `topics`. That is the whole of the freshness story and it is deliberately coarse: an
+ * event says something in this collection moved, and reading the collection is both
+ * simpler and more correct than trying to apply a payload to a list held here.
+ *
+ * **A read that fails does not throw away the last one that worked.** What is on screen
+ * was true a moment ago and is almost certainly still true; a server that stopped
+ * answering has not deleted anything. So the value is only ever replaced by a success,
+ * and the reason the latest attempt failed is reported beside it - which is what lets a
+ * screen say "this could not be read" instead of drawing the empty state, and the empty
+ * state means what it says. Measured on a real server: without this, restarting one
+ * turned two conversations into "nobody has said anything".
+ *
+ * `read` must be stable - wrap it in `useCallback` - because it is what this watches.
+ */
+export function useTeamTopics<T>(
+    remoteOrigin: string | null,
+    topics: readonly string[],
+    read: () => Promise<TeamOutcome<T>>,
+): {
+    /** The last answer that worked, or null because none has yet. */
+    value: T | null;
+    /** Why the latest attempt did not work, or null because it did. */
+    problem: TeamProblem | null;
+    loading: boolean;
+    refresh: () => void;
+} {
+    const [value, setValue] = useState<T | null>(null);
+    const [problem, setProblem] = useState<TeamProblem | null>(null);
+    const [loading, setLoading] = useState(true);
+    /** Which read is the current one, so an older answer cannot land last. */
+    const latest = useRef(0);
+    const connection = useTeamConnection(remoteOrigin);
+    const ready = connection.state === "ready";
+
+    const refresh = useCallback(() => {
+        const ticket = latest.current + 1;
+        latest.current = ticket;
+        setLoading(true);
+        void read().then((answer) => {
+            if (ticket !== latest.current) return;
+            if (answer.ok) {
+                setValue(answer.value);
+                setProblem(null);
+            } else {
+                setProblem(answer.problem);
+            }
+            setLoading(false);
+        }).catch(() => {
+            if (ticket !== latest.current) return;
+            // A rejection is the bridge itself, which is the same thing to a screen as a
+            // server that did not answer.
+            setProblem({ kind: "offline", detail: "the bridge did not answer" });
+            setLoading(false);
+        });
+    }, [read]);
+
+    // The list is compared by its contents rather than by identity: a caller writing
+    // `[projectThreadsTopic(id)]` inline makes a new array every render, and watching the
+    // array itself would resubscribe on each one.
+    const wanted = useMemo(() => [...topics].sort().join(" "), [topics]);
+
+    useEffect(() => {
+        if (remoteOrigin === null || !ready || wanted === "") return;
+        let alive = true;
+        const names = wanted.split(" ");
+        for (const topic of names) {
+            void getInterface().team.subscribe(remoteOrigin, topic).catch(() => undefined);
+        }
+        const token = getInterface().team.onEvent((message) => {
+            if (!alive) return;
+            if (message.remoteOrigin !== remoteOrigin) return;
+            if (!names.includes(message.topic)) return;
+            refresh();
+        });
+        return () => {
+            alive = false;
+            token.cancel();
+            for (const topic of names) {
+                void getInterface().team.unsubscribe(remoteOrigin, topic).catch(() => undefined);
+            }
+        };
+    }, [remoteOrigin, ready, wanted, refresh]);
+
+    // Reading is keyed on `since` as well as on readiness, so a session that dropped and
+    // came back reads again. That is the reconnect recovery: what was missed while the
+    // socket was down is recovered by asking, because nothing is ever replayed.
+    useEffect(() => {
+        if (remoteOrigin === null) return;
+        if (!ready) {
+            // The value is left alone, for the reason at the top of this function. What
+            // changes is that there is now a reason it cannot be refreshed.
+            setProblem({ kind: "offline", detail: connection.detail ?? "no session" });
+            setLoading(false);
+            return;
+        }
+        refresh();
+    }, [remoteOrigin, ready, connection.since, refresh]);
+
+    return { value, problem, loading, refresh };
+}

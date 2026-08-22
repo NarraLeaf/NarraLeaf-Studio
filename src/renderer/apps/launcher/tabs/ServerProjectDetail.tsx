@@ -19,6 +19,7 @@ import type {
     VcsServerProjectHistoryPage,
     VcsServerRevision,
 } from "@shared/types/vcs";
+import { ProjectDiscussion } from "./ProjectDiscussion";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -187,6 +188,16 @@ export function ServerProjectDetailView({
      */
     const fileUnread = file !== null && !file.readable;
     /**
+     * The server has read the repository and there is nothing in it yet.
+     *
+     * **Zero revisions is a fact; an absent count is not.** A server that has not read the
+     * repository leaves the number out, and that state is the one `fileUnread` covers. A
+     * server that read it and counted none is describing a project nobody has sent anything
+     * to - which is also why there is no project file to report, so this sentence stands in
+     * place of that one rather than beside it.
+     */
+    const empty = known.history?.revisions === 0;
+    /**
      * The page came back carrying no revisions.
      *
      * Absent is never an empty history - an empty array is the other thing, and that one
@@ -277,13 +288,23 @@ export function ServerProjectDetailView({
 
                 <Facts project={known} file={file} />
 
-                {fileUnread && (
+                {empty && (
+                    <p className="mt-2 text-xs text-fg-subtle" data-project-empty>
+                        {t("launcher.servers.detail.empty")}
+                    </p>
+                )}
+
+                {fileUnread && !empty && (
                     <p className="mt-2 text-xs text-fg-subtle" data-project-unread>
                         {t("launcher.servers.detail.unread")}
                     </p>
                 )}
 
-                {page?.revisions !== undefined && (
+                {/* Silent where the line above has already said it: "no versions recorded"
+                    under a sentence saying nothing has been sent is the same fact given a
+                    heading and a box. A count that disagrees with the page still draws, so
+                    nothing real is hidden by this. */}
+                {page?.revisions !== undefined && (!empty || page.revisions.length > 0) && (
                     <Versions revisions={page.revisions} more={page.more} />
                 )}
 
@@ -292,7 +313,13 @@ export function ServerProjectDetailView({
                     where the line above has not already said it: on a project the server has
                     not read, the versions are missing for the reason already on screen, and
                     a panel that gives one absence two sentences is a panel nobody finishes. */}
-                {versionsUnavailable && !fileUnread && (
+                {/* What people have said about this project. Drawn only where the server
+                    holds a session and offers conversations, which is what the component
+                    itself checks: a deployment that does not is a page with no such
+                    section rather than one with an empty one. */}
+                <ProjectDiscussion remoteOrigin={remoteOrigin} projectId={known.id} />
+
+                {versionsUnavailable && !fileUnread && !empty && (
                     <section className="mt-4" data-project-versions-unavailable>
                         <FieldLabel as="div">{t("launcher.servers.detail.versions")}</FieldLabel>
                         <p className="rounded-md border border-edge px-3 py-2 text-xs text-fg-subtle">

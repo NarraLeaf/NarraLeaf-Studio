@@ -111,6 +111,26 @@ export function isValidLocaleCode(code: unknown): code is LocaleCode {
 }
 
 /**
+ * Whether `locale` is `tag` or a narrowing of it: `zh-Hant` matches `zh-Hant-HK` and `zh` matches
+ * both, while `zho` matches neither.
+ *
+ * On subtag boundaries rather than by `startsWith`, because language codes are not prefixes of each
+ * other by accident - `he` (Hebrew) is the start of no end of three-letter codes, and matching it
+ * as text would quietly hand them Hebrew's answer to whatever was being asked.
+ *
+ * Case-insensitive, as BCP-47 is: a project may spell a language `zh-Hant` and a font stack rung
+ * `zh-hant`, and the two are the same tag.
+ */
+export function localeMatchesTag(locale: string, tag: string): boolean {
+    const subject = locale.trim().toLowerCase();
+    const prefix = tag.trim().toLowerCase();
+    if (!prefix || !subject.startsWith(prefix)) {
+        return false;
+    }
+    return subject.length === prefix.length || subject[prefix.length] === "-";
+}
+
+/**
  * A language's name in itself ("ja" → "日本語"), falling back to the code.
  *
  * The autonym and not the translated name, because this is what players see in the language

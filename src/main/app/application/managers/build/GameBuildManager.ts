@@ -5,7 +5,7 @@ import path from "path";
 import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
 import { RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption";
 import { App } from "@/app/app";
-import { UserDataNamespace } from "@shared/types/constants";
+import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
@@ -35,10 +35,9 @@ import {
     type GamePatchExportRequest,
 } from "@shared/types/gameBuild";
 import {
-    normalizeWebOptimizationConfiguration,
-    webOptimizationTouchesImages,
-    type WebOptimizationConfiguration,
-} from "@shared/types/webOptimization";
+    readAssetOptimizationConfiguration,
+    type AssetOptimizationConfiguration,
+} from "@shared/types/assetOptimization";
 import {
     SIGNING_CREDENTIAL_MATERIAL_FIELDS,
     SIGNING_CREDENTIAL_PLATFORM,
@@ -75,8 +74,8 @@ import {
     signingReachesNetwork,
 } from "./preflight";
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
-import { optimizeWebExportImages } from "./optimizeWebExport";
-import { openWebImageCodec, type WebImageCodec } from "./webImageCodec";
+import { optimizeProjectImages, type AssetImageOptimizationResult } from "./optimizeAssetImages";
+import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
 import { findSigntool } from "./signtoolDiscovery";
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
@@ -148,6 +147,13 @@ type BuildSession = {
     projectPath: string;
     snapshot: GameBuildStateSnapshot;
     worker: UtilityProcess | null;
+    /**
+     * Lets go of the weather bake this compile is sitting in, if it is.
+     *
+     * Separate from the worker above because it covers the window before that worker exists: the
+     * clips are produced first, and a cancel arriving then used to reach nothing at all.
+     */
+    abandonWeatherBake: (() => void) | null;
     cancelled: boolean;
 };
 
@@ -768,15 +774,16 @@ export class GameBuildManager {
         // The one step in the optimization pipeline that changes what the player
         // sees. It is opt-in, but a setting turned on months ago is a setting
         // nobody remembers, and this is the last moment before it is applied.
-        // The lossless half is deliberately silent: it cannot alter the game.
-        const webOptimization = this.webOptimizationConfig(projectConfig);
-        if (webOptimization.lossyImages
-            && targets.some(target => target.platform === "web" || isMobileBuildPlatform(target.platform))) {
+        // Every target, because the policy is about the artwork rather than about
+        // where it lands. The lossless half is deliberately silent: it cannot
+        // alter the game.
+        const assetOptimization = this.assetOptimizationConfig(projectConfig);
+        if (assetOptimization.lossyImages) {
             findings.push({
-                code: "web-lossy-images",
+                code: "lossy-images",
                 severity: "warning",
                 section: "content",
-                detail: { quality: String(webOptimization.lossyQuality) },
+                detail: { quality: String(assetOptimization.lossyQuality) },
             });
         }
         if (mobileTargets.length > 0) {
@@ -834,6 +841,7 @@ export class GameBuildManager {
                 platforms: [...new Set(request.targets.map(target => target.platform))],
             },
             worker: null,
+            abandonWeatherBake: null,
             cancelled: false,
         };
         this.sessions.set(key, session);
@@ -867,6 +875,11 @@ export class GameBuildManager {
             return session?.snapshot ?? { status: "idle" };
         }
         session.cancelled = true;
+        // Before the worker, because for the length of a bake there IS no worker: the clips a pack
+        // carries are produced first, and an author who pressed Cancel during one used to watch the
+        // build report itself cancelled while the encoder ran on to the end.
+        session.abandonWeatherBake?.();
+        session.abandonWeatherBake = null;
         if (session.worker) {
             session.worker.kill();
             session.worker = null;
@@ -902,6 +915,7 @@ export class GameBuildManager {
             projectPath: normalizedProjectPath,
             snapshot: { status: "preparing", startedAt: Date.now(), platforms: [] },
             worker: null,
+            abandonWeatherBake: null,
             cancelled: false,
         };
         this.sessions.set(key, session);
@@ -977,6 +991,12 @@ export class GameBuildManager {
         this.ensureNotCancelled(session);
 
         session.snapshot = { ...session.snapshot, status: "compiling" };
+        // The same re-encoding the build applied. Without it every optimized image
+        // would read as changed against the build being patched, and the patch
+        // would carry the author's whole art library back to a player who already
+        // has it - under the extension the pack no longer names.
+        const assetImages = await this.optimizeImages(session, projectPath, projectConfig);
+        this.ensureNotCancelled(session);
         let contentAudit: ShippedContentAuditReport | null = null;
         const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
             projectPath,
@@ -1009,8 +1029,10 @@ export class GameBuildManager {
             ...(patchPlatforms(projectConfig).length > 0 ? { platforms: patchPlatforms(projectConfig) } : {}),
             hostUserDataDir: this.app.getUserDataDir(),
             downloadRewrites: currentDownloadRewrites(),
+            assetImages,
         }, {
             onStart: worker => { session.worker = worker; },
+            onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
             cancelled: () => session.cancelled,
             onAudit: report => { contentAudit = report; },
         });
@@ -1361,6 +1383,10 @@ export class GameBuildManager {
         this.ensureNotCancelled(session);
 
         session.snapshot = { ...session.snapshot, status: "compiling" };
+        // Before either compile, so both carry the same bytes for an asset and a
+        // protected pack is optimized like an unprotected one. See optimizeImages.
+        const assetImages = await this.optimizeImages(session, projectPath, projectConfig);
+        this.ensureNotCancelled(session);
         const runtimeDistDir = path.join(this.app.getDistDir(), "runtime");
         const runtimeVersion = this.readRuntimeVersion();
         let desktopArtifact: GameRuntimeArtifactCompileResult | null = null;
@@ -1425,8 +1451,10 @@ export class GameBuildManager {
                 // Electron on the far side.
                 hostUserDataDir: this.app.getUserDataDir(),
                 downloadRewrites: currentDownloadRewrites(),
+                assetImages,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
                 onAudit: report => { contentAudit = report; },
             });
@@ -1466,8 +1494,10 @@ export class GameBuildManager {
                     ]),
                 ],
                 shell: "web",
+                assetImages,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
             });
             session.worker = null;
@@ -1476,8 +1506,6 @@ export class GameBuildManager {
                 source: "Build",
                 message: `${webTarget ? "web export" : "game site"} compiled (${webArtifact.copiedAssetCount} asset(s))`,
             });
-            this.ensureNotCancelled(session);
-            await this.optimizeCompiledSite(session, webArtifact.appDir, projectConfig);
             this.ensureNotCancelled(session);
         }
         // From one compile only: both read the same project under the same variant, so the second
@@ -1534,7 +1562,6 @@ export class GameBuildManager {
             electronVersion: process.versions.electron,
             ...(identity.copyright ? { copyright: identity.copyright } : {}),
             ...(copyrightFile ? { copyrightFile } : {}),
-            ...(request.compression ? { compression: request.compression } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
             asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
@@ -1561,7 +1588,6 @@ export class GameBuildManager {
                     formats: webFormats,
                     dirName: webExportDirName(identity.artifactBaseName, identity.version),
                     zipName: webExportZipName(identity.artifactBaseName, identity.version),
-                    precompress: this.webOptimizationConfig(projectConfig).precompress,
                 },
             } : {}),
             ...(mobileTargets.length > 0 && webArtifact ? {
@@ -2569,10 +2595,8 @@ export class GameBuildManager {
         return (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
     }
 
-    private webOptimizationConfig(projectConfig: ProjectConfigData | null): WebOptimizationConfiguration {
-        return normalizeWebOptimizationConfiguration(
-            (projectConfig?.app as { webOptimization?: unknown } | undefined)?.webOptimization,
-        );
+    private assetOptimizationConfig(projectConfig: ProjectConfigData | null): AssetOptimizationConfiguration {
+        return readAssetOptimizationConfiguration(projectConfig?.app);
     }
 
     /**
@@ -2604,39 +2628,41 @@ export class GameBuildManager {
     }
 
     /**
-     * Shrink the compiled static site before anything packages it.
+     * Re-encode the project's images once, before anything is compiled, and
+     * answer with the file each compile should copy in place of the author's.
      *
-     * Runs on the shared web compile, so the Android and iOS packages built from
-     * the same site get the smaller images too. That is the only coherent
-     * arrangement: there is one compiled site, and keeping an unoptimized second
-     * copy for the mobile shells would cost a whole extra compile in order to
-     * ship bigger packages.
+     * Ahead of the compiles rather than over their output, because a protected
+     * desktop pack seals every asset as it copies it and leaves nothing to
+     * rewrite afterwards. Doing it first is what makes protection change nothing
+     * about what an author ships, and lets one pass serve the desktop pack, the
+     * site the browser and both mobile shells are built from, and a patch made
+     * later - all carrying identical bytes for an asset.
      *
-     * Never fatal. Every step here is an improvement on an export that already
-     * works, so a codec window that will not open - a headless host, a broken
-     * GPU sandbox - costs the author some bytes and a warning, not their build.
+     * Never fatal. This is an improvement on a build that already works, so a
+     * codec window that will not open - a headless host, a broken GPU sandbox -
+     * costs the author some bytes and a warning, not their build.
      */
-    private async optimizeCompiledSite(
+    private async optimizeImages(
         session: BuildSession,
-        appDir: string,
+        projectPath: string,
         projectConfig: ProjectConfigData | null,
-    ): Promise<void> {
-        const config = this.webOptimizationConfig(projectConfig);
-        if (!webOptimizationTouchesImages(config)) {
-            return;
-        }
-        let codec: WebImageCodec | null = null;
+    ): Promise<AssetImageOptimizationResult["images"]> {
+        const config = this.assetOptimizationConfig(projectConfig);
         try {
-            codec = await openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec"));
-            const result = await optimizeWebExportImages({
-                appDir,
+            const result = await optimizeProjectImages({
+                projectPath,
+                cacheDir: path.join(
+                    this.app.getUserDataDir(),
+                    UserDataNamespace.Cache,
+                    CacheNamespace.OptimizedImages,
+                ),
                 config,
-                codec,
+                openCodec: () => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec")),
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
             });
             if (result.converted === 0) {
-                return;
+                return result.images;
             }
             const saved = result.beforeBytes - result.afterBytes;
             const percent = Math.round((saved / result.beforeBytes) * 100);
@@ -2646,15 +2672,15 @@ export class GameBuildManager {
                 message: `${config.lossyImages ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
                     + `saving ${formatByteSize(saved)} (${percent}%)`,
             });
+            return result.images;
         } catch (error) {
             this.emit(session, {
                 level: "warning",
                 source: "Build",
-                message: "could not optimize the exported images, so they ship as they are: "
+                message: "could not optimize the images, so they ship as they are: "
                     + (error instanceof Error ? error.message : String(error)),
             });
-        } finally {
-            await codec?.close().catch(() => undefined);
+            return {};
         }
     }
 

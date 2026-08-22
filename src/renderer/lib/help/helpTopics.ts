@@ -31,6 +31,7 @@ export type HelpSectionId = (typeof HELP_SECTIONS)[number];
  * typo is a failing test rather than a topic that renders its own key.
  */
 export const HELP_TOPIC_IDS = [
+    "gettingHelp",
     "workspaceLayout",
     "newProject",
     "runModes",
@@ -46,6 +47,8 @@ export const HELP_TOPIC_IDS = [
     "storyScript",
     "sceneSnapshot",
     "storyMotion",
+    "dictionary",
+    "dictionaryMarks",
     "assets",
     "assetSets",
     "assetSetAxes",
@@ -63,6 +66,7 @@ export const HELP_TOPIC_IDS = [
     "blueprints",
     "uiBindings",
     "networkNodes",
+    "spellcheck",
     "lint",
     "tests",
     "dashboard",
@@ -87,7 +91,8 @@ export const HELP_TOPIC_IDS = [
     "signing",
     "assetProtection",
     "networkAllowlist",
-    "webOptimization",
+    "assetOptimization",
+    "screenEffects",
     "plugins",
 ] as const;
 
@@ -111,6 +116,14 @@ const DOCS_URL = "https://www.narraleaf.com/docs/studio";
 
 export const HELP_TOPICS: readonly HelpTopic[] = [
     // --- Getting around -------------------------------------------------------
+    // First in the list, which makes it the topic the browser opens on and the one `F1` lands on
+    // when nothing under the pointer has a topic of its own.
+    {
+        id: "gettingHelp",
+        section: "start",
+        shortcuts: ["workspace-context-help", "workspace-command-palette"],
+        related: ["workspaceLayout", "keyboard", "search"],
+    },
     {
         id: "workspaceLayout",
         section: "start",
@@ -190,6 +203,16 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["storyVariables", "runModes"],
     },
     {
+        id: "dictionary",
+        section: "story",
+        related: ["dictionaryMarks", "spellcheck", "storyScene"],
+    },
+    {
+        id: "dictionaryMarks",
+        section: "story",
+        related: ["dictionary", "spellcheck", "lint"],
+    },
+    {
         id: "storyMotion",
         section: "story",
         shortcuts: ["story-motion.prev-frame", "story-motion.next-frame", "story-motion.delete"],
@@ -216,7 +239,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "mediaConversion",
         section: "content",
-        related: ["assets", "webOptimization"],
+        related: ["assets", "assetOptimization"],
     },
     {
         id: "characters",
@@ -297,6 +320,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     },
 
     // --- Checks ---------------------------------------------------------------
+    {
+        id: "spellcheck",
+        section: "quality",
+        related: ["dictionary", "dictionaryMarks", "studioSettings"],
+    },
     {
         id: "lint",
         section: "quality",
@@ -430,7 +458,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "assetProtection",
         section: "ship",
-        related: ["build", "webOptimization", "plugins", "networkNodes"],
+        related: ["build", "assetOptimization", "plugins", "networkNodes"],
     },
     {
         id: "networkAllowlist",
@@ -438,9 +466,17 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["networkNodes", "assetProtection", "plugins", "lint"],
     },
     {
-        id: "webOptimization",
+        id: "assetOptimization",
         section: "ship",
         related: ["build", "assets"],
+    },
+    // Filed with shipping rather than with the story commands it is set for: what an author decides
+    // here is what the package carries and what a build spends making it, which is the question the
+    // topic above answers for images.
+    {
+        id: "screenEffects",
+        section: "ship",
+        related: ["build", "assetOptimization", "storyCommands"],
     },
     {
         id: "plugins",

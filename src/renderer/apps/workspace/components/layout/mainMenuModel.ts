@@ -31,6 +31,10 @@ export function buildMainMenuSubmenus(
             label: group.label,
             labelKey: group.labelKey,
             icon: group.icon,
+            // The accelerator comes with the menu. Collapsing the bar takes away the button Alt+F
+            // used to press, not the letter: the row carries it, and `ActionDropdown` declares it to
+            // the bar on the hamburger's behalf.
+            mnemonic: group.mnemonic,
             items: applyFreezeToActionMenuItems(visible, frozenOut),
             // Registration order, restated as an explicit rank: the registry sorts an order-less
             // group last, while a menu sorts an order-less row first (`byActionMenuOrder`), so

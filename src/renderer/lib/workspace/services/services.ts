@@ -1,4 +1,5 @@
 import { FsRequestResult } from "@shared/types/os";
+import type { FsWriteBatchEntry, FsWriteBatchOutcome } from "./core/FileSystem";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
@@ -8,12 +9,14 @@ import type {
     MobileConfiguration,
     NetworkConfiguration,
     SecurityConfiguration,
-    WebOptimizationConfiguration,
+    AssetOptimizationConfiguration,
 } from "../project/configuration";
 import type { LintContext } from "@/lib/lint/context";
 import type { LintReport } from "@/lib/lint/types";
 import type { LintRunOptions } from "@/lib/lint/engine";
-import type { RegisteredTest, TestAvailability, TestId, TestRunRecord } from "@/lib/testing/types";
+import type { RegisteredTest, TestAvailability, TestId, TestParameterValues, TestRunRecord } from "@/lib/testing/types";
+import type { TestParameterMemory } from "@/lib/testing/parameterCache";
+import type { ResolvedTestParameter } from "@/lib/testing/parameters";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
@@ -95,7 +98,12 @@ import type {
 } from "@shared/types/appTag";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
-import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
+import type {
+    DictionaryEntryPatch,
+    ProjectDictionaryDocument,
+    ProjectDictionaryEntry,
+    ProjectDictionaryOptions,
+} from "@shared/types/dictionary";
 import type { SpellcheckStatus } from "@shared/types/spellcheck";
 import type { SaveSchema, SaveSchemaField, SaveSchemaFieldType } from "@shared/types/saveSchema";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
@@ -268,8 +276,8 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
-    getWebOptimizationConfiguration(): WebOptimizationConfiguration;
-    updateWebOptimizationConfiguration(patch: Partial<WebOptimizationConfiguration>): Promise<ProjectConfig>;
+    getAssetOptimizationConfiguration(): AssetOptimizationConfiguration;
+    updateAssetOptimizationConfiguration(patch: Partial<AssetOptimizationConfiguration>): Promise<ProjectConfig>;
     getLintingConfiguration(): LintingConfiguration;
     updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
@@ -297,8 +305,12 @@ interface IFileSystemService extends IService {
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
     write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
     writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
+    /** N files, one grant, one result each. See `BaseFileSystemService.writeBatch`. */
+    writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]>;
     ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    /** Write or create, without the write grant. See `BaseFileSystemService.writeFileNoFollowOrCreate`. */
+    writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     createDir(path: string): Promise<FsRequestResult<void>>;
     deleteFile(path: string): Promise<FsRequestResult<void>>;
@@ -639,28 +651,37 @@ interface IBrandService extends IService {
 }
 
 /**
- * The words the project spells on purpose - character names, place names, invented terms. See
- * `@shared/types/dictionary` for the model.
+ * The terms the project writes on purpose - character names, place names, invented vocabulary - and
+ * how it writes them. See `@shared/types/dictionary` for the model.
  *
- * Besides owning the document it *publishes*: every change pushes the list into Chromium's session
- * dictionary, which is machine-scoped and therefore has to be handed back when the project closes.
+ * Besides owning the document it *publishes*: every change pushes the accepted spellings into the
+ * main process, which holds them per window and therefore has to be handed them back when the
+ * project closes.
  */
 interface IDictionaryService extends IService {
-    load(): Promise<string[]>;
+    load(): Promise<void>;
     save(document: ProjectDictionaryDocument): Promise<void>;
     getDocument(): ProjectDictionaryDocument;
-    listWords(): string[];
+    listEntries(): ProjectDictionaryEntry[];
+    listTerms(): string[];
+    getEntry(term: string): ProjectDictionaryEntry | null;
+    hasTerm(term: string): boolean;
+    /** Whether the spellchecker should leave this word alone: a term, or a variant of one. */
     hasWord(word: string): boolean;
-    /** `false` when there was nothing to add: a blank, or a word the project already spells. */
-    addWord(word: string): boolean;
+    getOptions(): ProjectDictionaryOptions;
+    /** `false` when there was nothing to add: a blank, or a spelling the project already holds. */
+    addTerm(term: string, patch?: Omit<DictionaryEntryPatch, "term">): boolean;
+    /** `false` when there is no such term, or a rename would collide with one. */
+    updateEntry(term: string, patch: DictionaryEntryPatch): boolean;
     /** `false` when the project never held it. */
-    removeWord(word: string): boolean;
+    removeTerm(term: string): boolean;
+    setOptions(patch: Partial<ProjectDictionaryOptions>): void;
     replaceDocument(document: ProjectDictionaryDocument): void;
     /** What the spellchecker settled on at the last push; `null` before the first one. */
     getSpellcheckStatus(): SpellcheckStatus | null;
     /** The language settled on, whenever it changes - so an open story row can re-check. */
     onStatusChanged(handler: (status: SpellcheckStatus | null) => void): () => void;
-    onWordsChanged(handler: (words: string[]) => void): () => void;
+    onEntriesChanged(handler: (entries: ProjectDictionaryEntry[]) => void): () => void;
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
@@ -1314,8 +1335,16 @@ interface ILintService extends IService {
 interface ITestRunService extends IService {
     listTests(): RegisteredTest[];
     getAvailability(id: TestId): TestAvailability;
+    /** What a test asks the author for, with every `select`'s option list already evaluated. */
+    listParameters(id: TestId): ResolvedTestParameter[];
+    /** Load what those lists read, before asking for them. Never rejects. */
+    prepareParameterSources(): Promise<void>;
+    /** The values each test was last run with, off the project cache. Never rejects. */
+    readRememberedParameters(): Promise<TestParameterMemory>;
+    /** Keep what a test was just started with. Silently does nothing on a frozen workspace. */
+    rememberParameters(testId: TestId, values: TestParameterValues): Promise<void>;
     /** Resolves the run id once the run is accepted - not when it finishes. */
-    start(testId: TestId): Promise<string>;
+    start(testId: TestId, parameters?: TestParameterValues): Promise<string>;
     cancel(runId: string): void;
     getActiveRun(): TestRunRecord | null;
     getRun(runId: string): TestRunRecord | null;

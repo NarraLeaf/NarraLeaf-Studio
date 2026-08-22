@@ -216,10 +216,6 @@ export const build = {
         artifacts: "产物",
         artifactsEmpty: "选择一个目标后这里会列出产物",
         openWhenDone: "构建完成后打开输出目录",
-        compression: "压缩",
-        compressionMaximum: "最大（体积最小）",
-        compressionNormal: "标准",
-        compressionStore: "不压缩（最快）",
     },
     // 构建完成后打印在产物清单下方的体积读数。数字本身不翻译：共用的字节格式化在所有语言里
     // 都是同样那几个字母，这里只放数字周围的词。
@@ -271,7 +267,7 @@ export const build = {
         "progress-carry-unsupported":
             "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",
-        "web-lossy-images": "导出的图像将以质量 {quality} 重新编码，细节不可恢复",
+        "lossy-images": "图像将以质量 {quality} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目资产体积（{size}）超出移动端安装包能容纳的上限",
         "version-uncodable": "项目版本 {version} 无法编码为 Android 版本号（主版本号最大 2099，次版本号与修订号最大 999）",

@@ -1,12 +1,14 @@
+import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { Logger } from "@shared/utils/logger";
 import { weatherBakeKey, type WeatherBakeIdentity } from "@shared/weather/bakeKey";
-import type { WeatherBakeSpec } from "@shared/weather/model";
-import type { StudioTaskPriority } from "@shared/types/studioTask";
+import type { WeatherBakeQuality, WeatherBakeSpec } from "@shared/weather/model";
+import type { StudioTaskClaim, StudioTaskPriority } from "@shared/types/studioTask";
 import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp } from "../media/ffmpegTool";
 import type { StudioTaskScheduler } from "../tasks/StudioTaskScheduler";
-import { startWeatherBake, type BakeSpawn, type WeatherBakeProgress } from "./weatherBake";
+import type { WeatherBakeHandle, WeatherBakeProgress } from "./weatherBake";
+import { startWeatherBakeInWorker, type WeatherBakeWorkerHostApp } from "./weatherBakeWorker";
 
 /**
  * The clips a project's weather seeds describe, produced once and then found.
@@ -39,6 +41,14 @@ import { startWeatherBake, type BakeSpawn, type WeatherBakeProgress } from "./we
  * That is what makes pre-baking work. Studio can submit a clip at `idle` while the author is still
  * choosing parameters; if they press Run a moment later the same submission arrives at `blocking`,
  * adopts the bake already in flight, and the wait is whatever was left of it.
+ *
+ * ## Where the work happens
+ *
+ * Not here. A bake draws its own frames in JavaScript - 8 MB of them, sixty times a second of clip -
+ * and doing that on the main process cut the smallest IPC round trip from 0.2 ms to 39.6 ms for the
+ * whole minute it takes, which is what turned a Dev Mode reload from 30 ms into fifteen seconds. So
+ * every bake is forked into a utility process ({@link startWeatherBakeInWorker}); this class decides
+ * WHAT to make and where to keep it, and holds a handle to the process making it.
  */
 
 const logger = new Logger("WeatherBake");
@@ -55,7 +65,62 @@ export type WeatherBakeRequest = {
      * to have the clip ready before it is asked for.
      */
     priority: StudioTaskPriority;
+    /**
+     * How good the clips have to be, and therefore how long they take.
+     *
+     * Read as a **floor, not an equality**: a request for `draft` is satisfied by a `final` clip
+     * that is already on disk, because a better answer to the same question is still an answer. The
+     * reverse is not true, which is the entire point - a build must never be handed the copy some
+     * Dev Mode session made in a hurry.
+     *
+     * Stated by every caller. A default here would be a default for `bakeWeatherClipsForPack`, and
+     * the way that goes wrong is a shipped game whose weather is quietly the draft.
+     */
+    quality: WeatherBakeQuality;
+    /**
+     * How many threads may draw this clip's frames, or `null` to read the machine.
+     *
+     * Not part of the clip and not part of the cache key: a frame is a pure function of its phase,
+     * so the same spec drawn on one thread and on four is the same picture. It rides on the request
+     * only because the setting lives in Studio and the drawing happens two processes away.
+     */
+    threads: number | null;
+    /**
+     * Who is asking, for a caller whose mind is made up only until the next keystroke.
+     *
+     * `specs` is then read as the WHOLE of what that owner wants: anything it asked for on an earlier
+     * attempt and does not name here stops being wanted, and is dropped unless somebody else wants it
+     * too. This is what keeps a parameter typed digit by digit from leaving a queue of bakes for the
+     * numbers it passed through - see {@link StudioTaskClaim}.
+     *
+     * Left out by callers that cannot abandon their ask. A build wants its clips until it has them.
+     */
+    claim?: StudioTaskClaim;
 };
+
+/**
+ * The weather callers that are allowed to change their minds, named in one place.
+ *
+ * An owner is a bare string, and the two sides of a supersession have to spell it identically or the
+ * retirement silently reaches nothing - a failure that looks exactly like the feature not existing.
+ * Per project rather than per window, because the scheduler is one per app: two windows open on the
+ * same project want the same clips, and it is the project that changed its mind about them.
+ */
+export const WeatherBakeOwner = {
+    /** Studio having the clips ready before anyone asks. One settle pass supersedes the last. */
+    prebake: (projectRoot: string): string => `weather:prebake:${projectRoot}`,
+    /** What a Dev Mode session's current compile needs. A reload makes that a different compile. */
+    devMode: (projectRoot: string): string => `weather:devMode:${projectRoot}`,
+    /**
+     * One compile's clips, for a preview, a test run or a build.
+     *
+     * Unique per call, unlike the two above, and that is the point: those two exist so that a LATER
+     * ask retires an earlier one from the same source, which is right for a pre-baker watching a
+     * document and wrong here. A preview and a build of the same project are two separate asks and
+     * both want their clips; neither may retire the other by starting.
+     */
+    pack: (): string => `weather:pack:${crypto.randomUUID()}`,
+} as const;
 
 export type WeatherBakeOutcome = {
     /** Absolute path per {@link weatherBakeKey}, for every clip that is now on disk. */
@@ -69,19 +134,47 @@ export type WeatherBakeOutcome = {
     failures: Map<string, string>;
 };
 
+/**
+ * How a clip gets made, so a test can watch one without an encoder or a worker.
+ *
+ * The default forks a utility process. It is injectable rather than mocked at the module boundary
+ * because the seam is the point: what this manager promises is a handle - frames on the way out, one
+ * cancel on the way in - and anything that keeps that promise is a bake as far as it is concerned.
+ */
+export type WeatherBakeStarter = (
+    binaryPath: string,
+    spec: WeatherBakeSpec,
+    targetPath: string,
+    options: {
+        quality: WeatherBakeQuality;
+        threads: number | null;
+        onProgress?: (progress: WeatherBakeProgress) => void;
+    },
+) => WeatherBakeHandle;
+
 export type WeatherBakeManagerOptions = FfmpegResolveOptions & {
-    spawnProcess?: BakeSpawn;
+    startBake?: WeatherBakeStarter;
 };
 
 export class WeatherBakeManager {
     constructor(
-        private readonly app: FfmpegResolverApp,
+        private readonly app: FfmpegResolverApp & WeatherBakeWorkerHostApp,
         private readonly scheduler: StudioTaskScheduler,
     ) {}
 
-    /** The absolute path a clip would be cached at, whether or not it exists yet. */
-    public pathFor(projectRoot: string, identity: WeatherBakeIdentity): string {
-        return path.join(projectRoot, WEATHER_CACHE_DIR, `${weatherBakeKey(identity)}.webm`);
+    /**
+     * The absolute path a clip would be cached at, whether or not it exists yet.
+     *
+     * The tier is in the FILE NAME and deliberately not in {@link weatherBakeKey}. The key becomes
+     * the asset id a packaged game asks for (`weatherClipAssetId`), and a shipped game has no idea
+     * which tier produced what it is looking for; folding the tier in would make every build depend
+     * on the runtime spelling `final` the same way, and the failure mode for getting that wrong is
+     * silent - a valid pack, a story that plays, and no weather. Two names in one cache directory
+     * cost nothing and cannot be got wrong.
+     */
+    public pathFor(projectRoot: string, identity: WeatherBakeIdentity, quality: WeatherBakeQuality): string {
+        const suffix = quality === "draft" ? ".draft.webm" : ".webm";
+        return path.join(projectRoot, WEATHER_CACHE_DIR, `${weatherBakeKey(identity)}${suffix}`);
     }
 
     /**
@@ -100,8 +193,17 @@ export class WeatherBakeManager {
     ): Promise<WeatherBakeOutcome> {
         const paths = new Map<string, string>();
         const failures = new Map<string, string>();
+        // Every path out of here retires the claim, including the ones that submit nothing. Asking
+        // for no clips at all is how deleting the last weather row arrives, and a bake for the row
+        // that is gone has to stop on that news rather than on the next one that happens to come.
+        const retire = (): void => {
+            if (request.claim) {
+                this.scheduler.supersede(request.claim);
+            }
+        };
         const wanted = dedupe(request.specs);
         if (wanted.length === 0) {
+            retire();
             return { paths, failures };
         }
 
@@ -111,14 +213,15 @@ export class WeatherBakeManager {
         const missing: { spec: WeatherBakeSpec; key: string; target: string }[] = [];
         for (const spec of wanted) {
             const key = weatherBakeKey(spec);
-            const target = this.pathFor(request.projectRoot, spec);
-            if (await exists(target)) {
-                paths.set(key, target);
+            const found = await this.findAtLeast(request.projectRoot, spec, request.quality);
+            if (found) {
+                paths.set(key, found);
             } else {
-                missing.push({ spec, key, target });
+                missing.push({ spec, key, target: this.pathFor(request.projectRoot, spec, request.quality) });
             }
         }
         if (missing.length === 0) {
+            retire();
             return { paths, failures };
         }
 
@@ -128,20 +231,27 @@ export class WeatherBakeManager {
             for (const item of missing) {
                 failures.set(item.key, tool.detail);
             }
+            retire();
             return { paths, failures };
         }
 
-        // Submitted together and awaited together. The scheduler runs them one at a time; what this
-        // caller needs is every clip it asked for, not the order they arrive in.
-        const results = await Promise.all(missing.map(item => this.scheduler.submit<string>({
+        // Submitted together and awaited together, as one ask rather than several. The scheduler
+        // runs them one at a time; what this caller needs is every clip it asked for, not the order
+        // they arrive in - and submitting the set in one call is also what lets a claim retire the
+        // previous ask without cutting into this one.
+        const outcomes = await this.scheduler.submitAll<string>(missing.map(item => ({
             kind: "weatherBake",
             // The clip IS the key, so two rows, two scenes or two windows asking for the same weather
             // are one task - and a speculative submission is the same task as the awaited one.
-            key: bakeTaskKey(item.key),
+            key: bakeTaskKey(item.key, request.quality),
             priority: request.priority,
             run: async context => {
-                const handle = startWeatherBake(tool.path, item.spec, item.target, {
-                    ...(options.spawnProcess ? { spawnProcess: options.spawnProcess } : {}),
+                const startBake = options.startBake
+                    ?? ((binaryPath, bakeSpec, target, bakeOptions) =>
+                        startWeatherBakeInWorker(this.app, binaryPath, bakeSpec, target, bakeOptions));
+                const handle = startBake(tool.path, item.spec, item.target, {
+                    quality: request.quality,
+                    threads: request.threads,
                     onProgress: (progress: WeatherBakeProgress) => {
                         context.report({ done: progress.frames, total: progress.total, unit: "frame" });
                     },
@@ -162,27 +272,71 @@ export class WeatherBakeManager {
                 logger.warn(result.stderr);
                 throw new Error(result.detail);
             },
-        }).then(outcome => ({ item, outcome }))));
+        })), request.claim);
 
-        for (const { item, outcome } of results) {
-            if (outcome.status === "done") {
+        missing.forEach((item, index) => {
+            const outcome = outcomes[index];
+            if (outcome?.status === "done") {
                 paths.set(item.key, outcome.value);
             } else {
-                failures.set(item.key, outcome.status === "error" ? outcome.error : "cancelled");
+                failures.set(item.key, outcome?.status === "error" ? outcome.error : "cancelled");
             }
-        }
+        });
         return { paths, failures };
     }
 
+    /**
+     * Give up everything a claim asked for.
+     *
+     * A clip nobody else is left wanting stops encoding where it stands; a clip somebody else is
+     * waiting on carries on, which is the scheduler's rule and the right one - a build being
+     * cancelled is not a reason to take the weather away from a Dev Mode session watching the same
+     * scene. The attempt is derived rather than random so this is a pure function of the claim: what
+     * `supersede` acts on is "claimed under some OTHER attempt", so it only has to differ.
+     */
+    public abandon(claim: StudioTaskClaim): void {
+        this.scheduler.supersede({ owner: claim.owner, attempt: `${claim.attempt}:abandoned` });
+    }
+
     /** Stop one clip, wherever it is in the queue. Whatever already landed stays on disk. */
-    public cancel(spec: WeatherBakeSpec): void {
-        this.scheduler.cancel(bakeTaskKey(weatherBakeKey(spec)));
+    public cancel(spec: WeatherBakeSpec, quality: WeatherBakeQuality): void {
+        this.scheduler.cancel(bakeTaskKey(weatherBakeKey(spec), quality));
+    }
+
+    /**
+     * A cached clip that is at least as good as asked for, or `null`.
+     *
+     * `final` first for a draft request, so a project that has been built once stops re-baking its
+     * weather every time Dev Mode starts: the better file is already there and is a strictly better
+     * answer. A `final` request looks at one name only - the whole reason the tiers are separate
+     * files is that a draft can never stand in for the thing a player receives.
+     */
+    private async findAtLeast(
+        projectRoot: string,
+        identity: WeatherBakeIdentity,
+        quality: WeatherBakeQuality,
+    ): Promise<string | null> {
+        const candidates: WeatherBakeQuality[] = quality === "draft" ? ["final", "draft"] : ["final"];
+        for (const candidate of candidates) {
+            const target = this.pathFor(projectRoot, identity, candidate);
+            if (await exists(target)) {
+                return target;
+            }
+        }
+        return null;
     }
 }
 
-/** One namespace for the scheduler's key space, so a weather key can never collide with another kind's. */
-function bakeTaskKey(key: string): string {
-    return `weather:${key}`;
+/**
+ * One namespace for the scheduler's key space, so a weather key can never collide with another kind's.
+ *
+ * The tier is part of it, and that is what keeps the pre-baker useful: a speculative submission and
+ * the run that overtakes it are the same task only if they agree about the tier, so both read the
+ * same setting. Two tiers of one clip are two tasks because they produce two files - a build waiting
+ * on `final` must not be handed the draft that happens to be encoding.
+ */
+function bakeTaskKey(key: string, quality: WeatherBakeQuality): string {
+    return `weather:${key}:${quality}`;
 }
 
 /**

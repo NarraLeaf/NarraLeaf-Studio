@@ -42,6 +42,9 @@ export const test = {
         title: "Run a test",
         start: "Start",
         empty: "No tests are registered",
+        // Names the row of controls the selected test asks the author to fill in. Not drawn as a
+        // heading - it is there so the group reaches assistive tech with a name.
+        parameters: "Parameters",
     },
     status: {
         running: "Running",
@@ -72,6 +75,9 @@ export const test = {
     reason: {
         frozen: "Not available while the workspace is frozen",
         alreadyRunning: "Another run is in progress",
+        // A test that asks which one, in a project that has none yet. `parameter` is the
+        // parameter's own label, so the row reads "Ending has no values in this project".
+        parameterEmpty: "{parameter} has no values in this project",
     },
     console: {
         channel: "Test",
@@ -93,6 +99,69 @@ export const test = {
             summary: {
                 passed: "No problems found",
                 failed: "{errors} errors, {warnings} warnings",
+            },
+        },
+        walkthrough: {
+            title: "Ending walkthrough",
+            // States where the run begins, because that is the one thing about it an author cannot
+            // see from the title and would otherwise have to guess.
+            description: "Plays the game to one ending, starting the story at its own entry scene",
+            parameter: {
+                ending: {
+                    label: "Ending",
+                    description: "The ending to walk to",
+                    // Story, scene and name together: no one of them tells two endings apart.
+                    option: "{story} / {scene} / {ending}",
+                    unnamed: "Unnamed ending",
+                },
+            },
+            log: {
+                planned: "Route planned: {scenes} scenes, {decisions} decisions",
+                choosing: "{scene}: choosing \"{option}\"",
+                improvised: "Answered an unplanned choice with \"{option}\"",
+            },
+            finding: {
+                endingMissing: "That ending is no longer in the story",
+                noEntryPoint: "Nothing names a scene for {story} to begin at",
+                unreachable: "No route reaches {ending} from where {story} begins",
+                optionMissing: "{scene} did not offer \"{option}\", so this route is not walkable",
+                otherEnding: "Reached {reached} instead of {ending}",
+                endedWithoutEnding: "The story ended without reaching {ending}",
+                stalled: "Stopped advancing after {steps} steps without reaching {ending}",
+                cancelled: "Cancelled after {steps} steps",
+                exit: {
+                    closed: "The game closed before reaching {ending}",
+                    stopped: "The game was stopped before reaching {ending}",
+                    crashed: "The game crashed before reaching {ending}",
+                    failedToStart: "The game could not start",
+                },
+            },
+            summary: {
+                passed: "Reached {ending}",
+            },
+        },
+        reachableEndings: {
+            title: "Reachable endings",
+            description: "Whether every way through the story reaches an /ending",
+            // Declining is a normal state, so each of these says what the project is in rather than
+            // what the author did wrong, and names the one thing that would let the test run.
+            skipped: {
+                noEndings: "No story with an entry point marks an /ending",
+                noEntryPoint: "No story marks where play begins",
+                undecidableEntry: "A Start Story node picks its scene while the game runs, so where play begins cannot be read",
+                storiesUnread: "A story could not be read",
+            },
+            finding: {
+                pathRunsOut: "Play stops here without reaching an ending",
+                optionRunsOut: "\"{option}\" stops without reaching an ending",
+                endingUnreached: "No path reaches \"{name}\"",
+                endingUnreachedUnnamed: "No path reaches this ending",
+            },
+            // Noun-first so the numbers read at any count, and both halves are stated either way:
+            // an ending nothing reaches is worth knowing about a run that passed.
+            summary: {
+                passed: "Every path reaches an ending. Endings never reached: {unreached} of {endings}",
+                failed: "Paths that run out: {errors}. Endings never reached: {unreached} of {endings}",
             },
         },
     },

@@ -28,8 +28,8 @@ import type { BlueprintGraphClipboardPayload } from "./graphClipboard";
  *    bag and a plugin may put anything in one.
  *  - **Everything else keeps its id and is reported.** A file that could not be brought over is
  *    named per site by `assets/missing`; a widget this project does not have is named by
- *    `blueprint/element-ref-missing`; a `Call Fn` whose target is not here is named by the graph
- *    editor's own `fn.call_target_not_found`. All three refuse to be silent, which is the point.
+ *    `blueprint/element-ref-missing`; a `Call Fn` whose target is not here is named by
+ *    `blueprint/fn-target-missing`. All three are errors that refuse a build, which is the point.
  */
 
 /** The blueprint id the payload's graphs are filed under while they are being walked. */

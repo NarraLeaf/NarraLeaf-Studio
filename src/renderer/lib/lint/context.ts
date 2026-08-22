@@ -3,6 +3,7 @@ import type { StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { LocalizationDocument } from "@shared/types/localization";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { VoiceDocument } from "@shared/types/voice";
 import type { GameBuildPlatform } from "@shared/types/gameBuild";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
@@ -86,6 +87,17 @@ export type LintIo = {
     /** null when the content file cannot be read at all. */
     readBytes(assetId: string): Promise<Uint8Array | null>;
     probeImage(assetId: string): Promise<LintImageProbe>;
+    /**
+     * What a font asset can draw, and which code pages its vendor declared.
+     *
+     * Answered by the main process rather than here: WOFF2 wraps a font in a Brotli stream and a
+     * renderer has no Brotli decompressor, so a `.woff2` in the library is unreadable from this
+     * side. What crosses back is a list of code point ranges, not a thirty-megabyte typeface.
+     *
+     * Every failure is an arm of the result, and none of them may be spent as "covers nothing" - a
+     * rule that read a failure that way would put a glyph warning on every line of the script.
+     */
+    probeFontCoverage(assetId: string): Promise<FontCoverageResult>;
     /**
      * Ask what is inside a video asset, and answer the one question a rule here has about it.
      *
@@ -192,14 +204,19 @@ export type LintContext = {
     savedNameCollisions: readonly PersistentNameCollision[];
     localization: LintLocalizationContext | null;
     /**
-     * Named localization keys, by name - the registry `Get Text` picks from.
+     * Named localization keys - the registry `Get Text` picks from - mapped to their source text.
      *
      * Separate from {@link localization}, which is about translations of the script: a project can
      * declare named keys with no target locale configured at all. `null` means the key document had
      * not finished loading when the sweep started, which is not the same as a project with no keys
      * and must not be read as one.
+     *
+     * The **text** and not only the names, because these are the words on the interface's own
+     * buttons - Save, Load, Continue - and a rule that only knew their names could not check what a
+     * player actually reads. `typography/glyph-coverage` is the rule that needed it; `blueprint`
+     * only ever asks whether a name exists.
      */
-    localizationKeyNames: ReadonlySet<string> | null;
+    localizationKeys: ReadonlyMap<string, string> | null;
     voice: LintVoiceContext | null;
     buildPlatforms: readonly GameBuildPlatform[];
     io: LintIo;

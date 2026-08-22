@@ -23,12 +23,17 @@ export type MenuBarMode = "toolbar" | "hamburger";
 export const MENU_BAR_MODES: readonly MenuBarMode[] = ["hamburger", "toolbar"];
 
 /**
- * Named dropdowns - what the title bar has always drawn.
+ * One button - the arrangement Studio ships in.
  *
- * A default that collapsed them would move every author's File menu on an update, and the author
- * who wants the room can say so; the one who never opens this setting keeps what they know.
+ * The title bar is the workspace's only full-width strip, and it already carries the project, the
+ * run controls, the search box and the window's own buttons; three named dropdowns spend a fifth of
+ * it on menus that are opened a few times a session. Nothing is lost by collapsing them: the rows,
+ * their chords and their accelerators are the same in both arrangements, so Alt+F still opens File.
+ *
+ * An author who wants the menus named along the bar says so, in Appearance or on the strip's own
+ * right-click menu.
  */
-export const MENU_BAR_MODE_DEFAULT: MenuBarMode = "toolbar";
+export const MENU_BAR_MODE_DEFAULT: MenuBarMode = "hamburger";
 
 /** Read a persisted (untrusted) value, falling back to the default for anything unrecognised. */
 export function resolveMenuBarMode(value: unknown): MenuBarMode {

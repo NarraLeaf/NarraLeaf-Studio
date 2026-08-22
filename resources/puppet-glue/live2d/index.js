@@ -29,10 +29,9 @@
  * silently dropped.
  */
 
-// Must come first: publishes `globalThis.Live2DCubismCore`, which every Framework module reads as a
-// bare global rather than an import. Both `gen/` files are written by the installer from the author's
-// SDK -- see `puppetRuntimeInstaller.ts`, which owns this layout.
-import "./gen/core.js";
+// The Core is not imported. It reaches the produced file ahead of everything here, verbatim, as the
+// bundler's banner, because it is the one part of the SDK that may not be altered -- see
+// `live2dRuntimeBuild.ts`, which owns that layout and writes `gen/shaders.js` from the author's SDK.
 import { SHADER_SOURCES } from "./gen/shaders.js";
 
 import {

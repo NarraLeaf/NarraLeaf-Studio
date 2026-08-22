@@ -82,7 +82,10 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         ...(config.copyrightFile
             ? { extraFiles: [{ from: config.copyrightFile, to: "COPYRIGHT.txt" }] }
             : {}),
-        ...(config.compression ? { compression: config.compression } : {}),
+        // Always the smallest artifact. The level used to be the author's to pick, and it
+        // was noise: it changes nothing a player sees, it does nothing at all for the web
+        // and mobile outputs, and the fast setting only pays off on a build nobody ships.
+        compression: "maximum",
         ...(config.electronMirror
             ? { electronDownload: { mirror: config.electronMirror } }
             : {}),

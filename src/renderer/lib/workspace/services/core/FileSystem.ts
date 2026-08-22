@@ -1,4 +1,5 @@
 import { FsRejectError, FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import { WRITE_BATCH_MAX_ENTRIES, encodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { IFileSystemService, WorkspaceContext } from "../services";
@@ -26,6 +27,27 @@ export type FsWriteOutcome = {
     error?: FsRejectError;
 };
 
+/**
+ * One file handed to {@link BaseFileSystemService.writeBatch}.
+ *
+ * Text carries the encoding its *file* is stored in; bytes carry none, which is the same distinction
+ * `requestWrite` and `requestWriteRaw` draw. The wire between here and the disk is UTF-8 for text
+ * either way.
+ */
+export type FsWriteBatchEntry =
+    | { path: string; data: string; encoding: FsTextEncoding }
+    | { path: string; data: Uint8Array; encoding?: undefined };
+
+/**
+ * What became of one entry, in the order it was handed in.
+ *
+ * A batch never fails as a whole from the caller's point of view: every entry gets an answer, and an
+ * answer that is `ok` with `refused` is the freeze latch's no-op exactly as it is for a single write
+ * (see {@link FROZEN_NO_OP}). A writer that tracks what it still owes the disk reads `refused` here
+ * for the same reason it reads it there.
+ */
+export type FsWriteBatchOutcome = FsRequestResult<void> & { path: string };
+
 const writeObservers = new Set<(outcome: FsWriteOutcome) => void>();
 
 /**
@@ -44,8 +66,13 @@ const writeObservers = new Set<(outcome: FsWriteOutcome) => void>();
  * goes through this class - `RendererDocumentStorage`, the asset shards, the service stores. The
  * facade's direct writers (asset import, project settings) are author actions, and a reload does not
  * perform them.
+ *
+ * `refused` is how a caller that needs to know can still tell this apart from a write that landed.
+ * Nothing has to read it - the flag is absent on every real success, so ignoring it keeps the old
+ * meaning exactly - but a writer that tracks what it still owes the disk must, or it clears a debt
+ * that was never paid. See {@link FsRequestResult}.
  */
-const FROZEN_NO_OP: FsRequestResult<void> = { ok: true, data: undefined };
+const FROZEN_NO_OP: FsRequestResult<void> = { ok: true, data: undefined, refused: true };
 
 function reportWriteOutcome(path: string, result: FsRequestResult<void>): FsRequestResult<void> {
     if (writeObservers.size > 0) {
@@ -161,6 +188,54 @@ export class BaseFileSystemService {
         return reportWriteOutcome(path, await this.putRaw(path, data));
     }
 
+    /**
+     * Write several files through **one** grant and one `PUT`.
+     *
+     * A single write is two IPC round trips - a grant, then a `PUT` to the URL it mints - and the
+     * pair costs about the same whatever the payload weighs: measured on this machine, a 7-byte
+     * write and a 55 KB write both land near 12 ms. Three hundred of them cost seconds in sequence.
+     * This pays that once for the whole set.
+     *
+     * The contract, which is what makes it usable by a writer that tracks debts:
+     *
+     *  - **Every entry gets its own answer**, in the order handed in. A batch does not fail as a
+     *    whole: a permission error on one path, or a directory that went missing under one of them,
+     *    is that entry's result and nobody else's.
+     *  - **A refusal is still a refusal.** The freeze latch is consulted per path *before* the grant
+     *    is asked for, and refused paths never reach it - they come back as {@link FROZEN_NO_OP}, so
+     *    a caller that clears a debt on `ok` alone loses an edit here exactly as it would on the
+     *    single-file route, and one that reads `refused` is right on both.
+     *  - **The grant is not a wider grant.** Every path is authorized individually in the main
+     *    process and one denial refuses the whole grant; the body carries payload *sizes* only, so
+     *    nothing the renderer puts on the wire can name a file the grant does not already cover.
+     *
+     * Sets larger than {@link WRITE_BATCH_MAX_ENTRIES} are split into that many at a time, so the
+     * caller never has to know the cap exists.
+     */
+    public static async writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]> {
+        const outcomes: FsWriteBatchOutcome[] = new Array(entries.length);
+        const attempted: { entry: FsWriteBatchEntry; index: number }[] = [];
+
+        for (const [index, entry] of entries.entries()) {
+            if (refuseFrozenWrite(entry.path) || refuseReloadingWrite(entry.path)) {
+                outcomes[index] = { ...FROZEN_NO_OP, path: entry.path };
+            } else {
+                attempted.push({ entry, index });
+            }
+        }
+
+        for (let start = 0; start < attempted.length; start += WRITE_BATCH_MAX_ENTRIES) {
+            const chunk = attempted.slice(start, start + WRITE_BATCH_MAX_ENTRIES);
+            const results = await this.putBatch(chunk.map(item => item.entry));
+            for (const [position, item] of chunk.entries()) {
+                const result = reportWriteOutcome(item.entry.path, results[position]);
+                outcomes[item.index] = { ...result, path: item.entry.path };
+            }
+        }
+
+        return outcomes;
+    }
+
     public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
         if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
@@ -173,6 +248,35 @@ export class BaseFileSystemService {
             return FROZEN_NO_OP;
         }
         return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding)));
+    }
+
+    /**
+     * Write a document straight down the IPC call, without minting a write grant first.
+     *
+     * {@link write} is two round trips - a grant, then a `PUT` to the URL it mints - and both are
+     * paid whatever the payload weighs. Measured in the running app on a 30,000-row story document
+     * of 18,499,412 bytes, the routes interleaved: a median 122 ms (112-131) through the grant and
+     * the `PUT` against 54 ms (51-67) through this call. The same temp-fsync-rename sequence run
+     * from plain Node is about 22 ms, so most of the grant route's cost never touches a disk and
+     * roughly half of what is left here is the structured clone this still pays. A story document
+     * is written on every auto-save, at most every five seconds, while the author is typing.
+     *
+     * What is given up for that is stated in `Fs.writeFileNoFollowOrCreate`: the target has to be a
+     * plain regular file or absent, so a symlink or a hard-linked path is now refused with
+     * `INVALID_PATH` where the grant route would have written through it.
+     *
+     * Everything a caller reads is unchanged, and deliberately so:
+     *  - the freeze and reload latches are consulted here, first, and answer {@link FROZEN_NO_OP} -
+     *    so a refusal is still `ok` with `refused`, and a writer tracking what it owes the disk
+     *    still re-owes it;
+     *  - a real failure is still `ok: false` with an {@link FsRejectError}, reported to
+     *    {@link observeWrites} exactly as the grant route's is.
+     */
+    public static async writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
+            return FROZEN_NO_OP;
+        }
+        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollowOrCreate(path, data, encoding)));
     }
 
     /**
@@ -347,6 +451,60 @@ export class BaseFileSystemService {
         };
     }
 
+    /**
+     * The grant-and-`PUT` half of {@link writeBatch}, for a set already known to be within the cap
+     * and free of refusals. Answers one result per entry, in order, always.
+     *
+     * Every way this can go wrong at the transport level - a refused grant, a non-200, a body that
+     * is not the expected shape - answers the *same* error for every entry rather than throwing. The
+     * caller's whole reason for using this is to learn what landed, and an exception tells it
+     * nothing it can act on.
+     */
+    private static async putBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsRequestResult<void>[]> {
+        const sameForAll = (error: FsRejectError): FsRequestResult<void>[] =>
+            entries.map(() => ({ ok: false, error }));
+
+        const requestResult = this.wrapIPCError(
+            await appPrivilegedFacade.fs.requestWriteBatch(
+                entries.map(entry => ({ path: entry.path, encoding: entry.encoding })),
+            ),
+        );
+        if (!requestResult.ok) {
+            return sameForAll(requestResult.error);
+        }
+
+        const url = this.constructUrl(requestResult.data);
+        const encoder = new TextEncoder();
+        const body = encodeWriteBatchFrame(
+            entries.map(entry => (typeof entry.data === "string" ? encoder.encode(entry.data) : entry.data)),
+        );
+        const response = await fetch(url, {
+            method: "PUT",
+            body,
+            headers: { "Content-Type": "application/octet-stream" },
+        });
+        if (!response.ok) {
+            return sameForAll({
+                code: FsRejectErrorCode.IPC_ERROR,
+                message: `Failed to write ${entries.length} file(s) to ${url}: ${response.statusText}`,
+            });
+        }
+
+        let results: unknown;
+        try {
+            results = ((await response.json()) as { results?: unknown }).results;
+        } catch {
+            results = undefined;
+        }
+        if (!Array.isArray(results) || results.length !== entries.length) {
+            return sameForAll({
+                code: FsRejectErrorCode.IPC_ERROR,
+                message: `Batched write to ${url} did not report one result per file`,
+            });
+        }
+        return results as FsRequestResult<void>[];
+    }
+
     private static async putRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
         const requestResult = this.wrapIPCError(await appPrivilegedFacade.fs.requestWriteRaw(path));
         if (!requestResult.ok) {
@@ -435,12 +593,22 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.writeRaw(path, data);
     }
 
+    /** See {@link BaseFileSystemService.writeBatch}. */
+    public async writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]> {
+        return BaseFileSystemService.writeBatch(entries);
+    }
+
     public async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
         return BaseFileSystemService.ensureRegularFile(path, data, encoding);
     }
 
     public async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
         return BaseFileSystemService.writeFileNoFollow(path, data, encoding);
+    }
+
+    /** See {@link BaseFileSystemService.writeFileNoFollowOrCreate}. */
+    public async writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.writeFileNoFollowOrCreate(path, data, encoding);
     }
 
     public async recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {

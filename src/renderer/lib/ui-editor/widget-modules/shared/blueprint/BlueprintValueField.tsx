@@ -12,7 +12,109 @@ import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/L
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
+import { Select } from "@/lib/components/elements/Select";
+import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructFieldLabel, type UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { useTranslation } from "@/lib/i18n";
+
+/**
+ * The field types that can answer one bound prop.
+ *
+ * A binding writes the field's value into a prop of a declared type, so the pairing has to be
+ * decidable: a picture cannot be a slider's position and a number is not a picture. Anything can be
+ * read as text, which is why `string` accepts the lot - a number shown in a label is the ordinary
+ * case, not a mistake.
+ */
+const FIELD_TYPES_FOR_VALUE_TYPE: Record<UIElementValueBindingValueType, readonly UIStructFieldType[]> = {
+    string: ["string", "number", "boolean", "image", "color"],
+    float: ["number", "string"],
+    boolean: ["boolean", "number", "string"],
+    json: ["json"],
+};
+
+/**
+ * The row that binds a prop to the item field of the list drawing it.
+ *
+ * Sits above the blueprint control rather than beside it because the two write the same slot:
+ * `valueBindings[propPath]` holds one binding, so picking a field is also what clears a blueprint
+ * binding, and showing them as two independent controls would invite an author to set both.
+ */
+function ListItemFieldBindingRow(props: {
+    data: UIInspectorData;
+    liveElement: UIElement;
+    propPath: string;
+    valueType: UIElementValueBindingValueType;
+    /** Names what the field decides. Defaults to the value the prop holds. */
+    labelKey?: TranslationKey;
+}): ReactNode {
+    const { t } = useTranslation();
+    const { data, liveElement, propPath, valueType } = props;
+    const label = t(props.labelKey ?? "struct.field.picker");
+    const document = data.documentService.getDocument();
+    const context = findOwningListItemTemplate(document, liveElement);
+    if (!context) {
+        return null;
+    }
+    const struct = resolveUIStruct(document, context.structId);
+    const accepted = FIELD_TYPES_FOR_VALUE_TYPE[valueType] ?? [];
+    const options = [
+        { value: "", label: t("struct.field.pickerEmpty") },
+        ...(struct?.fields ?? [])
+            .filter(field => accepted.includes(field.type))
+            .map(field => ({ value: field.id, label: uiStructFieldLabel(field) })),
+    ];
+    const binding = liveElement.valueBindings?.[propPath];
+    const current = binding?.kind === "listItemField" ? binding.fieldId : "";
+
+    return (
+        <div className="flex items-center gap-2">
+            <span className="shrink-0 text-xs font-medium text-fg-muted">{label}</span>
+            <Select
+                size="sm"
+                className="min-w-0 flex-1"
+                value={current}
+                options={options}
+                portalMenu
+                fullWidth
+                ariaLabel={label}
+                onChange={value =>
+                    data.documentService.setElementListItemFieldBinding(
+                        liveElement.id,
+                        propPath,
+                        String(value) || null,
+                    )
+                }
+            />
+        </div>
+    );
+}
+
+/**
+ * The field picker on its own, for a prop with no blueprint-value control beside it.
+ *
+ * An image is the case that needs it: its picture is bound per row like any other prop, but its
+ * literal editor is a picker, not a blueprint.
+ */
+export function createListItemFieldBindingField(config: {
+    propPath: string;
+    valueType: UIElementValueBindingValueType;
+    labelKey?: TranslationKey;
+}) {
+    return function ListItemFieldBindingField(props: CustomFieldProps<UIInspectorData>): ReactNode {
+        const live =
+            props.data.documentService.getDocument().elements[props.data.element.id] ?? props.data.element;
+        return (
+            <ListItemFieldBindingRow
+                data={props.data}
+                liveElement={live}
+                propPath={config.propPath}
+                valueType={config.valueType}
+                labelKey={config.labelKey}
+            />
+        );
+    };
+}
 
 export type BlueprintValueFieldConfig = {
     propPath: string;
@@ -44,7 +146,11 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
         const live =
             props.data.documentService.getDocument().elements[props.data.element.id] ??
             props.data.element;
-        const binding = live.valueBindings?.[config.propPath];
+        const storedBinding = live.valueBindings?.[config.propPath];
+        // This control speaks for the blueprint binding only. A prop bound to a list item field is
+        // bound by a different control, and reading its field id as a blueprint id would have this
+        // one report a blueprint that does not exist.
+        const binding = storedBinding?.kind === "blueprintValue" ? storedBinding : undefined;
         const localBp =
             isInitialized && context
                 ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint)
@@ -86,9 +192,25 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
             openValueBlueprint(blueprintId);
         };
 
+        const fieldRow = (
+            <ListItemFieldBindingRow
+                data={props.data}
+                liveElement={live}
+                propPath={config.propPath}
+                valueType={config.valueType}
+            />
+        );
+
+        if (storedBinding?.kind === "listItemField") {
+            // The prop is answered by the row's own data, so the literal editor below would be
+            // showing a value nothing reads. The picker alone is the whole control here.
+            return <div className="space-y-2">{fieldRow}</div>;
+        }
+
         if (binding) {
             return (
                 <div className="space-y-2">
+                    {fieldRow}
                     <div className="rounded-md border border-edge bg-surface px-3 py-2">
                         <div className="flex min-w-0 items-center gap-2">
                             <GitBranch className="h-4 w-4 shrink-0 text-binding" />
@@ -136,6 +258,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
 
         return (
             <div className="space-y-2">
+                {fieldRow}
                 {config.renderLiteralEditor?.({ data: props.data, liveElement: live }) ?? (
                     <div className="rounded-md border border-edge bg-surface px-3 py-2">
                         <div className="flex min-w-0 items-center gap-2">

@@ -203,6 +203,7 @@ describe("the assets a foreign paste needs", () => {
             has: () => false,
             read: async () => new Uint8Array([1, 2, 3]),
             create: async () => "created",
+            createFromDirectory: async () => "created",
             isFrozen: () => false,
             ...overrides,
         };
@@ -311,6 +312,56 @@ describe("the assets a foreign paste needs", () => {
 
         expect(result).toEqual({ imported: 0, failed: 0, frozen: false });
         expect(redeem).not.toHaveBeenCalled();
+    });
+
+    it("copies a directory-backed asset instead of reading bytes for it", async () => {
+        // A model bundle is a tree, so there is nothing to read: the grant redeemed for it reaches
+        // the whole directory and the library copies it.
+        const granted: AssetTransferEntry[] = [
+            {
+                assetId: "asset-model",
+                fileName: "Hiyori",
+                type: "model",
+                isDirectory: true,
+                sourcePath: "/projects/a/assets/content/as/se/t-model",
+            },
+        ];
+        const read = vi.fn();
+        const create = vi.fn();
+        const createFromDirectory = vi.fn(async () => "created" as const);
+
+        const result = await importTransferredAssets(
+            port({ redeem: async () => granted, read, create, createFromDirectory }),
+            { token: "token-1", declaredAssetIds: ["asset-model"] },
+            ["asset-model"],
+        );
+
+        expect(result).toEqual({ imported: 1, failed: 0, frozen: false });
+        expect(createFromDirectory).toHaveBeenCalledWith(granted[0]);
+        expect(read).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it("counts a bundle that did not come across as a failure, and keeps going", async () => {
+        const granted: AssetTransferEntry[] = [
+            {
+                assetId: "asset-model",
+                fileName: "Hiyori",
+                type: "model",
+                isDirectory: true,
+                sourcePath: "/projects/a/assets/content/as/se/t-model",
+            },
+            { ...GRANTED[0] },
+        ];
+
+        const result = await importTransferredAssets(
+            port({ redeem: async () => granted, createFromDirectory: async () => "failed" }),
+            { token: "token-1", declaredAssetIds: ["asset-model", "asset-cg"] },
+            ["asset-model", "asset-cg"],
+        );
+
+        // The count the author is shown stays truthful: one file arrived, the model did not.
+        expect(result).toEqual({ imported: 1, failed: 1, frozen: false });
     });
 
     it("stops the moment the workspace freezes, and says so", async () => {

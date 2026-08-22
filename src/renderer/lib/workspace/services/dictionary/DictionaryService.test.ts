@@ -99,7 +99,7 @@ async function createHarness(seed?: string, options?: HarnessOptions): Promise<H
                     ? { ok: false, error: { code: FsRejectErrorCode.NOT_FOUND, message: "missing" } }
                     : ok(value);
             },
-            write: async (path: string, data: string) => {
+            writeFileNoFollowOrCreate: async (path: string, data: string) => {
                 files.set(path, data);
                 return ok(undefined);
             },
@@ -145,22 +145,23 @@ beforeEach(() => {
 });
 
 describe("the dictionary document", () => {
-    it("starts empty and writes nothing until there is a word", async () => {
+    it("starts empty and writes nothing until there is a term", async () => {
         const { service, files } = await createHarness();
 
-        expect(service.listWords()).toEqual([]);
+        expect(service.listTerms()).toEqual([]);
         // Unlike the palette and the variable registry, which seed content every project has. A file
         // holding an empty list would appear in the first commit of every project ever made and say
         // nothing at all.
         expect(files.has(documentPath(ROOT))).toBe(false);
 
-        service.addWord("Anyo");
+        service.addTerm("Anyo");
         await service.flushPendingChanges();
 
         expect(files.has(documentPath(ROOT))).toBe(true);
         expect(JSON.parse(files.get(documentPath(ROOT))!)).toStrictEqual({
             schemaVersion: PROJECT_DICTIONARY_SCHEMA_VERSION,
-            words: ["Anyo"],
+            entries: [{ term: "Anyo" }],
+            options: { suggestReadings: true, checkVariants: true },
         });
     });
 
@@ -169,25 +170,53 @@ describe("the dictionary document", () => {
             JSON.stringify({ schemaVersion: 1, words: ["Kamurocho", "Anyo"] }),
         );
 
-        expect(service.listWords()).toEqual(["Anyo", "Kamurocho"]);
+        expect(service.listTerms()).toEqual(["Anyo", "Kamurocho"]);
         expect(service.hasWord("Anyo")).toBe(true);
     });
 
-    it("refuses to add a blank or a word it already holds, and says so", async () => {
+    it("refuses to add a blank or a term it already holds, and says so", async () => {
         const { service } = await createHarness();
 
-        expect(service.addWord("Anyo")).toBe(true);
-        expect(service.addWord(" Anyo ")).toBe(false);
-        expect(service.addWord("   ")).toBe(false);
-        expect(service.listWords()).toEqual(["Anyo"]);
+        expect(service.addTerm("Anyo")).toBe(true);
+        expect(service.addTerm(" Anyo ")).toBe(false);
+        expect(service.addTerm("   ")).toBe(false);
+        expect(service.listTerms()).toEqual(["Anyo"]);
     });
 
-    it("forgets a word, and reports a word it never held", async () => {
+    it("forgets a term, and reports a term it never held", async () => {
         const { service } = await createHarness(JSON.stringify({ schemaVersion: 1, words: ["Anyo"] }));
 
-        expect(service.removeWord("Anyo")).toBe(true);
-        expect(service.removeWord("Anyo")).toBe(false);
-        expect(service.listWords()).toEqual([]);
+        expect(service.removeTerm("Anyo")).toBe(true);
+        expect(service.removeTerm("Anyo")).toBe(false);
+        expect(service.listTerms()).toEqual([]);
+    });
+
+    it("edits an entry, and refuses a rename onto a term the project already writes", async () => {
+        const { service } = await createHarness();
+        service.addTerm("Anyo");
+        service.addTerm("Kamurocho");
+
+        expect(service.updateEntry("Anyo", { reading: "アンヨ", variants: ["Anyou", "Anyo"] })).toBe(true);
+        // The variant equal to the term is dropped: it could only ever mark a correctly written word.
+        expect(service.getEntry("Anyo")).toStrictEqual({ term: "Anyo", reading: "アンヨ", variants: ["Anyou"] });
+
+        expect(service.updateEntry("Anyo", { term: "Kamurocho" })).toBe(false);
+        expect(service.updateEntry("nobody", { reading: "x" })).toBe(false);
+        // Refused, so both entries are still there and neither has lost anything.
+        expect(service.listTerms()).toEqual(["Anyo", "Kamurocho"]);
+    });
+
+    it("accepts a variant as a word, so the checker does not mark what the dictionary marks", async () => {
+        const { service } = await createHarness();
+        service.addTerm("color", { variants: ["colour"] });
+
+        expect(service.hasWord("colour")).toBe(true);
+        // Case-insensitive: a checker asked about a word at a full stop hands back the capitalised
+        // form, and a term is not two terms for being written at the start of a sentence.
+        expect(service.hasWord("Colour")).toBe(true);
+        expect(service.hasWord("colours")).toBe(false);
+        // A variant is not a term: the panel lists what the project writes, not what it does not.
+        expect(service.hasTerm("colour")).toBe(false);
     });
 
     it("refuses to write over a file it could not read", async () => {
@@ -210,7 +239,7 @@ describe("the session the words are pushed into", () => {
     it("pushes again on every edit, so a word is usable the moment it is added", async () => {
         const { service } = await createHarness();
 
-        service.addWord("Kamurocho");
+        service.addTerm("Kamurocho");
         await service.flushPendingChanges();
 
         expect(configures().at(-1)).toEqual({
@@ -236,7 +265,7 @@ describe("the session the words are pushed into", () => {
             { kind: "clear" },
             { kind: "configure", sourceLocale: "en-US", words: ["Wilhelmina"] },
         ]);
-        expect(service.listWords()).toEqual(["Wilhelmina"]);
+        expect(service.listTerms()).toEqual(["Wilhelmina"]);
     });
 
     it("clears the session and drops its listeners when the project closes", async () => {

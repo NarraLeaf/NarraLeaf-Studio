@@ -7,6 +7,9 @@ export const devMode = {
     surfaceUnavailable: "サーフェスが使えない",
     waitingPayload: "開発モードのペイロードを待っている…",
     surfaceNotFound: "サーフェスが見つからない：{surfaceId}",
+    // 英語カタログを参照。行を Studio で開く 3 か所が同じラベルと同じ 1 文を使う。
+    openInStudio: "Studio で開く",
+    openInStudioFailed: "このプロジェクトのワークスペースウィンドウが開いていない",
     issues: {
         // ドロワーの他のパネルと同じく一語。
         title: "問題",
@@ -21,8 +24,6 @@ export const devMode = {
         onSurface: "{surface} 上",
         noLocation: "どの行かをたどれなかった",
         viaPlayHead: "再生位置",
-        openInStudio: "Studio で開く",
-        openFailed: "このプロジェクトのワークスペースウィンドウが開いていない",
         stack: "スタック",
         dismissAll: "すべて閉じる（{count}）",
         summary: "エラー {errors} 件 · 警告 {warnings} 件",
@@ -36,6 +37,7 @@ export const devMode = {
         openMenu: "プレビューのデバッグ道具のメニューを開く",
         closeMenu: "プレビューのデバッグ道具のメニューを閉じる",
         panelsAria: "インターフェースのパネル",
+        locateRow: "この行を Studio で開く",
         skipToNextChoice: "次の選択肢まで飛ばす",
         skipToNextChoiceBusy: "飛ばしている…",
         // このウィンドウのゲームからデバッグボタンを外す。戻す手段はこのキーだけなので、

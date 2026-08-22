@@ -4,7 +4,7 @@
  * A dialog of its own rather than a page in the build dialog, because a patch is
  * not a build: it produces no installer, signs nothing, and targets no platform.
  * Everything the build dialog is made of - targets, formats, architectures,
- * compression, signing - is a question a patch does not have, and a page that
+ * signing - is a question a patch does not have, and a page that
  * answered none of them inside a dialog called "Build for distribution" would
  * read as a build that skipped them.
  *

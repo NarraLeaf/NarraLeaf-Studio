@@ -127,3 +127,32 @@ export const EMPTY_STUDIO_TASK_OVERVIEW: StudioTaskOverview = {
     queued: 0,
     blocking: false,
 };
+
+/**
+ * Who is asking, when the asker is allowed to change its mind.
+ *
+ * The key says what the work IS, and that is what makes two callers wanting the same clip one task.
+ * It deliberately says nothing about WHO wanted it, which is fine right up until somebody stops —
+ * and stopping is not an edge case. Editing a number is not one decision but one per keystroke: a
+ * density typed as `120` lands as 1, then 12, then 120, and each of those is a different document
+ * describing a different clip. Without a way to say "that was me, and I have moved on", every one of
+ * them is a bake that runs to completion for a number the author has already typed over, with the
+ * one they actually want queued behind the lot.
+ *
+ * So a caller may name itself. `owner` is the standing asker — this project's speculation, this Dev
+ * Mode session — and `attempt` is which of its asks this is: one settle pass, one compile. An owner
+ * has exactly one live attempt, so submitting under a new one says in the same breath what it wants
+ * now and that whatever else it asked for it no longer does.
+ *
+ * ## What a claim can never do
+ *
+ * Reach work somebody else is waiting on. A claim is an interest, not ownership: dropping it drops
+ * that owner's interest and nothing more, and the task ends only when the last interest in it does.
+ * A clip a Dev Mode session abandons but a build still needs goes on being baked.
+ */
+export type StudioTaskClaim = {
+    /** The standing caller. Stable across attempts — it is the thing that changes its mind. */
+    owner: string;
+    /** Which ask this is. Whatever the owner asked for under a different one is no longer wanted. */
+    attempt: string;
+};

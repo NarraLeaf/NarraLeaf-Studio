@@ -712,20 +712,6 @@ export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcs
     }
 }
 
-/** Ask a server to make a project. */
-export class VcsCreateServerProjectHandler extends IPCHandler<IPCEventType.vcsCreateServerProject> {
-    readonly name = IPCEventType.vcsCreateServerProject;
-    readonly type = IPCMessageType.request;
-
-    public async handle(
-        window: AppWindow,
-        { remoteOrigin, name, description }: IPCEvents[IPCEventType.vcsCreateServerProject]["data"],
-    ): Promise<RequestStatus<VcsServerProjectOutcome>> {
-        return this.tryUse(async () =>
-            window.app.getVcsManager().createServerProject(remoteOrigin, name, description));
-    }
-}
-
 /** Put the project that is open on to a server, in the three steps that make it reachable. */
 export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublishProject> {
     readonly name = IPCEventType.vcsPublishProject;
@@ -796,9 +782,15 @@ export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetSer
         window: AppWindow,
         { remoteOrigin }: IPCEvents[IPCEventType.vcsForgetServer]["data"],
     ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
-        return this.tryUse(async () => ({
-            servers: await window.app.getVcsManager().forgetServer(remoteOrigin),
-        }));
+        return this.tryUse(async () => {
+            // The session goes first, and here rather than inside the manager: a client
+            // holding a token that has just been deleted would go on reconnecting with
+            // it until something else closed it. Ending it before the record goes means
+            // there is never a moment where Studio is signed in to a server it has
+            // forgotten.
+            window.app.getTeamManager().forget(remoteOrigin);
+            return { servers: await window.app.getVcsManager().forgetServer(remoteOrigin) };
+        });
     }
 }
 

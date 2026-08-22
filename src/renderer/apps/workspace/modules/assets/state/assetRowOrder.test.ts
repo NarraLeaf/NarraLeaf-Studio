@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { createEmptyAssetCategoryRecord } from "./assetCategoryRecord";
 import {
     iconViewRowOrder,
-    listViewRowOrder,
+    listViewCategoryRows,
     type AssetSetRowCell,
     type AssetSetRows,
     type ListViewRowOrderInput,
@@ -54,9 +54,16 @@ function categoryRecord<T>(images: T[]): Record<AssetCategory, T[]> {
     return record;
 }
 
-function order(input: Partial<ListViewRowOrderInput> & Pick<ListViewRowOrderInput, "assets" | "groups">): string[] {
-    return listViewRowOrder({
-        openCategories: [AssetCategory.Image],
+/**
+ * The keys of every row the tree draws, which is the projection `AssetsListView` publishes as its
+ * range: the sections it is drawing, in order, each walked once. The image section unless a test
+ * says otherwise.
+ */
+function order(
+    input: Partial<ListViewRowOrderInput> & Pick<ListViewRowOrderInput, "assets" | "groups">,
+    openCategories: readonly AssetCategory[] = [AssetCategory.Image],
+): string[] {
+    const full: ListViewRowOrderInput = {
         rootAssetSets: createEmptyAssetCategoryRecord<AssetSetRows>(),
         assetSets: createEmptyAssetCategoryRecord<AssetSetRows>(),
         memberAssetIds: new Set<string>(),
@@ -64,7 +71,12 @@ function order(input: Partial<ListViewRowOrderInput> & Pick<ListViewRowOrderInpu
         expandedAssetSets: new Set<string>(),
         isNarrowed: false,
         ...input,
-    });
+    };
+    return ASSET_CATEGORY_ORDER
+        .filter(category => openCategories.includes(category))
+        .flatMap(category => listViewCategoryRows(category, full))
+        .map(row => row.selectionKey)
+        .filter((key): key is string => key !== null);
 }
 
 /** What a shift range from one row to another would mark. */
@@ -97,7 +109,7 @@ const reported = {
     expandedGroups: new Set([BACKDROPS.id]),
 };
 
-describe("listViewRowOrder", () => {
+describe("the tree's row order", () => {
     it("does not put a set's members in the folder they were imported into", () => {
         const keys = order(reported);
 
@@ -191,11 +203,10 @@ describe("listViewRowOrder", () => {
         const noGroups = createEmptyAssetCategoryRecord<AssetGroup>();
 
         expect(order({ assets: library, groups: noGroups })).toEqual(["asset:title"]);
-        expect(order({
-            assets: library,
-            groups: noGroups,
-            openCategories: [AssetCategory.Image, AssetCategory.Media],
-        })).toEqual(["asset:title", "asset:theme"]);
+        expect(order(
+            { assets: library, groups: noGroups },
+            [AssetCategory.Image, AssetCategory.Media],
+        )).toEqual(["asset:title", "asset:theme"]);
     });
 
     it("orders a folder's own rows sets first, then folders, then files", () => {

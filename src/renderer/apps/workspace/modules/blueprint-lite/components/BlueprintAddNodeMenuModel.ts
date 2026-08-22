@@ -132,7 +132,7 @@ export function filterPreparedBlueprintAddNodeEntries(
 
     const queryTokens = tokenizeSearchText(query).map<PreparedQueryToken>(token => ({
         token,
-        compact: compactSearchText(token),
+        compact: readSearchTextForms(token).compact,
     }));
     if (queryTokens.length === 0) {
         return inCategory.map(item => item.entry);
@@ -208,11 +208,10 @@ function searchFieldsFor(
 }
 
 function prepareSearchField(field: BlueprintAddNodeSearchField): PreparedSearchField {
-    const normalized = normalizeSearchText(field.text);
-    const words = splitSearchWords(normalized);
+    const { normalized, compact, words } = readSearchTextForms(field.text);
     return {
         normalized,
-        compact: stripNonAlphanumeric(normalized),
+        compact,
         words,
         acronym: words.map(word => word[0]).join(""),
         weight: field.weight,
@@ -312,15 +311,50 @@ function scoreFuzzySubsequence(text: string, token: string): number | null {
     return firstIndex + gapPenalty / 2 + Math.max(0, text.length - token.length) / 20;
 }
 
+/** Copied out of the cache: the caller owns its array, the cache keeps its own. */
 function tokenizeSearchText(text: string): string[] {
-    return splitSearchWords(normalizeSearchText(text));
+    return [...readSearchTextForms(text).words];
 }
 
-function splitSearchWords(normalized: string): string[] {
-    return normalized
-        .split(/[^\p{L}\p{N}]+/u)
-        .map(token => token.trim())
-        .filter(Boolean);
+/** The three shapes of one string the scorer compares against. */
+type SearchTextForms = {
+    normalized: string;
+    compact: string;
+    words: string[];
+};
+
+/**
+ * How many strings the form cache holds before it starts over.
+ *
+ * The catalogue's own fields are a fixed set a few thousand strings wide; only what the author
+ * types adds to it, and slowly. The cap is a backstop against a long session, not a working limit.
+ */
+const SEARCH_TEXT_FORM_LIMIT = 8192;
+const searchTextForms = new Map<string, SearchTextForms>();
+
+/**
+ * Normalised forms of `text`, computed once per distinct string.
+ *
+ * Each keystroke in the palette scores every entry against ~10 fields, and each field was
+ * NFKD-normalised, compacted and split from scratch every time — the same few thousand catalogue
+ * strings, re-derived on every letter.
+ */
+function readSearchTextForms(text: string): SearchTextForms {
+    const cached = searchTextForms.get(text);
+    if (cached) {
+        return cached;
+    }
+    const normalized = normalizeSearchText(text);
+    const forms: SearchTextForms = {
+        normalized,
+        compact: normalized.replace(/[^\p{L}\p{N}]+/gu, ""),
+        words: normalized.split(/[^\p{L}\p{N}]+/u).map(token => token.trim()).filter(Boolean),
+    };
+    if (searchTextForms.size >= SEARCH_TEXT_FORM_LIMIT) {
+        searchTextForms.clear();
+    }
+    searchTextForms.set(text, forms);
+    return forms;
 }
 
 function normalizeSearchText(text: string): string {
@@ -331,10 +365,3 @@ function normalizeSearchText(text: string): string {
         .trim();
 }
 
-function compactSearchText(text: string): string {
-    return stripNonAlphanumeric(normalizeSearchText(text));
-}
-
-function stripNonAlphanumeric(normalized: string): string {
-    return normalized.replace(/[^\p{L}\p{N}]+/gu, "");
-}

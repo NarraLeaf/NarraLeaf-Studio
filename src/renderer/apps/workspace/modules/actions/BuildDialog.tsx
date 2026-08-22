@@ -23,7 +23,6 @@ import {
     type BuildPreflightSection,
     type BuildPreflightSeverity,
     type GameBuildArch,
-    type GameBuildCompression,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildPlatform,
@@ -45,7 +44,6 @@ import {
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { countAppTagStoryUsage, type AppTagStoryUsage } from "@shared/story/appTagStoryUsage";
 import {
-    BUILD_COMPRESSIONS,
     SIGNING_PLATFORMS,
     type SigningConfiguration,
 } from "@/lib/workspace/project/configuration";
@@ -1460,25 +1458,9 @@ export function OutputSection({
                 />
             </div>
 
-            <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-fg">{t("build.output.compression")}</span>
-                <Select
-                    size="sm"
-                    value={state.compression}
-                    onChange={value => onChange({ ...state, compression: value as GameBuildCompression })}
-                    options={BUILD_COMPRESSIONS.map(level => ({
-                        value: level,
-                        label: t(`build.output.compression${capitalize(level)}` as "build.output.compressionStore"),
-                    }))}
-                />
-            </div>
             <Findings findings={findings} section="output" />
         </div>
     );
-}
-
-function capitalize(value: string): string {
-    return `${value[0].toUpperCase()}${value.slice(1)}`;
 }
 
 /**

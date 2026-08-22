@@ -1,6 +1,6 @@
 import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 import { getInterface } from "@/lib/app/bridge";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetType, isBundleAssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetCreateErrorCode, type Asset, type AssetsMap } from "@/lib/workspace/services/assets/types";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -36,6 +36,14 @@ export interface TransferredAssetPort {
      * outcome as {@link has} and not a failure: the reference already resolves.
      */
     create(entry: AssetTransferEntry, bytes: Uint8Array): Promise<"created" | "present" | "failed">;
+    /**
+     * Copy a directory-backed asset - a model bundle - under the id it had in the source project.
+     *
+     * Separate from {@link create} because a bundle has no bytes to hand over: its manifest,
+     * textures and motions are a tree, and what makes it one asset is that the tree arrives whole.
+     * Answers the same three outcomes, and `"failed"` promises that nothing was registered.
+     */
+    createFromDirectory(entry: AssetTransferEntry): Promise<"created" | "present" | "failed">;
     /** Whether this window's project data has frozen. Asked again after every await. */
     isFrozen(): boolean;
 }
@@ -106,15 +114,22 @@ export async function importTransferredAssets(
         if (!wanted.has(entry.assetId)) {
             continue;
         }
-        const bytes = await port.read(entry.sourcePath);
-        if (port.isFrozen()) {
-            return { ...result, frozen: true };
+        // A directory-backed asset is copied rather than read: there is no single file to hand
+        // over, and the grant redeemed for it reaches the whole tree.
+        let outcome: "created" | "present" | "failed";
+        if (entry.isDirectory) {
+            outcome = await port.createFromDirectory(entry);
+        } else {
+            const bytes = await port.read(entry.sourcePath);
+            if (port.isFrozen()) {
+                return { ...result, frozen: true };
+            }
+            if (!bytes) {
+                result.failed += 1;
+                continue;
+            }
+            outcome = await port.create(entry, bytes);
         }
-        if (!bytes) {
-            result.failed += 1;
-            continue;
-        }
-        const outcome = await port.create(entry, bytes);
         if (port.isFrozen()) {
             return { ...result, frozen: true };
         }
@@ -147,10 +162,8 @@ export function findLibraryAsset(library: AssetsMap, assetId: string): Asset | n
  * The files behind a set of asset ids, described for an offer.
  *
  * An id with no library record is skipped: it names an asset set, or a reference this project has
- * already lost, and either way there are no bytes to vouch for. A model bundle is skipped too - it
- * is a directory, and a redeemed grant reaches the path it names and nothing below it, so a model
- * travels as an unresolved reference (which the pasting project reports) rather than as a read that
- * finds half a character.
+ * already lost, and either way there is nothing to vouch for. A model bundle is described as a
+ * directory, which is what earns its grant the reach its textures need.
  */
 export function buildAssetTransferEntries(
     assetsService: AssetsService,
@@ -169,7 +182,7 @@ export function buildAssetTransferEntries(
     const entries: AssetTransferEntry[] = [];
     for (const assetId of assetIds) {
         const asset = findLibraryAsset(library, assetId);
-        if (!asset || asset.type === AssetType.Model) {
+        if (!asset) {
             continue;
         }
         entries.push({
@@ -177,6 +190,7 @@ export function buildAssetTransferEntries(
             // A record with no name would be refused, and one blank name refuses the whole manifest.
             fileName: asset.name.trim() || asset.id,
             type: asset.type,
+            ...(isBundleAssetType(asset.type) ? { isDirectory: true } : {}),
             sourcePath: localPathOf(asset.id),
         });
     }
@@ -241,6 +255,29 @@ export function createTransferredAssetPort(
                 // An id this library turns out to hold already is the outcome the reference wanted:
                 // it resolves. Nothing was written, and a second paste of the same clipboard lands
                 // here rather than duplicating the file.
+                return created.code === AssetCreateErrorCode.IdInUse ? "present" : "failed";
+            } catch (error) {
+                console.warn(`[assetTransfer] could not import "${entry.fileName}"`, error);
+                return "failed";
+            }
+        },
+        createFromDirectory: async (entry) => {
+            const type = toAssetType(entry.type);
+            // A type that is not directory-backed has no tree to copy, whatever the entry claimed:
+            // the two halves have to agree before anything is written.
+            if (!type || !isBundleAssetType(type)) {
+                return "failed";
+            }
+            try {
+                const created = await assetsService.createLocalBundleAssetFromDirectory(type, entry.sourcePath, {
+                    id: entry.assetId,
+                    // Named by the record rather than by the folder: the folder it is read out of is
+                    // the source project's content shard, whose own name is the asset id.
+                    name: entry.fileName,
+                });
+                if (created.success) {
+                    return "created";
+                }
                 return created.code === AssetCreateErrorCode.IdInUse ? "present" : "failed";
             } catch (error) {
                 console.warn(`[assetTransfer] could not import "${entry.fileName}"`, error);

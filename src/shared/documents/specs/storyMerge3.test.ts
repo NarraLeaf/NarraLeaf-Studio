@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {STORY_DOCUMENT_PATH, storyDocumentSpec} from "@shared/documents/specs";
 import {encodeCanonicalJson} from "@shared/documents/canonicalJson";
+import {applyMergeDecisions, mergeDecisionKey} from "@shared/documents/mergeApply";
 import {DocumentCorruptError, DocumentParseContext} from "@shared/documents/types";
 import type {StoryBlock, StoryChapter, StoryDocument, StoryScene} from "@shared/types/story/document";
 import {STORY_DOCUMENT_SCHEMA_VERSION} from "@shared/types/story/document";
@@ -78,18 +79,34 @@ function textOf(document: StoryDocument, sceneId: string, blockId: string): unkn
     return (blockOf(document, sceneId, blockId).payload as {text?: {value?: unknown}}).text?.value;
 }
 
-/**
- * The one property a merged document must have at every moment: it can be written.
- *
- * NOT through `storyDocumentSpec.serialize`, which throws by design - D4 made it refuse because
- * `parse` does not run the story migration, so writing back would save a document that was never
- * migrated. The canonical encoder is what a write would use either way, and it is the strict half:
- * it rejects `undefined`, which is the shape a half-built merge would have. The refusal itself is
- * pinned separately, below.
- */
+/** Write it the way the spec writes it, and read it back the way the spec reads it. */
 function reparse(document: StoryDocument): StoryDocument {
-    const text = encodeCanonicalJson(document);
+    const text = storyDocumentSpec.serialize(document);
     return storyDocumentSpec.parse(JSON.parse(text), contextFor(text));
+}
+
+/**
+ * The one property a merged document must have at every moment: it can be written, and writing it
+ * settles.
+ *
+ * **The assertion is a fixed point, not an identity**, and the difference matters. It used to read
+ * `reparse(merged) === merged`, which was true only while `parse` was a near-identity that did not
+ * migrate; now `parse` migrates and normalizes, so it legitimately fills a hand-built fixture in -
+ * `entrySceneId`, a scene's `description` - the first time it sees one. What must be true is that
+ * it does so ONCE: parse, write, read, and you have the same document, forever. That is the
+ * invariant `story.ts` states, and a merge whose result kept drifting on every write would commit
+ * bytes the author's decision list never described.
+ *
+ * It also exercises the strict half of the writer. `encodeCanonicalJson` throws on a key holding
+ * `undefined`, which is the shape a half-built merge has, so a merge that produced one fails here
+ * rather than on the author's disk.
+ */
+function expectWritable(document: StoryDocument): void {
+    const once = reparse(document);
+    expect(reparse(once)).toStrictEqual(once);
+    // Bytes, not only structure: the same document has to encode to the same file every time, or a
+    // resolve would land in history as a change to every line.
+    expect(storyDocumentSpec.serialize(reparse(once))).toBe(storyDocumentSpec.serialize(once));
 }
 
 describe("story merge3 is declared where it can be reached", () => {
@@ -112,7 +129,7 @@ describe("story merge3: what merges", () => {
         expect(outcomes(merged.decisions)).toEqual([["scenes/s1", "auto-mine"], ["scenes/s2", "auto-theirs"]]);
         expect(textOf(merged.document, "s1", "b1")).toBe("hello there");
         expect(textOf(merged.document, "s2", "b2")).toBe("fine wares");
-        expect(reparse(merged.document)).toStrictEqual(merged.document);
+        expectWritable(merged.document);
     });
 
     it("merges two rows of one scene, one edited by each side", () => {
@@ -129,7 +146,7 @@ describe("story merge3: what merges", () => {
         ]);
         expect(textOf(merged.document, "s1", "b1")).toBe("hello there");
         expect(textOf(merged.document, "s1", "b2")).toBe("farewell");
-        expect(reparse(merged.document)).toStrictEqual(merged.document);
+        expectWritable(merged.document);
     });
 
     it("merges two different fields of the SAME row", () => {
@@ -147,7 +164,7 @@ describe("story merge3: what merges", () => {
         ]);
         expect(blockOf(merged.document, "s1", "b1").disabled).toBe(true);
         expect(textOf(merged.document, "s1", "b1")).toBe("hello there");
-        expect(reparse(merged.document)).toStrictEqual(merged.document);
+        expectWritable(merged.document);
     });
 
     it("conflicts on the SAME field of the same row, and holds base until it is settled", () => {
@@ -169,7 +186,7 @@ describe("story merge3: what merges", () => {
         // Base, not a side. Holding a side would be taking the decision with nothing saying so.
         expect(textOf(merged.document, "s1", "b1")).toBe("hello");
         // Half resolved and still a document - the property that lets an author stop midway.
-        expect(reparse(merged.document)).toStrictEqual(merged.document);
+        expectWritable(merged.document);
     });
 
     it("takes an ordered array the author arranged when only one side changed it", () => {
@@ -205,7 +222,7 @@ describe("story merge3: what merges", () => {
         expect((merged.decisions[0].theirs.value as StoryChapter[]).map(one => one.id)).toEqual(["ch2", "ch3", "ch1"]);
         // Base's order until the author picks - no interleave, no third arrangement.
         expect(merged.document.chapters.map(one => one.id)).toEqual(["ch1", "ch2", "ch3"]);
-        expect(reparse(merged.document)).toStrictEqual(merged.document);
+        expectWritable(merged.document);
     });
 
     it("treats an absent base as add/add rather than as an empty story", () => {
@@ -360,7 +377,7 @@ describe("story merge3: the refusal", () => {
         expect(merged.document.scenes.s1.rootBlockIds).toEqual(["b1", "b2", "b3", "b4"]);
         expect(textOf(merged.document, "s1", "b2")).toBe("b, rewritten");
         expect(Object.keys(merged.document.scenes.s1.blocks).sort()).toEqual(["b1", "b2", "b3", "b4"]);
-        expect(reparse(merged.document)).toStrictEqual(merged.document);
+        expectWritable(merged.document);
     });
 
     it("does NOT refuse when both sides made the SAME rearrangement", () => {
@@ -378,15 +395,60 @@ describe("story merge3: the refusal", () => {
 });
 
 describe("story merge3: writing back", () => {
-    it("cannot be committed yet, because the story spec still refuses to serialize", () => {
-        // Pinned rather than assumed. `merge3` is correct and testable today; the write-back step
-        // calls `serialize`, and this is where it stops. Whoever lifts it
-        // has to move the story migration into shared code first - see the note on `story.ts`.
+    it("can be committed: the spec writes canonical bytes with a trailing newline", () => {
+        // The inverse of what this case used to pin. `serialize` refused while `parse` did not run
+        // the story migration, because writing back would have saved a document that was never
+        // migrated. Both halves of the migration are in shared code now, so the refusal is gone -
+        // and the thing that replaced it is the invariant on `story.ts`, exercised below.
         const base = story([scene("s1", "Prologue", [block("b1", "hello")])]);
         const merged = merge3(base, base, base);
 
-        expect(() => storyDocumentSpec.serialize(merged.document)).toThrow(/read-only/);
-        // The document itself is sound; only the spec's writer refuses.
-        expect(reparse(merged.document)).toStrictEqual(merged.document);
+        const text = storyDocumentSpec.serialize(merged.document);
+        expect(text).toBe(encodeCanonicalJson(merged.document));
+        expect(text.endsWith("\n")).toBe(true);
+        expectWritable(merged.document);
+    });
+
+    it("settles a real conflict all the way to the bytes a resolve would commit", () => {
+        // End to end, in the order `readMergeDocument` / `resolveDocumentChanges` run it: parse the
+        // three sides the way the merge's own sidecar files would be parsed, merge, answer the
+        // conflict, apply, serialize. This is the whole second tier for a story in one case.
+        const baseText = encodeCanonicalJson(story([scene("s1", "Prologue", [block("b1", "hello")])]));
+        const mineText = encodeCanonicalJson(story([scene("s1", "Prologue", [block("b1", "hello, mine")])]));
+        const theirsText = encodeCanonicalJson(story([scene("s1", "Prologue", [block("b1", "hello, theirs")])]));
+        const parse = (text: string) => storyDocumentSpec.parse(JSON.parse(text), contextFor(text));
+
+        const merged = merge3(parse(baseText), parse(mineText), parse(theirsText));
+
+        expect(merged.conflicts).toBe(1);
+        const [conflict] = merged.decisions;
+        expect(conflict.outcome).toBe("conflict");
+
+        const settled = applyMergeDecisions<StoryDocument>(
+            STORY_PATH,
+            merged.document,
+            merged.decisions,
+            {[mergeDecisionKey(conflict.path)]: "theirs"},
+        );
+        const written = storyDocumentSpec.serialize(settled);
+
+        // The author picked "theirs", so the committed bytes say so - and they are byte-identical to
+        // simply having written their side, which is the property a resolve is judged on.
+        expect(textOf(parse(written), "s1", "b1")).toBe("hello, theirs");
+        expect(written).toBe(storyDocumentSpec.serialize(parse(theirsText)));
+    });
+
+    it("refuses a side written by a newer Studio instead of quietly down-levelling it", () => {
+        // The exact failure the old `serialize` refusal existed to prevent, now pinned on `parse`
+        // where it belongs: a merge whose sides include a document from a newer Studio must stop,
+        // not migrate it DOWN to this build's schema and write that back over the newer fields.
+        const newer = {
+            ...story([scene("s1", "Prologue", [block("b1", "hello")])]),
+            schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION + 1,
+        };
+        const text = encodeCanonicalJson(newer);
+
+        expect(() => storyDocumentSpec.parse(JSON.parse(text), contextFor(text)))
+            .toThrow(/newer version of Studio/);
     });
 });

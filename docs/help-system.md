@@ -149,7 +149,8 @@ topics; use `related` to join them.
 ## 7. Adding a topic
 
 1. Write `title` and `body` under `help.topics.<id>` in `src/shared/i18n/catalog/en/help.ts`, then
-   the same keys in `zh/help.ts`. The parity test fails if one side is missing.
+   the same keys in `zh/help.ts` and `ja/help.ts`. The parity test fails if one of them is
+   missing.
 2. Add the entry to `HELP_TOPICS` in `src/renderer/lib/help/helpTopics.ts`: its section, and
    optionally `shortcuts` (keybinding catalog ids, rendered as chords) and `related`.
 3. Tag the surface it describes with `data-help-topic="<id>"` so `F1` finds it. Panel headers can

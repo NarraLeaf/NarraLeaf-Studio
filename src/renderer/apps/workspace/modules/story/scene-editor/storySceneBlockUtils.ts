@@ -1,6 +1,6 @@
 import { placementWordFor } from "./commands/transitions";
 import { Aperture, Blocks,
-    Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+    Bookmark, Clock, CornerUpLeft, Eye, FileText, FlagTriangleRight, GitBranch, Image, Layers, LogOut, MessageSquare, Minus, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
@@ -471,12 +471,13 @@ export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
     }
-    // `label`, `goto`, `break` and `cut` are the control rows that are NOT containers: a label is a
-    // point, a goto is a move, a break is an exit and a cut is an ending - none has a body.
-    // Everything else under `control` groups rows.
+    // `label`, `goto`, `break`, `cut` and `ending` are the control rows that are NOT containers: a
+    // label is a point, a goto is a move, a break is an exit, a cut is where one edition stops and an
+    // ending is where the story does - none has a body. Everything else under `control` groups rows.
     if (block.kind === "control"
         && (block.payload.control === "label" || block.payload.control === "goto"
-            || block.payload.control === "break" || block.payload.control === "cut")) {
+            || block.payload.control === "break" || block.payload.control === "cut"
+            || block.payload.control === "ending")) {
         return false;
     }
     return block.kind === "control" ||
@@ -499,6 +500,11 @@ export function isTextEditableBlock(block: StoryBlock): boolean {
  */
 export function hasInspector(block: StoryBlock): boolean {
     if (block.kind === "control" && (block.payload.control === "condition" || block.payload.control === "conditionBranch")) {
+        return false;
+    }
+    // A blank line has no payload at all, so a card for it would be a heading over nothing. Opening
+    // one opens the line editor instead (see `activateBlockForInspectorOrOp`).
+    if (block.kind === "empty") {
         return false;
     }
     return true;
@@ -552,11 +558,16 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
     goto: CornerUpLeft,
     break: LogOut,
     cut: SeparatorHorizontal,
+    ending: FlagTriangleRight,
     control: Settings2,
     jump: Route,
     invalid: TriangleAlert,
     declaration: Variable,
     note: StickyNote,
+    // The gutter of a blank line is blank too - the row suppresses the plate entirely (see
+    // `StoryRowGutter`). This entry exists because the table is exhaustive, and a dash is what it
+    // would draw if some other surface ever asked.
+    empty: Minus,
 };
 
 /**
@@ -888,6 +899,11 @@ export function planRowBackspaceReplacement(
     }
     const block = scene.blocks[ids[0]];
     if (!block || isTextEditableBlock(block) || block.childrenIds.length > 0) {
+        return null;
+    }
+    // A row that is ALREADY the blank line has nowhere left to be demoted to: this press is the
+    // ladder's second rung, and the plain delete below it is what the author is asking for.
+    if (block.kind === "empty") {
         return null;
     }
     const parent = block.parentId ? scene.blocks[block.parentId] : null;

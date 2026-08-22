@@ -100,7 +100,7 @@ function isBranchEntry(block: StoryBlock): boolean {
 
 /** Rows with no runtime behaviour at all; emitting them would only add compiler noise. */
 function isInertKind(block: StoryBlock): boolean {
-    return block.kind === "note";
+    return block.kind === "note" || block.kind === "empty";
 }
 
 class PlanBuilder {
@@ -147,6 +147,14 @@ class PlanBuilder {
             return false;
         }
         this.steps.push({ blockId: block.id, bodyOnly, insideNvl: this.isInsideNvl(block) });
+        // An `/ending` row is emitted and then ends the walk: it records the ending and hands the
+        // player to a page, so nothing after it in this scene is played. Reported as `sceneEnd`
+        // rather than as a reason of its own - the scene really does run no further, and every
+        // consumer already treats that as the ordinary way a plan finishes.
+        if (block.kind === "control" && block.payload.control === "ending") {
+            this.stopped = true;
+            return false;
+        }
         return true;
     }
 

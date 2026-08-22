@@ -515,8 +515,8 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
-        displayName: "Make JSON Object",
-        keywords: ["json", "object", "make", "map", "struct", "field"],
+        displayName: "Make Object",
+        keywords: ["json", "object", "make", "map", "struct", "field", "record"],
         pins: [out("result", "Object", "json")],
         dynamicInputPins: {
             storageKey: JSON_OBJECT_INPUT_PINS_KEY,
@@ -533,8 +533,8 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
-        displayName: "Make JSON Array",
-        keywords: ["json", "array", "make", "list", "items"],
+        displayName: "Make Array",
+        keywords: ["json", "array", "make", "list", "items", "collection"],
         pins: [out("result", "Array", BLUEPRINT_VALUE_TYPE_ARRAY)],
         dynamicInputPins: {
             storageKey: JSON_ARRAY_INPUT_PINS_KEY,
@@ -546,8 +546,12 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         },
     }),
     dataNode({
+        // Superseded by Array Length, which answers the same question about the same values. Kept
+        // registered so graphs that already hold one keep running, and out of the palette so the
+        // Data category stops offering two names for one operation.
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
         displayName: "JSON Array Length",
+        hideInPalette: true,
         keywords: ["json", "array", "length", "count", "size"],
         pins: [
             { id: "value", kind: "input", semantic: "data", valueType: BLUEPRINT_VALUE_TYPE_ARRAY, label: "Array" },
@@ -555,8 +559,10 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         ],
     }),
     dataNode({
+        // Superseded by Object Merge; see the note on JSON Array Length.
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
         displayName: "Merge JSON Object",
+        hideInPalette: true,
         keywords: ["json", "object", "merge", "combine"],
         pins: [jsonIn("a", "A"), jsonIn("b", "B"), out("result", "Object", "json")],
     }),

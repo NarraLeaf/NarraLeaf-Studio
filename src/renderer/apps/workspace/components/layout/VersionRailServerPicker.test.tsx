@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import type { VcsServerSession } from "@shared/types/vcs";
 import { CommitForm, ServerPickerDialog, ServerSection } from "./VersionRail";
+import { registerTeamPresenceBridge } from "../../modules/team/teamPresenceController";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 
 /**
@@ -18,8 +18,8 @@ import type { VersionSurface } from "../../hooks/useVersionSurface";
  * The rail section that reaches this dialog is pinned in the same file, for the same reason: the
  * two are one decision about how much weight a once-a-year act is given, and the drift is always
  * in the direction of giving it more. So the section's own suite below holds the shape - Send and
- * Get a press away, everything rare behind the menu, and the server line reading as a line rather
- * than as the button that covers the rail.
+ * Get a press away, the server line reading as a line, and everything that CHANGES the destination
+ * living in the Team panel rather than creeping back into the column beside them.
  *
  * Between them are the two suites about the author name, one per place the rail asks for it. They
  * are one rule read twice, and the rule is that nobody is asked a question the destination is about
@@ -40,11 +40,21 @@ vi.mock("@/apps/workspace/context", () => ({ useWorkspace: () => ({ context: nul
 
 const bridge = vi.hoisted(() => ({
     servers: [] as VcsServerSession[],
+    /** What each server answers when the dialog asks what it holds, keyed by origin. */
+    projects: {} as Record<string, unknown[]>,
     launchSettings: vi.fn(),
+    listServerProjects: vi.fn(),
 }));
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
-        vcs: { listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }) },
+        vcs: {
+            listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
+            listServerProjects: bridge.listServerProjects,
+            // The add sequence is mounted from the last row of the list now. Nothing here
+            // reaches for these until it is pressed, so a stub is enough to keep it honest.
+            probeServer: () => Promise.resolve({ success: false }),
+            addServer: () => Promise.resolve({ success: false }),
+        },
         app: { launchSettings: bridge.launchSettings },
     }),
 }));
@@ -52,7 +62,10 @@ vi.mock("@/lib/app/bridge", () => ({
 afterEach(() => {
     cleanup();
     bridge.servers = [];
+    bridge.projects = {};
     bridge.launchSettings.mockClear();
+    bridge.listServerProjects.mockReset().mockImplementation((origin: string) =>
+        Promise.resolve({ success: true, data: { ok: true, projects: bridge.projects[origin] ?? [] } }));
 });
 
 function session(origin: string, displayName: string, name?: string): VcsServerSession {
@@ -86,10 +99,15 @@ function picker(remote: string | null, overrides: Partial<VersionSurface> = {}) 
     return { onClose, surface };
 }
 
-/** The dialog's own Connect button, which is in the modal's footer rather than its body. */
+/**
+ * The dialog's own primary button, which is in the modal's footer rather than its body.
+ *
+ * Found by its seam rather than by its words, because the words are the point: it says
+ * "Connect" for a server that already holds this project and "Create and send" for one that
+ * has never seen it, and a helper keyed on one of those would silently stop finding the other.
+ */
 function connectButton(): HTMLElement {
-    const button = [...document.querySelectorAll("button")]
-        .find(node => node.textContent === "workspace.shell.versionControl.server.save");
+    const button = document.querySelector<HTMLElement>("[data-vcs-seam='picker-connect']") ?? undefined;
     if (button === undefined) throw new Error("no Connect button on screen");
     return button;
 }
@@ -144,13 +162,6 @@ function seam(name: string): HTMLElement {
     return node;
 }
 
-/** What the overflow menu offers, in the order it offers it. Separators read as nothing. */
-function menuRows(): string[] {
-    const menu = document.querySelector("[data-context-menu='true']");
-    if (menu === null) return [];
-    return [...menu.children].map(row => row.textContent ?? "").filter(text => text !== "");
-}
-
 /** The rows, in the order they are drawn, so "at the end of the list" is a real assertion. */
 function rows(): string[] {
     return [...document.querySelectorAll("[data-server-choice], [data-vcs-seam='picker-add']")]
@@ -173,14 +184,17 @@ describe("the server picker", () => {
             .toContain("workspace.shell.versionControl.server.picker.empty");
     });
 
-    it("opens Settings at the servers panel and closes, rather than asking for a token here", async () => {
+    it("runs the add sequence here rather than sending the reader to another window", async () => {
         const { onClose } = picker(null);
         await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-add']")).not.toBeNull());
 
         fireEvent.click(document.querySelector("[data-vcs-seam='picker-add']")!);
 
-        expect(bridge.launchSettings).toHaveBeenCalledWith({ highlight: SERVERS_PANEL_SETTING_KEY });
-        expect(onClose).toHaveBeenCalled();
+        // The same sequence Settings mounts, over the top of this dialog. It used to open
+        // Settings in another window and close this one, which lost the project being connected.
+        expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull();
+        expect(bridge.launchSettings).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it("calls a server by the name it gave, with its address still under it", async () => {
@@ -202,8 +216,7 @@ describe("the server picker", () => {
 
         await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
         expect(document.querySelector("[aria-pressed='true']")).toBeNull();
-        // The name field belongs to a chosen server, and the address field to the option below
-        // the add row; neither has been asked for yet.
+        // The name field belongs to a chosen server, and nothing has been chosen yet.
         expect(document.querySelectorAll("input")).toHaveLength(0);
     });
 
@@ -216,17 +229,16 @@ describe("the server picker", () => {
         expect(document.querySelector<HTMLInputElement>("input")?.value).toBe("my-game");
     });
 
-    it("keeps the address field, below the add row, for a server nobody signs in to", async () => {
+    it("names the server a project uses that this machine has no account on", async () => {
         bridge.servers = [session(ONE, "ada")];
         picker("lore://plain.example.lan:41337/my-game");
 
-        const body = await waitFor(() => document.querySelector("[data-vcs-seam='server-picker']")!);
-        const nodes = [...body.querySelectorAll("[data-vcs-seam='picker-add'], [data-vcs-seam='picker-address']")];
-        expect(nodes.map(node => node.getAttribute("data-vcs-seam"))).toEqual(["picker-add", "picker-address"]);
-        // Opened on it, with the address in it: this is the one place a project pointed at a
-        // bare server can read or change where its work goes.
-        expect(document.querySelector<HTMLInputElement>("input")?.value)
-            .toBe("lore://plain.example.lan:41337/my-game");
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-unknown']")).not.toBeNull());
+        // A statement with the host in it, and the add row underneath. It used to be an address
+        // field opened with the address already in it, which reads as an invitation to retype
+        // the one thing that was never wrong.
+        expect(document.querySelector("[data-vcs-seam='picker-address']")).toBeNull();
+        expect(document.querySelectorAll("input")).toHaveLength(0);
     });
 });
 
@@ -238,8 +250,8 @@ describe("the server picker", () => {
  * without it is the state this whole dialog used to leave behind - a project that pushes
  * from the one machine that set it up and cannot be cloned from any other.
  *
- * A typed address is a bare `loreserver` with nothing in front of it. There is nothing
- * to record it in, so it keeps what it always had.
+ * There is only the one kind now. A typed address wrote a remote and nothing else, which is
+ * what a `loreserver` with nothing in front of it could be given, and that field is gone.
  */
 describe("what Connect does", () => {
     it("puts the project on a server chosen from the list, rather than only pointing at it", async () => {
@@ -248,7 +260,12 @@ describe("what Connect does", () => {
 
         await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
         fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
-        fireEvent.change(document.querySelector("input")!, { target: { value: "driftwood" } });
+        // The name field is drawn once the server has said what it holds: whether this
+        // project is already one of them is what decides that there is a name to ask for.
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+        fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+            target: { value: "driftwood" },
+        });
         fireEvent.click(connectButton());
 
         expect(surface.publish).toHaveBeenCalledWith(ONE, "driftwood");
@@ -256,19 +273,116 @@ describe("what Connect does", () => {
         await waitFor(() => expect(onClose).toHaveBeenCalled());
     });
 
-    it("writes the address alone for a server nobody signs in to, because there is nothing to ask", async () => {
-        bridge.servers = [session(ONE, "ada")];
-        const { surface } = picker(null);
+    /**
+     * What this project becomes on the server, which is the question the dialog never asked.
+     *
+     * Choosing a server used to be the whole of it, and what the project was called there was
+     * a text box seeded from the folder name. Two acts hid behind that box: a name nobody had
+     * used made a project and sent it, and a name somebody had used was refused after the
+     * dialog had closed. Neither was said out loud before the button was pressed.
+     */
+    describe("what this project is on that server", () => {
+        const REPOSITORY = "019fda5ba4fe799096aaab7585aa4722";
 
-        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
-        fireEvent.click(seam("picker-address").querySelector("button")!);
-        fireEvent.change(document.querySelector("input")!, {
-            target: { value: "lore://plain.example.lan:41337/my-game" },
+        function held(origin: string, projects: { id: string; name: string }[]) {
+            bridge.projects[origin] = projects.map(entry => ({
+                ...entry, description: "", createdAt: 0, remote: `${origin}/${entry.name}`,
+            }));
+        }
+
+        it("states the name a server already holds this project under, and points at that", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            // A colleague published it, or this author did from another machine. The folder
+            // here is called something else entirely, which is the case a name match breaks.
+            held(ONE, [{ id: REPOSITORY, name: "driftwood" }]);
+            const { surface } = picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+
+            // The name itself rides in the sentence's parameter, which this file's translator
+            // stub drops; what is asserted here is that the sentence is the one that names it,
+            // and the name it carries is asserted on the call below.
+            await waitFor(() => expect(seam("picker-already").textContent)
+                .toContain("workspace.shell.versionControl.server.picker.already"));
+            // Nothing left to decide, so nothing to type.
+            expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).toBeNull();
+
+            fireEvent.click(connectButton());
+            // The server's own name for it. The folder name would be an address that server
+            // does not answer to, and nothing downstream would correct it.
+            expect(surface.publish).toHaveBeenCalledWith(ONE, "driftwood");
         });
-        fireEvent.click(connectButton());
 
-        expect(surface.setRemote).toHaveBeenCalledWith("lore://plain.example.lan:41337/my-game");
-        expect(surface.publish).not.toHaveBeenCalled();
+        it("matches on the repository id and never on the name", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            // Same name, different work: the case that would hand this project to somebody
+            // else's repository.
+            held(ONE, [{ id: "ffffffffffffffffffffffffffffffff", name: "driftwood" }]);
+            picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+
+            await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+            expect(document.querySelector("[data-vcs-seam='picker-already']")).toBeNull();
+        });
+
+        it("refuses a name that server already has, before anything is sent", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            held(ONE, [{ id: "ffffffffffffffffffffffffffffffff", name: "driftwood" }]);
+            const { surface } = picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+            await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+            fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+                target: { value: "Driftwood" },
+            });
+
+            await waitFor(() => expect(seam("picker-destination").textContent)
+                .toContain("workspace.shell.versionControl.server.picker.nameTaken"));
+            expect((connectButton() as HTMLButtonElement).disabled).toBe(true);
+            fireEvent.click(connectButton());
+            expect(surface.publish).not.toHaveBeenCalled();
+        });
+
+        it("refuses a name an address cannot carry", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            held(ONE, []);
+            const { surface } = picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+            await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+            fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+                target: { value: "My Game" },
+            });
+
+            await waitFor(() => expect(seam("picker-destination").textContent)
+                .toContain("workspace.shell.versionControl.server.picker.nameInvalid"));
+            expect((connectButton() as HTMLButtonElement).disabled).toBe(true);
+            fireEvent.click(connectButton());
+            expect(surface.publish).not.toHaveBeenCalled();
+        });
+
+        it("still asks for a name where the list could not be read", async () => {
+            bridge.servers = [session(ONE, "ada")];
+            // The list is there to help. A server that would not answer is not a reason to
+            // refuse to connect - it is a reason to ask the way this dialog always asked.
+            bridge.listServerProjects.mockResolvedValue({ success: true, data: { ok: false, problem: { kind: "unreachable" } } });
+            const { surface } = picker(null, { repositoryId: REPOSITORY });
+
+            await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
+            fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
+            await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+            fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+                target: { value: "driftwood" },
+            });
+            fireEvent.click(connectButton());
+
+            expect(surface.publish).toHaveBeenCalledWith(ONE, "driftwood");
+        });
     });
 
     it("stays open on a publish that did not go through, so the reason can be read", async () => {
@@ -280,7 +394,10 @@ describe("what Connect does", () => {
 
         await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
         fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
-        fireEvent.change(document.querySelector("input")!, { target: { value: "driftwood" } });
+        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-destination'] input")).not.toBeNull());
+        fireEvent.change(document.querySelector("[data-vcs-seam='picker-destination'] input")!, {
+            target: { value: "driftwood" },
+        });
         fireEvent.click(connectButton());
 
         await waitFor(() => expect(seam("picker-failure").textContent)
@@ -290,50 +407,25 @@ describe("what Connect does", () => {
 });
 
 /**
- * Who the versions are by, asked only where nothing else will answer it.
+ * Who the versions are by, which this dialog no longer asks at all.
  *
- * A server out of the list has a session, and the recorded author then comes from that session's
- * account - `VcsManager.resolveIdentity` prefers it, keyed on the project's own remote origin. So
- * the question drawn beside a chosen server is one whose answer is thrown away moments later, asked
- * at the exact moment it looks most relevant. It survives for the address field, where a bare
- * server issues no token and records whatever it is told.
+ * Every destination it can offer is a Team server this machine has an account on, and the recorded
+ * author then comes from that account - `VcsManager.resolveIdentity` prefers it, keyed on the
+ * project's own remote origin. So a name typed here is one thrown away moments later, asked at the
+ * exact moment it looks most relevant. It used to survive for the address field, where a bare
+ * server recorded whatever it was told; there is no address field any more.
  */
 describe("the author name in the server picker", () => {
-    it("is not asked for a server out of the list", async () => {
+    it("is never asked here, chosen server or not", async () => {
         bridge.servers = [session(ONE, "ada")];
         picker(null, { authorName: null });
 
         await waitFor(() => expect(document.querySelector(`[data-server-choice='${ONE}']`)).not.toBeNull());
-        // Nothing chosen yet is not a destination either, so it is absent here too.
         expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
 
         fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
 
         expect(document.querySelector(`[data-server-choice='${ONE}']`)?.getAttribute("aria-pressed")).toBe("true");
-        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
-    });
-
-    it("is asked for an address the list cannot account for", async () => {
-        bridge.servers = [session(ONE, "ada")];
-        picker(null, { authorName: null });
-
-        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
-        fireEvent.click(seam("picker-address").querySelector("button")!);
-
-        expect(document.querySelector("[data-vcs-seam='author-identity']")).not.toBeNull();
-
-        // And it goes again the moment the destination is one that answers for itself.
-        fireEvent.click(document.querySelector(`[data-server-choice='${ONE}']`)!);
-        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
-    });
-
-    it("stays out of the way once the name has been answered", async () => {
-        bridge.servers = [session(ONE, "ada")];
-        picker(null);
-
-        await waitFor(() => expect(document.querySelector("[data-vcs-seam='picker-address']")).not.toBeNull());
-        fireEvent.click(seam("picker-address").querySelector("button")!);
-
         expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
     });
 });
@@ -381,26 +473,27 @@ describe("the author name in the commit form", () => {
 /**
  * The rail's server section, and the weights in it.
  *
- * Send and Get are pressed every working day; choosing a server is decided about once per project.
- * The section used to give them the same weight - the host line WAS the control that opened the
- * change-server dialog, one line above Send - so the whole point of the suite is that the rare acts
- * stay behind the menu and the daily two stay a press away, at full size, on one row.
+ * Send and Get are pressed every working day; choosing a server, signing in to it and disconnecting
+ * are decided a handful of times in a project's life. This section used to hold all of them - the
+ * host line WAS the control that opened the change-server dialog, with an overflow menu beside it
+ * and a token box underneath. They live in the Team panel now, and what this suite pins is that
+ * none of them came back: the section is a destination read as a fact and the two presses that use
+ * it, and the way to everything else is one control that opens the panel which owns it.
  */
 describe("the rail's server section", () => {
-    it("holds exactly the rare acts in its overflow menu", () => {
+    it("keeps nothing in it that changes where the work goes", () => {
         section();
 
-        expect(menuRows()).toEqual([]);
-        fireEvent.click(seam("server-menu"));
-
-        expect(menuRows()).toEqual([
-            "workspace.shell.versionControl.server.check",
-            "workspace.shell.versionControl.server.change",
-            "workspace.shell.versionControl.server.disconnect",
-        ]);
+        // The three that moved. Each of them was a control in this section, and each reads as a
+        // convenience to put back exactly where it used to be.
+        expect(document.querySelector("[data-vcs-seam='server-menu']")).toBeNull();
+        expect(document.querySelector("[data-vcs-seam='sign-in-form']")).toBeNull();
+        expect(document.querySelector("[data-vcs-seam='author-identity']")).toBeNull();
+        // And the dialog they reached, which covers the rail.
+        expect(document.querySelector("[data-vcs-seam='server-picker']")).toBeNull();
     });
 
-    it("keeps sending and getting a press away, at full width, with no menu in between", () => {
+    it("keeps sending and getting a press away, at full width, with nothing in between", () => {
         const surface = section();
 
         expect(document.querySelector("[data-context-menu='true']")).toBeNull();
@@ -409,8 +502,8 @@ describe("the rail's server section", () => {
 
         expect(surface.pushToRemote).toHaveBeenCalledTimes(1);
         expect(surface.syncFromRemote).toHaveBeenCalledTimes(1);
-        // Both on the control scale's `sm` step and sharing the row equally: the menu was added
-        // above them, not squeezed in beside them, and this is what says so.
+        // Both on the control scale's `sm` step and sharing the row equally: nothing was squeezed
+        // in beside them, and this is what says so.
         for (const control of [seam("server-push"), seam("server-sync")]) {
             expect(control.className).toContain("h-7");
             expect(control.className).toContain("flex-1");
@@ -448,38 +541,26 @@ describe("the rail's server section", () => {
             .toBe("workspace.shell.versionControl.server.localAhead");
     });
 
-    it("reaches the change-server dialog from the menu, and from nowhere in front of it", () => {
+    it("draws the server line as a line rather than as the control that covers the rail", () => {
         section();
 
-        // The line that names the server is a line. It used to be the button that covered the
-        // rail with this dialog, which is the regression this pins.
+        // It used to be the button that opened the change-server dialog, one line above Send, so
+        // the rarest act in the feature was the easiest thing in the panel to hit.
         expect(seam("server-name").tagName).toBe("SPAN");
+        expect(seam("server-state").tagName).toBe("SPAN");
+    });
+
+    it("sends a project on no server to the panel that owns the question", () => {
+        const open = vi.fn();
+        const forget = registerTeamPresenceBridge({ open });
+        section({ remote: null });
+
+        fireEvent.click(seam("server-connect"));
+
+        // The dialog is opened by the Team panel, not from here: one door to a decision made once
+        // per project, and it is the same door it is changed through afterwards.
+        expect(open).toHaveBeenCalledTimes(1);
         expect(document.querySelector("[data-vcs-seam='server-picker']")).toBeNull();
-
-        fireEvent.click(seam("server-menu"));
-        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
-            .find(row => row.textContent === "workspace.shell.versionControl.server.change")!);
-
-        expect(document.querySelector("[data-vcs-seam='server-picker']")).not.toBeNull();
-    });
-
-    it("asks the server where things stand from the menu", () => {
-        const surface = section();
-
-        fireEvent.click(seam("server-menu"));
-        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
-            .find(row => row.textContent === "workspace.shell.versionControl.server.check")!);
-
-        expect(surface.checkRemote).toHaveBeenCalledTimes(1);
-    });
-
-    it("disconnects from the menu", () => {
-        const surface = section();
-
-        fireEvent.click(seam("server-menu"));
-        fireEvent.click([...document.querySelectorAll("[data-context-menu='true'] > div")]
-            .find(row => row.textContent === "workspace.shell.versionControl.server.disconnect")!);
-
-        expect(surface.setRemote).toHaveBeenCalledWith(null);
+        forget();
     });
 });

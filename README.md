@@ -21,15 +21,75 @@ Unlike traditional lightweight editors, NarraLeaf Studio does not require users 
 - An easy-to-learn, command-based story editing system that requires no knowledge of external programming languages
 - WYSIWYG application previews, along with cross-platform production and packaging capabilities
 
+## Features
+
+- **Story editor.** A scene is a list of rows. Typing writes dialogue, a slash at the start of a row writes one of fifty-one commands, and every value is checked as the row is typed. The flow view draws the paths the story can take. Chinese spellings of every command parse.
+- **Screens and blueprints.** The game's own screens are built by placing widgets on a surface, and over six hundred blueprint nodes decide what they do. Widgets can be saved as reusable components, and their properties bound to values that change while the game runs.
+- **Version control.** History is kept inside the project folder, and differences are reported as content rather than as files: which scenes, rows, characters and assets changed. Built on [Lore](https://github.com/EpicGames/lore), with Studio's own difference view and conflict interface.
+- **[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team).** A collaboration server deployed on your own network or a remote container, holding the projects a team works on together. Nothing is sent or fetched except by an explicit action. Real-time collaboration is in development.
+- **Asset sets.** One library entry standing for several files that differ by language or by build variant. A story row names the set, and the game uses the file that matches.
+- **Build variants.** One project, several editions. A cut point row ends a variant's story there, and everything written after it, including the assets only those rows used, is left out of that variant's package.
+- **Patches.** Later changes to the story, the pages, the translations, the voice lines and the assets, delivered to an installed game without reinstalling it.
+- **Builds.** Windows, macOS, Linux, Web, Android and iOS, in eight formats, with each platform's icons generated from one image. Studio also builds [without an interface](#building-from-the-command-line).
+- **Plugins.** Story commands, blueprint nodes, widgets, tests and panels, appearing in the same places as the built-in equivalents. What a plugin needs is approved when it is installed.
+
 ## Studio
-
-### NarraLeaf Team
-
-[NarraLeaf Team](https://github.com/NarraLeaf/NarraLeaf-Team) is the collaboration solution for NarraLeaf Studio. It deploys easily onto a device on your own network or a remote container, and gives everyone on the team central version management and real-time collaboration (in development). With Team, creators sync the team's projects and start working right away.
 
 ### Game Compatibility
 
 For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility.md).
+
+### Building from the command line
+
+Studio builds a project without an interface, for a machine that has nobody at the keyboard:
+
+```bash
+narraleaf-studio --build <project>   --build-variant main   --build-target windows   --build-format nsis   --build-output ./out   --build-report ./out/build-report.json
+```
+
+`--build` takes a project folder, or a name from the recent list. One invocation produces one
+variant for one platform, in one format. The window never appears and never takes focus.
+
+| Flag | Default |
+| --- | --- |
+| `--build <project>` | required |
+| `--build-variant <id>` | `main`, the release variant |
+| `--build-target <platform>` | the host platform |
+| `--build-format <format>` | the platform's first format |
+| `--build-arch <arch>` | the host's architecture for a host build, `x64` for a cross build |
+| `--build-output <folder>` | `<project>/dist` |
+| `--build-report <file>` | no report file |
+| `--build-allow-unsigned` | off |
+
+The exit code is the contract:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The build wrote its artifacts. |
+| `1` | The build failed. |
+| `2` | The command line could not be acted on. Nothing was opened. |
+| `3` | A check refused the project, so the build never started. |
+| `4` | Studio could not run the build. This says nothing about the project. |
+
+Standard output carries the build console, in English. `--build-report` writes a JSON file holding
+the outcome, the exit code, every finding, the artifacts and their sizes, and the whole log; its
+values are fixed identifiers, so nothing that reads it depends on a language.
+
+A target that can carry a code signature and has no signing credential configured is refused, and
+`--build-allow-unsigned` is how a caller states that it accepts an unsigned artifact. The report's
+`signing` block says whether the platform can carry a signature at all and whether this build did.
+
+The report's `experimental` block answers the same way for experimental mode, which a development
+launch enters with `--experimental` and one `--x-<id>` flag per condition. `state` is `off`, `on` or
+`refused`, and `conditions` lists what the mode changed about this build — a build whose list holds
+`debuggable-build` ships without asar integrity validation and is not one to distribute. Nothing
+about the artifact records this, so the report is where a job finds out which kind it has.
+
+A launch that asks for the mode and cannot have it is refused rather than built: a packaged Studio
+never enters experimental mode, a `--x-` flag without `--experimental` applies to nothing, and a
+`--x-` flag that names no condition asked for something that was never going to happen. All three
+would otherwise hand back the opposite of what was asked for, with nobody there to read the warning.
+The exit code is `2` and the report's `experimental.refusal` says which of the three it was.
 
 ## Asset protection
 

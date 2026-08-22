@@ -616,6 +616,14 @@ export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_MAP = "blueprint.collection.ar
 export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT = "blueprint.collection.arraySort" as const;
 export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE = "blueprint.collection.arraySlice" as const;
 export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_JOIN = "blueprint.collection.arrayJoin" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INDEX_OF = "blueprint.collection.arrayIndexOf" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE = "blueprint.collection.arrayReverse" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT = "blueprint.collection.arrayConcat" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE = "blueprint.collection.arrayUnique" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST = "blueprint.collection.arrayFirst" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST = "blueprint.collection.arrayLast" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY = "blueprint.collection.arrayIsEmpty" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_RANGE = "blueprint.collection.arrayRange" as const;
 export const BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_KEYS = "blueprint.collection.objectKeys" as const;
 export const BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_VALUES = "blueprint.collection.objectValues" as const;
 export const BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_MERGE = "blueprint.collection.objectMerge" as const;
@@ -1029,6 +1037,32 @@ export const BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED = "blueprint.game.isOptio
 /** Wipe the running game's visited record. The `Clear Text Read` of this family. */
 export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisited" as const;
 /**
+ * The endings record - which of a story's `/ending` rows this player has ever reached.
+ *
+ * A different domain from the visited record above, and deliberately so. Visited lives in the save
+ * and rewinds when an older one is loaded, because it answers "have I been down this route in *this*
+ * playthrough". An endings screen asks what the player has ever seen, so its record sits in project
+ * persistence and nothing rewinds it - a gallery that re-locked entries in front of a player who
+ * loaded an old save would be reporting the wrong fact.
+ *
+ * Keyed by the `ending` row's block id, so renaming an ending keeps every unlock. Neither reader
+ * needs a running story: a title screen asks both before any game exists.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED = "blueprint.game.isEndingReached" as const;
+/**
+ * Every ending a story declares, each row already carrying whether it was reached.
+ *
+ * One array output rather than a count and a getter, which is the convention `Get History` follows:
+ * `Set List Content` takes the array whole, and `Get List Item Props` reads a row's fields inside the
+ * item template, so a grid of endings is drawn without an author writing a loop. Carrying `isReached`
+ * on the row is what keeps the template from having to ask a second question per cell.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS = "blueprint.game.getEndings" as const;
+/** Forget one ending. What a debug menu calls to check an unlock actually locks again. */
+export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_ENDING_STATE = "blueprint.game.clearEndingState" as const;
+/** Wipe the whole endings record. What a "reset progress" control calls. */
+export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_ENDINGS = "blueprint.game.clearEndings" as const;
+/**
  * The build variant this package is, as its name - the blueprint spelling of the story language's
  * `AppTag`.
  *
@@ -1339,6 +1373,17 @@ export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS = "blueprint.list.getItemPr
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX = "blueprint.list.getItemIndex" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT = "blueprint.list.getItemCount" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_KEY = "blueprint.list.getItemKey" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD = "blueprint.list.getItemField" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_LENGTH = "blueprint.list.getLength" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_AT = "blueprint.list.getItemAt" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEM_FIELD_AT = "blueprint.list.setItemFieldAt" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_FIND_ITEM_BY_FIELD = "blueprint.list.findItemByField" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_SORT_BY_FIELD = "blueprint.list.sortByField" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_LENGTH = "blueprint.element.list.getLength" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT = "blueprint.element.list.getItemAt" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEM_FIELD_AT = "blueprint.element.list.setItemFieldAt" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD = "blueprint.element.list.findItemByField" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SORT_BY_FIELD = "blueprint.element.list.sortByField" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS = "blueprint.element.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS = "blueprint.element.list.getItems" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_CLEAR = "blueprint.element.list.clear" as const;

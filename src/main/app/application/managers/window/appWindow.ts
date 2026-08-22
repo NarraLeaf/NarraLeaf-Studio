@@ -1,6 +1,7 @@
 import fs from "fs";
 import { dialog } from "electron";
 import { AppEventToken } from "@shared/types/app";
+import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { App } from "@/app/app";
@@ -33,6 +34,17 @@ export interface WindowConfig<T extends WindowAppType> {
     preload: string | null;
     options?: Electron.BrowserWindowConstructorOptions;
     windowControlPolicy?: WindowControlPolicy;
+    /**
+     * Whether this window may interrupt with a native dialog when its page crashes or stops
+     * answering. Defaults to true, which is every window somebody is looking at.
+     *
+     * False for a window opened to do a job with nobody at the screen. Both prompts are modal and
+     * wait forever, so on a build agent one of them is not a question - it is the run hanging, with
+     * a dialog on a screen no one will ever see. A crash destroys the window instead, which the
+     * thing that opened it notices; a hang is left alone, because a long build genuinely does stop
+     * answering and killing it would be worse than waiting.
+     */
+    failurePrompts?: boolean;
 }
 
 export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
@@ -312,6 +324,31 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             return;
         }
         this.loadResultCallbacks.push(fn);
+    }
+
+    /**
+     * Subscribers to this window's command-line build, if it was opened to run one.
+     *
+     * A plain list rather than the window's event manager, because a command-line build is not a
+     * window event: exactly one run owns this window, the run subscribes before the page loads, and
+     * nothing else in Studio has any business hearing about it.
+     */
+    private commandLineBuildListeners: Array<(event: CommandLineBuildEvent) => void> = [];
+
+    /** The renderer's half of a `--build` run; see `WorkspaceCommandLineBuildHandler`. */
+    public reportCommandLineBuildEvent(event: CommandLineBuildEvent): void {
+        for (const listener of [...this.commandLineBuildListeners]) {
+            listener(event);
+        }
+    }
+
+    public onCommandLineBuildEvent(fn: (event: CommandLineBuildEvent) => void): AppEventToken {
+        this.commandLineBuildListeners.push(fn);
+        return {
+            cancel: () => {
+                this.commandLineBuildListeners = this.commandLineBuildListeners.filter(listener => listener !== fn);
+            },
+        };
     }
 
     public showWhenReady(): AppEventToken {
@@ -731,7 +768,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
      */
     private async offerReloadForCrash(reason: string): Promise<void> {
         const win = this.getBrowserWindow();
-        if (this.getApp().isQuitting()) {
+        if (this.getApp().isQuitting() || this.getConfig().failurePrompts === false) {
             win.destroy();
             return;
         }
@@ -787,7 +824,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
      */
     private async offerReloadForHang(): Promise<void> {
         const win = this.getBrowserWindow();
-        if (this.hangPromptOpen || this.getApp().isQuitting()) {
+        if (this.hangPromptOpen || this.getApp().isQuitting() || this.getConfig().failurePrompts === false) {
             return;
         }
         this.hangPromptOpen = true;

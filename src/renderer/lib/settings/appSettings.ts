@@ -81,6 +81,14 @@ import {
 } from "@shared/constants/recentProjects";
 import { DEVELOPER_MODE_DEFAULT, DEVELOPER_MODE_KEY } from "@/lib/developer";
 import {
+    SCREEN_EFFECT_QUALITY_DEFAULT,
+    SCREEN_EFFECT_QUALITY_KEY,
+    SCREEN_EFFECT_THREAD_CHOICES,
+    SCREEN_EFFECT_THREADS_DEFAULT,
+    SCREEN_EFFECT_THREADS_KEY,
+} from "@shared/constants/screenEffects";
+import { WEATHER_BAKE_QUALITIES } from "@shared/weather/model";
+import {
     TOOLTIP_DELAY_DEFAULT_MS,
     TOOLTIP_DELAY_KEY,
     TOOLTIP_DELAY_MAX_MS,
@@ -126,6 +134,19 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 3,
     },
     {
+        // Its own category rather than a row filed under Workspace, and the reason is what the
+        // settings here have in common: every one of them trades the author's time against this
+        // machine, and none of them changes what a project contains or what a player receives.
+        // An author looking for "why is this slow" has one place to look, and an author who never
+        // looks is never asked a question about threads.
+        key: "performance",
+        label: "Performance",
+        labelKey: "settings.categories.performance.label",
+        description: "How much of this machine Studio spends, and how long you wait for it.",
+        descriptionKey: "settings.categories.performance.description",
+        order: 4,
+    },
+    {
         // Its own category rather than a panel filed under Editor: shortcuts reach every surface in
         // Studio, not just the editors, and nobody looking for them thought to open Editor first.
         key: "shortcuts",
@@ -133,7 +154,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.shortcuts.label",
         description: "Keys bound to each command throughout Studio.",
         descriptionKey: "settings.categories.shortcuts.description",
-        order: 4,
+        order: 5,
     },
     {
         // Was "Sync", whose description promised a backup cadence that was never implemented; the
@@ -144,18 +165,20 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.versionControl.label",
         description: "Checkpoints and the identity recorded on them.",
         descriptionKey: "settings.categories.versionControl.description",
-        order: 5,
+        order: 6,
     },
     {
         // Its own category rather than a panel under Version control: a server is signed in to
         // once and then serves every project pointed at it, so it outlives any of them. Filing
         // it under version control would say the opposite - that it is a property of a project.
+        // Named after the product, in full: "Team" alone reads as an untranslated word. The key
+        // stays `servers` because it is what the stored category id has always been.
         key: "servers",
-        label: "Servers",
+        label: "NarraLeaf Team",
         labelKey: "settings.categories.servers.label",
-        description: "Servers this installation is signed in to, and the accounts it uses.",
+        description: "NarraLeaf Team servers this installation is signed in to, and the accounts it uses.",
         descriptionKey: "settings.categories.servers.description",
-        order: 6,
+        order: 7,
     },
     {
         // Absorbed the former "Plugins" and "Advanced" categories, which between them held four
@@ -166,7 +189,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.network.label",
         description: "Where Studio downloads plugins, templates and build tooling from.",
         descriptionKey: "settings.categories.network.description",
-        order: 7,
+        order: 8,
     },
     {
         key: "data",
@@ -174,7 +197,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 8,
+        order: 9,
     },
 ];
 
@@ -185,6 +208,70 @@ export const AppSettingCategories: SettingCategory[] = [
  * production code reads the stored value and applies it to real behavior.
  */
 export const AppSettings: AppSettingDefinition[] = [
+    {
+        // Read by the main process when a Dev Mode session asks for a screen effect it has no clip
+        // for (`weather/screenEffectQuality`), and by the pre-baker beside it - both through the same
+        // reader, because two answers would make the speculative bake a different task from the one
+        // the author is waiting on.
+        //
+        // Dev Mode only, and the row says so rather than leaving it to be discovered: a preview and a
+        // build always produce the final picture, because what they produce is what a player gets.
+        // There is deliberately no option here that could change that.
+        //
+        // Names the wait, not the machinery. The author is choosing how long they sit watching a
+        // progress cell, and the encoder that decides how long that is has no business appearing in
+        // the row - the same rule the status bar's own label follows.
+        key: SCREEN_EFFECT_QUALITY_KEY,
+        category: "performance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Screen effects in Dev Mode",
+        labelKey: "settings.items.screenEffectQuality.label",
+        description: "Draft is generated in about a third of the time. Previews and builds always use the final quality.",
+        descriptionKey: "settings.items.screenEffectQuality.description",
+        defaultValue: SCREEN_EFFECT_QUALITY_DEFAULT,
+        // Derived from the shared list so a tier added there cannot be missing here.
+        options: [...WEATHER_BAKE_QUALITIES],
+        optionLabels: {
+            draft: "Draft",
+            final: "Final quality",
+        },
+        optionLabelKeys: {
+            draft: "settings.items.screenEffectQuality.options.draft",
+            final: "settings.items.screenEffectQuality.options.final",
+        },
+    },
+    {
+        // Read by the main process on its way into a bake (`weather/screenEffectQuality`), and
+        // applied to every one of them - Dev Mode, preview and build alike. Unlike the row above it
+        // is not a statement about the file: drawing frames on more threads cannot change a frame,
+        // because each one is a pure function of its phase.
+        //
+        // Four stops and no more. Past four the curve flattens and then reverses - the drawing
+        // starts taking the cores the encoder was using - so the options past the knee would be
+        // options to make it slower, and an author cannot tell which side of the knee they are on.
+        key: SCREEN_EFFECT_THREADS_KEY,
+        category: "performance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Threads for screen effects",
+        labelKey: "settings.items.screenEffectThreads.label",
+        description: "How many threads draw frames while the encoder runs. Automatic reads this machine.",
+        descriptionKey: "settings.items.screenEffectThreads.description",
+        defaultValue: SCREEN_EFFECT_THREADS_DEFAULT,
+        // Derived from the shared list so a stop added there cannot be missing here.
+        options: [...SCREEN_EFFECT_THREAD_CHOICES],
+        optionLabels: {
+            auto: "Automatic",
+            "1": "1",
+            "2": "2",
+            "3": "3",
+            "4": "4",
+        },
+        optionLabelKeys: {
+            auto: "settings.items.screenEffectThreads.options.auto",
+        },
+    },
     {
         // Applied by the i18n runtime (`src/shared/i18n`): changing this writes the
         // `app.language` global-state key, which the main process broadcasts so every
@@ -418,7 +505,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // `.nl-reduce-motion` class on the root element neutralizes CSS transitions and
         // animations (styles.css), and the MotionConfig in `lib/renderApp` does the same for
         // framer-motion, which animates from JS where no CSS rule applies. Game content — the
-        // story preview's stage, Dev Mode — is exempt from both.
+        // story preview's stage, the UI editor's canvas, Dev Mode — is exempt from both.
         key: "ui.reduceMotion",
         category: "appearance",
         scope: SettingScope.Global,
@@ -825,6 +912,27 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.servers.label",
         description: "",
         defaultValue: null,
+    },
+    {
+        // What a collaborator sees this machine called, beside the account name, wherever a
+        // Team server lists who has a project open. Read by the main process as each session
+        // opens (`managers/team/clientInstance.ts`), so a change reaches the next server this
+        // machine connects to rather than the next launch.
+        //
+        // Empty falls back to the host name, which is what most people would put here anyway.
+        // It is a field rather than a fact because a host name is published to everybody on
+        // that server, and somebody who would rather it were not has to have somewhere to say
+        // so. Nothing here identifies the installation - that is a separate id which is never
+        // shown and never leaves the main process.
+        key: "team.machineLabel",
+        category: "servers",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "This machine's name",
+        labelKey: "settings.items.teamMachineLabel.label",
+        description: "Shown to collaborators beside your account. Leave empty to use the host name.",
+        descriptionKey: "settings.items.teamMachineLabel.description",
+        defaultValue: "",
     },
     {
         // Rendered by `SETTING_PANELS.cacheInventory`. Nothing is stored under this key; the panel

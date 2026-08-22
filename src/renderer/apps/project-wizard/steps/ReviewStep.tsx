@@ -1,12 +1,15 @@
 import { useTranslation } from "@/lib/i18n";
 import { localeAutonym } from "@shared/types/localization";
 import { formatStageSize, parseStageSize } from "@shared/types/stageSize";
-import { ProjectData, ProjectTemplate } from "../types";
+import { NARRALEAF_TEAM } from "@shared/constants/servers";
+import { ProjectData, ProjectTemplate, PublishTarget } from "../types";
 
 interface ReviewStepProps {
     projectData: ProjectData;
     /** The template entry the author picked, when the list has finished loading. */
     template: ProjectTemplate | null;
+    /** The server this project is going on to, when it was started from one. */
+    publishTo?: PublishTarget | null;
 }
 
 /**
@@ -18,7 +21,7 @@ interface ReviewStepProps {
  * description the author can edit in the project panel a minute later turns the page that exists
  * to catch mistakes into a page that is skimmed.
  */
-export function ReviewStep({ projectData, template }: ReviewStepProps) {
+export function ReviewStep({ projectData, template, publishTo = null }: ReviewStepProps) {
     const { t } = useTranslation();
     const stageSize = parseStageSize(projectData.resolution);
     const templateName = template
@@ -35,10 +38,22 @@ export function ReviewStep({ projectData, template }: ReviewStepProps) {
             value: projectData.sourceLocale ? localeAutonym(projectData.sourceLocale) : "",
         },
         { label: t("wizard.fields.location"), value: projectData.location },
-        {
-            label: t("wizard.fields.versionControl"),
-            value: projectData.versionControl === "none" ? t("common.none") : "Lore",
-        },
+        // The server replaces the version-control row rather than sitting beside it: sending
+        // a project is what makes it versioned, so two rows would be one answer told twice.
+        ...(publishTo === null
+            ? [{
+                label: t("wizard.fields.versionControl"),
+                value: projectData.versionControl === "none" ? t("common.none") : NARRALEAF_TEAM,
+            }]
+            : [
+                { label: t("wizard.review.server"), value: publishTo.server },
+                // **The app id, and it is here because it is not the name.** A repository is
+                // addressed as `lore://host:port/<name>`, which cannot carry a space, so the
+                // project is registered under the one identifier that is always spellable
+                // there. Named on the page that exists to catch surprises, rather than found
+                // out later on somebody else's list.
+                { label: t("wizard.source.parsedName"), value: projectData.appId },
+            ]),
     ];
 
     return (

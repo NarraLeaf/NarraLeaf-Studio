@@ -8,12 +8,16 @@
  *
  * ## Why the key includes things that are not parameters
  *
- * `size` and `frames` are part of the picture the encoder produced, so a project whose stage size
- * changed must not be handed the old clip. {@link WEATHER_BAKE_VERSION} covers the rest: the field
- * builder and the rasteriser are as much an input to the pixels as any slider, and there is no way
- * to hash a function. **Anyone who changes the look must bump it** — otherwise every machine with a
- * warm cache keeps serving the previous look, and the difference shows up only for whoever built on
- * a clean checkout.
+ * `size`, `frames` and `fps` are part of the picture the encoder produced, so a project whose stage
+ * size or frame rate changed must not be handed the old clip. Both of those are the author's to set,
+ * and folding them in is what makes either reversible for free: the clips made at the previous
+ * setting stay in the cache, are simply never addressed again, and are found rather than remade if
+ * the author changes their mind back.
+ *
+ * {@link WEATHER_BAKE_VERSION} covers the rest: the field builder and the rasteriser are as much an
+ * input to the pixels as any slider, and there is no way to hash a function. **Anyone who changes
+ * the look must bump it** — otherwise every machine with a warm cache keeps serving the previous
+ * look, and the difference shows up only for whoever built on a clean checkout.
  */
 
 import { resolveWeatherParams, WEATHER_PARAMS, type WeatherParamKey, type WeatherSeedRef } from "./model";
@@ -24,7 +28,7 @@ import { resolveWeatherParams, WEATHER_PARAMS, type WeatherParamKey, type Weathe
  * Cached clips keyed at an older version are simply never asked for again; nothing has to clean them
  * up for correctness, and a cache sweep removes them the same way it removes anything else there.
  */
-export const WEATHER_BAKE_VERSION = 4;
+export const WEATHER_BAKE_VERSION = 10;
 
 export type WeatherBakeIdentity = {
     ref: WeatherSeedRef;

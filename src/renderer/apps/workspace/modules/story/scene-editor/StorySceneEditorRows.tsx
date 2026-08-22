@@ -54,9 +54,11 @@ import { resolveCommandLine, type StoryCommandContext } from "./storyCommandReso
 import type { StoryCommandValue } from "./storyCommandValues";
 import { StoryCommandCandidateMenu, useStoryCandidateMenuState, type StoryCandidateItem } from "./StoryCommandCandidateMenu";
 import { StoryCandidateSpeakerMark } from "./storyCandidateMark";
-import { RichTextInput, type ActiveMarks, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle, type SpellingClickInfo } from "./RichTextInput";
+import { RichTextInput, type ActiveMarks, type DictionaryClickInfo, type EventClickInfo, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle, type SpellingClickInfo } from "./RichTextInput";
 import { SpellSuggestionPopover } from "./SpellSuggestionPopover";
 import { useStorySpellcheck } from "./useStorySpellcheck";
+import { DictionaryMarkPopover } from "./DictionaryMarkPopover";
+import { useStoryDictionary } from "./useStoryDictionary";
 import { RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
@@ -102,17 +104,17 @@ import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics"
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
 
 /**
- * One story row.
+ * One story row's data.
  *
- * Memoised, and the props above are why it can be: they are data. Everything the row can *do* comes
- * from `StoryRowActionsContext` as one object that never changes identity, so a state change hands
- * each row the same props it had and only the rows whose data actually moved re-render. Before that
- * split, the tab built ~25 arrow functions per row inside its `map`, which made every render a full
- * re-render of the document — 100ms per keystroke on a 400-row scene, growing with the scene.
+ * Every one of these is data, which is what lets the row be memoised: everything the row can *do*
+ * comes from `StoryRowActionsContext` as one object that never changes identity, so a state change
+ * hands each row the same props it had and only the rows whose data actually moved re-render. Before
+ * that split, the tab built ~25 arrow functions per row inside its `map`, which made every render a
+ * full re-render of the document — 100ms per keystroke on a 400-row scene, growing with the scene.
  *
- * Closures built *inside* this function (see `on` below) are free: memo compares props, not internals.
+ * Closures built *inside* the body (see `on` below) are free: memo compares props, not internals.
  */
-export const StoryBlockRow = memo(function StoryBlockRow(props: {
+type StoryBlockRowProps = {
     row: VisibleStoryRow;
     scene: StoryScene;
     document: StoryDocument;
@@ -147,7 +149,81 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     dragGroupSize: number;
     /** This row is in the air with the row being dragged, and dims with it. */
     coDragging: boolean;
-}) {
+};
+
+/**
+ * What the sortable shell hands down: the grip's half of dnd-kit, and whether this row is the one in
+ * the air. Every field here keeps its identity for the life of the row, which is what lets them cross
+ * the memo boundary below without re-opening the hole the shell exists to close.
+ */
+type StoryBlockRowDragProps = {
+    attributes: ReturnType<typeof useSortable>["attributes"];
+    /** Already through the freeze guard: withheld whole while frozen, never half-attached. */
+    dragListeners: NonNullable<ReturnType<typeof useSortable>["listeners"]>;
+    setActivatorNodeRef: ReturnType<typeof useSortable>["setActivatorNodeRef"];
+    dragging: boolean;
+};
+
+/**
+ * The row's sortable shell — and the reason it is a component of its own rather than a hook call at
+ * the top of the row.
+ *
+ * `useSortable` subscribes to dnd-kit's contexts, and `SortableContext`'s value is rebuilt whenever
+ * its item list or the measured rects change — which is to say, every time a line is written. A
+ * context change re-renders every consumer *regardless of `memo`*, so with the hook inside the row,
+ * writing one line repainted every row on screen even though `memo` had already agreed that none of
+ * their props had moved. Measured on a twenty-line scene: two full repaints of the window per Enter,
+ * one from the props (see `storyRowIdentity`) and one from here.
+ *
+ * The shell absorbs that render. It carries the transform and the transition — the only two things
+ * dnd-kit changes between renders — on an element of its own, and hands the row the three handles
+ * that do not change. The row underneath then bails out on identical props the way it was meant to.
+ */
+export function StoryBlockRow(props: StoryBlockRowProps) {
+    // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
+    // its text, hovering its portrait - does not, and is left alone.
+    const freeze = useFreezeGuard();
+    const reduceMotion = useReduceMotion();
+    const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
+        id: props.row.block.id,
+        // Off at dnd-kit rather than only in the handle, so a keyboard activation of the grip cannot
+        // start a drag either.
+        disabled: freeze.frozen,
+        // Reduce-motion means the sort animation is off at the source, not merely overridden in CSS:
+        // dnd-kit writes this transition as an inline style, which the stylesheet's blanket rule
+        // cannot reach.
+        transition: reduceMotion ? null : undefined,
+    });
+    // Withheld whole while frozen rather than left attached and inert: a grip that picks the row up and
+    // then refuses to drop it reads as a broken editor. Memoised because it is a prop now, and a fresh
+    // object every render would undo the whole point of the shell.
+    const dragListeners = useMemo(() => freeze.gesture(listeners) ?? {}, [freeze, listeners]);
+    // A multi-row drag lifts one row under the pointer; the rest of the group stays put. They dim with
+    // it so the gesture reads as "these lines are in the air" rather than "one line is, and the others
+    // happen to be selected".
+    const sortableStyle: CSSProperties = {
+        // Positioned as well as the row's own root: z-index does nothing on a static box, and the
+        // lifted row has to come out over its neighbours from whichever element carries the transform.
+        position: "relative",
+        transform: toSortableTransform(transform),
+        transition,
+        zIndex: isDragging ? 20 : undefined,
+        opacity: isDragging || props.coDragging ? 0.72 : undefined,
+    };
+    return (
+        <div ref={setNodeRef} style={sortableStyle}>
+            <StoryBlockRowBody
+                {...props}
+                attributes={attributes}
+                dragListeners={dragListeners}
+                setActivatorNodeRef={setActivatorNodeRef}
+                dragging={isDragging}
+            />
+        </div>
+    );
+}
+
+const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowProps & StoryBlockRowDragProps) {
     const { t, tn } = useTranslation();
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef } = props;
     // The name column carries the editor's body type, so the nametag and the words it introduces are
@@ -267,7 +343,6 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
     const diagnostic = diagnoseRow({ block, context: props.commandContext });
     const [hovered, setHovered] = useState(false);
     const [gripFocused, setGripFocused] = useState(false);
-    const reduceMotion = useReduceMotion();
     const showRowActions = hovered || active;
     // Whether this row's trailing controls land on the artwork strip rather than on the row's own
     // surface (see `.nl-on-media` in styles.css). The same condition the strip itself is drawn on —
@@ -278,38 +353,15 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
         && Boolean(block.payload.assetId || block.payload.color);
     // The grip and the line number occupy one box, so exactly one of them is visible at a time.
     const showGrip = hovered || gripFocused;
-    // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
-    // its text, hovering its portrait - does not, and is left alone.
+    // The grip's half of the drag, handed down by the sortable shell above.
+    const { attributes, dragListeners, setActivatorNodeRef, dragging: isDragging } = props;
+    // The shell already refused dnd-kit while frozen; this is what the grip itself says about why.
     const freeze = useFreezeGuard();
-    const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
-        id: row.block.id,
-        // Off at dnd-kit rather than only in the handle, so a keyboard activation of the grip cannot
-        // start a drag either.
-        disabled: freeze.frozen,
-        // Reduce-motion means the sort animation is off at the source, not merely overridden in CSS:
-        // dnd-kit writes this transition as an inline style, which the stylesheet's blanket rule
-        // cannot reach.
-        transition: reduceMotion ? null : undefined,
-    });
-    // Withheld whole while frozen rather than left attached and inert: a grip that picks the row up and
-    // then refuses to drop it reads as a broken editor.
-    const dragListeners = freeze.gesture(listeners) ?? {};
-    // A multi-row drag lifts one row under the pointer; the rest of the group stays put. They dim with
-    // it so the gesture reads as "these lines are in the air" rather than "one line is, and the others
-    // happen to be selected".
-    const sortableStyle: CSSProperties = {
-        transform: toSortableTransform(transform),
-        transition,
-        zIndex: isDragging ? 20 : undefined,
-        opacity: isDragging || props.coDragging ? 0.72 : undefined,
-    };
     const dragsGroup = props.dragGroupSize > 1;
     const dragLabel = dragsGroup ? tn("story.rows.dragRows", props.dragGroupSize) : t("story.rows.dragRow");
 
     return (
         <div
-            ref={setNodeRef}
-            style={sortableStyle}
             data-story-row-block-id={block.id}
             className={[
                 // Height comes from the density's single-line box plus the content column's `py-1`, so
@@ -809,9 +861,11 @@ function TextEditBox(props: {
     const lastToolbarInteractRef = useRef(0);
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
     const [spellEdit, setSpellEdit] = useState<SpellingClickInfo | null>(null);
+    const [dictionaryEdit, setDictionaryEdit] = useState<DictionaryClickInfo | null>(null);
     const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false });
     const textStyle = useStoryEditorTextStyle();
     const spellcheck = useStorySpellcheck();
+    const dictionary = useStoryDictionary();
 
     useEffect(() => {
         const onPointerDown = (event: PointerEvent) => {
@@ -852,6 +906,18 @@ function TextEditBox(props: {
     const closeSpelling = () => {
         commitGuardRef.current = false;
         setSpellEdit(null);
+        props.editorRef.current?.focus();
+    };
+
+    const openDictionary = (info: DictionaryClickInfo) => {
+        // Guarded like every other popover opened from inside the field: the panel takes focus off
+        // the contentEditable, and an unguarded blur commits the row and closes the editor under it.
+        commitGuardRef.current = true;
+        setDictionaryEdit(info);
+    };
+    const closeDictionary = () => {
+        commitGuardRef.current = false;
+        setDictionaryEdit(null);
         props.editorRef.current?.focus();
     };
 
@@ -957,6 +1023,8 @@ function TextEditBox(props: {
                 onEventClick={openEvent}
                 spellcheck={spellcheck}
                 onSpellingClick={openSpelling}
+                dictionary={dictionary}
+                onDictionaryClick={openDictionary}
                 resolveInterpolationLabel={resolveInterpolationLabel}
                 resolveAppearanceLabel={resolveAppearanceLabel}
                 onActiveMarksChange={setActiveMarks}
@@ -985,6 +1053,27 @@ function TextEditBox(props: {
                         closeSpelling();
                     }}
                     onClose={closeSpelling}
+                />
+            ) : null}
+            {dictionaryEdit ? (
+                <DictionaryMarkPopover
+                    target={dictionaryEdit}
+                    onReplace={replacement => {
+                        props.editorRef.current?.replaceSpelling(
+                            dictionaryEdit.mark.unitStart,
+                            dictionaryEdit.mark.unitEnd,
+                            replacement,
+                        );
+                        closeDictionary();
+                    }}
+                    onApplyReading={reading => {
+                        props.editorRef.current?.setRuby(reading, {
+                            start: dictionaryEdit.mark.unitStart,
+                            end: dictionaryEdit.mark.unitEnd,
+                        });
+                        closeDictionary();
+                    }}
+                    onClose={closeDictionary}
                 />
             ) : null}
             {interpEdit ? (
@@ -1218,7 +1307,7 @@ function RowPlayAction(props: { block: StoryBlock; active: boolean; onPlay: () =
     const { block } = props;
     // Rows with no runtime behaviour have no meaningful "play from here" — starting there would
     // silently begin somewhere else.
-    if (block.kind === "note" || block.kind === "invalid") {
+    if (block.kind === "note" || block.kind === "invalid" || block.kind === "empty") {
         return null;
     }
     const branchEntry = (block.kind === "nodeAction" && block.payload.action === "choiceOption")
@@ -3365,7 +3454,11 @@ function DraftRowPreview(props: { source: string; commandContext: StoryCommandCo
         ? t(reason.key, reason.paramHintKey ? { ...reason.params, slot: ct(reason.paramHintKey) } : reason.params)
         : t("story.rows.invalidHint");
     return (
-        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center gap-2">
+        // `data-story-row-text`, so the row opens from a single click with the caret where the pointer
+        // was - the line is raw text the author is in the middle of writing, and reaching a character
+        // in it should not cost a double-click. The offset is measured over this whole element, so a
+        // click on the reason lands past the source and `startLineEdit` clamps it to the line's end.
+        <span className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 cursor-text items-center gap-2 nl-selectable-text" data-story-row-text="">
             <span className="min-w-0 truncate font-mono text-sm text-warning">{props.source}</span>
             <span className="shrink-0 truncate text-2xs text-warning/80">{reasonText}</span>
         </span>
@@ -3384,6 +3477,7 @@ function BlockPreview(props: {
     const block = props.block;
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
+    const { t } = useTranslation();
     if (text) {
         const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
@@ -3435,6 +3529,28 @@ function BlockPreview(props: {
         // wrong, so the row reads as a to-do; the BUILD is where it turns into an error. Click
         // re-opens the line in place, candidates and all.
         return <DraftRowPreview source={block.payload.source} commandContext={props.commandContext} />;
+    }
+    if (block.kind === "empty") {
+        // A blank line reads blank. Every other empty row carries its "double-click to enter …" in the
+        // line itself, because each is waiting for one particular kind of content and saying so is how
+        // the author knows which; this row is waiting for nothing, and a caption sitting in it would be
+        // the one thing on screen contradicting the word blank.
+        //
+        // So the invitation is on hover only: at rest the line is empty, and the moment the pointer is
+        // over the row it says what a double-click there would do. Nothing else in the row moves - the
+        // hint occupies the line box it fades into.
+        //
+        // A {@link TextClickTarget} like any line of prose: one click opens it, which is what the
+        // mouseup gesture does with a row whose content is a line (see `finishTextSelectGesture`).
+        // The hint inside it is not selectable, so a drag across the row reads as the row-range drag
+        // it is rather than as selecting words the author did not write.
+        return (
+            <TextClickTarget style={textStyle} className="text-fg">
+                <span className="select-none text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100">
+                    {t("story.emptyPlaceholder.blank")}
+                </span>
+            </TextClickTarget>
+        );
     }
     // One overview path for every action row: the command line that would produce it, with any
     // quick-edit params clickable inside it — and the old `describeBlock` sentence for the rows no

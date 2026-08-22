@@ -39,6 +39,7 @@ export const project = {
         appTags: "ビルドバリアント",
         userData: "プレイヤーのファイル",
         icons: "アイコン",
+        screenEffects: "画面エフェクト",
         dependencies: "依存関係",
         saving: "セーブ",
         olderSaves: "以前のセーブ",
@@ -386,17 +387,10 @@ export const project = {
         // 関わらず行が並ぶ。証明書はそれを使うビルドの何日も前に用意するもので、その準備こそが
         // これがビルドのダイアログではなくパネルにある理由。
         signingDescription: "どの資格情報でどのプラットフォームに署名するか。証明書とパスワードはこの端末に留まり、プロジェクトはどれを使うかだけを持つ",
-        webLosslessImagesTitle: "画像を WebP に変換",
-        webLosslessImagesDescription: "書き出す画像を、そのほうが小さくなる場合に可逆 WebP へ再エンコードする",
-        webLosslessImagesHint: "変換後の画像は元の画像と完全に同じにデコードされる。Android と iOS のビルドは同じ書き出しを配信するので、そちらにも適用される",
-        webPrecompressTitle: "テキストを事前圧縮",
-        webPrecompressDescription: "サイトのスクリプト、スタイル、ストーリーのデータについて Brotli と Gzip の版も書き出す",
-        webPrecompressHint: "使うのは、事前圧縮したファイルを配信するよう設定したサーバーだけ。それ以外のホストは元のファイルを配信する",
-        webLossyImagesTitle: "画像を再圧縮",
-        webLossyImagesDescription: "書き出す画像を非可逆 WebP へ再エンコードする。ファイルは大幅に小さくなり、失われた情報は戻らない",
-        webLossyQualityTitle: "画像の品質",
-        webLossyQualityDescription: "再圧縮に使う WebP の品質。1 から 100 まで",
-        webSharedWithMobileHint: "Android と iOS のビルドは同じ書き出しを配信するので、そちらにも効く",
+        lossyImagesTitle: "画像を再圧縮",
+        lossyImagesDescription: "画像を非可逆 WebP へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
+        lossyQualityTitle: "画像の品質",
+        lossyQualityDescription: "再圧縮に使う WebP の品質。1 から 100 まで",
         // 「モバイルの向き」とはしない。モバイルの見出しの下にあり、語を重ねると 318px のパネルで
         // ラベルが 2 行になる。
         orientationTitle: "画面の向き",
@@ -431,6 +425,11 @@ export const project = {
             center: "中央",
             right: "右",
         },
+    },
+    screenEffects: {
+        frameRateTitle: "天候のフレームレート",
+        frameRateDescription: "雪・雨・桜に適用される。読み込んだクリップは元のフレームレートのまま",
+        frameRateOption: "{rate} fps",
     },
     dependencies: {
         rescan: "調べ直す",

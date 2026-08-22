@@ -122,6 +122,7 @@ export const story = {
             customTransition: "该转场带有脚本未命名的属性",
             effectProps: "该效果带有脚本未命名的属性",
             unresolvedRef: "该行指向的对象已不存在",
+            endingPage: "该结局指定了自己的页面，脚本不携带这一项",
             unknownPayload: "脚本尚未覆盖此类行",
         },
         parse: {
@@ -260,8 +261,10 @@ export const story = {
             noEntryScene: "未设置入口场景，无法列出路线",
             noRoutes: "没有路线",
             noDecisions: "没有分支选择",
+            // 尚未命名的结局行。行本身与通向它的路线都真实存在，列表总得有个称呼。
+            endingUnnamed: "未命名结局",
             stopsHere: "在此中断",
-            stopsHereTitle: "路径在此终止，但这里不是结局：它回到了已经过的场景，或者某个分支没有后续内容",
+            stopsHereTitle: "路径在此终止，但没有到达任何结局：它回到了已经过的场景，或者某个分支没有后续内容，又或者这个场景既没有出口也没有 /ending 行",
             diagnostics: {
                 unreachableEndings: {
                     other: "{count} 个结局没有路线到达",
@@ -375,6 +378,12 @@ export const story = {
         noSuggestions: "没有建议",
         addToDictionary: "加入工程词典",
     },
+    /** 右键点击词典标记时弹出的面板：一个动作，以及它背后的词条。 */
+    dictionary: {
+        replaceWith: "替换为 {term}",
+        applyReading: "添加注音 {reading}",
+        openEntry: "在词典中编辑",
+    },
     interpolation: {
         title: "插入值",
         kindVariable: "变量",
@@ -456,6 +465,7 @@ export const story = {
         target: "目标",
         lineText: "文本",
         labelName: "标签",
+        endingName: "结局",
         scene: "场景",
         track: "音轨",
         appTag: "变体",
@@ -667,6 +677,7 @@ export const story = {
                 data: "变量",
                 utils: "其他",
                 invalid: "无效行",
+                empty: "空行",
             },
         },
     },
@@ -991,6 +1002,9 @@ export const story = {
         // 不叫「剪切」：编辑器里那个词已经归剪贴板了。这个名字说的是它造出来的那一行本身，
         // 而它属于哪一个变体、其他变体里为何没有这一行，交给 detail 说。
         cut: { label: "截断", detail: "让某个变体的剧情在此行结束，其他变体中没有这一行" },
+        // 按它造出来的行来命名。详情把行做的两件事都说出来：记录结局是写这一行而不是干脆停下的理由，
+        // 画廊界面与通关测试读的都是这份记录。
+        ending: { label: "结局", detail: "在此行结束剧情，并记录玩家到达的结局" },
         blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
         transform: { label: "变换", detail: "移动、缩放、旋转、遮罩、滤镜或淡入淡出舞台上的任何东西，镜头也在内" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
@@ -1037,9 +1051,11 @@ export const story = {
         goto: "跳到标签",
         break: "跳出",
         cut: "截断点",
+        ending: "结局",
         jump: "跳转",
         note: "备注",
         invalid: "无效",
+        empty: "空行",
     },
     emptyPlaceholder: {
         narration: "双击输入旁白",
@@ -1047,6 +1063,7 @@ export const story = {
         choice: "双击输入选择提示",
         note: "双击输入备注",
         text: "双击输入文本",
+        blank: "点击键入",
     },
     characterName: {
         unassigned: "未指定角色",
@@ -1101,9 +1118,11 @@ export const story = {
         // 没有变体可命名：要么这一行指向的 id 已经没人认领，要么这个读者手上根本没有变体表。
         // 只说两种情况下都成立的那一句；「变体已被删除」由行上那个拿得到变体表的标记来说。
         cutUnknown: "截断点",
+        ending: "结局 {name}",
         jump: "跳转 {scene}",
         note: "备注",
         invalid: "无效指令",
+        empty: "空行",
         sceneUnassigned: "未指定",
         sceneUnknown: "未知场景",
         variableFallback: "变量",

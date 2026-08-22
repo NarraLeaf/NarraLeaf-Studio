@@ -20,6 +20,7 @@ import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/Preview
 import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
 import { DevModeStoryRowOpenBridge } from "./modules/story/scene-editor/DevModeStoryRowOpenBridge";
 import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
+import { CommandLineBuildHost } from "./CommandLineBuildHost";
 
 /**
  * Main workspace application component
@@ -55,7 +56,14 @@ function WorkspaceContent() {
 }
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
-    const { isInitialized, error, startupStage, retry } = useWorkspace();
+    const { isInitialized, error, startupStage, retry, commandLineBuild } = useWorkspace();
+
+    // A window opened by `--build` never becomes an editor. Ahead of the two screens below because
+    // it has to answer them too: an overlay this window cannot show would leave the launch waiting
+    // for a build that was never going to start, and an error screen would do the same silently.
+    if (commandLineBuild) {
+        return <CommandLineBuildGate isInitialized={isInitialized} error={error} />;
+    }
 
     // Say what is taking the time while the workspace boots. The overlay keeps the window blank for
     // a beat first, so a project that opens instantly still opens straight into the editor.
@@ -72,6 +80,19 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
     }
 
     return (<>{children}</>);
+}
+
+/**
+ * The whole of what a command-line build window renders.
+ *
+ * Three states and no interface: still starting (wait), failed to start (say so, and let the
+ * provider's own `reportLoadResult(false)` end the run), or ready to build.
+ */
+function CommandLineBuildGate({ isInitialized, error }: { isInitialized: boolean; error: Error | null }) {
+    if (error || !isInitialized) {
+        return null;
+    }
+    return <CommandLineBuildHost />;
 }
 
 /**

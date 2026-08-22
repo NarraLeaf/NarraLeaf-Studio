@@ -34,6 +34,7 @@ import {
     verticalTypographyCss,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { renderVerticalTextContent } from "@/lib/ui-editor/widget-modules/shared/text/VerticalText";
+import { useAutoFitFontSize } from "@/lib/ui-editor/widget-modules/shared/text/useAutoFitFontSize";
 import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
 import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import {
@@ -229,13 +230,37 @@ export function TextRenderer({
     // Filter / blend on a wrapper affect the subtree; text-shadow must live on the node that owns the glyphs.
     const useEffectShell = Boolean(effectTextStyle.filter) || Boolean(effectTextStyle.mixBlendMode);
 
+    // The box being edited holds a textarea, not the laid-out text, so there is nothing to fit until
+    // the edit commits.
+    const {
+        boxRef: autoFitBoxRef,
+        textRef: autoFitTextRef,
+        fontSize: fittedFontSize,
+    } = useAutoFitFontSize<HTMLDivElement, HTMLParagraphElement>({
+        enabled: Boolean(p.textAutoFit) && !isEditing,
+        fontSize: p.fontSize,
+        minFontSize: p.textAutoFitMinFontSize,
+        vertical: isVerticalWritingMode(p.writingMode),
+        signature: [
+            displayText,
+            p.fontWeight,
+            p.fontStyle,
+            p.lineHeight,
+            p.textWrapMode,
+            p.writingMode,
+            p.textOrientation,
+            p.tateChuYoko ? p.tateChuYokoMaxLength : 0,
+            editorFontFamily ?? "",
+        ].join(" "),
+    });
+
     const textBodyStyle: CSSProperties = {
         ...textBodyInlineSizeCss(p.writingMode),
         margin: 0,
         padding: 4,
         boxSizing: "border-box",
         ...verticalTypographyCss(p),
-        fontSize: p.fontSize,
+        fontSize: fittedFontSize,
         fontWeight: p.fontWeight,
         fontStyle: p.fontStyle,
         color,
@@ -301,7 +326,7 @@ export function TextRenderer({
     const rootMotionActive = Object.keys(rootTransition).length > 0;
 
     const textAnimate: Record<string, string | number> = {
-        fontSize: p.fontSize,
+        fontSize: fittedFontSize,
         color,
         lineHeight: p.lineHeight,
     };
@@ -515,6 +540,7 @@ export function TextRenderer({
     const textContent = renderVerticalTextContent(displayText, p);
     const textNode = textMotionActive ? (
         <motion.p
+            ref={autoFitTextRef}
             style={{ ...textBodyStyle, flexShrink: 0 }}
             initial={false}
             animate={textAnimate}
@@ -523,7 +549,7 @@ export function TextRenderer({
             {textContent}
         </motion.p>
     ) : (
-        <p style={{ ...textBodyStyle, flexShrink: 0 }}>{textContent}</p>
+        <p ref={autoFitTextRef} style={{ ...textBodyStyle, flexShrink: 0 }}>{textContent}</p>
     );
 
     const effectNode = useEffectShell ? (
@@ -541,6 +567,7 @@ export function TextRenderer({
     return (
         rootMotionActive ? (
             <motion.div
+                ref={autoFitBoxRef}
                 style={outerStyle}
                 initial={false}
                 animate={rootAnimate}
@@ -550,7 +577,7 @@ export function TextRenderer({
                 {effectNode}
             </motion.div>
         ) : (
-            <div style={outerStaticStyle} onDoubleClick={handleStartInlineTextEdit}>
+            <div ref={autoFitBoxRef} style={outerStaticStyle} onDoubleClick={handleStartInlineTextEdit}>
                 {effectNode}
             </div>
         )

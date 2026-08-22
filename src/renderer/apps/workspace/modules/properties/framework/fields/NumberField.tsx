@@ -1,4 +1,5 @@
 import { useState, useCallback, memo } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { NumberFieldDefinition } from "../types";
 import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
 import { FIELD_INPUT_CLASS } from "../../fieldControlClass";
@@ -41,11 +42,7 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
 
     return (
         <div>
-            {field.label && (
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {field.label}
-                </label>
-            )}
+            <FieldLabelRow field={field} />
             <DeferredNumberInput
                 value={currentValue}
                 onCommit={handleCommit}

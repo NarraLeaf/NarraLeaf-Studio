@@ -49,6 +49,10 @@ import type {
   TextWritingMode,
 } from "./types";
 
+/** The range the authored size and the auto fit floor share. */
+const TEXT_FONT_SIZE_MIN = 8;
+const TEXT_FONT_SIZE_MAX = 256;
+
 function textAppearanceRowsForPatch(
   next: TextWidgetProps,
   patch: Partial<TextWidgetProps>
@@ -335,15 +339,15 @@ export function createTextInspector(ctx: InspectorContext) {
                           onFiniteNumber={(v) => {
                             onSaving(true);
                             try {
-                              patchProps({ fontSize: Math.min(256, Math.max(8, v)) });
+                              patchProps({ fontSize: Math.min(TEXT_FONT_SIZE_MAX, Math.max(TEXT_FONT_SIZE_MIN, v)) });
                             } finally {
                               onSaving(false);
                             }
                           }}
                           inputMode="numeric"
                           type="number"
-                          min={8}
-                          max={256}
+                          min={TEXT_FONT_SIZE_MIN}
+                          max={TEXT_FONT_SIZE_MAX}
                           unit="px"
                           leftIcon={<Type className="w-4 h-4 text-fg-muted" />}
                         />
@@ -443,6 +447,33 @@ export function createTextInspector(ctx: InspectorContext) {
                 getValue: (d: D) => getTextProps(d.element).textWrapMode,
                 setValue: (_d: D, v: string | number) => {
                   patchProps({ textWrapMode: String(v) as TextWrapMode });
+                },
+              }),
+              defineField<D, any>({
+                id: "text.autoFit",
+                type: "toggle",
+                label: t("widgets.typography.autoFit"),
+                tip: t("widgets.typography.autoFitTip"),
+                getValue: (d: D) => getTextProps(d.element).textAutoFit,
+                setValue: (_d: D, value: boolean) => patchProps({ textAutoFit: value }),
+              }),
+              defineField<D, any>({
+                id: "text.autoFitMinFontSize",
+                type: "number",
+                label: t("widgets.typography.autoFitMinFontSize"),
+                min: TEXT_FONT_SIZE_MIN,
+                max: TEXT_FONT_SIZE_MAX,
+                step: 1,
+                hidden: (d: D) => !getTextProps(d.element).textAutoFit,
+                getValue: (d: D) => getTextProps(d.element).textAutoFitMinFontSize,
+                setValue: (_d: D, value: number) => {
+                  if (!Number.isFinite(value)) return;
+                  patchProps({
+                    textAutoFitMinFontSize: Math.min(
+                      TEXT_FONT_SIZE_MAX,
+                      Math.max(TEXT_FONT_SIZE_MIN, Math.round(value)),
+                    ),
+                  });
                 },
               }),
               defineField<D, any>({

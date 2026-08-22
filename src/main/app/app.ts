@@ -15,6 +15,7 @@ import { StudioTaskScheduler } from "./application/managers/tasks/StudioTaskSche
 import { WeatherBakeManager } from "./application/managers/weather/WeatherBakeManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
+import { TeamManager } from "./application/managers/team/TeamManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
@@ -32,6 +33,8 @@ import { UpdateManager } from "./application/managers/updateManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
+import { CommandLineBuildRun } from "./application/commandLineBuild";
+import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -48,10 +51,30 @@ export interface AppConfig extends BaseAppConfig {
 const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
 
 /**
+ * How long {@link App.drainForShutdown} may spend putting the profile down before the exit goes
+ * ahead without it.
+ *
+ * Generous, because everything it is waiting on is work that would otherwise be lost. Bounded,
+ * because both callers are exits: a Cmd+Q that hangs on a network fetch, and a build job that never
+ * returns an exit code, are worse outcomes than losing the last few seconds.
+ */
+const SHUTDOWN_DEADLINE_MS = 20_000;
+
+/**
  * How far a workspace opening beside another one is stepped from it, so the new window is visibly
  * a second window rather than the same frame with different contents.
  */
 const WINDOW_CASCADE_STEP = 32;
+
+/** How a launcher window is to be brought up. See `App.holdLauncherBack`. */
+interface LauncherStartupOptions {
+    /**
+     * Build the window but leave it off screen, for a launch that expects to open a project from
+     * it. Only the startup asks for this, and only it can: every other caller is a request to see
+     * the home screen.
+     */
+    deferShow?: boolean;
+}
 
 /**
  * Why a workspace is going away.
@@ -66,6 +89,26 @@ const WINDOW_CASCADE_STEP = 32;
  * question. See `handleWorkspaceExitRequest`.
  */
 export type WorkspaceExitIntent = "close" | "launcher";
+
+/** How {@link App.openProject} is being asked to open a project. */
+export type OpenProjectOptions = {
+    /** Retire the window this was opened from once the project is up. See {@link App.openProject}. */
+    replaceOpener?: boolean;
+    /**
+     * Open the project with nothing on screen.
+     *
+     * Two consequences, and both are the point: the workspace window is created hidden and never
+     * focused, and a project that fails to load does not reveal the home screen it was opened from.
+     * Only `--build` passes it - see `commandLineBuild.ts` for why an entry point with no interface
+     * has to say both of those things rather than one.
+     */
+    background?: boolean;
+    /**
+     * Run this build in the workspace instead of opening the editor; carried into the window's
+     * props. See `WindowProps[WindowAppType.Workspace].commandLineBuild`.
+     */
+    commandLineBuild?: WindowProps[WindowAppType.Workspace]["commandLineBuild"];
+};
 
 /**
  * `candidate` as an absolute path if it names a directory, otherwise null.
@@ -141,6 +184,12 @@ export class App extends BaseApp {
             }
         });
 
+        // A server is now a place Studio holds a session with, and that is a thing of
+        // its own rather than a corner of version control. It is given the list of
+        // servers rather than the manager that keeps it: what it needs is an address and
+        // a name, and a session has nothing to do with a repository.
+        this.teamManager = new TeamManager(this, () => this.vcsManager.listServers());
+
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
         // Everything is read through a function rather than captured: this constructor runs before
@@ -182,6 +231,7 @@ export class App extends BaseApp {
     private readonly taskScheduler: StudioTaskScheduler;
     private readonly weatherBakeManager: WeatherBakeManager;
     private readonly vcsManager: VcsManager;
+    private readonly teamManager: TeamManager;
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
     private readonly spellcheckManager: SpellcheckManager;
@@ -233,6 +283,18 @@ export class App extends BaseApp {
         return this.vcsManager;
     }
 
+    /**
+     * The sessions Studio holds with Team servers.
+     *
+     * Separate from {@link getVcsManager} on purpose. Version control is what Studio does
+     * with a repository; this is what it does with a server, and the two stopped being
+     * the same question the moment a server could be asked something that is not about a
+     * repository at all.
+     */
+    public getTeamManager(): TeamManager {
+        return this.teamManager;
+    }
+
     /** Everything Studio knows about newer versions of itself. See {@link UpdateManager}. */
     public getUpdateManager(): UpdateManager {
         return this.updateManager;
@@ -261,7 +323,10 @@ export class App extends BaseApp {
         return needsOnboarding(this.globalState.get(ONBOARDING_STATE_KEY));
     }
 
-    async launchLauncher(options: Partial<Electron.BrowserWindowConstructorOptions>): Promise<AppWindow<WindowAppType.Launcher>> {
+    async launchLauncher(
+        options: Partial<Electron.BrowserWindowConstructorOptions>,
+        { deferShow = false }: LauncherStartupOptions = {},
+    ): Promise<AppWindow<WindowAppType.Launcher>> {
         const config: WindowConfig<WindowAppType.Launcher> = {
             windowType: WindowAppType.Launcher,
             isolated: true,
@@ -288,7 +353,11 @@ export class App extends BaseApp {
         });
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
-        window.showWhenReady();
+        if (deferShow) {
+            this.holdLauncherBack(window);
+        } else {
+            window.showWhenReady();
+        }
 
         try {
             await window.loadFile(this.getAppEntry(WindowAppType.Launcher));
@@ -311,6 +380,14 @@ export class App extends BaseApp {
         ) as AppWindow<WindowAppType.Launcher> | undefined;
     }
 
+    /**
+     * The launcher, for a caller outside this class that has just built one and needs to open a
+     * project from it - which is `--build` and nothing else. See {@link CommandLineBuildRun}.
+     */
+    public findLauncherWindow(): AppWindow<WindowAppType.Launcher> | undefined {
+        return this.findLauncher();
+    }
+
     /** True while a launcher window is open, i.e. the user still has a home to fall back to. */
     hasAliveLauncher(): boolean {
         return this.findLauncher() !== undefined;
@@ -320,22 +397,105 @@ export class App extends BaseApp {
     private launcherStartup: Promise<void> | null = null;
 
     /**
+     * The launcher that was built without being put on screen, until something reveals it.
+     *
+     * Null whenever there is no such window - which is every launch that starts on the home screen,
+     * and every moment after a held-back one was either revealed or retired.
+     */
+    private heldBackLauncher: DeferredWindowShow | null = null;
+
+    /**
+     * Build the launcher without putting it on screen, and hold on to the way to change our mind.
+     *
+     * A launch that is going to land in a project still opens the launcher first - the project is
+     * opened *from* it, which is how a startup inherits every failure path the home screen has -
+     * but showing it means the author watches their home screen appear and disappear on the way to
+     * the project they asked for. Held back, the same chain runs with nothing on screen until the
+     * workspace itself is up.
+     *
+     * The latch and the reason it has to be one are in {@link createDeferredWindowShow}.
+     */
+    private holdLauncherBack(window: AppWindow<WindowAppType.Launcher>): void {
+        const held = createDeferredWindowShow({
+            isClosed: () => window.isClosed(),
+            show: () => void window.show(),
+        });
+        this.heldBackLauncher = held;
+        window.onReady(() => held.markReady());
+
+        // A held-back launcher that was retired has nothing left to reveal, and leaving it here
+        // would make every later `revealHeldBackLauncher` a no-op on a dead window rather than
+        // whatever the caller does when there is no launcher at all.
+        window.onEvent("closed", () => {
+            if (this.heldBackLauncher === held) {
+                this.heldBackLauncher = null;
+            }
+        });
+    }
+
+    /**
+     * Put a launcher that was held back on screen. Does nothing when none is.
+     *
+     * Every way back to the home screen goes through this, because to `focus()` a hidden window is
+     * indistinguishable from no window at all - while `hasAliveLauncher` already counts it as the
+     * home everything else falls back to.
+     */
+    private revealHeldBackLauncher(): void {
+        const held = this.heldBackLauncher;
+        this.heldBackLauncher = null;
+        held?.reveal();
+    }
+
+    /**
+     * Show the held-back launcher if it is the only thing left alive.
+     *
+     * The backstop for a startup whose project never got as far as reporting an outcome - a
+     * renderer that crashed on load, a window terminated by its own error handling. The workspace
+     * is gone, the home screen behind it was never shown, and an app whose only window is hidden
+     * is an app that looks like it died on launch.
+     *
+     * Called from the `window-closed` handler, where the window that is going away has usually not
+     * been unregistered yet - hence `!isClosed()` rather than a count.
+     */
+    public revealLauncherIfNothingElseIsUp(): void {
+        // Windows going away is what a quit looks like from here. Raising the home screen in the
+        // middle of one would put a window on screen on the way out.
+        if (!this.heldBackLauncher || this.isQuitting()) {
+            return;
+        }
+        const somethingElseIsUp = this.windowManager.getWindows().some(window =>
+            !window.isClosed() && window.getWindowType() !== WindowAppType.Launcher
+        );
+        if (!somethingElseIsUp) {
+            this.revealHeldBackLauncher();
+        }
+    }
+
+    /**
      * Bring back the launcher, unless one is already open. Resolves once its window exists, so
      * callers can close whatever they are leaving without the app ever running windowless.
      *
      * Concurrent callers share one startup: `hasAliveLauncher` only turns true once the window
      * has been built, so two workspaces closing at the same time would otherwise each open a
      * launcher of their own.
+     *
+     * `deferShow` is the startup's business alone (see {@link holdLauncherBack}). Every other
+     * caller wants the home screen *seen*, so they also reveal one that is being held back - a
+     * launcher exists either way, and without this they would return happily having shown nothing.
      */
-    async ensureLauncher(): Promise<void> {
+    async ensureLauncher({ deferShow = false }: LauncherStartupOptions = {}): Promise<void> {
         if (this.hasAliveLauncher()) {
+            if (!deferShow) {
+                this.revealHeldBackLauncher();
+            }
             return;
         }
         if (this.launcherStartup) {
-            return this.launcherStartup;
+            const startup = this.launcherStartup;
+            return deferShow ? startup : startup.then(() => this.revealHeldBackLauncher());
         }
 
-        this.launcherStartup = this.launchLauncher({}).then(launcher => {
+        this.launcherStartup = this.launchLauncher({}, { deferShow }).then(launcher => {
             launcher.onKeyUp("F12", () => {
                 launcher.toggleDevTools();
             });
@@ -359,6 +519,10 @@ export class App extends BaseApp {
     public async revealLauncher(): Promise<void> {
         const existing = this.findLauncher();
         if (existing) {
+            // It may be one that was held back for a project that never came up - hidden, and so
+            // deaf to focus(). Asking for the home screen is the plainest way of changing our mind
+            // about that.
+            this.revealHeldBackLauncher();
             if (existing.win.isMinimized()) {
                 existing.win.restore();
             }
@@ -567,6 +731,13 @@ export class App extends BaseApp {
      * the workspace reports a working project. Every way this can fail therefore lands on the home
      * screen with a line in the log, rather than on a windowless app or a dead end.
      *
+     * It is opened *hidden* when a project is what this launch is for, which is why the decision is
+     * made before the window is built rather than after. The chain above is unchanged - the
+     * launcher is still there to be opened from, still there to fall back to, and still retires
+     * itself when the workspace comes up - but a startup that lands in a project no longer shows
+     * the home screen for the second it takes to get there. Every path that ends anywhere other
+     * than in a loaded workspace reveals it again; see {@link revealHeldBackLauncher}.
+     *
      * That last part is what keeps the reopen from being a way to lose the app: a project deleted,
      * moved or corrupted since is not a failed launch, it is a home screen with a message - and the
      * author is one click from opening something else.
@@ -576,20 +747,88 @@ export class App extends BaseApp {
      * records which windows were up when the last one went. That is the shape of the preference,
      * not a gap in this method - see `workspace.reopenLastProject`, which is off by default.
      */
+    /**
+     * Put this profile down: the saves, the game processes, then version control.
+     *
+     * One list, because there are two exits that need it. The quit path holds `before-quit` open
+     * while this runs; a command-line build cannot use that path at all, because carrying an exit
+     * code means `exit()`, which skips `before-quit` entirely. Two copies of the list would drift,
+     * and the way they would drift is that the exit nobody watches stops doing one of the three.
+     *
+     * Order is load-bearing and none of the three may skip another. The saves are debounced, so a
+     * process ending 300ms after the last write loses exactly that write. The runtimes are separate
+     * processes that macOS and Linux reparent rather than reap. And every version-control call is a
+     * koffi `async` call delivered by calling back into JS - one still in flight when Node destroys
+     * the environment aborts the process, which is how a clean-looking exit produces a crash report.
+     *
+     * Nothing here throws: a failed flush is still an exit that has to close what it started. And
+     * nothing here waits forever - the deadline is a bounded exit, not a safe one, but the
+     * alternative is an app that cannot be quit and a build job that never returns.
+     */
+    public async drainForShutdown(): Promise<void> {
+        const teardown = (async () => {
+            await this.flushAllWorkspacesPendingSaves().catch(error => {
+                this.logger.warn('Failed to flush pending saves before quit:', error);
+            });
+            await this.stopAllProjectRuntimes().catch(error => {
+                this.logger.warn('Failed to stop the running game processes before quit:', error);
+            });
+            await this.getVcsManager().dispose().catch(error => {
+                this.logger.warn('Failed to close version control before quit:', error);
+            });
+        })();
+        const deadline = new Promise<void>(resolve => setTimeout(resolve, SHUTDOWN_DEADLINE_MS));
+        await Promise.race([teardown, deadline]);
+        // Expiring here means ending with Lore work still running, which is exactly the abort the
+        // drain exists to avoid. Nothing better is available - the alternative is a quit that hangs
+        // on a network fetch - but it must not go unrecorded, because the crash report it produces
+        // names koffi and says nothing about why the call was still open.
+        if (this.getVcsManager().busy) {
+            this.logger.warn(
+                `Shutting down with version control still busy after ${SHUTDOWN_DEADLINE_MS}ms;`
+                + ' a call that outlives this may take the process down on the way out.',
+            );
+        }
+    }
+
     public async openStartupWindow(): Promise<void> {
         // In a finally, so that a launch that failed on its way here still lets later requests
         // through: `openLaunchRequest` queues everything until this flag is set, and a queue that
         // is never drained is a Studio that silently ignores every document dropped on it.
         try {
-            await this.ensureLauncher();
-
-            // A path handed to this launch outranks everything below it: the author double-clicked
-            // something, which is more specific than any standing preference about where to resume.
-            if (await this.drainQueuedLaunchOpens()) {
+            // Before anything else, including the launcher: `--build` is not a window this session
+            // opens on, it is the session. Nothing below it runs - no home screen, no reopen of the
+            // last project, no first-run setup - and the run ends in the process exiting with a
+            // code. See {@link CommandLineBuildRun}.
+            const build = this.getCommandLineBuild();
+            if (build) {
+                await new CommandLineBuildRun(this, {
+                    resolveDirectory: candidate => resolveExistingDirectory(candidate),
+                    recentProjects: () => this.globalState.recentlyOpened.list(),
+                    isProjectDirectory: directoryHoldsProject,
+                }).run(build);
                 return;
             }
 
-            const startup = this.resolveSessionStartupProject();
+            // Both answers are wanted before the launcher is built, because between them they say
+            // whether it is to be shown at all. A path handed to this launch outranks the standing
+            // preference below it: the author double-clicked something, which is more specific
+            // than anything they once said about where to resume.
+            this.queueLaunchOpensFromArgv();
+            const startup = this.queuedLaunchOpens.length > 0 ? null : this.resolveSessionStartupProject();
+
+            await this.ensureLauncher({ deferShow: this.startupOpensProject(startup) });
+
+            if (this.queuedLaunchOpens.length > 0) {
+                if (await this.drainQueuedLaunchOpens()) {
+                    return;
+                }
+                // Nothing Studio was pointed at could be acted on, so the home screen is where
+                // this launch ends after all.
+                this.revealHeldBackLauncher();
+                return;
+            }
+
             if (!startup) {
                 return;
             }
@@ -607,6 +846,7 @@ export class App extends BaseApp {
                 await this.openProject(launcher, startup.projectPath);
             } catch (error) {
                 this.logger.error(`[Startup] Could not open "${startup.projectPath}":`, error);
+                this.revealHeldBackLauncher();
             }
         } finally {
             this.startupSettled = true;
@@ -664,12 +904,37 @@ export class App extends BaseApp {
         return this.applyLaunchOpenRequest(request);
     }
 
-    /** Act on everything that arrived before there was a window. Answers whether anything did. */
-    private async drainQueuedLaunchOpens(): Promise<boolean> {
+    /**
+     * Queue the path this process was started with, if it was started with one Studio recognises.
+     *
+     * Separate from the drain so the queue is complete *before* the launcher is built:
+     * {@link openStartupWindow} has to know whether this launch ends in a project to know whether
+     * to show the home screen on the way. Only argv is narrowed to one path (see
+     * `resolveFirstLaunchOpenRequest`).
+     */
+    private queueLaunchOpensFromArgv(): void {
         const fromArgv = resolveFirstLaunchOpenRequest(this.getLaunchOpenPaths(), this.launchOpenLookup());
         if (fromArgv) {
             this.queuedLaunchOpens.push(fromArgv);
         }
+    }
+
+    /**
+     * Whether this launch is headed straight into a project window, and can therefore keep the
+     * home screen off the screen on the way (see {@link holdLauncherBack}).
+     *
+     * A package is not one: it opens the import wizard, which hangs off the launcher and can be
+     * cancelled, and cancelling it back to a hidden home screen would leave nothing on screen.
+     */
+    private startupOpensProject(startup: { projectPath: string } | null): boolean {
+        if (this.queuedLaunchOpens.length > 0) {
+            return this.queuedLaunchOpens.every(request => request.kind === "project");
+        }
+        return startup !== null;
+    }
+
+    /** Act on everything that arrived before there was a window. Answers whether anything did. */
+    private async drainQueuedLaunchOpens(): Promise<boolean> {
         if (this.queuedLaunchOpens.length === 0) {
             return false;
         }
@@ -1149,10 +1414,15 @@ export class App extends BaseApp {
         props: WindowProps[WindowAppType.Workspace],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.Workspace>> {
+        // A window that is not being shown is not being focused either, and it may not put a native
+        // dialog in front of an operator when its page crashes or hangs. Both are derived from the
+        // one fact rather than passed separately, so a caller cannot ask for half of it.
+        const onScreen = options.show !== false;
         const config: WindowConfig<WindowAppType.Workspace> = {
             windowType: WindowAppType.Workspace,
             isolated: true,
-            autoFocus: true,
+            autoFocus: onScreen,
+            failurePrompts: onScreen,
             preload: this.getPreloadScript(),
             options: {
                 minWidth: 800,
@@ -1169,6 +1439,13 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
+        if (!onScreen) {
+            // Chromium treats a window that is not on screen as backgrounded and drops its timers to
+            // one a second. Every other hidden window in Studio is hidden for a moment on its way to
+            // being shown; this one runs a whole build that way, and a build is full of debounces,
+            // polls and queues that would each pay that second.
+            window.getWebContents().setBackgroundThrottling(false);
+        }
 
         // Closing a workspace means "leave this project", not "quit the app". The decision needs
         // to await a confirmation sheet and the launcher's window, so always take the close over
@@ -1270,7 +1547,7 @@ export class App extends BaseApp {
     public async openProject(
         opener: AppWindow,
         projectPath: string,
-        options: { replaceOpener?: boolean } = {},
+        options: OpenProjectOptions = {},
     ): Promise<AppWindow<WindowAppType.Workspace>> {
         this.authorizeRecentProjectAccess(opener, projectPath);
 
@@ -1330,8 +1607,13 @@ export class App extends BaseApp {
         const pending = this.projectOpenings.get(key);
         const launch = pending ?? this.launchWorkspace(
             opener,
-            { projectPath },
-            { minWidth: 800, minHeight: 600, ...this.workspacePlacement(opener, replaceOpener) },
+            { projectPath, ...(options.commandLineBuild ? { commandLineBuild: options.commandLineBuild } : {}) },
+            options.background
+                // Never sized, never placed, never shown. A window with no frame on screen has no
+                // bounds worth choosing, and `show: false` is what keeps it off the operator's
+                // desktop; `launchWorkspace` reads it and declines to focus what it did not show.
+                ? { show: false }
+                : { minWidth: 800, minHeight: 600, ...this.workspacePlacement(opener, replaceOpener) },
         );
 
         if (!pending) {
@@ -1347,6 +1629,15 @@ export class App extends BaseApp {
             workspaceWindow.onLoadResult(ok => {
                 if (ok) {
                     void retireOpener();
+                } else if (openerIsLauncher && !options.background) {
+                    // The workspace came up on its error screen, so the home screen it was opened
+                    // from is the only way on from here - and a startup that was headed into this
+                    // project has been holding that home screen back for exactly this answer.
+                    //
+                    // Except in the background: there is nobody to hand a home screen to, the caller
+                    // is already being told the load failed, and putting a window on an operator's
+                    // screen is the one thing this mode must never do.
+                    this.revealHeldBackLauncher();
                 }
             });
         }

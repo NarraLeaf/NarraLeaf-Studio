@@ -23,7 +23,7 @@ import {
     isLinkedUIComponentElement,
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
-import { FsRejectErrorCode } from "@shared/types/os";
+import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -111,6 +111,13 @@ import {
     MAIN_APP_SURFACE_ID,
 } from "@shared/constants/ui-editor";
 import { isListLikeWidgetType, type UIListElementExtra } from "@shared/types/ui-editor/list";
+import {
+    UI_STRUCT_ID_CHOICE_ITEM,
+    UI_STRUCT_ID_NOTIFICATION_ITEM,
+    UI_STRUCT_ID_NVL_ITEM,
+} from "@shared/types/ui-editor/builtinStructs";
+import type { UIStructField } from "@shared/types/ui-editor/struct";
+import { applyUIStructFieldsForOwner, pruneUIStructs } from "@shared/types/ui-editor/structLibrary";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import {
@@ -726,7 +733,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             },
         };
         const data = JSON.stringify(updated, null, 2);
-        const result = await fs.write(documentPath, data, "utf-8");
+        const result = await this.writeDocumentFile(fs, documentPath, data);
         if (!result.ok) {
             throw new RendererError(result.error.message);
         }
@@ -734,6 +741,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
         this.events.emit("documentChanged", this.document);
+    }
+
+    /**
+     * The one route `uidoc.json` goes out by.
+     *
+     * **Not `fs.write`.** That verb mints a write grant over IPC and then `PUT`s the payload back
+     * through the app protocol; the pair costs about the same whatever the payload weighs, and this
+     * document is written on every auto-save while the author drags things around a surface. The
+     * direct call is the same atomic temp-fsync-rename core reached in one structured-clone IPC
+     * call. `BaseFileSystemService.writeFileNoFollowOrCreate` carries the measurement.
+     *
+     * The shape this service needs is exactly the one that verb was added for: the file has to be
+     * *created* on the first open of a project that has never had an interface document (see
+     * {@link load}, which saves a freshly built empty document) and *replaced* on every save after
+     * that. `writeFileNoFollow` can only overwrite and `ensureRegularFile` writes nothing when the
+     * file is already there.
+     *
+     * What changes for the author: a `uidoc.json` that is a symlink, a non-regular file or has a
+     * hard link is now refused with `INVALID_PATH` instead of being written through. Nothing in
+     * Studio creates any of those, and a symlinked or junctioned `editor/ui/` *directory* still
+     * works - only the final path component is inspected.
+     *
+     * What does not change is what this method reads back: a real failure is still `ok: false` with
+     * a code, still reported to `SaveStatusService` through `observeWrites`, and still thrown from
+     * {@link save}. A refused write still answers `ok` with `refused`; this service, like every
+     * document service other than `StoryService`, does not read that flag and clears its dirty state
+     * on `ok` alone - unchanged by the swap, and announced to the author on the latch's own channel.
+     */
+    private writeDocumentFile(fs: FileSystemService, path: string, data: string): Promise<FsRequestResult<void>> {
+        return fs.writeFileNoFollowOrCreate(path, data, "utf-8");
     }
 
     /**
@@ -905,6 +942,90 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       mergeKey: `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`,
                   }
                 : false,
+        });
+    }
+
+    /** A fresh id for something this document will own. */
+    public generateId(): string {
+        return this.getContext().services.get<UuidService>(Services.Uuid).generate();
+    }
+
+    /**
+     * Declare the shape of one widget's items.
+     *
+     * Fields and the pointer to them are written in one transaction, and the library is pruned in
+     * the same one: a shape that stops being named by anything has no author-visible existence to
+     * preserve, and leaving it behind would let a later widget silently adopt a stale spelling
+     * through the reuse rule. Undo restores both halves because both are in the snapshot.
+     *
+     * Refuses on a linked component instance for the same reason props do: the definition owns the
+     * shape, and an instance that could redeclare it would be editing every other instance.
+     */
+    public setListItemStructFields(elementId: string, fields: readonly UIStructField[]): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            const currentStructId = (element.props as Record<string, unknown> | undefined)?.itemStructId;
+            const applied = applyUIStructFieldsForOwner({
+                document,
+                ownerElementId: elementId,
+                currentStructId: typeof currentStructId === "string" ? currentStructId : null,
+                fields,
+                generateId: () => uuidService.generate(),
+            });
+            element.props = {
+                ...(element.props ?? {}),
+                itemStructId: applied.structId,
+            };
+            document.structs = pruneUIStructs({ ...document, structs: applied.structs });
+        }, {
+            history: surfaceId ? { surfaceId } : false,
+        });
+    }
+
+    /**
+     * Bind one prop of one element to a field of the list item it is drawn for. `null` unbinds.
+     *
+     * Its own entry point rather than a shape passed through `ensureElementBlueprintValueBinding`,
+     * because the two bindings cost different things: that one mints a blueprint the author then
+     * owns and has to be torn down with `clearElementBlueprintValueBinding`, and this one is a
+     * field id. Switching between them therefore goes through the clear, which is why it runs here.
+     */
+    public setElementListItemFieldBinding(elementId: string, propPath: string, fieldId: string | null): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        if (isLinkedUIComponentElement(this.getDocument().elements[elementId])) {
+            return;
+        }
+        const existing = this.getDocument().elements[elementId]?.valueBindings?.[propPath];
+        if (existing?.kind === "blueprintValue") {
+            this.clearElementBlueprintValueBinding(elementId, propPath);
+        }
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element) {
+                return;
+            }
+            const id = fieldId?.trim();
+            if (!id) {
+                if (!element.valueBindings) {
+                    return;
+                }
+                delete element.valueBindings[propPath];
+                if (Object.keys(element.valueBindings).length === 0) {
+                    delete element.valueBindings;
+                }
+                return;
+            }
+            element.valueBindings = {
+                ...(element.valueBindings ?? {}),
+                [propPath]: { kind: "listItemField", fieldId: id },
+            };
+        }, {
+            history: surfaceId ? { surfaceId } : false,
         });
     }
 
@@ -4505,9 +4626,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createListTemplateProps({
-                itemKeyPath: "id",
+                itemStructId: UI_STRUCT_ID_NOTIFICATION_ITEM,
+                itemKeyFieldId: "id",
                 itemGap: 12,
-                previewItems: [
+                items: [
                     { id: "preview-1", message: translate("defaultDoc.notification.messageText") },
                     { id: "preview-2", message: translate("defaultDoc.notification.anotherMessage") },
                 ],
@@ -4620,9 +4742,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createListTemplateProps({
-                itemKeyPath: "index",
+                itemStructId: UI_STRUCT_ID_CHOICE_ITEM,
+                itemKeyFieldId: "index",
                 itemGap: 16,
-                previewItems: [
+                items: [
                     { text: translate("defaultDoc.choice.previewA"), index: 0, disabled: false, voiceId: "" },
                     { text: translate("defaultDoc.choice.previewB"), index: 1, disabled: false, voiceId: "" },
                     { text: translate("defaultDoc.choice.previewC"), index: 2, disabled: true, voiceId: "" },
@@ -4800,11 +4923,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createListTemplateProps({
-                itemKeyPath: "index",
+                itemStructId: UI_STRUCT_ID_NVL_ITEM,
+                itemKeyFieldId: "index",
                 itemGap: 18,
                 templateDirection: "vertical",
                 templateGap: 6,
-                previewItems: [
+                items: [
                     { nametag: translate("defaultDoc.speaker"), index: 0, isActive: false },
                     { nametag: "", index: 1, isActive: true },
                 ],

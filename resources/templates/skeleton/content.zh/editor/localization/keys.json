@@ -1,5 +1,107 @@
 {
   "keys": {
+    "config.autoForwardDelay": {
+      "sourceText": "自动前进等待时间"
+    },
+    "config.bgm": {
+      "sourceText": "背景音乐"
+    },
+    "config.categorySound": {
+      "sourceText": "声音"
+    },
+    "config.categoryText": {
+      "sourceText": "文本"
+    },
+    "config.fullscreen": {
+      "sourceText": "全屏"
+    },
+    "config.fullscreenOff": {
+      "sourceText": "关闭"
+    },
+    "config.fullscreenOn": {
+      "sourceText": "开启"
+    },
+    "config.masterVolume": {
+      "sourceText": "主音量"
+    },
+    "config.secondsSuffix": {
+      "sourceText": "秒"
+    },
+    "config.skip": {
+      "sourceText": "跳过"
+    },
+    "config.skipAllText": {
+      "sourceText": "全部"
+    },
+    "config.skipDelay": {
+      "sourceText": "跳过等待时间"
+    },
+    "config.skipReadOnly": {
+      "sourceText": "仅已读"
+    },
+    "config.soundEffects": {
+      "sourceText": "音效"
+    },
+    "config.textSpeed": {
+      "sourceText": "文字速度"
+    },
+    "config.title": {
+      "sourceText": "设置"
+    },
+    "config.voice": {
+      "sourceText": "语音"
+    },
+    "confirm.cancel": {
+      "sourceText": "取消"
+    },
+    "confirm.deleteSave": {
+      "sourceText": "删除这个存档？删除后无法恢复。"
+    },
+    "confirm.deleteSaveAnswer": {
+      "sourceText": "删除"
+    },
+    "confirm.historyBack": {
+      "sourceText": "回到这一行？在此之后的内容都会被撤销。"
+    },
+    "confirm.historyBackAnswer": {
+      "sourceText": "返回"
+    },
+    "confirm.load": {
+      "sourceText": "加载这个存档？未保存的进度将会丢失。"
+    },
+    "confirm.loadAnswer": {
+      "sourceText": "加载"
+    },
+    "confirm.loadAuto": {
+      "sourceText": "加载这个自动存档？当前进行中的游戏将被放弃。"
+    },
+    "confirm.overwrite": {
+      "sourceText": "该槽位已有存档。要覆盖吗？"
+    },
+    "confirm.overwriteAnswer": {
+      "sourceText": "覆盖"
+    },
+    "confirm.quit": {
+      "sourceText": "退出游戏？"
+    },
+    "confirm.quitAnswer": {
+      "sourceText": "退出"
+    },
+    "confirm.toTitle": {
+      "sourceText": "返回标题画面？未保存的进度将会丢失。"
+    },
+    "confirm.toTitleAnswer": {
+      "sourceText": "返回标题"
+    },
+    "load.autoSaves": {
+      "sourceText": "自动存档"
+    },
+    "load.title": {
+      "sourceText": "加载"
+    },
+    "log.title": {
+      "sourceText": "记录"
+    },
     "menu.continue": {
       "sourceText": "继续"
     },
@@ -20,6 +122,39 @@
     },
     "menu.start": {
       "sourceText": "开始"
+    },
+    "nav.back": {
+      "sourceText": "返回"
+    },
+    "nav.config": {
+      "sourceText": "设置"
+    },
+    "nav.load": {
+      "sourceText": "加载"
+    },
+    "nav.save": {
+      "sourceText": "保存"
+    },
+    "nav.title": {
+      "sourceText": "标题"
+    },
+    "save.title": {
+      "sourceText": "保存"
+    },
+    "scenes.sceneClubroom": {
+      "sourceText": "社团活动室"
+    },
+    "scenes.sceneCorridor": {
+      "sourceText": "走廊"
+    },
+    "scenes.sceneLastLight": {
+      "sourceText": "最后的光"
+    },
+    "scenes.title": {
+      "sourceText": "场景"
+    },
+    "slot.empty": {
+      "sourceText": "无存档"
     }
   },
   "schemaVersion": 1

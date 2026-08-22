@@ -34,11 +34,18 @@ import {
     VcsListServerProjectsHandler, VcsGetServerProjectHandler, VcsDeleteServerProjectHandler,
     VcsListServerProjectHistoryHandler,
     VcsListServerMembersHandler,
-    VcsSignInWithPasswordHandler, VcsCreateServerProjectHandler, VcsPublishProjectHandler,
+    VcsSignInWithPasswordHandler, VcsPublishProjectHandler,
     VcsListLocalRepositoriesHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
+import {
+    TeamCallHandler,
+    TeamConnectionsHandler,
+    TeamOpenHandler,
+    TeamSubscribeHandler,
+    TeamUnsubscribeHandler,
+} from "./handlers/teamAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import {
     ProjectWizardSelectPackageHandler,
@@ -52,8 +59,9 @@ import {
     MediaConvertStartHandler,
     MediaProbeHandler,
 } from "./handlers/mediaAction";
+import { FontCoverageProbeHandler } from "./handlers/fontAction";
 import { StudioTasksGetOverviewHandler, StudioTasksPrebakeWeatherHandler } from "./handlers/studioTaskAction";
-import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
+import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineBuildHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
     DevModeFullscreenGetHandler,
@@ -85,6 +93,7 @@ import {
 } from "./handlers/previewAction";
 import {
     GameTestLaunchHandler,
+    GameTestSendCommandHandler,
     GameTestStopHandler,
 } from "./handlers/gameTestAction";
 import {
@@ -240,6 +249,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PsdOpenHandler(),
         new PsdBakeHandler(),
         new MediaProbeHandler(),
+        new FontCoverageProbeHandler(),
         new MediaConvertStartHandler(),
         new MediaConvertCancelHandler(),
         new MediaConvertGetStatusHandler(),
@@ -256,6 +266,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),
         new WorkspaceReportLoadResultHandler(),
+        new WorkspaceCommandLineBuildHandler(),
         new WorkspaceReportWriteFreezeHandler(),
 
         // Dev mode handlers
@@ -285,6 +296,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Game sessions owned by a test run (not by the Run button)
         new GameTestLaunchHandler(),
+        new GameTestSendCommandHandler(),
         new GameTestStopHandler(),
 
         // Production game build handlers
@@ -432,8 +444,14 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsDeleteServerProjectHandler(),
         new VcsListServerProjectHistoryHandler(),
         new VcsListServerMembersHandler(),
+        // The Team protocol, whole. See ./handlers/teamAction.ts for why this is five
+        // entries and stays five however many features the protocol grows.
+        new TeamOpenHandler(),
+        new TeamConnectionsHandler(),
+        new TeamCallHandler(),
+        new TeamSubscribeHandler(),
+        new TeamUnsubscribeHandler(),
     new VcsSignInWithPasswordHandler(),
-        new VcsCreateServerProjectHandler(),
         new VcsPublishProjectHandler(),
         new VcsListLocalRepositoriesHandler(),
         new VcsAddServerHandler(),

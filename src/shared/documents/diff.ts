@@ -252,6 +252,21 @@ export interface DocumentDiffEntry {
      * name is all there is and a consumer may classify by name itself.
      */
     readonly contentClass?: ContentClass;
+    /**
+     * The paths this ONE entry stands for, when the document is stored as several files.
+     *
+     * Present only for a document set (`@shared/documents/documentSet.ts`), where {@link path} is
+     * the manifest - the document's one name - and these are the files of it that actually
+     * changed. It includes the manifest when the manifest is among them, and often it is not: the
+     * ordinary edit changes a member and leaves the manifest alone, so the path an entry is
+     * reported at is sometimes a path that did not change at all.
+     *
+     * **Carried rather than derived, because a consumer cannot derive it.** A renderer can ask the
+     * registry which paths a set claims; it cannot ask which of them differ in THIS comparison,
+     * which is exactly what the producer folded. A surface that draws "1 file" over a row standing
+     * for forty is the failure this field exists to prevent.
+     */
+    readonly members?: readonly string[];
     readonly diff: DocumentDiff;
 }
 

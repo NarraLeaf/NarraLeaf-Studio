@@ -54,6 +54,10 @@ export const settings = {
             label: "Workspace",
             description: "Startup behavior, workspace history, and automatic saving.",
         },
+        performance: {
+            label: "Performance",
+            description: "How much of this machine Studio spends, and how long you wait for it.",
+        },
         shortcuts: {
             label: "Shortcuts",
             description: "Keys bound to each command throughout Studio.",
@@ -63,8 +67,11 @@ export const settings = {
             description: "Checkpoints and the identity recorded on them.",
         },
         servers: {
-            label: "Servers",
-            description: "Servers this installation is signed in to, and the accounts it uses.",
+            // The product, and under its full name: "Team" on its own reads as a word nobody
+            // translated. An author meets the same name in the project wizard and in the corner of
+            // the workspace; the panel under it still calls each machine a server.
+            label: "NarraLeaf Team",
+            description: "NarraLeaf Team servers this installation is signed in to, and the accounts it uses.",
         },
         network: {
             label: "Network",
@@ -84,6 +91,21 @@ export const settings = {
         developerMode: {
             label: "Developer options",
             description: "Right-click menus gain a section for copying the ID of the item clicked.",
+        },
+        screenEffectThreads: {
+            label: "Threads for screen effects",
+            description: "How many threads draw frames while the encoder runs. Automatic reads this machine.",
+            options: {
+                auto: "Automatic",
+            },
+        },
+        screenEffectQuality: {
+            label: "Screen effects in Dev Mode",
+            description: "Previews and builds only accept the final quality, so choosing draft bakes every effect twice: once now, once the first time you run.",
+            options: {
+                draft: "Draft",
+                final: "Final quality",
+            },
         },
         confirmQuit: {
             label: "Confirm before quitting with ⌘Q",
@@ -314,6 +336,10 @@ export const settings = {
         servers: {
             label: "Servers",
         },
+        teamMachineLabel: {
+            label: "This machine's name",
+            description: "Shown to collaborators beside your account. Leave empty to use the host name.",
+        },
         settingsTransfer: {
             label: "Move settings between machines",
         },
@@ -352,6 +378,8 @@ export const settings = {
         refresh: "Refresh",
         browsing: "Loading…",
         download: "Download",
+        /** Same button on a language already installed under an older digest. */
+        update: "Update",
         downloading: "Downloading…",
         failed: "The dictionary list could not be retrieved. Check the network policy in Settings.",
         installed: {
@@ -402,9 +430,10 @@ export const settings = {
         // stranger which usernames exist.
         signInRefused: "The server did not accept that username and password.",
         signInUnavailable: "This installation cannot sign in with a password.",
-        // A server with nothing to sign in to. Said rather than hidden, because the
-        // absence of an entry afterwards is otherwise indistinguishable from a failure.
-        noAccount: "{name} does not require authentication, so there is nothing to add.",
+        // The server answered but issues no accounts, and an account is what Studio stores.
+        // Said rather than hidden: the absence of an entry afterwards is otherwise
+        // indistinguishable from a failure.
+        noAccount: "{name} issues no accounts, so it cannot be added. Ask its administrator for one.",
         // The closing step. Facts about what was joined and nothing else: no
         // congratulation, and no count for a server that would not give one.
         joined: {
@@ -467,6 +496,10 @@ export const settings = {
                 spellcheckDictionaries: {
                     label: "Spelling dictionaries",
                     description: "Word lists downloaded for spellchecking. The project's own terms are not here.",
+                },
+                optimizedImages: {
+                    label: "Optimized build images",
+                    description: "Images re-encoded for a build. Produced again the next time one runs.",
                 },
                 psdImports: {
                     label: "PSD import leftovers",

@@ -5,6 +5,7 @@ import type { WeatherBakeSpec } from "@shared/weather/model";
 import { collectWeatherSpecs } from "@shared/weather/stage";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
+import { ProjectService } from "../core/ProjectService";
 import { StoryService } from "../story/StoryService";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 
@@ -50,10 +51,12 @@ export class WeatherPrebakeService extends Service<WeatherPrebakeService> {
         await depend([
             ctx.services.get<StoryService>(Services.Story),
             ctx.services.get<UIDocumentService>(Services.UIDocument),
+            ctx.services.get<ProjectService>(Services.Project),
         ]);
 
         const storyService = ctx.services.get<StoryService>(Services.Story);
         const uiDocumentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
+        const projectService = ctx.services.get<ProjectService>(Services.Project);
 
         this.unsubs.push(
             storyService.onDocumentChanged(() => this.schedule()),
@@ -61,6 +64,11 @@ export class WeatherPrebakeService extends Service<WeatherPrebakeService> {
             // The stage's design size is half of what a clip's identity is, so a resize means every
             // story now names different pictures than the ones already on disk.
             uiDocumentService.onDocumentChanged(() => this.schedule()),
+            // And the frame rate is the other half. Watched for the same reason: a project whose rate
+            // changed asks for pictures nothing has made yet, and this is the wait that exists to
+            // remove. Most writes to the manifest change no clip at all, which the submit guard
+            // catches without doing any work.
+            projectService.onConfigChanged(() => this.schedule()),
         );
 
         this.schedule();
@@ -98,12 +106,22 @@ export class WeatherPrebakeService extends Service<WeatherPrebakeService> {
                 documents.push(document);
             }
         }
-        const specs = collectWeatherSpecs(documents, ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument());
+        const specs = collectWeatherSpecs(
+            documents,
+            ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument(),
+            ctx.services.get<ProjectService>(Services.Project).getVfxConfiguration(),
+        );
         const keys = new Set(specs.map(weatherBakeKey));
 
         // Nothing new to have ready. This is the common case by a wide margin: writing prose changes
         // the document constantly and changes the weather never.
-        if (specs.length === 0 || (keys.size === this.submitted.size && [...keys].every(key => this.submitted.has(key)))) {
+        //
+        // The test is whether the set CHANGED, not whether it is empty. An empty set that used to
+        // have something in it is the author deleting their last weather row, and the other side
+        // reads this message as the whole of what is wanted - so staying quiet about it would leave a
+        // bake running for a row that no longer exists. A project that never had weather still says
+        // nothing, because for it nothing changed.
+        if (keys.size === this.submitted.size && [...keys].every(key => this.submitted.has(key))) {
             return;
         }
         this.submitted = keys;

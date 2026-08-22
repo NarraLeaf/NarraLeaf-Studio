@@ -57,6 +57,8 @@ export function ProjectWizardApp() {
         cloneFailure,
         importStatus,
         importFailure,
+        publishTo,
+        addressGiven,
         updateProjectName,
         updateAppId,
         updateProjectData,
@@ -75,7 +77,14 @@ export function ProjectWizardApp() {
         clearCreationError,
     } = useProjectWizard();
 
-    const steps: StepConfig[] = stepKeys.map(key => ({ key, label: t(STEP_LABEL_KEYS[key]) }));
+    // The first page of the create flow is two questions in two columns, and its rail label
+    // names the left one. A project being made for a server has that one answered already,
+    // so what is left on the page is the templates - and the rail says so, rather than
+    // labelling a page after a column that is not on it.
+    const steps: StepConfig[] = stepKeys.map(key => ({
+        key,
+        label: t(key === "origin" && publishTo !== null ? "wizard.steps.template" : STEP_LABEL_KEYS[key]),
+    }));
 
     /**
      * The template the author picked, once the list has arrived.
@@ -127,6 +136,7 @@ export function ProjectWizardApp() {
                         flow={flow}
                         onFlowChange={setFlow}
                         templates={templates}
+                        settled={publishTo !== null}
                     />
                 );
             case "project":
@@ -144,6 +154,7 @@ export function ProjectWizardApp() {
                         onLocationFocus={handleLocationFocus}
                         onSelectDirectory={handleSelectDirectory}
                         isSelectingDirectory={isSelectingDirectory}
+                        versionControlSettled={publishTo !== null}
                     />
                 );
             case "stage":
@@ -155,7 +166,7 @@ export function ProjectWizardApp() {
                     />
                 );
             case "review":
-                return <ReviewStep projectData={projectData} template={selectedTemplate} />;
+                return <ReviewStep projectData={projectData} template={selectedTemplate} publishTo={publishTo} />;
             case "source":
                 return (
                     <SourceStep
@@ -170,6 +181,7 @@ export function ProjectWizardApp() {
                         onLocationFocus={handleLocationFocus}
                         onSelectDirectory={handleSelectDirectory}
                         isSelectingDirectory={isSelectingDirectory}
+                        addressGiven={addressGiven}
                     />
                 );
             case "clone":

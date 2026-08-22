@@ -32,5 +32,6 @@ export const placeholders = {
         notifications: "Notifications",
         plugins: "Plugins",
         variables: "Variables",
+        dictionary: "Dictionary",
     },
 } as const;

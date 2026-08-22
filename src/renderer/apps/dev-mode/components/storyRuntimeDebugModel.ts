@@ -58,11 +58,6 @@ export type StoryTimelineRow = {
      * whose line it is.
      */
     speakerColor: string | null;
-    /**
-     * The category hue the editor bars this row with, or `null` for the prose rows that carry none.
-     * Same single source as the editor's bar, so a row is one colour in both places.
-     */
-    barColor: string | null;
 };
 
 export type DeclaredStoryVariable = {
@@ -104,7 +99,6 @@ export function projectSceneTimeline(scene: StoryScene, lookups: StoryRowLookups
             summary: projected.sentence,
             speaker: projected.speaker?.name || null,
             speakerColor: projected.speaker?.color ?? null,
-            barColor: projected.barColor,
         });
         for (const childId of block.childrenIds) {
             walk(childId, depth + 1);
@@ -157,6 +151,46 @@ export function resolveSceneIdForBlock(
         }
     }
     return fallbackSceneId;
+}
+
+/** A story row named the way the workspace channels want it: story, the scene that owns it, the row. */
+export type StoryRowLocation = {
+    storyId: string;
+    sceneId: StorySceneId;
+    blockId: StoryBlockId;
+};
+
+/**
+ * Where the play head is, as a row the workspace editor can be pointed at.
+ *
+ * One function because two channels ask the same question and must not answer it differently: the
+ * highlight that follows playback, and the "open this line in Studio" the author asks for. A row
+ * carried under the wrong scene is a row the editor cannot match, and the two of them disagreeing
+ * would mean the highlighted line and the opened line are different lines.
+ *
+ * The scene is looked UP rather than taken from the launch request, for the reason
+ * {@link resolveSceneIdForBlock} gives. Null whenever there is nothing to point at: no story
+ * running, nothing executed yet, or an engine action that belongs to no Studio row.
+ */
+export function locatePlayHeadRow(
+    documents: Readonly<Record<string, StoryDocument>> | undefined,
+    context: { storyId: string; sceneId: StorySceneId } | null,
+    bindings: readonly ActionIdBindingLike[],
+    actionId: string | null,
+): StoryRowLocation | null {
+    if (!context) {
+        return null;
+    }
+    const blockId = blockIdForActionId(bindings, actionId);
+    if (!blockId) {
+        return null;
+    }
+    const document = documents?.[context.storyId];
+    return {
+        storyId: context.storyId,
+        sceneId: document ? resolveSceneIdForBlock(document, blockId, context.sceneId) : context.sceneId,
+        blockId,
+    };
 }
 
 // --- Execution context ----------------------------------------------------------------------------

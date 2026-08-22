@@ -22,11 +22,11 @@ type MountOptions = {
     /** Node types the catalogue admits to knowing; everything else reads as unknown. */
     knownNodeTypes?: readonly string[];
     charactersFail?: boolean;
+    /** Records what the service subscribes to, so a rescan trigger can be fired at it. */
+    hooks?: { setsChanged?: () => void; storyLoads?: string[] };
     /** The project's default font stack, which is a reference site like any other. */
     projectFonts?: ReadonlyArray<{ assetId: string }>;
     designFails?: boolean;
-    /** Records what the service subscribes to, so a rescan trigger can be fired at it. */
-    hooks?: { setsChanged?: () => void; storyLoads?: string[] };
 };
 
 const noop = () => () => { };

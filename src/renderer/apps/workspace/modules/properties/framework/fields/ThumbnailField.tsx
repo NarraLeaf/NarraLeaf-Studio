@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { ImagePlus } from "lucide-react";
 import { ThumbnailFieldDefinition } from "../types";
 import { makeFreezeGuard, useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -364,11 +365,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
 
     return (
         <div className={field.className}>
-            {field.label && (
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {field.label}
-                </label>
-            )}
+            <FieldLabelRow field={field} />
             <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                     <span className="text-sm text-fg">{t("properties.preview")}</span>

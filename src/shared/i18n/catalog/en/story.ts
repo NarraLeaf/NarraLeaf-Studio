@@ -139,6 +139,7 @@ export const story = {
             customTransition: "This transition carries properties the script does not name.",
             effectProps: "This effect carries properties the script does not name.",
             unresolvedRef: "This row points at something that no longer exists.",
+            endingPage: "This ending names its own page, and the script does not carry it.",
             unknownPayload: "This row is of a kind the script does not cover.",
         },
         // Why a line of a script could not be read back into the scene. Keyed by the parser's own
@@ -305,8 +306,8 @@ export const story = {
             expand: "Show branches",
             collapse: "Hide branches",
         },
-        // The route rail: endings derived from the graph (a scene the story cannot leave) and
-        // every decision path that reaches one.
+        // The route rail: the story's endings - the `/ending` rows, or, in a story that marks none,
+        // the scenes it cannot leave - and every decision path that reaches one.
         route: {
             title: "Routes",
             show: "Show routes",
@@ -323,9 +324,12 @@ export const story = {
             noEntryScene: "No entry scene, so no routes.",
             noRoutes: "No routes.",
             noDecisions: "No decisions",
-            // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
+            // An ending row with no name yet. The row is real and its routes are real, so the list
+            // still has to have something to call it.
+            endingUnnamed: "Unnamed ending",
+            // A path can stop somewhere that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here without being an ending. It returned to a visited scene, or an option has nothing written after it",
+            stopsHereTitle: "A path stops here without reaching an ending. It returned to a visited scene, an option has nothing written after it, or the scene has no way out and no /ending row",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
@@ -454,6 +458,14 @@ export const story = {
         noSuggestions: "No suggestions",
         addToDictionary: "Add to project dictionary",
     },
+    /**
+     * The popover a right click on a dictionary mark opens: one action, and the entry behind it.
+     */
+    dictionary: {
+        replaceWith: "Replace with {term}",
+        applyReading: "Add ruby {reading}",
+        openEntry: "Edit in dictionary",
+    },
     interpolation: {
         title: "Insert value",
         kindVariable: "Variable",
@@ -540,6 +552,7 @@ export const story = {
         target: "Target",
         lineText: "Text",
         labelName: "Label",
+        endingName: "Ending",
         scene: "Scene",
         track: "Audio Track",
         appTag: "Build Variant",
@@ -766,6 +779,7 @@ export const story = {
                 data: "Variables",
                 utils: "Other",
                 invalid: "Invalid rows",
+                empty: "Blank lines",
             },
         },
     },
@@ -1118,6 +1132,10 @@ export const story = {
         // in an editor that has one. The detail carries the half the name cannot, which is that the
         // line belongs to one build and to no other.
         cut: { label: "Cut point", detail: "End one build variant's story at this line. Other builds do not have this line" },
+        // Named for the row it makes. The detail states both halves of what the row does, because
+        // the second one is the reason to write it rather than simply stopping: the ending is recorded,
+        // which is what a gallery screen and a walkthrough test read.
+        ending: { label: "Ending", detail: "End the story at this line and record which ending the player reached" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
@@ -1172,9 +1190,11 @@ export const story = {
         goto: "Go to",
         break: "Break",
         cut: "Cut point",
+        ending: "Ending",
         jump: "Jump",
         note: "Note",
         invalid: "Invalid",
+        empty: "Blank line",
     },
     emptyPlaceholder: {
         narration: "Double-click to enter narration",
@@ -1182,6 +1202,8 @@ export const story = {
         choice: "Double-click to enter choice prompt",
         note: "Double-click to enter a note",
         text: "Double-click to enter text",
+        /** A blank row. Shown on hover only, so the line reads blank until it is pointed at. */
+        blank: "Click to type",
     },
     characterName: {
         unassigned: "Unassigned character",
@@ -1244,9 +1266,11 @@ export const story = {
         // list to ask. Says only what is true in both cases; the row's own mark, which does have the
         // list, is where a deleted variant is named as deleted.
         cutUnknown: "Cut point",
+        ending: "Ending {name}",
         jump: "Jump {scene}",
         note: "Note",
         invalid: "Invalid command",
+        empty: "Blank line",
         sceneUnassigned: "unassigned",
         sceneUnknown: "unknown scene",
         variableFallback: "variable",

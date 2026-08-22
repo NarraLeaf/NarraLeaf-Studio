@@ -6,7 +6,8 @@ import { Fs, getMimeType } from "@shared/utils/fs";
 import { normalizePath } from "@shared/utils/string";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { decodeTextBytes, encodeTextBytes, resolveTextEncodingId } from "../../../../utils/textCodec";
-import { FileStorageInfo, StorageManager } from "../storageManager";
+import { decodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
+import { FileStorageBatchEntry, FileStorageInfo, StorageManager } from "../storageManager";
 
 export class FileSystemHandler implements ProtocolHandler, AssetResolver {
     private rules: ProtocolRule[] = [];
@@ -118,6 +119,17 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
  * Protocol handler for file system hash-based operations
  * Handles requests to app://fs/{hash} URLs
  */
+/**
+ * How many of a batch's files are written at once.
+ *
+ * Sized against libuv's default four-thread pool, which is what the `fsync` at the end of every
+ * atomic write actually queues on: enough in flight to keep the pool busy across the gaps, low
+ * enough that one batch cannot starve every other filesystem call in the process. Measured rather
+ * than guessed - three hundred 2 KB files took 884 ms at 8 and 919 ms at 32, so the ceiling is the
+ * pool, not this number, and the smaller one is the politer neighbour.
+ */
+const BATCH_WRITE_CONCURRENCY = 8;
+
 export class FileSystemHashHandler implements ProtocolHandler {
     private logger: Logger;
 
@@ -186,6 +198,9 @@ export class FileSystemHashHandler implements ProtocolHandler {
             } else if (request.method === 'PUT') {
                 if (storageInfo.operation !== "write") {
                     return this.methodNotAllowed("Hash is not valid for write operations");
+                }
+                if (storageInfo.batch) {
+                    return await this.handleBatchWrite(hash, request, storageInfo.batch);
                 }
                 return await this.handleWrite(hash, request, storageInfo);
             } else {
@@ -325,6 +340,96 @@ export class FileSystemHashHandler implements ProtocolHandler {
             return bytes;
         }
         return { ok: true, data: decodeTextBytes(bytes.data, textEncoding) };
+    }
+
+    /**
+     * Write every file a batched grant names, from one framed body, and report each one.
+     *
+     * Two properties this owes its callers:
+     *
+     *  - **Nothing here decides where bytes go.** The paths, encodings and raw/text choices come from
+     *    the grant, which was authorized path by path before it existed. The body carries only sizes,
+     *    so a renderer that frames it wrongly mis-slices its own payloads and cannot address a file
+     *    the grant does not already cover. A body whose payload count disagrees with the grant is
+     *    rejected outright rather than zipped against what it does carry, because payload `i` landing
+     *    in entry `i` is the entire binding.
+     *  - **A partial batch is reportable.** Entries are attempted independently and every one gets an
+     *    answer, in order, in a 200 response. Stopping at the first failure would leave the caller
+     *    unable to say which files landed - and a debt-tracking writer that cannot say that has to
+     *    re-owe all of them, which is the multi-file write this was built to make cheap.
+     *
+     * The grant is consumed once, at the end, however the individual writes went: it named this set
+     * of files for this one request, and a partial failure is not a licence to try again unasked.
+     *
+     * Entries are written {@link BATCH_WRITE_CONCURRENCY} at a time rather than one after another,
+     * and that is not a micro-optimisation. Each write is an atomic replace ending in an `fsync`,
+     * which is *waiting*, not work: three hundred 2 KB files took ~1.6 s in a plain loop against
+     * ~0.7 s for the same files written concurrently through separate grants, so a serial batch was
+     * slower than the N-round-trip route it exists to replace. Nothing is shared between entries -
+     * the grant refuses duplicate paths - so there is no ordering left to preserve.
+     */
+    private async handleBatchWrite(
+        hash: string,
+        request: Request,
+        entries: readonly FileStorageBatchEntry[],
+    ): Promise<ProtocolResponse> {
+        const frame = decodeWriteBatchFrame(new Uint8Array(await request.arrayBuffer()), entries.length);
+        if (!("payloads" in frame)) {
+            this.logger.error(`Rejected batch write body: ${frame.message}`);
+            return {
+                statusCode: 400,
+                headers: { "Content-Type": "text/plain" },
+                data: frame.message,
+            };
+        }
+
+        const results: FsRequestResult<void>[] = new Array(entries.length);
+        let next = 0;
+        const worker = async (): Promise<void> => {
+            while (next < entries.length) {
+                const index = next++;
+                results[index] = await this.writeBatchEntry(entries[index], Buffer.from(frame.payloads[index]));
+            }
+        };
+        await Promise.all(
+            Array.from({ length: Math.min(BATCH_WRITE_CONCURRENCY, entries.length) }, worker),
+        );
+
+        this.storageManager.cleanup(hash);
+        return {
+            statusCode: 200,
+            headers: { "Content-Type": "application/json" },
+            data: JSON.stringify({ results }),
+        };
+    }
+
+    /**
+     * One file of a batch, with the directory check `allocateWrite` performs up front for a
+     * single-path grant. It happens here instead so a missing directory costs its own entry and not
+     * the whole batch.
+     */
+    private async writeBatchEntry(entry: FileStorageBatchEntry, payload: Buffer): Promise<FsRequestResult<void>> {
+        const dirExists = await Fs.isDirExists(path.dirname(entry.path));
+        if (!dirExists.ok) {
+            return dirExists as FsRequestResult<void>;
+        }
+        if (!dirExists.data) {
+            return {
+                ok: false,
+                error: { code: FsRejectErrorCode.NOT_FOUND, message: `Directory does not exist: ${path.dirname(entry.path)}` },
+            };
+        }
+
+        if (entry.raw) {
+            return Fs.writeRaw(entry.path, payload);
+        }
+        // Identical to the single-path branch below, and for the same reason: the wire is UTF-8
+        // whatever the file's encoding is, and `entry.encoding` describes the file alone.
+        const textContent = payload.toString("utf-8");
+        const textEncoding = resolveTextEncodingId(entry.encoding);
+        return textEncoding
+            ? Fs.writeRaw(entry.path, encodeTextBytes(textContent, textEncoding))
+            : Fs.write(entry.path, textContent, entry.encoding as BufferEncoding | undefined);
     }
 
     private async handleWrite(hash: string, request: Request, storageInfo: FileStorageInfo): Promise<ProtocolResponse> {

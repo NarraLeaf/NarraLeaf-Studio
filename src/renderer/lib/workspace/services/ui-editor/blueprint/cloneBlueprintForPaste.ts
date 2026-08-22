@@ -143,6 +143,11 @@ export function remapElementValueBindingBlueprintIds(
     let changed = false;
     const next: Record<string, UIElementValueBinding> = { ...valueBindings };
     for (const [propPath, binding] of Object.entries(next)) {
+        // Only a blueprint binding names a blueprint. A field binding names a field of the shape the
+        // pasted subtree brought with it, so it travels unchanged.
+        if (binding.kind !== "blueprintValue") {
+            continue;
+        }
         const nb = blueprintIdMap[binding.blueprintId];
         if (nb) {
             next[propPath] = { ...binding, blueprintId: nb };

@@ -131,7 +131,9 @@ describe("SpellcheckManager", () => {
         expect(await fs.readdir(cacheDir())).toEqual(expect.arrayContaining(["en-GB.json", "en-GB.txt.gz"]));
         const installed = await spellcheck.listInstalled();
         expect(installed.languages).toEqual([
-            { code: "en-GB", name: "English (United Kingdom)", bytes: PACKED.byteLength },
+            // The digest travels with it: it is the only thing that can tell a corrected list from
+            // the one on disk, and the settings panel compares it against the registry.
+            { code: "en-GB", name: "English (United Kingdom)", bytes: PACKED.byteLength, sha256: DIGEST },
         ]);
 
         const { ranges } = await spellcheck.check(windowA, "the quick brwn fox", "en-GB");
@@ -148,6 +150,18 @@ describe("SpellcheckManager", () => {
         // dictionary on the next run.
         expect(await fs.readdir(cacheDir()).catch(() => [])).toEqual([]);
         expect((await spellcheck.listInstalled()).languages).toEqual([]);
+    });
+
+    it("offers what it holds under its published digest, so a corrected list can be noticed", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+
+        const [offered] = (await spellcheck.listAvailable()).entries;
+        const [held] = (await spellcheck.listInstalled()).languages;
+        // Equal here, which is what makes the settings panel hide the row. A republished list moves
+        // the registry's digest, the two stop matching, and the language is offered again.
+        expect(offered.sha256).toBe(held.sha256);
+        expect(offered.sha256).toBe(DIGEST);
     });
 
     it("refuses to download a code the registry does not offer", async () => {
@@ -179,6 +193,33 @@ describe("SpellcheckManager", () => {
 
         // Case-insensitively, because a name at the start of a sentence is the same name.
         expect((await spellcheck.check(windowA, "aleth", "en-GB")).ranges).toEqual([]);
+    });
+
+    it("does not mark a contraction, though the word list holds none", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+
+        // The shipped list is built from a SCOWL merge that left the contractions out: 24,619 of its
+        // apostrophe forms are possessives and not one is a contraction, so every line of dialogue
+        // came back underlined. `WORDS` above is the same shape - it holds `fox`, and nothing that
+        // `fox` can be written with an apostrophe as.
+        const text = "The fox'll met the fox's brown fox, and the foxn't fox'd fox've";
+        expect((await spellcheck.check(windowA, text, "en-GB")).ranges.map(range => range.word))
+            .toEqual(["and"]);
+
+        // What is still wrong is still marked: no apostrophe, and an apostrophe in the wrong place.
+        expect((await spellcheck.check(windowA, "the'xe", "en-GB")).ranges.map(range => range.word))
+            .toEqual(["the'xe"]);
+    });
+
+    it("accepts the possessive of a name the project taught it", async () => {
+        const spellcheck = manager();
+        await spellcheck.download("en-GB");
+
+        expect((await spellcheck.check(windowA, "Elysia's fox", "en-GB")).ranges).toEqual([]);
+        // And a name it was never taught still is not a word, possessive or not.
+        expect((await spellcheck.check(windowA, "Brannoc's fox", "en-GB")).ranges.map(range => range.word))
+            .toEqual(["Brannoc's"]);
     });
 
     it("holds one project's words against one window only", async () => {
