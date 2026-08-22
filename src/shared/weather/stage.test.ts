@@ -3,7 +3,7 @@ import type { StoryDocument } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { weatherBakeKey } from "./bakeKey";
 import { DEFAULT_VFX_FRAME_RATE, type VfxConfiguration } from "@shared/types/vfx";
-import { WEATHER_LOOP_SECONDS, type WeatherSeedRef } from "./model";
+import { weatherFrameCountOf, weatherLoopSecondsOf, type WeatherSeedRef } from "./model";
 import { collectWeatherSpecs, weatherClipAssetId, weatherSpecForStage } from "./stage";
 
 const uidoc = (surfaces: { kind: string; designSize?: { width: number; height: number } }[]): UIDocument =>
@@ -43,7 +43,7 @@ describe("weatherSpecForStage", () => {
             width: 1280,
             height: 720,
             fps: DEFAULT_VFX_FRAME_RATE,
-            frames: WEATHER_LOOP_SECONDS * DEFAULT_VFX_FRAME_RATE,
+            frames: weatherFrameCountOf({ seed: "snow" }, DEFAULT_VFX_FRAME_RATE),
         });
     });
 
@@ -126,16 +126,28 @@ describe("the project frame rate", () => {
         weatherSpecForStage({ seed: "snow" }, undefined, vfx);
 
     it("is 30 for a project that has never set one, so nothing already baked is orphaned", () => {
-        expect(rate(undefined)).toMatchObject({ fps: 30, frames: WEATHER_LOOP_SECONDS * 30 });
+        expect(rate(undefined)).toMatchObject({ fps: 30, frames: weatherFrameCountOf({ seed: "snow" }, 30) });
     });
 
     it("carries the frame count with it, because the seam is phases of `frames`", () => {
+        // The count is the effect's derived LENGTH times the rate, so raising the rate buys smoother
+        // motion over the same span of time rather than a longer clip.
+        const seconds = weatherLoopSecondsOf({ seed: "snow" });
         for (const frameRate of [30, 48, 60, 120] as const) {
             expect(rate({ frameRate })).toMatchObject({
                 fps: frameRate,
-                frames: WEATHER_LOOP_SECONDS * frameRate,
+                frames: Math.round(seconds * frameRate),
             });
         }
+    });
+
+    it("does not let the length depend on the rate", () => {
+        // Two projects at different rates must describe the same weather for the same span, or the
+        // rate quietly becomes a speed control.
+        const at = (frameRate: 30 | 120) => rate({ frameRate });
+        // Not exactly: the derived length is a whole number of CROSSINGS rather than of frames, so
+        // each rate rounds it to its own grid. Within a frame of each other is the guarantee.
+        expect(Math.abs(at(30).frames / 30 - at(120).frames / 120)).toBeLessThan(1 / 30);
     });
 
     it("falls back rather than honouring a rate nothing offers", () => {
