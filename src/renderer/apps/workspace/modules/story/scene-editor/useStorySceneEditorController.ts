@@ -29,6 +29,7 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
@@ -135,6 +136,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const localizationService = useMemo(() => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null), [context, isInitialized]);
     /** Holds the recordings, so a line that is duplicated or pasted elsewhere keeps its take. */
     const voiceService = useMemo(() => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null), [context, isInitialized]);
+    /**
+     * The live session this window is in, which changes what undo means for this document.
+     *
+     * Two things hang off it, and both are the same statement: while a session owns this story,
+     * nothing here may record a scene snapshot ({@link captureHistoryState}) and Ctrl+Z sends the
+     * inverse of this window's last operation instead of restoring one ({@link undoEdit}). A
+     * snapshot taken during a session describes a scene as only this author had it, so restoring
+     * one would delete everything the others wrote since, with nothing on any screen saying so.
+     */
+    const liveSessionService = useMemo(() => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null), [context, isInitialized]);
     /**
      * This window's own project, as the clipboard describes it.
      *
@@ -1037,13 +1048,22 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!scene) {
             return null;
         }
+        if (storyId && liveSessionService?.ownsStory(storyId)) {
+            // Nothing to snapshot: this scene is shared, and a snapshot of it is a statement about
+            // a document only this window ever had. Answered here rather than at the eleven places
+            // that ask for one, because this is what a scene snapshot MEANS - `HistoryService`
+            // records nothing when a scope says its state cannot be read, so every checkpoint
+            // against this scene stops recording at once, including the ones taken outside this
+            // editor (a script import, the flow tab, a NarraLang commit).
+            return null;
+        }
         return {
             scene: cloneScene(scene),
             activeBlockId,
             selectedBlockIds: [...selectedBlockIds],
             collapsedBlockIds: [...collapsedBlockIds],
         };
-    }, [activeBlockId, collapsedBlockIds, scene, selectedBlockIds]);
+    }, [activeBlockId, collapsedBlockIds, liveSessionService, scene, selectedBlockIds, storyId]);
 
     const restoreHistoryState = useCallback((state: StorySceneHistoryState) => {
         if (!storyService || !storyId || !sceneId) {
@@ -1080,11 +1100,22 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         [sceneHistory],
     );
     const undoEdit = useCallback(() => {
+        // Inside a session, undo is sending the inverse of this window's own last operation - the
+        // stack above holds nothing to restore, and restoring a scene over a shared document would
+        // wipe out whatever the others wrote since. The session says why when there is no inverse.
+        if (storyId && liveSessionService?.ownsStory(storyId)) {
+            liveSessionService.undo();
+            return;
+        }
         sceneHistory.undo();
-    }, [sceneHistory]);
+    }, [liveSessionService, sceneHistory, storyId]);
     const redoEdit = useCallback(() => {
+        if (storyId && liveSessionService?.ownsStory(storyId)) {
+            liveSessionService.redo();
+            return;
+        }
         sceneHistory.redo();
-    }, [sceneHistory]);
+    }, [liveSessionService, sceneHistory, storyId]);
 
     const updateBlockPayloadFor = useCallback((blockId: StoryBlockId, payload: StoryBlock["payload"]) => {
         if (storyService && storyId && sceneId) {
