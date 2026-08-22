@@ -1,16 +1,14 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Monitor, Paperclip, Radio } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
-import {
-    closeLiveSession,
-    joinLiveSession,
-    leaveLiveSession,
-    openLiveSession,
-    overlayIsStale,
-} from "@/lib/team";
+import { overlayIsStale } from "@/lib/team";
+import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
+import { useWorkspaceFreeze } from "../../hooks/useWorkspaceFrozen";
 import type { TeamProjectSurface } from "../../hooks/useTeamProject";
+import { liveEntryFailureSentence, liveEndSentence, liveOtherMembers, liveStandingKey } from "./liveSessionText";
+import { useLiveSession, useLiveSessionStory } from "./useLiveSession";
 
 /**
  * Who is on this project, what room is open on it, and what is attached to it.
@@ -27,38 +25,47 @@ import type { TeamProjectSurface } from "../../hooks/useTeamProject";
  *
  * The counts are the server's. Nothing here holds a copy to keep honest: an event says a
  * collection moved and `useTeamProject` reads it again.
+ *
+ * **The room row drives `Services.Live`, never the server calls underneath it.** Opening a room on
+ * the server is one step of entering a session: the tree is checkpointed and pushed first, the
+ * workspace freezes behind it, and the story editor's gestures start going to the room. A control
+ * that called `live.open` on its own would put a room on the server that this window was not in and
+ * that nothing here could leave.
  */
-export function TeamCollaboration({ team, instance }: {
+export function TeamCollaboration({ team }: {
     team: TeamProjectSurface;
-    /**
-     * This window's own instance id, so its own row can be told from somebody else's.
-     *
-     * Absent while the announcement has not landed, which is the first moment after a
-     * session opens. Nothing is drawn as "mine" until it has.
-     */
-    instance?: string;
 }) {
     const { t } = useTranslation();
-    const [busy, setBusy] = useState(false);
     const project = team.state.kind === "verified" ? team.state.project : null;
     const origin = team.remoteOrigin;
-
-    /** The room this window is in, if it is in one. */
-    const mine = useMemo(
-        () => team.live.find((session) =>
-            session.members.some((member) => member.instance === instance)) ?? null,
-        [team.live, instance],
-    );
-    /** The first room it is not in, which is the one there is an offer to join. */
+    /** The session this window is in, as the session itself describes it. */
+    const live = useLiveSession();
+    const story = useLiveSessionStory();
+    // Asked of the freeze rather than derived, because the latch is a module-level singleton: a
+    // session entered while the workspace is frozen for something else would replace that freeze
+    // instead of adding to it. The acts behind these controls ask again for the same reason.
+    const freeze = useWorkspaceFreeze();
+    const inRoom = live.view.phase !== "idle";
+    /** The first room this window is not in, which is the one there is an offer to join. */
     const other = useMemo(
-        () => team.live.find((session) => session !== mine) ?? null,
-        [team.live, mine],
+        () => team.live.find(session => session.id !== live.view.session?.id) ?? null,
+        [team.live, live.view.session],
     );
-
-    const run = useCallback((act: () => Promise<unknown>) => {
-        setBusy(true);
-        void act().finally(() => setBusy(false));
-    }, []);
+    // Only where entering is what the author is being offered: inside a session the answer is
+    // always this session's own freeze, which would read as the room refusing to let anyone in.
+    const blocked = inRoom ? null : refuseLiveSessionEntry(freeze);
+    const failure = live.view.entryFailure === null ? null : liveEntryFailureSentence(live.view.entryFailure);
+    const ended = live.view.ended;
+    // Null for a session the author left themselves: they pressed the control and watched the row
+    // change, and a line confirming it is one more thing to read every time.
+    const endedSentence = ended === null ? null : liveEndSentence(ended);
+    const members = liveOtherMembers(live.view);
+    const standing = liveStandingKey(live.view);
+    // A session is about one story document, and a project with none has nothing to open a room on.
+    const noStory = story === null;
+    const entryTip = blocked !== null
+        ? t(blocked.message)
+        : noStory ? t("workspace.shell.team.liveNoStory") : undefined;
 
     if (project === null || origin === null) {
         return null;
@@ -87,62 +94,106 @@ export function TeamCollaboration({ team, instance }: {
             )}
 
             {team.canLive && (
-                <Row icon={<Radio className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />} seam="live">
-                    {mine !== null ? (
-                        <>
-                            <span className="min-w-0 truncate">
-                                {mine.title ?? t("workspace.shell.team.liveUntitled")}
-                            </span>
-                            <span className="shrink-0 text-2xs text-fg-subtle">
-                                {t("workspace.shell.team.liveMembers", { count: String(mine.members.length) })}
-                            </span>
-                            <Quiet
-                                seam="live-leave"
-                                busy={busy}
-                                onClick={() => run(() => leaveLiveSession(origin, mine.id))}
-                                label={t("workspace.shell.team.liveLeave")}
-                            />
-                            {mine.openedByInstance === instance && (
+                <>
+                    <Row icon={<Radio className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />} seam="live">
+                        {inRoom ? (
+                            <>
+                                <span className="min-w-0 truncate">
+                                    {live.view.session?.title ?? t("workspace.shell.team.liveUntitled")}
+                                </span>
+                                {standing !== null && (
+                                    <span data-team-seam="live-standing" className="shrink-0 text-2xs text-fg-subtle">
+                                        {t(standing)}
+                                    </span>
+                                )}
+                                {/* One control, and which one depends on what leaving does. A host
+                                    holds the only copy that counts, so its window walking away ends
+                                    the room for everybody - offering it "Leave" would name an act
+                                    the others would not experience. */}
                                 <Quiet
-                                    seam="live-end"
-                                    busy={busy}
-                                    onClick={() => run(() => closeLiveSession(origin, mine.id))}
-                                    label={t("workspace.shell.team.liveEnd")}
-                                    tone="hover:text-danger"
+                                    seam={live.view.role === "host" ? "live-end" : "live-leave"}
+                                    busy={live.busy || live.view.phase === "leaving"}
+                                    onClick={live.leave}
+                                    label={t(live.view.role === "host"
+                                        ? "workspace.shell.team.liveEnd"
+                                        : "workspace.shell.team.liveLeave")}
+                                    {...(live.view.role === "host" ? { tone: "hover:text-danger" } : {})}
                                 />
-                            )}
-                        </>
-                    ) : other !== null ? (
-                        <>
-                            <span className="min-w-0 truncate">
-                                {other.title ?? t("workspace.shell.team.liveUntitled")}
-                            </span>
-                            <span className="shrink-0 text-2xs text-fg-subtle">
-                                {t("workspace.shell.team.liveMembers", { count: String(other.members.length) })}
-                            </span>
+                            </>
+                        ) : other !== null ? (
+                            <>
+                                <span className="min-w-0 truncate">
+                                    {other.title ?? t("workspace.shell.team.liveUntitled")}
+                                </span>
+                                <span className="shrink-0 text-2xs text-fg-subtle">
+                                    {t("workspace.shell.team.liveMembers", { count: String(other.members.length) })}
+                                </span>
+                                <Quiet
+                                    seam="live-join"
+                                    busy={live.busy || blocked !== null || noStory}
+                                    {...(entryTip === undefined ? {} : { tip: entryTip })}
+                                    onClick={() => {
+                                        if (story !== null) {
+                                            live.join({ session: other, storyId: story.id });
+                                        }
+                                    }}
+                                    label={t("workspace.shell.team.liveJoin")}
+                                />
+                            </>
+                        ) : (
                             <Quiet
-                                seam="live-join"
-                                busy={busy}
-                                onClick={() => run(() => joinLiveSession(origin, other.id))}
-                                label={t("workspace.shell.team.liveJoin")}
+                                seam="live-open"
+                                busy={live.busy || blocked !== null || noStory}
+                                {...(entryTip === undefined ? {} : { tip: entryTip })}
+                                onClick={() => {
+                                    if (story !== null) {
+                                        // The story's own name, so the room is called what everybody
+                                        // in it is looking at. The revision comes from the checkpoint
+                                        // the session records on its way in, never from here.
+                                        live.open({ storyId: story.id, title: story.name });
+                                    }
+                                }}
+                                label={t("workspace.shell.team.liveOpen")}
+                                first
                             />
-                        </>
-                    ) : (
-                        <Quiet
-                            seam="live-open"
-                            busy={busy}
-                            onClick={() => run(() => openLiveSession(origin, {
-                                project: project.id,
-                                // The version the server last read, which is what everybody
-                                // in the room has in common. Left out where it has not read
-                                // one rather than invented.
-                                ...(team.head === undefined ? {} : { revision: team.head }),
-                            }))}
-                            label={t("workspace.shell.team.liveOpen")}
-                            first
-                        />
+                        )}
+                    </Row>
+
+                    {/* Who else is in it, by account. Silent in a room of one: a line saying nobody
+                        else is here is the same fact as the row above it. */}
+                    {members.length > 0 && (
+                        <Note seam="live-members">{members.join(" · ")}</Note>
                     )}
-                </Row>
+                    {/* Behind the room rather than following it: what is on screen is the version
+                        the room opened on until the host's answer has been applied. */}
+                    {live.view.phase === "catching-up" && (
+                        <Note seam="live-catching-up">{t("workspace.shell.team.liveCatchingUp")}</Note>
+                    )}
+                    {blocked !== null && (
+                        <Note seam="live-blocked" tone="text-warning">{t(blocked.message)}</Note>
+                    )}
+                    {blocked === null && noStory && !inRoom && (
+                        <Note seam="live-no-story" tone="text-warning">
+                            {t("workspace.shell.team.liveNoStory")}
+                        </Note>
+                    )}
+                    {failure !== null && (
+                        <Note seam="live-failure" tone="text-warning">
+                            {t(failure.key, failure.params)}
+                        </Note>
+                    )}
+                    {/* A session that ended without the author choosing it. `diverged` is the loud
+                        one: this machine's copy stopped matching the room's, so it is neither in the
+                        room nor holding what the room holds. */}
+                    {!inRoom && ended !== null && endedSentence !== null && (
+                        <Note
+                            seam="live-ended"
+                            tone={ended.cause === "diverged" ? "text-danger" : "text-fg-muted"}
+                        >
+                            {t(endedSentence)}
+                        </Note>
+                    )}
+                </>
             )}
 
             {team.canOverlay && attached !== null && attached.total > 0 && (
@@ -179,13 +230,32 @@ function Row({ icon, seam, children }: {
 }
 
 /**
+ * A line under a row, for the one thing that row cannot fit.
+ *
+ * The shape the address already uses for the project name under it: indented to nothing, a size
+ * down, and drawn only where there is something to say.
+ */
+function Note({ seam, tone, children }: {
+    seam: string;
+    /** A tailwind text-colour class; the default is the muted one every value here uses. */
+    tone?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <p data-team-seam={seam} className={cn("mt-0.5 truncate text-2xs", tone ?? "text-fg-muted")}>
+            {children}
+        </p>
+    );
+}
+
+/**
  * A control that reads as text until it is pointed at.
  *
  * The same weight as the action rows below this section, and for the same reason: none of
  * these is pressed daily, and a bordered button beside a count would give it the weight of
  * Send and Get.
  */
-function Quiet({ label, onClick, busy, seam, tone, first }: {
+function Quiet({ label, onClick, busy, seam, tone, first, tip }: {
     label: string;
     onClick: () => void;
     busy: boolean;
@@ -193,11 +263,20 @@ function Quiet({ label, onClick, busy, seam, tone, first }: {
     tone?: string;
     /** Sits where a value would, rather than at the end of a line of them. */
     first?: boolean;
+    /**
+     * Why it cannot act, on hover.
+     *
+     * `data-tip` rather than `title`, like every other tooltip in Studio - and it is resolved by
+     * hit-testing the pointer, which is what makes it readable on a control that is disabled and
+     * therefore receives no pointer events of its own.
+     */
+    tip?: string;
 }) {
     return (
         <button
             type="button"
             data-team-seam={seam}
+            data-tip={tip}
             onClick={onClick}
             disabled={busy}
             className={cn(

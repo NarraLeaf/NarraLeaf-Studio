@@ -331,6 +331,30 @@ export const workspace = {
         liveBlockedMerge: "完成合并后才能开始或加入实时会话",
         liveBlockedRecovery: "恢复模式下无法使用实时会话",
         liveBlockedSession: "该工作区已在一场实时会话中",
+        // 本窗口在会话中的位置，占的是不在会话时显示人数的那个位置。
+        liveHost: "主持",
+        liveGuest: "参与",
+        liveEntering: "正在进入",
+        liveLeaving: "正在离开",
+        // 已加入，正在把加入之前会话里发生的事全部应用完。
+        liveCatchingUp: "正在跟上会话进度",
+        // 开始或加入之前必须先满足的条件，每一条点名其中一件。
+        liveNoStory: "先添加一个故事才能开始实时会话",
+        liveNoServer: "先把项目连接到服务器才能开始或加入实时会话",
+        liveNoInstance: "该服务器还没有回应本机",
+        liveNoRepository: "此项目没有版本历史",
+        liveNoRevision: "先记录一个版本才能开始实时会话",
+        liveCloneRequired: "该会话属于 {project}，打开那个项目才能加入",
+        liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
+        liveRoomGone: "该会话已经关闭",
+        liveRefused: "服务器拒绝了这场会话",
+        liveFailed: "无法开始实时会话",
+        // 会话结束的两种情形，都不是作者自己决定的。主动离开不作声。
+        liveEndedHostLeft: "主持方已离开，会话结束",
+        // 说的是本机这份副本发生了什么，不是道别：会话没了，而且这块磁盘上的内容
+        // 已经不是其他人正在看的那一份。
+        liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
+        liveEndedDivergedNext: "重新加入前先从服务器获取",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",

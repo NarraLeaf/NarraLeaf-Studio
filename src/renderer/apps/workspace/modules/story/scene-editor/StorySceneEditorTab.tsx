@@ -47,6 +47,7 @@ import { stopVoiceAudition } from "./voiceAudition";
 import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
+import { StoryRowClaimsProvider } from "./storyRowClaims";
 import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
 import {
     StoryDocumentScopeProvider,
@@ -2076,6 +2077,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             which no scope of this document's covers. See `storySceneReadOnly`. */}
         <StoryDocumentScopeProvider value={storyScope}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
+        {/* Who else in a live session is writing which row. One subscription for the whole list:
+            the session publishes on every operation anybody in the room applies, and a row asking
+            for itself would repaint the screenful on every remote keystroke. */}
+        <StoryRowClaimsProvider storyId={payload?.storyId}>
         <div
             ref={editor.rootRef}
             tabIndex={0}
@@ -2554,6 +2559,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 />
             ) : null}
         </div>
+        </StoryRowClaimsProvider>
         </StoryRowActionsContext.Provider>
         </StoryDocumentScopeProvider>
         </StoryRefNavigationProvider>

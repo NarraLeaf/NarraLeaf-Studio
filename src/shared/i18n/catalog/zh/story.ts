@@ -96,6 +96,28 @@ export const story = {
     // 各写各的托词。
     live: {
         editUnavailable: "实时会话期间不可用，退出会话后再修改",
+        // 该行正被他人书写时那个标记的悬停文字。要点名到人：标记旁边没有写名字的宽度，
+        // 而截断的名字谁也认不出。
+        rowClaimed: "{name} 正在写这一行",
+        // 会话主持方拒绝的修改。作者已经打出来的文字原样留在屏幕上——被拒绝的那一行，
+        // 屏幕上的内容就是它唯一的一份——所以这几条只说发生了什么。
+        refusedRowClaimed: "{name} 正在写该行，本次修改未生效",
+        refusedRowGone: "该行已不存在，本次修改未生效",
+        refusedAnchorGone: "移动的目标行已不存在，本次修改未生效",
+        refusedSceneGone: "该场景已不存在，本次修改未生效",
+        refusedNotInSession: "本机已不在该会话中",
+        refusedUnknownOp: "该会话没有接受这次修改",
+        // 上一次撤销或重做没有发出任何内容的原因，每一条点名让该步骤无法回退的状态。
+        undoNotMine: "该步骤是他人所做",
+        undoNoRecord: "该步骤已无法撤销",
+        undoSceneGone: "该场景已不存在",
+        undoRowGone: "该行已不存在",
+        undoRowRestored: "该行已重新回到场景中",
+        undoContainerGone: "该行所在的区块已不存在",
+        undoAnchorGone: "该行原来的位置已不存在",
+        undoContainerFilled: "该区块中现在已有其他行",
+        undoSubtreeLost: "其中原有的行无法恢复",
+        undoChaptersChanged: "章节与该步骤记录的那一份不一致",
     },
     narralang: {
         exportScene: "导出为 NarraLang…",

@@ -107,6 +107,30 @@ export const story = {
     // so everywhere rather than a different excuse per surface.
     live: {
         editUnavailable: "Unavailable in a live session. Leave the session to make this change.",
+        // On the mark a row wears while somebody else is writing it. A person is named:
+        // there is no width for a name beside the glyph, and a truncated one names nobody.
+        rowClaimed: "{name} is writing this line",
+        // What the session's host would not take. The words the author typed stay exactly
+        // where they are - a refused row is the case where what is on screen is the only
+        // copy of them - so each of these says what happened and nothing else.
+        refusedRowClaimed: "{name} is writing that line. The change was not applied.",
+        refusedRowGone: "That line is gone. The change was not applied.",
+        refusedAnchorGone: "The line it was moving to is gone. The change was not applied.",
+        refusedSceneGone: "That scene is gone. The change was not applied.",
+        refusedNotInSession: "This machine is no longer in the session.",
+        refusedUnknownOp: "The session did not take that change.",
+        // Why the last undo or redo sent nothing. Each names the state that leaves the step
+        // with no operation to take it back with.
+        undoNotMine: "That step was somebody else's.",
+        undoNoRecord: "That step can no longer be taken back.",
+        undoSceneGone: "That scene is gone.",
+        undoRowGone: "That line is gone.",
+        undoRowRestored: "That line is in the scene again.",
+        undoContainerGone: "The block that line was in is gone.",
+        undoAnchorGone: "Where that line moved from is gone.",
+        undoContainerFilled: "That block has lines in it now.",
+        undoSubtreeLost: "The lines that were inside it cannot be put back.",
+        undoChaptersChanged: "The chapters are not the ones that step recorded.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`
