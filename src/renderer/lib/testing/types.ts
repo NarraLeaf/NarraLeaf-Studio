@@ -1,5 +1,12 @@
 import type { TranslationKey } from "@shared/i18n/catalog";
-import type { GameTestEvent, GameTestExit, GameTestExitReason, GameTestLogLevel } from "@shared/types/gameTest";
+import type {
+    GameTestChoiceOption,
+    GameTestCommand,
+    GameTestEvent,
+    GameTestExit,
+    GameTestExitReason,
+    GameTestLogLevel,
+} from "@shared/types/gameTest";
 import type { SearchJumpTarget } from "../workspace/services/search/searchIndexModel";
 
 /**
@@ -199,6 +206,15 @@ export type TestProjectHandle = {
 export type TestGameExitReason = GameTestExitReason;
 export type TestGameExit = GameTestExit;
 export type TestGameEvent = GameTestEvent;
+export type TestGameChoiceOption = GameTestChoiceOption;
+/**
+ * What a test may ask a running game to do.
+ *
+ * Deliberately short, and every member is something a player does with a pointer: the game is driven
+ * along a path a player could take, never moved by hand. A command that reached past the game would
+ * make the run evidence about the harness rather than about the game.
+ */
+export type TestGameCommand = GameTestCommand;
 
 export type TestGameLaunchOptions = {
     /**
@@ -212,6 +228,16 @@ export type TestGameSession = {
     readonly id: string;
     /** Returns an unsubscribe. Events emitted before the first listener are replayed to it. */
     onEvent(listener: (event: TestGameEvent) => void): () => void;
+    /**
+     * Ask the game to do something: start a story, advance a line, pick an option.
+     *
+     * Resolves `true` when the command reached the game and `false` when it could not - a session
+     * that has already exited, or one whose game never opened its control channel. It never says the
+     * game *did* it: the game is a separate process, and what happened comes back through
+     * {@link onEvent} like everything else it says. A test that needs to know waits for the
+     * observation, and treats one that never arrives as the answer it is.
+     */
+    sendCommand(command: TestGameCommand): Promise<boolean>;
     /** Resolves once the process is gone, whatever the reason. Safe to call more than once. */
     waitForExit(): Promise<TestGameExit>;
     /** Graceful shutdown, then force. Resolves when the process is gone. */

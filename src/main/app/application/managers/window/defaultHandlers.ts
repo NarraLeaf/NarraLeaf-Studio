@@ -93,6 +93,7 @@ import {
 } from "./handlers/previewAction";
 import {
     GameTestLaunchHandler,
+    GameTestSendCommandHandler,
     GameTestStopHandler,
 } from "./handlers/gameTestAction";
 import {
@@ -295,6 +296,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Game sessions owned by a test run (not by the Run button)
         new GameTestLaunchHandler(),
+        new GameTestSendCommandHandler(),
         new GameTestStopHandler(),
 
         // Production game build handlers

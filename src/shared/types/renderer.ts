@@ -25,7 +25,7 @@ import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
-import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
+import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
 import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type {
@@ -591,6 +591,16 @@ export interface RendererPreloadedInterface {
     gameTest: {
         launch(request: GameTestLaunchRequest): Promise<RequestStatus<GameTestLaunchResult>>;
         stop(projectPath: string, sessionId: string): Promise<RequestStatus<void>>;
+        /**
+         * Drive the session's game. `delivered` says the frame reached its control socket, never
+         * that the game acted on it - what it did comes back through `onEvent`, in order with
+         * everything else the game says.
+         */
+        sendCommand(
+            projectPath: string,
+            sessionId: string,
+            command: GameTestCommand,
+        ): Promise<RequestStatus<{ delivered: boolean }>>;
         onEvent(handler: (payload: GameTestEventPayload) => void): AppEventToken;
     };
 

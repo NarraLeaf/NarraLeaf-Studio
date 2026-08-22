@@ -7,7 +7,7 @@ import { nativeImage } from "electron";
 import { shell } from "electron";
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { GameTestEvent } from "@shared/types/gameTest";
+import type { GameTestCommand, GameTestEvent } from "@shared/types/gameTest";
 import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
@@ -56,7 +56,11 @@ import {
 import { resolveModelBundleKey, resolveRuntimeStaticPath } from "./runtimeProtocol";
 import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import { dispatchControlFrame, encodeTestEventFrame } from "./testControlProtocol";
-import { GAME_RUNTIME_TEST_SIGNAL_CHANNEL, toGameTestEvent } from "../gameTestSignal";
+import {
+    GAME_RUNTIME_TEST_COMMAND_CHANNEL,
+    GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
+    toGameTestEvent,
+} from "../gameTestSignal";
 import {
     RuntimePersistenceStore,
     RuntimeSaveStore,
@@ -534,6 +538,21 @@ function reportFatalRuntimeError(headline: string): void {
 /** The game's own name once the pack has been read, and something honest before that. */
 function gameDisplayName(): string {
     return loadedPackName ?? app.getName();
+}
+
+/**
+ * Hand a command Studio sent to the window that can carry it out.
+ *
+ * Best-effort by design, like {@link emitTestEvent}: the socket has already been answered, and what
+ * the frame meant was "understood", never "done". A command that arrives before the window exists -
+ * or after it has gone - is dropped, and the caller learns nothing happened from the observations
+ * that do not follow it.
+ */
+function deliverTestCommand(command: GameTestCommand): void {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+    mainWindow.webContents.send(GAME_RUNTIME_TEST_COMMAND_CHANNEL, command);
 }
 
 function emitTestEvent(event: GameTestEvent): void {
@@ -1330,7 +1349,7 @@ function startPreviewControlServer(pack: GameRuntimePackV1): void {
     });
     controlServer.on("connection", socket => {
         socket.on("message", raw => {
-            const { reply, effect } = dispatchControlFrame(raw.toString(), preview.controlToken);
+            const { reply, effect, command } = dispatchControlFrame(raw.toString(), preview.controlToken);
             // Always answer first: a shutdown that quit before replying would reach Studio as a
             // dropped connection, which is exactly the crash/clean-quit ambiguity this pipeline is
             // here to remove.
@@ -1341,6 +1360,10 @@ function startPreviewControlServer(pack: GameRuntimePackV1): void {
             }
             if (effect === "subscribe") {
                 testSubscribers.add(socket);
+                return;
+            }
+            if (effect === "command" && command) {
+                deliverTestCommand(command);
             }
         });
         const forget = () => {
