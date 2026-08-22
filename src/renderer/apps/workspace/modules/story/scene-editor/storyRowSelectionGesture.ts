@@ -18,7 +18,7 @@ import type { VisibleStoryRow } from "./storySceneEditorTypes";
  * gestures that are not idempotent:
  *
  *  - **Ctrl+click**, which toggles: added on the press, removed again on the click. Net zero.
- *  - **Shift+click**, which ranges from the active row: the press moves the active row to the one
+ *  - **Shift+click**, which ranges from the anchor row: the press moved the anchor onto the row
  *    clicked, so the click's range ran from that row to itself and the range collapsed to one line.
  *
  * The fix is that the two handlers ask the same question and get opposite answers —
@@ -70,7 +70,7 @@ export function isPlainRowPress(event: RowGestureEvent): boolean {
 }
 
 /**
- * The selection after a row is picked: a Shift range from the active row, a Ctrl toggle of this one,
+ * The selection after a row is picked: a Shift range from the anchor row, a Ctrl toggle of this one,
  * or this one alone.
  *
  * Toggling the last selected row off would leave nothing selected and no row for the property rail to
@@ -79,14 +79,22 @@ export function isPlainRowPress(event: RowGestureEvent): boolean {
 export function nextRowSelection(params: {
     previous: ReadonlySet<StoryBlockId>;
     rows: VisibleStoryRow[];
-    /** Where a Shift range starts: the row that was active *before* this press. */
-    activeBlockId: StoryBlockId | null;
+    /**
+     * Where a Shift range starts: the *anchor* row — the last row picked without Shift.
+     *
+     * Not the row that was active before this press, which is the near-miss it reads like: a Shift
+     * press moves the active row onto its own head, so a second Shift+click would range from where
+     * the first one ended rather than from where the author started. A range that re-anchors on
+     * itself can only ever grow away from the first row picked — it can never shrink back toward it,
+     * which is half of what Shift+click is for.
+     */
+    anchorBlockId: StoryBlockId | null;
     blockId: StoryBlockId;
     event?: Pick<RowGestureEvent, "shiftKey" | "ctrlKey" | "metaKey">;
 }): Set<StoryBlockId> {
-    const { previous, rows, activeBlockId, blockId, event } = params;
-    if (event?.shiftKey && activeBlockId) {
-        return selectRange(rows, activeBlockId, blockId);
+    const { previous, rows, anchorBlockId, blockId, event } = params;
+    if (event?.shiftKey && anchorBlockId) {
+        return selectRange(rows, anchorBlockId, blockId);
     }
     if (event?.ctrlKey || event?.metaKey) {
         const next = new Set(previous);
