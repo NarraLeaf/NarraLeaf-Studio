@@ -51,6 +51,19 @@ export interface AppConfig extends BaseAppConfig {
 const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
 
 /**
+ * How long the same checkpoint may take when it runs on the way out of the app rather than on one
+ * window closing.
+ *
+ * Shorter than {@link CLOSE_CHECKPOINT_TIMEOUT_MS}, and the reason is arithmetic:
+ * {@link SHUTDOWN_DEADLINE_MS} bounds the whole teardown, so a checkpoint given the full
+ * close-time budget could spend the entire exit and leave version control never closed - which is
+ * the abort {@link App.drainForShutdown} exists to prevent. Half the deadline records the session
+ * for every project that can be recorded in the time an exit is allowed to take, and leaves the
+ * other half to put the stores down.
+ */
+const QUIT_CHECKPOINT_TIMEOUT_MS = 10_000;
+
+/**
  * How long {@link App.drainForShutdown} may spend putting the profile down before the exit goes
  * ahead without it.
  *
@@ -748,18 +761,21 @@ export class App extends BaseApp {
      * not a gap in this method - see `workspace.reopenLastProject`, which is off by default.
      */
     /**
-     * Put this profile down: the saves, the game processes, then version control.
+     * Put this profile down: the saves, the game processes, the checkpoints, then version control.
      *
      * One list, because there are two exits that need it. The quit path holds `before-quit` open
      * while this runs; a command-line build cannot use that path at all, because carrying an exit
      * code means `exit()`, which skips `before-quit` entirely. Two copies of the list would drift,
-     * and the way they would drift is that the exit nobody watches stops doing one of the three.
+     * and the way they would drift is that the exit nobody watches stops doing one of the four.
      *
-     * Order is load-bearing and none of the three may skip another. The saves are debounced, so a
+     * Order is load-bearing and none of the four may skip another. The saves are debounced, so a
      * process ending 300ms after the last write loses exactly that write. The runtimes are separate
-     * processes that macOS and Linux reparent rather than reap. And every version-control call is a
-     * koffi `async` call delivered by calling back into JS - one still in flight when Node destroys
-     * the environment aborts the process, which is how a clean-looking exit produces a crash report.
+     * processes that macOS and Linux reparent rather than reap. The checkpoint has to see a flushed
+     * tree and a store that is still open, which is what puts it third: ahead of version control
+     * closing, and behind the process kills so that a long commit cannot leave a game running with
+     * nothing left to stop it from. And every version-control call is a koffi `async` call
+     * delivered by calling back into JS - one still in flight when Node destroys the environment
+     * aborts the process, which is how a clean-looking exit produces a crash report.
      *
      * Nothing here throws: a failed flush is still an exit that has to close what it started. And
      * nothing here waits forever - the deadline is a bounded exit, not a safe one, but the
@@ -772,6 +788,9 @@ export class App extends BaseApp {
             });
             await this.stopAllProjectRuntimes().catch(error => {
                 this.logger.warn('Failed to stop the running game processes before quit:', error);
+            });
+            await this.checkpointOpenWorkspacesForShutdown().catch(error => {
+                this.logger.warn('Failed to check point the open projects before quit:', error);
             });
             await this.getVcsManager().dispose().catch(error => {
                 this.logger.warn('Failed to close version control before quit:', error);
@@ -1148,19 +1167,26 @@ export class App extends BaseApp {
      * this does not silence the interval. Defaults on, which is what it did before it
      * was a choice.
      *
-     * Never throws and never blocks the close - the second half enforced by
-     * {@link CLOSE_CHECKPOINT_TIMEOUT_MS} rather than assumed. A project with no repository, a host
+     * Never throws and never blocks the close - the second half enforced by a deadline
+     * ({@link CLOSE_CHECKPOINT_TIMEOUT_MS}, or the shorter {@link QUIT_CHECKPOINT_TIMEOUT_MS} when
+     * the whole app is going away) rather than assumed. A project with no repository, a host
      * with no backend, and a tree that has not changed all answer "nothing to do" rather than
      * failing (see VcsManager.checkpoint); a repository somebody else has locked answers nothing at
      * all, and used to leave the window unclosable.
      *
-     * Deliberately NOT wired into the app-quit flush as well. That path runs under a
-     * hard deadline whose purpose is a bounded teardown, and a commit's duration is a
-     * function of how much the author changed; hanging Cmd+Q on it would trade a
-     * bounded "lost the last few seconds" for an unbounded wait. Closing a workspace
-     * window comes through here first, which is the exit an author takes deliberately.
+     * The app quitting runs this as well, over every open workspace - see
+     * {@link App.checkpointOpenWorkspacesForShutdown}. It used to be left out, on the reasoning
+     * that a commit's duration is a function of how much the author changed and that hanging
+     * Cmd+Q on it would trade a bounded "lost the last few seconds" for an unbounded wait. The
+     * deadline above is what settles that: the wait is bounded whichever exit asks for it, and
+     * the alternative was that quitting - the way a session actually ends, and the one exit that
+     * closes every project at once - recorded nothing, while the setting said a workspace that
+     * closes is check pointed.
      */
-    private async checkpointBeforeClose(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
+    private async checkpointBeforeClose(
+        window: AppWindow<WindowAppType.Workspace>,
+        timeoutMs: number = CLOSE_CHECKPOINT_TIMEOUT_MS,
+    ): Promise<void> {
         // Only an explicit `false` skips it. A missing or non-boolean value means the author never
         // answered, and the answer they never gave must not be the one that loses their session.
         if (this.globalState.get("versionControl.checkpointOnClose") === false) {
@@ -1176,8 +1202,8 @@ export class App extends BaseApp {
             await Promise.race([
                 this.vcsManager.checkpoint(projectPath, "project-close"),
                 new Promise<void>((_, reject) => setTimeout(
-                    () => reject(new Error(`the checkpoint did not finish within ${CLOSE_CHECKPOINT_TIMEOUT_MS}ms`)),
-                    CLOSE_CHECKPOINT_TIMEOUT_MS,
+                    () => reject(new Error(`the checkpoint did not finish within ${timeoutMs}ms`)),
+                    timeoutMs,
                 ).unref?.()),
             ]);
         } catch (error) {
@@ -1249,13 +1275,55 @@ export class App extends BaseApp {
         ]);
     }
 
-    /** Flush every open workspace concurrently. Used on the way out of the app. */
-    public async flushAllWorkspacesPendingSaves(): Promise<void> {
-        const workspaces = this.windowManager.getWindows().filter(
+    /**
+     * The workspaces still on screen, in the order the window manager holds them.
+     *
+     * Both halves of the shutdown ask the same question, and asking it twice in two places is how
+     * one of them would end up covering a different set of windows than the other.
+     */
+    private liveWorkspaceWindows(): AppWindow<WindowAppType.Workspace>[] {
+        return this.windowManager.getWindows().filter(
             (window): window is AppWindow<WindowAppType.Workspace> =>
                 !window.isClosed() && window.getWindowType() === WindowAppType.Workspace,
         );
+    }
+
+    /** Flush every open workspace concurrently. Used on the way out of the app. */
+    public async flushAllWorkspacesPendingSaves(): Promise<void> {
+        const workspaces = this.liveWorkspaceWindows();
+        for (const window of workspaces) {
+            this.reportWorkspaceCloseStage(window, "saving");
+        }
         await Promise.allSettled(workspaces.map(window => this.flushWorkspacePendingSaves(window)));
+    }
+
+    /**
+     * Check point every open workspace on the way out of the app.
+     *
+     * Quitting does not come through the window close guard: `isQuitting()` makes every guard
+     * stand aside, so that a confirmation sheet cannot cancel a quit half-way through. That is
+     * what this exists for. Without it, Cmd+Q, the Quit menu item and the tray's Quit - the exits
+     * that close every project at once - were the exits that recorded nothing, while
+     * `versionControl.checkpointOnClose` told the author a closing workspace is check pointed.
+     *
+     * The setting is read here as well as in {@link App.checkpointBeforeClose}, so that an author
+     * who turned it off is not shown a window telling them a checkpoint is being recorded.
+     *
+     * Concurrent, because Lore queues per project and two projects do not contend; bounded per
+     * project by {@link QUIT_CHECKPOINT_TIMEOUT_MS}, so one repository somebody else has locked
+     * cannot spend the whole shutdown deadline on behalf of the others.
+     */
+    public async checkpointOpenWorkspacesForShutdown(): Promise<void> {
+        if (this.globalState.get("versionControl.checkpointOnClose") === false) {
+            return;
+        }
+        const workspaces = this.liveWorkspaceWindows();
+        for (const window of workspaces) {
+            this.reportWorkspaceCloseStage(window, "checkpoint");
+        }
+        await Promise.allSettled(
+            workspaces.map(window => this.checkpointBeforeClose(window, QUIT_CHECKPOINT_TIMEOUT_MS)),
+        );
     }
 
 
