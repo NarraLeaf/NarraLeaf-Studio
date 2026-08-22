@@ -79,7 +79,11 @@ import {
 } from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintCanvasToolbar, type BlueprintCanvasTool } from "./components/BlueprintCanvasToolbar";
-import { BLUEPRINT_COMMENT_DEFAULT_COLOR } from "./blueprintCommentColors";
+import {
+    BLUEPRINT_COMMENT_COLORS,
+    BLUEPRINT_COMMENT_DEFAULT_COLOR,
+    resolveBlueprintCommentColorKey,
+} from "@/lib/ui-editor/blueprint-comment-colors";
 import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprintAutoLayout";
 import {
     blueprintGroupMemberIds,
