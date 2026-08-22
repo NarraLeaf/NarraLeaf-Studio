@@ -409,6 +409,9 @@ export const blueprint = {
     },
     format: {
         graph: "グラフを整列",
+        direction: "整列の方向",
+        horizontal: "左から右へ",
+        vertical: "上から下へ",
     },
     zoom: {
         label: "拡大縮小",

@@ -407,6 +407,9 @@ export const blueprint = {
     },
     format: {
         graph: "格式化蓝图",
+        direction: "格式化方向",
+        horizontal: "从左到右",
+        vertical: "从上到下",
     },
     zoom: {
         label: "缩放",

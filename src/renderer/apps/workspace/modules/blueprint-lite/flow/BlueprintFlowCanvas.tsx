@@ -81,7 +81,7 @@ import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
 import { BlueprintCanvasToolbar, type BlueprintCanvasTool } from "./components/BlueprintCanvasToolbar";
 import { BLUEPRINT_COMMENT_DEFAULT_COLOR } from "./blueprintCommentColors";
-import { layoutBlueprintGraph } from "./blueprintAutoLayout";
+import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprintAutoLayout";
 import {
     blueprintGroupMemberIds,
     computeBlueprintGroupFrame,
@@ -442,15 +442,17 @@ function BlueprintFlowCanvasInner({
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     /**
-     * Which tool the toolbar has selected, and which colour the next group takes.
+     * Which tool the toolbar has selected, which colour the next group takes, and which way the
+     * next format runs.
      *
-     * Both are view state and stay out of the document on purpose: the tool is where the author's
-     * hand is right now, not something about the blueprint, and a colour the toolbar remembers for
-     * the session is the difference between one click and two without writing a preference nobody
-     * asked to set.
+     * All three are view state and stay out of the document on purpose: the tool is where the
+     * author's hand is right now, not something about the blueprint, and a colour or a direction
+     * the toolbar remembers for the session is the difference between one click and two without
+     * writing a preference nobody asked to set.
      */
     const [tool, setTool] = useState<BlueprintCanvasTool>("select");
     const [groupColor, setGroupColor] = useState<string>(BLUEPRINT_COMMENT_DEFAULT_COLOR);
+    const [formatDirection, setFormatDirection] = useState<BlueprintLayoutDirection>("horizontal");
     const nodeDiagnosticsByNodeId = useMemo(
         () => buildNodeDiagnosticsByNodeId(diagnostics, graphKey),
         [diagnostics, graphKey],
@@ -1194,7 +1196,8 @@ function BlueprintFlowCanvasInner({
     );
 
     /**
-     * Lay the whole graph out again, left to right along the way its wires run.
+     * Lay the whole graph out again: left to right along the way its wires run, or down the page
+     * for an author who would rather read a long chain that way.
      *
      * Group frames do not take part in the layout - they have no pins, so they would each be an
      * island of one and end up stacked below the graph. They are re-fitted around wherever their
@@ -1203,7 +1206,8 @@ function BlueprintFlowCanvasInner({
      * resizing somebody's note to fit whatever now happens to sit under it would be worse than
      * leaving it behind.
      */
-    const formatGraph = useCallback(() => {
+    const formatGraph = useCallback((direction: BlueprintLayoutDirection) => {
+        setFormatDirection(direction);
         const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]);
         const cards = boxes.filter(box => !box.isComment);
         if (cards.length === 0) {
@@ -1220,6 +1224,7 @@ function BlueprintFlowCanvasInner({
         const positions = layoutBlueprintGraph(
             cards,
             (snap.edges ?? []).map(edge => ({ from: edge.from.nodeId, to: edge.to.nodeId })),
+            { direction },
         );
         const moved = new Map(
             cards
@@ -1699,6 +1704,7 @@ function BlueprintFlowCanvasInner({
                     groupColor={groupColor}
                     onCreateGroup={createGroupFromSelection}
                     canGroup={Boolean(onCreateGroupFrame) && selectedNodeIds.length > 0}
+                    formatDirection={formatDirection}
                     onFormat={formatGraph}
                     canFormat={canFormat}
                 />
