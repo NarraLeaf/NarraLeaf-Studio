@@ -244,9 +244,7 @@ describe("the flutter", () => {
             for (const fallSpeed of [WEATHER_PARAMS.fallSpeed.min, 4, WEATHER_PARAMS.fallSpeed.max]) {
                 const field = fieldOf(seed, { fallSpeed, flutter: WEATHER_PARAMS.flutter.max });
                 for (const p of field.particles) {
-                    // `faceHarm`, because the hang is on the face's cycle - the drag is what the face
-                    // causes. Reading `swayHarm` here passed only while the two were the same number.
-                    const slowest = p.fall * field.fallSpan - p.bobAmp * 4 * Math.PI * p.faceHarm;
+                    const slowest = p.fall * field.fallSpan - p.bobAmp * 4 * Math.PI * p.swayHarm;
                     expect(slowest).toBeGreaterThan(0);
                 }
             }
@@ -274,17 +272,17 @@ describe("the sway", () => {
         // frames are drawn here, so the size costs nothing.
         const field = buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura" }), 1920, 1080);
         const rates = new Set(field.particles.map(p => p.swayHarm));
-        const shapes = new Set(field.particles.map(p => `${p.swayHarm}/${p.swayHarm2}/${p.faceHarm}`));
+        const shapes = new Set(field.particles.map(p => `${p.swayHarm}/${p.swayHarm2}`));
         expect(rates.size).toBeLessThan(8);
-        expect(shapes.size).toBeGreaterThan(rates.size * 4);
+        expect(shapes.size).toBeGreaterThan(rates.size * 3);
         // And no rhythm may be shared by a large fraction of the field, which is the actual report:
         // fourteen of forty petals kept time with each other.
         const perShape = new Map<string, number>();
         for (const p of field.particles) {
-            const shape = `${p.swayHarm}/${p.swayHarm2}/${p.faceHarm}`;
+            const shape = `${p.swayHarm}/${p.swayHarm2}`;
             perShape.set(shape, (perShape.get(shape) ?? 0) + 1);
         }
-        expect(Math.max(...perShape.values())).toBeLessThan(field.particles.length / 8);
+        expect(Math.max(...perShape.values())).toBeLessThan(field.particles.length / 5);
     });
 
     it("keeps the second mode clear of the first, so the sum is not one thicker sine", () => {
@@ -307,15 +305,32 @@ describe("the sway", () => {
         }
     });
 
-    it("turns the face on its own rate rather than on the sway's", () => {
-        // Coupled to the sway, a petal hesitated at the exact end of every lateral stroke, which is
-        // the mechanism showing through. The face stays coupled to the HANG, because that pair is
-        // the physics: it is the face that causes the drag.
+    it("carries a depth, so the flutter is a circulation rather than a slide along a rail", () => {
+        // The report this replaced a separate face rate for: "it is not going around any axis". A
+        // circle has ONE phase, and giving the lateral offset, the depth and the face three of their
+        // own is what made it three coincidences instead. The depth is the half a flat clip has
+        // nowhere to put except into apparent size, so a particle with none of it cannot circle
+        // anything - it can only slide.
         const field = buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura" }), 1920, 1080);
-        const differing = field.particles.filter(p => p.faceHarm !== p.swayHarm).length;
-        expect(differing).toBeGreaterThan(field.particles.length / 2);
+        for (const p of field.particles) {
+            expect(p.swirlDepth).toBeGreaterThan(0);
+            // Small: a particle that doubled would read as coming at the lens rather than as going
+            // round a line a few centimetres across.
+            expect(p.swirlDepth).toBeLessThan(0.4);
+        }
+        expect(new Set(field.particles.map(p => p.swirlDepth)).size).toBeGreaterThan(field.particles.length / 2);
     });
 
+    // There is deliberately no test that the flutter is horizontal rather than perpendicular to a
+    // tilted fall line, and it is worth saying why rather than leaving a gap. The property is one
+    // term in one expression - the lateral offset is added to `cx` and nothing is added to `cy` -
+    // and every probe cheap enough to write measures something else. A whole field's centroid is
+    // dominated by which particles are crossing the frame edge: on the code that HAD the bug, at
+    // wind 0 where the flutter is horizontal by definition, that probe still reported ten pixels of
+    // vertical spread. Comparing two `sway` values compares two different layouts, because the
+    // across-fall span is extended by it. A single hand-placed particle needs the basis inverted to
+    // put it on screen at all. A test that agreed with the code by re-deriving it would be worth
+    // less than the comment on the expression itself, which is where this is recorded.
     for (const seed of WEATHER_SEED_IDS) {
         it(`${seed} keeps the seam exact with both modes running`, () => {
             // Both harmonics are whole numbers, so both return to where they started at phase 1.
