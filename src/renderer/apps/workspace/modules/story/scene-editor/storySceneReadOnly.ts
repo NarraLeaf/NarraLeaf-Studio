@@ -1,5 +1,7 @@
 import { createContext, useContext } from "react";
 import { storyDocumentSpec } from "@shared/documents/specs";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useTranslation } from "@/lib/i18n";
 import type { KeybindingDefinition } from "@/apps/workspace/hooks";
 import type { StoryRowActions } from "./storyRowActions";
 
@@ -148,8 +150,9 @@ export function storyDocumentFreezeScope(storyId: string | undefined): string | 
  *
  * A context rather than a prop threaded through the row tree, but deliberately NOT something
  * `useFreezeGuard` reads on its own: each control still has to ask for it, because the rows hold
- * controls that write beyond this document - the nametag picker creates characters - and those must
- * keep the conservative answer. Opting in one call site at a time is what keeps that honest.
+ * controls that write beyond this document - the nametag picker's "Create character" rung, see
+ * {@link useCreateCharacterFreeze} - and those must keep the conservative answer. Opting in one call
+ * site at a time is what keeps that honest.
  *
  * Empty by default, so a row rendered outside a scene editor is frozen by any freeze at all.
  */
@@ -160,6 +163,47 @@ export const StoryDocumentScopeProvider = StoryDocumentScopeContext.Provider;
 /** The story document the surrounding scene editor writes, or undefined outside one. */
 export function useStoryDocumentScope(): string | undefined {
     return useContext(StoryDocumentScopeContext);
+}
+
+/** Whether the editor may still make a cast member out of a name, and what to say when it may not. */
+export type StoryCreateCharacterFreeze = {
+    unavailable: boolean;
+    /** Hover text for the control this switches off; undefined while it is live. */
+    reason: string | undefined;
+};
+
+/**
+ * The one thing an author does to a speaker here that is not a write to this story document.
+ *
+ * Turning a typed name into a character creates a character document and only then rebinds the rows
+ * that used the name, so the story half is the second half of it. A freeze that leaves this document
+ * writable still refuses the first half - which is why the offer has to come off rather than be
+ * left to fail at the write boundary, where the author would get a notice about a file they never
+ * thought they were editing.
+ *
+ * `unavailable` comes from the UNSCOPED guard and from nothing else. A control that writes past the
+ * story document names no document, so it is switched off by any freeze at all - the conservative
+ * answer, and here also the exactly right one.
+ *
+ * **The scoped guard decides which sentence the author reads, never whether the control is live.** A
+ * freeze that covers this document as well has already switched the whole editor off, and the
+ * workspace's own single string is what every other greyed control in it is showing; a freeze that
+ * spares the document has left the author writing this scene with one control missing, and that is
+ * the case worth a sentence of its own.
+ */
+export function useCreateCharacterFreeze(): StoryCreateCharacterFreeze {
+    const { t } = useTranslation();
+    const beyondThisDocument = useFreezeGuard();
+    const thisDocument = useFreezeGuard(useStoryDocumentScope());
+    if (!beyondThisDocument.frozen) {
+        return { unavailable: false, reason: undefined };
+    }
+    return {
+        unavailable: true,
+        reason: thisDocument.frozen
+            ? beyondThisDocument.reason
+            : t("story.rows.createCharacterUnavailable"),
+    };
 }
 
 /**

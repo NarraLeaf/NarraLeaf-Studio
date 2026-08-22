@@ -920,6 +920,11 @@ export const story = {
         cutPointInactiveTitle: "The variant this line ended has been deleted, so it ends nothing.",
         tempSpeaker: "name only",
         createCharacter: "Create character “{name}”",
+        // On the rung above while it is greyed, and on the paste wizard's "New character" target,
+        // which is the same offer made from the other surface. A live session carries story
+        // operations and nothing else, so the cast is the one thing a speaker cannot become while
+        // one is open.
+        createCharacterUnavailable: "Unavailable in a live session. Choose an existing character.",
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
         voicePlay: "Play voice take",

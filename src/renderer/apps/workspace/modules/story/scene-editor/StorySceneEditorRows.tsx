@@ -11,7 +11,7 @@ import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/compo
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
-import { isRowTextEditable, useStoryDocumentScope } from "./storySceneReadOnly";
+import { isRowTextEditable, useCreateCharacterFreeze, useStoryDocumentScope } from "./storySceneReadOnly";
 import { REF_TOKEN_ARMED_CLASS } from "./StoryLineRefToken";
 import { useStoryRefLink } from "./storyRefNavigation";
 import { isJumpModifierEvent } from "./useJumpModifier";
@@ -3014,6 +3014,16 @@ function CharacterPicker(props: {
     /** Rendered as a trailing action when the typed name is not already a character. */
     createLabel?: string | null;
     onCreate?: () => void;
+    /**
+     * Whether that trailing action is switched off, and the sentence saying why.
+     *
+     * Greyed rather than dropped: typing `@somebody` and adding the character afterwards is the
+     * ordinary way people write, so an author who cannot find the rung concludes the feature broke.
+     * The candidates above it stay pickable — binding a name to a character that already exists is a
+     * write to this story document and nothing more.
+     */
+    createDisabled?: boolean;
+    createDisabledReason?: string;
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
@@ -3083,7 +3093,15 @@ function CharacterPicker(props: {
                     <div className="my-1 h-px bg-edge" />
                     <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-fill"
+                        className={cn(
+                            "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                            props.createDisabled ? "cursor-not-allowed opacity-50" : "hover:bg-fill",
+                        )}
+                        disabled={props.createDisabled}
+                        // `data-tip` rather than `title`, like every other reason a freeze puts on a
+                        // control: a disabled button receives no pointer events at all, and Studio's
+                        // tooltip resolves this one by hit-testing the pointer instead.
+                        data-tip={props.createDisabledReason}
                         onMouseDown={props.onCreate}
                     >
                         <UserRoundPlus className="h-4 w-4 shrink-0 text-primary" />
@@ -3118,7 +3136,12 @@ function rowSpeakerIdentityFor(characters: Character[], characterId: string | un
     return speakerName ? characterSpeakerIdentity(speakerName, { hasPortrait: false }) : null;
 }
 
-function CharacterSelectTrigger(props: {
+/**
+ * Exported so what a freeze does to this one control can be asserted on the rendered thing, with no
+ * scene editor around it: the picker's two halves answer two different freeze questions, and only a
+ * real DOM shows which of them a given freeze switched off.
+ */
+export function CharacterSelectTrigger(props: {
     characters: Character[];
     tempSpeakers: TempSpeakerRef[];
     characterId: string | undefined;
@@ -3137,11 +3160,13 @@ function CharacterSelectTrigger(props: {
     column?: boolean;
 }) {
     const { t } = useTranslation();
-    // A frozen row keeps its nametag readable and stops offering the picker, which is also the way a
-    // new character gets created from a typed name. Deliberately UNSCOPED for exactly that reason:
-    // creating a character writes the character library, which no freeze that spares this story
-    // document spares - so the picker would offer a name the write boundary then refuses.
-    const freeze = useFreezeGuard();
+    // A frozen row keeps its nametag readable and stops offering the picker. Scoped to this scene's
+    // own document, because everything the picker itself does - binding a character that exists,
+    // keeping a bare name - is a write to that one file, and a live session on it is precisely the
+    // work the picker is for.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
+    // The one rung inside the picker that reaches past that document, asked separately.
+    const createCharacter = useCreateCharacterFreeze();
     const rootRef = useRef<HTMLDivElement | null>(null);
     const pickerRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
@@ -3379,6 +3404,8 @@ function CharacterSelectTrigger(props: {
                 frame={frame}
                 panelRef={pickerRef}
                 createLabel={canCreate ? t("story.rows.createCharacter", { name: trimmed }) : null}
+                createDisabled={createCharacter.unavailable}
+                createDisabledReason={createCharacter.reason}
                 onCreate={() => {
                     props.onCreateCharacter(trimmed);
                     close();
