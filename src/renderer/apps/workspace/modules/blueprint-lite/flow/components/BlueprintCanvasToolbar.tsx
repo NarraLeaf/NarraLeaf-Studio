@@ -1,27 +1,35 @@
 /**
- * The blueprint canvas toolbar: which gesture a drag is, and the two edits that act on the whole
- * graph rather than on one card.
+ * The blueprint canvas toolbar: which gesture a drag is, where the view is, and the two edits that
+ * act on the whole graph rather than on one card.
  *
- * Parked in the canvas's free corner rather than added as a bar under the editor header, for the
- * same reason the zoom control is: a second full-width strip above a canvas is chrome the graph
- * pays for on every screen, and the editor header already occupies that row. It borrows the zoom
- * control's shell exactly - the two are the same kind of thing sitting on the same canvas, so they
- * have no business looking different.
+ * Parked in the canvas's free corner rather than added as a bar under the editor header: a second
+ * full-width strip above a canvas is chrome the graph pays for on every screen, and the editor
+ * header already occupies that row.
+ *
+ * It is built out of the surface editor's toolbar parts, in the same corner, at the same size, in
+ * the same order - tools, zoom, then the actions. The two canvases are the same kind of thing, so
+ * an author who learned the toolbar on one has learned it for both, and there is no second set of
+ * button styles here to drift away from that one.
  *
  * Comments in English per project convention.
  */
 
 import { ChevronDown, Group, Hand, MoveDown, MoveRight, MousePointer2, Wand2 } from "lucide-react";
-import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import {
+    SurfaceEditorToolbarButton,
+    SurfaceEditorToolbarButtonGroup,
+    SurfaceEditorToolbarSegButton,
+} from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import {
     SurfaceToolbarPopoverPanel,
     SurfaceToolbarPopoverRow,
     useSurfaceToolbarPopover,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarPopover";
 import { BLUEPRINT_COMMENT_COLORS, blueprintCommentColorLabel } from "../blueprintCommentColors";
+import { BlueprintZoomMenu } from "./BlueprintZoomMenu";
 import type { BlueprintLayoutDirection } from "../blueprintAutoLayout";
 
 /** What a drag on empty canvas does. */
@@ -68,12 +76,11 @@ export function BlueprintCanvasToolbar({
             // Below, not above: the toolbar sits against the top of the canvas, and a tip opening
             // upwards from here would be drawn over the editor's own header.
             side="bottom"
-            className="absolute right-3 top-3 z-[5] flex items-center gap-2 rounded-md border border-edge-strong bg-surface-overlay px-2 py-1 shadow-lg"
+            className="absolute right-3 top-3 z-[5] flex items-center gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1"
             // The canvas underneath treats a press as the start of a marquee or a pan.
             onPointerDown={e => e.stopPropagation()}
         >
-            <ToolbarButton
-                size="md"
+            <SurfaceEditorToolbarButton
                 active={tool === "select"}
                 aria-label={t("blueprint.tool.select")}
                 data-tip={t("blueprint.tool.select")}
@@ -81,9 +88,8 @@ export function BlueprintCanvasToolbar({
                 onClick={() => onToolChange("select")}
             >
                 <MousePointer2 className="h-4 w-4" />
-            </ToolbarButton>
-            <ToolbarButton
-                size="md"
+            </SurfaceEditorToolbarButton>
+            <SurfaceEditorToolbarButton
                 active={tool === "pan"}
                 aria-label={t("blueprint.tool.pan")}
                 data-tip={t("blueprint.tool.pan")}
@@ -91,30 +97,31 @@ export function BlueprintCanvasToolbar({
                 onClick={() => onToolChange("pan")}
             >
                 <Hand className="h-4 w-4" />
-            </ToolbarButton>
-            <div className="mx-1 h-6 w-px bg-edge" />
+            </SurfaceEditorToolbarButton>
+            <BlueprintZoomMenu />
             {/* The button groups in the colour the author last chose, and the chevron is where a
                 different one is picked - the same bargain the zoom control makes with its
                 percentage: the common answer costs one click, the rest cost two. */}
-            <ToolbarButton
-                size="md"
-                aria-label={t("blueprint.group.create")}
-                {...freeze.writes(!canGroup, t("blueprint.group.create"))}
-                onClick={() => onCreateGroup(groupColor)}
-            >
-                <Group className="h-4 w-4" />
-            </ToolbarButton>
-            <ToolbarButton
-                ref={colors.triggerRef}
-                size="md"
-                aria-label={t("blueprint.group.color")}
-                aria-expanded={colors.open}
-                aria-haspopup="dialog"
-                {...freeze.writes(!canGroup, t("blueprint.group.color"))}
-                onClick={colors.toggle}
-            >
-                <ChevronDown className="h-4 w-4" />
-            </ToolbarButton>
+            <SurfaceEditorToolbarButtonGroup aria-label={t("blueprint.group.create")}>
+                <SurfaceEditorToolbarSegButton
+                    aria-label={t("blueprint.group.create")}
+                    {...freeze.writes(!canGroup, t("blueprint.group.create"))}
+                    onClick={() => onCreateGroup(groupColor)}
+                >
+                    <Group className="h-4 w-4" />
+                </SurfaceEditorToolbarSegButton>
+                <SurfaceEditorToolbarSegButton
+                    ref={colors.triggerRef}
+                    active={colors.open}
+                    aria-label={t("blueprint.group.color")}
+                    aria-expanded={colors.open}
+                    aria-haspopup="dialog"
+                    {...freeze.writes(!canGroup, t("blueprint.group.color"))}
+                    onClick={colors.toggle}
+                >
+                    <ChevronDown className="h-4 w-4" />
+                </SurfaceEditorToolbarSegButton>
+            </SurfaceEditorToolbarButtonGroup>
             <SurfaceToolbarPopoverPanel popover={colors} dataAttribute="blueprint-group-color">
                 {Object.entries(BLUEPRINT_COMMENT_COLORS).map(([key, color]) => (
                     <SurfaceToolbarPopoverRow
@@ -133,28 +140,28 @@ export function BlueprintCanvasToolbar({
                     />
                 ))}
             </SurfaceToolbarPopoverPanel>
-            <div className="mx-1 h-6 w-px bg-edge" />
             {/* Same bargain as the group button beside it: the direction the author last formatted
                 in costs one click, the other one costs two. */}
-            <ToolbarButton
-                size="md"
-                aria-label={t("blueprint.format.graph")}
-                {...freeze.writes(!canFormat, t("blueprint.format.graph"))}
-                onClick={() => onFormat(formatDirection)}
-            >
-                <Wand2 className="h-4 w-4" />
-            </ToolbarButton>
-            <ToolbarButton
-                ref={directions.triggerRef}
-                size="md"
-                aria-label={t("blueprint.format.direction")}
-                aria-expanded={directions.open}
-                aria-haspopup="dialog"
-                {...freeze.writes(!canFormat, t("blueprint.format.direction"))}
-                onClick={directions.toggle}
-            >
-                <ChevronDown className="h-4 w-4" />
-            </ToolbarButton>
+            <SurfaceEditorToolbarButtonGroup aria-label={t("blueprint.format.graph")}>
+                <SurfaceEditorToolbarSegButton
+                    aria-label={t("blueprint.format.graph")}
+                    {...freeze.writes(!canFormat, t("blueprint.format.graph"))}
+                    onClick={() => onFormat(formatDirection)}
+                >
+                    <Wand2 className="h-4 w-4" />
+                </SurfaceEditorToolbarSegButton>
+                <SurfaceEditorToolbarSegButton
+                    ref={directions.triggerRef}
+                    active={directions.open}
+                    aria-label={t("blueprint.format.direction")}
+                    aria-expanded={directions.open}
+                    aria-haspopup="dialog"
+                    {...freeze.writes(!canFormat, t("blueprint.format.direction"))}
+                    onClick={directions.toggle}
+                >
+                    <ChevronDown className="h-4 w-4" />
+                </SurfaceEditorToolbarSegButton>
+            </SurfaceEditorToolbarButtonGroup>
             <SurfaceToolbarPopoverPanel popover={directions} dataAttribute="blueprint-format-direction">
                 {FORMAT_DIRECTIONS.map(({ key, icon: Icon, labelKey }) => (
                     <SurfaceToolbarPopoverRow
