@@ -72,11 +72,25 @@ function apply(document: StoryDocument, op: LiveOp): void {
         case "update-block":
             updateBlockPayload(document.scenes[op.sceneId], op.blockId, op.payload);
             return;
+        case "update-blocks":
+            for (const edit of op.edits) {
+                updateBlockPayload(document.scenes[edit.sceneId], edit.blockId, edit.payload);
+            }
+            return;
         case "delete-block":
             deleteBlockFromScene(document.scenes[op.sceneId], op.blockId);
             return;
         case "move-block":
             moveBlockInScene(document.scenes[op.sceneId], op.blockId, op.target);
+            return;
+        case "move-blocks":
+            // Group by group, and every row of a group in front of the same anchor - what the story
+            // service's own `moveBlocks` does.
+            for (const move of op.moves) {
+                for (const blockId of move.blockIds) {
+                    moveBlockInScene(document.scenes[op.sceneId], blockId, move.target);
+                }
+            }
             return;
         case "set-block-disabled": {
             const block = document.scenes[op.sceneId].blocks[op.blockId];
@@ -160,6 +174,39 @@ describe("the inverse of every operation", () => {
                 sceneId: "s1",
                 blockId: "a",
                 payload: { text: { textId: "text-a", value: "a", role: "note" } },
+            },
+        },
+        {
+            name: "a batch update is taken back by writing every payload the rows held",
+            op: {
+                op: "update-blocks",
+                edits: [
+                    { sceneId: "s1", blockId: "a", payload: REWRITTEN },
+                    { sceneId: "s1", blockId: "one", payload: REWRITTEN },
+                ],
+            },
+            expected: {
+                op: "update-blocks",
+                edits: [
+                    { sceneId: "s1", blockId: "a", payload: { text: { textId: "text-a", value: "a", role: "note" } } },
+                    { sceneId: "s1", blockId: "one", payload: { text: { textId: "text-one", value: "one", role: "note" } } },
+                ],
+            },
+        },
+        {
+            name: "a batch move is taken back one row at a time, from the back of the document forwards",
+            op: {
+                op: "move-blocks",
+                sceneId: "s1",
+                moves: [{ blockIds: ["a", "g"], target: { parentId: null, beforeBlockId: null } }],
+            },
+            expected: {
+                op: "move-blocks",
+                sceneId: "s1",
+                moves: [
+                    { blockIds: ["g"], target: { parentId: null, beforeBlockId: "z" } },
+                    { blockIds: ["a"], target: { parentId: null, beforeBlockId: "g" } },
+                ],
             },
         },
         {
@@ -317,6 +364,62 @@ describe("the inverse of the inverse", () => {
 
 /* ------------------------------------------------------------------- when there is none */
 
+describe("taking back a batch", () => {
+    it("puts a multi-row selection back in the order it was in", () => {
+        // The case that decides the rule. `a` and `g` go to the end together; putting them back
+        // front-to-back would aim `a` at `g` while `g` is still at the end, leaving [g, z, a] -
+        // an arrangement neither author wrote. From the back forwards, every row is placed in
+        // front of a neighbour that is already home.
+        const document = makeDocument();
+        const done = perform(document, {
+            op: "move-blocks",
+            sceneId: "s1",
+            moves: [{ blockIds: ["a", "g"], target: { parentId: null, beforeBlockId: null } }],
+        });
+        expect(document.scenes.s1.rootBlockIds).toEqual(["z", "a", "g"]);
+
+        undo(document, done);
+
+        expect(document.scenes.s1.rootBlockIds).toEqual(["a", "g", "z"]);
+    });
+
+    it("redoes a batch move as the arrangement it produced, not as the operation that was sent", () => {
+        // A batch's inverse addresses rows one at a time, so the inverse of THAT does too: what
+        // round-trips is the arrangement, which is the thing the author is looking at, and not the
+        // spelling of the operation that produced it.
+        const document = makeDocument();
+        const done = perform(document, {
+            op: "move-blocks",
+            sceneId: "s1",
+            moves: [{ blockIds: ["a", "g"], target: { parentId: null, beforeBlockId: null } }],
+        });
+        const undone = undo(document, done);
+
+        perform(document, asOp(invert(document, undone)));
+
+        expect(document.scenes.s1.rootBlockIds).toEqual(["z", "a", "g"]);
+    });
+
+    it("puts every payload of a batch back in one operation", () => {
+        const document = makeDocument();
+        const done = perform(document, {
+            op: "update-blocks",
+            edits: [
+                { sceneId: "s1", blockId: "a", payload: REWRITTEN },
+                { sceneId: "s1", blockId: "z", payload: REWRITTEN },
+            ],
+        });
+
+        undo(document, done);
+
+        // One operation, so one arrival on every other machine, and never a document holding half
+        // of an undo.
+        expect(asOp(invert(document, done)).op).toBe("update-blocks");
+        expect(document.scenes.s1.blocks.a.payload).toEqual({ text: { textId: "text-a", value: "a", role: "note" } });
+        expect(document.scenes.s1.blocks.z.payload).toEqual({ text: { textId: "text-z", value: "z", role: "note" } });
+    });
+});
+
 describe("what has no inverse", () => {
     it("refuses somebody else's effect, whatever else is in place", () => {
         // The row is there, the record is there, and the answer is still no: an effect this machine
@@ -364,6 +467,29 @@ describe("what has no inverse", () => {
             op: { op: "update-block", sceneId: "s1", blockId: "a", payload: REWRITTEN },
             then: document => deleteBlockFromScene(document.scenes.s1, "a"),
             reason: "row-gone",
+        },
+        {
+            name: "one row of a batch update being gone refuses the whole batch",
+            op: {
+                op: "update-blocks",
+                edits: [
+                    { sceneId: "s1", blockId: "a", payload: REWRITTEN },
+                    { sceneId: "s1", blockId: "z", payload: REWRITTEN },
+                ],
+            },
+            then: document => deleteBlockFromScene(document.scenes.s1, "z"),
+            reason: "row-gone",
+        },
+        {
+            name: "one row of a batch move having lost its neighbour refuses the whole batch",
+            op: {
+                op: "move-blocks",
+                sceneId: "s1",
+                moves: [{ blockIds: ["a"], target: { parentId: null, beforeBlockId: null } }],
+            },
+            // `a` sat in front of `g`, and there is no other row that means "where a was".
+            then: document => deleteBlockFromScene(document.scenes.s1, "g"),
+            reason: "anchor-gone",
         },
         {
             name: "a row somebody deleted cannot be moved back",

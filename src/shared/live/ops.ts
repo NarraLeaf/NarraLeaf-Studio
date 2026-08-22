@@ -71,8 +71,35 @@ export type LiveOp =
      * patch would buy precision the interface never produces.
      */
     | { op: "update-block"; sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }
+    /**
+     * Replace many payloads, across any number of scenes, as ONE operation.
+     *
+     * **Not a convenience, and not decomposable into a run of {@link LiveOp} `update-block`s.** The
+     * host applies one operation at a time and broadcasts each: a project-wide replace sent as two
+     * hundred operations would make every other machine draw a hundred and ninety-nine half-finished
+     * documents, and somebody else's operation landing between two of them would produce a document
+     * nobody wrote. One gesture is one operation.
+     */
+    | {
+          op: "update-blocks";
+          edits: readonly { sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }[];
+      }
     | { op: "delete-block"; sceneId: StorySceneId; blockId: StoryBlockId }
     | { op: "move-block"; sceneId: StorySceneId; blockId: StoryBlockId; target: LiveBlockTarget }
+    /**
+     * Move groups of rows, each group to its own target, as ONE operation.
+     *
+     * Dragging a five-row selection is one gesture and one arrangement; the same reasoning as
+     * `update-blocks`, and here the intermediate states are visibly wrong rather than merely
+     * incomplete - a selection halfway to its destination is an order the author never asked for.
+     * The groups are applied in the order given and every row in a group lands in front of the same
+     * anchor, which is what the story service's own `moveBlocks` does.
+     */
+    | {
+          op: "move-blocks";
+          sceneId: StorySceneId;
+          moves: readonly { blockIds: readonly StoryBlockId[]; target: LiveBlockTarget }[];
+      }
     | { op: "set-block-disabled"; sceneId: StorySceneId; blockId: StoryBlockId; disabled: boolean }
     | { op: "rename-scene"; sceneId: StorySceneId; name: string }
     /** The scene the story starts at, or null to leave it unset. */
@@ -94,14 +121,27 @@ export type LiveOpKind = LiveOp["op"];
  * Everything outside this set is last-writer-wins: a scene's name, the story's name, the entry
  * scene, the chapter order. Losing one of those costs a word, and a word is worth less than the
  * ceremony of claiming it. Losing a claimed row would cost the paragraph somebody just typed.
+ *
+ * A batch is claimed exactly when the single operation it batches is: `update-blocks` writes rows'
+ * prose and is here, `move-blocks` rearranges rows without touching a word of them and is not. The
+ * line is about what a loser loses, and batching changes how many rows are at stake, never what.
+ * ⚠ A claimed batch is answered whole - see {@link opBlockIds}.
  */
 export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-block",
+    "update-blocks",
     "delete-block",
     "set-block-disabled",
 ]);
 
-/** The block an operation is about, or null for the ones that are about the story as a whole. */
+/**
+ * The block an operation is about, or null for the ones that are about the story as a whole.
+ *
+ * **Null for a batch, which is about many.** This answers a lookup of ONE claim, so a batch that
+ * named one of its rows here would have its claim checked against that row and every other row let
+ * through - the half-refused arrangement that batching exists to prevent. Ask {@link opBlockIds}
+ * instead, which is the question a batch has an answer to.
+ */
 export function opBlockId(op: LiveOp): StoryBlockId | null {
     switch (op.op) {
         case "insert-block":
@@ -111,6 +151,8 @@ export function opBlockId(op: LiveOp): StoryBlockId | null {
         case "move-block":
         case "set-block-disabled":
             return op.blockId;
+        case "update-blocks":
+        case "move-blocks":
         case "rename-scene":
         case "set-entry-scene":
         case "rename-story":
@@ -119,22 +161,72 @@ export function opBlockId(op: LiveOp): StoryBlockId | null {
     }
 }
 
-/** The scene an operation is about, or null when it is about the story as a whole. */
+/**
+ * Every row an operation is about, in the order the operation names them.
+ *
+ * What a claim check has to ask, because the answer for a batch is a set and the answer to
+ * {@link opBlockId} cannot be. **A batch is permitted only if every row in it is permitted**: one
+ * held row refuses the whole operation, and the author is told which row and who holds it. Letting
+ * the rest through would apply part of one gesture and leave an arrangement nobody wrote, with
+ * nothing on any screen reporting that half of it is missing.
+ *
+ * Empty for the operations that are about the story or a scene rather than its rows.
+ */
+export function opBlockIds(op: LiveOp): readonly StoryBlockId[] {
+    switch (op.op) {
+        case "insert-block":
+            return [op.block.id];
+        case "update-block":
+        case "delete-block":
+        case "move-block":
+        case "set-block-disabled":
+            return [op.blockId];
+        case "update-blocks":
+            return op.edits.map(edit => edit.blockId);
+        case "move-blocks":
+            return op.moves.flatMap(move => [...move.blockIds]);
+        case "rename-scene":
+        case "set-entry-scene":
+        case "rename-story":
+        case "reorder-chapters":
+            return [];
+    }
+}
+
+/**
+ * The scene an operation is about, or null when it is about the story as a whole - **or when it is
+ * about more than one scene**.
+ *
+ * The one caller is the digest an effect carries, which fingerprints a single scene, so a batch that
+ * reaches across scenes has no answer here and travels without one. A batch whose edits all name the
+ * same scene - which is what a replace confined to the open scene is - keeps its digest, because
+ * losing the divergence guard is a real cost and there is no reason to pay it when the answer is
+ * unambiguous.
+ */
 export function opSceneId(op: LiveOp): StorySceneId | null {
     switch (op.op) {
         case "insert-block":
         case "update-block":
         case "delete-block":
         case "move-block":
+        case "move-blocks":
         case "set-block-disabled":
         case "rename-scene":
             return op.sceneId;
+        case "update-blocks":
+            return onlySceneOf(op.edits);
         case "set-entry-scene":
             return op.sceneId;
         case "rename-story":
         case "reorder-chapters":
             return null;
     }
+}
+
+/** The scene every edit names, or null when they do not all name one. */
+function onlySceneOf(edits: readonly { sceneId: StorySceneId }[]): StorySceneId | null {
+    const first = edits[0]?.sceneId ?? null;
+    return first !== null && edits.every(edit => edit.sceneId === first) ? first : null;
 }
 
 /* -------------------------------------------------------------------- messages */

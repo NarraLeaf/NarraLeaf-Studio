@@ -120,11 +120,23 @@ function apply(scenes: Record<StorySceneId, StoryScene>, story: World["story"], 
         case "update-block":
             updateBlockPayload(scenes[op.sceneId], op.blockId, op.payload);
             return;
+        case "update-blocks":
+            for (const edit of op.edits) {
+                updateBlockPayload(scenes[edit.sceneId], edit.blockId, edit.payload);
+            }
+            return;
         case "delete-block":
             deleteBlockFromScene(scenes[op.sceneId], op.blockId);
             return;
         case "move-block":
             moveBlockInScene(scenes[op.sceneId], op.blockId, op.target);
+            return;
+        case "move-blocks":
+            for (const move of op.moves) {
+                for (const blockId of move.blockIds) {
+                    moveBlockInScene(scenes[op.sceneId], blockId, move.target);
+                }
+            }
             return;
         case "set-block-disabled": {
             const block = scenes[op.sceneId].blocks[op.blockId];
@@ -391,6 +403,105 @@ describe("rearranging a scene", () => {
 
         expect(order(world.scenes.s1)).toEqual(["c", "b", "a"]);
         expect(world.applied).toHaveLength(2);
+    });
+});
+
+describe("a batch, which is one gesture", () => {
+    it("moves a whole selection as one operation, with one sequence number", () => {
+        // The reason the vocabulary has this verb at all: sent as four moves it would be four
+        // effects, and every other machine would draw three arrangements nobody wrote on the way.
+        const world = makeWorld({
+            scenes: [makeScene("s1", [{ block: note("a") }, { block: note("b") }, { block: note("c") }, { block: note("d") }])],
+        });
+
+        const effect = asEffect(send(world, {
+            op: "move-blocks",
+            sceneId: "s1",
+            moves: [{ blockIds: ["a", "b"], target: { parentId: null, beforeBlockId: null } }],
+        }));
+
+        expect(effect.seq).toBe(1);
+        expect(world.applied).toHaveLength(1);
+        expect(order(world.scenes.s1)).toEqual(["c", "d", "a", "b"]);
+    });
+
+    it("refuses the whole of a batch when one row of it is claimed, and writes none of it", () => {
+        // Half a replace is the arrangement this verb exists to prevent: the rows nobody holds would
+        // carry the new text and the held one would keep the old, with nothing anywhere saying so.
+        const world = makeWorld({ claims: { b: "guest-2" } });
+
+        const refusal = asRefusal(send(world, {
+            op: "update-blocks",
+            edits: [
+                { sceneId: "s1", blockId: "a", payload: note("a", "replaced").payload },
+                { sceneId: "s1", blockId: "b", payload: note("b", "replaced").payload },
+            ],
+        }, "guest-1"));
+
+        expect(refusal.reason).toBe("row-claimed");
+        expect(refusal.heldBy).toBe("guest-2");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("refuses the whole of a batch when one row of it is gone", () => {
+        const world = makeWorld();
+        send(world, { op: "delete-block", sceneId: "s1", blockId: "c" });
+        const before = sceneDigest(world.scenes.s1);
+
+        const refusal = asRefusal(send(world, {
+            op: "update-blocks",
+            edits: [
+                { sceneId: "s1", blockId: "a", payload: note("a", "replaced").payload },
+                { sceneId: "s1", blockId: "c", payload: note("c", "replaced").payload },
+            ],
+        }));
+
+        expect(refusal.reason).toBe("row-gone");
+        expect(sceneDigest(world.scenes.s1)).toBe(before);
+    });
+
+    it("refuses a whole selection's move when one of its anchors is gone", () => {
+        const world = makeWorld();
+        send(world, { op: "delete-block", sceneId: "s1", blockId: "c" });
+        const before = sceneDigest(world.scenes.s1);
+
+        const refusal = asRefusal(send(world, {
+            op: "move-blocks",
+            sceneId: "s1",
+            moves: [{ blockIds: ["a", "b"], target: { parentId: null, beforeBlockId: "c" } }],
+        }));
+
+        expect(refusal.reason).toBe("anchor-gone");
+        expect(sceneDigest(world.scenes.s1)).toBe(before);
+    });
+
+    it("carries a digest for a batch inside one scene, and none for one that spans two", () => {
+        const world = makeWorld({
+            scenes: [
+                makeScene("s1", [{ block: note("a") }, { block: note("b") }]),
+                makeScene("s2", [{ block: note("x") }]),
+            ],
+        });
+
+        const inside = asEffect(send(world, {
+            op: "update-blocks",
+            edits: [
+                { sceneId: "s1", blockId: "a", payload: note("a", "one").payload },
+                { sceneId: "s1", blockId: "b", payload: note("b", "two").payload },
+            ],
+        }));
+        const afterInside = sceneDigest(world.scenes.s1);
+        const across = asEffect(send(world, {
+            op: "update-blocks",
+            edits: [
+                { sceneId: "s1", blockId: "a", payload: note("a", "three").payload },
+                { sceneId: "s2", blockId: "x", payload: note("x", "four").payload },
+            ],
+        }));
+
+        expect(inside.sceneDigest).toBe(afterInside);
+        // Nothing dishonest to send: a digest names one scene, and this operation changed two.
+        expect(across.sceneDigest).toBeUndefined();
     });
 });
 

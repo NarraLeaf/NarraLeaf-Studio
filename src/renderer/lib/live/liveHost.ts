@@ -1,6 +1,6 @@
 import {
     CLAIMED_OPS,
-    opBlockId,
+    opBlockIds,
     opSceneId,
     type LiveCatchUp,
     type LiveDerived,
@@ -79,8 +79,10 @@ export type LiveHostDeps = {
 const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "insert-block": true,
     "update-block": true,
+    "update-blocks": true,
     "delete-block": true,
     "move-block": true,
+    "move-blocks": true,
     "set-block-disabled": true,
     "rename-scene": true,
     "set-entry-scene": true,
@@ -314,6 +316,52 @@ export class LiveHost {
                 return { op };
             }
 
+            case "move-blocks": {
+                const scene = this.deps.readScene(op.sceneId);
+                if (!scene) {
+                    return { refuse: "scene-gone" };
+                }
+                // Whole or not at all, and checked before a single row moves. Half a drag is an
+                // arrangement the author never asked for, sitting in everybody's document with
+                // nothing on any screen saying the other half was refused.
+                for (const move of op.moves) {
+                    for (const blockId of move.blockIds) {
+                        const gone = this.rowGone(scene, blockId);
+                        if (gone) {
+                            return gone;
+                        }
+                    }
+                    const { parentId, beforeBlockId } = move.target;
+                    if (parentId && !scene.blocks[parentId]) {
+                        return { refuse: "anchor-gone" };
+                    }
+                    if (beforeBlockId && !scene.blocks[beforeBlockId]) {
+                        // Not resolved against the position memory, for the reason `move-block` is
+                        // not: moving again costs one gesture, and a selection that lands where
+                        // nobody sent it has to be found before it can be undone.
+                        return { refuse: "anchor-gone" };
+                    }
+                }
+                return { op };
+            }
+
+            case "update-blocks": {
+                // Every scene and every row first, then the claims, and one failure of either
+                // refuses the lot: a replace that wrote nine rows of ten would leave the tenth
+                // holding the text the author asked to be rid of, and no report of it anywhere.
+                for (const edit of op.edits) {
+                    const scene = this.deps.readScene(edit.sceneId);
+                    if (!scene) {
+                        return { refuse: "scene-gone" };
+                    }
+                    const gone = this.rowGone(scene, edit.blockId);
+                    if (gone) {
+                        return gone;
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
             case "update-block":
             case "delete-block":
             case "set-block-disabled": {
@@ -349,19 +397,25 @@ export class LiveHost {
      * Driven by `CLAIMED_OPS` rather than by a list written here, so the line between what a claim
      * governs and what is last-writer-wins is drawn in one place - the vocabulary the whole session
      * shares - and cannot come to mean two different things on two machines.
+     *
+     * **Every row the operation names, and one held row refuses all of them.** A batch is one
+     * gesture: applying the rows nobody holds and dropping the rest would produce a document that is
+     * neither what the author asked for nor what it was before, and the author would be told a row
+     * was claimed while seeing most of their edit land anyway.
      */
     private claimed(op: LiveOp, by: string): LivePlan | null {
         if (!CLAIMED_OPS.has(op.op)) {
             return null;
         }
-        const blockId = opBlockId(op);
-        if (blockId === null) {
-            return null;
+        for (const blockId of opBlockIds(op)) {
+            const heldBy = this.deps.claimBlocking
+                ? this.deps.claimBlocking(blockId, by)
+                : this.claims.blocking(blockId, by);
+            if (heldBy !== null) {
+                return { refuse: "row-claimed", heldBy };
+            }
         }
-        const heldBy = this.deps.claimBlocking
-            ? this.deps.claimBlocking(blockId, by)
-            : this.claims.blocking(blockId, by);
-        return heldBy === null ? null : { refuse: "row-claimed", heldBy };
+        return null;
     }
 
     private catchUp(resync: LiveResync): LiveCatchUp {
