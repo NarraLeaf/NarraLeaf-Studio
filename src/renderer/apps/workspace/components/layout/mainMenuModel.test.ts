@@ -35,6 +35,24 @@ describe("buildMainMenuSubmenus", () => {
         expect(rowIds(submenus[0].items)).toEqual(["new", "open"]);
     });
 
+    it("carries each group's accelerator onto its row", () => {
+        // Collapsing the bar takes away the button Alt+F pressed, not the letter: the row carries it
+        // so `ActionDropdown` can claim it from the bar and open on that row.
+        const submenus = buildMainMenuSubmenus(
+            [
+                group("narraleaf-studio:file", [action("new")], { mnemonic: "F" }),
+                group("plugin:no-letter", [action("run")]),
+            ],
+            null,
+            false,
+            FROZEN_REASON,
+        );
+
+        expect(submenus[0].mnemonic).toBe("F");
+        // A plugin gets no accelerator on the bar, and must not be given one by the hamburger.
+        expect(submenus[1].mnemonic).toBeUndefined();
+    });
+
     it("drops a group with nothing visible rather than offering an empty submenu", () => {
         const submenus = buildMainMenuSubmenus(
             [group("plugin:empty", [action("hidden", { visible: false })])],

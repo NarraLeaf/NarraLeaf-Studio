@@ -67,6 +67,23 @@ export const brand = {
         // The row keeps its place when the asset behind it is gone: the id may come back, and
         // dropping the row would lose an order the author set.
         missing: "Missing font",
+        /**
+         * The language half, and every key here is hidden until the project has two languages.
+         *
+         * A project with one language has no axis to restrict along, so the control would be a
+         * question with one answer - and a restriction set there would silently exclude whatever
+         * language was added next.
+         */
+        locales: {
+            edit: "Languages for {name}",
+            title: "Languages",
+            // The state of a rung nobody has restricted, which is every rung of a project that has
+            // never opened this control. Named rather than left blank so an empty list of ticks
+            // reads as an answer instead of as a control that failed to load.
+            all: "All languages",
+        },
+        preview: "Preview in",
+        excluded: "Not used for {language}",
     },
 
     /** The Brand sub-page itself. Its two headings are `project.group.brand*`. */

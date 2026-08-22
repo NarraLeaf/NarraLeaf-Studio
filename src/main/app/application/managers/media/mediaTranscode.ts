@@ -86,19 +86,48 @@ const GLOBAL_ARGS: readonly string[] = [
  * produces a file Chromium may decode on the developer's desktop and a player's device may not.
  * Profile 0 is the one every VP9 decoder is required to have.
  *
- * Exported because the weather bake encodes with exactly these settings. They are one decision - what
- * a NarraLeaf project's video looks like on every target it ships to - and a second copy would drift
- * silently, since both produce a playable file either way.
+ * ## Why the speed is a parameter and the rest is not
+ *
+ * Everything except `-deadline`/`-cpu-used` decides what the file IS - the codec, the profile, the
+ * quality it was asked for - and that is one decision for the whole project, which is why
+ * {@link VP9_ARGS} is exported rather than restated wherever a video is made. The speed decides only
+ * how long libvpx looked for a smaller way to say the same thing, and there the callers genuinely
+ * differ: an author's imported clip is converted once and keeps whatever quality it is given
+ * forever, while a weather clip made for a Dev Mode session is thrown away the next time the author
+ * moves a slider. So {@link vp9Args} takes that one axis and nothing else.
+ *
+ * **The transcode path is not on the fast axis and must not be put there.** A conversion happens
+ * once per imported file, its content is arbitrary (faces, gradients, film grain - the material
+ * `realtime` is measurably worse at), and what it loses is lost permanently.
  */
-export const VP9_ARGS: readonly string[] = [
-    "-c:v", "libvpx-vp9",
-    "-b:v", "0",
-    "-crf", "32",
-    "-row-mt", "1",
-    "-deadline", "good",
-    "-cpu-used", "2",
-    "-pix_fmt", "yuv420p",
-];
+export type Vp9Speed = "good" | "realtime";
+
+/**
+ * The `-deadline`/`-cpu-used` pair for each speed.
+ *
+ * `realtime` is not a faster setting of the same encoder - libvpx selects a different set of speed
+ * features entirely: no lookahead, therefore no alt-ref frames and no temporal filtering, plus a
+ * coarser mode search. `-cpu-used 4` is the last speed that still runs the RD decision path; at 5
+ * libvpx switches to its non-RD one, which measured the same wall-clock and 27% more bytes.
+ */
+const VP9_SPEED_ARGS: Readonly<Record<Vp9Speed, readonly string[]>> = {
+    good: ["-deadline", "good", "-cpu-used", "2"],
+    realtime: ["-deadline", "realtime", "-cpu-used", "4"],
+};
+
+export function vp9Args(speed: Vp9Speed): readonly string[] {
+    return [
+        "-c:v", "libvpx-vp9",
+        "-b:v", "0",
+        "-crf", "32",
+        "-row-mt", "1",
+        ...VP9_SPEED_ARGS[speed],
+        "-pix_fmt", "yuv420p",
+    ];
+}
+
+/** What a converted asset is encoded as. Every imported video in every project, so: the slow one. */
+export const VP9_ARGS: readonly string[] = vp9Args("good");
 
 /** Vorbis, at libvorbis's quality scale. Used only alongside VP9, because WebM cannot carry AAC. */
 const VORBIS_ARGS: readonly string[] = ["-c:a", "libvorbis", "-q:a", "5"];

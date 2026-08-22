@@ -139,7 +139,16 @@ export class ProjectService {
                 await this.enableVersionControl(basePath);
             }
 
-            getInterface().window.closeWith<WindowAppType.ProjectWizard>({ created: true, projectPath: basePath });
+            // Both go back with the path because the caller may still have work to do on this
+            // project once the window is gone - sending it to a server is the case that put
+            // them there - and by then they are inside a MessagePack file. The app id is not
+            // decoration: it is the half a repository address can carry.
+            getInterface().window.closeWith<WindowAppType.ProjectWizard>({
+                created: true,
+                projectPath: basePath,
+                projectName: projectData.name,
+                appId: projectData.appId,
+            });
 
             return { success: true };
         } catch (error) {

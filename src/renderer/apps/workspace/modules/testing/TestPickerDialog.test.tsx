@@ -1,10 +1,17 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolveTestParameters } from "@/lib/testing/parameters";
+import type { TestParameterMemory } from "@/lib/testing/parameterCache";
 import {
     TEST_CATEGORY_ORDER,
     type RegisteredTest,
+    type TestAvailabilityContext,
     type TestCategory,
     type TestDefinition,
+    type TestId,
+    type TestParameterValues,
 } from "@/lib/testing/types";
 import { TestPickerContent } from "./TestPickerDialog";
 import { TEST_CATEGORY_LABEL_KEYS } from "./testModel";
@@ -14,9 +21,13 @@ import { TEST_CATEGORY_LABEL_KEYS } from "./testModel";
  * a test can claim is one the list can actually draw, and that a row says the four things an author
  * decides on (what it is called, whether a window is about to open, whose it is, what it does).
  *
- * Rendered with `renderToStaticMarkup`, so effects never run - which is also the state an author
- * first sees, since the picker asks the registry once and then just draws.
+ * The list half is rendered with `renderToStaticMarkup`, so effects never run - which is also the
+ * state an author first sees, since the picker asks the registry once and then just draws. The
+ * parameters half cannot be: a parameter only appears once a test is selected, and selecting one is
+ * a click. Those tests mount for real and drive the controls.
  */
+
+afterEach(cleanup);
 
 /**
  * Every category a test can be filed under. Written as a total record so the union growing breaks
@@ -159,6 +170,147 @@ describe("a picker row", () => {
         );
 
         expect(markup).toContain("No tests are registered");
+    });
+});
+
+/**
+ * What the author is asked before Start.
+ *
+ * The property under test throughout is that **what the picker shows and what it starts the run
+ * with are the same thing**. A dropdown that displays one ending and hands over another would be
+ * the one failure a test pipeline cannot survive, and every case below is a way that could happen:
+ * a remembered value, a remembered value whose option is gone, a value the author just changed.
+ */
+describe("the picker's parameters", () => {
+    const CONTEXT: TestAvailabilityContext = { projectPath: "D:/project", frozen: false };
+
+    const WALK: TestDefinition = definition({
+        id: "acme.pack:walk",
+        title: { text: "Walk to an ending" },
+        category: "runtime",
+        parameters: [
+            {
+                id: "ending",
+                kind: "select",
+                label: { text: "Ending" },
+                description: { text: "Where the walk stops" },
+                defaultValue: "good",
+                options: () => [
+                    { value: "good", label: { text: "Good end" } },
+                    { value: "true", label: { text: "True end" } },
+                ],
+            },
+            { id: "skipRead", kind: "boolean", label: { text: "Skip read text" }, defaultValue: true },
+        ],
+    });
+    const PLAIN: TestDefinition = definition({ id: "acme.pack:plain", title: { text: "Plain check" } });
+
+    function mount(options: {
+        remembered?: TestParameterMemory;
+        available?: boolean;
+        started: (testId: TestId, parameters: TestParameterValues) => void;
+    }) {
+        render(
+            <TestPickerContent
+                tests={[{ definition: WALK }, { definition: PLAIN }]}
+                getAvailability={() =>
+                    options.available === false
+                        ? { available: false, reason: { key: "test.reason.frozen" } }
+                        : { available: true }
+                }
+                listParameters={id =>
+                    resolveTestParameters(id === WALK.id ? WALK : PLAIN, CONTEXT)
+                }
+                rememberedParameters={options.remembered}
+                onStart={options.started}
+                onCancel={noop}
+            />,
+        );
+    }
+
+    const select = (title: string) => fireEvent.click(screen.getByRole("option", { name: title }));
+    const start = () => fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    const endingTrigger = () => screen.getByRole("button", { name: "Ending" });
+
+    it("draws a control per declaration once its test is selected, and none before", () => {
+        const started = vi.fn();
+        mount({ started });
+
+        expect(screen.queryByRole("group", { name: "Parameters" })).toBeNull();
+
+        select("Walk to an ending");
+
+        expect(screen.getByRole("group", { name: "Parameters" })).toBeTruthy();
+        expect(endingTrigger().textContent).toContain("Good end");
+        expect(screen.getByRole("switch", { name: "Skip read text" }).getAttribute("aria-checked")).toBe("true");
+        // The description is the parameter's own line, not a sentence about the control.
+        expect(screen.getByText("Where the walk stops")).toBeTruthy();
+    });
+
+    it("leaves a test that declares nothing exactly as it was", () => {
+        const started = vi.fn();
+        mount({ started });
+
+        select("Plain check");
+
+        expect(screen.queryByRole("group", { name: "Parameters" })).toBeNull();
+        start();
+        expect(started).toHaveBeenCalledWith("acme.pack:plain", {});
+    });
+
+    it("opens on the value this test was last run with", () => {
+        const started = vi.fn();
+        mount({ started, remembered: { "acme.pack:walk": { ending: "true", skipRead: false } } });
+
+        select("Walk to an ending");
+
+        expect(endingTrigger().textContent).toContain("True end");
+        expect(screen.getByRole("switch", { name: "Skip read text" }).getAttribute("aria-checked")).toBe("false");
+        start();
+        expect(started).toHaveBeenCalledWith("acme.pack:walk", { ending: "true", skipRead: false });
+    });
+
+    it("falls back to the default when the remembered ending has been deleted", () => {
+        // The author removed that ending between one run and the next. The control must not be left
+        // pointing at nothing, and the deleted id must not reach the run.
+        const started = vi.fn();
+        mount({ started, remembered: { "acme.pack:walk": { ending: "the-one-they-deleted" } } });
+
+        select("Walk to an ending");
+
+        expect(endingTrigger().textContent).toContain("Good end");
+        start();
+        expect(started).toHaveBeenCalledWith("acme.pack:walk", { ending: "good", skipRead: true });
+    });
+
+    it("starts with what the author changed it to", () => {
+        const started = vi.fn();
+        mount({ started });
+
+        select("Walk to an ending");
+        fireEvent.click(endingTrigger());
+        fireEvent.click(screen.getByRole("button", { name: "True end" }));
+        fireEvent.click(screen.getByRole("switch", { name: "Skip read text" }));
+        start();
+
+        expect(endingTrigger().textContent).toContain("True end");
+        expect(started).toHaveBeenCalledWith("acme.pack:walk", { ending: "true", skipRead: false });
+    });
+
+    it("refuses to select an unavailable test at all, so nothing offers to run it", () => {
+        // An unavailable row stays listed and says why (see above), and it declines the click - so a
+        // test the host would refuse never reaches the point of asking the author for values. This
+        // is what the host's empty-option-list gate produces: the reason is on the row, and there is
+        // no dead dropdown underneath it.
+        const started = vi.fn();
+        mount({ started, available: false });
+
+        select("Walk to an ending");
+
+        expect(screen.getByRole("option", { name: "Walk to an ending" })).toBeTruthy();
+        expect(screen.queryByRole("group", { name: "Parameters" })).toBeNull();
+        start();
+        expect(started).not.toHaveBeenCalled();
     });
 });
 

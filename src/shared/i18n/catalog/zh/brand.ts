@@ -43,6 +43,13 @@ export const brand = {
         moveUp: "上移{name}",
         moveDown: "下移{name}",
         missing: "字体缺失",
+        locales: {
+            edit: "{name}的语言",
+            title: "语言",
+            all: "所有语言",
+        },
+        preview: "预览语言",
+        excluded: "{language}不使用",
     },
 
     panel: {

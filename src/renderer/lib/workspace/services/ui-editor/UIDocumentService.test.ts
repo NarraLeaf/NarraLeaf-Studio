@@ -375,7 +375,7 @@ describe("UIDocumentService surface creation", () => {
 
         expect(notification.mount.slotId).toBe("notification");
         expect(list.type).toBe("nl.notification.list");
-        expect(list.props).toMatchObject({ itemKeyPath: "id", itemGap: 12 });
+        expect(list.props).toMatchObject({ itemKeyFieldId: "id", itemGap: 12 });
         expect(itemContainer.type).toBe("nl.container");
         expect(itemContainer.extra?.listSlot).toBe("itemTemplate");
         expect(itemText.type).toBe("nl.text");
@@ -408,7 +408,7 @@ describe("UIDocumentService surface creation", () => {
 
         expect(choice.mount.slotId).toBe("choice");
         expect(list.type).toBe("nl.choice.list");
-        expect(list.props).toMatchObject({ itemKeyPath: "index", itemGap: 16 });
+        expect(list.props).toMatchObject({ itemKeyFieldId: "index", itemGap: 16 });
         expect(itemContainer.extra?.listSlot).toBe("itemTemplate");
         expect(itemText.valueBindings?.text).toMatchObject({ kind: "blueprintValue", valueType: "string" });
 
@@ -826,7 +826,9 @@ describe("UIDocumentService surface creation", () => {
             throw new Error("Expected duplicated button event blueprint binding");
         }
         const duplicatedWidgetBlueprintId = duplicatedEvent.blueprintId;
-        const duplicatedValueBlueprintId = duplicatedButton.valueBindings?.label?.blueprintId;
+        const duplicatedLabelBinding = duplicatedButton.valueBindings?.label;
+        const duplicatedValueBlueprintId =
+            duplicatedLabelBinding?.kind === "blueprintValue" ? duplicatedLabelBinding.blueprintId : undefined;
         const duplicatedSurfaceBlueprintId = blueprintDocument.ownerRecords[`surfaceMain:${duplicated.id}`]?.activeBlueprintId;
 
         expect(duplicatedSurfaceBlueprintId).toBeTruthy();

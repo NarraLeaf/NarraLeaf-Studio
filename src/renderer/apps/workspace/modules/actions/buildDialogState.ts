@@ -5,14 +5,13 @@ import {
     normalizeGameBuildArch,
     type BuildPreflightSection,
     type GameBuildArch,
-    type GameBuildCompression,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildPlatform,
     type GameBuildRequest,
 } from "@shared/types/gameBuild";
 import { isBuiltinAppTagId } from "@shared/types/appTag";
-import { DEFAULT_BUILD_COMPRESSION, type BuildConfiguration } from "@/lib/workspace/project/configuration";
+import type { BuildConfiguration } from "@/lib/workspace/project/configuration";
 
 /**
  * The build dialog's selection, and the pure rules that seed it and turn it
@@ -142,7 +141,6 @@ export type BuildDialogState = {
     archs: Record<GameBuildDesktopPlatform, GameBuildArch>;
     /** Absolute output directory, or "" to use the default (`<project>/dist`). */
     outputDir: string;
-    compression: GameBuildCompression;
     openWhenDone: boolean;
 };
 
@@ -198,7 +196,6 @@ export function initialDialogState(
         formats,
         archs,
         outputDir: config?.outputDir ?? "",
-        compression: config?.compression ?? DEFAULT_BUILD_COMPRESSION,
         openWhenDone: config?.openWhenDone ?? true,
     };
 }
@@ -224,7 +221,6 @@ export function stateToRequest(state: BuildDialogState): GameBuildRequest {
         // absent for the same reason it is the empty string here - one choice, one spelling.
         ...(appTagSelection(state.appTagId) ? { appTagId: appTagSelection(state.appTagId) } : {}),
         outputDir: state.outputDir.trim(),
-        compression: state.compression,
         openWhenDone: state.openWhenDone,
     };
 }
@@ -247,7 +243,6 @@ export function requestToBuildConfiguration(request: GameBuildRequest): BuildCon
         formats,
         archs,
         outputDir: request.outputDir ?? "",
-        compression: request.compression ?? DEFAULT_BUILD_COMPRESSION,
         openWhenDone: request.openWhenDone ?? true,
     };
 }
@@ -277,7 +272,6 @@ export function stateFromRequest(
         formats,
         archs,
         outputDir: request.outputDir ?? "",
-        compression: request.compression ?? DEFAULT_BUILD_COMPRESSION,
         openWhenDone: request.openWhenDone ?? true,
     };
 }

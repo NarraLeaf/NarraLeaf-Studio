@@ -1,4 +1,5 @@
 
+import type { GameBuildRequest } from "./gameBuild";
 import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "./pluginPermissions";
 import type { ServerTrustPromptProps, ServerTrustPromptResult } from "./serverTrust";
 
@@ -51,6 +52,17 @@ export type WindowProps = {
          * list it as the first anomaly.
          */
         recoveryReason?: string;
+        /**
+         * Run this build and report the result, instead of opening the editor.
+         *
+         * Set only by `--build`. A window prop rather than a message sent once the window is up, for
+         * the reason `recovery` above gives from the other side: it is settled before the first
+         * service starts, so the workspace can come up as the thing it is going to be. In this mode
+         * the shell, the tabs, the plugins and the built-in modules are never mounted - the checks
+         * and the build need services, not an interface, and an interface nobody can see costs a
+         * minute of startup and brings dialogs with nobody to answer them.
+         */
+        commandLineBuild?: { request: GameBuildRequest };
     },
     [WindowAppType.ProjectWizard]: {
         /**
@@ -79,6 +91,25 @@ export type WindowProps = {
          * written to at all.
          */
         remoteUrl?: string;
+        /**
+         * The server a project made here is going on to, when it was started from one.
+         *
+         * **This is not a third flow.** The project is written on this disk exactly as any
+         * other project is, and the server is what happens to it afterwards - the launcher
+         * sends it once the wizard hands back a path. What the wizard does with this is only
+         * what the author would otherwise have to remember: the origin is settled (a project
+         * on a server is one made here, not one fetched), version control is settled (an
+         * unversioned project has nothing to send), and the review page names the server.
+         *
+         * Nothing is created on the server before the project exists. A wizard closed without
+         * finishing leaves that server exactly as it was.
+         */
+        publishTo?: {
+            /** The server's data origin, `lore://host:port`, as its session is keyed by. */
+            remoteOrigin: string;
+            /** What that server calls itself, for the one line that names it. */
+            server: string;
+        };
     },
     [WindowAppType.DevMode]: {
         projectPath: string;
@@ -146,7 +177,22 @@ export type WindowCloseResults = {
     [WindowAppType.Launcher]: null;
     [WindowAppType.Settings]: null;
     [WindowAppType.Workspace]: null;
-    [WindowAppType.ProjectWizard]: { created: boolean; projectPath: string } | null;
+    /**
+     * The name and the app id come back with the path because the caller may still have work
+     * to do on the project once the window is gone - sending it to a server is the case that
+     * put them here - and by then both are inside a MessagePack file.
+     *
+     * **They are not interchangeable.** The name is what the project calls itself and is read
+     * by people; the app id is `[a-z0-9-]+` and is what a machine can be told. A repository
+     * name is the second kind: `lore://host:port/<name>` has no room for a space and a server
+     * refuses one outright, so a project called "My Game" is registered as `my-game`.
+     *
+     * Both are absent for the two flows that chose neither: a clone and an import are named
+     * by what arrived.
+     */
+    [WindowAppType.ProjectWizard]:
+        { created: boolean; projectPath: string; projectName?: string; appId?: string }
+        | null;
     [WindowAppType.DevMode]: null;
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptResult;
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptResult;

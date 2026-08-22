@@ -4,32 +4,40 @@
  *
  * The socket predates the test pipeline: Studio opened it for the milliseconds of a Stop and sent
  * exactly one command, `shutdown`. It is now also how a test-owned game reports what happened to
- * it, which adds a second command and a direction of travel the socket never had - unsolicited
- * pushes from the game.
+ * it, and how Studio drives one - which adds commands and a direction of travel the socket never
+ * had, unsolicited pushes from the game.
  *
- *   Studio -> game  `{type:"shutdown", token}`        -> `{ok:true}`, then quit
- *   Studio -> game  `{type:"test:subscribe", token}`  -> `{ok:true}`, socket becomes a subscriber
- *   game   -> Studio `{type:"test:event", event}`     unsolicited, subscribed sockets only
+ *   Studio -> game  `{type:"shutdown", token}`             -> `{ok:true}`, then quit
+ *   Studio -> game  `{type:"test:subscribe", token}`       -> `{ok:true}`, socket becomes a subscriber
+ *   Studio -> game  `{type:"test:command", token, command}` -> `{ok:true}`, command goes to the renderer
+ *   game   -> Studio `{type:"test:event", event}`          unsolicited, subscribed sockets only
  *
  * An unrecognised `type` still answers `{ok:false,error:"Unknown command"}` rather than dropping
  * the frame, which is what lets an older game paired with a newer Studio degrade instead of hanging
- * the caller on a reply that never comes.
+ * the caller on a reply that never comes. A `test:command` whose payload this build cannot read is
+ * refused the same way, and for the same reason.
+ *
+ * `{ok:true}` on a command says the frame was understood, never that the game carried it out: the
+ * renderer may have no story on screen yet, and what actually happened comes back as an event.
  */
 
-import type { GameTestEvent } from "@shared/types/gameTest";
+import type { GameTestCommand, GameTestEvent } from "@shared/types/gameTest";
+import { parseGameTestCommand } from "../gameTestSignal";
 
 export type ControlFrameReply = { ok: true } | { ok: false; error: string };
 
 /**
- * What the socket must do once the reply is sent. Separated from the reply because both commands
- * have side effects that must happen *after* Studio has been answered - a shutdown that quit before
+ * What the socket must do once the reply is sent. Separated from the reply because every command
+ * has side effects that must happen *after* Studio has been answered - a shutdown that quit before
  * replying would look like a dropped connection.
  */
-export type ControlFrameEffect = "none" | "shutdown" | "subscribe";
+export type ControlFrameEffect = "none" | "shutdown" | "subscribe" | "command";
 
 export type ControlFrameOutcome = {
     reply: ControlFrameReply;
     effect: ControlFrameEffect;
+    /** Present exactly when `effect` is `"command"`: the validated command to hand to the renderer. */
+    command?: GameTestCommand;
 };
 
 /**
@@ -66,6 +74,15 @@ export function dispatchControlFrame(raw: string, expectedToken: string): Contro
     }
     if (payload.type === "test:subscribe") {
         return { reply: { ok: true }, effect: "subscribe" };
+    }
+    if (payload.type === "test:command") {
+        const command = parseGameTestCommand((payload as { command?: unknown }).command);
+        // A command this build cannot read is refused rather than silently dropped, so a newer
+        // Studio driving an older game learns that it is talking past it instead of waiting out its
+        // own step timeout on every move.
+        return command
+            ? { reply: { ok: true }, effect: "command", command }
+            : { reply: { ok: false, error: "Unknown command" }, effect: "none" };
     }
     return { reply: { ok: false, error: "Unknown command" }, effect: "none" };
 }

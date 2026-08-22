@@ -3,6 +3,7 @@ import { isContainerFlowLayoutParent } from "./container";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
+import type { UIStructDef, UIStructId } from "./struct";
 import type { UISurfaceBackgroundImage } from "./surfaceBackgroundImage";
 import { getUISwitchChildSlot } from "./switch";
 
@@ -20,6 +21,16 @@ export type UIDocument = {
     surfaces: UISurface[];
     components?: UIComponentDefinition[];
     elements: Record<UIElementId, UIElement>;
+    /**
+     * The shapes this document's widgets describe their data with, keyed by id.
+     *
+     * No authoring surface manages this table: an author edits the fields on the widget that uses
+     * them, and a widget stores only the id. It is a document-level table rather than a copy on each
+     * widget so that a shape has one spelling for the whole project - which is what lets one list's
+     * content feed another's, and what a Break node's pins are generated from. The rules that keep
+     * an implicit library safe to edit are in `struct.ts`.
+     */
+    structs?: Record<UIStructId, UIStructDef>;
     meta?: UIDocumentMeta;
 };
 
@@ -262,6 +273,23 @@ export type UIElementValueBinding =
           kind: "blueprintValue";
           blueprintId: string;
           valueType: UIElementValueBindingValueType;
+      }
+    /**
+     * Read one declared field of the list item this element is being drawn for.
+     *
+     * The whole reason the struct model exists. Reaching a row's own data used to take a private
+     * blueprint per element - Get List Item Props into Get JSON Field with the key typed into a
+     * string pin - which is three abstractions deep for "show the title". This is the same read with
+     * none of them: the field is picked from a dropdown, and an element outside an item template
+     * simply has nothing to bind to.
+     *
+     * No `valueType` of its own. The field declares one and the bound prop declares one, and the
+     * conversion between them belongs to the target, not to the binding - the same reason the
+     * slider's binding does not restate that a slider holds a number.
+     */
+    | {
+          kind: "listItemField";
+          fieldId: string;
       };
 
 export type UILayout = {

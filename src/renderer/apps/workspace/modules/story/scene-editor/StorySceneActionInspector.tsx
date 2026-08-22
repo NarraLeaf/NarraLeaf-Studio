@@ -9,6 +9,7 @@ import type {
     StoryDeclarationPayload,
     StoryDocument,
     StoryDisplayableTargetKind,
+    StoryEndingPage,
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
@@ -41,16 +42,20 @@ import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTr
 import { resolveAudioTrack } from "@shared/types/audioTrack";
 import { isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
 import {
+    onWeatherParamGrid,
     resolveWeatherParams,
+    snapWeatherParam,
     WEATHER_PARAMS,
     WEATHER_SEED_IDS,
     weatherParamsOf,
     type WeatherParamKey,
+    type WeatherParamSpec,
     type WeatherSeedId,
 } from "@shared/weather/model";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
+import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
@@ -64,7 +69,7 @@ import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
-import { Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
+import { FieldLabel, Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -1603,17 +1608,96 @@ function WeatherSeedFields(props: {
     return (
         <>
             <WeatherSeedPreview seed={props.seed} params={props.params} />
-            <FieldGrid cols={2}>
+            <div className="space-y-2">
                 {weatherParamsOf(props.seed).map(key => (
-                    <NumberField
+                    <WeatherParamRow
                         key={key}
                         label={t(`storyInspector.weather.${key}` as TranslationKey)}
+                        spec={WEATHER_PARAMS[key]}
                         value={resolved[key]}
                         onChange={value => set(key, value)}
                     />
                 ))}
-            </FieldGrid>
+            </div>
         </>
+    );
+}
+
+/**
+ * One tunable number of a seed: the figure, and the range it lives in.
+ *
+ * Two controls for one value because there are two questions. An author who knows the number types
+ * it; an author looking for it drags, and watches the preview above answer. Both read the same
+ * draft, so they cannot print different figures mid-gesture, and the document is written once when
+ * the drag settles ({@link useSliderDraft}) - hanging the write on every pointer move is the
+ * mistake that buried the undo stack three times before that hook existed.
+ *
+ * Typing is the same gesture and now ends the same way: the box hands its number over on blur or on
+ * Enter, not per keystroke. `120` typed into a density used to be three edits - 1, then 12, then
+ * 120 - and each was a different clip for Studio to go and encode, so the figure the author was
+ * waiting to see queued behind two they never meant to ask for. Studio drops the abandoned ones now
+ * - a bake carries the claim of whoever asked for it - but the cheapest bake is the one never
+ * submitted.
+ *
+ * The track carries the seed table's own `step`, so a drag lands on the increments every other
+ * surface offers for this parameter. A value already off that grid - rain's `sizeNear` default of
+ * 2.4 against a step of 1, or anything typed into the box - would otherwise leave the thumb
+ * standing at 2 while the box read 2.4, so the track goes continuous for exactly as long as that is
+ * true and the row snaps each move itself. Typing stays unsnapped: the box is the way to a value
+ * between two increments, and the renderer takes one for every parameter there is. `fallSpeed` used
+ * to be the exception - it was rounded before the field was laid out - and that was the bug behind
+ * "the slider does nothing until it does everything": rounding the BASE made the smallest possible
+ * change a doubling. Only each particle's own count of fall-lengths has to be whole, and it is
+ * rounded where it is derived.
+ *
+ * The snap belongs to the MOVE, not to the commit. `Slider` also commits on `keyup`, and a `Tab`
+ * that lands on the track releases its key there - so snapping at commit time would rewrite a
+ * stored 2.4 as 2 for an author who only tabbed past the control and never touched it.
+ */
+function WeatherParamRow(props: {
+    label: string;
+    spec: WeatherParamSpec;
+    value: number;
+    onChange: (value: number | undefined) => void;
+}) {
+    const spec = props.spec;
+    const onGrid = onWeatherParamGrid(props.value, spec);
+    const draft = useSliderDraft(props.value, props.onChange);
+    return (
+        <div className="flex items-center gap-2">
+            <FieldLabel as="span" className="mb-0 w-20 shrink-0 truncate">{props.label}</FieldLabel>
+            <NumericDraftEnhancedInput
+                committedDisplay={String(draft.value)}
+                commitOn="blur"
+                // The thumb follows what is being typed, so the two controls still cannot print
+                // different figures - it is only the WRITE that waits for the end of the gesture.
+                onDraftNumber={draft.onValueChange}
+                onFiniteNumber={draft.onValueCommit}
+                onEmpty={() => {
+                    draft.clear();
+                    props.onChange(undefined);
+                }}
+                type="text"
+                inputMode="decimal"
+                aria-label={props.label}
+                popoverWhenNarrow={false}
+                // Width only: the height, the border and the type scale are the shared input's, so
+                // the box sits at the same 36px as the fields above it in this section rather than
+                // opening a denser dialect halfway down one panel.
+                className="w-14 shrink-0"
+                inputClassName="px-1.5 text-right"
+            />
+            <Slider
+                className="min-w-0 flex-1"
+                min={spec.min}
+                max={spec.max}
+                step={onGrid ? spec.step : "any"}
+                value={draft.value}
+                aria-label={props.label}
+                onValueChange={value => draft.onValueChange(snapWeatherParam(value, spec))}
+                onValueCommit={draft.onValueCommit}
+            />
+        </div>
     );
 }
 
@@ -1734,6 +1818,9 @@ function PuppetChannelControl(props: {
  * that draft, or the box would print the committed number while the slider showed the one under the
  * pointer. The write lands once, when the drag ends - before this, every pointer move wrote the
  * document and a single drag left dozens of undo entries behind it.
+ *
+ * The box waits the same way, for blur or Enter: a number typed digit by digit is one decision, and
+ * the rig should be posed by the figure the author meant rather than by each prefix of it.
  */
 function PuppetParamValue(props: {
     spec: { min: number; max: number } | undefined;
@@ -1759,8 +1846,10 @@ function PuppetParamValue(props: {
             ) : null}
             <NumericDraftEnhancedInput
                 committedDisplay={String(draft.value)}
-                onFiniteNumber={props.onCommit}
-                onEmpty={() => props.onCommit(0)}
+                commitOn="blur"
+                onDraftNumber={draft.onValueChange}
+                onFiniteNumber={draft.onValueCommit}
+                onEmpty={() => draft.onValueCommit(0)}
                 type="text"
                 inputMode="decimal"
                 popoverWhenNarrow={false}
@@ -2843,6 +2932,9 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     if (props.payload.control === "cut") {
         return <CutPointFields payload={props.payload} onChange={props.onChange} />;
     }
+    if (props.payload.control === "ending") {
+        return <EndingFields payload={props.payload} onChange={props.onChange} />;
+    }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
         const isRepeat = groupPayload.control === "repeat";
@@ -2990,6 +3082,82 @@ function CutPointFields(props: {
             <div className="text-2xs text-fg-subtle">{t("storyInspector.control.cutHint")}</div>
         </div>
     );
+}
+
+/**
+ * The two values an ending row carries: its name, and the page the player lands on.
+ *
+ * The page is three-valued and the select says so in words, because the two non-inheriting answers
+ * are real decisions an author makes for one ending and not for the others - a bad end that simply
+ * stops on its last frame is a choice, not an unset field. The stored shape is a discriminated union
+ * for exactly that reason (see `StoryEndingPage`), so nothing downstream has to guess which falsy
+ * value meant which.
+ *
+ * A page this project no longer has stays selectable rather than being silently dropped: switching
+ * rows must not rewrite a value, and an author renaming pages needs to see which ending still points
+ * at the one they deleted.
+ */
+function EndingFields(props: {
+    payload: Extract<StoryControlPayload, { control: "ending" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const surfaces = useProjectSurfaces();
+    const page = props.payload.page;
+    const selected = !page
+        ? ENDING_PAGE_INHERIT
+        : page.kind === "none"
+            ? ENDING_PAGE_NONE
+            : `${ENDING_PAGE_SURFACE_PREFIX}${page.surfaceId}`;
+
+    const options = useMemo<SelectOption[]>(() => {
+        const known = surfaces.map(surface => ({
+            value: `${ENDING_PAGE_SURFACE_PREFIX}${surface.id}`,
+            label: surface.name,
+        }));
+        const missing = page?.kind === "surface" && !surfaces.some(surface => surface.id === page.surfaceId)
+            ? [{ value: selected, label: page.surfaceId }]
+            : [];
+        return [
+            { value: ENDING_PAGE_INHERIT, label: t("storyInspector.control.endingPageInherit") },
+            { value: ENDING_PAGE_NONE, label: t("storyInspector.control.endingPageNone") },
+            ...known,
+            ...missing,
+        ];
+    }, [page, selected, surfaces, t]);
+
+    return (
+        <div className="flex max-w-sm flex-col gap-2">
+            <TextField
+                label={t("storyInspector.control.endingName")}
+                value={props.payload.name}
+                onChange={name => props.onChange({ ...props.payload, name })}
+            />
+            <SelectField
+                label={t("storyInspector.control.endingPage")}
+                options={options}
+                value={selected}
+                onChange={next => props.onChange({ ...props.payload, page: parseEndingPageOption(String(next)) })}
+            />
+        </div>
+    );
+}
+
+/** The select's own vocabulary. Prefixed so a page id can never collide with either sentinel. */
+const ENDING_PAGE_INHERIT = "inherit";
+const ENDING_PAGE_NONE = "none";
+const ENDING_PAGE_SURFACE_PREFIX = "surface:";
+
+function parseEndingPageOption(value: string): StoryEndingPage | undefined {
+    if (value === ENDING_PAGE_NONE) {
+        return { kind: "none" };
+    }
+    if (value.startsWith(ENDING_PAGE_SURFACE_PREFIX)) {
+        return { kind: "surface", surfaceId: value.slice(ENDING_PAGE_SURFACE_PREFIX.length) };
+    }
+    // Undefined, not a `{kind:"inherit"}` arm: absence is what "the build decides" is stored as, and
+    // a third arm would be a second spelling of it.
+    return undefined;
 }
 
 function TextSegmentEditor(props: {

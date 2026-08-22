@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { MotionConfig } from "motion/react";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
@@ -36,11 +37,17 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
-import { listSceneIdsInDocumentOrder } from "@shared/types/story";
+import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { findOwningListItemTemplate, isListItemContextElement } from "@shared/types/ui-editor/listItemContext";
+import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructFieldLabel } from "@shared/types/ui-editor/struct";
+import { BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -98,10 +105,9 @@ import {
 } from "@shared/types/blueprint/graph";
 import {
     buildBlueprintFnSignatureSnapshot,
-    findBlueprintFnByRef,
     isBlueprintFnSnapshotStale,
-    isBlueprintFnVisibleToOwner,
     listCallableBlueprintFnOptions,
+    resolveBlueprintFnCallTarget,
 } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
@@ -170,22 +176,6 @@ function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | nu
 
 function isTypingInField(): boolean {
     return isEditableKeyboardTarget(document.activeElement);
-}
-
-function isListItemContextElement(document: UIDocument, element: UIElement | undefined): boolean {
-    let child = element;
-    while (child?.parentId) {
-        const parent = document.elements[child.parentId];
-        if (!parent) {
-            return false;
-        }
-        if (isListLikeWidgetType(parent.type)) {
-            const slot = getUIListChildSlot(child.extra);
-            return slot == null || slot === "itemTemplate";
-        }
-        child = parent;
-    }
-    return false;
 }
 
 type BlueprintEditorMemberPanelState = {
@@ -420,11 +410,16 @@ function ElementLiteralSurfacePreview({
             },
         };
     }, [document, element, height, previewSurfaceId, surface, width]);
+    // `nl-motion-keep` for the same reason the UI editor's canvas carries it (see the exemption note
+    // in styles.css): what is drawn here is the game's own widget, and `ui.reduceMotion` is a
+    // promise about Studio's chrome rather than about the thing being authored. It costs no calm —
+    // this preview is inert (`editorChrome: false`, `pointer-events-none`, nothing changes state on
+    // it), so the tag holds the rule rather than restarting any motion.
     const rendered = runtimeBridge.renderDocumentSurface({
         document: previewDocument,
         surfaceId: previewSurfaceId,
         hostAdapter: { host: surface.host },
-        className: "pointer-events-none select-none",
+        className: "nl-motion-keep pointer-events-none select-none",
         style: { backgroundColor: "transparent" },
         editorChrome: false,
     });
@@ -462,7 +457,9 @@ function ElementLiteralSurfacePreview({
                         pointerEvents: "none",
                     }}
                 >
-                    {rendered}
+                    {/* The other half of the exemption: the widget renderers animate from
+                        framer-motion, which no CSS rule reaches. Renders no node of its own. */}
+                    <MotionConfig reducedMotion="never">{rendered}</MotionConfig>
                 </div>
             </div>
         </div>
@@ -1549,10 +1546,45 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
         const currentDocument = blueprintDocumentService.getDocument();
         const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
+
+        /**
+         * Which list one field picker is asking about.
+         *
+         * Three shapes, in the order a node can carry them: a node wired to an Element follows that
+         * wire, a node on a list's own blueprint is asking about that list, and a node inside an
+         * item template is asking about the list drawing it. An unwired Element pin resolves to
+         * nothing, which leaves the picker empty rather than offering another list's fields.
+         */
+        const resolveFieldPickerList = (node: { id: string; type: string }): UIElement | undefined => {
+            const edge = activeIr.edges?.find(item => item.to.nodeId === node.id && item.to.port === "list");
+            if (edge) {
+                const sourceNode = activeIr.nodes?.[edge.from.nodeId];
+                const ref = sourceNode ? readBlueprintElementRefParams(sourceNode.params) : null;
+                return ref ? currentDocument.elements[ref.elementId] : undefined;
+            }
+            if (widgetElement && isListLikeWidgetType(widgetElement.type)) {
+                return widgetElement;
+            }
+            const context = findOwningListItemTemplate(currentDocument, widgetElement);
+            return context ? currentDocument.elements[context.listElementId] : undefined;
+        };
         // Built lazily: most graphs have no Get Character node, and listing the cast per projection
         // would be pure cost for them.
         let characterOptions: BlueprintInspectorParamSelectOption[] | null = null;
         for (const node of Object.values(activeIr.nodes ?? {})) {
+            const def = blueprintNodeRegistry.get(node.type);
+            if (def?.inspectorParams?.some((param: BlueprintInspectorParamDef) => param.dynamicOptionsSource === BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE)) {
+                const listElement = resolveFieldPickerList(node);
+                const structId = (listElement?.props as Record<string, unknown> | undefined)?.itemStructId;
+                const struct = resolveUIStruct(currentDocument, typeof structId === "string" ? structId : null);
+                out[node.id] = {
+                    [BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE]: (struct?.fields ?? []).map(field => ({
+                        value: field.id,
+                        label: uiStructFieldLabel(field),
+                    })),
+                };
+                continue;
+            }
             if (node.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER) {
                 const pickedId = String(node.params?.characterId ?? "").trim();
                 if (!pickedId) {
@@ -1603,6 +1635,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         revision,
         t,
         uiDocumentRevision,
+        widgetElement,
     ]);
 
     const contextTitle = useMemo(
@@ -1697,6 +1730,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         // VALUE is the option row's block id - a rewrite of the text must not invalidate a graph
         // that already points at it, which is the same reason the scene picker stores scene ids.
         const storyChoiceOptions: BlueprintInspectorParamSelectOption[] = [];
+        // The ending picker, for `Is Ending Reached` / `Get Endings` / `Clear Ending State`.
+        //
+        // Built from `listStoryEndings` - the one scan the compiler emits from - rather than a
+        // second walk of the blocks, so the picker can never offer an ending that is not in the
+        // build. It skips disabled rows for the same reason.
+        //
+        // Labelled "<scene> / <ending>" like the option picker above: an ending's own name is rarely
+        // unique across a story ("Bad End" appears more than once by design), so the scene it sits
+        // in is what makes the row identifiable. The value is the ending row's block id, so
+        // renaming an ending leaves every graph and every unlock pointing at it.
+        const storyEndings: BlueprintInspectorParamSelectOption[] = [];
         for (const story of storyEntries) {
             const storyDocument = storyDocumentsById[story.id];
             if (!storyDocument) {
@@ -1731,6 +1775,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     });
                 }
             }
+            // Document order too, but from the scan rather than this walk: an ending is a fact about
+            // the whole story, and the scan is what decides which rows the build actually emits.
+            for (const ending of listStoryEndings(storyDocument)) {
+                const endingSceneLabel = ending.sceneName || t("blueprint.options.untitledScene");
+                storyEndings.push({
+                    value: ending.endingId,
+                    label: `${endingSceneLabel} / ${ending.name || t("blueprint.options.untitledEnding")}`,
+                    meta: { storyId: story.id },
+                });
+            }
         }
         // Named localization keys: pick by source text, key name as context.
         let localizationKeyOptions: BlueprintInspectorParamSelectOption[] = [];
@@ -1758,6 +1812,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             stories: storyOptions,
             storyScenes: storySceneOptions,
             storyChoiceOptions,
+            storyEndings,
             characters: characterOptions,
             localizationKeys: localizationKeyOptions,
             // The `Play Sound` Track picker. Author order, built-ins first - the same order the
@@ -1829,11 +1884,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const resolveCallableFnSignature = useCallback(
         (fnRef: string) => {
             const currentDoc = localBp.getBlueprintDocument();
-            const decl = findBlueprintFnByRef(currentDoc, fnRef);
-            if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, bp.owner)) {
-                return null;
-            }
-            return buildBlueprintFnSignatureSnapshot(decl);
+            const decl = resolveBlueprintFnCallTarget(currentDoc, fnRef, bp.owner);
+            return decl ? buildBlueprintFnSignatureSnapshot(decl) : null;
         },
         [localBp, bp.owner],
     );
@@ -1865,9 +1917,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 if (typeof fnRef !== "string" || fnRef.length === 0) {
                     continue;
                 }
-                const decl = findBlueprintFnByRef(currentDoc, fnRef);
-                if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, currentBp.owner)) {
-                    // Missing/out-of-scope targets stay untouched — validation reports the error.
+                const decl = resolveBlueprintFnCallTarget(currentDoc, fnRef, currentBp.owner);
+                if (!decl) {
+                    // A target that does not resolve is left exactly as it is: the graph editor and
+                    // `blueprint/fn-target-missing` both report it, and the stored snapshot is the
+                    // only remaining record of what it used to name.
                     continue;
                 }
                 if (isBlueprintFnSnapshotStale(readBlueprintFnSignatureSnapshot(node.params), decl)) {

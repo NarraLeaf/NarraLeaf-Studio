@@ -7,6 +7,7 @@ import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemR
 import { StorageManager } from "../../storageManager";
 import type { AppWindow } from "../appWindow";
 import { AssetTransferOfferHandler, AssetTransferRedeemHandler } from "./assetTransferAction";
+import { FsCopyDirHandler, FsListHandler } from "./fsAction";
 
 vi.mock("electron", () => ({
     app: {
@@ -52,6 +53,16 @@ async function asset(project: string, name: string, contents: string): Promise<s
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, contents, "utf8");
     return target;
+}
+
+/** A model bundle's shape on disk: a manifest at the root and its textures in a folder below it. */
+async function bundle(root: string): Promise<{ root: string; manifest: string; texture: string }> {
+    const manifest = path.join(root, "hiyori.model3.json");
+    const texture = path.join(root, "hiyori.2048", "texture_00.png");
+    await fs.mkdir(path.dirname(texture), { recursive: true });
+    await fs.writeFile(manifest, "{}", "utf8");
+    await fs.writeFile(texture, "png-bytes", "utf8");
+    return { root, manifest, texture };
 }
 
 function entry(sourcePath: string, overrides: Partial<AssetTransferEntry> = {}): AssetTransferEntry {
@@ -142,6 +153,22 @@ describe("offering a manifest", () => {
         await expect(offer(source, [entry(pluginFile)])).resolves.toEqual({ offered: false, reason: "protected" });
     });
 
+    it("refuses a directory the offering window may read but not walk", async () => {
+        // A bundle outside the project, reachable through a grant on the directory itself. That is
+        // enough to open the path named, and reaches none of the files that are the model - so it
+        // is not enough to hand the tree to another window.
+        const source = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const outside = await bundle(path.join(tempDir, "elsewhere", "hiyori"));
+        storageManager.grantFileSystemAccess(source, outside.root, "read", false);
+
+        await expect(offer(source, [entry(outside.root, { fileName: "Hiyori", type: "model", isDirectory: true })]))
+            .resolves.toEqual({ offered: false, reason: "unreadable" });
+        // The same path as a file entry is offered, which is what pins the refusal on the recursion
+        // rather than on the grant being absent.
+        await expect(offer(source, [entry(outside.root, { fileName: "Hiyori", type: "model" })]))
+            .resolves.toMatchObject({ offered: true });
+    });
+
     it("refuses an entry that does not describe a file", async () => {
         const source = makeWindow(1, WindowAppType.Workspace, sourceProject);
         const readable = await asset(sourceProject, "a1", "room-bytes");
@@ -174,6 +201,69 @@ describe("redeeming a token", () => {
         // and the grant is read-only.
         await expect(storageManager.isPathAllowed(target, sibling, "read")).resolves.toBe(false);
         await expect(storageManager.isPathAllowed(target, room, "write")).resolves.toBe(false);
+    });
+
+    it("hands over a model bundle's whole tree, and a file's own path only", async () => {
+        const source = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const target = makeWindow(2, WindowAppType.Workspace, targetProject);
+        const model = await bundle(path.join(sourceProject, "assets", "content", "mo", "de", "l1"));
+        const room = await asset(sourceProject, "a1", "room-bytes");
+
+        const result = redeem(target, await tokenFor(source, [
+            entry(model.root, { assetId: "asset-model", fileName: "Hiyori", type: "model", isDirectory: true }),
+            entry(room, { assetId: "asset-room" }),
+        ]));
+
+        expect(result.available).toBe(true);
+        // The textures are what the model is: a grant stopping at the root would import a folder
+        // whose contents the pasting window cannot read.
+        await expect(storageManager.isPathAllowed(target, model.texture, "read")).resolves.toBe(true);
+        await expect(storageManager.isPathAllowed(target, model.manifest, "read")).resolves.toBe(true);
+        await expect(storageManager.isPathAllowed(target, model.texture, "write")).resolves.toBe(false);
+        // The file entry beside it is unchanged: its own path, and nothing next to it.
+        await expect(storageManager.isPathAllowed(target, room, "read")).resolves.toBe(true);
+        await expect(storageManager.isPathAllowed(target, path.join(path.dirname(room), "a2"), "read"))
+            .resolves.toBe(false);
+    });
+
+    it("carries the directory flag through to the pasting window", async () => {
+        const source = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const target = makeWindow(2, WindowAppType.Workspace, targetProject);
+        const model = await bundle(path.join(sourceProject, "assets", "content", "mo", "de", "l1"));
+
+        const result = redeem(target, await tokenFor(source, [
+            entry(model.root, { assetId: "asset-model", fileName: "Hiyori", type: "model", size: undefined, isDirectory: true }),
+        ]));
+
+        expect(result).toEqual({
+            available: true,
+            entries: [{
+                assetId: "asset-model",
+                fileName: "Hiyori",
+                type: "model",
+                isDirectory: true,
+                sourcePath: model.root,
+            }],
+        });
+    });
+
+    it("does not take a truthy value of another shape for a directory", async () => {
+        const source = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const target = makeWindow(2, WindowAppType.Workspace, targetProject);
+        const model = await bundle(path.join(tempDir, "elsewhere", "hiyori"));
+        storageManager.grantFileSystemAccess(source, model.root, "read", false);
+
+        const result = redeem(target, await tokenFor(source, [
+            entry(model.root, {
+                fileName: "Hiyori",
+                type: "model",
+                isDirectory: "yes" as unknown as boolean,
+            }),
+        ]));
+
+        expect(result.available).toBe(true);
+        expect((result as { entries: AssetTransferEntry[] }).entries[0].isDirectory).toBeUndefined();
+        await expect(storageManager.isPathAllowed(target, model.texture, "read")).resolves.toBe(false);
     });
 
     it("reports a token this process never minted as nothing available", async () => {
@@ -218,6 +308,29 @@ describe("redeeming a token", () => {
 
         storageManager.revokeWindowFileSystemAccess(source);
         expect(redeem(target, token)).toEqual({ available: false, reason: "unknown-token" });
+    });
+
+    it("lets the pasting window walk and copy a bundle it has redeemed", async () => {
+        // The transport half of importing a model, against a real tree and the same handlers the
+        // renderer calls: the library reads the source by listing it folder by folder, then copies
+        // it whole. A grant that stopped at the root would fail at the first of those.
+        const source = makeWindow(1, WindowAppType.Workspace, sourceProject);
+        const target = makeWindow(2, WindowAppType.Workspace, targetProject);
+        const model = await bundle(path.join(sourceProject, "assets", "content", "mo", "de", "l1"));
+        const destination = path.join(targetProject, "assets", "content", "mo", "de", "l1");
+
+        redeem(target, await tokenFor(source, [
+            entry(model.root, { assetId: "asset-model", fileName: "Hiyori", type: "model", isDirectory: true }),
+        ]));
+
+        const listed = await new FsListHandler().handle(target, { path: path.dirname(model.texture) });
+        expect(listed.success && listed.data.ok).toBe(true);
+
+        const copied = await new FsCopyDirHandler().handle(target, { src: model.root, dest: destination });
+        expect(copied.success && copied.data.ok).toBe(true);
+        await expect(fs.readFile(path.join(destination, "hiyori.model3.json"), "utf8")).resolves.toBe("{}");
+        await expect(fs.readFile(path.join(destination, "hiyori.2048", "texture_00.png"), "utf8"))
+            .resolves.toBe("png-bytes");
     });
 
     it("takes the grants down with the window that redeemed them", async () => {

@@ -153,7 +153,31 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // The bump is not optional in either direction. A v18 Studio meeting `operation: "transform"` on the
 // camera arm has no branch for it and drops the row; a v19 Studio meeting `operation: "pan"` has
 // none for that. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 19 as const;
+// v20 adds the `empty` block kind: a row that holds nothing, compiles to nothing, and is not text.
+// It is the blank line a script has always had and a story document never did - what Backspace on a
+// row leaves standing in its place, waiting to be typed into. Until now that job fell to an empty
+// narration row, which is a line of prose with nothing in it and behaves like one: it drew
+// narration's placeholder ("double-click to type narration"), so the editor named the line before
+// the author had; `text/empty` reported every one of them, so ordinary editing accrued lint; and
+// turning it back into an action meant clearing the prose first. An `empty` row has no payload, no
+// text segment and no references, so there is nothing downstream to read out of it - the compiler
+// skips it, the text and localization rules never see it, and the script formats print it as the
+// blank line it is.
+// No migration. A v19 document cannot contain one - there was no way to write one - so the ladder
+// gets no new step, only the unconditional stamp it already ends with. The bump is still not
+// optional: nearly every switch over `StoryBlockKind` is exhaustive, so a v19 Studio meeting an
+// `empty` row would crash in one and silently drop the row in the next, depending which it reached
+// first. Refusing the document is the point.
+// v21 adds the `ending` control payload: the row that says the story has reached one of its endings,
+// records it, and hands the player back to a page. Endings were derived until now - a scene nothing
+// leaves was read as one - which meant a story could not tell a finished ending from a branch its
+// author had not written yet, and nothing could name one: no id to record, so no gallery could ask
+// whether it had been reached, and no test could ask whether every path arrives at one.
+// No migration. A v20 document cannot contain one, so the ladder gets no new step. The bump is not
+// optional, and unlike `cut` the reason is what a v20 Studio would *play*: it reads an unknown
+// control payload as an ordinary group and compiles it to nothing, so the story would run straight
+// past the ending into whatever follows it, recording nothing. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 21 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -403,7 +427,7 @@ export type StoryPersistentDefinitionLegacy = {
     meta?: StoryMeta;
 };
 
-export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration";
+export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration" | "empty";
 
 export type StoryBlock =
     | StoryNodeActionBlock
@@ -412,7 +436,8 @@ export type StoryBlock =
     | StoryJumpBlock
     | StoryNoteBlock
     | StoryInvalidBlock
-    | StoryDeclarationBlock;
+    | StoryDeclarationBlock
+    | StoryEmptyBlock;
 
 export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
     id: StoryBlockId;
@@ -480,6 +505,32 @@ export type StoryJumpBlock = StoryBlockBase<"jump", StoryJumpPayload>;
 export type StoryNoteBlock = StoryBlockBase<"note", StoryNotePayload>;
 export type StoryInvalidBlock = StoryBlockBase<"invalid", StoryInvalidPayload>;
 export type StoryDeclarationBlock = StoryBlockBase<"declaration", StoryDeclarationPayload>;
+
+/**
+ * A blank line (schema v20).
+ *
+ * The row a script has and a scene did not: it holds nothing, says nothing and compiles to nothing.
+ * Backspace on a row leaves one where the row stood, so the line keeps its place in the scene while
+ * the author decides what goes there - and it survives Escape and the focus leaving, because it is a
+ * row and not an open editor.
+ *
+ * It is deliberately not an empty narration row, which is what stood in for it before v20: prose
+ * with nothing in it is still prose, so it drew narration's own placeholder, `text/empty` reported
+ * it, and typing an action into it meant clearing the prose first. An `empty` row has no payload for
+ * anything to read, so every rule that walks text, assets, references or translations passes it by.
+ */
+export type StoryEmptyBlock = StoryBlockBase<"empty", StoryEmptyPayload>;
+
+/**
+ * An empty row's payload: nothing, and nothing may be put in it.
+ *
+ * `Record<never, never>` rather than `Record<string, never>`, and the difference is the whole point:
+ * the latter carries an index signature, so `payload.text` on a union that includes it typechecks
+ * (as `never`) and every place that reads a payload without asking the kind first goes on compiling.
+ * With no index signature the compiler reports each one, which is how the arms that had to learn
+ * about this kind were found at all.
+ */
+export type StoryEmptyPayload = Record<never, never>;
 
 /**
  * A variable declaration, as a row (schema v6).
@@ -1100,7 +1151,56 @@ export type StoryControlPayload =
            */
           control: "cut";
           appTagId: string;
+      }
+    | {
+          /**
+           * One of the story's endings: the row records that the player reached it and hands them
+           * back to a page (schema v21).
+           *
+           * Control flow, and single-instruction like the three rows above it: playback stops here.
+           * Rows written after it never run, which is what makes it an ending rather than a marker -
+           * a row that merely noted the ending and let the scene continue would be a `/set` with
+           * extra steps.
+           *
+           * **The ending IS the row.** Its identity is `StoryBlock.id`, the same convention a
+           * declaration row and a `choiceOption` row already follow, so {@link name} is display text
+           * an author may rewrite at any time without breaking a single reference - not least the
+           * unlock record, which a rename must never invalidate. There is deliberately no registry
+           * of endings anywhere in the project: the list is a scan (`listStoryEndings`), so an
+           * ending exists exactly as long as its row does and deleting the row deletes the ending.
+           */
+          control: "ending";
+          /**
+           * What this ending is called, for the author and for the player.
+           *
+           * Blank is legal while a line is being typed and is what the row's overview reports as
+           * unnamed; nothing resolves through it, so nothing breaks.
+           */
+          name: string;
+          /**
+           * Where the player lands afterwards, or absent to use the build's own ending page
+           * (`AppTagDocument.endingSurfaceId`).
+           *
+           * Three states rather than an optional id, because "the project's page" and "no page at
+           * all" are both real answers and an empty string cannot say which one an author meant. A
+           * `none` here overrides a project-level page - the last frame stays on screen, which is
+           * what a bad end that just stops wants.
+           */
+          page?: StoryEndingPage;
       };
+
+/**
+ * What an `ending` row shows once it has recorded itself.
+ *
+ * Shaped like {@link StoryLayerRef} rather than as a nullable id: the two non-inheriting answers are
+ * distinct decisions, and a reader that has to tell them apart should not have to know which falsy
+ * value means which.
+ */
+export type StoryEndingPage =
+    /** Show nothing. The last frame stays, overriding whatever page the build declares. */
+    | { kind: "none" }
+    /** A surface of this project's UI document. */
+    | { kind: "surface"; surfaceId: string };
 
 export type StoryJumpPayload = {
     targetSceneId: StorySceneId;

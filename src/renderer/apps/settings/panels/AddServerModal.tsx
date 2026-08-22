@@ -21,10 +21,9 @@ import type { TranslationKey } from "@shared/i18n";
  * The capability name a server answers with when it accepts a username and a password.
  *
  * Read off `VcsServerDiscovery.capabilities`, which is a list of opaque names kept as
- * they came. Absent from every server that does not serve the route, which includes
- * every plain `loreserver` and every Team server older than the claim - so the token
- * field is what a reader gets by default, and the password half appears only where the
- * machine on the other end said it would answer.
+ * they came. Absent from every Team server older than the claim - so the token field is
+ * what a reader gets by default, and the password half appears only where the machine on
+ * the other end said it would answer.
  */
 const PASSWORD_SIGN_IN_CAPABILITY = "password-sign-in";
 

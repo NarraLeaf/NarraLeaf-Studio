@@ -46,6 +46,10 @@ export const settings = {
             label: "工作区",
             description: "启动行为、工作区历史与自动保存",
         },
+        performance: {
+            label: "性能",
+            description: "Studio 占用本机多少资源，以及你要等多久",
+        },
         shortcuts: {
             label: "快捷键",
             description: "Studio 中各条命令绑定的按键",
@@ -55,8 +59,11 @@ export const settings = {
             description: "提交版本的记录频率，以及记在上面的身份",
         },
         servers: {
-            label: "服务器",
-            description: "本安装已登录的服务器，以及登录所用的账号",
+            // 产品名，且写全：单写 Team 会被读成没翻译的英文单词。
+            // 作者在新建项目和工作区角落里遇到的是同一个名字；
+            // 面板内部仍然把每一台机器称作服务器。
+            label: "NarraLeaf Team",
+            description: "本安装已登录的 NarraLeaf Team 服务器，以及登录所用的账号",
         },
         network: {
             label: "网络",
@@ -75,6 +82,21 @@ export const settings = {
         developerMode: {
             label: "开发者选项",
             description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
+        },
+        screenEffectThreads: {
+            label: "屏幕效果的线程数",
+            description: "编码器运行时用多少个线程画帧。自动会读取本机情况",
+            options: {
+                auto: "自动",
+            },
+        },
+        screenEffectQuality: {
+            label: "开发模式中的屏幕效果",
+            description: "预览与构建只认最终画质，所以选草稿的工程每条特效会烘两次：现在一次，第一次运行时再一次",
+            options: {
+                draft: "草稿",
+                final: "最终画质",
+            },
         },
         confirmQuit: {
             label: "在使用 ⌘Q 退出时二次确认",
@@ -290,6 +312,10 @@ export const settings = {
         servers: {
             label: "服务器",
         },
+        teamMachineLabel: {
+            label: "本机名称",
+            description: "会与你的账号一同显示给协作者。留空则使用主机名",
+        },
         cacheInventory: {
             label: "缓存文件",
         },
@@ -316,6 +342,7 @@ export const settings = {
         refresh: "重新获取",
         browsing: "正在加载…",
         download: "下载",
+        update: "更新",
         downloading: "正在下载…",
         failed: "无法获取词典列表。请检查设置中的网络策略。",
         installed: {
@@ -353,7 +380,7 @@ export const settings = {
         usePassword: "改用用户名和密码",
         signInRefused: "服务器未接受该用户名和密码",
         signInUnavailable: "本机无法使用密码登录",
-        noAccount: "{name} 不要求身份验证，无需添加",
+        noAccount: "{name} 不签发账号，无法添加。请向其管理员索取账号",
         joined: {
             signedInAs: "已以 {name} 的身份登录",
             projects: {
@@ -409,6 +436,10 @@ export const settings = {
                 spellcheckDictionaries: {
                     label: "拼写词典",
                     description: "为拼写检查下载的词表。工程自己的词条不在这里",
+                },
+                optimizedImages: {
+                    label: "构建优化图像",
+                    description: "构建时重新编码的图像。下次构建会重新生成",
                 },
                 psdImports: {
                     label: "PSD 导入残留",

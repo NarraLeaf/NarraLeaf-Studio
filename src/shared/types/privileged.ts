@@ -29,8 +29,26 @@ export type PrivilegedFileSystemCall =
     | { operation: "requestRead"; path: string; raw: true }
     | { operation: "requestWrite"; path: string; raw: false; encoding: FsTextEncoding }
     | { operation: "requestWrite"; path: string; raw: true }
+    /**
+     * One grant covering N files, written together through a single `PUT`.
+     *
+     * Every path is authorized individually, exactly as a `requestWrite` for it alone would be, and
+     * a single denial refuses the whole grant: a batch must never be a way to reach a path the
+     * one-at-a-time route would have refused. What it *is* allowed to do is report per file - see
+     * `decodeWriteBatchFrame` for the body and `FileSystemHashHandler.handleBatchWrite` for the
+     * per-entry results.
+     */
+    | { operation: "requestWriteBatch"; entries: PrivilegedWriteBatchEntry[] }
     | { operation: "ensureRegularFile"; path: string; data: string; encoding?: BufferEncoding }
     | { operation: "writeFileNoFollow"; path: string; data: string; encoding?: BufferEncoding }
+    /**
+     * Write, creating the file if it is absent. See `Fs.writeFileNoFollowOrCreate`.
+     *
+     * Deliberately absent from the plugin-facing `app.fs` bridge (`IPCEventType.fs*`), which carries
+     * the other two: this is here for Studio's own document services, and every verb added to that
+     * surface is one more thing a plugin can be written against forever.
+     */
+    | { operation: "writeFileNoFollowOrCreate"; path: string; data: string; encoding?: BufferEncoding }
     | { operation: "recoverCorruptedJsonFile"; path: string; replacement: string; encoding?: BufferEncoding }
     | { operation: "createDir"; path: string }
     | { operation: "deleteFile"; path: string }
@@ -45,6 +63,17 @@ export type PrivilegedFileSystemCall =
     | { operation: "isFile"; path: string }
     | { operation: "isDir"; path: string }
     | { operation: "hash"; path: string };
+
+/**
+ * One file in a batched write grant.
+ *
+ * `encoding` absent means the payload is raw bytes, matching the `raw: true` arm of the single-path
+ * verbs. It describes the *file*, never the wire; the frame is bytes either way.
+ */
+export type PrivilegedWriteBatchEntry = {
+    path: string;
+    encoding?: FsTextEncoding;
+};
 
 export type PrivilegedFileSystemCallPayload = PrivilegedFileSystemCall & {
     actor: PrivilegedActor;

@@ -26,6 +26,7 @@
 | `cache/build-deps/` | 游戏构建拉的依赖 | ✅ `buildDependencies` |
 | `cache/ui-template-posters/` | 模板商店的主题海报，键 `<themeId>@<version>` | ✅ `uiTemplatePosters` |
 | `cache/spellcheck-dictionaries/` | 拼写词表，每种语言一对 `<code>.txt.gz` + `<code>.json`（含 sha256） | ✅ `spellcheckDictionaries` |
+| `cache/optimized-images/` | 构建重新编码过的图像，键 `<源字节 sha256>-<模式>-v<版本>`，两级分片；`.webp` 是留用的结果，`.rejected` 是「转过、不划算」的记号 | ✅ `optimizedImages` |
 | `plugin-icons/` | 插件商店缩略图，键 `<pluginId>@<version>` | ✅ `pluginIcons` |
 | `logs/` | 日志 | ✅ `logs` |
 | Chromium 自己的 `Cache` / `Code Cache` / `GPUCache` … | 界面缓存 | ✅ `browser` |
@@ -56,6 +57,7 @@
 | `editor/cache/thumbnail/` | 资产缩略图 | 两级分片，`<encodedId>.png` |
 | `editor/cache/puppet/` | 每个 puppet 模型上次挂载时自述的动作/皮肤/参数 | 平铺 `<key>.json`，**每条带输入指纹**，对不上就算未命中 |
 | `editor/cache/media/support.json` | 媒体探测结果：引擎能不能播、播不了转成什么 | 单文档，按内容哈希键 |
+| `editor/cache/test-parameters.json` | 每个测试上次运行时作者填的参数值 | 单文档，键 `<testId>`；**不带指纹**——取值是否还成立由读的时候拿实时声明核对，对不上就退回默认 |
 | `editor/assets/remote/` | 远程资产的本地副本 | 分片；**受版控的是引用，不是副本** |
 | `.nlstudio/build/staging*`、`build/mobile-icons/` | 构建产物 | |
 | `.nlstudio/preview/` | 预览构建产物 | |

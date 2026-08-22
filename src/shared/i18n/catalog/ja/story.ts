@@ -135,6 +135,7 @@ export const story = {
             customTransition: "この切り替えは、スクリプトが名前を持たないプロパティを含む",
             effectProps: "この効果は、スクリプトが名前を持たないプロパティを含む",
             unresolvedRef: "この行が指しているものはもう無い",
+            endingPage: "このエンディングは自分のページを指定しており、スクリプトはそれを持ち運ばない",
             unknownPayload: "この種類の行はスクリプトがまだ扱わない",
         },
         parse: {
@@ -285,9 +286,11 @@ export const story = {
             noEntryScene: "開始シーンが無いので、ルートも無い",
             noRoutes: "ルートがない",
             noDecisions: "選択なし",
-            // 道はエンディングでないシーンでも止まりうるし、それをエンディングと呼ぶのは嘘になる。
+            // まだ名前の無いエンディング行。行もそこへ至る道も実在するので、一覧に出す呼び名は要る。
+            endingUnnamed: "名前の無いエンディング",
+            // 道はエンディングでない場所でも止まりうるし、それをエンディングと呼ぶのは嘘になる。
             stopsHere: "ここで止まる",
-            stopsHereTitle: "道はここで止まるが、ここはエンディングではない。訪れたシーンへ戻ったか、選択肢の先に何も書かれていない",
+            stopsHereTitle: "道はここで止まるが、エンディングには届いていない。訪れたシーンへ戻ったか、選択肢の先に何も書かれていないか、出口も /ending 行も無いシーン",
             diagnostics: {
                 unreachableEndings: {
                     other: "どのルートも届かないエンディング {count} 件",
@@ -399,12 +402,18 @@ export const story = {
     /**
      * 印の付いた語を右クリックしたときに開くパネル。
      *
-     * `addToDictionary` はプロジェクトの辞書であって、この機体のものではない：語はリポジトリと一緒に旅をするので、同じ台本を書く全員が同じ綴りになる。
+     * `addToDictionary` はプロジェクトの辞書であって、このマシンのものではない：語はリポジトリと一緒に旅をするので、同じ台本を書く全員が同じ綴りになる。
      */
     spellcheck: {
         checking: "候補を探している…",
         noSuggestions: "候補なし",
         addToDictionary: "プロジェクトの辞書に追加",
+    },
+    /** 辞書の印を右クリックしたときのパネル。操作は一つ、その背後に項目。 */
+    dictionary: {
+        replaceWith: "{term} に置換",
+        applyReading: "ルビ {reading} を振る",
+        openEntry: "辞書で編集",
     },
     interpolation: {
         title: "値を差し込む",
@@ -491,6 +500,7 @@ export const story = {
         target: "対象",
         lineText: "テキスト",
         labelName: "ラベル",
+        endingName: "エンディング",
         scene: "シーン",
         track: "オーディオトラック",
         appTag: "ビルドバリアント",
@@ -700,6 +710,7 @@ export const story = {
                 data: "変数",
                 utils: "その他",
                 invalid: "不正な行",
+                empty: "空行",
             },
         },
     },
@@ -1046,6 +1057,7 @@ export const story = {
         // 切る行為ではなく、できあがる行の名前を付ける。「カット」だけでは編集の切り取りに読める。
         // 名前が背負えない半分、すなわちこの行が 1 つのビルドだけのものだという事実は詳細に置く。
         cut: { label: "カットポイント", detail: "あるビルドバリアントのストーリーをこの行で終わらせる。他のビルドにこの行は入らない" },
+        ending: { label: "エンディング", detail: "この行でストーリーを終わらせ、到達したエンディングを記録する" },
         blueprint: { label: "ブループリント", detail: "ストーリーアクションブループリントを実行する" },
         // 「シーンをまたいで残る」は詳細の行に置く。どのコマンドにも詳細はあり、スラッシュメニューと
         // コマンドの手引きで、作者がカメラについて最初に読む場所がそこだから。
@@ -1094,15 +1106,18 @@ export const story = {
         goto: "ラベルへ",
         break: "中断",
         cut: "カットポイント",
+        ending: "エンディング",
         jump: "ジャンプ",
         note: "メモ",
         invalid: "不正",
+        empty: "空行",
     },
     emptyPlaceholder: {
         narration: "ダブルクリックで地の文を入力",
         option: "ダブルクリックで選択肢の文を入力",
         choice: "ダブルクリックで選択の問いかけを入力",
         note: "ダブルクリックでメモを入力",
+        blank: "クリックして入力",
         text: "ダブルクリックでテキストを入力",
     },
     characterName: {
@@ -1159,9 +1174,11 @@ export const story = {
         // 名指しできるバリアントが無い。行が持つ id に応えるものが無いか、読み手にバリアントの一覧が
         // 無いか。どちらでも真であることだけを言う。削除されたと名指しするのは、一覧を持つ行の印のほう。
         cutUnknown: "カットポイント",
+        ending: "エンディング {name}",
         jump: "{scene} へジャンプ",
         note: "メモ",
         invalid: "不正なコマンド",
+        empty: "空行",
         sceneUnassigned: "未指定",
         sceneUnknown: "不明なシーン",
         variableFallback: "変数",

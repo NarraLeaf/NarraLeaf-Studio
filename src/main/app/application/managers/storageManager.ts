@@ -50,7 +50,23 @@ export interface FileStorageInfo {
     lifetime?: FileStorageLifetime;
     /** webContents id whose destruction revokes this grant (session lifetime only). */
     ownerWebContentsId?: number;
+    /**
+     * When set, this grant covers N files written together through one `PUT`, and `path` is only the
+     * first of them (kept as a real path so a log line still names something).
+     *
+     * Write grants only, one-shot like every other write grant. The entries are in the order the
+     * requester named them, and that order is the *only* thing that binds a payload in the body to a
+     * file on disk - see `writeBatchFrame.ts`.
+     */
+    batch?: FileStorageBatchEntry[];
 }
+
+/** One file inside a batched write grant; see {@link FileStorageInfo.batch}. */
+export type FileStorageBatchEntry = {
+    path: string;
+    raw: boolean;
+    encoding?: FsTextEncoding;
+};
 
 export type SecurityScopedResourceLifetime = "window" | "session";
 type SecurityScopedBookmarkGrant = {
@@ -92,6 +108,26 @@ export class StorageManager extends Manager {
     public allocateHash(path: string, raw: boolean, operation: FileSystemAccessMode, encoding?: FsTextEncoding): string {
         const hash = crypto.randomBytes(32).toString("base64url");
         this.storage.set(hash, { path, raw, operation, encoding, status: "allocated" });
+        return hash;
+    }
+
+    /**
+     * Allocate one write grant covering several files at once.
+     *
+     * Deliberately not a loop over {@link allocateHash}: N grants would be N URLs and therefore N
+     * `PUT`s, which is the cost this exists to remove. The caller has already authorized every path
+     * (see `PrivilegedFsCallHandler`), and this records them in order so the protocol handler can
+     * bind payload `i` to entry `i` without the renderer naming a path again.
+     */
+    public allocateWriteBatchHash(entries: FileStorageBatchEntry[]): string {
+        const hash = crypto.randomBytes(32).toString("base64url");
+        this.storage.set(hash, {
+            path: entries[0]?.path ?? "",
+            raw: true,
+            operation: "write",
+            status: "allocated",
+            batch: entries,
+        });
         return hash;
     }
 
@@ -184,12 +220,37 @@ export class StorageManager extends Manager {
     }
 
     public async isPathAllowed(window: AppWindow, fsPath: string, mode: FileSystemAccessMode): Promise<boolean> {
+        return this.hasFileSystemGrant(window, fsPath, mode, false);
+    }
+
+    /**
+     * Whether `window` may reach everything *below* `fsPath`, not only `fsPath` itself.
+     *
+     * The question a directory-backed asset asks. A non-recursive grant on a directory answers
+     * `isPathAllowed` yes - the path it names is the directory - while reaching none of the files
+     * that are the asset, so the two have to be asked apart. Used before a window is allowed to
+     * offer a model bundle to another window: what is handed out has to be covered by what the
+     * offering window holds.
+     */
+    public async isPathTreeAllowed(window: AppWindow, fsPath: string, mode: FileSystemAccessMode): Promise<boolean> {
+        return this.hasFileSystemGrant(window, fsPath, mode, true);
+    }
+
+    private async hasFileSystemGrant(
+        window: AppWindow,
+        fsPath: string,
+        mode: FileSystemAccessMode,
+        requireSubtree: boolean,
+    ): Promise<boolean> {
         const target = await this.resolvePathForAuthorization(fsPath);
         if (await this.isProtectedStoragePath(target)) {
             return false;
         }
 
         for (const grant of this.getFileSystemGrants(window, mode)) {
+            if (requireSubtree && !grant.recursive) {
+                continue;
+            }
             const root = await this.resolvePathForAuthorization(grant.path);
             if (grant.recursive ? this.isSameOrChild(target, root) : target === root) {
                 return true;

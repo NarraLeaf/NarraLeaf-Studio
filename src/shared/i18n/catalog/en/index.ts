@@ -23,6 +23,7 @@ import { characters } from "./characters";
 import { properties } from "./properties";
 import { motion } from "./motion";
 import { saveSchema } from "./saveSchema";
+import { struct } from "./struct";
 import { storyVars } from "./storyVars";
 import { storySnapshot } from "./storySnapshot";
 import { uiEditor } from "./uiEditor";
@@ -52,6 +53,7 @@ import { test } from "./test";
 import { help } from "./help";
 import { update } from "./update";
 import { brand } from "./brand";
+import { dictionary } from "./dictionary";
 import { game } from "./game";
 import { crash } from "./crash";
 
@@ -70,6 +72,7 @@ export const en = {
     properties,
     motion,
     saveSchema,
+    struct,
 
     storyVars,
     storySnapshot,
@@ -100,6 +103,7 @@ export const en = {
     help,
     update,
     brand,
+    dictionary,
     game,
     crash,
 } as const;

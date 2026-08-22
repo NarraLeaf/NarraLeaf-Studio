@@ -73,6 +73,20 @@ export interface ProjectTemplate {
 export type VersionControlChoice = "lore" | "none";
 
 /**
+ * The server a project made here is going on to, as the window was told.
+ *
+ * The same shape the window prop carries and read straight off it. It is not part of
+ * {@link ProjectData} because nothing about it is written into the project: the project is
+ * the same project either way, and the server is what the launcher does with it afterwards.
+ */
+export interface PublishTarget {
+    /** The server's data origin, `lore://host:port`. */
+    remoteOrigin: string;
+    /** What that server calls itself. */
+    server: string;
+}
+
+/**
  * Project data structure
  */
 export interface ProjectData {

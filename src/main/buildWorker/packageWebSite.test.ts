@@ -30,7 +30,7 @@ afterEach(async () => {
 describe("packageWebSite", () => {
     it("copies the site for the dir format", async () => {
         const artifacts = await packageWebSite(
-            { sourceDir, precompress: false, formats: ["dir"], dirName: "Game-1.0.0-web", zipName: "Game-1.0.0-web.zip" },
+            { sourceDir, formats: ["dir"], dirName: "Game-1.0.0-web", zipName: "Game-1.0.0-web.zip" },
             outputDir,
             noopLog,
         );
@@ -42,7 +42,7 @@ describe("packageWebSite", () => {
 
     it("zips the site with files at the archive root", async () => {
         const artifacts = await packageWebSite(
-            { sourceDir, precompress: false, formats: ["zip"], dirName: "Game-1.0.0-web", zipName: "Game-1.0.0-web.zip" },
+            { sourceDir, formats: ["zip"], dirName: "Game-1.0.0-web", zipName: "Game-1.0.0-web.zip" },
             outputDir,
             noopLog,
         );
@@ -57,7 +57,7 @@ describe("packageWebSite", () => {
 
     it("produces both formats in one run", async () => {
         const artifacts = await packageWebSite(
-            { sourceDir, precompress: false, formats: ["zip", "dir"], dirName: "G-web", zipName: "G-web.zip" },
+            { sourceDir, formats: ["zip", "dir"], dirName: "G-web", zipName: "G-web.zip" },
             outputDir,
             noopLog,
         );
@@ -75,7 +75,7 @@ describe("packageWebSite", () => {
 
         it("puts variants beside the site files in the copied directory", async () => {
             await packageWebSite(
-                { sourceDir, precompress: true, formats: ["dir"], dirName: "G-web", zipName: "G-web.zip" },
+                { sourceDir, formats: ["dir"], dirName: "G-web", zipName: "G-web.zip" },
                 outputDir,
                 noopLog,
             );
@@ -87,7 +87,7 @@ describe("packageWebSite", () => {
 
         it("merges variants into the zip rather than replacing its contents", async () => {
             const artifacts = await packageWebSite(
-                { sourceDir, precompress: true, formats: ["zip"], dirName: "G-web", zipName: "G-web.zip" },
+                { sourceDir, formats: ["zip"], dirName: "G-web", zipName: "G-web.zip" },
                 outputDir,
                 noopLog,
             );
@@ -101,21 +101,12 @@ describe("packageWebSite", () => {
 
         it("never writes into the compiled site, which the mobile packages share", async () => {
             await packageWebSite(
-                { sourceDir, precompress: true, formats: ["dir"], dirName: "G-web", zipName: "G-web.zip" },
+                { sourceDir, formats: ["dir"], dirName: "G-web", zipName: "G-web.zip" },
                 outputDir,
                 noopLog,
             );
             expect((await fs.readdir(sourceDir)).sort())
                 .toEqual(["assets", "index.html", "pack.json", "renderer.js"]);
-        });
-
-        it("writes nothing extra when the setting is off", async () => {
-            await packageWebSite(
-                { sourceDir, precompress: false, formats: ["dir"], dirName: "G-web", zipName: "G-web.zip" },
-                outputDir,
-                noopLog,
-            );
-            await expect(fs.stat(path.join(outputDir, "G-web", "renderer.js.br"))).rejects.toThrow();
         });
     });
 });

@@ -34,6 +34,7 @@ import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
+import { useStableVisibleRows } from "./storyRowIdentity";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
@@ -489,9 +490,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         },
         {
             // Backspace first tries the blank-line closure - a single selected leaf action row becomes an
-            // empty narration line with the caret in it, and the *next* Backspace is the empty-line rung
-            // that already exists. Everything it declines (multi-selection, containers, text rows) falls
-            // through to the delete this binding has always been.
+            // empty line with the caret in it, and the *next* Backspace on that line is what removes the
+            // row. Everything it declines (multi-selection, containers, text rows) falls through to the
+            // delete this binding has always been.
             id: "backspace",
             key: "backspace",
             description: t("story.keybindings.deleteRowsConfirm"),
@@ -849,6 +850,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Read once for the whole list. As a prop it crosses the rows' memo boundary, which is what makes
     // them all repaint when the author changes it in the (separate) Settings window.
     const rowHighlight = useStoryRowHighlight();
+    /**
+     * Hold each mounted row's projection at one identity for as long as it projects the same line.
+     *
+     * Applied here rather than in the controller because it is only wanted for the rows about to
+     * mount: the list is windowed, and signing every row of a long scene to serve the screenful on it
+     * would cost more than the repaint this saves. See `storyRowIdentity`.
+     */
+    const stabilizeRow = useStableVisibleRows();
     const estimatedRowHeight = STORY_DENSITY_METRICS[editor.density].rowBox + ROW_VERTICAL_PADDING_PX;
     const rowVirtualizer = useVirtualizer({
         count: editor.visibleRows.length,
@@ -995,13 +1004,23 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * Keep the active row on screen. Arrow-navigating a long scene used to walk the selection off the
      * viewport and leave it there — survivable while every row was in the DOM, fatal once they are
      * not, because Enter would open an editor on a row that does not exist.
+     *
+     * A row being REWRITTEN has no row element: the slot renders in its place (see `insertSlotHostId`),
+     * so the row's own id is not in the DOM while the author is typing into it. Read as "the row is not
+     * mounted", that sent every opened blank line and every re-opened draft row to the middle of the
+     * viewport — the list jumping under a caret that had just been placed by a click. The slot IS the
+     * row here, so it is what gets measured, and it moves by the same minimum as anything else.
      */
+    const insertSlotCoversActiveRow = editor.editorMode.kind === "insert"
+        && editor.editorMode.slot.replaceBlockId === editor.activeBlockId;
     useEffect(() => {
         if (!active || !editor.activeBlockId || editor.editorMode.kind === "text") {
             return;
         }
         const scroller = editor.scrollContainerRef.current;
-        const row = scroller?.querySelector<HTMLElement>(`[data-story-row-block-id="${CSS.escape(editor.activeBlockId)}"]`);
+        const row = scroller?.querySelector<HTMLElement>(insertSlotCoversActiveRow
+            ? "[data-story-insert-slot]"
+            : `[data-story-row-block-id="${CSS.escape(editor.activeBlockId)}"]`);
         if (!scroller) {
             return;
         }
@@ -1014,7 +1033,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         if (rowRect.top < viewRect.top || rowRect.bottom > viewRect.bottom) {
             row.scrollIntoView({ block: "nearest" });
         }
-    }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, scrollRowIntoView]);
+    }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, insertSlotCoversActiveRow, scrollRowIntoView]);
 
     /**
      * The right rail follows the selected row.
@@ -1188,6 +1207,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const sceneId = editor.scene?.id;
     const rowCount = editor.visibleRows.length;
     const deepLinkBlockId = payload?.activeBlockId ?? null;
+    // What counts as "this navigation, already handled". The token is part of it so that asking for
+    // the same row twice is two navigations rather than one (see `StorySceneEditorTabPayload`).
+    const deepLinkKey = deepLinkBlockId === null
+        ? null
+        : payload?.revealToken == null ? deepLinkBlockId : `${deepLinkBlockId}#${payload.revealToken}`;
     const draftJump = payload?.draftJump;
     const panelStateService = useMemo(
         () => (editor.context && editor.isInitialized ? editor.context.services.get<PanelStateService>(Services.PanelState) : null),
@@ -1339,7 +1363,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Deep-link navigation: bring the payload's target block into view and focus the editor once its
     // row exists in the DOM (fresh open after the async load, or re-navigation to an already-open tab).
     useLayoutEffect(() => {
-        if (!active || !deepLinkBlockId || handledDeepLinkRef.current === deepLinkBlockId) {
+        if (!active || !deepLinkBlockId || handledDeepLinkRef.current === deepLinkKey) {
             return;
         }
         const el = scrollContainerRef.current;
@@ -1348,15 +1372,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         }
         // The row may not be in the DOM — the list is windowed — so this asks the virtualiser to put
         // it there rather than looking for a node. A `false` means the row is not in the visible set
-        // at all (still loading, or inside a collapsed parent), which is the old bail-out: the effect
-        // re-runs when the rows change.
+        // at all: the scene has not loaded yet, or the row is hidden behind the author's filter or a
+        // fold. Loading resolves itself and the effect re-runs on the rows changing; hiding does not,
+        // so `revealBlock` is asked to take the cover off, which changes the rows and brings us back
+        // here. Without it a navigation to a hidden row was a click that did nothing, for good.
         if (!scrollRowIntoView(deepLinkBlockId, "center")) {
+            editor.revealBlock(deepLinkBlockId);
             return;
         }
-        handledDeepLinkRef.current = deepLinkBlockId;
+        handledDeepLinkRef.current = deepLinkKey;
         editor.revealBlock(deepLinkBlockId);
         editor.focusRoot();
-    }, [active, deepLinkBlockId, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
+    }, [active, deepLinkBlockId, deepLinkKey, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
 
     // The scene flow map's connect gesture: open a slot with the `/jump` typed into it and the caret
     // on the end, and leave the committing to the author's Enter (see `StorySceneEditorDraftJump`).
@@ -2177,10 +2204,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     <SortableContext items={sortableRowIds} strategy={verticalListSortingStrategy}>
                     <div ref={rowListRef} style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
                         {rowVirtualizer.getVirtualItems().map(virtualRow => {
-                            const row = editor.visibleRows[virtualRow.index];
-                            if (!row) {
+                            const projected = editor.visibleRows[virtualRow.index];
+                            if (!projected) {
                                 return null;
                             }
+                            const row = stabilizeRow(projected);
                             return (
                             <div
                                 key={row.block.id}
@@ -2243,7 +2271,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                                 <StoryBlockRow
                                     row={row}
                                     scene={scene}
-                                    document={document}
+                                    document={editor.documentForRows ?? document}
                                     characters={editor.characters}
                                     commandContext={editor.commandContext}
                                     selected={!insertActive && editor.selectedBlockIds.has(row.block.id)}

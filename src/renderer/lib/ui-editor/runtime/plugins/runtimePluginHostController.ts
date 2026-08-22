@@ -124,9 +124,15 @@ const ENGINE_EVENTS: readonly EventKey[] = [
     "sceneExit",
     "dialogueEnd",
     "choiceMade",
+    // Reported by the game app as the choice slot registers its runtime rather than off an engine
+    // bus, and backed on the same terms as the rest: it exists as soon as a game environment does.
+    "choiceShown",
     "characterPrompt",
     "audioPlayed",
     "gameEnd",
+    // Sourced from the story compile rather than from an engine bus, but backed on exactly the same
+    // terms: it exists as soon as a game environment does.
+    "endingReached",
     "beforeRestore",
     "afterRestore",
 ];
@@ -351,6 +357,30 @@ export class RuntimePluginHostController {
     /** The game wrote a save. Host-side, so it is reported the same on every shell. */
     public emitSaveWritten(id: string): void {
         this.hub.emit("saveWritten", { id });
+    }
+
+    /**
+     * A choice menu went on screen.
+     *
+     * Host-side, because the engine's menu component is what mounts and the engine has no event for
+     * it: the game app hears about it as the choice slot registers its runtime, which is the one
+     * moment both the options and the index each of them answers to are in hand.
+     */
+    public emitChoiceShown(options: { index: number; text: string; disabled: boolean }[]): void {
+        this.hub.emit("choiceShown", { options });
+    }
+
+    /**
+     * An `/ending` row ran.
+     *
+     * Host-side, because the engine has no idea an ending exists: the row is a `Script` the compile
+     * put there, and reaching one does not drain the action stack, so `event:state.end` never fires
+     * for it. Both events go out, in this order - a listener that only knows `gameEnd` still hears
+     * every ending, and one that wants to name it reads the payload of the second.
+     */
+    public emitEndingReached(ending: { endingId: string; name: string }): void {
+        this.hub.emit("gameEnd", undefined);
+        this.hub.emit("endingReached", { endingId: ending.endingId, name: ending.name });
     }
 
     /** Wire the shell-owned event sources. Call once, from the shell. */

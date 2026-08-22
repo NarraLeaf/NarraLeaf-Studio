@@ -23,6 +23,9 @@ export const wizard = {
         source: "アドレス",
         clone: "クローン",
         import: "読み込み",
+        // サーバー向けにプロジェクトを作るときの一枚目の名前。入手元はこの窓を開いた操作で
+        // 決まっているので、その欄はこのページに出ない。残るのは何から作るかだけ。
+        template: "テンプレート",
     },
     nav: {
         createProject: "プロジェクトを作成",
@@ -59,7 +62,7 @@ export const wizard = {
         },
         clone: {
             label: "サーバーからクローン",
-            description: "バージョン管理サーバー上のプロジェクトを複製する",
+            description: "NarraLeaf Team サーバー上のプロジェクトを複製する",
             next: "次のページでプロジェクトのアドレスと、手元の複製を置く場所を指定する",
         },
     },
@@ -80,7 +83,7 @@ export const wizard = {
         browseLocation: "フォルダを選ぶ",
         validatingDirectory: "フォルダを確認している…",
         directoryWillBeCreated: "このフォルダはプロジェクトと一緒に作られる",
-        versionControlLoreHint: "プロジェクトフォルダの中にバージョン履歴が作られ、この時点のプロジェクトが最初のバージョンとして記録される",
+        versionControlLoreHint: "プロジェクトフォルダの中にバージョン履歴が作られ、この時点のプロジェクトが最初のバージョンとして記録される。作成後に Team サーバーへ送ることができる",
         versionControlUnavailablePlatform: "この端末ではバージョン管理を使えない。バージョン管理なしでプロジェクトを作る",
         versionControlUnavailableInstallation: "この Studio ビルドではバージョン管理を使えない。バージョン管理なしでプロジェクトを作る",
         moreDetails: "詳細",
@@ -124,7 +127,7 @@ export const wizard = {
         addressInvalid: "プロジェクトのアドレスは末尾にプロジェクト名が必要。例：lore://studio.example.lan:41337/my-game",
         parsedServer: "サーバー",
         onServerLabel: "サーバー上のプロジェクト",
-        onServerHint: "選んでください。未追加のサーバーは下にアドレスを入力します。",
+        onServerHint: "選ぶか、下にプロジェクトのアドレスを入力する",
         onServerEmpty: "このサーバーにはまだプロジェクトがありません。",
         onServerLoading: "サーバーに問い合わせています…",
         onServerNoToken: "Studio はこのサーバーに問い合わせられません。トークンで追加し直してください。",
@@ -146,7 +149,7 @@ export const wizard = {
         error: {
             failedTitle: "クローンに失敗",
             generic: "サーバーからプロジェクトを取得できなかった",
-            // Lore サーバーが持つのはリポジトリで、リポジトリが必ず Studio のプロジェクトとは限らない。
+            // Team サーバーが持つのはリポジトリで、リポジトリが必ず Studio のプロジェクトとは限らない。
             // 実際に置かれているものなので名前を出す。このフォルダを再利用できない理由でもある。
             notAProjectTitle: "これは NarraLeaf Studio のプロジェクトではない",
             notAProject: "複製は終わったが、中に Studio のプロジェクトファイルがない。複製した中身は {path} にある",
@@ -155,6 +158,9 @@ export const wizard = {
     review: {
         template: "テンプレート",
         notSpecified: "未指定",
+        // サーバー向けのときはバージョン管理の行の代わりに出る。サーバーへ送ることが
+        // バージョン管理に入れることなので、両方書けば同じことを二度言うことになる。
+        server: "サーバー",
     },
     // ウィザードの検証と作成のサービスが出すエラー。
     validation: {

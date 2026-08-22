@@ -5,9 +5,7 @@ import { getInterface } from "@/lib/app/bridge";
 import {
     Button,
     EmptyState,
-    FieldLabel,
     IconButton,
-    Input,
     Modal,
     TabStrip,
     dialogFooterButtonClass,
@@ -28,6 +26,7 @@ import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import type {
     VcsLocalRepository,
     VcsServerProject,
+    VcsServerProjectsProblem,
     VcsServerSession,
 } from "@shared/types/vcs";
 import { createProjectFromWizard } from "../projectActions";
@@ -132,6 +131,23 @@ export function localCopyOf(
     return matches.find(entry => entry.remoteOrigin === origin) ?? matches[0];
 }
 
+/**
+ * A project the server has read and found nothing inside.
+ *
+ * **Zero is a fact and absent is not**, which is the whole of the test. A server that has
+ * not read a repository leaves the count out - the ordinary state for a project registered
+ * a moment ago - and reading that as "empty" would refuse to fetch a project that is
+ * perfectly full. Only a count that is there and is zero says nobody has sent anything.
+ *
+ * What it decides is whether there is anything to fetch. A clone of a repository with no
+ * revisions succeeds, writes a `.lore` directory and nothing else, and leaves the folder
+ * the author picked holding something that is not a project and cannot be cloned into
+ * again - so the answer is to say what is there rather than to offer the copy.
+ */
+export function isEmptyOnServer(project: VcsServerProject): boolean {
+    return project.history?.revisions === 0;
+}
+
 export function ServersTab({ onForget }: ServersTabProps = {}) {
     const { t } = useTranslation();
     const { servers, loading, reload } = useServers();
@@ -140,7 +156,10 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
     const [problem, setProblem] = useState<TranslationKey | null>(null);
     const [reading, setReading] = useState(false);
     const [repositories, setRepositories] = useState<VcsLocalRepository[]>([]);
+    /** Whether the wizard for a new project on this server is up. */
     const [creating, setCreating] = useState(false);
+    /** A project made here that the server did not take, and what it was refused with. */
+    const [unsent, setUnsent] = useState<UnsentProject | null>(null);
     /** Which project is open, by id. The body shows the list or one project, never both. */
     const [opened, setOpened] = useState<string | null>(null);
     /**
@@ -265,16 +284,69 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
         void getInterface().workspace.launch({ projectPath }, true);
     }, []);
 
-    const createProject = useCallback(async (name: string, description: string) => {
-        if (chosen === null) return false;
-        const made = await getInterface().vcs
-            .createServerProject(chosen, name, description || undefined)
-            .catch(() => null);
-        if (!made?.success || !made.data.ok) return false;
-        setCreating(false);
-        await getProject(made.data.project.remote);
-        return true;
-    }, [chosen, getProject]);
+    /**
+     * Make a project for this server: write it on this disk, then send it there.
+     *
+     * **In that order, and the order is the fix.** This used to ask the server for a
+     * project first and then run the clone flow over what came back - which is a repository
+     * with no revisions in it, so the copy that landed was a `.lore` directory and nothing
+     * else, reported to the author as "this is not a NarraLeaf project" over a folder they
+     * could not clone into a second time. It also left the project it had registered on the
+     * server, empty, for somebody to clear up by hand.
+     *
+     * So the project is made here, by the wizard that makes every other project, and the
+     * server is what happens to it afterwards. Nothing is registered until there is
+     * something to register, and a wizard closed without finishing leaves the server exactly
+     * as it was.
+     *
+     * **A project that was written and not sent is still the author's project**, so a
+     * refusal here does not throw it away and does not pretend it did not happen: it is
+     * named, it is on disk, and it opens from the dialog that says so. Connecting it to a
+     * server is then the version rail's "Change server", which is the same act with the
+     * project in front of them.
+     */
+    const newProject = useCallback(async () => {
+        if (session === null) return;
+        setCreating(true);
+        setUnsent(null);
+        try {
+            const made = await getInterface().app.launchProjectWizard({
+                publishTo: { remoteOrigin: session.remoteOrigin, server: serverDisplayName(session) },
+            }).catch(() => null);
+            // Cancelled, or a wizard that never opened. Neither is an error to report: the
+            // author is looking at the list they started from.
+            if (!made?.success || !made.data?.created) return;
+
+            const { projectPath, projectName, appId } = made.data;
+            const name = (projectName ?? "").trim();
+            // **The app id, not the name.** A repository is addressed as
+            // `lore://host:port/<name>`, which has no room for a space, and a server refuses
+            // one that carries anything but letters, digits and separators - so a project
+            // called "My Game" would be refused and one called in Chinese would be refused
+            // twice over. The app id is `[a-z0-9-]+` by construction, it is required, and it
+            // is already what this project is called wherever a machine has to say it. The
+            // review page names it, so it is not a substitution made behind the author.
+            const repository = (appId ?? "").trim();
+            const sent = repository === "" ? null : await getInterface().vcs
+                .publishProject(projectPath, session.remoteOrigin, repository)
+                .catch(() => null);
+            if (sent !== null && sent.success && sent.data.ok) {
+                openProject(projectPath);
+                return;
+            }
+            setUnsent({
+                name,
+                path: projectPath,
+                // The server's coded refusal where there is one, and the backend's own
+                // sentence where the call threw - connecting and sending refuse that way,
+                // and what they say names the remedy.
+                problem: sent !== null && sent.success && !sent.data.ok ? sent.data.problem.kind : null,
+                detail: sent === null || sent.success ? "" : sent.error ?? "",
+            });
+        } finally {
+            setCreating(false);
+        }
+    }, [session, openProject]);
 
     /**
      * Take one project off this server's list, and put the list back without it.
@@ -373,7 +445,8 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                             size="sm"
                             variant="primary"
                             className="shrink-0"
-                            onClick={() => setCreating(true)}
+                            disabled={creating}
+                            onClick={() => void newProject()}
                             data-servers-action="new-project"
                         >
                             {t("launcher.servers.newProject")}
@@ -497,11 +570,12 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                 )}
             </div>
 
-            {creating && session !== null && (
-                <NewProjectDialog
+            {unsent !== null && session !== null && (
+                <UnsentProjectDialog
+                    project={unsent}
                     server={serverDisplayName(session)}
-                    onCreate={createProject}
-                    onClose={() => setCreating(false)}
+                    onOpen={() => openProject(unsent.path)}
+                    onClose={() => setUnsent(null)}
                 />
             )}
         </div>
@@ -633,7 +707,10 @@ function ProjectRow({
 }) {
     const { t, formatDate } = useTranslation();
     const version = lastVersionLine(project, t, formatDate);
-    const said = project.description !== "" || version !== null || local !== null;
+    // Said on the row rather than only on the page behind it, because it is what decides
+    // whether the row leads anywhere: a project with nothing in it has nothing to fetch.
+    const empty = isEmptyOnServer(project);
+    const said = project.description !== "" || version !== null || empty || local !== null;
 
     return (
         <button
@@ -657,6 +734,11 @@ function ProjectRow({
                             way: a truncated description still says what the project is, and
                             half a date says nothing at all. */}
                         {version !== null && <span className="shrink-0">{version}</span>}
+                        {empty && (
+                            <span className="shrink-0" data-project-empty={project.id}>
+                                {t("launcher.servers.nothingSent")}
+                            </span>
+                        )}
                         {local !== null && (
                             <span className="shrink-0" data-project-here={project.id}>
                                 {t("launcher.servers.here")}
@@ -695,6 +777,14 @@ function ProjectAction({
     onGet: (remote: string) => void;
 }) {
     const { t } = useTranslation();
+
+    // Nothing has been sent to this project, so there is nothing to fetch. Drawn as no
+    // control rather than as a refused one: the page below says what is there, and a
+    // button that reports "this is not a NarraLeaf project" over a folder it has just
+    // filled is the failure this replaced. A copy already on this machine still opens.
+    if (local === null && isEmptyOnServer(project)) {
+        return null;
+    }
 
     return (
         <Button
@@ -735,99 +825,85 @@ function lastVersionLine(
 }
 
 /**
- * Make a project on this server.
+ * A project that was written on this disk and that its server would not take.
  *
- * The server both records it and creates the repository, so this is the one call; what
- * comes back is a remote, and a remote is what the clone flow takes. Nothing is written to
- * this disk here - where the copy lands is asked by the wizard, on the page that opens the
- * native folder picker.
+ * Held rather than dropped, because the two halves of the act came apart and only one of
+ * them failed: the project exists, it is complete, and it is under version control. What
+ * is missing is the connection to the server, which is a thing the workspace can do with
+ * the project in front of the author.
  */
-function NewProjectDialog({
+interface UnsentProject {
+    /** What the project is called, as it was named in the wizard. */
+    name: string;
+    /** Where it was written. */
+    path: string;
+    /** The server's coded refusal, when the server gave one. */
+    problem: VcsServerProjectsProblem["kind"] | null;
+    /** The backend's own sentence, when connecting or sending threw one. */
+    detail: string;
+}
+
+/**
+ * Say that a project was made and not sent, and offer the one thing left to do about it.
+ *
+ * **It opens the project.** Everything about the failure that the author can act on is in
+ * the workspace: the version rail is where a project is pointed at a server, and it is the
+ * same three steps this just tried, with the state visible. A dialog that only apologised
+ * would leave a finished project on disk that nothing in Studio had a way back to.
+ *
+ * The reason is drawn where there is one to draw. A server that refused says so in the
+ * reader's language through the shared table; a call that threw carries the backend's own
+ * sentence, which names the remedy and is passed on the way the version rail passes it.
+ */
+function UnsentProjectDialog({
+    project,
     server,
-    onCreate,
+    onOpen,
     onClose,
 }: {
+    project: UnsentProject;
     server: string;
-    onCreate: (name: string, description: string) => Promise<boolean>;
+    onOpen: () => void;
     onClose: () => void;
 }) {
     const { t } = useTranslation();
-    const [name, setName] = useState("");
-    const [description, setDescription] = useState("");
-    const [failed, setFailed] = useState(false);
-    const [busy, setBusy] = useState(false);
-    const ready = name.trim() !== "" && !busy;
-
-    const submit = async () => {
-        if (!ready) return;
-        setBusy(true);
-        setFailed(false);
-        const made = await onCreate(name.trim(), description.trim());
-        setBusy(false);
-        if (!made) setFailed(true);
-    };
+    const reason = project.problem === null ? "" : t(SERVER_PROBLEM_KEYS[project.problem]);
 
     return (
         <Modal
             isOpen
             onClose={onClose}
-            title={t("launcher.servers.create.title", { server })}
+            title={t("launcher.servers.unsent.title")}
             size="sm"
             footer={(
                 <div className="flex items-center justify-end gap-2">
                     <button
                         type="button"
                         onClick={onClose}
-                        className={dialogFooterButtonClass({ variant: "secondary", disabled: busy })}
-                        disabled={busy}
+                        className={dialogFooterButtonClass({ variant: "secondary" })}
                     >
-                        {t("launcher.servers.create.cancel")}
+                        {t("launcher.servers.unsent.close")}
                     </button>
                     <button
                         type="button"
-                        onClick={() => void submit()}
-                        disabled={!ready}
-                        data-servers-action="create"
-                        className={dialogFooterButtonClass({ variant: "primary", disabled: !ready })}
+                        onClick={onOpen}
+                        data-servers-action="open-unsent"
+                        className={dialogFooterButtonClass({ variant: "primary" })}
                     >
-                        {t("launcher.servers.create.submit")}
+                        {t("launcher.servers.unsent.open")}
                     </button>
                 </div>
             )}
         >
-            <div className="space-y-3">
-                <div>
-                    {/* Named on the control rather than through `htmlFor`: `FieldLabel` is the
-                        shared eyebrow and carries no `for`, so the accessible name goes where
-                        it can be relied on. */}
-                    <FieldLabel as="div">{t("launcher.servers.create.name")}</FieldLabel>
-                    <Input
-                        aria-label={t("launcher.servers.create.name")}
-                        fullWidth
-                        autoFocus
-                        value={name}
-                        onChange={event => setName(event.target.value)}
-                        onKeyDown={event => {
-                            if (event.key === "Enter") {
-                                event.preventDefault();
-                                void submit();
-                            }
-                        }}
-                    />
-                </div>
-                <div>
-                    <FieldLabel as="div">{t("launcher.servers.create.description")}</FieldLabel>
-                    <Input
-                        aria-label={t("launcher.servers.create.description")}
-                        fullWidth
-                        value={description}
-                        placeholder={t("launcher.servers.create.descriptionOptional")}
-                        onChange={event => setDescription(event.target.value)}
-                    />
-                </div>
-                {failed && (
-                    <p className="text-xs text-danger">{t("launcher.servers.create.failed")}</p>
+            <div className="space-y-2">
+                <p className="text-sm text-fg">
+                    {t("launcher.servers.unsent.message", { name: project.name, server })}
+                </p>
+                {reason !== "" && <p className="text-xs text-fg-muted">{reason}</p>}
+                {project.detail !== "" && (
+                    <p className="break-words text-xs text-fg-muted">{project.detail}</p>
                 )}
+                <p className="break-all text-2xs text-fg-subtle">{project.path}</p>
             </div>
         </Modal>
     );

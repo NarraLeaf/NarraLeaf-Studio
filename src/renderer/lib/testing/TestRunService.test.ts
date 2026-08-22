@@ -3,7 +3,7 @@ import type { GameTestEventPayload } from "@shared/types/gameTest";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { testRegistry } from "./registry";
 import { TestRunService } from "./TestRunService";
-import type { TestDefinition, TestGameEvent, TestRunContext } from "./types";
+import { TEST_PROTOCOL_VERSION, type TestDefinition, type TestGameEvent, type TestRunContext } from "./types";
 
 const bridgeMock = vi.hoisted(() => ({
     onEvent: vi.fn((_handler: (payload: GameTestEventPayload) => void) => ({ cancel: () => undefined })),
@@ -37,15 +37,55 @@ function registerTest(patch: Partial<TestDefinition> = {}): string {
     return id;
 }
 
-function createContext(options: { frozen?: boolean } = {}): WorkspaceContext {
+/**
+ * The project's parameter cache, in memory.
+ *
+ * A plain file behind `readJSON` / `write`, so the service's own "absent or unreadable means nothing
+ * remembered" path is exercised rather than mocked away.
+ */
+type FakeCache = {
+    file: string | null;
+    written: string[];
+    createdDirs: string[];
+};
+
+function createContext(options: { frozen?: boolean; cache?: FakeCache } = {}): WorkspaceContext {
     const consoleStub = {
         registerChannel: vi.fn(() => () => undefined),
         log: vi.fn(),
         setProgress: vi.fn(),
         getProgress: vi.fn(() => null),
     };
+    const cache = options.cache;
+    const filesystemStub = {
+        readJSON: async () => {
+            if (cache?.file == null) {
+                return { ok: false, error: { code: "NOT_FOUND", message: "no such file" } };
+            }
+            try {
+                return { ok: true, data: JSON.parse(cache.file) };
+            } catch {
+                return { ok: false, error: { code: "INVALID_JSON", message: "bad json" } };
+            }
+        },
+        createDir: async (path: string) => {
+            cache?.createdDirs.push(path);
+            return { ok: true, data: undefined };
+        },
+        write: async (_path: string, data: string) => {
+            if (cache) {
+                cache.file = data;
+                cache.written.push(data);
+            }
+            return { ok: true, data: undefined };
+        },
+    };
     return {
-        project: { getConfig: () => ({ projectPath: "D:/project" }) },
+        project: {
+            getConfig: () => ({ projectPath: "D:/project" }),
+            resolve: (...paths: (string | readonly string[])[]) =>
+                ["D:/project", ...paths.flatMap(path => (Array.isArray(path) ? path : [path]))].join("/"),
+        },
         services: {
             get: (serviceId: Services) => {
                 if (serviceId === Services.Console) {
@@ -54,16 +94,26 @@ function createContext(options: { frozen?: boolean } = {}): WorkspaceContext {
                 if (serviceId === Services.WorkspaceFreeze) {
                     return { isFrozen: () => Boolean(options.frozen) };
                 }
+                if (serviceId === Services.FileSystem) {
+                    if (!cache) {
+                        throw new Error("This test has no file system");
+                    }
+                    return filesystemStub;
+                }
                 throw new Error(`Unexpected service lookup: ${serviceId}`);
             },
         },
     } as unknown as WorkspaceContext;
 }
 
-async function createService(options: { frozen?: boolean } = {}): Promise<TestRunService> {
+async function createService(options: { frozen?: boolean; cache?: FakeCache } = {}): Promise<TestRunService> {
     const service = new TestRunService();
     await service.initialize(createContext(options), async () => undefined);
     return service;
+}
+
+function emptyCache(): FakeCache {
+    return { file: null, written: [], createdDirs: [] };
 }
 
 const tick = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
@@ -348,5 +398,137 @@ describe("TestRunService host gates", () => {
         const service = await createService();
         expect(service.listTests().some(test => test.definition.id === "narraleaf-studio:project-diagnostics"))
             .toBe(true);
+    });
+
+    it("refuses a test whose select has nothing to choose from, naming the parameter", async () => {
+        const service = await createService();
+        // A project with no endings yet. Not a defect and not an error - but a walkthrough that
+        // cannot be told where to walk cannot be started either.
+        const testId = registerTest({
+            parameters: [{ id: "ending", kind: "select", label: { text: "Ending" }, options: () => [] }],
+        });
+
+        const availability = service.getAvailability(testId);
+        expect(availability.available).toBe(false);
+        expect(availability.available === false && availability.reason).toEqual({
+            key: "test.reason.parameterEmpty",
+            params: { parameter: "Ending" },
+        });
+        await expect(service.start(testId)).rejects.toThrow();
+    });
+});
+
+describe("TestRunService parameters", () => {
+    const ENDINGS = [
+        { value: "good", label: { text: "Good end" } },
+        { value: "true", label: { text: "True end" } },
+    ];
+
+    function registerParametrised(patch: Partial<TestDefinition> = {}, seen: TestRunContext[] = []): string {
+        return registerTest({
+            parameters: [
+                { id: "ending", kind: "select", label: { text: "Ending" }, options: () => ENDINGS },
+                { id: "skipRead", kind: "boolean", label: { text: "Skip read text" }, defaultValue: true },
+            ],
+            run: ctx => {
+                seen.push(ctx);
+                return { status: "passed" };
+            },
+            ...patch,
+        });
+    }
+
+    it("states the protocol version parameters arrived in", () => {
+        // Bumped because `TestRunContext.parameters` is a required member; a plugin built against
+        // an older host would not have been given one.
+        expect(TEST_PROTOCOL_VERSION).toBe(2);
+    });
+
+    it("hands a test only the ids it declared, resolved against its own declarations", async () => {
+        const service = await createService();
+        const seen: TestRunContext[] = [];
+        const testId = registerParametrised({}, seen);
+
+        await service.start(testId, {
+            ending: "true",
+            // Never declared, and a caller cannot smuggle it in.
+            devTools: true,
+        });
+        await whenSettled(service);
+
+        expect(seen[0].parameters).toEqual({ ending: "true", skipRead: true });
+    });
+
+    it("gives a test that declares nothing an empty set rather than undefined", async () => {
+        const service = await createService();
+        const seen: TestRunContext[] = [];
+        const testId = registerTest({
+            run: ctx => {
+                seen.push(ctx);
+                return { status: "passed" };
+            },
+        });
+
+        await service.start(testId, { ending: "true" });
+        await whenSettled(service);
+
+        expect(seen[0].parameters).toEqual({});
+    });
+
+    it("falls back to the default when a value names an option that is gone", async () => {
+        const service = await createService();
+        const seen: TestRunContext[] = [];
+        const testId = registerParametrised({}, seen);
+
+        await service.start(testId, { ending: "the-one-they-deleted", skipRead: false });
+        await whenSettled(service);
+
+        expect(seen[0].parameters).toEqual({ ending: "good", skipRead: false });
+    });
+
+    it("snapshots the resolved values on the run record", async () => {
+        const service = await createService();
+        const testId = registerParametrised();
+
+        const runId = await service.start(testId, { ending: "true", skipRead: false });
+        await whenSettled(service);
+
+        // What the report says the run was told, kept after the definition could have been
+        // unregistered by a plugin reload.
+        expect(service.getRun(runId)?.parameters).toEqual({ ending: "true", skipRead: false });
+        expect(service.getRun(runId)?.protocolVersion).toBe(TEST_PROTOCOL_VERSION);
+    });
+
+    it("remembers what a test was started with, and reads it back", async () => {
+        const cache = emptyCache();
+        const service = await createService({ cache });
+        const testId = registerParametrised();
+
+        // Nothing on disk yet is the ordinary state, not a failure.
+        expect(await service.readRememberedParameters()).toEqual({});
+
+        await service.rememberParameters(testId, { ending: "true", skipRead: false });
+
+        expect(await service.readRememberedParameters()).toEqual({
+            [testId]: { ending: "true", skipRead: false },
+        });
+        expect(cache.createdDirs).toEqual(["D:/project/editor/cache/"]);
+    });
+
+    it("treats an unreadable cache as nothing remembered", async () => {
+        const cache = emptyCache();
+        cache.file = "{ this was truncated mid-";
+        const service = await createService({ cache });
+
+        expect(await service.readRememberedParameters()).toEqual({});
+    });
+
+    it("keeps working with no file system at all", async () => {
+        // A workspace whose services are not all up yet. Losing the memory of a dropdown is the
+        // whole cost, and it must not be an error anyone sees.
+        const service = await createService();
+
+        expect(await service.readRememberedParameters()).toEqual({});
+        await expect(service.rememberParameters("unit:whatever", { ending: "true" })).resolves.toBeUndefined();
     });
 });

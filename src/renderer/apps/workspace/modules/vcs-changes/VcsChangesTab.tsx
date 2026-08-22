@@ -50,12 +50,13 @@ import type { VcsChangesPayload } from "./vcsChangesIds";
  */
 
 /**
- * Files this tab will list before it stops adding them.
+ * Documents this tab will list before it stops adding them.
  *
  * The index is not virtualised, and this is what makes that safe rather than lucky: a comparison may
- * carry up to `DIFF_PATH_LIMIT` (2000) documents, which is a first commit or a bulk import rather
+ * carry up to `DIFF_UNIT_LIMIT` (2000) documents, which is a first commit or a bulk import rather
  * than an edit. Past this the honest answer is a count of what was left out - and a restore is not
- * something anyone reads file by file. Rows are one per file now, so the budget counts files; the
+ * something anyone reads file by file. Rows are one per DOCUMENT, which is one file for most of them
+ * and a manifest plus its members for a document set (`@shared/documents/documentSet.ts`); the
  * per-file ceiling on change rows moved to the detail, where the rows themselves are
  * (`DOCUMENT_ROW_CEILING` in `presenters/GenericChangeDetail`).
  */

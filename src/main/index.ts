@@ -2,6 +2,7 @@ import { dialog } from 'electron';
 import { App } from '@/app/app';
 import { decideWindowClosedTeardown } from '@/app/application/windowClosedTeardown';
 import { getMainTranslator } from '@/app/application/i18n';
+import { COMMAND_LINE_BUILD_EXIT_CODES } from '@shared/types/commandLineBuild';
 
 const app = App.create({});
 
@@ -83,8 +84,20 @@ app.electronApp.on('open-file', (event, filePath) => {
 // quit() so none of the shutdown work runs - the saves it would try to flush belong to the other
 // process, not to this one.
 if (!app.acquireSingleInstanceLock()) {
-    app.logger.info('Another instance is already running; handing over to it.');
-    app.electronApp.exit(0);
+    // Except for a build. Handing over is right for a launch that wants a window - the running
+    // Studio opens it - and wrong for one that wants an exit code: the build would run inside
+    // somebody's session, against a project they have open, while this process reported success it
+    // has no way to know about. So it refuses, and says which of the two things happened.
+    const build = app.getCommandLineBuild();
+    if (build) {
+        process.stderr.write(
+            '[error] Build: another Studio is already running on this profile, so this build was not started.\n',
+        );
+        app.electronApp.exit(COMMAND_LINE_BUILD_EXIT_CODES['studio-failed']);
+    } else {
+        app.logger.info('Another instance is already running; handing over to it.');
+        app.electronApp.exit(0);
+    }
 }
 
 app.whenReady().then(async () => {
@@ -139,6 +152,13 @@ app.whenReady().then(async () => {
                 app.logger.warn("[Vcs] Failed to release session on window close", error);
             });
         }
+        // A launch that went straight into a project keeps the home screen hidden behind it, and
+        // relies on the workspace reporting how its load went to decide what happens to it. A
+        // workspace that goes away without ever answering - a renderer that crashed on load, a
+        // window closed by its own error handling - would leave that hidden launcher as the only
+        // window there is, which on screen is indistinguishable from Studio having died on launch.
+        app.revealLauncherIfNothingElseIsUp();
+
         if (!app.windowManager.hasWindows()) {
             app.handleLastWindowClosed();
         }
@@ -197,33 +217,15 @@ app.whenReady().then(async () => {
         // test run are separate *processes*. Windows' job object happens to reap them with their
         // parent; macOS and Linux reparent them, so quitting Studio left a game running with
         // nothing left to stop it from.
-        const teardown = (async () => {
-            await app.flushAllWorkspacesPendingSaves().catch(error => {
-                app.logger.warn('Failed to flush pending saves before quit:', error);
-            });
-            await app.stopAllProjectRuntimes().catch(error => {
-                app.logger.warn('Failed to stop the running game processes before quit:', error);
-            });
-            await app.getVcsManager().dispose().catch(error => {
-                app.logger.warn('Failed to close version control before quit:', error);
-            });
-        })();
-
-        const HARD_DEADLINE_MS = 20 * 1000;
-        const deadline = new Promise<void>(resolve => setTimeout(resolve, HARD_DEADLINE_MS));
-        void Promise.race([teardown, deadline])
+        //
+        // The list itself lives on App, because a command-line build has to run the same three on
+        // its way out and cannot come through here: carrying an exit code means `exit()`, which
+        // never fires `before-quit`.
+        // Bounded inside `drainForShutdown`, which is also where the warning about a version-control
+        // call that outlived the deadline is written - a quit and a command-line build's exit want
+        // the same bound, and duplicating it here is how one of them would eventually lose it.
+        void app.drainForShutdown()
             .finally(() => {
-                // The deadline is a bounded quit, not a safe one: expiring here means quitting
-                // with Lore work still running, which is exactly the abort the drain exists to
-                // avoid. Nothing better is available - the alternative is a Cmd+Q that hangs on a
-                // network fetch - but it must not go unrecorded, because the crash report it
-                // produces names koffi and says nothing about why the call was still open.
-                if (app.getVcsManager().busy) {
-                    app.logger.warn(
-                        `Quitting with version control still busy after ${HARD_DEADLINE_MS}ms;`
-                        + ' a call that outlives this may take the process down on the way out.',
-                    );
-                }
                 quitFlush = 'done';
                 app.quit();
             });

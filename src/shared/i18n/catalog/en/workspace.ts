@@ -302,6 +302,64 @@ export const workspace = {
         },
     },
     shell: {
+    /**
+     * NarraLeaf Team, in the corner of the window.
+     *
+     * The panel behind the cell owns two questions the version rail used to carry: which server
+     * this project's versions go to, and who this machine is when they get there. Everything it
+     * says about a server it says in the words the rail already uses - those keys are shared - so
+     * only what is new to this panel is here.
+     */
+    team: {
+        // The product name, said in full, because this is where an author meets it. Every other
+        // line in the panel calls a server a server.
+        title: "NarraLeaf Team",
+        // Title Case like every other command, and named after what it opens rather than
+        // after the corner it opens from.
+        command: {
+            open: "Open NarraLeaf Team",
+        },
+        // The eyebrow over the destination. "Server" and not "Team server": the dialog is
+        // already titled with the product, and repeating it in the label under it reads as
+        // branding rather than as a name for the row.
+        destination: "Server",
+        // A label and its value. The name a collaborator clones by, and the one part of the
+        // address worth reading on its own.
+        projectOnServer: "Project name: {name}",
+        // The project is pointed at a server this machine has no account on. Said as a state,
+        // with the row that fixes it directly underneath.
+        noAccountHere: "This machine has no account on that server.",
+        // Opens Settings, where a server is added to this machine and signed out of. The ellipsis
+        // is this catalog's mark for a control that opens somewhere else.
+        manage: "Manage servers…",
+        // What the server was asked and answered, drawn only where there is something to do
+        // about it. A project that checks out is silent: a line saying everything is fine,
+        // every working day, is a line nobody reads.
+        notThere: "That server does not hold this project.",
+        // A server that answered and holds this project. Said where the sync state has
+        // nothing to report yet, because the chip beside the address is read as being
+        // about the server, and "not checked" stopped being true the moment the
+        // workspace began checking on its own.
+        connected: "Connected",
+        unreachable: "That server is not answering.",
+        // The eyebrow over who is here and what is open.
+        presence: "Collaboration",
+        // How many installations have this project open, this one included.
+        hereAlone: "Only this machine",
+        hereMany: "{count} machines",
+        // A room somebody opened on this project. `liveOpen` is the only deliberate act in
+        // this panel: everything else follows from a window being open.
+        liveOpen: "Start a live session",
+        liveUntitled: "Live session",
+        liveMembers: "{count} in",
+        liveJoin: "Join",
+        liveLeave: "Leave",
+        liveEnd: "End",
+        // What is attached to the project without being in it, and how much of it was
+        // written against a version that is no longer the current one.
+        attached: "{count} attached",
+        attachedOutdated: "{count} outdated",
+    },
         errorTitle: "Failed to initialize workspace",
         showStackTrace: "Show stack trace",
         retry: "Retry",
@@ -482,6 +540,9 @@ export const workspace = {
             // Names for the registered entries, shown only in the bar's right-click toggle menu -
             // the cells themselves are icon-first and label their own state.
             entries: {
+                // The brand, not a description of the cell: it is where an author learns the
+                // name of the thing their project is shared through.
+                team: "NarraLeaf Team",
                 runStatus: "Run status",
         studioTasks: "Background work",
                 unsavedChanges: "Unsaved changes",
@@ -831,22 +892,36 @@ export const workspace = {
                  */
                 picker: {
                     title: "Connect to a server",
+                    // Asked of the server as soon as one is chosen, because what this project
+                    // becomes on it depends on what is already there.
+                    reading: "Reading what this server holds",
+                    // The server already holds this project - matched on the repository id,
+                    // which is the only thing that survives a rename on either end. There is
+                    // nothing left to decide, so the name is stated rather than asked for.
+                    already: "This server already holds this project, as {name}.",
                     // The path on the end of the address, which is what the repository is
                     // called on the server and what a collaborator clones by. Filled in from
                     // the project's folder, because that is the answer nearly every time.
                     nameLabel: "Name on the server",
                     namePlaceholder: "my-game",
+                    nameHint: "Letters, digits, dots, dashes and underscores.",
+                    // Both refusals belong to the server and are said here instead of there:
+                    // one comes back as a bare status code, and the other after the dialog
+                    // has closed on a publish that is already half done.
+                    nameInvalid: "A name on a server can hold letters, digits, dots, dashes and underscores.",
+                    nameTaken: "This server already has a project with that name.",
+                    // What the button does where the server has never seen this project: it
+                    // records it, points at it, and sends every version on this machine.
+                    createAndSend: "Create and send",
                     empty: "No servers have been added.",
                     // The last row of the list. The ellipsis is the convention for a control
                     // that opens somewhere else: this one opens Settings and closes the dialog.
                     add: "Add a server…",
-                    manual: "Another address",
+                    // The project names a server this machine has no account on: a copy somebody
+                    // sent, or a server that was signed out of. Stated with the address it names,
+                    // because the remedy is the row under it and not a box to retype it into.
+                    unknownServer: "This project uses {host}, which has not been added on this machine.",
                 },
-                // The one field. Measured: the backend keeps only the ORIGIN of whatever URL it is
-                // given and identifies the repository by its own id, so there is genuinely nothing
-                // else to type - which is why there is no "repository name" box beside it.
-                addressLabel: "Server address",
-                addressPlaceholder: "lore://studio.example.lan:41337",
                 save: "Connect",
                 cancel: "Cancel",
                 disconnect: "Disconnect",
@@ -923,101 +998,12 @@ export const workspace = {
                  * rather than whatever was typed into a preference on this machine.
                  */
                 signIn: {
-                    required: "This server requires sign-in before a project can be connected to it.",
-                    // A quiet line, not a button: most servers ask nobody who they are, and
-                    // this is a control they can ignore rather than one they must answer.
-                    open: "Sign in to this server",
+                    // Said where a project is pointed at a server this machine has no account on.
+                    // A Team server is reached at its `nlteam://` endpoint, and adding it is the
+                    // only thing that stores one - so what follows this line is that row.
+                    required: "This server requires an account before a project can be connected to it.",
                     signedInAs: "Signed in as {name}",
                     signOut: "Sign out",
-                    // Deliberately not "auth endpoint": the author is being asked where to sign
-                    // in, and the word for the machinery behind it is not theirs to learn.
-                    addressLabel: "Sign-in address",
-                    addressPlaceholder: "https://studio.example.lan:41402",
-                    // "Access token" rather than "password", because it is not one and cannot
-                    // be chosen, remembered or reset by the person pasting it.
-                    tokenLabel: "Access token",
-                    tokenPlaceholder: "Paste the token",
-                    // Where a token comes from, in one line, because there is nowhere else to
-                    // learn it: nothing in Studio can issue one.
-                    hint: "The token is issued by the server's administrator.",
-                    /**
-                     * Trusting the authority a server's certificate is issued from.
-                     *
-                     * Two readers, and the words have to work for both. Where the token names
-                     * this authority, the comparison is already made and this is a decision.
-                     * Where it names none, the fingerprint is here to be checked against what
-                     * somebody was told - which is what everybody did before, and still works.
-                     *
-                     * Nothing here calls it a "root CA" or a "trust store": what the author is
-                     * agreeing to is said in the sentence, and the name for the machinery is
-                     * not theirs to learn.
-                     */
-                    trust: {
-                        open: "Trust this server on this computer",
-                        title: "Trust this server?",
-                        vouched: "The pasted token names this authority, and this authority is answering at that address.",
-                        compare: "Check this fingerprint against the one provided by the server's administrator, over a different channel.",
-                        authorityLabel: "Issued by",
-                        fingerprintLabel: "Fingerprint",
-                        // The cost of being wrong, in one sentence, without softening it. The
-                        // account rather than the computer is not a detail: it is what bounds
-                        // the damage, and it is the reason the per-user store is used.
-                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will accept it. Only this account on this computer is affected.",
-                        manual: "This system has no per-account trust store. Run this, then sign in again:",
-                        copy: "Copy the command",
-                        confirm: "Trust it",
-                        cancel: "Cancel",
-                    },
-                    submit: "Sign in",
-                    cancel: "Cancel",
-                    /**
-                     * How signing in ended, said once and in words.
-                     *
-                     * Not a pair of version numbers: Studio pins its half and the server runs
-                     * whatever its operator installed, and asking an author which pairs work
-                     * asks them for knowledge they have no way to have.
-                     */
-                    reach: {
-                        ready: "This server is compatible with this copy of Studio.",
-                        // Signed in, and the server will not hand over this project. A different
-                        // failure from a refused token, and the remedy is a different person's.
-                        notPermitted: "Signed in, but this account does not have access to this project. Ask the server's administrator for access.",
-                        // The sign-in address answered and the server itself did not, which is
-                        // two ports and usually two firewall rules.
-                        dataPortSilent: "Signed in, but the server itself did not answer.",
-                    },
-                    /**
-                     * Why a sign-in did not happen.
-                     *
-                     * Four of these arrive from the backend as one identical sentence, so each
-                     * is written here from the reason Studio worked out for itself. The
-                     * certificate one is the only failure in this product whose remedy is a
-                     * command a person runs outside Studio, and it says so plainly rather than
-                     * offering a button that cannot exist.
-                     */
-                    problem: {
-                        scheme: "A sign-in address has to start with https:// or ucs-auth://.",
-                        token: "That is not a token this server issued. Paste the complete token.",
-                        // Answered only after a token has been read and found to name no
-                        // endpoint, which is what reveals the address field. Most tokens name
-                        // one and nobody sees this.
-                        address: "This token carries no sign-in address. Enter the address as well.",
-                        // The token named no authority, so there is a comparison left to make
-                        // and it is a person's. Shown above the offer, not instead of it.
-                        certificate:
-                            "This computer does not trust the authority this server signs with. "
-                            + "Its fingerprint is {fingerprint}.",
-                        // The token named one authority and a different one answered. Not a
-                        // step that was missed: this is what standing in the way looks like,
-                        // and nothing here offers to trust it.
-                        mismatch:
-                            "The server at that address is not the one this token is for. The token names "
-                            + "{expected}, and {found} answered. Do not trust it; ask the server's "
-                            + "administrator what happened.",
-                        unreachable: "Nothing answered at that address ({detail}).",
-                        refused: "The server would not accept that token ({detail}).",
-                        unknown: "The sign-in did not finish ({detail}).",
-                    },
                 },
             },
             // A sync whose merge could not settle. Sticky rather than inline, because the sync

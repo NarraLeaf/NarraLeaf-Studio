@@ -33,9 +33,14 @@ type RuntimeGrantPolicy = {
     };
     /**
      * Files another window of the same Studio process offered, redeemed against a token that
-     * crossed the clipboard with a paste. Non-recursive: the grant covers exactly the files named
-     * in the manifest, and the manifest was verified against the offering window's own read access
-     * before the token existed. See `@shared/types/assetTransfer`.
+     * crossed the clipboard with a paste. The manifest was verified against the offering window's
+     * own read access before the token existed. See `@shared/types/assetTransfer`.
+     *
+     * Non-recursive for a file entry: the grant covers exactly the path the manifest named.
+     * `recursiveForDirectories` is the one exception, and it is a separate field rather than a
+     * looser `recursive` so that neither reach can be handed out in place of the other - a model
+     * bundle is a directory, its contents are the asset, and an entry that is not one gets no reach
+     * below the file it names.
      *
      * Declaring it says the window type takes part in asset transfer at all, which is why both
      * halves - offering and redeeming - are gated on it.
@@ -43,6 +48,7 @@ type RuntimeGrantPolicy = {
     transferredAsset?: {
         mode: FileSystemGrantMode;
         recursive: false;
+        recursiveForDirectories: true;
     };
 };
 
@@ -81,7 +87,7 @@ const workspaceImportGrants: RuntimeGrantPolicy = {
     selectSaveFile: { mode: "write", recursive: false },
     selectDirectory: { mode: "read", recursive: true },
     droppedFile: { mode: "read", recursive: false },
-    transferredAsset: { mode: "read", recursive: false },
+    transferredAsset: { mode: "read", recursive: false, recursiveForDirectories: true },
 };
 
 const pluginPermissionElevatedAccess = (): ApiCapability[] => [
@@ -136,7 +142,17 @@ export function getDeclaredFileSystemGrants(window: AppWindow, mode: FileSystemA
         .filter(grant => grant.mode === mode);
 }
 
-export function getRuntimeGrantPolicy(window: AppWindow, grantType: keyof RuntimeGrantPolicy): RuntimeGrantPolicy[typeof grantType] {
+/**
+ * The policy for one kind of runtime grant, or undefined when this window type declares none.
+ *
+ * Generic in the key so a caller gets that kind's own policy rather than the union of every kind's:
+ * the kinds do not agree on their fields, and reading one through the union would only ever reach
+ * what they all happen to share.
+ */
+export function getRuntimeGrantPolicy<K extends keyof RuntimeGrantPolicy>(
+    window: AppWindow,
+    grantType: K,
+): RuntimeGrantPolicy[K] {
     return windowPermissionDeclarations[window.getWindowType()].runtimeGrants?.[grantType];
 }
 

@@ -4,7 +4,7 @@ export const launcher = {
         projects: "Projects",
         // Between Projects and Plugins because it answers the other half of the same
         // question: Projects is what this machine has, Servers is what it could have.
-        servers: "Servers",
+        servers: "Team",
         plugins: "Plugins",
         learning: "Learning",
         settings: "Settings",
@@ -99,6 +99,10 @@ export const launcher = {
         // description rather than as a mark of its own. It is the question the tab exists to
         // answer, so it stays where the list can be scanned for it.
         here: "On this machine",
+        // Said of a project the server has read and found nothing in. Only ever from a count
+        // that is there and is zero - a server that has not read the repository says nothing
+        // about it, and nothing is what this reads back.
+        nothingSent: "Nothing sent yet",
         // Only ever drawn when the server named a time. A server that has not read the
         // repository says nothing about it, and nothing is what this reads back.
         lastVersion: "Last version {date}",
@@ -109,14 +113,14 @@ export const launcher = {
             unreachable: "This server did not answer.",
             unknown: "This server could not be read.",
         },
-        create: {
-            title: "New project on {server}",
-            name: "Name",
-            description: "Description",
-            descriptionOptional: "Optional",
-            submit: "Create",
-            cancel: "Cancel",
-            failed: "The project was not created.",
+        // A project made here and refused by the server it was made for. The project is on
+        // disk and complete; what did not happen is the connection to the server, and the
+        // dialog is what opens it so that the version rail can try again.
+        unsent: {
+            title: "Project not sent",
+            message: "{name} was created on this machine. It was not sent to {server}.",
+            open: "Open Project",
+            close: "Close",
         },
         // What one project's row opens into. Only reached on a server that offers to say
         // something about a project beyond listing it.
@@ -146,6 +150,9 @@ export const launcher = {
             // whose scene count is on screen above it would be a plain contradiction; that
             // state has its own line below.
             unread: "The server has not read this project.",
+            // Above `unread` and instead of it: a project nobody has sent anything to has no
+            // project file to read, so the two would be one fact told twice.
+            empty: "Nothing has been sent to this project.",
             versions: "Recent versions",
             noVersions: "No versions recorded.",
             // A page that came back without them, on a project the server otherwise
@@ -160,6 +167,21 @@ export const launcher = {
         // drops the entry the server lists and leaves what the repository holds where it is.
         // So the limit is written out rather than implied, in the sentence that names both
         // the project and the list it is coming off.
+        // What people have said about one project, over the session this Studio holds
+        // with the server. Only reached on a deployment that serves conversations.
+        discussion: {
+            title: "Discussion",
+            empty: "No notes on this project.",
+            placeholder: "Write a note",
+            add: "Add",
+            resolve: "Resolve",
+            reopen: "Reopen",
+            resolved: "Resolved",
+            failed: "The note was not sent.",
+            // The list could not be read at all. Never the empty state, which says nobody
+            // has written anything.
+            unavailable: "This project's discussion is not available.",
+        },
         forget: {
             action: "Remove from this server",
             title: "Remove from this server",

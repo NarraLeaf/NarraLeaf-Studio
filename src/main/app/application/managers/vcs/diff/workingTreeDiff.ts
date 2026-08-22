@@ -1,4 +1,11 @@
 import type { DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
+import {
+    documentSetAt,
+    documentSetPathsAmong,
+    foldDocumentSetPaths,
+    type DocumentSetLookup,
+    type DocumentUnit,
+} from "@shared/documents/documentSet";
 import type { RevisionId, VcsChangeKind, VcsStatus, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import {
     contentClassOf,
@@ -10,11 +17,13 @@ import { LABEL_MOVED, type ContentSide } from "./contentDiff";
 import {
     classOfReadSides,
     DIFF_MOVE_CONFIRM_BYTE_CEILING,
-    DIFF_PATH_LIMIT,
     DIFF_TOTAL_BYTE_BUDGET,
+    DIFF_UNIT_LIMIT,
     diffDocumentBytes,
     diffDocumentContent,
+    diffDocumentSet,
     DOCUMENT_DIFF_CHANGE_LIMIT,
+    DOCUMENT_SET_MEMBER_LIMIT,
     planPathRead,
     specForDocumentPath,
     unreadDocumentDiff,
@@ -107,6 +116,13 @@ export interface WorkingTreeDiffSource {
 export interface WorkingTreeDiffOptions {
     readonly limit?: number;
     readonly onDegrade?: (reason: string) => void;
+    /**
+     * Which paths belong to a document that is stored as several files.
+     *
+     * A port, defaulting to the registry Studio uses - which claims nothing today. See the same
+     * field on {@link import("./revisionDiff").RevisionDiffOptions}.
+     */
+    readonly sets?: DocumentSetLookup;
 }
 
 /**
@@ -165,21 +181,34 @@ export async function diffWorkingTree(
         }))
         .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
-    if (files.length > DIFF_PATH_LIMIT) {
+    // Folded before the budget is spent, on the paths alone. See `DIFF_UNIT_LIMIT`: the unit a
+    // comparison counts in is a document, and a document can be many files.
+    const units = foldDocumentSetPaths(files.map((file) => file.path), options.sets ?? documentSetAt);
+    const changedFile = new Map(files.map((file) => [file.path, file]));
+
+    if (units.length > DIFF_UNIT_LIMIT) {
         options.onDegrade?.(
-            `${files.length} files have changed, over the ${DIFF_PATH_LIMIT} path limit,`
+            `${units.length} documents have changed, over the ${DIFF_UNIT_LIMIT} document limit,`
             + " so they are listed without being read",
         );
         return {
             ...(head ? { head } : {}),
-            documents: files.slice(0, DIFF_PATH_LIMIT).map((file) => unreadEntry(file.path, file.kind)),
-            pathCount: files.length,
+            documents: units.slice(0, DIFF_UNIT_LIMIT).map((unit) => unreadEntry(
+                unit.path,
+                unit.kind === "set" ? "changed" : changedFile.get(unit.path)?.kind ?? "changed",
+                unit,
+            )),
+            pathCount: units.length,
             complete: false,
             readFailure: null,
         };
     }
 
-    const needsRecorded = files.some((file) => file.kind !== "added");
+    // **A set needs it even when every change is an addition**, which is the one case the first
+    // clause misses: an author who adds one scene to a story changes nothing else, so without this
+    // the recorded listing would be empty, the set's other files would be invisible, and a document
+    // that gained a scene would be reported as a stray file with no manifest.
+    const needsRecorded = files.some((file) => file.kind !== "added") || units.some((unit) => unit.kind === "set");
     let recorded: ReadonlyMap<string, RevisionEntry> = new Map();
     if (head && needsRecorded) {
         try {
@@ -192,8 +221,12 @@ export async function diffWorkingTree(
             options.onDegrade?.(`could not list version ${head}: ${readFailure}`);
             return {
                 head,
-                documents: files.map((file) => unreadEntry(file.path, file.kind)),
-                pathCount: files.length,
+                documents: units.map((unit) => unreadEntry(
+                    unit.path,
+                    unit.kind === "set" ? "changed" : changedFile.get(unit.path)?.kind ?? "changed",
+                    unit,
+                )),
+                pathCount: units.length,
                 complete: false,
                 readFailure,
             };
@@ -210,9 +243,43 @@ export async function diffWorkingTree(
     const classes = await classifyFiles(source, files, working);
     const classOf = (path: string): ContentClass => classes.get(path) ?? contentClassOf(path);
 
+    // **A set's files come from the two SIDES, not from the changed list.** A document that is
+    // several files is compared whole or not at all, so the members nobody touched are part of
+    // this comparison too - and a file that is not in `status` is by definition identical to the
+    // recorded one, which is what lets the recorded listing stand in for a working-tree walk this
+    // source has no port for.
+    const listing = new Set([...recorded.keys(), ...files.map((file) => file.path)]);
+    const setFiles = new Map<string, readonly string[]>();
+    /** Every file that belongs to a set, so nothing here treats one as a standalone document. */
+    const setPaths = new Set<string>();
+    /**
+     * The subset a comparison will actually open.
+     *
+     * **Two sets rather than one, because the two questions have different answers for a set over
+     * {@link DOCUMENT_SET_MEMBER_LIMIT}.** Such a document is reported as one unread row, so none of
+     * its bytes are worth reading - but its members are still not standalone files, and leaving them
+     * out of `setPaths` put them back into the rename pairing and into the read plan. Both read them
+     * in full, out of the one shared {@link DIFF_TOTAL_BYTE_BUDGET}, and `workingSetEntry` then threw
+     * every byte away - so one large story the author never touched could push documents they DID
+     * touch out of the plan and flip `complete` to false, with the reason nowhere on screen.
+     */
+    const plannedSetPaths = new Set<string>();
+    for (const unit of units) {
+        if (unit.kind !== "set") continue;
+        const members = documentSetPathsAmong(unit.spec, unit.key, listing);
+        setFiles.set(unit.path, members);
+        for (const path of members) setPaths.add(path);
+        if (members.length <= DOCUMENT_SET_MEMBER_LIMIT) {
+            for (const path of members) plannedSetPaths.add(path);
+        }
+    }
+
     // Renames are settled before anything else is planned, so a file that only moved is never
-    // read a second time by the plan below - the same order `diffRevisions` takes.
-    const pairing = head ? await pairRenames(source, head, files, recorded, working) : NOTHING_PAIRED;
+    // read a second time by the plan below - the same order `diffRevisions` takes. **A set's
+    // members are held out of it**: a member that moved inside its own document is a change to
+    // that document, and pairing it would put a per-file "moved" row beside the document's row.
+    const pairable = files.filter((file) => !setPaths.has(file.path));
+    const pairing = head ? await pairRenames(source, head, pairable, recorded, working) : NOTHING_PAIRED;
     const paired = new Set([...pairing.moves.keys(), ...pairing.moves.values()]);
 
     const plan: string[] = [];
@@ -221,22 +288,24 @@ export async function diffWorkingTree(
     // less for the documents after it, which is the honest accounting: those bytes were read.
     let budget = DIFF_TOTAL_BYTE_BUDGET - pairing.spent;
     let complete = true;
-    for (const file of files) {
-        if (paired.has(file.path)) continue;
-        const before = file.kind === "added" ? undefined : recorded.get(file.was);
-        const wanted = planPathRead(
-            file.path,
-            before?.size ?? 0,
-            working.get(file.path)?.size ?? 0,
-            classOf(file.path),
-        );
+    const wantRead = (path: string): number => {
+        const file = changedFile.get(path);
+        const before = file?.kind === "added" ? undefined : recorded.get(file?.was ?? path);
+        // An unchanged member is the same file on both sides, so its recorded size is its working
+        // size and no `stat` is owed for it.
+        const after = file ? working.get(path)?.size ?? 0 : before?.size ?? 0;
+        return planPathRead(path, before?.size ?? 0, after, classOf(path));
+    };
+    for (const path of [...files.filter((file) => !setPaths.has(file.path)).map((file) => file.path), ...plannedSetPaths]) {
+        if (paired.has(path)) continue;
+        const wanted = wantRead(path);
         if (wanted === 0) continue;
         if (wanted > budget) {
             complete = false;
             continue;
         }
         budget -= wanted;
-        plan.push(file.path);
+        plan.push(path);
     }
     const planned = new Set(plan);
 
@@ -244,9 +313,18 @@ export async function diffWorkingTree(
     // first read of a revision on a project with a remote goes to the network, and asking per
     // path would pay that once per document. Paths the pairing already pulled are left out of
     // it and taken from what it kept.
-    const recordedPaths = files
-        .filter((file) => planned.has(file.path) && file.kind !== "added" && !pairing.recorded.has(file.was))
-        .map((file) => file.was);
+    const recordedPaths = [
+        ...files
+            .filter((file) => !setPaths.has(file.path))
+            .filter((file) => planned.has(file.path) && file.kind !== "added" && !pairing.recorded.has(file.was))
+            .map((file) => file.was),
+        // **At the path itself, not under `was`.** A moved file's recorded bytes belong to its OLD
+        // name, and inside a set that old name is a member of the same document in its own right -
+        // so it is fetched by its own entry here, and the new name has no recorded side at all.
+        // Reading `was` under the new name would give the destination a base it never had, and the
+        // rename would then compare as no change.
+        ...[...plannedSetPaths].filter((path) => planned.has(path) && recorded.has(path)),
+    ];
     let recordedBytes: ReadonlyMap<string, Buffer | null> = new Map();
     let readFailure: string | null = null;
     if (head && recordedPaths.length > 0) {
@@ -264,7 +342,33 @@ export async function diffWorkingTree(
     }
 
     const documents: DocumentDiffEntry[] = [];
-    for (const file of files) {
+    for (const unit of units) {
+        if (unit.kind === "set") {
+            const setMembers = setFiles.get(unit.path) ?? [];
+            if (setMembers.length === 0) {
+                // Neither side holds a single file of it - the set-shaped version of the directory
+                // case: a path that matched a member pattern without being a file is not a document.
+                continue;
+            }
+            documents.push(await workingSetEntry({
+                unit,
+                files: setMembers,
+                changedFile,
+                recorded,
+                planned,
+                recordedBytes,
+                pairing,
+                source,
+                readFailure,
+                limit,
+                onDegrade: options.onDegrade,
+            }));
+            continue;
+        }
+        const file = changedFile.get(unit.path);
+        if (!file) {
+            continue;
+        }
         const before = file.kind === "added" ? undefined : recorded.get(file.was);
         const after = working.get(file.path) ?? undefined;
         if (!before && !after) {
@@ -560,11 +664,135 @@ function sideOf(entry: { size: number; hash?: string } | undefined): ContentSide
     return entry ? { probe: { size: entry.size, ...(entry.hash ? { hash: entry.hash } : {}) } } : null;
 }
 
-function unreadEntry(path: string, kind: DocumentChangeKind): DocumentDiffEntry {
-    const spec = specForDocumentPath(path);
+interface WorkingSetEntryRequest {
+    readonly unit: Extract<DocumentUnit, { kind: "set" }>;
+    /** Every file of the set on either side - what has to be read to assemble it. */
+    readonly files: readonly string[];
+    readonly changedFile: ReadonlyMap<string, WorkingFile>;
+    readonly recorded: ReadonlyMap<string, RevisionEntry>;
+    readonly planned: ReadonlySet<string>;
+    readonly recordedBytes: ReadonlyMap<string, Buffer | null>;
+    readonly pairing: RenamePairing;
+    readonly source: WorkingTreeDiffSource;
+    readonly readFailure: string | null;
+    readonly limit: number;
+    readonly onDegrade?: (reason: string) => void;
+}
+
+/**
+ * One row for one document the author is part-way through editing, stored as several files.
+ *
+ * `diffRevisions` has the same function next door and the two differ in one thing only: the newer
+ * side here is the disk, so a member that `status` did not name is read off it with the recorded
+ * bytes rather than being stat'd first. That is sound because `status` lists everything that
+ * differs - a file it does not name holds exactly what the revision holds - and it is what keeps a
+ * five-hundred-scene story from costing five hundred `stat` calls on every look at the Changes tab.
+ *
+ * All or nothing, for `setEntry`'s reason: a whole-document `diff` cannot be run with one member
+ * missing, and running it anyway would report the author's scene as deleted.
+ */
+async function workingSetEntry(request: WorkingSetEntryRequest): Promise<DocumentDiffEntry> {
+    const { unit, files, changedFile, recorded } = request;
+    const changed = changedFile.get(unit.path);
+    const kind: DocumentChangeKind = changed && changed.kind !== "changed"
+        ? changed.kind
+        : recorded.has(unit.path) ? "changed" : "added";
+    const common = {
+        path: unit.path,
+        kind,
+        documentKind: unit.spec.kind,
+        members: unit.paths,
+        contentClass: contentClassOf(unit.path),
+    };
+
+    if (files.length > DOCUMENT_SET_MEMBER_LIMIT) {
+        request.onDegrade?.(
+            `${unit.path} is one document made of ${files.length} files, over the ${DOCUMENT_SET_MEMBER_LIMIT}`
+            + " a comparison will assemble, so it is listed without being read",
+        );
+        return { ...common, diff: unreadDocumentDiff(kind) };
+    }
+    if (request.readFailure) {
+        return { ...common, diff: unreadDocumentDiff(kind) };
+    }
+    const unplanned = files.filter((path) => !request.planned.has(path));
+    if (unplanned.length > 0) {
+        request.onDegrade?.(
+            `${unit.path} could not be assembled because ${unplanned.length} of its ${files.length} files`
+            + " were outside the read budget, so it is listed without being read",
+        );
+        return { ...common, diff: unreadDocumentDiff(kind) };
+    }
+
+    // **Where an explicit move left its source.** Lore reports a move as ONE entry, at the
+    // destination (§4.18 names the other spelling, delete+add, which arrives as two entries and is
+    // handled by the two of them being ordinary members). So the source path is in the recorded
+    // tree and in no status entry at all - which is, from `changedFile` alone, indistinguishable
+    // from a member nobody touched. Read as untouched it would go onto the working side too, the
+    // destination would borrow its bytes for a base it never had, both sides would come out
+    // identical, and a renamed scene would report NO CHANGES AT ALL.
+    const movedAway = new Set(
+        [...changedFile.values()]
+            .filter((entry) => entry.kind === "moved" && entry.was !== entry.path)
+            .map((entry) => entry.was),
+    );
+
+    const base = new Map<string, Buffer>();
+    const head = new Map<string, Buffer>();
+    for (const path of files) {
+        const file = changedFile.get(path);
+        // What the recorded side holds AT THIS PATH. An addition has nothing there, and neither has
+        // the destination of a move: its recorded bytes live under the source name, which is a
+        // member of this same document and gets its own turn in this loop.
+        const recordedSide = file?.kind === "added" || file?.kind === "moved" || !recorded.has(path)
+            ? null
+            : request.pairing.recorded.get(path) ?? request.recordedBytes.get(path) ?? null;
+        if (recordedSide) {
+            base.set(path, recordedSide);
+        }
+        if (!file) {
+            // Not in `status`: either untouched - the disk holds the recorded bytes, and reading it
+            // again would answer the same thing at the price of a syscall per member - or the
+            // source of a move, which is not on disk under this name any more.
+            if (recordedSide && !movedAway.has(path)) head.set(path, recordedSide);
+            continue;
+        }
+        if (file.kind === "removed") {
+            continue;
+        }
+        const bytes = await bytesOnDisk(request.source, request.pairing, path);
+        if (bytes) {
+            head.set(path, bytes);
+        }
+    }
+
+    return {
+        ...common,
+        diff: diffDocumentSet(
+            {
+                path: unit.path,
+                spec: unit.spec,
+                key: unit.key,
+                base: base.size > 0 ? { parts: base } : null,
+                head: head.size > 0 ? { parts: head } : null,
+            },
+            { limit: request.limit, onDegrade: request.onDegrade },
+        ),
+    };
+}
+
+/**
+ * A document that changed and was deliberately not read.
+ *
+ * `unit` is passed where the caller has already folded - the only way this can name the kind of a
+ * document nothing has been read of, since for a set the manifest path alone says nothing.
+ */
+function unreadEntry(path: string, kind: DocumentChangeKind, unit?: DocumentUnit): DocumentDiffEntry {
+    const spec = unit?.kind === "set" ? unit.spec : specForDocumentPath(path);
     return {
         path,
         kind,
+        ...(unit?.kind === "set" ? { members: unit.paths } : {}),
         ...(spec ? { documentKind: spec.kind } : {}),
         // The name only: this is the path a comparison takes before anything has been classified.
         contentClass: contentClassOf(path),

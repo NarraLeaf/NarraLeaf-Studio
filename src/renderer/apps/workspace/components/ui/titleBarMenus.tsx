@@ -33,6 +33,14 @@ interface TitleBarMenuRecord {
     hotTrack: boolean;
     /** The letter Alt reaches this menu by, if it has one. */
     mnemonic?: string;
+    /**
+     * Letters that reach a menu this one is holding, rather than this one - the accelerators of the
+     * groups a collapsed bar swallowed. Answered only after every member's own letter, so a menu
+     * still on the bar always keeps the letter it names itself by.
+     */
+    innerMnemonics?: readonly string[];
+    /** Which of {@link innerMnemonics} was pressed, told to the member as it is being opened. */
+    onInnerMnemonic?: (mnemonic: string) => void;
     /** First refusal on a key while this menu is open; true means it was consumed. */
     onKeyDown?: (event: KeyboardEvent) => boolean;
 }
@@ -67,8 +75,9 @@ export interface TitleBarMenusProps {
      */
     suspended?: boolean;
     /**
-     * Right-click on the row itself. The bar owns the strip, so a gesture that belongs to the strip
-     * rather than to any one menu is handed here instead of to a wrapper element.
+     * Right-click on the strip itself. The bar takes it rather than a wrapper around it, because
+     * what the workspace offers there is where these menus go - and that has to be reachable on the
+     * arrangement where they are collapsed and there is nothing else on the strip to right-click.
      */
     onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
 }
@@ -196,14 +205,15 @@ export function TitleBarMenus({ className, children, suspended = false, onContex
             const altAlone = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
             setRevealMnemonics(altAlone);
             if (!altAlone || event.repeat || event.isComposing) return;
-            for (const [id, record] of members) {
-                if (!record.mnemonic || !matchesMnemonic(event, record.mnemonic)) continue;
-                pending.push(window.setTimeout(() => {
-                    if (event.defaultPrevented) return;
-                    setOpenMenu({ id, hotTrack: record.hotTrack });
-                }, 0));
-                return;
-            }
+            const hit = findMnemonicTarget(members, event);
+            if (!hit) return;
+            pending.push(window.setTimeout(() => {
+                if (event.defaultPrevented) return;
+                // Told before the open, so the menu is already pointed at the right row when it
+                // appears rather than opening on its first row and jumping.
+                if (hit.inner) hit.record.onInnerMnemonic?.(hit.inner);
+                setOpenMenu({ id: hit.id, hotTrack: hit.record.hotTrack });
+            }, 0));
         };
         const onKeyUp = (event: KeyboardEvent) => {
             if (event.key === "Alt" || !event.altKey) clear();
@@ -242,11 +252,45 @@ function matchesMnemonic(event: KeyboardEvent, mnemonic: string): boolean {
     return event.code === `Key${letter}` || event.key.toUpperCase() === letter;
 }
 
+/**
+ * Which member this Alt chord reaches, and whether it reached one of the menus that member holds.
+ *
+ * Two passes, and the order is the point: a menu drawn on the bar owns the letter it names itself
+ * by, and only the letters nobody on the bar claims fall through to the menus a hamburger has
+ * collapsed. Both arrangements can therefore declare the same letter without the collapsed one ever
+ * shadowing a menu that is on screen.
+ */
+function findMnemonicTarget(
+    members: Map<string, TitleBarMenuRecord>,
+    event: KeyboardEvent,
+): { id: string; record: TitleBarMenuRecord; inner?: string } | null {
+    for (const [id, record] of members) {
+        if (record.mnemonic && matchesMnemonic(event, record.mnemonic)) {
+            return { id, record };
+        }
+    }
+    for (const [id, record] of members) {
+        const inner = record.innerMnemonics?.find(letter => matchesMnemonic(event, letter));
+        if (inner) {
+            return { id, record, inner };
+        }
+    }
+    return null;
+}
+
 export interface TitleBarMenuOptions {
     /** Whether the pointer and the arrow keys may walk to this menu while a sibling is open. */
     hotTrack?: boolean;
     /** The letter Alt reaches this menu by. Undeclared means no accelerator. */
     mnemonic?: string;
+    /**
+     * Letters that reach a menu held INSIDE this one - what a hamburger declares on behalf of the
+     * groups it collapsed, so their accelerators survive the arrangement that took their buttons
+     * away. Claimed only where no menu on the bar names that letter itself.
+     */
+    innerMnemonics?: readonly string[];
+    /** Which of {@link innerMnemonics} was pressed, delivered as this menu is being opened. */
+    onInnerMnemonic?: (mnemonic: string) => void;
     /** First refusal on a key while this menu is open; return true if it was consumed. */
     onKeyDown?: (event: KeyboardEvent) => boolean;
 }
@@ -267,7 +311,7 @@ export interface TitleBarMenu {
  */
 export function useTitleBarMenu(
     id: string,
-    { hotTrack = false, mnemonic, onKeyDown }: TitleBarMenuOptions = {},
+    { hotTrack = false, mnemonic, innerMnemonics, onInnerMnemonic, onKeyDown }: TitleBarMenuOptions = {},
 ): TitleBarMenu {
     const bar = useContext(TitleBarMenusActionsContext);
     const openId = useContext(TitleBarMenusOpenIdContext);
@@ -278,10 +322,19 @@ export function useTitleBarMenu(
     // One record for the member's whole life, refreshed in place. Registering a new object per
     // render would put the registration effect on a treadmill; reading a stale one would hand the
     // bar last render's key handler.
-    const record = useRef<TitleBarMenuRecord>({ element: ref, hotTrack, mnemonic, onKeyDown });
+    const record = useRef<TitleBarMenuRecord>({
+        element: ref,
+        hotTrack,
+        mnemonic,
+        innerMnemonics,
+        onInnerMnemonic,
+        onKeyDown,
+    });
     useEffect(() => {
         record.current.hotTrack = hotTrack;
         record.current.mnemonic = mnemonic;
+        record.current.innerMnemonics = innerMnemonics;
+        record.current.onInnerMnemonic = onInnerMnemonic;
         record.current.onKeyDown = onKeyDown;
     });
 

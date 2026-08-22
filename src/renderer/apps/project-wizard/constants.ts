@@ -1,5 +1,6 @@
 import { GitBranch, Package, PencilLine } from "lucide-react";
 import { ProjectFlow, ProjectOrigin, ProjectTemplate, VersionControlOption, WizardStep } from "./types";
+import { NARRALEAF_TEAM } from "@shared/constants/servers";
 
 /**
  * The pages each origin leads to, in order.
@@ -71,16 +72,19 @@ export const blankTemplate: ProjectTemplate = {
 /**
  * Version control options.
  *
- * **Lore, not Git.** Studio has exactly one version-control backend and it is Lore
- * (`VcsManager`); the "Git" this used to offer was never wired to anything - the field was read
- * by nothing at all, so both options created the same unversioned project. An option that does
- * not do what it says is worse than no option, which is why picking Lore now actually calls
- * `initRepository` (see `ProjectService.createProject`).
+ * **One backend, and the author never learns its name.** Studio has exactly one
+ * version-control backend, Lore (`VcsManager`), which is what the `lore` value means and why
+ * picking it actually calls `initRepository` (see `ProjectService.createProject`). What the
+ * author reads is the product the feature belongs to: a project put under version control here is
+ * a project that can be sent to a NarraLeaf Team server, and Team is the name they will meet
+ * again in the corner of the workspace and in Settings.
  *
- * Not localized: "Lore" is the backend's name, not a word. `none` keeps `common.none`.
+ * The value stays `lore` deliberately. It names the backend, which is what this field selects,
+ * and renaming it would rename an identifier to match a label - the same mistake as translating a
+ * key. `NARRALEAF_TEAM` is not localized: a product name is spelled the same in every language.
  */
 export const versionControlOptions: VersionControlOption[] = [
-    { value: "lore", label: "Lore" },
+    { value: "lore", label: NARRALEAF_TEAM },
     { value: "none", label: "None", labelKey: "common.none" },
 ];
 
@@ -107,6 +111,6 @@ export const defaultProjectData = {
     // control on costs nothing and turning it on later means the work before that point is
     // unrecorded. It is still a choice the author sees twice - on this step and on the review -
     // before anything is written, and the Project step falls back to `none` on a host with no
-    // Lore build rather than offering something that cannot happen.
+    // backend rather than offering something that cannot happen.
     versionControl: "lore",
 } as const;

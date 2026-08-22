@@ -151,6 +151,12 @@ export function StoryRowGutter(props: {
             </StoryGutterCell>
         );
     }
+    // A blank line's gutter is blank. Every other row wears a mark saying what it is; this one has
+    // nothing to be, and a glyph there would be the editor pointing at an empty line and naming it.
+    // The cell still renders, so the row keeps its height, its number and its hover state.
+    if (block.kind === "empty") {
+        return <StoryGutterCell active={props.active} decorative>{null}</StoryGutterCell>;
+    }
     // Both halves come from the one badge lookup, which is what keeps this mark and the manual entry
     // that could have written the row identical: `icon` is the command's own glyph, `iconColor` the
     // hue of the category it is filed under (and the danger tone for a line that does not resolve).

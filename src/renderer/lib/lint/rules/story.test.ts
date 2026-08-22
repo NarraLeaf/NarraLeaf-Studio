@@ -81,6 +81,7 @@ const goto = (id: string, targetLabel: string): BlockSpec => ({
     payload: { control: "goto", targetLabel },
 });
 const jump = (id: string, targetSceneId: string): BlockSpec => ({ id, kind: "jump", payload: { targetSceneId } });
+const ending = (id: string, name: string): BlockSpec => ({ id, kind: "control", payload: { control: "ending", name } });
 const invalid = (id: string, source: string): BlockSpec => ({ id, kind: "invalid", payload: { source } });
 const choice = (id: string, children: BlockSpec[]): BlockSpec => ({
     id,
@@ -562,6 +563,137 @@ describe("story/dead-end", () => {
             ctxWith(
                 story("s1", "Main", [scene("sc1", "Prologue", [narration("b1"), { ...jump("b2", "sc1"), disabled: true }])]),
             ),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+// --- endings ----------------------------------------------------------------
+
+describe("story/dead-end, once a story declares its endings", () => {
+    it("says nothing about a scene that ends in an /ending row", () => {
+        const findings = run(
+            "story/dead-end",
+            ctxWith(story("s1", "Main", [scene("sc1", "Finale", [narration("b1"), ending("e1", "True End")])])),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a scene that just stops, now that the story has a way to say where it ends", () => {
+        // The old rule stayed silent here and had to: with no end-of-game row, this scene and a
+        // finished ending were the same shape. The ending in `sc2` is what makes the difference
+        // readable, and it is what turns this one back into a finding.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Prologue", [narration("b1")]),
+                scene("sc2", "Finale", [ending("e1", "True End")]),
+            ])),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "sc1" });
+    });
+
+    it("leaves a story that names no ending exactly as it was", () => {
+        // The bargain an existing project made: adopting endings is what sharpens the rule, not
+        // upgrading Studio.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(story("s1", "Main", [scene("sc1", "Finale", [narration("b1")])])),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("counts an ending inside a branch, so an if/else ending both ways is silent", () => {
+        const findings = run(
+            "story/dead-end",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Crossroads", [
+                    condition("c1", [
+                        branch("br1", "if", [ending("e1", "True End")]),
+                        branch("br2", "else", [ending("e2", "Bad End")]),
+                    ]),
+                ]),
+            ])),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+describe("story/rows-after-ending", () => {
+    it("reports the first row written after an ending in the same list", () => {
+        const findings = run(
+            "story/rows-after-ending",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Finale", [ending("e1", "True End"), narration("n1"), narration("n2")]),
+            ])),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyRowsAfterEnding.message");
+        expect(findings[0].location).toMatchObject({ blockId: "n1" });
+    });
+
+    it("reaches a nested list, and reports each list once", () => {
+        const findings = run(
+            "story/rows-after-ending",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Crossroads", [
+                    condition("c1", [
+                        branch("br1", "if", [ending("e1", "True End"), narration("n1")]),
+                        branch("br2", "else", [narration("n2")]),
+                    ]),
+                ]),
+            ])),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "n1" });
+    });
+
+    it("says nothing about a row after the CONTAINER that holds an ending", () => {
+        // Whether that row plays depends on which arm ran, so it is a live path rather than a dead
+        // one - and the compiler keeps it for exactly the same reason.
+        const findings = run(
+            "story/rows-after-ending",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Crossroads", [
+                    condition("c1", [branch("br1", "if", [ending("e1", "True End")])]),
+                    narration("n1"),
+                ]),
+            ])),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("ignores a disabled ending, and a disabled row after a live one", () => {
+        const findings = run(
+            "story/rows-after-ending",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "A", [{ ...ending("e1", "Off"), disabled: true }, narration("n1")]),
+                scene("sc2", "B", [ending("e2", "True End"), { ...narration("n2"), disabled: true }]),
+            ])),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+describe("story/ending-name-duplicate", () => {
+    it("reports the later of two endings sharing a name, and names it", () => {
+        const findings = run(
+            "story/ending-name-duplicate",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "A", [ending("e1", "Bad End")]),
+                scene("sc2", "B", [ending("e2", "Bad End")]),
+            ])),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "e2" });
+        expect(findings[0].messageParams).toEqual({ name: "Bad End" });
+    });
+
+    it("says nothing when every ending has its own name", () => {
+        const findings = run(
+            "story/ending-name-duplicate",
+            ctxWith(story("s1", "Main", [scene("sc1", "A", [ending("e1", "True End"), ending("e2", "Bad End")])])),
         );
         expect(findings).toEqual([]);
     });

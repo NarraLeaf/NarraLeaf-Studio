@@ -2,6 +2,18 @@ import fs from "fs";
 import path from "path";
 import type { DocumentMergeDecision } from "@shared/documents/diff";
 import {
+    assembleDocumentSet,
+    documentSetAt,
+    DocumentSetIncompleteError,
+    documentSetManifestPath,
+    documentSetMemberScan,
+    documentSetPartsFrom,
+    serializeDocumentSet,
+    type AnyDocumentSetSpec,
+    type DocumentSetLocation,
+    type DocumentSetLookup,
+} from "@shared/documents/documentSet";
+import {
     applyMergeDecisions,
     type DocumentMergeSideName,
 } from "@shared/documents/mergeApply";
@@ -69,8 +81,12 @@ export const MERGE_DECISION_LIMIT = 500;
  * exception here would take the whole panel down over one file the author could still resolve
  * whole.
  */
-export async function readMergeDocument(root: string, relativePath: string): Promise<VcsMergeDocument> {
-    const composed = composeMerge(root, relativePath);
+export async function readMergeDocument(
+    root: string,
+    relativePath: string,
+    sets: DocumentSetLookup = documentSetAt,
+): Promise<VcsMergeDocument> {
+    const composed = composeMerge(root, relativePath, sets);
     if (composed.blocked !== undefined) {
         return {
             path: relativePath,
@@ -81,12 +97,19 @@ export async function readMergeDocument(root: string, relativePath: string): Pro
         };
     }
 
-    const { spec, merge } = composed;
+    const { spec, merge, set } = composed;
+    // Every conflicted file this one answer settles. For a single-file document that is the path
+    // itself and the field is absent; for a set it is every member the backend could not settle,
+    // and the caller MUST hand all of them to the resolve verb - settling only the path the author
+    // clicked would leave the rest in conflict and the commit would be refused naming one of them
+    // (§4.32), with the paths that DID settle already written and their sidecars gone.
+    const members = set ? { members: set.conflicted } : {};
     const decisions = merge.decisions as DocumentMergeDecision[];
     if (decisions.length > MERGE_DECISION_LIMIT) {
         return {
             path: relativePath,
             documentKind: spec.kind,
+            ...members,
             decisions: [],
             conflicts: 0,
             blocked: "too-many",
@@ -102,11 +125,18 @@ export async function readMergeDocument(root: string, relativePath: string): Pro
     // resolvable the day its own migration lands, with nothing here to remember to update - and
     // the reason reaches the author as words rather than as a control that is quietly missing.
     try {
-        spec.serialize(merge.document);
+        // A set answers the probe with its files' bytes rather than one file's: `serialize` on a
+        // set spec throws by design, so probing THAT would report every set as read-only.
+        if (set) {
+            serializeDocumentSet(set.spec, set.key, merge.document);
+        } else {
+            spec.serialize(merge.document);
+        }
     } catch (error) {
         return {
             path: relativePath,
             documentKind: spec.kind,
+            ...members,
             decisions: [],
             conflicts: 0,
             blocked: "read-only",
@@ -117,6 +147,7 @@ export async function readMergeDocument(root: string, relativePath: string): Pro
     return {
         path: relativePath,
         documentKind: spec.kind,
+        ...members,
         decisions,
         conflicts: merge.conflicts,
     };
@@ -139,8 +170,9 @@ export async function resolveDocumentChanges(
     root: string,
     relativePath: string,
     choices: Readonly<Record<string, DocumentMergeSideName>>,
-): Promise<void> {
-    const composed = composeMerge(root, relativePath);
+    sets: DocumentSetLookup = documentSetAt,
+): Promise<readonly string[]> {
+    const composed = composeMerge(root, relativePath, sets);
     if (composed.blocked !== undefined) {
         throw new Error(
             `${relativePath} cannot be settled change by change (${composed.blocked}`
@@ -148,12 +180,62 @@ export async function resolveDocumentChanges(
         );
     }
 
-    const { spec, merge } = composed;
-    const settled = applyMergeDecisions(relativePath, merge.document, merge.decisions, choices);
-    // A plain write, for the reason `merge.ts` gives for its plain copy: the operation as a whole
-    // spans several files and is not atomic anyway, and the merge's own three copies are still on
-    // disk beside this one until the commit removes them.
-    fs.writeFileSync(absoluteWithin(root, relativePath), spec.serialize(settled), "utf-8");
+    const { spec, merge, set } = composed;
+    const settled = applyMergeDecisions(set?.manifestPath ?? relativePath, merge.document, merge.decisions, choices);
+
+    if (!set) {
+        // A plain write, for the reason `merge.ts` gives for its plain copy: the operation as a
+        // whole spans several files and is not atomic anyway, and the merge's own three copies are
+        // still on disk beside this one until the commit removes them.
+        fs.writeFileSync(absoluteWithin(root, relativePath), spec.serialize(settled), "utf-8");
+        return [relativePath];
+    }
+
+    writeDocumentSet(root, set, settled);
+    return set.conflicted;
+}
+
+/**
+ * Put a settled set back onto disk, one file at a time, and say nothing about which change went
+ * where.
+ *
+ * **This is where a decision routes home, and it does it by taking the document apart rather than
+ * by reading a change's path.** `applyMergeDecisions` has already produced one whole document; the
+ * file that owns a change is whichever part `disassemble` puts it in, so a change touching two
+ * files moves two files and nothing here had to know that could happen.
+ *
+ * Only the parts whose bytes actually moved are written. A set is written in canonical form and
+ * the service that owns the format may not be - the story service writes
+ * `JSON.stringify(document, null, 2)` - so rewriting every member would turn one settled scene
+ * into a whole-document rewrite in the author's next commit.
+ *
+ * A member the settled document no longer holds is **deleted**, because the alternative is worse:
+ * members are enumerated by path, so a file left behind would be folded straight back in and the
+ * author's accepted deletion would silently undo itself. Its sidecars are left alone - the commit
+ * removes them - and the deleted path stays in {@link ComposedSet.conflicted} so the caller still
+ * settles it with the backend.
+ */
+function writeDocumentSet(root: string, set: ComposedSet, settled: unknown): void {
+    const bytes = serializeDocumentSet(set.spec, set.key, settled);
+    for (const [relative, text] of bytes) {
+        const absolute = absoluteWithin(root, relative);
+        if (readSide(absolute)?.toString("utf-8") === text) {
+            continue;
+        }
+        fs.mkdirSync(path.dirname(absolute), { recursive: true });
+        fs.writeFileSync(absolute, text, "utf-8");
+    }
+    for (const relative of set.files) {
+        if (bytes.has(relative)) {
+            continue;
+        }
+        try {
+            fs.rmSync(absoluteWithin(root, relative));
+        } catch {
+            // Already gone, or not ours to remove. The settle below still names the path, which is
+            // the half that has to happen.
+        }
+    }
 }
 
 interface ComposedMerge {
@@ -162,8 +244,25 @@ interface ComposedMerge {
     readonly conflicts: number;
 }
 
+/** What a set-shaped merge composed itself from, kept so the write can route back to it. */
+interface ComposedSet {
+    readonly spec: AnyDocumentSetSpec;
+    readonly key: Readonly<Record<string, string>>;
+    readonly manifestPath: string;
+    /**
+     * The files of the set that went INTO the merge, repository-relative.
+     *
+     * Not every file that was found: this is the list the write-back may delete from, and a file
+     * that was listed but never merged is a member nobody looked at rather than one the settled
+     * document decided against.
+     */
+    readonly files: readonly string[];
+    /** The subset the backend could not settle - the paths a resolve verb has to be given. */
+    readonly conflicted: readonly string[];
+}
+
 type Composed =
-    | { spec: AnyDocumentSpec; merge: ComposedMerge; blocked?: undefined }
+    | { spec: AnyDocumentSpec; merge: ComposedMerge; set?: ComposedSet; blocked?: undefined }
     | { blocked: VcsMergeDocumentBlocker; detail?: string };
 
 /**
@@ -173,7 +272,12 @@ type Composed =
  * distinction `mergeKeyed` refuses to blur, because without a base "the other side does not have
  * this key" and "the other side removed it" are the same observation.
  */
-function composeMerge(root: string, relativePath: string): Composed {
+function composeMerge(root: string, relativePath: string, sets: DocumentSetLookup): Composed {
+    const location = safeLookup(sets, relativePath);
+    if (location) {
+        return composeSetMerge(root, location);
+    }
+
     const spec = specForDocumentPath(relativePath);
     if (!spec) {
         return { blocked: "no-spec" };
@@ -225,6 +329,219 @@ function composeMerge(root: string, relativePath: string): Composed {
         return { spec, merge };
     } catch (error) {
         return { blocked: "unreadable", detail: `the ${spec.kind} spec threw while merging: ${messageOf(error)}` };
+    }
+}
+
+/**
+ * The same three-way merge, over a document that is several files.
+ *
+ * **The three sides are still on disk and still complete; there are just N of each.** A conflicted
+ * merge leaves `~base`/`~mine`/`~theirs` beside every file it could NOT settle (§4.23) and leaves
+ * the automerged result in place for every file it could. So the rule for building a side is:
+ *
+ *  - a file with `~mine` and `~theirs` beside it contributes those two, and `~base` where the
+ *    merge wrote one;
+ *  - **a file with no sidecars contributes its working bytes to all three sides.** It is already
+ *    settled - automerged, or never touched - and giving all three sides the same value is what
+ *    says so: `merge3` sees nothing to decide there and the bytes stay exactly as the backend left
+ *    them, which is what the commit records byte for byte (§4.25).
+ *
+ * Using the automerged bytes as that file's BASE is a small fiction - base is where the two sides
+ * started, and the automerged value is neither. It is a safe one and only there: all three sides
+ * agree, so no decision can arise from it and nothing about the merged document depends on which
+ * of the three it came from.
+ *
+ * **A missing base is add/add for the whole document**, exactly as it is for one file. It happens
+ * when the manifest itself is conflicted with no `~base` beside it - both authors created this
+ * document independently - and `documentSetPartsFrom` is what says so, by refusing to assemble a
+ * set with no manifest. A `~base` that exists and cannot be PARSED is not downgraded to that, for
+ * `composeMerge`'s reason: it would read every key one side lacks as an addition rather than as a
+ * removal, silently and in the author's favour every time.
+ */
+function composeSetMerge(root: string, location: DocumentSetLocation): Composed {
+    const spec = location.spec;
+    if (!spec.merge3) {
+        return { blocked: "no-merge3" };
+    }
+
+    let files: readonly string[];
+    try {
+        files = documentSetFilesOnDisk(root, spec, location.key);
+    } catch (error) {
+        return { blocked: "unreadable", detail: messageOf(error) };
+    }
+
+    const sides = new Map<DocumentSetSideName, Map<string, Buffer>>([
+        ["base", new Map()],
+        ["mine", new Map()],
+        ["theirs", new Map()],
+    ]);
+    const conflicted: string[] = [];
+    /**
+     * The files that actually went into the three sides.
+     *
+     * Kept apart from `files` because it is what the write-back is allowed to DELETE. A path that
+     * was listed but never merged is not a member the settled document decided against - it is a
+     * member nobody looked at - and a loop that removes whatever the settled document does not hold
+     * cannot tell the two apart unless they are different lists.
+     */
+    const contributed: string[] = [];
+
+    for (const relative of files) {
+        const absolute = absoluteWithin(root, relative);
+        const mine = readSide(`${absolute}${SIDECAR.mine}`);
+        const theirs = readSide(`${absolute}${SIDECAR.theirs}`);
+        if (mine && theirs) {
+            conflicted.push(relative);
+            contributed.push(relative);
+            const base = readSide(`${absolute}${SIDECAR.base}`);
+            if (base) sides.get("base")?.set(relative, base);
+            sides.get("mine")?.set(relative, mine);
+            sides.get("theirs")?.set(relative, theirs);
+            continue;
+        }
+        if (mine || theirs) {
+            // Both are written by the same merge, so one without the other means something removed
+            // it. Refusing is right: settling the document anyway would record this file with the
+            // conflict markers still in it.
+            return { blocked: "unreadable", detail: `the merge's copy of ${mine ? "their" : "your"} side of ${relative} is missing` };
+        }
+        const working = readSide(absolute);
+        if (!working) {
+            // **`documentSetFilesOnDisk` proved this file exists, so a null read is a file that
+            // could not be OPENED** - a lock, a directory in its place, a hostile mode. The first
+            // version skipped it, and skipping is what loses the author's work: the member left all
+            // three sides with no signal anywhere, the assembled document came out without it, and
+            // the write-back's delete loop then removed the file, because a member the settled
+            // document does not hold is a member the author decided against. Refusing is the answer
+            // the single-file path already gives when one of its three copies cannot be read.
+            if (fs.existsSync(absolute)) {
+                return { blocked: "unreadable", detail: `${relative} is on disk but could not be read` };
+            }
+            // Gone between the listing and the read. An ordinary race, there is nothing to merge,
+            // and it is not in `contributed` - so nothing will try to delete it either.
+            continue;
+        }
+        contributed.push(relative);
+        for (const side of sides.values()) side.set(relative, working);
+    }
+
+    if (conflicted.length === 0) {
+        return { blocked: "unreadable", detail: "no file of this document has the merge's copies beside it" };
+    }
+    // **Per SIDE, not across all three**, which is the rule the single-file path above applies: it
+    // checks `base`, `mine` and `theirs` separately. The ceiling bounds one parse of one document,
+    // and for a set a side is the sum of its files.
+    for (const [name, bytes] of sides) {
+        let total = 0;
+        for (const buffer of bytes.values()) total += buffer.length;
+        if (total > DIFF_PARSE_BYTE_CEILING) {
+            return { blocked: "too-large", detail: `${total} bytes across ${bytes.size} files on the ${name} side` };
+        }
+    }
+
+    const parsed = new Map<DocumentSetSideName, unknown>();
+    for (const [name, bytes] of sides) {
+        const raw = new Map<string, unknown>();
+        for (const [relative, buffer] of bytes) {
+            try {
+                raw.set(relative, JSON.parse(buffer.toString("utf-8")));
+            } catch (error) {
+                // Named by file and by side rather than by sidecar: these bytes came from `~base`
+                // for a conflicted file and from the working file for a settled one, so naming a
+                // suffix here would point the author at a file that may not exist.
+                return { blocked: "unreadable", detail: `${relative} is not valid JSON on ${SIDE_WORD[name]}: ${messageOf(error)}` };
+            }
+        }
+        try {
+            const parts = documentSetPartsFrom(spec, location.key, raw);
+            // No single byte string to carry: a set is N files. The text on a `DocumentCorruptError`
+            // exists for quarantine, and nothing on this path quarantines - these bytes are the
+            // merge's own copies of two recorded sides.
+            parsed.set(name, assembleDocumentSet(spec, parts, parseContextFor(spec, location.manifestPath, Buffer.alloc(0))));
+        } catch (error) {
+            if (name === "base" && error instanceof DocumentSetIncompleteError) {
+                // No manifest on the base side: both authors made this document independently.
+                continue;
+            }
+            return { blocked: "unreadable", detail: messageOf(error) };
+        }
+    }
+
+    const mine = parsed.get("mine");
+    const theirs = parsed.get("theirs");
+    if (mine === undefined || theirs === undefined) {
+        return { blocked: "unreadable", detail: `the ${mine === undefined ? "your" : "their"} side of this document has no manifest` };
+    }
+
+    try {
+        const merge = spec.merge3(parsed.get("base"), mine, theirs);
+        if (!merge || !Array.isArray(merge.decisions)) {
+            return { blocked: "unreadable", detail: `the ${spec.kind} spec returned no usable merge` };
+        }
+        return {
+            spec,
+            merge,
+            set: {
+                spec,
+                key: location.key,
+                manifestPath: location.manifestPath,
+                files: contributed,
+                conflicted: conflicted.sort(),
+            },
+        };
+    } catch (error) {
+        return { blocked: "unreadable", detail: `the ${spec.kind} spec threw while merging: ${messageOf(error)}` };
+    }
+}
+
+type DocumentSetSideName = "base" | "mine" | "theirs";
+
+/** The backend's three sides in the vocabulary a blocked reason is read in. */
+const SIDE_WORD: Readonly<Record<DocumentSetSideName, string>> = {
+    base: "the version both sides started from",
+    mine: "your side",
+    theirs: "their side",
+};
+
+/**
+ * Every file of one set that is on disk, manifest first.
+ *
+ * A `readdir` rather than a walk, and the directory is the member pattern's business rather than
+ * this module's - see {@link documentSetMemberScan}. Nothing here parses the manifest to find out
+ * what its members are: rule 1 of the set model is that members are enumerated by path, and a
+ * conflicted manifest is not parseable in the first place.
+ */
+function documentSetFilesOnDisk(
+    root: string,
+    spec: AnyDocumentSetSpec,
+    key: Readonly<Record<string, string>>,
+): readonly string[] {
+    const manifestPath = documentSetManifestPath(spec, key);
+    const scan = documentSetMemberScan(spec, key);
+    let entries: string[];
+    try {
+        entries = fs.readdirSync(absoluteWithin(root, scan.directory));
+    } catch {
+        // No member directory at all is an ordinary answer: a set whose manifest is the only file
+        // it has yet. It is not an ordinary answer for a MISSING manifest, and the assemble below
+        // is what says so.
+        entries = [];
+    }
+
+    const members = entries
+        .map((entry) => scan.pathOf(entry))
+        .filter((relative): relative is string => relative !== undefined && fs.existsSync(absoluteWithin(root, relative)))
+        .sort();
+    return fs.existsSync(absoluteWithin(root, manifestPath)) ? [manifestPath, ...members] : members;
+}
+
+/** Never throws: a lookup is asked about paths the backend chose, including ones it cannot parse. */
+function safeLookup(sets: DocumentSetLookup, relativePath: string): DocumentSetLocation | undefined {
+    try {
+        return sets(relativePath);
+    } catch {
+        return undefined;
     }
 }
 

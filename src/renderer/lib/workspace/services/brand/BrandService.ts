@@ -12,12 +12,14 @@ import {
     type ProjectBrandDocument,
 } from "@shared/types/brand";
 import { getActiveBrandPalette, setActiveBrandPalette, type BrandPalette } from "@shared/brand/brandRegistry";
-import { setActiveProjectFonts } from "@shared/typography/projectFonts";
+import { setActiveProjectFonts, setActiveProjectLocale } from "@shared/typography/projectFonts";
 import {
     normalizeProjectFontStack,
     PROJECT_FONT_STACK_MAX,
+    sameProjectFontStack,
     type ProjectFontEntry,
 } from "@shared/types/typography";
+import { LocalizationService } from "../localization/LocalizationService";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -73,6 +75,8 @@ export class BrandService extends Service<BrandService> implements IBrandService
     private readonly events = new EventEmitter<BrandServiceEvents>();
     private dirty = false;
     private revision = 0;
+    /** Unsubscribe from the localization config; see {@link watchProjectLocale}. */
+    private stopLocaleWatch: (() => void) | null = null;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
@@ -84,9 +88,11 @@ export class BrandService extends Service<BrandService> implements IBrandService
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
-        await depend([filesystemService, projectService, uuidService]);
+        const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
+        await depend([filesystemService, projectService, uuidService, localizationService]);
         await registerAutoSaver(ctx, depend, "brand", "workspace.shell.save.stores.brand", this.autoSaver);
 
+        this.watchProjectLocale(localizationService);
         await this.load();
     }
 
@@ -202,7 +208,7 @@ export class BrandService extends Service<BrandService> implements IBrandService
      * Reported rather than silent, because the caller is a picker the author has just pressed a font
      * in: nothing happening on screen is indistinguishable from a control that does not work.
      */
-    public addFont(assetId: string): boolean {
+    public addFont(assetId: string, locales?: readonly string[]): boolean {
         const id = assetId.trim();
         if (!id) {
             return false;
@@ -211,7 +217,33 @@ export class BrandService extends Service<BrandService> implements IBrandService
         if (fonts.length >= PROJECT_FONT_STACK_MAX || fonts.some(entry => entry.assetId === id)) {
             return false;
         }
-        this.applyFontMutation(entries => [...entries, { assetId: id }]);
+        const restriction = locales && locales.length > 0 ? { locales: [...locales] } : {};
+        this.applyFontMutation(entries => [...entries, { assetId: id, ...restriction }]);
+        return true;
+    }
+
+    /**
+     * Restrict a rung to some languages, or - with an empty list - to none, which means all of them.
+     *
+     * Whole-list rather than add/remove one language at a time: the control is a set of checkboxes
+     * whose state the author reads off the screen, so what it has to be able to say is "this is the
+     * set now". An add/remove pair would make the same edit two writes and two undo steps.
+     *
+     * Answers false for a rung that is not on the stack, and for a restriction that is already what
+     * was asked for - a write that changes nothing must not mark the document dirty or push a
+     * revision that repaints every text widget in the project.
+     */
+    public setFontLocales(assetId: string, locales: readonly string[]): boolean {
+        const entries = this.getDocument().fonts;
+        const current = entries.find(entry => entry.assetId === assetId);
+        if (!current) {
+            return false;
+        }
+        const next = normalizeProjectFontStack([{ assetId, locales: [...locales] }])[0] ?? { assetId };
+        if (sameProjectFontStack([current], [next])) {
+            return false;
+        }
+        this.applyFontMutation(list => list.map(entry => (entry.assetId === assetId ? next : entry)));
         return true;
     }
 
@@ -385,6 +417,33 @@ export class BrandService extends Service<BrandService> implements IBrandService
         // project that has chosen no default font holds, so a project closed here cannot leave
         // its typeface setting the next project's text for as long as that project's load takes.
         setActiveProjectFonts([]);
+        // And the language it was resolved in, for the same reason and with the same
+        // consequence: an empty one filters nothing, which is what an unpublished host reads.
+        this.stopLocaleWatch?.();
+        this.stopLocaleWatch = null;
+        setActiveProjectLocale("");
+    }
+
+    /**
+     * Keep the window's typography language in step with the project's source language.
+     *
+     * A rung of the stack may be restricted to some languages, so the stack has no resolved answer
+     * without one - and the language the *editor* resolves in is the project's source language, the
+     * one an author writes and previews in. That is the same call `resolveEditorAssetSetMember` makes
+     * for pictures, and it is made here rather than in `LocalizationService` because this service is
+     * already the one that publishes the project's typography to the module-level store; splitting
+     * the two halves of one publish across two services is how they come to disagree.
+     *
+     * Subscribed rather than read once: changing the source language is a thing an author does early
+     * on, and a stack still resolved in the old one would set the whole project in the wrong face
+     * until the project was reopened.
+     */
+    private watchProjectLocale(localization: LocalizationService): void {
+        this.stopLocaleWatch?.();
+        setActiveProjectLocale(localization.getConfiguration().sourceLocale);
+        this.stopLocaleWatch = localization.onConfigChanged(config => {
+            setActiveProjectLocale(config.sourceLocale);
+        });
     }
 
     /** The single mutation entry - mutate the list, re-normalize, bump, mark dirty, autosave, publish. */

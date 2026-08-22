@@ -1,5 +1,8 @@
+import crypto from "crypto";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
+import { devModeScreenEffectQuality, screenEffectBakeThreads } from "../../weather/screenEffectQuality";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -32,6 +35,17 @@ export class StudioTasksGetOverviewHandler extends IPCHandler<IPCEventType.studi
  *
  * Never reports a failure. A clip that could not be produced is produced again, blockingly, the
  * moment something actually needs it, and that is where an author gets told.
+ *
+ * ## One message is one ask
+ *
+ * The specs are what this project's stories say NOW, so they are claimed as the whole of what the
+ * pre-baker wants: a clip it asked for last time and does not ask for here describes a document that
+ * no longer exists, and is dropped rather than left encoding. Without that, an author dragging a
+ * density through five values leaves four bakes running for numbers they never saw, and the fifth -
+ * the one they are watching for - waits behind all of them.
+ *
+ * That is also why an empty list still gets through: removing the last weather row is exactly the
+ * ask "nothing, now", and the bake for the row that is gone has to hear it.
  */
 export class StudioTasksPrebakeWeatherHandler extends IPCHandler<IPCEventType.studioTasksPrebakeWeather> {
     readonly name = IPCEventType.studioTasksPrebakeWeather;
@@ -41,9 +55,17 @@ export class StudioTasksPrebakeWeatherHandler extends IPCHandler<IPCEventType.st
         window: AppWindow,
         { projectPath, specs }: IPCEvents[IPCEventType.studioTasksPrebakeWeather]["data"],
     ): RequestStatus<IPCEvents[IPCEventType.studioTasksPrebakeWeather]["response"]> {
-        if (projectPath && specs.length > 0) {
-            void window.getApp().getWeatherBakeManager()
-                .ensure({ projectRoot: projectPath, specs, priority: "idle" });
+        if (projectPath) {
+            void window.getApp().getWeatherBakeManager().ensure({
+                projectRoot: projectPath,
+                specs,
+                priority: "idle",
+                // Whatever Dev Mode will ask for, because being ready for it is the only reason this
+                // exists. See `devModeScreenEffectQuality`.
+                quality: devModeScreenEffectQuality(window.getApp()),
+                threads: screenEffectBakeThreads(window.getApp()),
+                claim: { owner: WeatherBakeOwner.prebake(projectPath), attempt: crypto.randomUUID() },
+            });
         }
         return this.success({});
     }

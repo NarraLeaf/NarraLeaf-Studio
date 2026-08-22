@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Badge, Button } from "@/lib/components/elements";
+import { Badge, Button, Select, Switch } from "@/lib/components/elements";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { cn } from "@/lib/utils/cn";
 import { translate, useTranslation } from "@/lib/i18n";
@@ -7,8 +7,16 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import { TEST_CONSOLE_CHANNEL } from "@/lib/testing/TestRunService";
+import { EMPTY_TEST_PARAMETER_MEMORY, type TestParameterMemory } from "@/lib/testing/parameterCache";
+import { resolveTestParameterValues, type ResolvedTestParameter } from "@/lib/testing/parameters";
 import type { Workspace } from "@/lib/workspace/workspace";
-import type { RegisteredTest, TestAvailability, TestId } from "@/lib/testing/types";
+import type {
+    RegisteredTest,
+    TestAvailability,
+    TestId,
+    TestParameterValue,
+    TestParameterValues,
+} from "@/lib/testing/types";
 import { getTestRunService } from "./testRunService";
 import {
     TEST_CATEGORY_LABEL_KEYS,
@@ -36,20 +44,39 @@ const CONSOLE_PANEL_ID = "narraleaf-studio:console";
  *    "not while the workspace is frozen" - because a test that vanishes reads as a test that was
  *    never installed. `getAvailability` is the whole authority on this; the picker applies no gate
  *    of its own, so what the author is refused and what the host would refuse cannot drift apart.
+ *    Parameters follow it rather than getting a rule of their own: the section is drawn for whatever
+ *    is selected and never hidden on a condition, and its controls are live exactly when Start is -
+ *    so what the author may fill in and what they may run are one answer, not two.
+ *
+ * The parameters of the selected test sit between the list and the footer rather than inside the
+ * selected row. The list is a `listbox` of `option`s, which is the wrong place to put a dropdown and
+ * a switch; and a block that expanded a row into a panel is exactly the shape this file exists to
+ * avoid.
  */
 export function TestPickerContent({
     tests,
     getAvailability,
+    listParameters,
+    rememberedParameters,
     onStart,
     onCancel,
 }: {
     tests: RegisteredTest[];
     getAvailability: (id: TestId) => TestAvailability;
-    onStart: (testId: TestId) => void;
+    /**
+     * What the selected test asks the author for. Absent means nothing does, and the picker draws
+     * exactly what it drew before parameters existed.
+     */
+    listParameters?: (id: TestId) => ResolvedTestParameter[];
+    /** The values these tests were last run with, read from the project cache before this opened. */
+    rememberedParameters?: TestParameterMemory;
+    onStart: (testId: TestId, parameters: TestParameterValues) => void;
     onCancel: () => void;
 }) {
     const { t } = useTranslation();
     const [selected, setSelected] = useState<TestId | null>(null);
+    /** Only what the author changed by hand. Everything else is resolved from the declarations. */
+    const [edited, setEdited] = useState<Record<TestId, TestParameterValues>>({});
 
     const groups = useMemo(() => groupTestsByCategory(tests), [tests]);
     // Evaluated once per open, which is what `checkAvailability` is documented to be cheap enough
@@ -62,11 +89,51 @@ export function TestPickerContent({
         return map;
     }, [tests, getAvailability]);
 
-    const canStart = selected !== null && availability.get(selected)?.available === true;
-    const start = () => {
-        if (selected !== null && canStart) {
-            onStart(selected);
+    // Asked once per selection, not per keystroke: `options` is a call into a definition, and the
+    // list it returns is what the row below is drawn from and what a remembered value is checked
+    // against, so both have to be reading the same answer.
+    const parameters = useMemo(
+        () => (selected !== null && listParameters ? listParameters(selected) : []),
+        [selected, listParameters],
+    );
+    const values = useMemo(() => {
+        if (selected === null) {
+            return {};
         }
+        // The author's own edits sit on top of what was remembered, and the resolver has the last
+        // word on both - so a value whose option has since disappeared falls back to the default
+        // rather than leaving the control pointing at nothing.
+        const remembered = (rememberedParameters ?? EMPTY_TEST_PARAMETER_MEMORY)[selected];
+        return resolveTestParameterValues(parameters, { ...remembered, ...edited[selected] });
+    }, [selected, parameters, rememberedParameters, edited]);
+
+    const setValue = (parameterId: string, value: TestParameterValue) => {
+        if (selected === null) {
+            return;
+        }
+        setEdited(previous => ({
+            ...previous,
+            [selected]: { ...previous[selected], [parameterId]: value },
+        }));
+    };
+
+    const canStart = selected !== null && availability.get(selected)?.available === true;
+    /**
+     * Start one test with what it would be shown.
+     *
+     * Resolved for the id being started rather than read off the selection, because a double-click
+     * starts a row in the same gesture that selects it - and the answer must not depend on whether
+     * React had re-rendered in between.
+     */
+    const startTest = (testId: TestId) => {
+        if (availability.get(testId)?.available !== true) {
+            return;
+        }
+        const resolved = testId === selected ? parameters : listParameters?.(testId) ?? [];
+        onStart(testId, resolveTestParameterValues(resolved, {
+            ...(rememberedParameters ?? EMPTY_TEST_PARAMETER_MEMORY)[testId],
+            ...edited[testId],
+        }));
     };
 
     return (
@@ -99,7 +166,7 @@ export function TestPickerContent({
                                     availability={availability.get(test.definition.id) ?? { available: true }}
                                     selected={selected === test.definition.id}
                                     onSelect={() => setSelected(test.definition.id)}
-                                    onActivate={() => onStart(test.definition.id)}
+                                    onActivate={() => startTest(test.definition.id)}
                                 />
                             ))}
                         </div>
@@ -107,11 +174,37 @@ export function TestPickerContent({
                 )}
             </div>
 
+            {parameters.length > 0 ? (
+                <div
+                    role="group"
+                    aria-label={t("test.picker.parameters")}
+                    className="grid gap-1.5 border-t border-edge px-6 py-3"
+                >
+                    {parameters.map(parameter => (
+                        <TestParameterRow
+                            key={parameter.definition.id}
+                            parameter={parameter}
+                            value={values[parameter.definition.id]}
+                            // Live exactly when Start is. An unavailable row declines the click that
+                            // would select it, so this is what keeps the two from drifting rather
+                            // than a state the author reaches by a different route.
+                            disabled={!canStart}
+                            onChange={value => setValue(parameter.definition.id, value)}
+                        />
+                    ))}
+                </div>
+            ) : null}
+
             <div className="flex items-center justify-end gap-2 border-t border-edge bg-surface-overlay px-6 py-3">
                 <Button variant="secondary" aria-label={t("common.cancel")} onClick={onCancel}>
                     {t("common.cancel")}
                 </Button>
-                <Button variant="primary" aria-label={t("test.picker.start")} disabled={!canStart} onClick={start}>
+                <Button
+                    variant="primary"
+                    aria-label={t("test.picker.start")}
+                    disabled={!canStart}
+                    onClick={() => selected !== null && startTest(selected)}
+                >
                     {t("test.picker.start")}
                 </Button>
             </div>
@@ -200,14 +293,99 @@ function TestRow({
 }
 
 /**
+ * One value the selected test is told before it starts: its name on the left, its control on the
+ * right.
+ *
+ * A row, not a field stack, and one `size` across the lot - the picker is a dense list and a
+ * parameter must not cost more vertical space than the test it belongs to. `FieldLabel` is drawn as
+ * a `div`: `Select` and `Switch` are both buttons under the hood with no id to point a `<label>` at,
+ * so the name reaches assistive tech as the control's own accessible name instead.
+ */
+function TestParameterRow({
+    parameter,
+    value,
+    disabled,
+    onChange,
+}: {
+    parameter: ResolvedTestParameter;
+    value: TestParameterValue | undefined;
+    disabled: boolean;
+    onChange: (value: TestParameterValue) => void;
+}) {
+    const { t } = useTranslation();
+    const label = resolveTestText(parameter.definition.label, t);
+    const description = resolveTestText(parameter.definition.description, t);
+
+    return (
+        <div className="flex min-w-0 items-center gap-3">
+            <span className="grid min-w-0 flex-1">
+                <FieldLabel as="div" className="mb-0 truncate text-xs text-fg-muted">
+                    {label}
+                </FieldLabel>
+                {description ? (
+                    <span className="min-w-0 truncate text-2xs text-fg-subtle">{description}</span>
+                ) : null}
+            </span>
+            {parameter.kind === "select" ? (
+                <Select
+                    size="sm"
+                    className="w-52 shrink-0"
+                    fullWidth
+                    // Opens upward on purpose. The row sits just above the dialog's footer, and the
+                    // dialog clips its own overflow - a menu that measured its way downwards would
+                    // be measuring against room this box does not have.
+                    menuPlacement="above"
+                    ariaLabel={label}
+                    disabled={disabled}
+                    value={typeof value === "string" ? value : undefined}
+                    options={parameter.options.map(option => ({
+                        value: option.value,
+                        label: resolveTestText(option.label, t),
+                    }))}
+                    onChange={next => onChange(String(next))}
+                />
+            ) : (
+                <Switch
+                    size="sm"
+                    className="shrink-0"
+                    aria-label={label}
+                    disabled={disabled}
+                    checked={value === true}
+                    onCheckedChange={onChange}
+                />
+            )}
+        </div>
+    );
+}
+
+/**
  * Open the picker. Starting closes it, reveals the console (where the run's live lines land) and
  * hands the run to the service - the report tab is opened later by whoever is watching the run.
  */
 export function openTestDialog(workspace: Workspace): void {
+    void showTestPicker(workspace);
+}
+
+/**
+ * Everything the picker draws from is read *before* the dialog opens, not from inside it.
+ *
+ * One small file off the project cache, plus whatever the parameter lists are built from - and
+ * reading both first is what lets `TestPickerContent` stay a pure function of its props: no effect,
+ * no loading state, and no dropdown that draws a default and then visibly jumps to what the author
+ * picked last time. Neither read can fail the open: a missing cache answers "nothing remembered",
+ * and a story that will not load is one story missing from a list.
+ */
+async function showTestPicker(workspace: Workspace): Promise<void> {
     const context = workspace.getContext();
     const uiService = context.services.get<UIService>(Services.UI);
     const consoleService = context.services.get<ConsoleService>(Services.Console);
     const testRun = getTestRunService(context);
+    const [rememberedParameters] = await Promise.all([
+        testRun.readRememberedParameters(),
+        // A `select` evaluates its options synchronously, so what it can offer is whatever is in
+        // memory by now. See `TestRunService.prepareParameterSources`.
+        testRun.prepareParameterSources(),
+    ]);
 
     const dialogId = uiService.dialogs.show({
         title: translate("test.picker.title"),
@@ -220,15 +398,20 @@ export function openTestDialog(workspace: Workspace): void {
             <TestPickerContent
                 tests={testRun.listTests()}
                 getAvailability={id => testRun.getAvailability(id)}
+                listParameters={id => testRun.listParameters(id)}
+                rememberedParameters={rememberedParameters}
                 onCancel={() => uiService.dialogs.close(dialogId)}
-                onStart={testId => {
+                onStart={(testId, parameters) => {
                     uiService.dialogs.close(dialogId);
                     uiService.panels.show(CONSOLE_PANEL_ID);
                     // Showing the panel is not enough: it restores whichever tab was last active,
                     // so without this the author lands on an empty `build` tab while the run they
                     // just started writes to `test` one tab over.
                     consoleService?.requestFocus(TEST_CONSOLE_CHANNEL);
-                    void testRun.start(testId);
+                    void testRun.start(testId, parameters);
+                    // Remembered on Start, so the next open comes back to what was actually run -
+                    // not to whatever the author last clicked through and then cancelled.
+                    void testRun.rememberParameters(testId, parameters);
                 }}
             />
         ),

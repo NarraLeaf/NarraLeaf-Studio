@@ -161,6 +161,8 @@ function stubRuntime(): DataPinResolveRuntime {
                         isTextRead: () => false,
                         isSceneVisited: () => false,
                         isOptionPicked: () => false,
+                        isEndingReached: () => false,
+                        listEndings: () => [],
                     },
                     sound: {
                         getTrackVolume: () => 1,

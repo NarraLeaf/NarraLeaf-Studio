@@ -255,6 +255,44 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     }
 
     /**
+     * File takes under unit ids this project has just minted - what a line carries with it when a
+     * copy or a paste renames it (see `storyVoiceTransfer`).
+     *
+     * The mirror of `LocalizationService.adoptUnits`, and it keeps the same two rules. A unit
+     * already under that id is never overwritten: this only ever fills in lines that have no take,
+     * and a write that could displace one would make a paste capable of replacing a recording the
+     * author chose. And nothing is re-stamped - the hash and the sign-off arrive as the transfer
+     * built them, because the take is the same audio file against the same text.
+     */
+    public adoptUnits(locale: string, units: Readonly<Record<string, VoiceUnit>>): VoiceDocument {
+        const document = this.requireLoadedDocument(locale);
+        const next = { ...document.units };
+        let adopted = 0;
+        for (const [unitId, unit] of Object.entries(units)) {
+            if (!unitId || !unit.assetId || next[unitId]) {
+                continue;
+            }
+            next[unitId] = {
+                assetId: unit.assetId,
+                sourceHash: unit.sourceHash,
+                status: unit.status,
+                ...(unit.duration !== undefined ? { duration: unit.duration } : {}),
+                ...(unit.note ? { note: unit.note } : {}),
+            };
+            adopted += 1;
+        }
+        if (adopted === 0) {
+            return document;
+        }
+        const updated: VoiceDocument = { ...document, units: next };
+        this.documents.set(locale, updated);
+        this.dirtyLocales.add(locale);
+        this.scheduleAutoSave();
+        this.events.emit("documentChanged", { locale, document: updated });
+        return updated;
+    }
+
+    /**
      * Fold a recording script the booth filled in back into the voice library.
      *
      * The export half has existed since the module shipped and the parser was written alongside it,

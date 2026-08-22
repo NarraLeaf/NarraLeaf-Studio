@@ -65,7 +65,8 @@ export const documentDiff = {
      * 空の行よりはるかにましだから。
      */
     count: {
-        appTags: "ビルドバリアント",
+        appTags: "ビルドバリアント",
+
         assetSets: "アセットセット",
         assets: "アセット",
         audioTracks: "オーディオトラック",
@@ -73,7 +74,7 @@ export const documentDiff = {
         brandFonts: "既定のフォント",
         characterGroups: "キャラクターグループ",
         characters: "キャラクター",
-        dictionaryWords: "辞書の語",
+        dictionaryTerms: "辞書の項目",
         localizationKeys: "ローカライズのキー",
         saveFields: "セーブ項目",
         storyBlocks: "ストーリーの行",
@@ -369,6 +370,10 @@ export const documentDiff = {
         fileAdded: "追加",
         fileRemoved: "削除",
         fileMoved: "移動",
+        /** 複数ファイルで 1 つのドキュメントになっている場合に、行のヒントで言う。 */
+        setFiles: {
+            other: "このドキュメントのうち {count} ファイルが変わった",
+        },
         /** 見出しの下で一度だけ言い、行ごとには繰り返さない。どれに当たったかは、そのファイルの詳細が言う。 */
         partial: {
             other: "この中に、最後まで比べられなかったファイルが {count} 件ある",
@@ -384,8 +389,8 @@ export const documentDiff = {
         empty: "この 2 つのバージョンに違いはない",
         emptyWorkingTree: "直前のバージョンから変わっていない",
         readFailure: "この比較に必要なバイト列を読めなかった：{error}",
-        incomplete: "変化した {total} 個のパスのうち {shown} 個を比べた。残りは対象から外した",
-        documentsOmitted: "ここに載っていないファイルがあと {count} 件ある",
+        incomplete: "変化した {total} 件のドキュメントのうち {shown} 件を比べた。残りは対象から外した",
+        documentsOmitted: "ここに載っていないドキュメントがあと {count} 件ある",
         unavailable: "このプロジェクトではバージョン管理を使えない",
     },
     /**

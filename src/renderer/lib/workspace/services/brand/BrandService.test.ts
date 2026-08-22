@@ -35,6 +35,8 @@ type HarnessOptions = {
     reuse?: BrandService;
     /** Stand in for `UuidService.generate`. Hex, so a slice of it is a legal id body. */
     uuid?: () => string;
+    /** The project's source language, which is what the font stack is published as resolved in. */
+    sourceLocale?: string;
 };
 
 async function createHarness(seed?: string, options?: HarnessOptions): Promise<Harness> {
@@ -54,7 +56,7 @@ async function createHarness(seed?: string, options?: HarnessOptions): Promise<H
                     ? { ok: false, error: { code: FsRejectErrorCode.NOT_FOUND, message: "missing" } }
                     : ok(value);
             },
-            write: async (path: string, data: string) => {
+            writeFileNoFollowOrCreate: async (path: string, data: string) => {
                 files.set(path, data);
                 return ok(undefined);
             },
@@ -69,6 +71,13 @@ async function createHarness(seed?: string, options?: HarnessOptions): Promise<H
             generate: options?.uuid ?? (() => `${(++nextId).toString(16).padStart(7, "a")}0f0f0f0f`),
         },
         [Services.SaveStatus]: { register: () => undefined, reportUnreadableDocument: unreadable },
+        // The service publishes the language the font stack resolves in, so it depends on this one.
+        // A project with no localization set up reads the empty source language, which filters no
+        // rung out of the stack - which is what every case here expects.
+        [Services.Localization]: {
+            getConfiguration: () => ({ sourceLocale: options?.sourceLocale ?? "", locales: [] }),
+            onConfigChanged: () => () => undefined,
+        },
     };
 
     const ctx = {
@@ -470,5 +479,74 @@ describe("BrandService default font stack", () => {
         service.addFont("c");
 
         expect(seen).toEqual([1, 2, 1]);
+    });
+});
+
+/**
+ * The language half of the stack: a rung may name the languages it is for, and the window resolves
+ * the stack in the project's source language.
+ */
+describe("BrandService font languages", () => {
+    it("adds a rung with the restriction it was given, and one without when it was not", async () => {
+        const { service, files } = await createHarness();
+
+        service.addFont("jp", ["ja"]);
+        service.addFont("serif");
+        service.addFont("empty", []);
+
+        expect(service.listFonts()).toEqual([
+            { assetId: "jp", locales: ["ja"] },
+            { assetId: "serif" },
+            { assetId: "empty" },
+        ]);
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).fonts[0]).toEqual({ assetId: "jp", locales: ["ja"] });
+    });
+
+    // Whole-list, because the control is a set of checkboxes and what it has to be able to say is
+    // "this is the set now".
+    it("replaces a rung's restriction, and clearing it means every language again", async () => {
+        const { service } = await createHarness();
+        service.addFont("jp");
+
+        expect(service.setFontLocales("jp", ["ja", "zh-Hans"])).toBe(true);
+        expect(service.listFonts()).toEqual([{ assetId: "jp", locales: ["ja", "zh-Hans"] }]);
+
+        expect(service.setFontLocales("jp", [])).toBe(true);
+        expect(service.listFonts()).toEqual([{ assetId: "jp" }]);
+    });
+
+    it("reports a rung that is not on the stack, and a write that changes nothing", async () => {
+        const { service } = await createHarness();
+        service.addFont("jp", ["ja"]);
+
+        expect(service.setFontLocales("gone", ["ja"])).toBe(false);
+        // Already exactly this: a write here would mark the document dirty and repaint every text
+        // widget in the project for no change at all.
+        expect(service.setFontLocales("jp", ["ja"])).toBe(false);
+    });
+
+    /**
+     * What makes one list serve every language. The published ids are the source language's stack;
+     * the whole list is still what the Design surface reads.
+     */
+    it("publishes the stack resolved in the project's source language", async () => {
+        const { service } = await createHarness(undefined, { sourceLocale: "ja" });
+
+        service.addFont("jp", ["ja"]);
+        service.addFont("sc", ["zh-Hans"]);
+        service.addFont("serif");
+
+        expect(getActiveProjectFontIds()).toEqual(["jp", "serif"]);
+        expect(service.listFonts().map(entry => entry.assetId)).toEqual(["jp", "sc", "serif"]);
+    });
+
+    it("leaves the whole stack published when the project has no source language", async () => {
+        const { service } = await createHarness();
+
+        service.addFont("jp", ["ja"]);
+        service.addFont("serif");
+
+        expect(getActiveProjectFontIds()).toEqual(["jp", "serif"]);
     });
 });

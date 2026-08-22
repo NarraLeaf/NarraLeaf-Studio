@@ -43,6 +43,8 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/empty-scene",
     "story/app-tag-unknown",
     "story/cut-point-orphan",
+    "story/rows-after-ending",
+    "story/ending-name-duplicate",
     "story/cut-point-unreachable",
     "story/stage-object-missing",
     "story/stage-object-duplicate",
@@ -50,6 +52,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "story/transition-unavailable",
     "blueprint/reference-missing",
     "blueprint/element-ref-missing",
+    "blueprint/fn-target-missing",
     "blueprint/unreachable-node",
     "blueprint/empty-event",
     "ui/unlocalized-text",
@@ -57,6 +60,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "ui/empty-behavior",
     "ui/component-missing",
     "ui/frame-target-missing",
+    "ui/list-item-field-missing",
     "blueprint/save-field-empty",
     "variables/undeclared",
     "variables/unused",
@@ -71,6 +75,8 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "voice/stale",
     "voice/orphan",
     "brand/broken-link",
+    "typography/glyph-coverage",
+    "typography/locale-no-font",
 ];
 
 const EN_KEYS = flattenCatalog(en);
@@ -79,7 +85,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(51);
+        expect(LINT_RULES).toHaveLength(57);
     });
 
     it("gives every rule a unique id", () => {
@@ -137,7 +143,7 @@ describe("lint rule registry", () => {
 
     it("declares option specs only where they are called for", () => {
         const withOptions = LINT_RULES.filter(rule => rule.options).map(rule => rule.id);
-        expect(withOptions).toEqual(["assets/oversized", "text/overlong"]);
+        expect(withOptions).toEqual(["assets/oversized", "text/overlong", "typography/glyph-coverage"]);
         expect(getLintRule("assets/oversized")?.options?.maxMegabytes)
             .toEqual({ kind: "number", default: 64, min: 1, max: 4096 });
         const overlong = getLintRule("text/overlong");
@@ -147,5 +153,7 @@ describe("lint rule registry", () => {
             default: "eastAsianWidth",
             values: ["eastAsianWidth", "codePoints"],
         });
+        expect(getLintRule("typography/glyph-coverage")?.options?.maxCharacters)
+            .toEqual({ kind: "number", default: 20, min: 1, max: 200 });
     });
 });

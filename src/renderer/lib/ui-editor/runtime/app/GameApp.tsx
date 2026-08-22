@@ -44,6 +44,7 @@ import {
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
+import { setActiveProjectLocale } from "@shared/typography/projectFonts";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import {
@@ -70,6 +71,7 @@ import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/Widg
 import {
     createDevModeBlueprintHostApi,
     type BlueprintLayerShowRequest,
+    type BlueprintStoryEnding,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
@@ -95,6 +97,7 @@ import {
     compileStudioStoryToNlr,
     createEmptyCompiledNlrStory,
     type CompiledNlrStory,
+    type StoryEndingReach,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
     isStoryVisited,
@@ -121,7 +124,7 @@ import {
     savedVariableDefsFromView,
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import { listStoryEndings, savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -170,6 +173,13 @@ import {
     createTextReadTracker,
     type TextReadTracker,
 } from "./textReadTracker";
+import {
+    clearReachedEndings,
+    forgetEndingReached,
+    isEndingReached,
+    markEndingReached,
+    readReachedEndings,
+} from "./endingsRecord";
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
@@ -284,6 +294,24 @@ function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | u
     return bundle.ui.uidoc.surfaces.find(surface => surface.kind === "appSurface") ?? bundle.ui.uidoc.surfaces[0] ?? null;
 }
 
+/**
+ * The three acts a game can be driven through from outside it.
+ *
+ * Every one of them is something a player does with a pointer, and each goes through the path that
+ * pointer would take: `startStory` is the host call a title screen's Start button makes, `advance`
+ * clicks the dialogue, and `choose` goes through the choice runtime the `Select Choice` blueprint
+ * node uses. Nothing here reaches past the game to move it by hand, so a game that cannot be played
+ * cannot be driven either - which is what makes driving one evidence about it.
+ *
+ * Published to the shell rather than exported as a module handle, because they only exist while a
+ * game app is mounted and there may be more than one of those in a window.
+ */
+export type GameAppTestControls = {
+    startStory(request: { storyId: string; sceneId: string }): Promise<void>;
+    advance(): Promise<void>;
+    choose(index: number): Promise<void>;
+};
+
 export type GameAppProps = {
     host: GameAppHost;
     rendererRegistry: ElementRendererRegistry;
@@ -309,6 +337,15 @@ export type GameAppProps = {
      * every host today.
      */
     layerStack?: LayerStackController;
+    /**
+     * Called with {@link GameAppTestControls} once this app can be driven, and with `null` when it
+     * cannot any more.
+     *
+     * Only the standalone game runtime passes it, and only so a test harness on the other side of
+     * its control socket can play the game. Omitted by every other host, which is what keeps a
+     * window nobody is testing free of a handle that could move it.
+     */
+    onTestControlsChanged?: (controls: GameAppTestControls | null) => void;
 };
 
 /**
@@ -328,8 +365,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         renderOverlays,
         pluginHost,
         layerStack: providedLayerStack,
+        onTestControlsChanged,
     } = props;
     const bundle = host.bundle;
+    /**
+     * The bundle as of the latest render, for work that began under an older one.
+     *
+     * A hot reload replaces the bundle without remounting this component, so anything already in
+     * flight goes on holding the bundle it captured. Comparing the two is how such a job can tell
+     * that what it is about to report describes a document nobody is looking at any more.
+     */
+    const currentBundleRef = useRef(bundle);
+    currentBundleRef.current = bundle;
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
         onDebugEvent: host.onDebugEvent,
@@ -423,6 +470,35 @@ export function GameApp(props: GameAppProps): ReactNode {
             getLocale: gameLocalizationRuntime.getLocale,
             sourceLocale: gameLocalizationRuntime.bundle.sourceLocale,
         });
+    }, [gameLocalizationRuntime]);
+    /**
+     * The language the project's default font stack resolves in.
+     *
+     * A rung of that stack may be restricted to some languages (see `@shared/types/typography`), so
+     * a game read in Japanese and the same game read in Simplified Chinese are set in different
+     * faces - which is the point, Han unification meaning the two want different glyphs for the same
+     * characters. Nothing below this line knows about languages: every text widget goes on asking
+     * `resolveFontStackIds` the same question, and the answer changes because this published.
+     *
+     * Here rather than in each host's boot code because both hosts of this component - Dev Mode and
+     * the shipped game - reach their language through exactly this runtime, and two publishes would
+     * be two things to keep saying the same. The editor's own publish is `BrandService`'s, and this
+     * component is never mounted in the workspace window, so the two can never fight.
+     *
+     * Subscribed, not read once. Choosing a language restarts the game, so the subscription is not
+     * what carries an in-game switch - it is what carries the *first* one, the system-language match
+     * a few lines above, which lands after this component has already mounted.
+     */
+    useEffect(() => {
+        if (!gameLocalizationRuntime) {
+            // A project with no localization set up has no language, and an empty one filters
+            // nothing - the whole stack, which is what it held before restrictions existed.
+            setActiveProjectLocale("");
+            return;
+        }
+        const publish = (): void => setActiveProjectLocale(gameLocalizationRuntime.getLocale());
+        publish();
+        return gameLocalizationRuntime.subscribe(publish);
     }, [gameLocalizationRuntime]);
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
     // Localized character nametag: NLR reports the authored (source-language)
@@ -1179,7 +1255,17 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
         choiceRuntimeRef.current = runtime;
-    }, []);
+        // The one moment a choice's options and the index each of them answers to are both in hand.
+        // Announced from here rather than from the slot surface so a host that mounts no Game UI
+        // choice slot simply never reports one, instead of reporting an empty menu.
+        if (runtime) {
+            pluginHost?.emitChoiceShown(runtime.items.map(item => ({
+                index: item.index,
+                text: item.text,
+                disabled: item.disabled,
+            })));
+        }
+    }, [pluginHost]);
 
     const detachTextReadTracker = useCallback(() => {
         textReadTrackerRef.current?.detach();
@@ -1268,6 +1354,81 @@ export function GameApp(props: GameAppProps): ReactNode {
             // A storable that refuses the write is not worth crashing a settings page over.
         }
     }, []);
+
+    /**
+     * The endings record, in project persistence rather than in the running game.
+     *
+     * Nothing here touches a live story, and that is the requirement rather than an accident: an
+     * endings gallery is opened from the title screen, before any game exists. The record is read
+     * off the persistence session map, which the runtime hydrates from the store when the adapter is
+     * installed, so a synchronous pure reader still sees what earlier playthroughs recorded.
+     *
+     * No runtime core at all - a Page previewed inside the editor - reads as "not reached" and makes
+     * both wipes no-ops, which lets the screen lay out rather than fault.
+     */
+    const endingsPersistence = useCallback(() => {
+        const bridge = core?.scopeBridge;
+        if (!bridge) {
+            return null;
+        }
+        return {
+            getAsync: (key: string) => bridge.persistenceGetAsync(key),
+            get: (key: string) => bridge.persistenceGet(key),
+            set: (key: string, value: unknown) => bridge.persistenceSet(key, value),
+        };
+    }, [core]);
+
+    const isEndingReachedInGame = useCallback((endingId: string): boolean => {
+        const persistence = endingsPersistence();
+        return persistence ? isEndingReached(persistence, endingId) : false;
+    }, [endingsPersistence]);
+
+    /**
+     * One story's endings, joined against the record.
+     *
+     * The list comes from the story document this build ships (`bundle.storyLibrary.documents`),
+     * scanned with the same `listStoryEndings` the compiler emits from - so a row an author disabled
+     * is absent here exactly as it is absent from the build, and the screen can never offer an
+     * ending the player could not reach.
+     *
+     * The story id is tried as a key first and then searched for, the way every other library lookup
+     * here does it: the key is the id the project filed the document under, which a build that moved
+     * a story between documents may have changed.
+     */
+    const listEndingsInGame = useCallback((storyId: string): BlueprintStoryEnding[] => {
+        const documents = bundle.storyLibrary?.documents;
+        if (!documents || !storyId) {
+            return [];
+        }
+        const document = documents[storyId]
+            ?? Object.values(documents).find(candidate => candidate.id === storyId);
+        if (!document) {
+            return [];
+        }
+        const persistence = endingsPersistence();
+        const reached = persistence ? readReachedEndings(persistence) : [];
+        return listStoryEndings(document).map(ending => ({
+            endingId: ending.endingId,
+            name: ending.name,
+            sceneId: ending.sceneId,
+            sceneName: ending.sceneName,
+            isReached: reached.includes(ending.endingId),
+        }));
+    }, [bundle.storyLibrary, endingsPersistence]);
+
+    const clearEndingStateInGame = useCallback(async (endingId: string): Promise<void> => {
+        const persistence = endingsPersistence();
+        if (persistence) {
+            await forgetEndingReached(persistence, endingId);
+        }
+    }, [endingsPersistence]);
+
+    const clearEndingsInGame = useCallback(async (): Promise<void> => {
+        const persistence = endingsPersistence();
+        if (persistence) {
+            await clearReachedEndings(persistence);
+        }
+    }, [endingsPersistence]);
 
     /**
      * Carrying a playthrough between two editions of one title - the Export/Import Progress nodes.
@@ -1870,6 +2031,49 @@ export function GameApp(props: GameAppProps): ReactNode {
             host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
         });
     }, [endingSurfaceId, host, quitGame]);
+
+    /**
+     * An `/ending` row ran: record it, tell the plugins, and land the player.
+     *
+     * All three belong here rather than in the compiled statement, because all three are the host's:
+     * the record outlives every save and lives in project persistence, the event hub is the host's,
+     * and the session about to be torn down is the host's. The compiled row's whole contribution is
+     * saying which ending it was.
+     *
+     * The record is written first and not awaited by the rest. An ending that opened its page before
+     * the write landed would be one a player could see and then find locked, and the navigation must
+     * not wait on a store write either - the page is what the player is owed immediately.
+     *
+     * With no page (`{kind:"none"}`, or nothing declared anywhere) the playthrough is left exactly
+     * where it is, which is what every build did before endings existed: the last frame stays. Rows
+     * written after the ending in the same list were dropped at compile time, so in the ordinary
+     * shape - an ending as the last row of a branch - there is nothing left to play either way.
+     */
+    const handleEndingReached = useCallback((ending: StoryEndingReach) => {
+        const persistence = endingsPersistence();
+        if (persistence) {
+            void markEndingReached(persistence, ending.endingId).catch(error => {
+                // Reported, never thrown: the player has reached the ending whatever the store did,
+                // and a failed write must not take the window down on the last screen of the game.
+                host.log("error", `[${host.id}] the ending could not be recorded: ${normalizeError(error)}`);
+            });
+        }
+        pluginHost?.emitEndingReached({ endingId: ending.endingId, name: ending.name });
+
+        // The row decides, then the build. `none` is a decision and stops here; absent means the row
+        // did not decide, so the build's own ending page answers.
+        const page = ending.page?.kind === "none"
+            ? ""
+            : ending.page?.kind === "surface"
+                ? ending.page.surfaceId.trim()
+                : endingSurfaceId;
+        if (!page) {
+            return;
+        }
+        void quitGame(page).catch(error => {
+            host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
+        });
+    }, [endingSurfaceId, endingsPersistence, host, pluginHost, quitGame]);
 
     /**
      * What this build stamps into the saves it writes, and compares the saves it is asked to load
@@ -2639,11 +2843,15 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
-            // Forwarded, and the size decided here: a weather clip is baked to the project's own
-            // stage, which this component knows and the compiler deliberately does not. A host with
-            // no baker passes nothing and its weather rows compile to a diagnostic.
+            // Forwarded, and the size and frame rate decided here: a weather clip is baked to the
+            // project's own stage at the project's own rate, both of which this component knows and
+            // the compiler deliberately does not. A host with no baker passes nothing and its
+            // weather rows compile to a diagnostic.
             ...(host.resolveWeatherClip
-                ? { resolveWeatherClip: (ref: WeatherSeedRef) => host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc)) }
+                ? {
+                      resolveWeatherClip: (ref: WeatherSeedRef) =>
+                          host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc, bundle.vfx)),
+                  }
                 : {}),
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
@@ -2651,6 +2859,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // — Dev Mode and the packaged game — so leaving it out meant a project-level saved variable
             // existed in the editor and nowhere else.
             savedVariables: bundle.ui.savedVariables,
+            onEndingReached: handleEndingReached,
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
@@ -2679,7 +2888,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             audioTracks: bundle.audio?.tracks,
         };
         const compiled = await compileStudioStoryToNlr(compileInput);
-        if (compiled.diagnostics.length > 0) {
+        // Only the compile that is still the current one gets to complain. A hot reload can land
+        // while this one is waiting on something slow, and what it found then is about a document
+        // the author has already replaced.
+        //
+        // Which stopped being merely untidy once a bake could be interrupted: a weather clip dropped
+        // because the caller that wanted it moved on comes back here as "could not be produced", so
+        // every digit typed into a density would leave a warning about a number the author has
+        // already typed over, on a stage that is showing the new one perfectly.
+        const superseded = currentBundleRef.current.bundleId !== bundle.bundleId
+            || currentBundleRef.current.revision !== bundle.revision;
+        if (!superseded && compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
                 const level = diagnostic.level === "error" ? "error" : "warning";
                 host.log(level, diagnostic.message);
@@ -2934,6 +3153,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.setFullscreen,
         isCurrentTextReadInGame,
         clearTextReadInGame,
+        isEndingReachedInGame,
+        listEndingsInGame,
+        clearEndingStateInGame,
+        clearEndingsInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -3051,6 +3274,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         startStoryInGameRef.current = startStoryInGame;
     }, [startStoryInGame]);
 
+    /**
+     * Publish the drive handle to a shell that asked for one, and take it back on unmount.
+     *
+     * Nothing is built when the prop is absent, so the handle does not exist in a window nobody is
+     * driving. Every method reaches the live game through the same callbacks the blueprint host API
+     * does, and each of them already refuses - loudly, with a sentence - when there is no game to
+     * act on, so the caller hears about a command that arrived too early rather than watching it
+     * disappear.
+     */
+    useEffect(() => {
+        if (!onTestControlsChanged) {
+            return;
+        }
+        onTestControlsChanged({
+            startStory: request => startStoryInGame({ storyId: request.storyId, sceneId: request.sceneId }),
+            advance: () => nextInGame(),
+            choose: (index: number) => selectChoiceInGame(index),
+        });
+        return () => onTestControlsChanged(null);
+    }, [nextInGame, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
+
     const createHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core) {
             return null;
@@ -3110,6 +3354,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsSceneVisited: isSceneVisitedInGame,
             onIsOptionPicked: isOptionPickedInGame,
             onClearVisited: clearVisitedInGame,
+            onIsEndingReached: isEndingReachedInGame,
+            onListEndings: listEndingsInGame,
+            onClearEndingState: clearEndingStateInGame,
+            onClearEndings: clearEndingsInGame,
             onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -3215,6 +3463,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
+        isEndingReachedInGame,
+        listEndingsInGame,
+        clearEndingStateInGame,
+        clearEndingsInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,
@@ -3516,6 +3768,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onIsSceneVisited: isSceneVisitedInGame,
                     onIsOptionPicked: isOptionPickedInGame,
                     onClearVisited: clearVisitedInGame,
+                    onIsEndingReached: isEndingReachedInGame,
+                    onListEndings: listEndingsInGame,
+                    onClearEndingState: clearEndingStateInGame,
+                    onClearEndings: clearEndingsInGame,
                     onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
                     onSkip: skipInGame,
@@ -3652,6 +3908,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         isLayerMounted,
         isCurrentTextReadInGame,
         clearTextReadInGame,
+        isEndingReachedInGame,
+        listEndingsInGame,
+        clearEndingStateInGame,
+        clearEndingsInGame,
         isInGame,
         isNvlModeInGame,
         listSaveIds,

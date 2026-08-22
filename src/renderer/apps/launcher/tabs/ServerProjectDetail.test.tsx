@@ -35,6 +35,15 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 const bridge = vi.hoisted(() => ({
     getServerProject: vi.fn(),
     listServerProjectHistory: vi.fn(),
+    /**
+     * What the session offers, which decides whether the conversations are drawn at all.
+     *
+     * Empty by default, because these panels are about what the REST API answers and a
+     * deployment that serves no conversations is the ordinary one. A capability is
+     * checked rather than probed, so an empty list is a section that is not there.
+     */
+    capabilities: [] as string[],
+    teamCall: vi.fn(),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
@@ -42,6 +51,23 @@ vi.mock("@/lib/app/bridge", () => ({
         vcs: {
             getServerProject: bridge.getServerProject,
             listServerProjectHistory: bridge.listServerProjectHistory,
+        },
+        team: {
+            open: () => Promise.resolve({
+                success: true,
+                data: {
+                    remoteOrigin: "lore://team.example.lan:41337",
+                    state: bridge.capabilities.length > 0 ? "ready" : "idle",
+                    capabilities: bridge.capabilities,
+                    since: 1,
+                },
+            }),
+            connections: () => Promise.resolve({ success: true, data: { connections: [] } }),
+            call: bridge.teamCall,
+            subscribe: () => Promise.resolve({ success: true, data: { ok: true, seq: 0 } }),
+            unsubscribe: () => Promise.resolve({ success: true, data: undefined }),
+            onEvent: () => ({ cancel: () => undefined }),
+            onConnectionChanged: () => ({ cancel: () => undefined }),
         },
     }),
 }));
@@ -105,7 +131,37 @@ afterEach(() => {
     cleanup();
     bridge.getServerProject.mockReset();
     bridge.listServerProjectHistory.mockReset();
+    bridge.capabilities = [];
+    bridge.teamCall.mockReset();
 });
+
+/** What a call over the session answered, by the method it was made with. */
+function sessionAnswers(answers: Record<string, unknown>): void {
+    bridge.teamCall.mockImplementation((_origin: string, method: string) =>
+        Promise.resolve({
+            success: true,
+            data: method in answers
+                ? { ok: true, value: answers[method] }
+                : { ok: false, problem: { kind: "unsupported" } },
+        }),
+    );
+}
+
+function thread(overrides: Record<string, unknown> = {}) {
+    return {
+        id: "t1",
+        project: PROJECT_ID,
+        anchor: {},
+        kind: "comment",
+        status: "open",
+        createdBy: "ada",
+        createdAt: 1,
+        updatedAt: 1,
+        comments: 1,
+        opening: { id: "c1", thread: "t1", author: "ada", body: "the second act drags", createdAt: 1 },
+        ...overrides,
+    };
+}
 
 describe("a project the server has not read", () => {
     it("says so once, and invents nothing about the work", async () => {
@@ -324,5 +380,94 @@ describe("what the server offers", () => {
         // One sentence, not two: the history failed for the same reason and says nothing.
         expect(panel().match(/launcher\.servers\.problem/g)).toHaveLength(1);
         expect(document.querySelector("[data-project-unread]")).toBeNull();
+    });
+});
+
+/**
+ * What people have said about the project, read over the session.
+ *
+ * The first thing on this page that is not a request. What is asserted is the bargain the
+ * whole protocol rests on: a deployment that does not offer conversations draws no section
+ * for them, and one that does is asked without anything having been probed.
+ */
+describe("the conversations", () => {
+    it("is not drawn at all where the server offers none", async () => {
+        open({ detail: detail({ readable: false }), page: null });
+        await waitFor(() => expect(panel()).toContain("launcher.servers.detail"));
+
+        // Not empty, not disabled, not a sentence about a server that cannot: absent.
+        expect(document.querySelector("[data-project-discussion]")).toBeNull();
+        expect(bridge.teamCall).not.toHaveBeenCalled();
+    });
+
+    it("lists what the server holds, naming who said it", async () => {
+        bridge.capabilities = ["session", "comments"];
+        sessionAnswers({ "threads.list": { threads: [thread()] } });
+        open({ detail: detail({ readable: false }), page: null });
+
+        await waitFor(() => {
+            expect(document.querySelector("[data-discussion-thread='t1']")).not.toBeNull();
+        });
+        const row = document.querySelector("[data-discussion-thread='t1']")?.textContent ?? "";
+        expect(row).toContain("the second act drags");
+        expect(row).toContain("ada");
+    });
+
+    it("keeps what it read when the server stops answering, and says it could not refresh", async () => {
+        // Measured on a real server: a restart used to turn two conversations into "nobody
+        // has said anything", which is a different claim entirely.
+        bridge.capabilities = ["session", "comments"];
+        sessionAnswers({ "threads.list": { threads: [thread()] } });
+        open({ detail: detail({ readable: false }), page: null });
+        await waitFor(() => {
+            expect(document.querySelector("[data-discussion-thread='t1']")).not.toBeNull();
+        });
+
+        // The next read fails, as it does the moment a server goes away.
+        bridge.teamCall.mockImplementation(() =>
+            Promise.resolve({
+                success: true,
+                data: { ok: false, problem: { kind: "offline", detail: "ECONNREFUSED" } },
+            }),
+        );
+        fireEvent.click(document.querySelector("[data-discussion-action='settle']") as HTMLElement);
+
+        await waitFor(() => {
+            expect(document.querySelector("[data-discussion-unread]")).not.toBeNull();
+        });
+        // Still there, and the empty state is nowhere near it.
+        expect(document.querySelector("[data-discussion-thread='t1']")).not.toBeNull();
+        expect(document.querySelector("[data-project-discussion]")?.textContent ?? "")
+            .not.toContain("discussion.empty");
+    });
+
+    it("writes a note about the project itself, anchored to nothing", async () => {
+        bridge.capabilities = ["session", "comments"];
+        sessionAnswers({
+            "threads.list": { threads: [] },
+            "threads.create": { thread: thread() },
+        });
+        open({ detail: detail({ readable: false }), page: null });
+
+        await waitFor(() => {
+            expect(document.querySelector("[data-discussion-field='body']")).not.toBeNull();
+        });
+        const field = document.querySelector("[data-discussion-field='body']") as HTMLInputElement;
+        fireEvent.change(field, { target: { value: "where should this go" } });
+        fireEvent.click(document.querySelector("[data-discussion-action='add']") as HTMLElement);
+
+        await waitFor(() => {
+            expect(bridge.teamCall).toHaveBeenCalledWith(
+                ORIGIN,
+                "threads.create",
+                expect.objectContaining({
+                    project: PROJECT_ID,
+                    // Nothing anchored: this is about the project, and a path invented to
+                    // stand for that would be a string on screen nobody wrote.
+                    anchor: {},
+                    body: "where should this go",
+                }),
+            );
+        });
     });
 });

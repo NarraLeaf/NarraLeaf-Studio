@@ -101,7 +101,6 @@ export class ReferenceService extends Service<ReferenceService> {
     private blueprintReferences: AssetReference[] = [];
     private uiReferences: AssetReference[] = [];
     private characterReferences: AssetReference[] = [];
-    private designReferences: AssetReference[] = [];
     /**
      * Character sites that named a set.
      *
@@ -112,6 +111,7 @@ export class ReferenceService extends Service<ReferenceService> {
      * their references can name a set.
      */
     private sliceSetReferences = new Map<string, AssetReference[]>();
+    private designReferences: AssetReference[] = [];
 
     /**
      * Coverage gaps keyed the same way the reference slices are, so a rebuild replaces the gaps its
@@ -496,13 +496,13 @@ export class ReferenceService extends Service<ReferenceService> {
                     this.emitChanged();
                 });
             }),
+            ...this.subscribeToAssetSetResolution(),
             brandService.onFontsChanged(() => {
                 this.scheduleRebuild("design", () => {
                     this.rebuildDesignSlice();
                     this.emitChanged();
                 });
             }),
-            ...this.subscribeToAssetSetResolution(),
         );
     }
 

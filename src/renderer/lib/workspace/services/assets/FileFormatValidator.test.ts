@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ASSET_CATEGORY_EXTENSIONS, AssetCategory, AssetExtensions, AssetType } from "./assetTypes";
 import { FORMAT_EXTENSIONS, FileFormatValidator, UNDECODABLE_EXTENSIONS } from "./FileFormatValidator";
+import { UNRENDERABLE_FONT_FORMATS } from "@shared/typography/fontFormats";
 
 /**
  * A buffer that starts with the given signature and is long enough to clear the length guards in
@@ -36,6 +37,9 @@ const WAVE = bytes(0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0
 const AVI = bytes(0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x41, 0x56, 0x49, 0x20);
 const EBML = bytes(0x1A, 0x45, 0xDF, 0xA3);
 const AIFF = bytes(0x46, 0x4F, 0x52, 0x4D, 0x00, 0x00, 0x00, 0x20, 0x41, 0x49, 0x46, 0x46);
+/** `ttcf`: a TrueType collection, several faces in one file. */
+const TTC = bytes(0x74, 0x74, 0x63, 0x66, 0x00, 0x01, 0x00, 0x00);
+const TTF = bytes(0x00, 0x01, 0x00, 0x00);
 
 const validator = new FileFormatValidator();
 
@@ -142,6 +146,53 @@ describe("FileFormatValidator: containers Chromium cannot demux are refused with
         expect(await expectRejected(AssetType.Image, "a.xbm", bytes(0x23, 0x64))).toContain(".png or .webp");
     });
 
+    /**
+     * Not a decoder gap like the rows above it: a collection reads perfectly and cannot be *loaded*,
+     * because `FontFace` takes one file to mean one typeface. Importing one used to succeed and left
+     * a font that rendered nothing, in the editor and in the shipped game alike.
+     */
+    it("refuses font collections, and says which way out there is", async () => {
+        for (const name of ["a.ttc", "a.otc"]) {
+            const error = await expectRejected(AssetType.Font, name, TTC);
+            // "use", not "read" — the file is readable, and saying otherwise sends an author
+            // looking for corruption that is not there.
+            expect(error).toContain("NarraLeaf cannot use");
+            expect(error).toContain("a single-face .ttf or .otf");
+        }
+    });
+
+    /**
+     * SVG fonts left Blink a decade ago and EOT was never read outside Internet Explorer. Both were
+     * importable and neither could ever be drawn with - measured in Electron 38, where a minimal
+     * SVG 1.1 `<font>` is rejected by `FontFace` as `Invalid font data in ArrayBuffer.`
+     */
+    it("refuses SVG fonts and Embedded OpenType", async () => {
+        const svg = bytes(0x3C, 0x3F, 0x78, 0x6D, 0x6C);
+        expect(await expectRejected(AssetType.Font, "a.svg", svg)).toContain(".ttf or .otf");
+        expect(await expectRejected(AssetType.Font, "a.eot", bytes(0x00))).toContain(".ttf or .otf");
+    });
+
+    /**
+     * The editor's font loader and the import gate have to name the same formats. They used to
+     * disagree: the loader refused four, the gate refused none, and the gap was a font that imported
+     * cleanly and then rendered nothing anywhere.
+     */
+    it("refuses exactly the formats the editor's font loader cannot draw with", () => {
+        expect(Object.keys(UNDECODABLE_EXTENSIONS[AssetType.Font] ?? {}).sort())
+            .toEqual(Object.keys(UNRENDERABLE_FONT_FORMATS).sort());
+    });
+
+    it("catches a collection wearing a single-face name", async () => {
+        const error = await expectRejected(AssetType.Font, "a.ttf", TTC);
+        expect(error).toContain("TTC");
+    });
+
+    it("still accepts the single-face font formats", async () => {
+        await expectAccepted(AssetType.Font, "a.ttf", TTF);
+        await expectAccepted(AssetType.Font, "a.otf", bytes(0x4F, 0x54, 0x54, 0x4F));
+        await expectAccepted(AssetType.Font, "a.woff2", bytes(0x77, 0x4F, 0x46, 0x32));
+    });
+
     it("keeps refusal out of the formats that were measured playing", async () => {
         await expectAccepted(AssetType.Video, "a.mkv", EBML);
         await expectAccepted(AssetType.Audio, "a.mka", EBML);
@@ -154,6 +205,10 @@ describe("FileFormatValidator: containers Chromium cannot demux are refused with
         }
         expect(AssetExtensions[AssetType.Audio]).toContain("aiff");
         expect(AssetExtensions[AssetType.Image]).toContain("tiff");
+        // The same bargain for fonts: visible so the author can find the file and be told what to
+        // do with it, rather than hidden so that the picker looks empty.
+        expect(AssetExtensions[AssetType.Font]).toContain("ttc");
+        expect(AssetExtensions[AssetType.Font]).toContain("svg");
     });
 
     it("does not second-guess the bytes of an Other asset", async () => {

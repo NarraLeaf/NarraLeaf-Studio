@@ -45,7 +45,7 @@ export const uiGraphsSpec = defineDocumentSpec<UIGraphDocument>({
         // Returned as read. See the note on this module: no migration runs here.
         return record as unknown as UIGraphDocument;
     },
-    /** Refused for the reason the story and interface specs refuse; see the note above. */
+    /** Refused; see the note above for what has to land before it can write. */
     serialize: () => {
         throw new Error(
             "The ui-graphs spec is read-only in this build: `parse` does not run the blueprint "

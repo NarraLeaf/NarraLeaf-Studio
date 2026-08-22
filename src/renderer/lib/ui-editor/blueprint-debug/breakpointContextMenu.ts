@@ -6,7 +6,7 @@
  * learned it in the other.
  */
 
-import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import type { ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
 
 const ROW_ID_ADD = "breakpoint.add";
 const ROW_ID_REMOVE = "breakpoint.remove";
@@ -43,7 +43,7 @@ export function buildBreakpointContextMenu(input: {
     onSetEnabled: (enabled: boolean) => void;
     onEdit: () => void;
     labels: BreakpointContextMenuLabels;
-}): ContextMenuDef {
+}): ContextMenuItemDef[] {
     const { existing, onToggle, onSetEnabled, onEdit, labels } = input;
     if (!existing) {
         return [{ id: ROW_ID_ADD, label: labels.add, onClick: onToggle }];

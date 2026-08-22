@@ -833,7 +833,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                        Its keyboard stands down while a dialog is up, which is the same gate
                        `KeybindingService` puts on its own bindings.
 
-                       Right-clicking this cluster offers where the main menu goes — the gesture is
+                       It is still one bar when the menus are collapsed: the hamburger is a member
+                       like any other, and it declares the accelerators of the groups it swallowed,
+                       so Alt+F reaches the File menu in either arrangement.
+
+                       Right-clicking the cluster offers where the main menu goes — the gesture is
                        on the strip the setting moves, which is the only way back for an author who
                        has just collapsed their File menu into the hamburger. */
                     <TitleBarMenus

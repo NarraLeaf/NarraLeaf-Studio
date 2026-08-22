@@ -83,6 +83,23 @@ const { rootDir, isDev } = require('./utils');
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
 
+    console.log('[build-main] Bundling weather bake worker…');
+    await esbuild.build({
+        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'weatherWorker.ts')],
+        outfile: path.join(outDir, 'weatherWorker.js'),
+        platform: 'node',
+        format: 'cjs',
+        bundle: true,
+        // Nothing native here: the bake draws frames in plain JS and pipes them to the bundled
+        // ffmpeg. electron stays external as everywhere else - the worker only needs its parent port.
+        external: ['electron'],
+        sourcemap: isDev(),
+        minify: !isDev(),
+        keepNames: true,
+        target: ['node18'],
+        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
+    });
+
     console.log('[build-main] Bundling artifact compile worker…');
     await esbuild.build({
         entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'compileWorker.ts')],

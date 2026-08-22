@@ -162,6 +162,144 @@ describe("StudioTaskScheduler", () => {
         expect(await running).toEqual({ status: "cancelled" });
         expect(stopped).toBe(true);
     });
+
+    it("reports a task that threw on its way out as cancelled rather than failed", async () => {
+        // What an encoder does when it is killed mid-frame. Reading that as a failure would fill the
+        // log with the ordinary consequence of an author changing a number, and bury the bakes that
+        // really did break.
+        const scheduler = new StudioTaskScheduler();
+        const held = gate();
+
+        const running = scheduler.submit(task("busy", async ({ onCancel }) => {
+            onCancel(() => held.open());
+            await held.opened;
+            throw new Error("ffmpeg was killed");
+        }));
+        await Promise.resolve();
+        scheduler.cancel("busy");
+
+        expect(await running).toEqual({ status: "cancelled" });
+    });
+});
+
+describe("a caller that changes its mind", () => {
+    it("drops what it asked for before, once it asks for something else", async () => {
+        // The author typed another digit. Same caller, a different number, and the bake in flight is
+        // now for a value nobody will ever see - while the one they are waiting for queues behind it.
+        const scheduler = new StudioTaskScheduler();
+        const held = gate();
+        let stopped = false;
+
+        const stale = scheduler.submitAll([task("density-1", async ({ onCancel }) => {
+            onCancel(() => { stopped = true; held.open(); });
+            await held.opened;
+        })], { owner: "inspector", attempt: "1" });
+        await Promise.resolve();
+        const wanted = scheduler.submitAll(
+            [task("density-12", async () => "clip")],
+            { owner: "inspector", attempt: "2" },
+        );
+
+        expect(await stale).toEqual([{ status: "cancelled" }]);
+        expect(stopped).toBe(true);
+        expect(await wanted).toEqual([{ status: "done", value: "clip" }]);
+    });
+
+    it("keeps work the new ask still names, rather than starting it over", async () => {
+        const scheduler = new StudioTaskScheduler();
+        let runs = 0;
+        const held = gate();
+        const run = async () => { runs += 1; await held.opened; return "clip"; };
+
+        const first = scheduler.submitAll([task("snow", run)], { owner: "prebake", attempt: "1" });
+        await Promise.resolve();
+        // Still wants the snow, and now some rain as well.
+        const second = scheduler.submitAll([task("snow", run), task("rain", run)], { owner: "prebake", attempt: "2" });
+        held.open();
+
+        expect(await first).toEqual([{ status: "done", value: "clip" }]);
+        await second;
+        // Three would mean the snow was retired and baked again from nothing, which is the whole
+        // thing this concept exists to avoid.
+        expect(runs).toBe(2);
+    });
+
+    it("lets one ask arrive in pieces, as a compile's rows do", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const held = gate();
+        let ran = 0;
+
+        const snow = scheduler.submitAll(
+            [task("snow", async () => { ran += 1; await held.opened; })],
+            { owner: "devMode", attempt: "bundle:1" },
+        );
+        await Promise.resolve();
+        const sakura = scheduler.submitAll(
+            [task("sakura", async () => { ran += 1; })],
+            { owner: "devMode", attempt: "bundle:1" },
+        );
+        held.open();
+
+        expect(await snow).toEqual([{ status: "done", value: undefined }]);
+        await sakura;
+        expect(ran).toBe(2);
+    });
+
+    it("never drops work somebody who cannot change their mind is waiting on", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const held = gate();
+
+        const speculative = scheduler.submitAll(
+            [task("snow", async () => { await held.opened; return "clip"; })],
+            { owner: "prebake", attempt: "1" },
+        );
+        await Promise.resolve();
+        // A build wants the same clip and named nobody, which is a want that cannot be withdrawn.
+        const build = scheduler.submit({ ...task("snow", async () => "clip"), priority: "blocking" });
+        scheduler.submitAll([], { owner: "prebake", attempt: "2" });
+        held.open();
+
+        expect(await build).toEqual({ status: "done", value: "clip" });
+        expect(await speculative).toEqual([{ status: "done", value: "clip" }]);
+    });
+
+    it("drops its own interest without touching another owner's", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const held = gate();
+
+        const speculative = scheduler.submitAll(
+            [task("snow", async () => { await held.opened; return "clip"; })],
+            { owner: "prebake", attempt: "1" },
+        );
+        await Promise.resolve();
+        const devMode = scheduler.submitAll(
+            [{ ...task("snow", async () => "clip"), priority: "blocking" as const }],
+            { owner: "devMode", attempt: "bundle:1" },
+        );
+        scheduler.submitAll([], { owner: "prebake", attempt: "2" });
+        held.open();
+
+        expect(await devMode).toEqual([{ status: "done", value: "clip" }]);
+        expect(await speculative).toEqual([{ status: "done", value: "clip" }]);
+    });
+
+    it("hears an owner that wants nothing at all", async () => {
+        // Deleting the last weather row: the ask is empty, and the bake for the row that is gone has
+        // to stop on that news rather than on whatever happens to be asked for next.
+        const scheduler = new StudioTaskScheduler();
+        const held = gate();
+        let ran = false;
+
+        const busy = scheduler.submit(task("busy", async () => { await held.opened; }));
+        await Promise.resolve();
+        const stale = scheduler.submitAll([task("gone", async () => { ran = true; })], { owner: "prebake", attempt: "1" });
+        scheduler.submitAll([], { owner: "prebake", attempt: "2" });
+
+        expect(await stale).toEqual([{ status: "cancelled" }]);
+        held.open();
+        await busy;
+        expect(ran).toBe(false);
+    });
 });
 
 describe("the words a task is shown by", () => {

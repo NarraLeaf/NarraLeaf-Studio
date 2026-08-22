@@ -33,5 +33,6 @@ export const placeholders = {
         notifications: "通知",
         plugins: "プラグイン",
         variables: "変数",
+        dictionary: "辞書",
     },
 } satisfies LocaleNamespace<"placeholders">;

@@ -42,6 +42,15 @@ export type LiveTextStyles = {
         writingMode?: TextWritingMode;
         textOrientation?: TextOrientation;
         tateChuYoko?: boolean | number;
+        /**
+         * Text scaling is the engine's, not ours: the line is measured as it is typed, and only the
+         * engine knows what is on screen at each character.
+         *
+         * Always passed, in both directions: the engine scales a dialogue line by default, so a
+         * widget the author turned it off on has to say so.
+         */
+        autoFit?: boolean;
+        autoFitMinFontSize?: number;
     };
 };
 
@@ -120,6 +129,8 @@ export function useLiveTextStyles({
                   }
                 : {}),
             ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
+            autoFit: p.textAutoFit,
+            ...(p.textAutoFit ? { autoFitMinFontSize: p.textAutoFitMinFontSize } : {}),
         },
     };
 }

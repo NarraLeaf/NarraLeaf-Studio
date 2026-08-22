@@ -2,6 +2,9 @@
 
 本文汇总 UI Editor 蓝图系统建议提供的节点。列表包含当前已实现、已规划和建议新增的节点；节点按面向视觉小说 UI 制作的使用场景分类。
 
+> 这份表是**路线图**，手工维护，只说「有没有」，不说引脚和字段。要查一个节点真正长什么样，问注册表本身：
+> `node project/app/blueprint.js node <类型 id>`、`node project/app/blueprint.js nodes <搜索词>`。完整用法见 `project/app/blueprint.md`。
+
 ## Events
 
 | 节点 | 类型 ID 建议 | 说明 |
@@ -193,17 +196,30 @@
 | Array Remove | `blueprint.collection.arrayRemove` | **已实现**。移除指定值。 |
 | Array Remove At | `blueprint.collection.arrayRemoveAt` | **已实现**。移除指定下标的项。 |
 | Array Contains | `blueprint.collection.arrayContains` | **已实现**。判断数组是否包含指定值。 |
-| Array Find | `blueprint.collection.arrayFind` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
-| Array Filter | `blueprint.collection.arrayFilter` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
-| Array Map | `blueprint.collection.arrayMap` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
-| Array Sort | `blueprint.collection.arraySort` | **planned/disabled**。保留稳定 ID，比较器图模型后续设计，不注册 palette/runtime。 |
+| Array Index Of | `blueprint.collection.arrayIndexOf` | **已实现**。返回指定值第一次出现的下标，没有则为 -1。 |
+| Array First | `blueprint.collection.arrayFirst` | **已实现**。取首项，空数组返回 null。 |
+| Array Last | `blueprint.collection.arrayLast` | **已实现**。取末项，空数组返回 null。 |
+| Array Is Empty | `blueprint.collection.arrayIsEmpty` | **已实现**。判断数组是否为空。 |
+| Array Reverse | `blueprint.collection.arrayReverse` | **已实现**。输出反序副本。 |
+| Array Concat | `blueprint.collection.arrayConcat` | **已实现**。首尾拼接两个数组。 |
+| Array Unique | `blueprint.collection.arrayUnique` | **已实现**。按值去重，保留首次出现的顺序。 |
+| Array Range | `blueprint.collection.arrayRange` | **已实现**。由起点、个数、步长生成整数序列；步长 0 读作 1。 |
+| Array Sort By Key | `blueprint.collection.arraySort` | **已实现**。按记录的某个属性排序；数字按数字比，其余按文本比，缺值排在最后，同键保持原顺序。 |
+| Array Filter By Key | `blueprint.collection.arrayFilter` | **已实现**。保留某属性等于给定值的记录。 |
+| Array Find By Key | `blueprint.collection.arrayFind` | **已实现**。按属性查第一条记录，输出条目与下标。 |
+| Array Map | `blueprint.collection.arrayMap` | **planned/disabled**。保留稳定 ID，映射表达式模型后续设计，不注册 palette/runtime。 |
 | Array Slice | `blueprint.collection.arraySlice` | **已实现**。截取数组片段。 |
 | Array Join | `blueprint.collection.arrayJoin` | **已实现**。将数组连接为字符串。 |
 | Object Keys | `blueprint.collection.objectKeys` | **已实现**。获取对象字段名数组。 |
 | Object Values | `blueprint.collection.objectValues` | **已实现**。获取对象值数组。 |
 | Object Merge | `blueprint.collection.objectMerge` | **已实现**。合并对象。 |
-| Object Set Field | `blueprint.collection.objectSetField` | **已实现**。写入对象字段并输出新对象。 |
-| Object Remove Field | `blueprint.collection.objectRemoveField` | **已实现**。移除对象字段并输出新对象。 |
+| Object Set Field | `blueprint.collection.objectSetField` | **已实现，不再进 palette**。被 `Set JSON Field` 取代（后者接受点路径）。 |
+| Object Remove Field | `blueprint.collection.objectRemoveField` | **已实现，不再进 palette**。被 `Remove JSON Field` 取代。 |
+
+排序/筛选/查找不采用回调图：谓词写成一张函数图，正是「必须先理解图即是值」的那层抽象。
+按属性排序、按属性筛选、按属性查找覆盖了 VN 界面里绝大多数用法，且不需要作者再学一个概念。
+列表控件上还有一组同样按字段（而不是按属性名字符串）操作的节点，见 List 一节——
+那些能给出真正的字段下拉，因为列表声明了自己的条目结构。
 
 ## Displayable / Widget
 
@@ -406,6 +422,15 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Get List Item Index | `blueprint.list.getItemIndex` | **已实现**。读取当前 List item 下标。 |
 | Get List Item Count | `blueprint.list.getItemCount` | **已实现**。读取当前 List item 总数。 |
 | Get List Item Key | `blueprint.list.getItemKey` | **已实现**。读取当前 List item key。 |
+| Get Item Field | `blueprint.list.getItemField` | **已实现**。读取当前 List item 的某个已声明字段；字段从下拉里选，存的是字段 id。取代 `Get List Item Props` + `Get JSON Field` 那条两级组合。 |
+| Get List Length | `blueprint.list.getLength` / `blueprint.element.list.getLength` | **已实现**。当前运行时内容的条数。 |
+| Get Item At | `blueprint.list.getItemAt` / `blueprint.element.list.getItemAt` | **已实现**。取指定下标的条目，越界返回 null。 |
+| Find Item By Field | `blueprint.list.findItemByField` / `blueprint.element.list.findItemByField` | **已实现**。按字段查第一条，输出下标、条目与是否找到。 |
+| Set Item Field At | `blueprint.list.setItemFieldAt` / `blueprint.element.list.setItemFieldAt` | **已实现**。改写指定下标条目的某个字段；下标不存在或字段未声明时静默跳过。 |
+| Sort List By Field | `blueprint.list.sortByField` / `blueprint.element.list.sortByField` | **已实现**。按字段升/降序重排运行时内容。 |
+
+字段下拉的选项来自节点所指列表声明的条目结构：接了 Element 引脚就跟着那根线走，
+挂在列表自己的私有蓝图上就是那个列表，放在条目模板里就是画它的那个列表。
 
 ## Page
 

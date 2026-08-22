@@ -38,6 +38,7 @@ export const project = {
         appTags: "Build variants",
         userData: "Player files",
         icons: "Icons",
+        screenEffects: "Screen effects",
         dependencies: "Dependencies",
         saving: "Saving",
         olderSaves: "Older saves",
@@ -421,17 +422,10 @@ export const project = {
         // machine can build it: a certificate is obtained days before the build that uses it, and
         // preparing one is why this sits in the panel rather than in the build dialog.
         signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
-        webLosslessImagesTitle: "Convert images to WebP",
-        webLosslessImagesDescription: "Re-encode exported images as lossless WebP where that is smaller.",
-        webLosslessImagesHint: "Converted images decode identically to the originals. Android and iOS builds serve the same exported site, so this applies to them too.",
-        webPrecompressTitle: "Precompress text files",
-        webPrecompressDescription: "Write Brotli and Gzip copies of the site's scripts, styles and story data.",
-        webPrecompressHint: "Only a server set up to serve precompressed files uses them. Every other host serves the originals.",
-        webLossyImagesTitle: "Recompress images",
-        webLossyImagesDescription: "Re-encode exported images as lossy WebP. The files are much smaller, and the lost detail cannot be recovered.",
-        webLossyQualityTitle: "Image quality",
-        webLossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
-        webSharedWithMobileHint: "Android and iOS builds serve the same exported site, so this applies to them too.",
+        lossyImagesTitle: "Recompress images",
+        lossyImagesDescription: "Re-encode images as lossy WebP, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
+        lossyQualityTitle: "Image quality",
+        lossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
         // Not "Mobile orientation": it sits under the Mobile heading, and the repeated word cost the
         // label a second line in a 318px panel.
         orientationTitle: "Orientation",
@@ -466,6 +460,16 @@ export const project = {
             center: "Center",
             right: "Right",
         },
+    },
+    // Project -> App -> Screen effects. The `/vfx` sources Studio makes for a project, and the one
+    // decision that is the same for all of them. What the rate costs is the `screenEffects` help
+    // topic, reached by the `?` on this heading.
+    screenEffects: {
+        // Named for the sources this reaches rather than for the command they belong to. A clip the
+        // author imported plays at the rate it was made at, and nothing here changes that.
+        frameRateTitle: "Weather frame rate",
+        frameRateDescription: "Applies to snow, rain and sakura. Imported clips keep the frame rate they were made at.",
+        frameRateOption: "{rate} fps",
     },
     dependencies: {
         rescan: "Rescan",

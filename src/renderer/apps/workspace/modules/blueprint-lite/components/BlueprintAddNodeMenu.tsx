@@ -38,20 +38,19 @@ import {
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
-/**
- * Every row is exactly this tall, so the list can be virtualized off an index rather than measured.
- * Kept in step with `BlueprintAddNodeRow`'s own `h-[52px]`: a row that outgrows this number scrolls
- * under its neighbour instead of pushing it down.
- */
-const MENU_ROW_H = 52;
-/**
- * The list's own top and bottom breathing room, in the virtualizer rather than in the scroller's
- * padding: an item offset the virtualizer does not know about is one `scrollToIndex` lands short
- * of, which shows up as the keyboard walking a row half under the edge.
- */
-const MENU_LIST_PAD = 8;
 const MENU_CHROME_H = 132;
 const WINDOW_TITLEBAR_HEIGHT = 40;
+/**
+ * Height of one entry row, which the list is windowed by.
+ *
+ * The palette runs to a few hundred entries in a real project, and every one of them carries an
+ * icon; mounting the lot took ~300ms on right-click and the same again on every keystroke in the
+ * search field. Rows are a fixed height by design, so the window needs no measuring pass — keep
+ * this in step with the row's own `h-[52px]`.
+ */
+const ROW_H = 52;
+/** The list's vertical inset, kept out of the scroll container so the window owns every offset. */
+const LIST_PAD = 8;
 
 type PaletteEntry = ReturnType<IBlueprintNodeCatalogService["listPaletteEntries"]>[number];
 
@@ -213,23 +212,15 @@ export function BlueprintAddNodeMenu({
     const itemCount = filteredEntries.length;
     const listMaxHeight = Math.max(120, Math.min(MENU_MAX_H - MENU_CHROME_H, layout.maxHeight - MENU_CHROME_H));
 
-    /**
-     * Only the rows on screen are built.
-     *
-     * The catalogue is ~300 entries wide before a project adds any of its own, and the menu is
-     * mounted by the right-click that opens it — so the whole list used to be reconciled, committed
-     * and laid out inside the gesture, which is what made the pane menu take over a second to
-     * appear. Windowing makes that cost the size of the viewport instead of the size of the
-     * catalogue, and it makes hovering cheap for the same reason: moving the highlight re-renders
-     * the rows in view rather than every entry behind them.
-     */
     const virtualizer = useVirtualizer({
         count: itemCount,
         getScrollElement: () => listRef.current,
-        estimateSize: () => MENU_ROW_H,
-        paddingStart: MENU_LIST_PAD,
-        paddingEnd: MENU_LIST_PAD,
-        overscan: 8,
+        estimateSize: () => ROW_H,
+        overscan: 6,
+        // The list's own inset, moved off the scroll container and into the window's arithmetic:
+        // left on the container it would shift every row 8px past where a scroll-to lands it.
+        paddingStart: LIST_PAD,
+        paddingEnd: LIST_PAD,
         getItemKey: index => {
             const entry = filteredEntries[index];
             return entry ? blueprintAddNodeEntryKey(entry) : index;
@@ -280,14 +271,17 @@ export function BlueprintAddNodeMenu({
         });
     }, []);
 
+    // Asked of the window rather than the row: arrowing past the edge of the mounted range has no
+    // element to scroll to, and `aria-activedescendant` points at an id that only exists once the
+    // row is on screen.
     useEffect(() => {
         if (!open || activeFlatIndex < 0) {
             return;
         }
-        // Through the virtualizer, not `scrollIntoView`: the row the keyboard just walked onto may
-        // not be built yet, and asking the DOM for it would silently do nothing.
         virtualizer.scrollToIndex(activeFlatIndex, { align: "auto" });
-    }, [activeFlatIndex, open, virtualizer]);
+        // `virtualizer` is a fresh object every render; depending on it would re-scroll continuously.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeFlatIndex, open, itemCount]);
 
     useEffect(() => {
         if (!open) {
@@ -456,27 +450,25 @@ export function BlueprintAddNodeMenu({
                             {connectMode ? t("blueprint.addNode.connectEmpty") : t("blueprint.addNode.empty")}
                         </div>
                     ) : (
-                        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+                        // The sizer is scaffolding, not structure: it holds the scrollbar at the
+                        // full length of the list while only the rows on screen are mounted.
+                        <div role="presentation" className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
                             {virtualizer.getVirtualItems().map(item => {
                                 const entry = filteredEntries[item.index];
                                 if (!entry) {
                                     return null;
                                 }
                                 return (
-                                    <div
+                                    <BlueprintAddNodeRow
                                         key={item.key}
-                                        className="absolute left-0 top-0 w-full"
-                                        style={{ height: item.size, transform: `translateY(${item.start}px)` }}
-                                    >
-                                        <BlueprintAddNodeRow
-                                            entry={entry}
-                                            active={activeFlatIndex === item.index}
-                                            flatIndex={item.index}
-                                            itemCount={itemCount}
-                                            onPick={pickEntry}
-                                            onHover={setActiveFlatIndex}
-                                        />
-                                    </div>
+                                        entry={entry}
+                                        active={activeFlatIndex === item.index}
+                                        flatIndex={item.index}
+                                        itemCount={itemCount}
+                                        offsetY={item.start}
+                                        onPick={pickEntry}
+                                        onHover={setActiveFlatIndex}
+                                    />
                                 );
                             })}
                         </div>
@@ -489,14 +481,17 @@ export function BlueprintAddNodeMenu({
 }
 
 /**
- * Memoized because the highlight moves on every pointer cross: without this, one `active` change
- * re-renders every row the window is currently holding rather than the two that changed.
+ * Memoised because the whole list re-renders whenever the highlight moves, and the highlight moves
+ * on every row the pointer crosses: without this, running the mouse down the palette re-rendered
+ * every mounted row (icon included) per row boundary.
  */
 const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     entry: PaletteEntry;
     active: boolean;
     flatIndex: number;
     itemCount: number;
+    /** Where the windowed list puts this row inside its sizer. */
+    offsetY: number;
     onPick: (entry: PaletteEntry) => void;
     onHover: (flatIndex: number) => void;
 }) {
@@ -519,9 +514,10 @@ const BlueprintAddNodeRow = memo(function BlueprintAddNodeRow(props: {
     return (
         <div
             className={[
-                "group flex h-[52px] items-center rounded-md transition-colors",
+                "group absolute left-0 top-0 flex h-[52px] w-full items-center rounded-md transition-colors",
                 props.active ? "bg-fill" : "hover:bg-fill",
             ].join(" ")}
+            style={{ transform: `translateY(${props.offsetY}px)` }}
         >
             <button
                 id={`bp-add-node-option-${props.flatIndex}`}

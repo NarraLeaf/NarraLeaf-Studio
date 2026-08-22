@@ -288,6 +288,47 @@ export const workspace = {
         },
     },
     shell: {
+    /**
+     * 窗口角落里的 NarraLeaf Team。
+     *
+     * 单元格背后的面板承担版本轨道原来带着的两个问题：这个项目的版本发往哪台服务器，
+     * 以及这台机器在那台服务器上是谁。凡是关于服务器的措辞都与版本轨道共用同一批键，
+     * 这里只放这个面板独有的。
+     */
+    team: {
+        // 产品名，写全称：作者是在这里认识它的。面板里其余各行仍称服务器为服务器。
+        title: "NarraLeaf Team",
+        command: {
+            open: "打开 NarraLeaf Team",
+        },
+        destination: "服务器",
+        projectOnServer: "项目名：{name}",
+        noAccountHere: "本机在这台服务器上没有账号",
+        // 打开设置。添加服务器与退出登录都在那里。
+        manage: "管理服务器…",
+        // 向服务器问到的结果，只在有事可做时才画出来。一切正常的工程什么都不写：
+        // 每天都在的一行「一切正常」没有人会读。
+        notThere: "该服务器上没有这个项目",
+        // 有响应、并且确实持有这个项目的服务器。在同步状态还无话可说时显示：
+        // 地址旁边那个词会被读成是在说服务器，而工作区开始自己检查之后，
+        //「未检查」就不再是事实了。
+        connected: "已连接",
+        unreachable: "该服务器没有响应",
+        // 谁在场、开着什么的小标题。
+        presence: "协作",
+        hereAlone: "只有本机",
+        hereMany: "{count} 台设备",
+        // 这个面板里唯一一个需要主动去做的动作，其余都是打开窗口的附带结果。
+        liveOpen: "开始实时会话",
+        liveUntitled: "实时会话",
+        liveMembers: "{count} 人",
+        liveJoin: "加入",
+        liveLeave: "离开",
+        liveEnd: "结束",
+        // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
+        attached: "附加数据 {count} 条",
+        attachedOutdated: "{count} 条已过时",
+    },
         errorTitle: "工作区初始化失败",
         showStackTrace: "显示堆栈跟踪",
         retry: "重试",
@@ -460,6 +501,9 @@ export const workspace = {
             openCurrentScene: "打开当前场景",
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
+                // The brand, not a description of the cell: it is where an author learns the
+                // name of the thing their project is shared through.
+                team: "NarraLeaf Team",
                 runStatus: "运行状态",
         studioTasks: "后台工作",
                 unsavedChanges: "未保存的更改",
@@ -720,17 +764,27 @@ export const workspace = {
                 more: "更多操作",
                 picker: {
                     title: "连接服务器",
+                    // 选定服务器后立即向它询问：这个工程在它上面会变成什么，取决于它已经有什么。
+                    reading: "正在读取这台服务器上的项目",
+                    // 服务器上已经有这个工程——按仓库 id 比对，那是两端改名之后唯一还成立的身份。
+                    // 此时没有什么可决定的，所以名称是陈述，不是提问。
+                    already: "这台服务器上已经有这个工程，名为 {name}。",
                     nameLabel: "在服务器上的名称",
                     namePlaceholder: "my-game",
+                    nameHint: "可用字母、数字、点、连字符与下划线。",
+                    // 两条都是服务器的拒绝，只是提前说：一条只会回一个状态码，
+                    // 另一条要等对话框关闭、发布已经做了一半才出现。
+                    nameInvalid: "服务器上的名称只能包含字母、数字、点、连字符与下划线。",
+                    nameTaken: "这台服务器上已有同名项目。",
+                    // 服务器从未见过这个工程时按钮做的事：登记、连接，并把本机的全部版本发上去。
+                    createAndSend: "新建并上传",
                     empty: "尚未添加服务器",
                     // 列表的最后一行。省略号是「会打开别处」的既有写法：它打开设置并关闭本对话框。
                     add: "添加服务器…",
-                    manual: "其他地址",
+                    unknownServer: "该项目使用 {host}，这台服务器还没有添加到本机",
                 },
                 // 只有这一个字段。实测：后端只保留 URL 的**源**，仓库靠它自己的 id 认，
                 // 所以真的没有第二样东西要填——旁边不需要「仓库名」。
-                addressLabel: "服务器地址",
-                addressPlaceholder: "lore://studio.example.lan:41337",
                 save: "连接",
                 cancel: "取消",
                 disconnect: "断开连接",
@@ -779,48 +833,10 @@ export const workspace = {
                     unknown: "这台服务器没有登记该项目。",
                 },
                 signIn: {
-                    required: "连接项目前需要先登录该服务器。",
-                    open: "登录此服务器",
+                    // 项目指向的服务器在本机没有账号时出现。
+                    required: "连接项目到这台服务器需要先在本机添加账号。",
                     signedInAs: "已登录为 {name}",
                     signOut: "退出登录",
-                    addressLabel: "登录地址",
-                    addressPlaceholder: "https://studio.example.lan:41402",
-                    tokenLabel: "访问令牌",
-                    tokenPlaceholder: "粘贴令牌",
-                    hint: "令牌由服务器的管理者签发。",
-                    trust: {
-                        open: "在这台电脑上信任该服务器",
-                        title: "信任该服务器？",
-                        vouched: "粘贴的令牌指向该证书颁发机构，在该地址上应答的正是它。",
-                        compare: "请通过该连接以外的途径，与服务器管理员提供的指纹核对。",
-                        authorityLabel: "颁发者",
-                        fingerprintLabel: "指纹",
-                        meaning: "持有该机构密钥的任何一方，都能为任意地址签发证书，而本账户会接受它。受影响的只有本机上的该账户。",
-                        manual: "该系统没有按账户的信任库。请运行以下命令，然后重新登录：",
-                        copy: "复制命令",
-                        confirm: "信任",
-                        cancel: "取消",
-                    },
-                    submit: "登录",
-                    cancel: "取消",
-                    reach: {
-                        ready: "此服务器与这份 Studio 可以协同工作。",
-                        notPermitted: "已登录，但该账号尚未获得此项目的访问权。请向服务器管理员申请。",
-                        dataPortSilent: "已登录，但服务器本身没有响应。",
-                    },
-                    problem: {
-                        scheme: "登录地址必须以 https:// 或 ucs-auth:// 开头。",
-                        token: "该令牌不是此服务器签发的。请粘贴完整的令牌。",
-                        address: "该令牌未写明登录地址，因此仍需填写地址。",
-                        certificate:
-                            "这台电脑不信任此服务器所用的证书颁发机构。它的指纹是 {fingerprint}。",
-                        mismatch:
-                            "该地址上的服务器不是此令牌对应的服务器。令牌指向 {expected}，"
-                            + "应答的是 {found}。请勿信任，并向服务器管理员核实。",
-                        unreachable: "该地址没有任何响应（{detail}）。",
-                        refused: "服务器不接受该令牌（{detail}）。",
-                        unknown: "登录未能完成（{detail}）。",
-                    },
                 },
             },
             // 同步时合不拢的文件。用常驻通知而不是行内错误：同步在收尾时会离开版本视图，

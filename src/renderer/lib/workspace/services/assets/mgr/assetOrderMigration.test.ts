@@ -102,6 +102,14 @@ function createHarness(files: Record<string, string> = {}) {
             }
             return record(path, data);
         },
+        /**
+         * The verb the order and group shards actually take, and the reason they could leave the
+         * write-grant route: unlike `writeFileNoFollow` above it creates an absent file, so the
+         * first open of a project that predates the shard still writes one.
+         */
+        async writeFileNoFollowOrCreate(path: string, data: string) {
+            return record(path, data);
+        },
         async recoverCorruptedJsonFile(path: string, replacement: string) {
             return record(path, replacement);
         },

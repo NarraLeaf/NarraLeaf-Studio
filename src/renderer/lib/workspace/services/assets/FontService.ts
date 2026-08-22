@@ -1,9 +1,52 @@
+import { getInterface } from "@/lib/app/bridge";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import { AssetData, AssetType, FontAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Asset } from "./types";
 import { AssetServiceBase } from "./AssetServiceBase";
 
 export class FontService extends AssetServiceBase {
+    /** See {@link readCoverage}: keyed on id and content hash, held for the window. */
+    private readonly coverage = new Map<string, Promise<FontCoverageResult>>();
+
+    /**
+     * What this font can draw, and which code pages its vendor declared.
+     *
+     * Answered by the main process (`fontAction.ts`), not here: WOFF2 wraps a font in a Brotli
+     * stream and a renderer has no Brotli decompressor, so a `.woff2` in the library is simply
+     * unreadable from this side. What crosses back is a range list rather than the file.
+     *
+     * Memoised for the window's lifetime, keyed on the asset's content hash where it has one. Both
+     * callers ask repeatedly - `typography` lint asks once per language of the project, the Design
+     * panel asks on every render of a row - and re-reading a thirty-megabyte CJK face for each is a
+     * cost neither of them needs to pay. The hash in the key is what makes replacing a font's bytes
+     * invalidate the answer; an asset with no hash yet is keyed on its id alone and re-read once the
+     * hash arrives.
+     *
+     * Never throws. Every failure is an arm of {@link FontCoverageResult}, because a caller that
+     * cannot read a font must say "cannot assert" rather than "covers nothing" - the second one puts
+     * a glyph warning on every line of the script.
+     */
+    public async readCoverage(asset: Asset<AssetType.Font>): Promise<FontCoverageResult> {
+        const key = `${asset.id}@${asset.hash ?? ""}`;
+        const cached = this.coverage.get(key);
+        if (cached) {
+            return cached;
+        }
+        const pending = this.probeCoverage(asset).catch((): FontCoverageResult => ({
+            ok: false,
+            reason: "malformed",
+        }));
+        this.coverage.set(key, pending);
+        return pending;
+    }
+
+    private async probeCoverage(asset: Asset<AssetType.Font>): Promise<FontCoverageResult> {
+        const result = await getInterface().probeFontCoverage(this.getAssetPath(asset.id));
+        return result.success && result.data
+            ? result.data.result
+            : { ok: false, reason: "malformed" };
+    }
 
     public async readLocalFont(asset: Asset<AssetType.Font>): Promise<RequestStatus<AssetData<AssetType.Font>>> {
         const path = this.getAssetPath(asset.id);
