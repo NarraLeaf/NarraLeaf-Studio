@@ -12,6 +12,7 @@ import {
     type LiveRefusal,
     type LiveRefusalReason,
     type LiveResync,
+    type LiveRowClaim,
 } from "@shared/live/ops";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
@@ -71,6 +72,21 @@ export type LiveHostDeps = {
      * only thing that knows which accounts an instance belongs to.
      */
     claimBlocking?(blockId: StoryBlockId, by: string): string | null;
+    /**
+     * The account behind an instance, or null when this host cannot say.
+     *
+     * Asked when an instance takes a row, because a claim is recorded against a PERSON: a refusal
+     * names one, and an instance id means nothing at all to whoever reads it. Nothing composes it -
+     * the room's own roster is the only thing that knows which account a window signed in as.
+     *
+     * ⚠ **A claim that cannot name a person is not recorded**, which is why the answer may be null
+     * rather than falling back to the instance id. A set carrying ids would name nobody in a
+     * refusal, and worse: an editor compares the holder against its own account to decide which
+     * rows are somebody else's, so an id would make its own author's line read as taken by a
+     * stranger. Recording nothing degrades to what there was before a claim existed, which is a
+     * race somebody occasionally loses rather than a row nobody can write.
+     */
+    accountOf?(instance: string): string | null;
     /** How many answers to remember for idempotency. See {@link LiveReceipts}. */
     receiptLimit?: number;
 };
@@ -142,6 +158,13 @@ export class LiveHost {
                 return this.intent(message, from);
             case "resync":
                 return this.catchUp(message);
+            case "row-claim":
+                // Recorded, and answered with nothing. The set that results is broadcast from the
+                // store's revision moving rather than from here, so ONE path covers a row taken, a
+                // row given back, a row that lapsed and a row forgotten because it was deleted -
+                // and a set is never sent twice for one change.
+                this.rowClaim(message, from);
+                return null;
             case "effect":
             case "refusal":
             case "claims":
@@ -166,6 +189,30 @@ export class LiveHost {
      */
     public applyLocal(op: LiveOp, derived?: LiveDerived): LiveEffect | LiveRefusal {
         return this.perform(op, this.deps.self, undefined, derived);
+    }
+
+    /**
+     * This window is writing a row, or has stopped. **The host's own box, through the guest's door.**
+     *
+     * The host is not exempt from the rule it enforces: a row it took without recording it here
+     * would be held by nobody as far as the set is concerned, so nothing would refuse a guest
+     * writing over the paragraph the host is in the middle of - and no mark would appear on any
+     * other screen. Same message, same record, same broadcast.
+     */
+    public claimLocal(blockId: StoryBlockId, holding: boolean): void {
+        this.rowClaim({ kind: "row-claim", blockId, holding }, this.deps.self);
+    }
+
+    /**
+     * Whatever an instance was writing, released at once.
+     *
+     * For a window that has left the room, which is the one ending a give-back cannot cover: the
+     * machine that would have sent one is gone. Without it the rows it held stay held until they
+     * lapse, and a lapse is a safety net measured in a pause in typing rather than in how long
+     * somebody has been away.
+     */
+    public forgetInstance(instance: string): void {
+        this.claims.releaseAll(instance);
     }
 
     private intent(intent: LiveIntent, from: string): LiveReceipt {
@@ -416,6 +463,30 @@ export class LiveHost {
             }
         }
         return null;
+    }
+
+    /**
+     * Record that an instance is writing a row, or that it has stopped.
+     *
+     * The one place a claim is created or dropped by somebody asking, whichever half of the session
+     * asked - see {@link claimLocal}. A row somebody else holds is simply not taken: the asker is
+     * told by the set it already has, which names the holder, and there is nothing to send it that
+     * it does not already know.
+     */
+    private rowClaim(message: LiveRowClaim, from: string): void {
+        if (!this.isMember(from)) {
+            return;
+        }
+        if (!message.holding) {
+            this.claims.release(message.blockId, from);
+            return;
+        }
+        const account = this.deps.accountOf?.(from) ?? null;
+        if (account === null) {
+            // Nothing rather than a claim held by an id nobody would recognise. See `accountOf`.
+            return;
+        }
+        this.claims.claim(message.blockId, { instance: from, account });
     }
 
     private catchUp(resync: LiveResync): LiveCatchUp {

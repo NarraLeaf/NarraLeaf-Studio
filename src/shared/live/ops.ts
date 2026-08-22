@@ -353,6 +353,36 @@ export type LiveClaims = {
     held: Readonly<Record<StoryBlockId, string>>;
 };
 
+/**
+ * A machine saying it is writing a row, or that it has stopped. **Guest to host.**
+ *
+ * The other half of {@link LiveClaims}: the host is the only place a claim exists, so this is the
+ * only way one is ever created or dropped, and the set that comes back is the only statement about
+ * what is held.
+ *
+ * **One kind for taking and for giving back**, rather than a `claim` and a `release`. They are the
+ * same statement about one row - "I am writing this", with a yes or a no - and one kind is one case
+ * in every exhaustive switch this vocabulary has, where two would be two chances to answer only one
+ * of them. A give-back that is never sent is a row nobody can edit for the rest of the session, so
+ * the two halves must be impossible to wire up separately.
+ *
+ * **No idempotency key and no receipt**, which is what makes this unlike {@link LiveIntent}. Nothing
+ * is lost when one goes missing: the box holding a row asserts its claim again as its author types,
+ * so a lost take is repaired by the next assertion, and a lost give-back lapses on the host's own
+ * timeout. The answer, when the set moved, is the whole of {@link LiveClaims} - and a set that does
+ * not name the asker IS the refusal, which is why there is no refusal here to write down.
+ *
+ * **It names no story.** A room is about one document and this changes none of it: the host's record
+ * is keyed by row, a row id identifies a row across the whole project, and the worst a stray one
+ * could do is put a name over a line nobody in the room is looking at.
+ */
+export type LiveRowClaim = {
+    kind: "row-claim";
+    blockId: StoryBlockId;
+    /** Whether the sender is writing the row. False gives it back. */
+    holding: boolean;
+};
+
 /** A guest asking to be caught up, because it saw a gap in {@link LiveEffect.seq}. */
 export type LiveResync = {
     kind: "resync";
@@ -376,6 +406,7 @@ export type LiveMessage =
     | LiveEffect
     | LiveRefusal
     | LiveClaims
+    | LiveRowClaim
     | LiveResync
     | LiveCatchUp;
 
@@ -396,6 +427,7 @@ export function isLiveMessage(value: unknown): value is LiveMessage {
         || kind === "effect"
         || kind === "refusal"
         || kind === "claims"
+        || kind === "row-claim"
         || kind === "resync"
         || kind === "catch-up";
 }

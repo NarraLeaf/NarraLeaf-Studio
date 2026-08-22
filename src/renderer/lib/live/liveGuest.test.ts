@@ -416,9 +416,29 @@ describe("what a guest ignores", () => {
         const intent = world.guest.intend(rename("One"));
         world.guest.receive(intent);
         world.guest.receive({ kind: "resync", by: SELF, after: 0 });
+        world.guest.receive({ kind: "row-claim", blockId: "a", holding: true });
 
         expect(world.applied).toEqual([]);
         expect(world.guest.pending).toEqual([intent]);
+        // Nothing a guest can hear makes a row its own. Only the host holds a claim, and what a
+        // guest learns about one arrives as a `claims` set and in no other way.
+        expect(world.guest.claimedRows).toEqual({});
+    });
+
+    it("asks for a row and holds nothing until the set says so", () => {
+        const world = makeWorld();
+        world.guest.claimRow("a", true);
+
+        expect(world.sent).toEqual([{ kind: "row-claim", blockId: "a", holding: true }]);
+        // No optimism: the ask changes nothing here, and the row is somebody else's until the host
+        // broadcasts a set that names this author on it.
+        expect(world.guest.claimedRows).toEqual({});
+
+        world.guest.claimRow("a", false);
+        expect(world.sent).toEqual([
+            { kind: "row-claim", blockId: "a", holding: true },
+            { kind: "row-claim", blockId: "a", holding: false },
+        ]);
     });
 
     it("records a claims snapshot for the interface and applies nothing", () => {

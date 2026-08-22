@@ -123,7 +123,7 @@ describe("the operation vocabulary", () => {
 
 describe("isLiveMessage", () => {
     it("recognises every kind a machine in a session can send", () => {
-        const kinds = ["intent", "effect", "refusal", "claims", "resync", "catch-up"];
+        const kinds = ["intent", "effect", "refusal", "claims", "row-claim", "resync", "catch-up"];
         for (const kind of kinds) {
             expect(isLiveMessage({ kind })).toBe(true);
         }

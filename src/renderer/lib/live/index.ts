@@ -1,4 +1,5 @@
 export {
+    CLAIM_REASSERT_MS,
     DEFAULT_CLAIM_TIMEOUT_MS,
     LiveClaimStore,
     type LiveClaimHolder,

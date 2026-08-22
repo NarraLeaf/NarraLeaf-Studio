@@ -95,7 +95,7 @@ export function othersClaims(view: LiveSessionView, storyId: StoryId | undefined
     if (storyId === undefined || view.storyId !== storyId) {
         return NO_CLAIMS;
     }
-    const self = view.session?.members.find(member => member.instance === view.self)?.account ?? null;
+    const self = selfAccount(view);
     const held: Record<StoryBlockId, string> = {};
     for (const [blockId, account] of Object.entries(view.claims)) {
         if (account !== self) {
@@ -103,6 +103,36 @@ export function othersClaims(view: LiveSessionView, storyId: StoryId | undefined
         }
     }
     return held;
+}
+
+/**
+ * Who else holds ONE row, or null - the same answer as {@link useStoryRowClaim}, read without React.
+ *
+ * For the controller, which decides whether a click turns into a caret and sits outside the provider
+ * the rows read from. Both go through the same two exclusions, so a row cannot be marked as taken
+ * and still open for typing, or the other way about.
+ */
+export function rowClaimHolder(
+    view: LiveSessionView,
+    storyId: StoryId | undefined,
+    blockId: StoryBlockId,
+): string | null {
+    if (storyId === undefined || view.storyId !== storyId) {
+        return null;
+    }
+    const account = view.claims[blockId];
+    return account === undefined || account === selfAccount(view) ? null : account;
+}
+
+/**
+ * This window's own account in the room, or null outside one.
+ *
+ * A claim carries no name a person would recognise beyond this, so a second machine signed in to
+ * the same account reads as this author - which is the cost of comparing accounts, and cheaper than
+ * marking somebody's own line as taken.
+ */
+function selfAccount(view: LiveSessionView): string | null {
+    return view.session?.members.find(member => member.instance === view.self)?.account ?? null;
 }
 
 /**

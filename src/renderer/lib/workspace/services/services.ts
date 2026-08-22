@@ -1499,6 +1499,14 @@ interface ILiveSessionService extends IService {
     /** Leave: the freeze lifts and what is on disk is this author's own, committable as usual. */
     leave(): Promise<void>;
     /**
+     * Say that this window is writing a row, or that it has stopped.
+     *
+     * One method for taking and for giving back, because the two must be impossible to wire up
+     * separately: a claim that is never given back is a row nobody can edit for the rest of the
+     * session. Silent outside a session and for any other story's rows.
+     */
+    claimRow(storyId: StoryId, blockId: StoryBlockId, holding: boolean): void;
+    /**
      * Send the inverse of this window's last operation, rather than restoring a scene snapshot.
      *
      * False when there is nothing to send, and the view says why - never a snapshot as a fallback,

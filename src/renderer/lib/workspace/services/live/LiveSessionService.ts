@@ -2,7 +2,7 @@ import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { storyDocumentSpec } from "@shared/documents/specs";
 import type { LiveDerived } from "@shared/live/ops";
-import type { StoryId } from "@shared/types/story";
+import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, type VcsCheckpointReason } from "@shared/types/vcs";
 import { Service } from "../Service";
@@ -106,6 +106,17 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
 
     public leave(): Promise<void> {
         return this.session?.leave() ?? Promise.resolve();
+    }
+
+    /**
+     * Say that this window is writing a row, or that it has stopped.
+     *
+     * The seam the story editor takes and gives back a row through - see
+     * {@link LiveSession.claimRow} for what each role does with it. Silent outside a session, which
+     * is what lets the editor call it without asking whether there is one.
+     */
+    public claimRow(storyId: StoryId, blockId: StoryBlockId, holding: boolean): void {
+        this.session?.claimRow(storyId, blockId, holding);
     }
 
     /** Send the inverse of this window's last operation. False when there is none; the view says why. */

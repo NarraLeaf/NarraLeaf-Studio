@@ -22,6 +22,7 @@ import {
     moveBlockInScene,
     updateBlockPayload,
 } from "@/lib/workspace/services/story/storyModel";
+import { CLAIM_REASSERT_MS, DEFAULT_CLAIM_TIMEOUT_MS, LiveClaimStore } from "./claims";
 import { LiveHost, type LiveOutbound } from "./liveHost";
 
 const STORY = "story-1";
@@ -70,8 +71,16 @@ type World = {
 function makeWorld(options: {
     scenes?: StoryScene[];
     members?: string[];
-    /** Block id to the instance holding it, standing in for the claim store a later item owns. */
+    /** Block id to the instance holding it, answered INSTEAD of the host's own store. */
     claims?: Record<StoryBlockId, string>;
+    /** The host's own record, when a test wants to set the clock a claim lapses against. */
+    claimStore?: LiveClaimStore;
+    /**
+     * Instance to account. Absent means every instance is its own account, which is the shorthand
+     * the claim assertions below read in; a table present makes an instance it does not name one
+     * this host cannot put a person's name to.
+     */
+    accounts?: Record<string, string>;
     receiptLimit?: number;
 } = {}): World {
     const scenes: Record<StorySceneId, StoryScene> = {};
@@ -104,6 +113,8 @@ function makeWorld(options: {
                     return holder && holder !== by ? holder : null;
                 }
                 : undefined,
+            accountOf: instance => (options.accounts ? options.accounts[instance] ?? null : instance),
+            ...(options.claimStore === undefined ? {} : { claims: options.claimStore }),
             receiptLimit: options.receiptLimit,
         }),
     };
@@ -627,6 +638,128 @@ describe("the claim check", () => {
     it("is not consulted for the operations a claim does not govern", () => {
         const world = makeWorld({ claims: { b: "guest-2" } });
         expect(asEffect(send(world, { op: "move-block", sceneId: "s1", blockId: "b", target: { parentId: null, beforeBlockId: "a" } }, "guest-1")).seq).toBe(1);
+    });
+});
+
+describe("taking a row and giving it back", () => {
+    /** What the set says, which is the only thing anybody outside the host ever sees. */
+    function held(world: World): Record<string, string> {
+        return { ...world.host.claims.snapshot().held };
+    }
+
+    it("records a guest's claim against the account behind it", () => {
+        // An account and never the instance: a refusal names a PERSON, and an instance id means
+        // nothing at all to whoever reads it.
+        const world = makeWorld({ accounts: { "guest-1": "ada" } });
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+
+        expect(held(world)).toEqual({ b: "ada" });
+    });
+
+    it("gives the row back, and only to the machine holding it", () => {
+        const world = makeWorld({ accounts: { "guest-1": "ada", "guest-2": "bob" } });
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+
+        // Honouring somebody else's release would be a way to take a row off the person writing it
+        // without ever being refused.
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: false }, "guest-2");
+        expect(held(world)).toEqual({ b: "ada" });
+
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: false }, "guest-1");
+        expect(held(world)).toEqual({});
+    });
+
+    it("leaves a row somebody else holds where it is, and says nothing back", () => {
+        // The set the asker already has names the holder, so there is nothing to send it that it
+        // does not know - which is why this message has no refusal of its own.
+        const world = makeWorld({ accounts: { "guest-1": "ada", "guest-2": "bob" } });
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+
+        expect(world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-2")).toBeNull();
+        expect(held(world)).toEqual({ b: "ada" });
+    });
+
+    it("records nothing for an instance it cannot put a person's name to", () => {
+        // A set carrying ids would name nobody in a refusal, and an editor comparing the holder
+        // against its own account would read its own author's line as taken by a stranger.
+        const world = makeWorld({ accounts: {} });
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+
+        expect(held(world)).toEqual({});
+    });
+
+    it("puts the host's own row in the set, through the same door", () => {
+        // A row the host took without recording it would be held by nobody as far as the set is
+        // concerned: no mark on any other screen, and nothing refusing a guest writing over it.
+        const world = makeWorld({ accounts: { host: "ada" } });
+        world.host.claimLocal("b", true);
+        expect(held(world)).toEqual({ b: "ada" });
+
+        world.host.claimLocal("b", false);
+        expect(held(world)).toEqual({});
+    });
+
+    it("refuses everybody else's edit to a claimed row, naming the holder", () => {
+        const world = makeWorld({ accounts: { "guest-1": "ada", "guest-2": "bob" } });
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+
+        const refusal = asRefusal(send(world, {
+            op: "update-block", sceneId: "s1", blockId: "b", payload: note("b", "mine").payload,
+        }, "guest-2"));
+        expect(refusal.reason).toBe("row-claimed");
+        expect(refusal.heldBy).toBe("ada");
+        expect(world.applied).toHaveLength(0);
+
+        // And the holder still writes its own line, which is what a claim is for.
+        expect(asEffect(send(world, {
+            op: "update-block", sceneId: "s1", blockId: "b", payload: note("b", "hers").payload,
+        }, "guest-1")).seq).toBe(1);
+    });
+
+    it("forgets the claim on a row that has been deleted", () => {
+        const world = makeWorld({ accounts: { "guest-1": "ada" } });
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        send(world, { op: "delete-block", sceneId: "s1", blockId: "b" }, "guest-1");
+
+        expect(held(world)).toEqual({});
+    });
+
+    it("drops everything a window that has left the room was writing", () => {
+        const world = makeWorld({ accounts: { "guest-1": "ada", "guest-2": "bob" } });
+        world.host.receive({ kind: "row-claim", blockId: "a", holding: true }, "guest-1");
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-2");
+
+        world.host.forgetInstance("guest-1");
+        expect(held(world)).toEqual({ b: "bob" });
+    });
+
+    it("keeps a row past the raw timeout while its author keeps typing", () => {
+        // The deadline is measured against a PAUSE in typing, not against how long a paragraph
+        // takes to write - which only works because the box asserts the claim again as it goes.
+        let clock = 0;
+        const world = makeWorld({
+            accounts: { "guest-1": "ada" },
+            claimStore: new LiveClaimStore({ now: () => clock }),
+        });
+
+        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        let assertions = 1;
+        // Four minutes of writing, asserting on the interval the editor actually uses.
+        while (clock < 240_000) {
+            clock += CLAIM_REASSERT_MS;
+            world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+            assertions += 1;
+        }
+
+        expect(held(world)).toEqual({ b: "ada" });
+        // Bounded, and by the interval rather than by how much was typed: one message per author
+        // per ten seconds, for a paragraph that could have been thousands of keystrokes.
+        expect(assertions).toBe(1 + 240_000 / CLAIM_REASSERT_MS);
+
+        // And it lapses once the assertions stop, which is the safety net for a machine that died
+        // holding a line.
+        clock += DEFAULT_CLAIM_TIMEOUT_MS + 1;
+        expect(held(world)).toEqual({});
     });
 });
 

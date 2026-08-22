@@ -9,12 +9,13 @@ import {
     type LiveOp,
     type LiveRefusal,
     type LiveResync,
+    type LiveRowClaim,
 } from "@shared/live/ops";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 
-/** Everything a guest can say. The other four kinds of message are the host's to send. */
-export type LiveGuestOutbound = LiveIntent | LiveResync;
+/** Everything a guest can say. The other three kinds of message are the host's to send. */
+export type LiveGuestOutbound = LiveIntent | LiveResync | LiveRowClaim;
 
 /**
  * How long a sent intent waits for its answer before it is sent again, unchanged.
@@ -164,6 +165,18 @@ export class LiveGuest {
     }
 
     /**
+     * Say that this machine is writing a row, or that it has stopped. **Nothing is held here.**
+     *
+     * The mirror of {@link intend}: the host is the only place a claim exists, so this asks and
+     * records nothing of its own. The row is held when a set arrives naming this author on it, and
+     * until then it is held by whoever the last set said - which may be somebody else, in which
+     * case this ask changed nothing and no set will come back.
+     */
+    public claimRow(blockId: StoryBlockId, holding: boolean): void {
+        this.deps.send({ kind: "row-claim", blockId, holding });
+    }
+
+    /**
      * Read one message. The single door in, so there is one order of events.
      *
      * Takes `unknown` rather than a message, because what arrives is the payload of somebody else's
@@ -189,9 +202,12 @@ export class LiveGuest {
                 return;
             case "intent":
             case "resync":
+            case "row-claim":
                 // The things a guest itself says. One arriving here is this guest's own message
                 // coming back off the topic, or another guest's - every participant receives
-                // everything - and neither is anything to act on: only the host answers an intent.
+                // everything - and neither is anything to act on: only the host answers an intent,
+                // and only the host holds a claim. What a guest knows about claims arrives as a
+                // `claims` set and in no other way.
                 return;
         }
     }
