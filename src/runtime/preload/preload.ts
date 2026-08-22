@@ -18,10 +18,13 @@ import {
     readGameRuntimeLogPathArg,
 } from "@shared/utils/gameRuntimeAssetUrl";
 import {
+    GAME_RUNTIME_TEST_COMMAND_CHANNEL,
     GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
+    type GameRuntimeTestCommandBridge,
     type GameRuntimeTestSignal,
     type GameRuntimeTestSignalBridge,
 } from "../gameTestSignal";
+import type { GameTestCommand } from "@shared/types/gameTest";
 
 // Version tag for asset URLs, injected by the main process at window creation
 // so immutable HTTP cache entries are keyed per pack. The fallback is
@@ -155,14 +158,14 @@ const sidecar: GameRuntimeSidecarBridge = {
 };
 
 /**
- * The desktop bridge is the shared contract plus the test-observation channel.
+ * The desktop bridge is the shared contract plus the two halves of the test channel.
  *
- * Intersected rather than added to `GameRuntimePreloadBridge`, because this half genuinely does not
- * exist everywhere: the web export has no main process to report to. Callers read it through
- * `readRuntimeTestSignalReporter`, which turns that absence into "no hooks" instead of a method
- * that exists and does nothing.
+ * Intersected rather than added to `GameRuntimePreloadBridge`, because they genuinely do not exist
+ * everywhere: the web export has no main process to report to or hear from. Callers read them
+ * through `readRuntimeTestSignalReporter` / `readRuntimeTestCommandSource`, which turn that absence
+ * into "no hooks" instead of methods that exist and do nothing.
  */
-const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
+const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRuntimeTestCommandBridge = {
     readPack: () => ipcRenderer.invoke("runtime:read-pack") as Promise<GameRuntimePackV1>,
     // Encoded per segment, not as a whole: a model bundle addresses its files by the manifest key
     // `{assetId}/{pathInsideBundle}`, and escaping the separators would collapse that into one
@@ -179,6 +182,18 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     // on the observer, and there is nothing useful to hear back.
     reportTestSignal: (signal: GameRuntimeTestSignal) => {
         ipcRenderer.send(GAME_RUNTIME_TEST_SIGNAL_CHANNEL, signal);
+    },
+    // The other direction, shaped like `onFullscreenChanged` below: subscribe, and the returned
+    // function is the only way off. The main process validated the command before it sent it, so
+    // nothing is re-decided here - this side only fans it out.
+    onTestCommand: (listener: (command: GameTestCommand) => void) => {
+        const handler = (_event: unknown, command: GameTestCommand) => {
+            listener(command);
+        };
+        ipcRenderer.on(GAME_RUNTIME_TEST_COMMAND_CHANNEL, handler);
+        return () => {
+            ipcRenderer.off(GAME_RUNTIME_TEST_COMMAND_CHANNEL, handler);
+        };
     },
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
     restart: () => ipcRenderer.invoke("runtime:restart") as Promise<void>,

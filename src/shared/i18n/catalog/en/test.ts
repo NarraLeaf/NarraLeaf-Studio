@@ -101,6 +101,45 @@ export const test = {
                 failed: "{errors} errors, {warnings} warnings",
             },
         },
+        walkthrough: {
+            title: "Ending walkthrough",
+            // States where the run begins, because that is the one thing about it an author cannot
+            // see from the title and would otherwise have to guess.
+            description: "Plays the game to one ending, starting the story at its own entry scene",
+            parameter: {
+                ending: {
+                    label: "Ending",
+                    description: "The ending to walk to",
+                    // Story, scene and name together: no one of them tells two endings apart.
+                    option: "{story} / {scene} / {ending}",
+                    unnamed: "Unnamed ending",
+                },
+            },
+            log: {
+                planned: "Route planned: {scenes} scenes, {decisions} decisions",
+                choosing: "{scene}: choosing \"{option}\"",
+                improvised: "Answered an unplanned choice with \"{option}\"",
+            },
+            finding: {
+                endingMissing: "That ending is no longer in the story",
+                noEntryPoint: "Nothing names a scene for {story} to begin at",
+                unreachable: "No route reaches {ending} from where {story} begins",
+                optionMissing: "{scene} did not offer \"{option}\", so this route is not walkable",
+                otherEnding: "Reached {reached} instead of {ending}",
+                endedWithoutEnding: "The story ended without reaching {ending}",
+                stalled: "Stopped advancing after {steps} steps without reaching {ending}",
+                cancelled: "Cancelled after {steps} steps",
+                exit: {
+                    closed: "The game closed before reaching {ending}",
+                    stopped: "The game was stopped before reaching {ending}",
+                    crashed: "The game crashed before reaching {ending}",
+                    failedToStart: "The game could not start",
+                },
+            },
+            summary: {
+                passed: "Reached {ending}",
+            },
+        },
         reachableEndings: {
             title: "Reachable endings",
             description: "Whether every way through the story reaches an /ending",

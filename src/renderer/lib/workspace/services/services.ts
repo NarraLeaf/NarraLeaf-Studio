@@ -1337,6 +1337,8 @@ interface ITestRunService extends IService {
     getAvailability(id: TestId): TestAvailability;
     /** What a test asks the author for, with every `select`'s option list already evaluated. */
     listParameters(id: TestId): ResolvedTestParameter[];
+    /** Load what those lists read, before asking for them. Never rejects. */
+    prepareParameterSources(): Promise<void>;
     /** The values each test was last run with, off the project cache. Never rejects. */
     readRememberedParameters(): Promise<TestParameterMemory>;
     /** Keep what a test was just started with. Silently does nothing on a frozen workspace. */

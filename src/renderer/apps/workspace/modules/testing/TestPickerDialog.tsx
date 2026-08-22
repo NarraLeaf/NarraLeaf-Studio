@@ -367,19 +367,25 @@ export function openTestDialog(workspace: Workspace): void {
 }
 
 /**
- * The remembered values are read *before* the dialog opens, not from inside it.
+ * Everything the picker draws from is read *before* the dialog opens, not from inside it.
  *
- * One small file off the project cache, and reading it first is what lets `TestPickerContent` stay
- * a pure function of its props: no effect, no loading state, and no dropdown that draws a default
- * and then visibly jumps to what the author picked last time. A read that fails answers "nothing
- * remembered" (see `TestRunService.readRememberedParameters`), so the picker always opens.
+ * One small file off the project cache, plus whatever the parameter lists are built from - and
+ * reading both first is what lets `TestPickerContent` stay a pure function of its props: no effect,
+ * no loading state, and no dropdown that draws a default and then visibly jumps to what the author
+ * picked last time. Neither read can fail the open: a missing cache answers "nothing remembered",
+ * and a story that will not load is one story missing from a list.
  */
 async function showTestPicker(workspace: Workspace): Promise<void> {
     const context = workspace.getContext();
     const uiService = context.services.get<UIService>(Services.UI);
     const consoleService = context.services.get<ConsoleService>(Services.Console);
     const testRun = getTestRunService(context);
-    const rememberedParameters = await testRun.readRememberedParameters();
+    const [rememberedParameters] = await Promise.all([
+        testRun.readRememberedParameters(),
+        // A `select` evaluates its options synchronously, so what it can offer is whatever is in
+        // memory by now. See `TestRunService.prepareParameterSources`.
+        testRun.prepareParameterSources(),
+    ]);
 
     const dialogId = uiService.dialogs.show({
         title: translate("test.picker.title"),

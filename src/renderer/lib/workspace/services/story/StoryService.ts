@@ -466,6 +466,34 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     /**
+     * The document if it is already in memory, and nothing if it is not.
+     *
+     * For a caller that has to answer *now* and cannot await a read - a list a picker evaluates as it
+     * opens. Unlike {@link getStoryDocument} an absent document is an ordinary answer here rather
+     * than a programming error, because "nobody has opened this story yet" is the normal state of a
+     * project the author has only just loaded.
+     */
+    public getLoadedStoryDocument(storyId: StoryId): StoryDocument | undefined {
+        return this.documents.get(storyId);
+    }
+
+    /**
+     * Bring every story in the library into memory.
+     *
+     * Stories load lazily, one per editor that opens one, which is right for a workspace and wrong
+     * for anything that has to read all of them synchronously afterwards. Awaited by such a caller
+     * before it asks; a story that will not read is skipped rather than failing the sweep, because
+     * one broken document must not stop the rest from being offered.
+     */
+    public async loadAllStories(): Promise<void> {
+        await Promise.all(this.getLibraryIndex().stories.map(entry =>
+            this.loadStory(entry.id).catch(error => {
+                console.warn(`[StoryService] could not load story ${entry.id}`, error);
+                return null;
+            })));
+    }
+
+    /**
      * Re-derive one story's asset locks from its document as it now stands.
      *
      * The escape hatch for a caller that has edited a loaded document without coming through

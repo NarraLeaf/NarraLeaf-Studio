@@ -256,6 +256,7 @@ Requires `game.launch` and `presentation: "windowed"`.
 ```ts
 const session = await ctx.game.launch({ network: "blocked" });
 const off = session.onEvent(event => { /* … */ });
+await session.sendCommand({ kind: "start", storyId, sceneId });
 const exit = await session.waitForExit();
 await session.stop();
 ```
@@ -277,8 +278,38 @@ and "the game then died" is load-bearing evidence:
 |---|---|
 | `console` | `level`, `source`, `message` — a line the game logged. |
 | `runtime-error` | `scope: "renderer" \| "main"`, `message`, `stack?` — an **uncaught** error inside the running game. |
-| `game-end` | The engine reached an ending. |
+| `game-end` | The story ended: an authored ending ran, or the action stack drained. |
+| `ending` | `endingId`, `name` — an `/ending` row ran, naming which. Fires alongside `game-end`; a story that simply runs out of rows has no ending to name and produces only `game-end`. |
+| `choice` | `options: { index, text, disabled }[]` — a choice menu is on screen. |
 | `exit` | `exit: TestGameExit` — terminal. |
+
+### Driving the game
+
+```ts
+const delivered = await session.sendCommand(command);
+```
+
+| `command` | Means |
+|---|---|
+| `{ kind: "start", storyId, sceneId }` | Begin a story at a scene. A session boots to the main app surface — the title screen — and no story runs until something starts one. |
+| `{ kind: "advance" }` | One click on the dialogue: finish the line being typed, or move to the next. |
+| `{ kind: "choose", index }` | Pick an option of the choice on screen. |
+
+Every command is carried out along the path a player's pointer would take — `start` is the same host
+call a title screen's Start button makes — so a game that cannot be played cannot be driven either.
+
+`sendCommand` resolves `true` when the command reached the game and `false` when it could not: a
+session that has already exited, or one whose game never opened its control channel. It **never**
+says the game acted on it. The game is a separate process; what happened comes back through
+`onEvent`, in order with everything else it says. A test that needs to know waits for the
+observation, and treats one that never arrives as the answer it is.
+
+`index` is the **compiler's** index for an option — its position among the non-disabled
+`choiceOption` rows of its choice, in document order — which is what the `choice` event reports and
+what `choose` takes. It is not the row's position on screen: an option a `hiddenWhen` condition
+hides at play time is left out of the reported list without shifting the indices of the rest.
+Planning a route offline therefore yields indices that stay valid, and an index the game no longer
+offers is evidence that a condition took the option away.
 
 ### Exit reasons
 
@@ -305,6 +336,12 @@ name them is unaffected.
 **Version 2** added parameters (§6). What breaks is `TestRunContext.parameters`, a required member
 a version 1 host does not supply. Definitions are unaffected: `parameters` is optional, and one that
 declares none behaves exactly as it did at version 1.
+
+Driving a game (§9) did **not** bump it. `sendCommand` is a member the host provides and a plugin
+only ever calls, and the `ending` and `choice` events are two more kinds in a union a `switch`
+already had to have a default for — so nothing already published stops compiling or changes meaning.
+A definition that wants them SHOULD feature-detect (`"sendCommand" in session`) rather than assume a
+host new enough to have them.
 
 - The version is recorded on every run record, so a report kept across a Studio upgrade still says
   which contract produced it.
