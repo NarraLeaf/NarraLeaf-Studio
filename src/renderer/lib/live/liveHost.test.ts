@@ -193,7 +193,7 @@ describe("a live host turning intents into effects", () => {
         // Nobody else can look them up: the copier read them out of its own memory at the moment of
         // copying, so if the effect does not carry them they exist on one machine only.
         const world = makeWorld();
-        const derived = { translations: { ja: { "text-new": "遅いよ。" } } };
+        const derived = { translations: { ja: { "text-new": { target: "遅いよ。", sourceHash: "h", status: "reviewed" as const } } } };
         const effect = asEffect(world.host.receive(
             {
                 kind: "intent",

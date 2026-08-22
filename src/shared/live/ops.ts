@@ -1,3 +1,5 @@
+import type { LocalizationUnit } from "@shared/types/localization";
+import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
     StoryBlockId,
@@ -147,12 +149,18 @@ export function opSceneId(op: LiveOp): StorySceneId | null {
  *
  * Keyed by the NEW text id, because pasted rows are minted fresh ids and the old ones mean nothing
  * on the receiving side.
+ *
+ * ⚠ **The whole unit travels, not just the words.** A translation is its text, the hash of the source
+ * it was written against, its status and its note; a take is its asset, its hash and its status. Carry
+ * the text alone and every line lands with no hash, which the reader derives as stale, and with its
+ * review thrown away - so pasting inside a session would quietly demote work that pasting outside one
+ * preserves, and the demotion is invisible until somebody re-reviews a language.
  */
 export type LiveDerived = {
-    /** Locale to text id to translated string. */
-    translations?: Readonly<Record<string, Readonly<Record<string, string>>>>;
-    /** Locale to text id to the voice take's asset id. */
-    voice?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+    /** Locale to text id to the whole translation unit. */
+    translations?: Readonly<Record<string, Readonly<Record<string, LocalizationUnit>>>>;
+    /** Locale to text id to the whole voice unit. */
+    voice?: Readonly<Record<string, Readonly<Record<string, VoiceUnit>>>>;
 };
 
 /**

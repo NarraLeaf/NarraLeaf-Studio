@@ -234,6 +234,8 @@ export const story = {
         },
         bulkConfirmDetail: "This adds them below the current line as one undo step.",
         scriptFile: "This is a story script. Use Import Script to bring it back in.",
+        // Rows from another project, pasted while a live session is open. Shown once per session.
+        sessionRowsOnly: "During a live session, rows from another project arrive on their own. Leave the session and paste again to bring their translations, takes and assets across.",
         // Translations that travelled with copied rows. Part of the cross-project line; on their
         // own, and only the second of them, after a paste back into the same project.
         translationsCarried: {
