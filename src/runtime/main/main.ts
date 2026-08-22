@@ -58,6 +58,7 @@ import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import { dispatchControlFrame, encodeTestEventFrame } from "./testControlProtocol";
 import {
     GAME_RUNTIME_TEST_COMMAND_CHANNEL,
+    GAME_RUNTIME_TEST_COMMAND_READY_CHANNEL,
     GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
     toGameTestEvent,
 } from "../gameTestSignal";
@@ -541,15 +542,42 @@ function gameDisplayName(): string {
 }
 
 /**
+ * Whether the window has a listener for the command channel yet.
+ *
+ * Set by the renderer the moment it subscribes. Until then `webContents.send` reaches nobody and
+ * Electron drops the message - there is no queue behind an `ipcRenderer.on` that does not exist.
+ */
+let testCommandListenerReady = false;
+
+/**
+ * The `start` that arrived before there was a listener, kept for when there is one.
+ *
+ * Only ever a `start`, and only ever the latest. Every other command is a move in a story that is
+ * already playing, and replaying a stale one later would click something nobody asked for at that
+ * moment; a driver that wanted to advance is still sending advances anyway. A start is the one
+ * command with nothing to re-send it - the run is waiting on the story it asks for.
+ */
+let pendingTestStart: GameTestCommand | null = null;
+
+/**
  * Hand a command Studio sent to the window that can carry it out.
  *
  * Best-effort by design, like {@link emitTestEvent}: the socket has already been answered, and what
- * the frame meant was "understood", never "done". A command that arrives before the window exists -
- * or after it has gone - is dropped, and the caller learns nothing happened from the observations
- * that do not follow it.
+ * the frame meant was "understood", never "done". A command that arrives after the window has gone
+ * is dropped, and the caller learns nothing happened from the observations that do not follow it.
+ *
+ * The one that arrives too EARLY is different, and it is why the hold above exists. The control
+ * socket opens once the pack is read, which is before the window has finished loading, so the first
+ * thing a test says is usually said to nobody - and it is always the `start`.
  */
 function deliverTestCommand(command: GameTestCommand): void {
     if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+    if (!testCommandListenerReady) {
+        if (command.kind === "start") {
+            pendingTestStart = command;
+        }
         return;
     }
     mainWindow.webContents.send(GAME_RUNTIME_TEST_COMMAND_CHANNEL, command);
@@ -1139,6 +1167,15 @@ function registerRuntimeIpc(): void {
     // The renderer's uncaught errors and the engine reaching an ending. Validated rather than
     // trusted (toGameTestEvent stamps the scope and refuses anything else), and dropped on the
     // floor when nothing is subscribed - which is every run that is not a test.
+    // The renderer has a listener now, so anything held for want of one can go.
+    ipcMain.on(GAME_RUNTIME_TEST_COMMAND_READY_CHANNEL, () => {
+        testCommandListenerReady = true;
+        const pending = pendingTestStart;
+        pendingTestStart = null;
+        if (pending) {
+            deliverTestCommand(pending);
+        }
+    });
     ipcMain.on(GAME_RUNTIME_TEST_SIGNAL_CHANNEL, (_event, signal: unknown) => {
         const event = toGameTestEvent(signal);
         if (event) {
