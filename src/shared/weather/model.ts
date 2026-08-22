@@ -203,14 +203,16 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
      *  - **Depth's brightness cue.** At the top of the range the far field is as bright as the near
      *    one and only SIZE still says which is which. That is the price of the far field being able
      *    to reach opaque at all, and it is why the lift is proportional rather than switched on.
-     *  - **The colour.** The clip is light on black composited with `screen`, and `screen` leaves the
-     *    background alone in any channel where the source is not full. A pixel that covers what is
-     *    behind it is therefore white in every channel BY DEFINITION - "opaque" and "pink" are
-     *    mutually exclusive here, and no setting can have both. Around 8 a petal reads as solid with
-     *    a pink rim; at the top it is a white cut-out.
+     *  - **The tone inside the core.** Sharpness is bought by flattening the bitmap's shading, which
+     *    is the half of a petal no formula gives you. At the top of the range the sprite might as
+     *    well be a silhouette.
      *
-     * ⚠ It buys its sharpness by throwing away tone inside the core, which is what the bitmap
-     * exists to carry.
+     * ⚠ What it no longer spends is the seed's COLOUR. A particle's coverage is clamped at full
+     * before its tint is applied, so a solid petal is the tint rather than white - see `addPetal`,
+     * which carries the measurement. `screen` still cannot make a coloured pixel opaque, since it
+     * leaves the background alone in any channel the source does not fill: a petal at full tint lets
+     * the scene through in green and blue. That is a trade the SEED makes, once, by choosing a tint,
+     * and not one this slider makes again on every notch.
      */
     solidity: { min: 0.2, max: 20, step: 0.1, default: 1 },
     /** How much faster the near field falls than the far field. 1 = everything falls together. */
@@ -260,10 +262,17 @@ export type WeatherSeedDefinition = {
 /**
  * The seeds.
  *
- * Sakura's tint is deliberately warm and pale rather than a saturated pink. The overlay composites
- * with `screen`, which pushes toward white over a bright background, so a saturated petal loses its
- * colour exactly in the daylight scenes sakura is used for. A pale warm petal reads by its SHAPE
- * there, and shape is what `screen` cannot take away.
+ * A tint is the colour of a particle at FULL coverage, not a wash laid over one: the rasteriser
+ * clamps coverage before applying it, so this constant is exactly what the solid middle of a petal
+ * will be. It is therefore worth reading as a swatch.
+ *
+ * ⚠ Read the composited number, though, and not the constant. The overlay is light on black under
+ * `screen`, which leaves the background alone in every channel the source does not fill, so a bright
+ * scene eats most of the distance between a petal and the sky behind it. Sakura's tint carries the
+ * hue of the usual cherry-blossom pink - #FFB7C5, about 349 degrees - at roughly twice its
+ * saturation, and that is not decoration: over a daylight sky the pale swatch itself measures 6%
+ * saturation and this one 9%, against 3% for the pale, near-white tint the seed shipped with. What
+ * looks strong as a constant is barely present by the time an author sees it.
  */
 export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     snow: {
@@ -306,23 +315,21 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
         //
         // `solidity` 6 rather than 2. At 2 the core is solid and everything outside it is still a
         // gradient, because a plain multiple cannot lift the far field's 0.28 floor - see the
-        // parameter. 6 puts about seventy per cent of a petal's interior at full, which is an object
-        // rather than a wash, and stops short of the top of the range, which is a bare white cut-out.
+        // parameter. 6 puts about three fifths of a petal's interior at full, which is an object
+        // rather than a wash, and stops short of the top of the range, which is a bare silhouette.
         //
-        // ⚠ It is also past the point where this seed is still PINK, and no default can avoid that.
-        // `screen` leaves the background alone in any channel the source does not fill, so a pixel
-        // that covers what is behind it is white by definition - and this tint's green sits at 81%
-        // of its red, so the three channels arrive at full almost together. Measured across the lit
-        // area: solidity 1 is 19% saturated, 3 is 11%, 6 is 6%. The only lever that widens the band
-        // where a petal is both solid and coloured is a more saturated `tint` (at 255,150,178 the
-        // same solidity 5 measures 17% rather than 7%), and that is a decision about what this seed
-        // LOOKS like rather than about how it is rendered.
+        // It costs this seed nothing in colour, which was not true until the rasteriser started
+        // clamping a particle's coverage before tinting it. Before that, "solid" and "pink" were the
+        // same slider read in two directions: at solidity 6 seven tenths of the lit area was pure
+        // white and the frame averaged 5% saturation, which is what "the petals look like snow"
+        // meant. They are now independent - solidity moves the flat share of a petal and leaves the
+        // colour where the tint put it.
         //
         // The clip's length is not here and is not the author's: `weatherLoopSeconds` derives it
         // from this speed, and these values come out at twenty-four seconds - six crossings of the
         // frame by the far field, about 2 MiB at 1080p30.
         defaults: { density: 15, sizeNear: 48, sizeFar: 11, sway: 110, fallSpeed: 0.25, flutter: 0.3, solidity: 6, depthSpread: 2 },
-        tint: [255, 206, 214],
+        tint: [255, 128, 152],
         streaked: false,
         tumbles: true,
         sprite: true,
