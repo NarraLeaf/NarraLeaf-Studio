@@ -42,7 +42,11 @@ export type Live2DSdkArchive = {
     framework: ReadonlyMap<string, ZipIndexEntry>;
     /** The 13 `.vert` / `.frag` sources, by basename. Keyed that way because that is all the loader's URL carries. */
     shaders: ReadonlyMap<string, ZipIndexEntry>;
-    /** Every licence text in the archive, by its path relative to {@link root}. Copied beside the build. */
+    /**
+     * Every licence text in the archive, by its path relative to {@link root}, together with the
+     * Core's `RedistributableFiles.txt` -- the file the Proprietary Software License Agreement points
+     * at to state which files may be redistributed at all. Copied beside the build.
+     */
     licenses: ReadonlyMap<string, ZipIndexEntry>;
 };
 
@@ -149,7 +153,7 @@ export function inspectLive2DSdkArchive(archive: Buffer): Live2DSdkArchive {
             framework.set(relative.slice(FRAMEWORK_SOURCE_DIR.length), entry);
         } else if (relative.startsWith(SHADER_DIR) && /\.(vert|frag)$/.test(relative)) {
             shaders.set(relative.slice(SHADER_DIR.length), entry);
-        } else if (/(^|\/)(LICENSE|NOTICE)[^/]*\.(md|txt)$/i.test(relative)) {
+        } else if (/(^|\/)(LICENSE|NOTICE|RedistributableFiles)[^/]*\.(md|txt)$/i.test(relative)) {
             licenses.set(relative, entry);
         }
     }

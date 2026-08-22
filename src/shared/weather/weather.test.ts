@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { weatherFrameCountOf, weatherLoopSecondsOf, WEATHER_LOOP_SECONDS } from "./model";
+import { weatherFrameCountOf, weatherLoopSeconds, weatherLoopSecondsOf } from "./model";
 import {
     onWeatherParamGrid,
     resolveWeatherParams,
@@ -213,7 +213,7 @@ describe("the flutter", () => {
             // Against the loop THIS seed asks for. Reaching for the shared constant here is the
             // exact mistake the constant's own comment warns about, and it would pass on a seed that
             // happened to use twelve seconds while silently failing to check anything.
-            const wanted = rate * weatherLoopSecondsOf({ seed: "sakura" });
+            const wanted = rate * weatherLoopSecondsOf({ seed: "sakura", params: { flutter: rate } });
             for (const harmonic of harmonics) {
                 expect(Number.isInteger(harmonic)).toBe(true);
                 // Each particle sits within a third of the seed's rate, so the field does not pulse
@@ -382,55 +382,70 @@ describe("the solidity", () => {
     });
 });
 
-describe("the loop length", () => {
-    const spansOf = (over: Partial<Record<WeatherParamKey, number>>) =>
-        buildWeatherField("sakura", resolveWeatherParams({ seed: "sakura", params: over }), W, H).particles.map(p => p.fall);
+describe("the derived loop length", () => {
+    const secondsAt = (fallSpeed: number, flutter = 0.3) =>
+        weatherLoopSeconds(resolveWeatherParams({ seed: "sakura", params: { fallSpeed, flutter } }));
 
-    it("is what decides the slowest possible fall, because the seam does", () => {
-        // A particle crosses a WHOLE number of fall-lengths per loop or it is not where it started
-        // when the last frame hands over to the first. So one length per loop is the floor, and the
-        // only way under it is a longer loop. This is the mechanism behind "the slowest setting is
-        // still too fast" and there is no other lever for it.
-        const floorAt = (loopSeconds: number) => {
-            const spans = Math.min(...spansOf({ fallSpeed: WEATHER_PARAMS.fallSpeed.min, loopSeconds }));
-            return spans / loopSeconds; // fall-lengths per second
-        };
-        const short = floorAt(12);
-        const long = floorAt(60);
-        expect(short).toBeCloseTo(1 / 12, 5);
-        expect(long).toBeCloseTo(1 / 60, 5);
-        expect(long).toBeLessThan(short / 4);
-    });
-
-    it("does not re-time the effect, which is why the speed is stated per second", () => {
-        // It used to be per loop, and then lengthening a clip silently slowed everything in it - so
-        // "how long before it repeats" and "how fast it falls" could not be set independently. The
-        // rounding to whole lengths means this is close rather than exact, and close within one
-        // step of the grid is the most a seamless loop can offer.
-        const perSecond = (loopSeconds: number) => {
-            const spans = spansOf({ fallSpeed: 0.25, loopSeconds });
-            return spans.reduce((sum, s) => sum + s, 0) / spans.length / loopSeconds;
-        };
-        const twelve = perSecond(12);
-        for (const loopSeconds of [24, 36, 60, 90]) {
-            expect(perSecond(loopSeconds)).toBeGreaterThan(twelve * 0.85);
-            expect(perSecond(loopSeconds)).toBeLessThan(twelve * 1.15);
+    it("is a whole number of crossings, so the stated speed is the rendered speed", () => {
+        // The point of deriving it rather than asking. The seam needs each particle to cross a WHOLE
+        // number of fall-lengths per loop; if the length is chosen to BE a whole number of the far
+        // field's crossings then that requirement is met by construction and nothing has to be
+        // rounded away from what the author asked for.
+        for (const fallSpeed of [0.011, 0.02, 0.05, 0.08, 0.125, 0.17, 0.25, 0.4, 0.7, 1, 1.5]) {
+            const crossings = fallSpeed * secondsAt(fallSpeed);
+            expect(crossings).toBeCloseTo(Math.round(crossings), 6);
+            expect(Math.round(crossings)).toBeGreaterThanOrEqual(1);
         }
     });
 
-    it("decides the frame count, and every caller has to ask the ref rather than the constant", () => {
-        // A caller holding the old constant while the author had asked for sixty would address a
-        // clip nothing ever bakes: a valid package, a story that plays, and no weather at all.
-        expect(weatherFrameCountOf({ seed: "sakura" }, 30)).toBe(weatherLoopSecondsOf({ seed: "sakura" }) * 30);
-        expect(weatherFrameCountOf({ seed: "sakura", params: { loopSeconds: 60 } }, 48)).toBe(60 * 48);
+    it("gets longer as the weather gets slower, which is the only way slow weather can exist", () => {
+        // One fall-length per loop is the floor on speed, so a slow drift is not something a short
+        // clip can contain. Compared across the range rather than step by step: the length is a
+        // whole number of crossings, and whole numbers do not vary smoothly - between two adjacent
+        // speeds the count can drop by one and take the length with it. Exactness is worth more than
+        // a tidy curve here, and both ends of the curve are what an author actually notices.
+        expect(secondsAt(WEATHER_PARAMS.fallSpeed.min)).toBeGreaterThan(secondsAt(WEATHER_PARAMS.fallSpeed.max) * 3);
+        expect(secondsAt(0.02)).toBeGreaterThan(secondsAt(0.5) * 1.5);
+    });
+
+    it("stays inside its bounds at every speed and flutter the controls offer", () => {
+        for (const fallSpeed of [WEATHER_PARAMS.fallSpeed.min, 0.05, 0.25, WEATHER_PARAMS.fallSpeed.max]) {
+            for (const flutter of [WEATHER_PARAMS.flutter.min, 0.3, WEATHER_PARAMS.flutter.max]) {
+                const seconds = secondsAt(fallSpeed, flutter);
+                expect(seconds).toBeGreaterThan(0);
+                expect(seconds).toBeLessThanOrEqual(91);
+                expect(Number.isFinite(seconds)).toBe(true);
+            }
+        }
+    });
+
+    it("reaches a fall an order of magnitude slower than a twelve-second clip could", () => {
+        // The report this exists for: "the slowest setting is still too fast". A twelve-second loop
+        // floors the far field at one screen every twelve seconds however low the speed is set.
+        const seconds = secondsAt(WEATHER_PARAMS.fallSpeed.min);
+        const spans = buildWeatherField(
+            "sakura",
+            resolveWeatherParams({ seed: "sakura", params: { fallSpeed: WEATHER_PARAMS.fallSpeed.min } }),
+            W,
+            H,
+        ).particles.map(p => p.fall);
+        const slowest = Math.min(...spans) / seconds; // fall-lengths per second
+        expect(slowest).toBeLessThan(1 / 12 / 4);
+    });
+
+    it("is the only answer anybody gets, so a preview and a bake cannot disagree", () => {
+        expect(weatherFrameCountOf({ seed: "sakura" }, 30))
+            .toBe(Math.round(weatherLoopSecondsOf({ seed: "sakura" }) * 30));
+        expect(weatherLoopSecondsOf({ seed: "sakura" }))
+            .toBeCloseTo(weatherLoopSeconds(resolveWeatherParams({ seed: "sakura" })), 9);
         // Whole, whatever it is asked: a fractional phase grid is the one way to get a stutter out
         // of a field that is mathematically exact.
-        expect(Number.isInteger(weatherFrameCountOf({ seed: "rain", params: { loopSeconds: 37 } }, 120))).toBe(true);
+        expect(Number.isInteger(weatherFrameCountOf({ seed: "rain", params: { fallSpeed: 0.083 } }, 120))).toBe(true);
     });
 
     for (const seed of WEATHER_SEED_IDS) {
-        it(`${seed} keeps the seam exact at a long loop`, () => {
-            const params = resolveWeatherParams({ seed, params: { loopSeconds: WEATHER_PARAMS.loopSeconds.max } });
+        it(`${seed} keeps the seam exact at the slowest fall it offers`, () => {
+            const params = resolveWeatherParams({ seed, params: { fallSpeed: WEATHER_PARAMS.fallSpeed.min } });
             expect(frameAt(seed, 1, params)).toEqual(frameAt(seed, 0, params));
         });
     }
