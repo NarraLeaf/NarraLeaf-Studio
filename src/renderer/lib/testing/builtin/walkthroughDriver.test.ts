@@ -286,6 +286,38 @@ describe("driveWalkthrough", () => {
         expect(fake.commands).toEqual([]);
     });
 
+    it("keeps offering the start until the game can hear it", async () => {
+        // The launch resolves when the session exists, not when the game is reachable: its control
+        // socket opens only once the runtime has read its pack, and the host dials it for up to
+        // thirty seconds. Sending the start once turned every real run into "the story never moved".
+        let refusalsLeft = 3;
+        const commands: TestGameCommand[] = [];
+        const listeners = new Set<(event: TestGameEvent) => void>();
+        const session: WalkthroughSession = {
+            onEvent: listener => {
+                listeners.add(listener);
+                return () => listeners.delete(listener);
+            },
+            sendCommand: async command => {
+                if (command.kind === "start" && refusalsLeft > 0) {
+                    refusalsLeft -= 1;
+                    return false;
+                }
+                commands.push(command);
+                if (command.kind === "start") {
+                    for (const listener of [...listeners]) {
+                        listener({ kind: "ending", endingId: "ending-target", name: "True End" });
+                    }
+                }
+                return true;
+            },
+        };
+
+        await expect(drive({ session }).outcome).resolves.toEqual({ kind: "reachedTarget" });
+        expect(refusalsLeft).toBe(0);
+        expect(commands).toEqual([{ kind: "start", storyId: "story-1", sceneId: "start" }]);
+    });
+
     it("stops when nothing is listening on the far end", async () => {
         const session: WalkthroughSession = {
             onEvent: () => () => undefined,
