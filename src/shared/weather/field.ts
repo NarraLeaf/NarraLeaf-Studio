@@ -58,6 +58,7 @@
  */
 
 import {
+    weatherLoopSeconds,
     WEATHER_PARAMS,
     WEATHER_SEEDS,
     type ResolvedWeatherParams,
@@ -237,7 +238,7 @@ export function buildWeatherField(
     const spread = Math.max(1, Math.round(params.depthSpread));
     // Both rates are stated per SECOND and converted here against the loop this effect asked for,
     // which is what lets an author lengthen the clip without re-timing everything in it.
-    const loopSeconds = Math.max(1, params.loopSeconds);
+    const loopSeconds = Math.max(1, weatherLoopSeconds(params));
     // NOT rounded, unlike each particle's own count below. This is the base the depth scales, and
     // rounding it made the smallest change an author could ask for a doubling of the whole field.
     const baseFall = Math.max(0.001, params.fallSpeed) * loopSeconds;

@@ -82,7 +82,6 @@ export type WeatherParamKey =
     | "fallSpeed"
     | "flutter"
     | "solidity"
-    | "loopSeconds"
     | "depthSpread";
 
 /**
@@ -147,7 +146,7 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
      * a legitimate look (hail rather than drizzle) — but it is the first thing to reach for when
      * fast rain reads as a field of dashes.
      */
-    fallSpeed: { min: 0.02, max: 1.5, step: 0.01, default: 0.17 },
+    fallSpeed: { min: 0.011, max: 1.5, step: 0.001, default: 0.17 },
     /**
      * How often a particle completes one flutter - one sway across its fall line, one turn of its
      * face - stated in TIMES PER SECOND.
@@ -156,7 +155,7 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
      *
      * The renderer needs a whole number of cycles per loop, and for three rounds that number was
      * drawn straight from `1..3`. Nothing marked it wrong, because nothing in the expression says how
-     * long a loop IS - and a loop is {@link WEATHER_LOOP_SECONDS}, twelve seconds. So every petal in
+     * long a loop IS - and a loop is {@link weatherLoopSeconds}, tens of seconds. So every petal in
      * the catalogue turned once every four to twelve seconds: 0.08 to 0.25 Hz, which is not a
      * flutter at all. It is a drift, and a drifting pale blob is a snowflake whatever shape it was
      * drawn from.
@@ -214,37 +213,6 @@ export const WEATHER_PARAMS: Record<WeatherParamKey, WeatherParamSpec> = {
      * exists to carry.
      */
     solidity: { min: 0.2, max: 20, step: 0.1, default: 1 },
-    /**
-     * How long the clip runs before it repeats, in seconds.
-     *
-     * ## Why this is the author's and not a constant
-     *
-     * It was a constant at twelve, chosen because length is the cheapest way to buy a less obvious
-     * repeat (a sixteen-second loop measured 1.44x an eight-second one rather than 2x). Two things
-     * make it a control instead.
-     *
-     * The first is that it is the ONLY way to fall slowly. A particle must cross a whole number of
-     * fall-lengths per loop for the seam to close, so one length per loop is the floor, and at
-     * twelve seconds that floor is a screen every twelve seconds however low {@link fallSpeed} is
-     * set. Asking for a drift half that speed is asking for a twenty-four second loop. There is no
-     * other lever.
-     *
-     * The second is that the right answer differs per effect. Rain crossing the frame twice a
-     * second has nothing recognisable to repeat and twelve seconds is generous; forty petals
-     * drifting past over three seconds each are individually memorable, and the same twelve seconds
-     * is a visible cycle.
-     *
-     * ## What it costs
-     *
-     * Bytes and bake time, both roughly linear in it, and neither is the constraint they used to be
-     * — see the numbers beside the seeds. What it does NOT cost is memory: the renderer's
-     * accumulator is sized by pixels, not by frames.
-     *
-     * A whole number of seconds so that `loopSeconds x fps` is a whole number of frames at every
-     * rate offered. The seam guarantee is that the renderer is asked for phases `i / frames`, and a
-     * fractional frame count is the one way to get a stutter out of a mathematically exact field.
-     */
-    loopSeconds: { min: 4, max: 90, step: 1, default: 12 },
     /** How much faster the near field falls than the far field. 1 = everything falls together. */
     depthSpread: { min: 1, max: 8, step: 1, default: 3 },
 };
@@ -300,7 +268,7 @@ export type WeatherSeedDefinition = {
 export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     snow: {
         id: "snow",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "loopSeconds", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "depthSpread"],
         defaults: { density: 160, sizeNear: 17, sizeFar: 2, sway: 52, fallSpeed: 0.17, flutter: 0.35, depthSpread: 3 },
         tint: [255, 255, 255],
         streaked: false,
@@ -309,13 +277,13 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     },
     rain: {
         id: "rain",
-        params: ["density", "sizeNear", "sizeFar", "streak", "wind", "fallSpeed", "solidity", "loopSeconds", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "streak", "wind", "fallSpeed", "solidity", "depthSpread"],
         // No sway and no flutter: rain falls in straight parallel lines, which is also why `wind`
         // reads as a tilt of the whole field rather than as a wobble. A drop has no face to turn.
         //
-        // Twelve seconds is generous for this one and is left alone. A drop crosses the frame twice
-        // a second and looks like every other drop; there is nothing here an eye could recognise
-        // coming round again, which is exactly what loop length buys.
+        // This one comes out at the shortest length there is, and rightly: a drop crosses the frame
+        // twice a second and looks like every other drop, so there is nothing here an eye could
+        // recognise coming round again.
         defaults: { density: 170, sizeNear: 2.4, sizeFar: 1, streak: 30, sway: 0, fallSpeed: 0.25, depthSpread: 7 },
         tint: [198, 214, 255],
         streaked: true,
@@ -325,7 +293,7 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
     },
     sakura: {
         id: "sakura",
-        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "loopSeconds", "depthSpread"],
+        params: ["density", "sizeNear", "sizeFar", "sway", "wind", "fallSpeed", "flutter", "solidity", "depthSpread"],
         // Petals nearly twice the size the first rounds shipped. 26px of radius is 2.4% of a 1080p
         // frame's height, and at that size the sprite's outline - the notch that says cherry rather
         // than leaf - is below what the picture can carry, so it reads as a pale dot. A pale dot
@@ -350,13 +318,10 @@ export const WEATHER_SEEDS: Record<WeatherSeedId, WeatherSeedDefinition> = {
         // same solidity 5 measures 17% rather than 7%), and that is a decision about what this seed
         // LOOKS like rather than about how it is rendered.
         //
-        // A thirty-six second loop rather than twelve. This seed is forty individually memorable
-        // petals, so twelve seconds is a cycle an eye can learn - and, more to the point, the loop
-        // length IS the floor on how slowly anything can fall (one fall-length per loop, or the
-        // seam does not close). At twelve, dragging `fallSpeed` to the bottom still gives a screen
-        // every twelve seconds; at thirty-six the same drag gives a screen every thirty-six, which
-        // is the slow drift this seed is for. It costs about 2 MiB instead of 0.6.
-        defaults: { density: 15, sizeNear: 48, sizeFar: 11, sway: 110, fallSpeed: 0.25, flutter: 0.3, solidity: 6, loopSeconds: 36, depthSpread: 2 },
+        // The clip's length is not here and is not the author's: `weatherLoopSeconds` derives it
+        // from this speed, and these values come out at twenty-four seconds - six crossings of the
+        // frame by the far field, about 2 MiB at 1080p30.
+        defaults: { density: 15, sizeNear: 48, sizeFar: 11, sway: 110, fallSpeed: 0.25, flutter: 0.3, solidity: 6, depthSpread: 2 },
         tint: [255, 206, 214],
         streaked: false,
         tumbles: true,
@@ -467,26 +432,102 @@ export type WeatherBakeSpec = {
 };
 
 /**
- * How long a loop runs by default, in seconds.
+ * The shortest a loop is allowed to be, in seconds.
  *
- * Twelve rather than eight. Measured: a sixteen-second loop costs 1.44x an eight-second one rather
- * than 2x, because the cost is dominated by the first frames of the sequence — so length is the
- * cheapest way to buy a less obvious repeat, and eight seconds is short enough to be noticed during
- * a long conversation.
- *
- * ⚠ **This is the default, not the answer.** The length is {@link WEATHER_PARAMS.loopSeconds}, per
- * effect, and every caller that needs a frame count must resolve it from the ref rather than reach
- * for this. A caller that used this constant while the author had asked for sixty would address a
- * clip nothing ever bakes, which is a valid package with no weather in it.
+ * Twenty-four rather than the twelve this was for three rounds. Measured: a sixteen-second loop
+ * costs 1.44x an eight-second one rather than 2x, because the cost is dominated by the first frames
+ * of the sequence — so length is the cheapest way to buy a less obvious repeat, and a clip has to
+ * survive a conversation that lasts minutes.
  */
-export const WEATHER_LOOP_SECONDS = 12;
+const WEATHER_LOOP_MIN_SECONDS = 24;
 
-/** The loop length one seed ref asks for, resolved and clamped. The one way to get a frame count. */
-export function weatherLoopSecondsOf(ref: WeatherSeedRef): number {
-    return resolveWeatherParams(ref).loopSeconds;
+/**
+ * The longest, in seconds. Also the thing that decides how slowly weather can fall at all.
+ *
+ * At ninety a fall-length a loop is a screen every ninety seconds, which is eight times slower than
+ * the twelve-second constant allowed and slower than anything an author has wanted. Past here the
+ * bake time starts to be felt and the repeat is already invisible.
+ */
+const WEATHER_LOOP_MAX_SECONDS = 90;
+
+/**
+ * The fewest crossings of the frame a loop should contain.
+ *
+ * Every phase in the field repeats with the loop — the sway, the tumble, the hang — so a loop that
+ * is one or two passes of the far field is a choreography an eye can learn even when it is long in
+ * seconds. Three is where a field stops reading as a cycle and starts reading as weather.
+ */
+const WEATHER_LOOP_MIN_CROSSINGS = 3;
+
+/** A flutter that completes fewer than this many cycles per loop is quantised by a large part of itself. */
+const WEATHER_LOOP_MIN_FLUTTER_CYCLES = 2;
+
+/**
+ * How long this weather's clip runs before it repeats, in seconds — **derived, never asked for**.
+ *
+ * ## Why the author does not set this
+ *
+ * It was a control for exactly one round, and the round showed why it should not be. Length is not
+ * a property of the weather an author is imagining; it is a consequence of how fast the weather
+ * moves, and the author has nothing to judge it by. Worse, the two are not independent: the seam
+ * requires each particle to cross a WHOLE number of fall-lengths per loop, so the length silently
+ * decides both the slowest speed available (one length per loop) and the grid the speed lands on
+ * (multiples of `1/length`). An author setting them separately is being asked to solve for a
+ * constraint nothing shows them, and to re-solve it every time they touch the speed.
+ *
+ * ## What it is derived from
+ *
+ * A whole number of crossings of the far field, which is what makes the seam exact rather than
+ * approximate: `fallSpeed x loopSeconds` is that whole number by construction, so the speed an
+ * author states is the speed that renders, to the frame grid. The count is the smallest that
+ * reaches {@link WEATHER_LOOP_MIN_SECONDS} — and at least {@link WEATHER_LOOP_MIN_CROSSINGS}, and
+ * enough for {@link WEATHER_LOOP_MIN_FLUTTER_CYCLES} — capped at what fits in
+ * {@link WEATHER_LOOP_MAX_SECONDS}.
+ *
+ * So slow weather gets a long clip because it needs one, fast weather gets a short one because a
+ * long one would buy nothing, and neither is a question anybody was asked. A drift at the bottom of
+ * the speed range comes out at ninety seconds; rain at a quarter of a screen a second comes out at
+ * twenty-four.
+ */
+export function weatherLoopSeconds(params: ResolvedWeatherParams): number {
+    // One crossing of the frame by the FARTHEST particles, which is the unit the seam counts in.
+    const crossing = 1 / Math.max(WEATHER_PARAMS.fallSpeed.min, params.fallSpeed);
+    const mostThatFit = Math.max(1, Math.floor(WEATHER_LOOP_MAX_SECONDS / crossing));
+    const forLength = Math.ceil(WEATHER_LOOP_MIN_SECONDS / crossing);
+    const forFlutter = Math.ceil(WEATHER_LOOP_MIN_FLUTTER_CYCLES / Math.max(1e-6, params.flutter) / crossing);
+    // The cap outranks the three floors, and has to: at the bottom of the speed range one crossing
+    // already takes longer than the longest clip allowed, and refusing to go under three would mean
+    // refusing to render the slow drift the range exists for. A consequence worth naming because it
+    // looks like a bug in a table: the length is NOT monotone in the speed. Whole crossings do not
+    // vary smoothly, so 0.02 a second comes out at fifty seconds while 0.05 comes out at sixty. Both
+    // are inside the bounds, both realise their speed exactly, and exactness is the thing being
+    // bought - a length that moved smoothly would have to round the speed instead.
+    const crossings = Math.min(
+        mostThatFit,
+        Math.max(WEATHER_LOOP_MIN_CROSSINGS, forLength, forFlutter),
+    );
+    return crossings * crossing;
 }
 
-/** Frames in the clip one seed ref asks for at a given rate. Whole, because a phase grid must be. */
+/**
+ * The same answer for a ref rather than resolved parameters.
+ *
+ * ⚠ Not seconds an author typed — see {@link weatherLoopSeconds}. Everything that needs a length or
+ * a frame count goes through one of these two, so a preview and a bake cannot disagree about how
+ * long the same effect is.
+ */
+export function weatherLoopSecondsOf(ref: WeatherSeedRef): number {
+    return weatherLoopSeconds(resolveWeatherParams(ref));
+}
+
+/**
+ * Frames in the clip one seed ref describes, at a given rate. Whole, because a phase grid must be.
+ *
+ * The derived length is a whole number of CROSSINGS rather than of seconds, so this rounds — by at
+ * most half a frame, which moves the clip's realised duration and with it the realised fall speed by
+ * a few hundredths of a per cent. The seam does not care either way: it is a property of the phases
+ * being `i / frames`, whatever `frames` turns out to be.
+ */
 export function weatherFrameCountOf(ref: WeatherSeedRef, fps: number): number {
     return Math.max(1, Math.round(weatherLoopSecondsOf(ref) * fps));
 }
