@@ -11,7 +11,7 @@ import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/compo
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
-import { isRowTextEditable } from "./storySceneReadOnly";
+import { isRowTextEditable, useStoryDocumentScope } from "./storySceneReadOnly";
 import { REF_TOKEN_ARMED_CLASS } from "./StoryLineRefToken";
 import { useStoryRefLink } from "./storyRefNavigation";
 import { isJumpModifierEvent } from "./useJumpModifier";
@@ -181,8 +181,9 @@ type StoryBlockRowDragProps = {
  */
 export function StoryBlockRow(props: StoryBlockRowProps) {
     // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
-    // its text, hovering its portrait - does not, and is left alone.
-    const freeze = useFreezeGuard();
+    // its text, hovering its portrait - does not, and is left alone. Scoped to the story document,
+    // because reordering writes that file and nothing else.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
     const reduceMotion = useReduceMotion();
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: props.row.block.id,
@@ -356,7 +357,8 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
     // The grip's half of the drag, handed down by the sortable shell above.
     const { attributes, dragListeners, setActivatorNodeRef, dragging: isDragging } = props;
     // The shell already refused dnd-kit while frozen; this is what the grip itself says about why.
-    const freeze = useFreezeGuard();
+    // Same scope as the shell, or the two would disagree about whether the row can move.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
     const dragsGroup = props.dragGroupSize > 1;
     const dragLabel = dragsGroup ? tn("story.rows.dragRows", props.dragGroupSize) : t("story.rows.dragRow");
 
@@ -795,8 +797,8 @@ function TextEditBox(props: {
     const commandLine = useStoryCommandLineContext();
     // Second enforcement point for the row text (see isRowTextEditable): even with the state
     // transitions gated, a freeze can land while a row is already open, and the field would keep taking
-    // keystrokes the browser applies on its own.
-    const freeze = useFreezeGuard();
+    // keystrokes the browser applies on its own. Scoped: the text of a row is the story document.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
         ? props.block.payload
         : null;
@@ -1126,7 +1128,8 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
     const { t } = useTranslation();
     // The two buttons that sit on every hovered row. Greyed with the freeze reason rather than hidden:
     // a row whose end cluster vanished would read as a broken editor, not as a frozen project.
-    const freeze = useFreezeGuard();
+    // Scoped: inserting and deleting a row write the story document and nothing else.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
     // Rendered from the bindings themselves, never spelled out: `mod` is ⌘ or Ctrl depending on the
     // platform, and a hardcoded label is how a hint drifts from the key it claims to describe.
     const isMac = isMacPlatform();
@@ -3135,7 +3138,9 @@ function CharacterSelectTrigger(props: {
 }) {
     const { t } = useTranslation();
     // A frozen row keeps its nametag readable and stops offering the picker, which is also the way a
-    // new character gets created from a typed name.
+    // new character gets created from a typed name. Deliberately UNSCOPED for exactly that reason:
+    // creating a character writes the character library, which no freeze that spares this story
+    // document spares - so the picker would offer a name the write boundary then refuses.
     const freeze = useFreezeGuard();
     const rootRef = useRef<HTMLDivElement | null>(null);
     const pickerRef = useRef<HTMLDivElement | null>(null);

@@ -49,6 +49,9 @@ vi.mock("@xyflow/react", () => ({
 let frozen = false;
 vi.mock("@/apps/workspace/hooks/useWorkspaceFrozen", () => ({
     useWorkspaceFrozen: () => frozen,
+    // The guard reads the whole reason now, so it can ask whether a partial freeze spares the
+    // document a surface names. A node card names none, so any kind will do.
+    useWorkspaceFreeze: () => (frozen ? { kind: "manual" } : null),
 }));
 
 beforeEach(() => {

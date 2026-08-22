@@ -5,7 +5,6 @@ import {
     forgetWorkspaceFreeze,
     getWorkspaceFreeze,
     getWorkspaceFreezeState,
-    refusesOperations,
     reportWorkspaceFreeze,
     workspaceFrozenMessage,
 } from "./workspaceFreeze";
@@ -89,18 +88,6 @@ describe("workspaceFrozenMessage", () => {
         expect(message).toContain("Unfreeze the workspace");
         // "Leave the revision" would be nonsense advice for a manual freeze.
         expect(message).not.toContain("Leave the revision");
-    });
-});
-
-describe("refusesOperations", () => {
-    it("holds for every freeze that means the author is not reading their working tree", () => {
-        for (const kind of ["revision", "manual", "merge", "recovery"] as const) {
-            expect(refusesOperations(kind)).toBe(true);
-        }
-    });
-
-    it("does not hold for a live session, whose content IS the working tree", () => {
-        expect(refusesOperations("live-session")).toBe(false);
     });
 });
 

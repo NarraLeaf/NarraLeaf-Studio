@@ -118,7 +118,8 @@ import {
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { collectPluginBuildConfigFields, pluginBuildConfigSlots } from "@shared/utils/pluginBuildConfig";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
-import { getWorkspaceFreeze, refusesOperations, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
+import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { SigningVault, type SecretSealer } from "../security/signingVault";

@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { KeybindingDefinition } from "@/apps/workspace/hooks";
+import { storyDocumentSpec } from "@shared/documents/specs";
+import { freezeAllowsWrite } from "@/lib/app/writeFreeze";
 import type { StoryRowActions } from "./storyRowActions";
 import {
     isRowTextEditable,
     isStoryKeybindingReadOnlySafe,
     isStoryRowActionReadOnlySafe,
+    storyDocumentFreezeScope,
     toReadOnlyStoryKeybindings,
     toReadOnlyStoryRowActions,
 } from "./storySceneReadOnly";
@@ -151,6 +154,48 @@ describe("story keybindings", () => {
         expect(bindings[4].handler).not.toHaveBeenCalled();
         expect(bindings[5].handler).not.toHaveBeenCalled();
         expect(bindings[0].handler).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("storyDocumentFreezeScope", () => {
+    it("names the file the write gate would be asked about, in the gate's own spelling", () => {
+        // The whole point of deriving it from the document spec: this string is compared against the
+        // set a live session declares writable, and a second spelling of the story path would make
+        // the editor offer edits the write boundary then refuses.
+        const scope = storyDocumentFreezeScope("chapter-one");
+        expect(scope).toBe("editor/story/stories/chapter-one/storydoc.json");
+        expect(freezeAllowsWrite(
+            { kind: "live-session", session: "room-1", writable: [scope!] },
+            scope!,
+        )).toBe(true);
+    });
+
+    it("names nothing for a tab with no story, so the guard stays conservative", () => {
+        expect(storyDocumentFreezeScope(undefined)).toBeUndefined();
+        expect(storyDocumentFreezeScope("")).toBeUndefined();
+    });
+
+    it("does not let one story's scope unlock another's", () => {
+        const mine = storyDocumentFreezeScope("chapter-one")!;
+        const theirs = storyDocumentFreezeScope("chapter-two")!;
+        expect(freezeAllowsWrite(
+            { kind: "live-session", session: "room-1", writable: [theirs] },
+            mine,
+        )).toBe(false);
+    });
+
+    it("is one path because a story is one file, and has to grow the day it is not", () => {
+        // A scope of one path is only the whole story while the document IS one file. The document
+        // layer already carries a set layout - a manifest beside a directory of members - and the
+        // story document is the case it was built for. On the day it is split, every write to
+        // `scenes/<sceneId>.json` would be a path this scope never names: refused at the boundary,
+        // reported as an unsaved change, with the editor still offering the edit.
+        //
+        // So this asserts the assumption rather than the behaviour. It fails the moment the story
+        // spec gains a layout, which is where somebody has to decide what a session declares
+        // writable.
+        expect("layout" in storyDocumentSpec).toBe(false);
+        expect(storyDocumentSpec.paths).toEqual(["editor/story/stories/<storyId>/storydoc.json"]);
     });
 });
 

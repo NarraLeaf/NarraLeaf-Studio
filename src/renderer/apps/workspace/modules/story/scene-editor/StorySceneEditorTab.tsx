@@ -48,7 +48,12 @@ import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootSty
 import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
 import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
-import { toReadOnlyStoryKeybindings, toReadOnlyStoryRowActions } from "./storySceneReadOnly";
+import {
+    StoryDocumentScopeProvider,
+    storyDocumentFreezeScope,
+    toReadOnlyStoryKeybindings,
+    toReadOnlyStoryRowActions,
+} from "./storySceneReadOnly";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TranslationKey } from "@shared/i18n";
 import { filterOutSelectedDescendants, getCharacterName, getContainerHeaderInfo, getTextSegment } from "./storySceneBlockUtils";
@@ -447,7 +452,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // opening the inspector, changing the row density and *finding* all stay live while frozen -
     // density is editor state, not project data, and find on its own only navigates. Replace does
     // write, and is gated on the guard in both the bar and the callbacks (`replaceCurrentMatch`).
-    const freeze = useFreezeGuard();
+    //
+    // Scoped to this tab's story: everything routed through this guard writes that one document, so
+    // a live session on it leaves the editor working. The paths that reach further - a paste that
+    // creates characters or carries translations - ask the controller's unscoped answer instead.
+    const storyScope = storyDocumentFreezeScope(payload?.storyId);
+    const freeze = useFreezeGuard(storyScope);
     const editor = useStorySceneEditorController(tabId, payload);
     // The command reference overlay, opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
@@ -2026,6 +2036,10 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             surface above and keeps working while the workspace is frozen — that is the state in which
             looking a reference up is all there is left to do. */}
         <StoryRefNavigationProvider document={document} sceneId={scene.id}>
+        {/* Which document the rows below write, for the handful of their controls that ask. They
+            ask one at a time on purpose: the rows also hold a control that creates a character,
+            which no scope of this document's covers. See `storySceneReadOnly`. */}
+        <StoryDocumentScopeProvider value={storyScope}>
         <StoryRowActionsContext.Provider value={effectiveRowActions}>
         <div
             ref={editor.rootRef}
@@ -2505,6 +2519,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             ) : null}
         </div>
         </StoryRowActionsContext.Provider>
+        </StoryDocumentScopeProvider>
         </StoryRefNavigationProvider>
         </StoryCommandLineProvider>
         </StoryEditorTextStyleProvider>

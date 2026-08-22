@@ -19,7 +19,8 @@ import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
-import { getWorkspaceFreeze, refusesOperations, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
+import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { resolveRunVariant } from "../../utils/runVariant";
 import {
