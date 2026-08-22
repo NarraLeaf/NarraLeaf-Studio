@@ -78,7 +78,6 @@ import {
     type BlueprintDynamicSelectOptionsByNodeId,
 } from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
-import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
 import { BlueprintCanvasToolbar, type BlueprintCanvasTool } from "./components/BlueprintCanvasToolbar";
 import { BLUEPRINT_COMMENT_DEFAULT_COLOR } from "./blueprintCommentColors";
 import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprintAutoLayout";
@@ -218,14 +217,6 @@ export function removeBlueprintNodeFromIr(ir: BlueprintGraphIr, nodeId: string):
 
 type BlueprintFlowCanvasInnerProps = {
     nodeCatalog: IBlueprintNodeCatalogService;
-    /**
-     * Whether the editor's member panel is out of the way.
-     *
-     * The panel is an overlay - `absolute inset-y-0 left-0 w-56` over this canvas, not a column
-     * beside it - so the canvas's own bottom-left corner is underneath it, and anything parked
-     * there is drawn but unreachable. The zoom control needs to know which corner is actually free.
-     */
-    memberPanelCollapsed?: boolean;
     graphKey: string;
     ir: BlueprintGraphIr;
     revision: number;
@@ -396,7 +387,6 @@ function syncSameGraphFnCallSnapshots(ir: BlueprintGraphIr, currentBlueprintId: 
 
 function BlueprintFlowCanvasInner({
     nodeCatalog,
-    memberPanelCollapsed = false,
     graphKey,
     ir,
     revision,
@@ -1862,7 +1852,6 @@ function BlueprintFlowCanvasInner({
                     onFormat={formatGraph}
                     canFormat={canFormat}
                 />
-                <BlueprintFlowZoomControls memberPanelCollapsed={memberPanelCollapsed} />
                 <MiniMap
                     // Dragging the minimap pans the viewport — the quickest way to
                     // move across a large graph. xyflow ships no cursor affordance
