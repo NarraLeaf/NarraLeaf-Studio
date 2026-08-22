@@ -1,6 +1,12 @@
 import fs from "fs";
 import path from "path";
 import { screen, session } from "electron";
+import {
+    QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_KEY,
+    QUIT_CHECKPOINT_TIMEOUT_MAX_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
+} from "@shared/constants/quit";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
@@ -51,27 +57,20 @@ export interface AppConfig extends BaseAppConfig {
 const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
 
 /**
- * How long the same checkpoint may take when it runs on the way out of the app rather than on one
- * window closing.
+ * What {@link App.drainForShutdown} is allowed on top of the checkpoint budget before the exit
+ * goes ahead without it.
  *
- * Shorter than {@link CLOSE_CHECKPOINT_TIMEOUT_MS}, and the reason is arithmetic:
- * {@link SHUTDOWN_DEADLINE_MS} bounds the whole teardown, so a checkpoint given the full
- * close-time budget could spend the entire exit and leave version control never closed - which is
- * the abort {@link App.drainForShutdown} exists to prevent. Half the deadline records the session
- * for every project that can be recorded in the time an exit is allowed to take, and leaves the
- * other half to put the stores down.
- */
-const QUIT_CHECKPOINT_TIMEOUT_MS = 10_000;
-
-/**
- * How long {@link App.drainForShutdown} may spend putting the profile down before the exit goes
- * ahead without it.
+ * The deadline is a sum rather than one fixed number, and that is what makes the checkpoint budget
+ * safe to configure: raising `versionControl.quitCheckpointTimeoutSeconds` buys the checkpoints
+ * more time instead of taking it from the stores, and a version-control call still in flight when
+ * Node destroys the environment aborts the process. With the default budget the total is the
+ * twenty seconds a quit was allowed before any of it was configurable.
  *
  * Generous, because everything it is waiting on is work that would otherwise be lost. Bounded,
  * because both callers are exits: a Cmd+Q that hangs on a network fetch, and a build job that never
  * returns an exit code, are worse outcomes than losing the last few seconds.
  */
-const SHUTDOWN_DEADLINE_MS = 20_000;
+const SHUTDOWN_BASE_DEADLINE_MS = 10_000;
 
 /**
  * How far a workspace opening beside another one is stepped from it, so the new window is visibly
@@ -782,6 +781,10 @@ export class App extends BaseApp {
      * alternative is an app that cannot be quit and a build job that never returns.
      */
     public async drainForShutdown(): Promise<void> {
+        // Read once, so the deadline and the step it is bounding cannot disagree - a Settings
+        // change landing between the two would otherwise produce a drain whose parts do not add up.
+        const checkpointBudgetMs = this.resolveQuitCheckpointTimeoutMs();
+        const deadlineMs = SHUTDOWN_BASE_DEADLINE_MS + checkpointBudgetMs;
         const teardown = (async () => {
             await this.flushAllWorkspacesPendingSaves().catch(error => {
                 this.logger.warn('Failed to flush pending saves before quit:', error);
@@ -789,14 +792,14 @@ export class App extends BaseApp {
             await this.stopAllProjectRuntimes().catch(error => {
                 this.logger.warn('Failed to stop the running game processes before quit:', error);
             });
-            await this.checkpointOpenWorkspacesForShutdown().catch(error => {
+            await this.checkpointOpenWorkspacesForShutdown(checkpointBudgetMs).catch(error => {
                 this.logger.warn('Failed to check point the open projects before quit:', error);
             });
             await this.getVcsManager().dispose().catch(error => {
                 this.logger.warn('Failed to close version control before quit:', error);
             });
         })();
-        const deadline = new Promise<void>(resolve => setTimeout(resolve, SHUTDOWN_DEADLINE_MS));
+        const deadline = new Promise<void>(resolve => setTimeout(resolve, deadlineMs));
         await Promise.race([teardown, deadline]);
         // Expiring here means ending with Lore work still running, which is exactly the abort the
         // drain exists to avoid. Nothing better is available - the alternative is a quit that hangs
@@ -804,7 +807,7 @@ export class App extends BaseApp {
         // names koffi and says nothing about why the call was still open.
         if (this.getVcsManager().busy) {
             this.logger.warn(
-                `Shutting down with version control still busy after ${SHUTDOWN_DEADLINE_MS}ms;`
+                `Shutting down with version control still busy after ${deadlineMs}ms;`
                 + ' a call that outlives this may take the process down on the way out.',
             );
         }
@@ -1168,7 +1171,7 @@ export class App extends BaseApp {
      * was a choice.
      *
      * Never throws and never blocks the close - the second half enforced by a deadline
-     * ({@link CLOSE_CHECKPOINT_TIMEOUT_MS}, or the shorter {@link QUIT_CHECKPOINT_TIMEOUT_MS} when
+     * ({@link CLOSE_CHECKPOINT_TIMEOUT_MS}, or `versionControl.quitCheckpointTimeoutSeconds` when
      * the whole app is going away) rather than assumed. A project with no repository, a host
      * with no backend, and a tree that has not changed all answer "nothing to do" rather than
      * failing (see VcsManager.checkpoint); a repository somebody else has locked answers nothing at
@@ -1298,6 +1301,25 @@ export class App extends BaseApp {
     }
 
     /**
+     * The configured checkpoint budget for a quit, in milliseconds.
+     *
+     * Clamped rather than trusted. Global state is a file on disk and the Settings row is not the
+     * only way into it; a value edited by hand into something enormous would be an application
+     * that cannot be quit, which is the one outcome the deadline exists to rule out.
+     */
+    private resolveQuitCheckpointTimeoutMs(): number {
+        const stored = this.globalState.get(QUIT_CHECKPOINT_TIMEOUT_KEY);
+        const seconds = typeof stored === "number" && Number.isFinite(stored)
+            ? stored
+            : QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS;
+        const clamped = Math.min(
+            Math.max(seconds, QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS),
+            QUIT_CHECKPOINT_TIMEOUT_MAX_SECONDS,
+        );
+        return Math.round(clamped * 1000);
+    }
+
+    /**
      * Check point every open workspace on the way out of the app.
      *
      * Quitting does not come through the window close guard: `isQuitting()` makes every guard
@@ -1310,11 +1332,13 @@ export class App extends BaseApp {
      * who turned it off is not shown a window telling them a checkpoint is being recorded.
      *
      * Concurrent, because Lore queues per project and two projects do not contend; bounded per
-     * project by {@link QUIT_CHECKPOINT_TIMEOUT_MS}, so one repository somebody else has locked
-     * cannot spend the whole shutdown deadline on behalf of the others.
+     * project by `timeoutMs`, so one repository somebody else has locked cannot spend the whole
+     * shutdown deadline on behalf of the others. A budget of nothing skips the step: it is how
+     * `versionControl.quitCheckpointTimeoutSeconds` says that a quit is not the moment to wait,
+     * and it leaves a workspace closed by hand recording its checkpoint as before.
      */
-    public async checkpointOpenWorkspacesForShutdown(): Promise<void> {
-        if (this.globalState.get("versionControl.checkpointOnClose") === false) {
+    public async checkpointOpenWorkspacesForShutdown(timeoutMs: number): Promise<void> {
+        if (timeoutMs <= 0 || this.globalState.get("versionControl.checkpointOnClose") === false) {
             return;
         }
         const workspaces = this.liveWorkspaceWindows();
@@ -1322,7 +1346,7 @@ export class App extends BaseApp {
             this.reportWorkspaceCloseStage(window, "checkpoint");
         }
         await Promise.allSettled(
-            workspaces.map(window => this.checkpointBeforeClose(window, QUIT_CHECKPOINT_TIMEOUT_MS)),
+            workspaces.map(window => this.checkpointBeforeClose(window, timeoutMs)),
         );
     }
 

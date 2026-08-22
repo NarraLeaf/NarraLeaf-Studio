@@ -275,6 +275,11 @@ export const settings = {
             label: "ワークスペースを閉じるときにチェックポイントを記録",
             description: "上の間隔とは別に、ウィンドウを閉じる時点で記録する",
         },
+        quitCheckpointTimeout: {
+            label: "終了時のチェックポイントの制限時間",
+            description:
+                "終了時に開いているすべてのプロジェクトのチェックポイントを待つ時間。これを超えたプロジェクトは記録しない。0 にすると終了時は記録しない",
+        },
         versionControlAuthor: {
             label: "作者名",
             description: "サーバーに接続していないプロジェクトで記録される。空のままなら NarraLeaf Studio と記録する",
