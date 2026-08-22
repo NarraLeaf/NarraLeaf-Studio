@@ -20,5 +20,22 @@ import type { StoryScene } from "@shared/types/story";
  * documents drift.
  */
 export function sceneDigest(scene: StoryScene): string {
-    return fnv1a64BytesHex(new TextEncoder().encode(encodeCanonicalJson(scene)));
+    return fnv1a64BytesHex(new TextEncoder().encode(encodeCanonicalJson(contentOf(scene))));
+}
+
+/**
+ * The scene without the bookkeeping each machine writes for itself.
+ *
+ * `meta` holds when the scene was last touched, and it is stamped from the clock of whichever
+ * machine did the touching - so two machines that applied the same operation to the same scene hold
+ * two different timestamps and agree about everything that matters. Hashing it would make a rename
+ * eject every guest in the room, every time, over a difference that says nothing about the text.
+ *
+ * Everything else stays in, including the parts that look like bookkeeping and are not: a block's
+ * `diagnosticsMeta` is where an imported line came from, which travels with the line and is the same
+ * on every machine that received it.
+ */
+function contentOf(scene: StoryScene): Omit<StoryScene, "meta"> {
+    const { meta: _meta, ...content } = scene;
+    return content;
 }

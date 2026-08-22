@@ -161,6 +161,25 @@ describe("sceneDigest", () => {
         expect(after).not.toBe(before);
     });
 
+    it("ignores the timestamp each machine stamps for itself", () => {
+        // Renaming a scene stamps `meta.updatedAt` from the clock of whichever machine applied it,
+        // so two machines that did the same thing hold two different values and agree about every
+        // word. Hashing that would eject every guest in the room on the first rename.
+        const a = { id: "s1", name: "Corridor", blocks: {}, meta: { updatedAt: "2026-08-22T09:00:00.000Z" } };
+        const b = { id: "s1", name: "Corridor", blocks: {}, meta: { updatedAt: "2026-08-22T09:00:04.881Z" } };
+        expect(sceneDigest(a as unknown as StoryScene)).toBe(sceneDigest(b as unknown as StoryScene));
+        // And a scene with no meta at all is the same scene as one that has been touched.
+        expect(sceneDigest({ id: "s1", name: "Corridor", blocks: {} } as unknown as StoryScene))
+            .toBe(sceneDigest(a as unknown as StoryScene));
+    });
+
+    it("still notices the rename itself", () => {
+        const before = { id: "s1", name: "Corridor", blocks: {}, meta: { updatedAt: "x" } };
+        const after = { id: "s1", name: "The corridor", blocks: {}, meta: { updatedAt: "x" } };
+        expect(sceneDigest(before as unknown as StoryScene))
+            .not.toBe(sceneDigest(after as unknown as StoryScene));
+    });
+
     it("is short enough to ride on every effect", () => {
         // It travels with each operation down a channel with a payload cap, so its size is part of
         // the contract rather than an implementation detail.

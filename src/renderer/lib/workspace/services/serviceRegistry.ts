@@ -44,6 +44,7 @@ import { SaveSchemaService } from "./saves/SaveSchemaService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
 import { WorkspaceFreezeService } from "./core/WorkspaceFreezeService";
+import { LiveSessionService } from "./live/LiveSessionService";
 import { WorkspaceReloadService } from "./core/WorkspaceReloadService";
 import { PuppetDescriptionService } from "./puppet/PuppetDescriptionService";
 import { MediaSupportService } from "./media/MediaSupportService";
@@ -99,6 +100,7 @@ export class ServiceRegistry {
         [Services.SaveStatus]: SaveStatusService.getInstance(),
         [Services.VersionControl]: VersionControlService.getInstance(),
         [Services.WorkspaceFreeze]: WorkspaceFreezeService.getInstance(),
+        [Services.Live]: LiveSessionService.getInstance(),
         [Services.WorkspaceReload]: WorkspaceReloadService.getInstance(),
         [Services.Recovery]: RecoveryService.getInstance(),
     };

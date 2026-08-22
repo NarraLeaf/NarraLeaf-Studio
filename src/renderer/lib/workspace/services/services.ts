@@ -166,6 +166,8 @@ import type {
     BlueprintInspectorParamSelectOption,
     BlueprintPaletteContext,
 } from "../../ui-editor/blueprint-nodes/types";
+import type { LiveEntryFailure, LiveSessionView } from "./live/liveSessionView";
+import type { TeamLiveSession } from "@shared/types/team";
 
 interface WorkspaceContext {
     project: Porject;
@@ -258,6 +260,8 @@ enum Services {
     VersionControl = "versionControl",
     /** Whether project data may be written at all, and why not - the write-boundary freeze */
     WorkspaceFreeze = "workspaceFreeze",
+    /** The live session this window is in: which half of it this is, and the story it is about */
+    Live = "live",
     /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
     WorkspaceReload = "workspaceReload",
     /** Recovery mode's own state: which subsystems have been tried, and what they said */
@@ -1475,6 +1479,36 @@ interface IWorkspaceFreezeService extends IService {
 }
 
 /**
+ * The live session this window is in, if it is in one.
+ *
+ * One per window: the freeze a session arms is a module-level latch carrying one writable path set,
+ * so a second session would take the first one's away. Everything it answers is a value the
+ * interface renders - see `live/liveSessionView` - because a service that produced sentences would
+ * produce them in one language at a moment when nobody knows which surface is going to show them.
+ */
+interface ILiveSessionService extends IService {
+    /** What the session is, right now. Read whole; a session's state changes as one thing. */
+    getView(): LiveSessionView;
+    onChanged(handler: (view: LiveSessionView) => void): () => void;
+    /** Whether a session owns this story document - the one question the story editor asks. */
+    ownsStory(storyId: StoryId): boolean;
+    /** Record a checkpoint, then open a room on that revision. Null means this window is in it. */
+    open(input: { storyId: StoryId; title?: string }): Promise<LiveEntryFailure | null>;
+    /** Join one somebody else opened, checkpointing and syncing on the way in. */
+    join(input: { session: TeamLiveSession | string; storyId: StoryId }): Promise<LiveEntryFailure | null>;
+    /** Leave: the freeze lifts and what is on disk is this author's own, committable as usual. */
+    leave(): Promise<void>;
+    /**
+     * Send the inverse of this window's last operation, rather than restoring a scene snapshot.
+     *
+     * False when there is nothing to send, and the view says why - never a snapshot as a fallback,
+     * and never a silent nothing.
+     */
+    undo(): boolean;
+    redo(): boolean;
+}
+
+/**
  * "The working tree is no longer what the editors are showing." Drops every in-memory document and
  * re-reads it, with project writes held off for the whole pass. Thaw is the first caller, restore
  * (`vcs:working-tree-changed`) the second - see WorkspaceReloadService, whose participant table is
@@ -1523,7 +1557,7 @@ export {
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
-    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService,
+    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, ILiveSessionService,
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
