@@ -1,204 +1,31 @@
 import "@xyflow/react/dist/style.css";
 import { memo, useId } from "react";
 import { useTranslation } from "@/lib/i18n";
-import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
-import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
-import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_COMMENT_COLORS,
+    resolveBlueprintCommentColorKey,
+} from "@/lib/ui-editor/blueprint-comment-colors";
+import {
+    PREVIEW_NODE_TYPE,
+    PREVIEW_SOURCE_HANDLE,
+    PREVIEW_TARGET_HANDLE,
+    type BlueprintLayerPreviewModel,
+    type MiniPreviewNodeData,
+    type MiniPreviewRole,
+} from "./blueprintLayerPreviewModel";
 import {
     Background,
     Handle,
     Position,
     ReactFlow,
     ReactFlowProvider,
-    type Edge,
     type Node,
     type NodeProps,
     type NodeTypes,
 } from "@xyflow/react";
 
-const PREVIEW_NODE_TYPE = "blueprintMini";
-const PREVIEW_SOURCE_HANDLE = "out";
-const PREVIEW_TARGET_HANDLE = "in";
-const FALLBACK_NODE_SIZE = { width: 220, height: 82 };
-
-type MiniPreviewRole = "event" | "function" | "data" | "normal";
-
-type MiniPreviewNodeData = {
-    role: MiniPreviewRole;
-    width: number;
-    height: number;
-    /** Real node title + data-pin labels, shown only in the `detailed` variant. */
-    title?: string;
-    inputs?: string[];
-    outputs?: string[];
-    detailed?: boolean;
-};
-
-export type BlueprintLayerPreviewModel = {
-    graphName: string | null;
-    emptyReason?: "noLayer" | "emptyLayer";
-    nodes: Node<MiniPreviewNodeData>[];
-    edges: Edge[];
-};
-
-function readLayout(node: BlueprintGraphNode, index: number, total: number): { x: number; y: number } {
-    const raw = node.meta?.editorLayout;
-    if (raw && typeof raw === "object" && "x" in raw && "y" in raw) {
-        const x = Number((raw as { x: unknown }).x);
-        const y = Number((raw as { y: unknown }).y);
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-            return { x, y };
-        }
-    }
-
-    const cols = Math.max(1, Math.ceil(Math.sqrt(total)));
-    return {
-        x: (index % cols) * 120,
-        y: Math.floor(index / cols) * 76,
-    };
-}
-
-function inferNodeRole(node: BlueprintGraphNode): MiniPreviewRole {
-    if (node.type.includes("event")) {
-        return "event";
-    }
-    if (node.type.includes("function")) {
-        return "function";
-    }
-    if (node.type.includes("literal") || node.type.includes("state") || node.type.includes("data")) {
-        return "data";
-    }
-    return "normal";
-}
-
-function inferEdgeColor(fromPort: string, toPort: string): string {
-    const port = `${fromPort}:${toPort}`.toLowerCase();
-    return port.includes("value") || port.includes("result") || port.includes("data") ? "#f59e0b" : "#22d3ee";
-}
-
-type PreviewNodeDescriptor = {
-    width: number;
-    height: number;
-    title?: string;
-    inputs?: string[];
-    outputs?: string[];
-};
-
-function describePreviewNode(
-    node: BlueprintGraphNode,
-    nodeCatalog: BlueprintNodeCatalogService | null,
-): PreviewNodeDescriptor {
-    const entry = nodeCatalog?.resolveCatalogEntryForNode(node.type, node.params ?? {});
-    if (!entry) {
-        return { ...FALLBACK_NODE_SIZE };
-    }
-
-    const inputPins = entry.pins.filter(pin => pin.kind === "input");
-    const outputPins = entry.pins.filter(pin => pin.kind === "output");
-    const pinRows = Math.max(inputPins.length, outputPins.length, entry.supportsDynamicInputPins ? 1 : 0);
-    const inspectorRows = entry.inspectorParams?.length ?? 0;
-    const width = entry.role === "eventHead" ? 240 : entry.role === "dataLiteral" ? 200 : 220;
-    const height = Math.max(58, 44 + pinRows * 22 + inspectorRows * 28);
-
-    // Data-pin labels only — exec pins are rendered as the header accent, not as text rows.
-    const inputs = inputPins.filter(pin => pin.semantic === "data").map(pin => pin.label ?? pin.id);
-    const outputs = outputPins.filter(pin => pin.semantic === "data").map(pin => pin.label ?? pin.id);
-
-    return { width, height, title: entry.displayName ?? node.type, inputs, outputs };
-}
-
-function buildPreviewModel(
-    ir: BlueprintGraphIr | undefined,
-    graphName: string | undefined,
-    nodeCatalog: BlueprintNodeCatalogService | null,
-): BlueprintLayerPreviewModel {
-    const graphNodes = Object.values(ir?.nodes ?? {});
-    if (graphNodes.length === 0) {
-        return {
-            graphName: graphName ?? null,
-            emptyReason: "emptyLayer",
-            nodes: [],
-            edges: [],
-        };
-    }
-
-    const nodes: Node<MiniPreviewNodeData>[] = graphNodes.map((node, index) => {
-        const descriptor = describePreviewNode(node, nodeCatalog);
-        return {
-            id: node.id,
-            type: PREVIEW_NODE_TYPE,
-            position: readLayout(node, index, graphNodes.length),
-            width: descriptor.width,
-            height: descriptor.height,
-            data: {
-                role: inferNodeRole(node),
-                width: descriptor.width,
-                height: descriptor.height,
-                title: descriptor.title,
-                inputs: descriptor.inputs,
-                outputs: descriptor.outputs,
-            },
-            draggable: false,
-            selectable: false,
-            focusable: false,
-            connectable: false,
-        };
-    });
-
-    const nodeIds = new Set(nodes.map(node => node.id));
-    const edges: Edge[] = (ir?.edges ?? []).flatMap((edge, index): Edge[] => {
-        if (!nodeIds.has(edge.from.nodeId) || !nodeIds.has(edge.to.nodeId)) {
-            return [];
-        }
-        return [
-            {
-                id: `${index}:${edge.from.nodeId}:${edge.from.port}:${edge.to.nodeId}:${edge.to.port}`,
-                source: edge.from.nodeId,
-                target: edge.to.nodeId,
-                sourceHandle: PREVIEW_SOURCE_HANDLE,
-                targetHandle: PREVIEW_TARGET_HANDLE,
-                selectable: false,
-                focusable: false,
-                interactionWidth: 1,
-                style: {
-                    stroke: inferEdgeColor(edge.from.port, edge.to.port),
-                    strokeWidth: 1.4,
-                    opacity: 0.58,
-                },
-            },
-        ];
-    });
-
-    return {
-        graphName: graphName ?? null,
-        nodes,
-        edges,
-    };
-}
-
-export function resolveFirstBlueprintLayerPreview(
-    localBp: LocalBlueprintService | null,
-    nodeCatalog: BlueprintNodeCatalogService | null,
-    blueprintId: string | undefined,
-): BlueprintLayerPreviewModel | null {
-    if (!localBp || !blueprintId) {
-        return null;
-    }
-    const blueprint = localBp.getBlueprintDocument().blueprints[blueprintId];
-    if (!blueprint || blueprint.program.kind !== "graph") {
-        return null;
-    }
-    const firstLayer = Object.values(blueprint.program.graphs.events ?? {})[0];
-    if (!firstLayer) {
-        return {
-            graphName: null,
-            emptyReason: "noLayer",
-            nodes: [],
-            edges: [],
-        };
-    }
-    return buildPreviewModel(firstLayer.graph, firstLayer.name, nodeCatalog);
-}
+export { resolveFirstBlueprintLayerPreview } from "./blueprintLayerPreviewModel";
+export type { BlueprintLayerPreviewModel, MiniPreviewNodeData } from "./blueprintLayerPreviewModel";
 
 function miniNodeClass(role: MiniPreviewRole): string {
     if (role === "event") {
@@ -226,6 +53,37 @@ function detailedHeaderClass(role: MiniPreviewRole): string {
     return "bg-fg-muted/85 text-fg";
 }
 
+/**
+ * A group frame, in the colour the author painted it on the canvas.
+ *
+ * An outlined wash rather than a filled card: a frame is the region a set of cards sits in, and a
+ * thumbnail that paints it solid hides exactly the cards it was drawn to gather.
+ */
+function MiniCommentRegion({ data }: { data: MiniPreviewNodeData }) {
+    const color = BLUEPRINT_COMMENT_COLORS[resolveBlueprintCommentColorKey(data.colorKey)]!;
+    const title = data.title?.split("\n")[0]?.trim();
+    return (
+        <div
+            className="flex flex-col overflow-hidden rounded-md border"
+            style={{
+                width: data.width,
+                height: data.height,
+                borderColor: color.border,
+                backgroundColor: color.background,
+            }}
+        >
+            {data.detailed && title ? (
+                <div
+                    className="truncate px-2 py-1 text-2xs font-medium"
+                    style={{ backgroundColor: color.header, color: color.text }}
+                >
+                    {title}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<Node<MiniPreviewNodeData>>) {
     const { t } = useTranslation();
     const handles = (
@@ -246,6 +104,15 @@ const MiniBlueprintNode = memo(function MiniBlueprintNode({ data }: NodeProps<No
             />
         </>
     );
+
+    if (data.role === "comment") {
+        return (
+            <>
+                {handles}
+                <MiniCommentRegion data={data} />
+            </>
+        );
+    }
 
     if (data.detailed) {
         const inputs = data.inputs ?? [];
