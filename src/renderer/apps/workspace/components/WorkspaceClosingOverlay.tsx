@@ -6,9 +6,19 @@ import type { TranslationKey } from "@shared/i18n";
 import { WorkspaceProgressCard, useSettledWait } from "./WorkspaceProgressOverlay";
 
 const STAGE_MESSAGE: Record<WorkspaceCloseStage, TranslationKey> = {
+    switching: "workspace.shell.closing.switching",
     saving: "workspace.shell.closing.saving",
     checkpoint: "workspace.shell.closing.checkpoint",
     launcher: "workspace.shell.closing.launcher",
+};
+
+/**
+ * Stages that are not a close get their own heading. Opening another project in this window waits
+ * here first, and "Closing workspace" over a project that is still loading names the half of the
+ * switch the author did not ask for.
+ */
+const STAGE_TITLE: Partial<Record<WorkspaceCloseStage, TranslationKey>> = {
+    switching: "workspace.shell.closing.switchingTitle",
 };
 
 /**
@@ -47,7 +57,7 @@ export function WorkspaceClosingOverlay() {
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
 
             <WorkspaceProgressCard
-                title={t("workspace.shell.closing.title")}
+                title={t(STAGE_TITLE[stage] ?? "workspace.shell.closing.title")}
                 message={t(STAGE_MESSAGE[stage])}
             />
         </div>

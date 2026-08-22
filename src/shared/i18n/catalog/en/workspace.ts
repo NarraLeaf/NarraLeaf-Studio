@@ -1196,6 +1196,10 @@ export const workspace = {
         // time, and the one that needs naming.
         closing: {
             title: "Closing workspace",
+            // Opening another project in this window: the replacement loads out of sight and this
+            // window stays up until it is ready, so what is said here is the wait, not the close.
+            switchingTitle: "Switching project",
+            switching: "Opening the other project…",
             saving: "Saving changes…",
             checkpoint: "Recording a version of the project…",
             launcher: "Returning to the launcher…",
