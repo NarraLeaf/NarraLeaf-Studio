@@ -88,6 +88,19 @@ export type BlueprintFlowNodeDiagnostic = {
 };
 
 /**
+ * The border a card wears when a diagnostic names it.
+ *
+ * Two weights, because the two mean different things: an error is a graph that will not run and is
+ * worth the danger colour, a warning is a node that will be skipped and takes the warning colour
+ * rather than shouting in red alongside real breakage.
+ */
+function nodeIssueRingClass(issue: BlueprintFlowNodeDiagnostic): string {
+    return issue.severity === "error"
+        ? "border-danger/85 ring-1 ring-danger/40"
+        : "border-warning/80 ring-1 ring-warning/35";
+}
+
+/**
  * React Flow handles node selection / drag on pointer down. Stopping propagation on click alone is too late;
  * use this on embedded controls so the node stays selected and the pane does not steal the interaction.
  */
@@ -2258,7 +2271,7 @@ function BlueprintElementLiteralNodeCard({
     nodeId,
     params,
     selected,
-    firstNodeError,
+    nodeIssue,
     elementPreview,
     onBindElementLiteral,
 }: {
@@ -2266,7 +2279,7 @@ function BlueprintElementLiteralNodeCard({
     nodeId: string;
     params: Record<string, unknown>;
     selected?: boolean;
-    firstNodeError?: BlueprintFlowNodeDiagnostic;
+    nodeIssue?: BlueprintFlowNodeDiagnostic;
     elementPreview?: BlueprintFlowNodeData["elementPreview"];
     onBindElementLiteral?: (nodeId: string) => void;
 }) {
@@ -2279,14 +2292,14 @@ function BlueprintElementLiteralNodeCard({
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
-                firstNodeError
-                    ? "border-danger/85 ring-1 ring-danger/40"
+                nodeIssue
+                    ? nodeIssueRingClass(nodeIssue)
                     : selected
                       ? "border-yellow-300/90 ring-1 ring-yellow-500/45 shadow-[0_0_20px_rgba(234,179,8,0.18)]"
                       : "border-edge"
             }`}
-            data-tip={firstNodeError?.message}
-            aria-invalid={Boolean(firstNodeError)}
+            data-tip={nodeIssue?.message}
+            aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge px-2 py-1.5">
                 <div className="text-2xs text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
@@ -2333,14 +2346,14 @@ function BlueprintImageAssetLiteralNodeCard({
     nodeId,
     params,
     selected,
-    firstNodeError,
+    nodeIssue,
     onPatchNodeParam,
 }: {
     catalog: BlueprintNodeEditorCatalogEntry;
     nodeId: string;
     params: Record<string, unknown>;
     selected?: boolean;
-    firstNodeError?: BlueprintFlowNodeDiagnostic;
+    nodeIssue?: BlueprintFlowNodeDiagnostic;
     onPatchNodeParam?: BlueprintNodeParamPatch;
 }) {
     const { t } = useTranslation();
@@ -2348,14 +2361,14 @@ function BlueprintImageAssetLiteralNodeCard({
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
-                firstNodeError
-                    ? "border-danger/85 ring-1 ring-danger/40"
+                nodeIssue
+                    ? nodeIssueRingClass(nodeIssue)
                     : selected
                       ? "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
             }`}
-            data-tip={firstNodeError?.message}
-            aria-invalid={Boolean(firstNodeError)}
+            data-tip={nodeIssue?.message}
+            aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge px-2 py-1.5">
                 <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
@@ -2476,7 +2489,11 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     // somewhere else, which is exactly what reading a Memo is.
     const isMemo = catalog.type === BLUEPRINT_NODE_TYPE_DATA_MEMO;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
-    const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
+    // Errors first, then warnings. A warning is still something the graph is telling the author -
+    // a node with no runtime behind it will not run - and a messages list that says so while the
+    // card it names looks like every other card is state that never reached the picture.
+    const nodeIssue =
+        nodeDiagnostics?.find(d => d.severity === "error") ?? nodeDiagnostics?.find(d => d.severity === "warning");
     const showEditSaveSchema = Boolean(catalog.supportsSaveSchemaPins) && Boolean(onEditSaveSchema);
     const showAddPinRow =
         Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
@@ -2552,7 +2569,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 nodeId={nodeId}
                 params={params}
                 selected={Boolean(selected)}
-                firstNodeError={firstNodeError}
+                nodeIssue={nodeIssue}
                 elementPreview={elementPreview}
                 onBindElementLiteral={onBindElementLiteral}
             />
@@ -2566,7 +2583,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 nodeId={nodeId}
                 params={params}
                 selected={Boolean(selected)}
-                firstNodeError={firstNodeError}
+                nodeIssue={nodeIssue}
                 onPatchNodeParam={onPatchNodeParam}
             />
         );
@@ -2677,20 +2694,20 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
                 isEventHead || isVarDeclare ? "border-l-2" : ""
             } ${isTerminalNode ? "border-r-2" : ""} ${
-                firstNodeError
-                    ? "border-danger/85 ring-1 ring-danger/40"
+                nodeIssue
+                    ? nodeIssueRingClass(nodeIssue)
                     : selected
                       ? isMemo
                           ? "border-binding/80 ring-1 ring-binding/40"
                           : "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
-            } ${!firstNodeError && isEventHead ? "border-l-primary/70" : ""} ${
-                !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
-            } ${!firstNodeError && isMemo ? "border-l-2 border-l-binding/70" : ""} ${
-                !firstNodeError && isTerminalNode ? "border-r-primary/70" : ""
+            } ${!nodeIssue && isEventHead ? "border-l-primary/70" : ""} ${
+                !nodeIssue && isVarDeclare ? "border-l-amber-500/80" : ""
+            } ${!nodeIssue && isMemo ? "border-l-2 border-l-binding/70" : ""} ${
+                !nodeIssue && isTerminalNode ? "border-r-primary/70" : ""
             }`}
-            data-tip={firstNodeError?.message}
-            aria-invalid={Boolean(firstNodeError)}
+            data-tip={nodeIssue?.message}
+            aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge-subtle px-2 py-1.5">
                 <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
