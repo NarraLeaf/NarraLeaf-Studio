@@ -27,10 +27,9 @@ import { useWorkspace } from "../../context";
  *
  *     yarn dev --experimental --x-live-session-freeze
  *
- * The writable document is the story in the active editor, because that is the one the person
- * running this is looking at. There is no picker: a session's document is decided by whoever opens
- * the session, never chosen from a list, and a picker here would be the wrong shape to then find in
- * the way.
+ * The writable document is the project's default story. There is no picker: a session's document is
+ * decided by whoever opens the session, never chosen from a list, and a picker here would be the
+ * wrong shape to then find in the way.
  */
 export function LiveSessionFreezeCommands() {
     const { context } = useWorkspace();
