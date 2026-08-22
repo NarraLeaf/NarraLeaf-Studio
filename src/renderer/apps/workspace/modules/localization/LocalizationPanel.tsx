@@ -265,8 +265,16 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         setNameDraftTouched(false);
     }, []);
 
+    /**
+     * Declare a language. Writes the localization configuration, so a frozen project refuses it.
+     *
+     * Checked here and not only on the ghost row that opens this form: the draft row stays open
+     * across a freeze, and both of its fields submit on Enter. Guarding the opener alone meant a form
+     * that was already on screen kept taking a code, a name and a keystroke, and answered with
+     * nothing.
+     */
     const handleAddLocale = useCallback(async () => {
-        if (!localizationService) {
+        if (!localizationService || freeze.frozen) {
             return;
         }
         const code = codeDraft.trim();
@@ -280,7 +288,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }
-    }, [localizationService, uiService, codeDraft, nameDraft, cancelAddLocale, t]);
+    }, [localizationService, freeze.frozen, uiService, codeDraft, nameDraft, cancelAddLocale, t]);
 
     const handleRemoveLocale = useCallback(async (code: string, displayName: string) => {
         if (!localizationService || !uiService) {
@@ -466,8 +474,17 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         });
     }, [localizationService, uiService, rows, exportFormat, writeExport, t]);
 
+    /**
+     * Fold a translator's exchange file back into the language's document.
+     *
+     * Refused before the picker opens rather than at the save. The menu row this hangs off is greyed
+     * by the freeze already, but the row was drawn before the author started reading the file list,
+     * and everything between the picker and the write - the parse, the "this file names a different
+     * language" confirmation - is time in which a session can begin. Asking a translator to confirm
+     * an overwrite that is then discarded is the worst version of this.
+     */
     const handleImport = useCallback(async (code: string, displayName: string) => {
-        if (!localizationService || !context || !uiService) {
+        if (!localizationService || !context || !uiService || freeze.frozen) {
             return;
         }
         try {
@@ -524,7 +541,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         } catch (error) {
             uiService.showError(error instanceof Error ? error : String(error));
         }
-    }, [localizationService, context, rows, uiService, t]);
+    }, [localizationService, context, freeze.frozen, rows, uiService, t]);
 
     const localeMenuItems = useMemo<ContextMenuDef>(() => {
         if (!localeMenu) {
@@ -716,9 +733,10 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                             />
                             <button
                                 type="button"
-                                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
+                                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={() => void handleAddLocale()}
-                                data-tip={t("workspace.localization.panel.confirm")} aria-label={t("workspace.localization.panel.confirm")}
+                                aria-label={t("workspace.localization.panel.confirm")}
+                                {...freeze.writes(false, t("workspace.localization.panel.confirm"))}
                             >
                                 <Check className="h-3.5 w-3.5" />
                             </button>

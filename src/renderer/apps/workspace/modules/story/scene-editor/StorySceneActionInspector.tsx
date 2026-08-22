@@ -93,7 +93,7 @@ import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPrevi
 import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
 import { PuppetPreview } from "@/apps/workspace/modules/characters/editors/components/PuppetPreview";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { BeyondStoryDocumentClamp, StoryDocumentClamp } from "./storyInspectorFreeze";
 import {
     puppetDescribeStatusKey,
     puppetDescriptionRequestFor,
@@ -530,23 +530,14 @@ export function ActionInspector(props: {
         resolveMotionName,
         projectVariableNameOf(variableOptions),
     );
-    const freeze = useFreezeGuard();
-
     /**
-     * The read-only clamp for a frozen workspace, and the reason it is one `<fieldset>` rather than
-     * a `freeze.writes()` on each control: this inspector is two and a half thousand lines of
-     * per-action editors - forty-odd `Select`s, the numeric grids, the expression and condition
-     * entries - written by whoever added each action kind, and it reaches the panel WITHOUT going
-     * through `FieldRenderer`, so it had inherited none of the framework's read-only work. Measured
-     * on a frozen project: every field accepted input and every change was discarded on thaw.
+     * The read-only clamp for a frozen workspace, and why it is a `<fieldset>` rather than a
+     * `freeze.writes()` per control: see `storyInspectorFreeze`, which also holds the inner clamp
+     * for the few subtrees here that write past this document.
      *
-     * `display: contents` keeps it out of the layout, and per HTML every form control beneath it is
-     * disabled without knowing this exists - including the ones in an action editor written after
-     * this line.
-     *
-     * The two things here that are NOT form controls are exactly the two that should keep working:
-     * `Disclosure` is a `<details>`/`<summary>`, so sections still open, and the blueprint entry
-     * card steps out on its own (see `StoryActionBlueprintPreviewCard`).
+     * The story id comes from the document rather than from `useStoryDocumentScope`, because this
+     * inspector is mounted by the properties panel and not by the scene editor's own tree - it is
+     * outside that provider, and the context would answer "I cannot say which document this is".
      */
     const fields = (
         <InspectorFields
@@ -585,13 +576,7 @@ export function ActionInspector(props: {
                     <div className="truncate text-xs text-fg-subtle">{subject}</div>
                 </div>
             </div>
-            {freeze.frozen ? (
-                <fieldset disabled aria-readonly style={{ display: "contents" }}>
-                    {fields}
-                </fieldset>
-            ) : (
-                fields
-            )}
+            <StoryDocumentClamp storyId={props.document.id}>{fields}</StoryDocumentClamp>
         </div>
     );
 }
@@ -2383,13 +2368,20 @@ function TransformPresetEditor(props: {
             }
         >
             {mode === "animation" ? (
-                <MotionField
-                    value={props.value}
-                    targetKind={props.motionTargetKind}
-                    motionLabel={props.motionLabel}
-                    actionContext={actionContext}
-                    onChange={props.onChange}
-                />
+                // Binding a motion writes this block's payload, but the picker behind the field also
+                // mints motions - its `New` and every preset in its gallery call
+                // `createAnimationAsset`, which writes a story animation of its own. That file is
+                // not this story document, so a live session refuses it, and the picker has no
+                // freeze guard of its own to say so.
+                <BeyondStoryDocumentClamp>
+                    <MotionField
+                        value={props.value}
+                        targetKind={props.motionTargetKind}
+                        motionLabel={props.motionLabel}
+                        actionContext={actionContext}
+                        onChange={props.onChange}
+                    />
+                </BeyondStoryDocumentClamp>
             ) : (
                 <div className="grid grid-cols-1 gap-2">
                     <FieldGrid cols={3}>

@@ -218,9 +218,14 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
      * Offered here because the alternative was an asset picker with nothing in it: the author who has
      * just made their first Live2D character has no model assets yet, and nothing on this surface said
      * where they come from.
+     *
+     * The freeze is answered before the directory picker, not after the copy. A model bundle is a
+     * folder of textures and motions - hundreds of megabytes is ordinary - and the button being grey
+     * is not enough on its own: a session can begin while this inspector is on screen, and the click
+     * that follows would otherwise copy the whole bundle in before the library refused it.
      */
     const importModel = useCallback(async () => {
-        if (!context) return;
+        if (!context || freeze.frozen) return;
         const picked = await getInterface().fs.selectDirectory(true);
         if (!picked.success || !picked.data.ok || picked.data.data.length === 0) {
             return;
@@ -234,7 +239,7 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
             appearance.setPuppetAsset(first.data.id);
         }
         setDiskVersion(version => version + 1);
-    }, [appearance, context]);
+    }, [appearance, context, freeze.frozen]);
 
     const onInstalled = useCallback((backend: string) => {
         // A runtime that registers a different name than its folder is filed under the registered one,

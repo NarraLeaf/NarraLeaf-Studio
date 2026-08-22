@@ -28,6 +28,21 @@ vi.mock("@/lib/i18n", async (importOriginal) => ({
     }),
 }));
 
+/** Flipped by the frozen cases; the rest of the file runs on a writable workspace. */
+const freezeState = vi.hoisted(() => ({ frozen: false }));
+
+// The real guard reads the workspace freeze service through a provider this test has no business
+// standing up, and `makeFreezeGuard` is the same decision with the React taken out of it.
+vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
+    const actual = await vi.importActual<typeof import("@/apps/workspace/components/ui/freezeGuard")>(
+        "@/apps/workspace/components/ui/freezeGuard",
+    );
+    return {
+        ...actual,
+        useFreezeGuard: () => actual.makeFreezeGuard(freezeState.frozen, "frozen.reason"),
+    };
+});
+
 const LINEAR: GradientFill = {
     kind: "linear",
     angle: 180,
@@ -55,6 +70,7 @@ function trigger(): HTMLElement {
 afterEach(() => {
     cleanup();
     setActiveBrandPalette(BUILTIN_BRAND_COLORS);
+    freezeState.frozen = false;
 });
 
 describe("GradientFillEditor", () => {
@@ -228,5 +244,69 @@ describe("GradientFillEditor", () => {
         });
 
         expect(onChange.mock.calls[0][0].stops[0]).toEqual({ offset: 0.4, color: "nlbrand:primary" });
+    });
+
+    /**
+     * The panel is portalled into the window's overlay host, so no clamp an ancestor puts around
+     * this field reaches it. Both halves are asserted here: it still opens, because reading a
+     * gradient's stops is why a frozen project is being looked at, and nothing inside it writes.
+     */
+    describe("frozen", () => {
+        it("still opens from inside the clamp the inspector puts around the field", () => {
+            const onChange = vi.fn<(next: GradientFill) => void>();
+            render(
+                // The properties framework's own structural clamp, which is a plain disabled
+                // fieldset - a `<button>` trigger inside one cannot be pressed at all.
+                <fieldset disabled>
+                    <GradientFillEditor value={LINEAR} onChange={onChange} draftResetKey="test" />
+                </fieldset>,
+            );
+
+            fireEvent.click(trigger());
+
+            expect(screen.getByLabelText("widgetAppearance.gradient.previewAria")).toBeTruthy();
+        });
+
+        it("carries its own clamp, so every control in the portalled panel is off", () => {
+            freezeState.frozen = true;
+            mount();
+            fireEvent.click(trigger());
+
+            // `:disabled` rather than the `disabled` property: a control inside a disabled fieldset
+            // matches the pseudo-class while its own attribute stays false. Asserted rather than
+            // firing an event at the control, because a synthetic `change` reaches a disabled input
+            // in jsdom - it is the browser, not the DOM, that stops the author reaching one.
+            expect(screen.getByLabelText("widgetAppearance.gradient.stopOffsetAria(1)").matches(":disabled")).toBe(true);
+            expect(screen.getByLabelText("widgetAppearance.gradient.addStopAria").matches(":disabled")).toBe(true);
+            expect(screen.getByLabelText("widgetAppearance.gradient.stopReorderAria(1)").matches(":disabled")).toBe(true);
+            expect(screen.getByLabelText("widgetAppearance.gradient.stopRemoveAria(1)").matches(":disabled")).toBe(true);
+            expect(screen.getByLabelText("widgetAppearance.gradient.angle").matches(":disabled")).toBe(true);
+        });
+
+        it("leaves the kind readable, because a disabled select hides the kinds it could have been", () => {
+            freezeState.frozen = true;
+            const { onChange } = mount();
+            fireEvent.click(trigger());
+
+            // `Select`'s `readOnly` arm draws a span trigger, which is also what carries it out of
+            // the clamp above: the rows open and none of them commits.
+            const kind = screen.getByLabelText("widgetAppearance.gradient.kind");
+            expect(kind.matches(":disabled")).toBe(false);
+
+            fireEvent.click(kind);
+            fireEvent.click(screen.getByText("widgetAppearance.gradient.kindRadial"));
+
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it("keeps the close button live, so the panel can still be dismissed", () => {
+            freezeState.frozen = true;
+            mount();
+            fireEvent.click(trigger());
+
+            fireEvent.click(screen.getByLabelText("widgetAppearance.gradient.closeAria"));
+
+            expect(screen.queryByLabelText("widgetAppearance.gradient.previewAria")).toBeNull();
+        });
     });
 });
