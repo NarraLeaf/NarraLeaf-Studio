@@ -70,6 +70,7 @@ import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
     applyFlowPositionsToIr,
+    BLUEPRINT_FLOW_Z_PLACEMENT_PREVIEW,
     blueprintDynamicSelectOptionsByNodeSignature,
     blueprintElementPreviewsSignature,
     blueprintIrToFlowEdges,
@@ -198,7 +199,7 @@ function buildPlacementPreviewFlowNode(
         id: BP_PLACEMENT_PREVIEW_ID,
         type: "blueprint",
         position,
-        zIndex: 2,
+        zIndex: BLUEPRINT_FLOW_Z_PLACEMENT_PREVIEW,
         draggable: false,
         selectable: false,
         focusable: false,

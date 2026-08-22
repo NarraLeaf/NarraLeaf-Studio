@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
 } from "@shared/types/blueprint/graph";
 import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
@@ -25,6 +26,25 @@ function renderSaveGameCapturePin(screenshot: unknown): string {
                         [BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY]: ["screenshot"],
                     },
                     onPatchNodeParam: vi.fn(),
+                },
+            } as any)}
+        />,
+    );
+}
+
+function renderComment(params: Record<string, unknown>): string {
+    registerCoreBlueprintNodes();
+    const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_FLOW_COMMENT);
+    return renderToStaticMarkup(
+        <BlueprintFlowNode
+            {...({
+                selected: false,
+                data: {
+                    catalog,
+                    nodeId: "note",
+                    params,
+                    onPatchNodeParam: vi.fn(),
+                    onFitGroupFrame: vi.fn(),
                 },
             } as any)}
         />,
@@ -112,5 +132,15 @@ describe("BlueprintFlowNode", () => {
 
     it("leaves the card alone when the workspace is writable", () => {
         expect(renderSaveGameCapturePin(true)).not.toContain("<fieldset");
+    });
+
+    /**
+     * The layer switch is a note's affordance. On a frame it is the one control that can put the
+     * rectangle in front of the cards it was drawn around, which is why the frame is not offered it
+     * - the toggle is the only element on the card carrying `aria-pressed`.
+     */
+    it("offers the layer switch on a note and not on a group frame", () => {
+        expect(renderComment({ text: "note" })).toContain("aria-pressed");
+        expect(renderComment({ text: "group", frame: true, background: false })).not.toContain("aria-pressed");
     });
 });

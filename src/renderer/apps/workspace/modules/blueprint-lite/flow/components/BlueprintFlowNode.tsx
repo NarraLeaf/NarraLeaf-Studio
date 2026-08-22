@@ -2149,7 +2149,12 @@ function BlueprintCommentNodeCard({
 
     return (
         <div
-            className="group relative flex flex-col overflow-hidden rounded-md border shadow-lg backdrop-blur-[1px]"
+            // A note frosts what it covers; a frame does not. A frame is stretched over a whole
+            // region of the graph, and the canvas scales that blur with the zoom - at close range a
+            // frame drawn over another one put it visibly out of focus.
+            className={`group relative flex flex-col overflow-hidden rounded-md border shadow-lg${
+                isFrame ? "" : " backdrop-blur-[1px]"
+            }`}
             style={{
                 width: draftSize.width,
                 height: draftSize.height,
@@ -2219,25 +2224,31 @@ function BlueprintCommentNodeCard({
                             }}
                         />
                     ))}
-                    <button
-                        type="button"
-                        className={`relative h-4 w-4 rounded-full border border-dashed ${
-                            backgroundEnabled
-                                ? "border-edge-strong bg-fill-strong"
-                                : "border-edge bg-transparent"
-                        }`}
-                        data-tip={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
-                        aria-label={backgroundEnabled ? t("blueprint.comment.sendBehind") : t("blueprint.comment.restoreLayer")}
-                        aria-pressed={backgroundEnabled}
-                        onClick={e => {
-                            e.stopPropagation();
-                            onPatchNodeParam?.(nodeId, "background", !backgroundEnabled);
-                        }}
-                    >
-                        {!backgroundEnabled ? (
-                            <span className="absolute left-1/2 top-1/2 h-[1px] w-5 -translate-x-1/2 -translate-y-1/2 rotate-[-45deg] bg-red-500" />
-                        ) : null}
-                    </button>
+                    {/* Which layer a note sits in is the author's call; a frame has no such call
+                        to make. A frame is drawn around other cards, so the only place it can be is
+                        behind them - offered the switch, it would come forward and cover the graph
+                        it was drawn to label. */}
+                    {isFrame ? null : (
+                        <button
+                            type="button"
+                            className={`relative h-4 w-4 rounded-full border border-dashed ${
+                                backgroundEnabled
+                                    ? "border-edge-strong bg-fill-strong"
+                                    : "border-edge bg-transparent"
+                            }`}
+                            data-tip={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
+                            aria-label={backgroundEnabled ? t("blueprint.comment.sendBehind") : t("blueprint.comment.restoreLayer")}
+                            aria-pressed={backgroundEnabled}
+                            onClick={e => {
+                                e.stopPropagation();
+                                onPatchNodeParam?.(nodeId, "background", !backgroundEnabled);
+                            }}
+                        >
+                            {!backgroundEnabled ? (
+                                <span className="absolute left-1/2 top-1/2 h-[1px] w-5 -translate-x-1/2 -translate-y-1/2 rotate-[-45deg] bg-red-500" />
+                            ) : null}
+                        </button>
+                    )}
                 </div>
             </div>
             {isFrame ? null : (

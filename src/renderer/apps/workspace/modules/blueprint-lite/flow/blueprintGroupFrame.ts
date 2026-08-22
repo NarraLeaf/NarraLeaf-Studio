@@ -54,7 +54,8 @@ export function computeBlueprintGroupFrame(members: readonly BlueprintFrameRect[
     };
 }
 
-function contains(frame: BlueprintFrameRect, box: BlueprintFrameRect): boolean {
+/** Whether `box` sits entirely inside `frame` - the one test membership and stacking both use. */
+export function blueprintFrameContains(frame: BlueprintFrameRect, box: BlueprintFrameRect): boolean {
     return (
         box.x >= frame.x - CONTAINMENT_EPSILON &&
         box.y >= frame.y - CONTAINMENT_EPSILON &&
@@ -73,7 +74,7 @@ export function blueprintGroupMemberIds(
     frame: BlueprintFrameRect,
     boxes: readonly BlueprintFrameBox[],
 ): string[] {
-    return boxes.filter(box => box.id !== frameId && contains(frame, box)).map(box => box.id);
+    return boxes.filter(box => box.id !== frameId && blueprintFrameContains(frame, box)).map(box => box.id);
 }
 
 /**
