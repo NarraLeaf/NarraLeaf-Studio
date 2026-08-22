@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, Shrink, X, SlidersHorizontal } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Music, Plus, Shrink, X, SlidersHorizontal } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
@@ -183,8 +183,17 @@ const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle italic";
 
 const CARD_INPUT =
     "rounded-md border-edge bg-surface px-1.5 py-1 font-mono text-2xs";
+/**
+ * A 16px icon button inside a pin row.
+ *
+ * `!min-h-0` is the load-bearing part: every Studio control has a height floor from the shared size
+ * scale, and `sm` - the smallest there is - is 28px. Height and min-height are different properties,
+ * so `!h-4` alone left the floor standing and the button was 28px tall, which made every pin row
+ * carrying one taller than the rows beside it. A pin row is card ornament rather than a row of
+ * controls, so it sizes to its own 20px slot and the button clears the floor to fit in it.
+ */
 const CARD_ICON_BUTTON =
-    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded-md !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
+    "nodrag !h-4 !min-h-0 !w-4 shrink-0 !gap-0 rounded-md !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
 
 /** Hide native number steppers — keep same look as other card fields (WebKit + Firefox). */
 const INPUT_NUMBER_NO_SPINNER =
@@ -853,7 +862,7 @@ function InputPinRow({
                                 onRemovePin(nodeId, pin.id);
                             }}
                         >
-                            <Minus className="h-3 w-3" aria-hidden />
+                            <X className="h-3 w-3" aria-hidden />
                         </Button>
                     ) : null}
                     {labelEditor}
@@ -931,7 +940,7 @@ function InputPinRow({
                                 onRemovePin(nodeId, pin.id);
                             }}
                         >
-                            <Minus className="h-3 w-3" aria-hidden />
+                            <X className="h-3 w-3" aria-hidden />
                         </Button>
                     ) : null}
                     {labelEditor}
@@ -1007,7 +1016,7 @@ function OutputPinRow({
                             onRemovePin(nodeId, pin.id);
                         }}
                     >
-                        <Minus className="h-3 w-3" aria-hidden />
+                        <X className="h-3 w-3" aria-hidden />
                     </Button>
                 ) : null}
                 {dynamicLabelParamKey ? (
