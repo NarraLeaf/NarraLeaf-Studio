@@ -101,6 +101,13 @@ export const story = {
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
         },
     },
+    // What a control shows while a live session is the reason it cannot act. A session carries a
+    // closed set of story operations, and an edit outside that set would be written on this machine
+    // and on no other - so the same thing is taken away wherever it is offered, and one string says
+    // so everywhere rather than a different excuse per surface.
+    live: {
+        editUnavailable: "Unavailable in a live session. Leave the session to make this change.",
+    },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`
     // is keyed by the printer's own codes (see `narralangPrinter`), so a new code fails the parity

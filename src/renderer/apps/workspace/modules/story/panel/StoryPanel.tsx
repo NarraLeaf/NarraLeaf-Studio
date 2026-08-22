@@ -17,6 +17,7 @@ import { closeStoryEditorTabs, closeStorySceneEditorTabs } from "./closeStoryEdi
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { getStorySceneEditorTabId } from "../scene-editor/storySceneEditorTabId";
 import { storyDocumentFreezeScope } from "../scene-editor/storySceneReadOnly";
+import { storyEditGuard, useStoryLiveSessionGuard } from "../storyLiveSession";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
@@ -78,13 +79,25 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
      * The other half of the freeze answer: the outline - chapters and scenes - which lives inside the
      * selected story's own document.
      *
-     * Scoped to that document, so a live session leaves its structure editable: adding a scene to the
-     * story everybody is in writes the same file as typing a line into it, and a panel that refused
+     * Scoped to that document, so a freeze that leaves it writable leaves the outline editable:
+     * renaming a scene here writes the same file as typing a line into it, and a panel that refused
      * the first while the editor allowed the second would be saying two things about one document.
      * `undefined` while no story is selected, which is the conservative answer and also the state in
      * which none of these controls is reachable.
      */
     const outlineFreeze = useFreezeGuard(storyDocumentFreezeScope(selectedStoryId ?? undefined));
+    /**
+     * The outline splits again inside a live session, and along a different line: not which file is
+     * written, but which edits reach the other people in the room.
+     *
+     * Renaming a scene, renaming the story, reordering chapters and choosing the entry scene are
+     * operations a session carries, so they keep the answer above and stay live. Creating and
+     * deleting a scene or a chapter are not - the vocabulary a session speaks has no word for them
+     * (`@shared/live/ops`) - so they are written here and nowhere else, and the copies part company
+     * with nothing on screen to say so. Those controls ask {@link outlineStructure} instead.
+     */
+    const liveSession = useStoryLiveSessionGuard(selectedStoryId ?? undefined);
+    const outlineStructure = storyEditGuard(outlineFreeze, liveSession);
 
     const storyService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -575,28 +588,30 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "delete-scene",
                 label: t("common.delete"),
-                ...outlineFreeze.menuRow(),
+                ...outlineStructure.menuRow(),
                 onClick: () => {
                     void handleDeleteScene(scene);
                 },
             },
         ];
-    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, outlineFreeze, selectedStoryId, t]);
+    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, outlineFreeze, outlineStructure, selectedStoryId, t]);
 
     const buildChapterContextMenu = useCallback((chapter: StoryChapter): ContextMenuDef => [
         {
             id: "new-scene-in-chapter",
             label: t("story.panel.newSceneInChapter"),
-            ...outlineFreeze.menuRow(),
+            ...outlineStructure.menuRow(),
             onClick: () => {
                 void handleCreateScene(chapter.id);
             },
         },
         { id: "chapter-actions-separator", separator: true },
         {
+            // A chapter's name is not a scene's: a session carries `rename-scene` and has no word
+            // for renaming a chapter, so this one comes off with the rest of the structure.
             id: "rename-chapter",
             label: t("common.rename"),
-            ...outlineFreeze.menuRow(),
+            ...outlineStructure.menuRow(),
             onClick: () => {
                 void handleRenameChapter(chapter);
             },
@@ -604,12 +619,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         {
             id: "delete-chapter",
             label: t("common.delete"),
-            ...outlineFreeze.menuRow(),
+            ...outlineStructure.menuRow(),
             onClick: () => {
                 void handleDeleteChapter(chapter);
             },
         },
-    ], [handleCreateScene, handleDeleteChapter, handleRenameChapter, outlineFreeze, t]);
+    ], [handleCreateScene, handleDeleteChapter, handleRenameChapter, outlineStructure, t]);
 
     const handleOpenChapterMenu = useCallback((event: React.MouseEvent, chapter: StoryChapter) => {
         event.preventDefault();
@@ -739,7 +754,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     <button
                                         type="button"
                                         className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
-                                        {...outlineFreeze.writes(false, t("story.panel.newChapter"))}
+                                        {...outlineStructure.writes(false, t("story.panel.newChapter"))}
                                         onClick={handleCreateChapter}
                                     >
                                         <Plus className="h-3 w-3" />
@@ -774,7 +789,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                     <button
                                                         type="button"
                                                         className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
-                                                        {...outlineFreeze.writes(false, t("story.panel.newSceneInChapter"))}
+                                                        {...outlineStructure.writes(false, t("story.panel.newSceneInChapter"))}
                                                         onClick={() => handleCreateScene(chapter.id)}
                                                     >
                                                         <Plus className="h-3 w-3" />

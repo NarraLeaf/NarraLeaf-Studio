@@ -1154,6 +1154,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!storyService || !storyId || !sceneId || !scene) {
             return false;
         }
+        // A session owns this story, so the scene record is not this window's to patch.
+        //
+        // `updateScene` is not one of the operations a session hands to its sink, and the fields it
+        // writes - the name, the description, the default backdrop, the BGM - are all part of what
+        // every machine in the room fingerprints. Writing one here would leave this copy holding a
+        // scene the room has never seen, and the next effect about it would eject this window.
+        //
+        // Refused here as well as on the overview card, which greys its fields and says why. The
+        // property rail edits the same scene through this function and is already inert - its
+        // fields ask the unscoped freeze - so this is what makes the two agree, and it is the one
+        // function both of them commit through.
+        if (liveSessionService?.ownsStory(storyId)) {
+            return false;
+        }
 
         const nextName = patch.name !== undefined ? patch.name.trim() || scene.name || translate("story.sceneEditor.defaultSceneName") : scene.name;
         const nextDescription = patch.description !== undefined ? patch.description.trim() : scene.description ?? "";
@@ -1185,7 +1199,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
         }
         return changed;
-    }, [recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
+    }, [liveSessionService, recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
 
     const commitTextEdit = useCallback(() => {
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
