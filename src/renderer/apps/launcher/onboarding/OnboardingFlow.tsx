@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button, ProgressCircle } from "@/lib/components/elements";
 import { AppLayout } from "@/lib/components/layout";
-import type { HelpTopicId } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { APP_DISPLAY_NAME } from "@shared/constants/app";
@@ -94,15 +93,12 @@ const SCREENS: Record<OnboardingStep, {
 
 export interface OnboardingFlowProps {
     /**
-     * Leave setup for good - reached by finishing and by skipping, which mean the same thing to the
-     * marker. See `useOnboardingMode`.
+     * Leave setup for good - reached by finishing, by skipping and by importing a settings file,
+     * which mean the same thing to the marker. See `useOnboardingMode`.
      *
-     * The optional topic is the last screen's three links: leaving is leaving either way, and the
-     * topic only says where to put the author down. Every call site that is a plain exit passes
-     * nothing, so a click handler must never be wired to this directly - a `MouseEvent` would arrive
-     * as the topic.
+     * Takes nothing, so it can be wired to a click handler directly.
      */
-    onFinish: (topic?: HelpTopicId) => void;
+    onFinish: () => void;
 }
 
 /**
@@ -224,7 +220,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                     {step === "identity" && <IdentityStep />}
                                     {step === "team" && <TeamStep />}
                                     {step === "story" && <StoryStep />}
-                                    {step === "done" && <DoneStep onOpenTopic={onFinish} />}
+                                    {step === "done" && <DoneStep />}
                                 </div>
                             </div>
 

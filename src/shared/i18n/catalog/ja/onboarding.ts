@@ -63,7 +63,7 @@ export const onboarding = {
     done: {
         title: "セットアップ完了",
         expectation: "ここで訊いたことも、その先の細かい調整も設定にある。どの画面でも F1 を押すと、カーソルの下にあるもののヘルプが開く",
-        topics: "ヘルプトピック",
+        docs: "ドキュメントを読む",
     },
     previewWindow: {
         open: "ウィンドウ全体を見る",
