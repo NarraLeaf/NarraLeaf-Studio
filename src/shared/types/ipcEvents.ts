@@ -3114,15 +3114,17 @@ export type IPCServerTrustEvents = {
 /**
  * First-run setup asking for its own preview at full size, in a window of its own.
  *
- * Takes nothing and answers nothing: the window draws the same sample the setup screen does, from
- * preferences it reads for itself. Raised rather than returned, because it is something to look at
- * rather than a question waiting for an answer.
+ * Answers nothing: the window draws the same sample the setup screen does, from preferences it
+ * reads for itself, and all it is told is which surface to open on. Raised rather than returned,
+ * because it is something to look at rather than a question waiting for an answer.
  */
 export type IPCOnboardingEvents = {
     [IPCEventType.onboardingPreviewOpen]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: Record<string, never>,
+        data: {
+            props: WindowProps[WindowAppType.OnboardingPreview];
+        },
         response: void;
     };
 };

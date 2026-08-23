@@ -2023,16 +2023,23 @@ export class App extends BaseApp {
      */
     async launchOnboardingPreview(
         parent: AppWindow,
+        props: WindowProps[WindowAppType.OnboardingPreview] = {},
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.OnboardingPreview>> {
+        const surface = props.surface ?? "story";
         const existing = this.windowManager.getWindows().find(window =>
             !window.isClosed() && window.getWindowType() === WindowAppType.OnboardingPreview
         ) as AppWindow<WindowAppType.OnboardingPreview> | undefined;
         if (existing) {
-            // One preview, raised again rather than duplicated: two copies of one sample would
-            // disagree the moment a preference changed in only one of them.
-            existing.getBrowserWindow().focus();
-            return existing;
+            // One preview at a time: two copies of one sample would disagree the moment a
+            // preference changed in only one of them. Asking for the surface it is already showing
+            // raises it; asking for another builds it again, because the surface travels on the
+            // window's props and a built window cannot be told a new one.
+            if (existing.getProps()?.surface === surface) {
+                existing.getBrowserWindow().focus();
+                return existing;
+            }
+            existing.close();
         }
 
         const config: WindowConfig<WindowAppType.OnboardingPreview> = {
@@ -2054,7 +2061,7 @@ export class App extends BaseApp {
                 ...options,
             },
         };
-        const window = new AppWindow<WindowAppType.OnboardingPreview>(this, config, {});
+        const window = new AppWindow<WindowAppType.OnboardingPreview>(this, config, { surface });
         window.setTitle("Preview - NarraLeaf Studio");
         this.applyWindowIcon(window);
         // Maximized, and registered before the show below so it lands in that state rather than

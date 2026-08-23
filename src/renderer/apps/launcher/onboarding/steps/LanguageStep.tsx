@@ -16,11 +16,27 @@ import { OptionList } from "./OptionList";
  * The list comes from the live registry rather than the static locale table, because a plugin
  * language pack registers at runtime and the settings window reads it the same way.
  */
+/**
+ * The registry's languages, with this machine's own first.
+ *
+ * The device's language is the answer for almost everybody, it is already the one applied (an unset
+ * `app.language` resolves through the same walk before the first paint), and it is the one entry a
+ * reader is scanning for. Putting it at the head of a list rather than wherever the registry
+ * happens to file it is what makes the first row the answer.
+ *
+ * The rest keep the registry's order, which is the order the settings window lists them in.
+ */
+function orderedLocales(): readonly string[] {
+    const device = deviceDefaultLocale();
+    const rest = getRegisteredLocales().filter(code => code !== device);
+    return getRegisteredLocales().includes(device) ? [device, ...rest] : rest;
+}
+
 export function LanguageStep() {
     const { t, locale, setLocale } = useTranslation();
 
     const options = useMemo(
-        () => getRegisteredLocales().map(code => {
+        () => orderedLocales().map(code => {
             const meta = getLocaleMeta(code);
             return {
                 value: code,

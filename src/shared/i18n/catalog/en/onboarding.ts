@@ -58,6 +58,10 @@ export const onboarding = {
     zoom: {
         title: "Interface zoom",
         expectation: "How large Studio's interface is drawn. This window is the sample.",
+        /** The fourth option: the setting's whole 50-200 range, behind one more click. */
+        custom: "Custom",
+        /** Over the three surfaces the pane can show while this screen is up. */
+        surface: "Show in the preview",
     },
     identity: {
         title: "Who is writing",
@@ -147,6 +151,18 @@ export const onboarding = {
             checkpoint: "Checkpoint",
         },
         /** The team panel with nothing signed in. */
+        /** The dashboard's two facts, which are dates in the real one and words in a sample. */
+        dashboard: {
+            lastActive: "a moment ago",
+            trackedSince: "this week",
+        },
+        /** Four lines of a build, which is what the console is usually showing. */
+        console: {
+            start: "Building the preview…",
+            assets: "86 assets, 12 scenes",
+            warning: "Scene \"Rooftop, evening\" names a character that has no appearance",
+            done: "Preview ready in 3.4s",
+        },
         teamAlone: "Working on this computer",
     },
 } as const;

@@ -42,31 +42,31 @@ const SCREENS: Record<OnboardingStep, {
         rail: "onboarding.steps.language",
         title: "onboarding.language.title",
         expectation: "onboarding.language.expectation",
-        panel: "story",
+        panel: "dashboard",
     },
     appearance: {
         rail: "onboarding.steps.appearance",
         title: "onboarding.appearance.title",
         expectation: "onboarding.appearance.expectation",
-        panel: "story",
+        panel: "dashboard",
     },
     zoom: {
         rail: "onboarding.steps.zoom",
         title: "onboarding.zoom.title",
         expectation: "onboarding.zoom.expectation",
-        panel: "story",
+        panel: "dashboard",
     },
     identity: {
         rail: "onboarding.steps.identity",
         title: "onboarding.identity.title",
         expectation: "onboarding.identity.expectation",
-        panel: "versions",
+        panel: "dashboard",
     },
     team: {
         rail: "onboarding.steps.team",
         title: "onboarding.team.title",
         expectation: "onboarding.team.expectation",
-        panel: "team",
+        panel: "dashboard",
     },
     story: {
         rail: "onboarding.steps.story",
@@ -78,7 +78,7 @@ const SCREENS: Record<OnboardingStep, {
         rail: "onboarding.steps.done",
         title: "onboarding.done.title",
         expectation: "onboarding.done.expectation",
-        panel: "story",
+        panel: "dashboard",
     },
 };
 
@@ -117,9 +117,17 @@ export interface OnboardingFlowProps {
 export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
     const { t } = useTranslation();
     const [index, setIndex] = useState(0);
+    /**
+     * Which surface the pane shows while the zoom screen is up.
+     *
+     * Only that screen offers the choice, and it is held here rather than inside the step because
+     * the pane is the shell's. Every other screen shows what its own entry in {@link SCREENS} says.
+     */
+    const [zoomSurface, setZoomSurface] = useState<PreviewPanelId>("dashboard");
 
     const step = STEPS[index];
     const screen = SCREENS[step];
+    const panel = step === "zoom" ? zoomSurface : screen.panel;
     const isLast = index === STEPS.length - 1;
 
     const back = useCallback(() => setIndex(current => Math.max(0, current - 1)), []);
@@ -178,7 +186,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 <div className="mt-6">
                                     {step === "language" && <LanguageStep />}
                                     {step === "appearance" && <AppearanceStep />}
-                                    {step === "zoom" && <ZoomStep />}
+                                    {step === "zoom" && <ZoomStep surface={zoomSurface} onSurfaceChange={setZoomSurface} />}
                                     {step === "identity" && <IdentityStep />}
                                     {step === "team" && <TeamStep />}
                                     {step === "story" && <StoryStep />}
@@ -187,10 +195,13 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                             </div>
 
                             {/* A whole Studio window, of which this screen has room for the left
-                                quarter.
+                                third.
 
-                                Not a small window: a full-sized one, laid against the right edge
-                                and cut off by it. The difference is the whole point - a miniature
+                                Not a small window: one at a real width, laid against the right
+                                edge and cut off by it. 1120 is the narrow end of what Studio is
+                                worked in, and it is chosen for what it does to the surfaces behind
+                                the crop: the dashboard centres its column, so on a wider window the
+                                only thing in the left third would be that column's margin. The difference is the whole point - a miniature
                                 is a picture of the product, while a window running off the edge is
                                 the product, seen from where the author is standing. It costs the
                                 far side of every row (a line of dialogue ends off-screen, as it
@@ -207,8 +218,8 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 took the rail off the screen. A clipped box has nothing to scroll. */}
                             <div className="hidden w-[420px] shrink-0 overflow-clip py-6 min-[780px]:flex">
                                 <div className="relative min-h-0 flex-1">
-                                    <div className="absolute inset-y-0 left-0 flex w-[1680px]">
-                                        <StudioPreview panel={screen.panel} />
+                                    <div className="absolute inset-y-0 left-0 flex w-[1120px]">
+                                        <StudioPreview panel={panel} />
                                     </div>
                                 </div>
                             </div>
