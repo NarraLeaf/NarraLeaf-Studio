@@ -77,6 +77,7 @@ export const documentDiff = {
     count: {
         /** The author's own variants. The release tag is always there and is not counted. */
         appTags: "Build variants",
+        dlc: "DLC",
         assetSets: "Asset sets",
         assets: "Assets",
         audioTracks: "Audio tracks",

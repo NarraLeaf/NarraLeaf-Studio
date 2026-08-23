@@ -7,6 +7,10 @@ export const story = {
         emptyStories: "此项目中还没有故事",
         storyActions: "故事操作",
         setDefault: "设为默认",
+            dlc: {
+                title: "所属",
+                base: "游戏本体",
+            },
         outline: "大纲",
         newChapter: "新建章节",
         newSceneInChapter: "在章节中新建场景",

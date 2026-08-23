@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
+import { BookOpen, Check, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
 import type { StoryChapter, StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -9,6 +9,8 @@ import { PanelStateService } from "@/lib/workspace/services/core/PanelStateServi
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
+import type { ProjectDlc } from "@shared/types/dlc";
 import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
@@ -112,6 +114,29 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         }
         return context.services.get<UIService>(Services.UI);
     }, [context, isInitialized]);
+
+    const dlcService = useMemo(() => {
+        if (!context || !isInitialized) {
+            return null;
+        }
+        return context.services.get<DlcService>(Services.Dlc);
+    }, [context, isInitialized]);
+
+    /**
+     * The project's DLC, for the row that says which one ships a story.
+     *
+     * Watched rather than read once: making a DLC and marking a story for it is one flow, and an
+     * author who adds one in Project comes straight back here to use it.
+     */
+    const [dlcs, setDlcs] = useState<ProjectDlc[]>([]);
+    useEffect(() => {
+        if (!dlcService) {
+            setDlcs([]);
+            return;
+        }
+        setDlcs(dlcService.list());
+        return dlcService.onDlcChanged(setDlcs);
+    }, [dlcService]);
 
     const inputDialog = useMemo(() => {
         return uiService ? createInputDialog(uiService) : null;
@@ -360,6 +385,36 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                     void handleRenameStory(entry);
                 },
             },
+            /*
+             * Which DLC ships this story - shown only once the project has one, because until then
+             * there is one answer and a row offering it says nothing.
+             *
+             * A submenu rather than a dialog: it is a choice from a short list the author already
+             * wrote, and the tick says which one is in force without opening anything.
+             */
+            ...(dlcs.length > 0
+                ? [{
+                    id: "story-dlc",
+                    label: t("story.panel.dlc.title"),
+                    submenuIconsEnabled: true,
+                    submenu: [
+                        {
+                            id: "story-dlc-none",
+                            label: t("story.panel.dlc.base"),
+                            ...(entry.dlcId ? {} : { icon: <Check className="h-3.5 w-3.5" /> }),
+                            ...freeze.menuRow(),
+                            onClick: () => { storyService?.setStoryDlc(entry.id, null); },
+                        },
+                        ...dlcs.map(dlc => ({
+                            id: `story-dlc-${dlc.id}`,
+                            label: dlc.name,
+                            ...(entry.dlcId === dlc.id ? { icon: <Check className="h-3.5 w-3.5" /> } : {}),
+                            ...freeze.menuRow(),
+                            onClick: () => { storyService?.setStoryDlc(entry.id, dlc.id); },
+                        })),
+                    ],
+                }]
+                : []),
             { id: "story-script-separator", separator: true },
             {
                 id: "export-story-script",
@@ -392,7 +447,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [beginNarralangExport, beginScriptExport, beginScriptImport, defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
+    }, [beginNarralangExport, beginScriptExport, beginScriptImport, defaultStoryId, dlcs, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, storyService, t]);
 
     /**
      * The developer section, wired the same way for all three of this panel's menus: what the row

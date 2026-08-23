@@ -51,6 +51,7 @@ export const documentDiff = {
     },
     count: {
         appTags: "变体",
+        dlc: "DLC",
 
         assetSets: "资产集",
         assets: "资产",
