@@ -126,7 +126,7 @@ import {
     resolveAudioTrackChain,
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
-import { parseTranslatedText } from "@shared/utils/localizationText";
+import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveStoryAssetVariant, type StoryAssetVariants } from "@shared/types/story";
 import {
     composeStoryFilter,
@@ -2650,10 +2650,21 @@ function buildSentenceParts(
 /**
  * Localization-aware variant of {@link buildSentencePrompt}. When the segment has
  * at least one translation, the whole line compiles to a single dynamic Word that
- * re-resolves per render: the current locale's translation (with `{n}` placeholders
- * mapped back to the source line's interpolation Words), or the original
+ * re-resolves per render: the current locale's translation, or the original
  * source-language prompt when no translation applies. Untranslated segments keep
  * their plain compiled form - zero overhead.
+ *
+ * A translation is rebuilt into the same three kinds of token the source line compiles to:
+ *
+ *  - `{n}` resolves to the source line's nth interpolation Word, which already carries whatever
+ *    styling the author put on the value itself.
+ *  - `‹i›…‹/i›` puts run i's marks on the characters the translator wrapped, so emphasis, colour,
+ *    ruby and a size step survive into every language.
+ *  - `‹i›` alone drops run i in where the translation asks for it, which is how an inline pause or a
+ *    reveal-time event keeps its beat when the word order changes.
+ *
+ * A translation that names none of them renders exactly as it did before run tags existed: plain
+ * text with its values in it.
  */
 function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string, eventMap?: Map<StoryRichRun, TextEvent>): string | unknown[] {
     const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId, eventMap);
@@ -2662,19 +2673,50 @@ function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTe
         return prompt;
     }
     const textId = segment.textId;
-    // KNOWN LIMITATION (Pause family): a translated line is rebuilt from the translation string, which
-    // carries only text and `{n}` interpolation placeholders. Zero-width reveal-time tokens - inline
-    // `Pause`s and inline events (`TextEvent`) - have no placeholder in the translation, so they are
-    // dropped from the translated rendering and survive only in the source-language prompt above. Not
-    // fixed here: recovering them needs a token-preserving translation format. See the migration report.
+    const sourceRuns = segment.rich ?? [];
+    /**
+     * The zero-width tokens a run tag can name, compiled once and re-used at every render.
+     *
+     * `Pause` is a value object and `TextEvent` carries its own fired-once guard keyed on the token
+     * identity, so handing back the same instance is what makes a translated line replay the way the
+     * source line does rather than re-firing on every re-render.
+     */
+    const tokensByRun = new Map<number, unknown>();
+    for (let index = 0; index < sourceRuns.length; index += 1) {
+        const run = sourceRuns[index];
+        if ("pause" in run) {
+            tokensByRun.set(index, run.pause === true ? new Pause() : Pause.wait(run.pause));
+        } else if ("event" in run) {
+            const event = eventMap?.get(run);
+            if (event) {
+                tokensByRun.set(index, event);
+            }
+        }
+    }
     const resolveDynamic = () => {
         const target = localization.resolve(textId);
         if (target === null) {
             return prompt as never;
         }
-        return parseTranslatedText(target).map(part =>
-            part.kind === "text" ? part.text : (interpolationWords[part.index] ?? ""),
-        ) as never;
+        const out: unknown[] = [];
+        for (const part of parseTranslatedRuns(target, sourceRuns)) {
+            if (part.kind === "placeholder") {
+                out.push(interpolationWords[part.index] ?? "");
+                continue;
+            }
+            if (part.kind === "run") {
+                const token = tokensByRun.get(part.runIndex);
+                if (token) {
+                    out.push(token);
+                }
+                continue;
+            }
+            const marks = part.runIndex === undefined
+                ? undefined
+                : (sourceRuns[part.runIndex] as { marks?: StoryTextMarks } | undefined)?.marks;
+            out.push(buildWord(part.text, marks));
+        }
+        return out as never;
     };
     return [new Word((resolveDynamic as unknown) as any)];
 }

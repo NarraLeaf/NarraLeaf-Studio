@@ -302,6 +302,11 @@ export const lint = {
             description: "原文在翻译之后发生过修改",
             message: "{locale} 译文比原文旧",
         },
+        localizationMarkup: {
+            title: "译文未带样式",
+            description: "原文带有样式，译文按纯文本呈现",
+            message: "{locale} 译文没有带上这一行的样式",
+        },
         localizationOrphan: {
             title: "孤立的译文",
             description: "对应的原文已不存在",
