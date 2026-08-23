@@ -126,6 +126,17 @@ export const onboarding = {
          */
         notice: "A preview of the interface. Nothing here is wired up except the line you can type on.",
     },
+    /**
+     * The dialog behind Skip.
+     *
+     * Skipping is not undoable - the completion marker is written either way, and setup is never
+     * offered again - so the press that ends it says what it ends. The message answers the only
+     * question worth asking at that moment, which is whether anything is lost by leaving.
+     */
+    skipConfirm: {
+        title: "Skip setup?",
+        message: "Studio opens with its defaults. Setup is not offered again, but every question it asks is in Settings.",
+    },
     nav: {
         skip: "Skip setup",
         finish: "Open Studio",

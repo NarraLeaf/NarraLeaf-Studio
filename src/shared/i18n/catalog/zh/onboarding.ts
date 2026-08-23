@@ -69,6 +69,10 @@ export const onboarding = {
         open: "查看完整窗口",
         notice: "界面预览。除了可以输入的那一行，这里的东西都不接受操作",
     },
+    skipConfirm: {
+        title: "跳过设置？",
+        message: "Studio 将以默认设置打开。设置向导不会再次出现，但它问过的每一项都在设置里。",
+    },
     nav: {
         skip: "跳过设置",
         finish: "打开 Studio",
