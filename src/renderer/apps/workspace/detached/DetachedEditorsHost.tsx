@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 import { DetachedWindow } from "@/lib/components/layout";
-import { getInterface } from "@/lib/app/bridge";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import {
-    DETACHED_EDITOR_ON_CLOSE_DEFAULT,
     DETACHED_EDITOR_ON_CLOSE_KEY,
     resolveDetachedEditorOnClose,
     type DetachedEditorOnClose,
@@ -78,33 +77,10 @@ export function DetachedEditorsHost() {
 /**
  * The `editor.detachedEditorOnClose` preference.
  *
- * Re-read when this window regains focus, the way `useMaxActiveEditors` does: the setting lives in
- * a separate Settings window and nothing pushes it across.
+ * Follows the global-state broadcast (see {@link useGlobalSetting}): the setting lives in a
+ * separate Settings window, and what it decides is what happens the next time a detached window is
+ * closed - which can be the very next thing the author does.
  */
 function useDetachedEditorOnClose(): DetachedEditorOnClose {
-    const [value, setValue] = useState<DetachedEditorOnClose>(DETACHED_EDITOR_ON_CLOSE_DEFAULT);
-
-    useEffect(() => {
-        let cancelled = false;
-        const load = async () => {
-            try {
-                const result = await getInterface().app.state.getGlobalState(DETACHED_EDITOR_ON_CLOSE_KEY);
-                if (cancelled) {
-                    return;
-                }
-                setValue(resolveDetachedEditorOnClose(result.success ? result.data.value : undefined));
-            } catch {
-                // Keep the last known-good value on transient IPC failures.
-            }
-        };
-        void load();
-        const onFocus = () => { void load(); };
-        window.addEventListener("focus", onFocus);
-        return () => {
-            cancelled = true;
-            window.removeEventListener("focus", onFocus);
-        };
-    }, []);
-
-    return value;
+    return useGlobalSetting(DETACHED_EDITOR_ON_CLOSE_KEY, resolveDetachedEditorOnClose);
 }

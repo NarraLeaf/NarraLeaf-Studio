@@ -18,6 +18,8 @@
  * anyone's runtime.
  */
 
+import { docsUrl } from "./docsSite";
+
 /**
  * `runtimes/puppet` — the project directory holding one folder per backend, as path segments.
  *
@@ -111,33 +113,14 @@ export function isKnownPuppetRuntimeId(value: unknown): value is KnownPuppetRunt
     return typeof value === "string" && KNOWN_PUPPET_RUNTIME_IDS.includes(value as KnownPuppetRuntimeId);
 }
 
-const DOCS_ORIGIN = "https://www.narraleaf.com";
-
-/**
- * The locales narraleaf.com publishes docs in.
- *
- * Deliberately its own short list rather than Studio's `SUPPORTED_LOCALES`: a plugin can register a
- * locale in Studio (see `shared/i18n/locales.ts`), and the docs site has never heard of it. Anything
- * not here reads the English page, which is a working link rather than a 404.
- */
-const DOCS_LOCALES = new Set(["en", "zh"]);
-
-/**
- * Where to read about installing this runtime.
- *
- * The docs site hides the default locale, so English lives at `/docs/…` and every other language at
- * `/<locale>/docs/…` — that asymmetry is the site's routing (`hideLocale: "default-locale"`), not a
- * convention worth reinventing here.
- */
+/** Where to read about installing this runtime. */
 export function puppetRuntimeDocsUrl(runtime: KnownPuppetRuntime, locale: string): string {
-    const prefix = locale !== "en" && DOCS_LOCALES.has(locale) ? `/${locale}` : "";
-    return `${DOCS_ORIGIN}${prefix}${runtime.docsPath}`;
+    return docsUrl(runtime.docsPath, locale);
 }
 
 /** The section itself, for a runtime Studio does not name — the "write your own" guide. */
 export function customPuppetRuntimeDocsUrl(locale: string): string {
-    const prefix = locale !== "en" && DOCS_LOCALES.has(locale) ? `/${locale}` : "";
-    return `${DOCS_ORIGIN}${prefix}/docs/studio/model-runtimes/custom`;
+    return docsUrl("/docs/studio/model-runtimes/custom", locale);
 }
 
 /**
