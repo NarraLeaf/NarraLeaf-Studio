@@ -595,6 +595,10 @@ export class LiveSession {
             ended: {
                 cause,
                 sessionId: session.room.id,
+                // A host leaving takes the room with it - that is what `close` above says to the
+                // server - and `host-left` is the same event seen by a guest. Everything else is
+                // one window stepping out of a room that is still there.
+                closed: session.role === "host" || cause === "host-left",
                 ...(session.divergence === null ? {} : { divergence: session.divergence }),
             },
         });

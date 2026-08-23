@@ -289,14 +289,14 @@ describe("what the room row says about not entering", () => {
 
 describe("how a session that ended reads", () => {
     it("says nothing about the author leaving one themselves", () => {
-        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1" } };
+        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: false } };
         draw();
 
         expect(seam("live-ended")).toBeNull();
     });
 
     it("says the host left, in the ordinary tone", () => {
-        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "host-left", sessionId: "room-1" } };
+        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "host-left", sessionId: "room-1", closed: true } };
         draw();
 
         expect(seam("live-ended")?.textContent).toBe("workspace.shell.team.liveEndedHostLeft");
@@ -309,6 +309,7 @@ describe("how a session that ended reads", () => {
             ended: {
                 cause: "diverged",
                 sessionId: "room-1",
+                closed: false,
                 divergence: { seq: 4, sceneId: "scene-1" as StorySceneId, expected: "aaa", computed: "bbb" },
             },
         };
@@ -318,5 +319,54 @@ describe("how a session that ended reads", () => {
         // what the room holds, which is not what leaving one means.
         expect(seam("live-ended")?.textContent).toBe("workspace.shell.team.liveEndedDiverged");
         expect(seam("live-ended")?.className).toContain("text-danger");
+    });
+});
+
+describe("a room this window has just closed", () => {
+    /**
+     * ⚠ The regression these two pin, and the reason `closed` exists rather than being read off
+     * `cause`.
+     *
+     * The room list comes from the server and the session's own state does not, so between a host
+     * pressing End and the server's news of the closure coming back round there is a stretch in
+     * which this window is in no session and the room it just closed is still in the list. Matching
+     * only against the session this window is in drew that stretch as somebody else's room with two
+     * people in it and a control to join - which is what a host saw on a real machine.
+     */
+    it("is not offered as one to join", () => {
+        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: true } };
+        draw({ live: [room()] });
+
+        expect(seam("live-join")).toBeNull();
+        // And the only thing on offer is the one that is actually true: open a new one.
+        expect(seam("live-open")).not.toBeNull();
+    });
+
+    it("is offered again when this window merely left a room that carried on", () => {
+        // A guest walking out is the opposite answer to the same `cause`. The room is still there,
+        // still has people in it, and going back into it is an ordinary thing to want.
+        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: false } };
+        draw({ live: [room()] });
+
+        expect(seam("live-join")).not.toBeNull();
+    });
+
+    it("makes the panel read the room list again", () => {
+        // The server says so on a topic this project is subscribed to, but a collection only ever
+        // corrected by somebody else's news stays wrong whenever that news is missed - and this
+        // window knows for certain that the list moved, because it moved it.
+        const refresh = vi.fn();
+        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: true } };
+        draw({ live: [room()], refresh });
+
+        expect(refresh).toHaveBeenCalled();
+    });
+
+    it("asks for nothing when no session has ended here", () => {
+        const refresh = vi.fn();
+        world.view = IDLE_LIVE_SESSION;
+        draw({ live: [], refresh });
+
+        expect(refresh).not.toHaveBeenCalled();
     });
 });

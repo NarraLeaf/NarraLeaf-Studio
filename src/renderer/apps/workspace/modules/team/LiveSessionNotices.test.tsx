@@ -136,7 +136,7 @@ describe("what a live session tells the author", () => {
     it("says nothing when the author leaves a session themselves", () => {
         render(<LiveSessionNotices />);
 
-        publish({ ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1" } });
+        publish({ ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: false } });
 
         expect(world.show).not.toHaveBeenCalled();
     });
@@ -144,12 +144,13 @@ describe("what a live session tells the author", () => {
     it("does not let a divergence read as an ordinary leave", () => {
         render(<LiveSessionNotices />);
 
-        publish({ ...IDLE_LIVE_SESSION, ended: { cause: "host-left", sessionId: "room-1" } });
+        publish({ ...IDLE_LIVE_SESSION, ended: { cause: "host-left", sessionId: "room-1", closed: true } });
         publish({
             ...IDLE_LIVE_SESSION,
             ended: {
                 cause: "diverged",
                 sessionId: "room-2",
+                closed: false,
                 divergence: { seq: 4, sceneId: "scene-1" as StorySceneId, expected: "aaa", computed: "bbb" },
             },
         });

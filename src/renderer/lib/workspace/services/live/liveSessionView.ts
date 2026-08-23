@@ -47,6 +47,15 @@ export type LiveSessionEnd = {
     cause: LiveSessionEndCause;
     /** The room that ended, so a panel can tell one ending from the next. */
     sessionId: string;
+    /**
+     * Whether the room itself is gone, rather than this window merely having stepped out of it.
+     *
+     * ⚠ **`cause` does not answer this and must not be read as though it did.** `left` is true of a
+     * guest walking out of a room that carries on without them and of a host closing one, and those
+     * are opposite answers to the only question a panel actually has: is this still somewhere
+     * anybody can go. A panel that guessed drew a room it had just closed as one to join.
+     */
+    closed: boolean;
     /** The evidence, for `diverged`. Absent for every other cause. */
     divergence?: LiveDivergence;
 };
