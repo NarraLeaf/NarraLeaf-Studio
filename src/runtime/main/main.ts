@@ -391,6 +391,9 @@ void app.whenReady().then(async () => {
         userDataDir,
         // What applied, and what did not, is the only trace a patch leaves.
         log: logRuntime,
+        // A build made to be inspected says why a patch was refused; a shipped one names the file
+        // and stops, because the reason describes how a patch is bound to its build.
+        explainRefusedPatches: shellMode !== "production" || shellDebuggable,
     });
     const pack = await readPack();
     if (pack.mode === "production" && pack.debuggable !== true && refusedStartupArguments().length > 0) {
@@ -978,8 +981,11 @@ function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist
             }
             return new Response("Not found", { status: 404 });
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return new Response(message, { status: 404 });
+            // The page gets nothing but the status. A read that fails inside the payload fails with
+            // the payload's own wording, and answering a fetch with it would let any script in the
+            // renderer ask the game how it stores what it stores. The log keeps the detail.
+            logRuntime("warning", `request failed: ${error instanceof Error ? error.message : String(error)}`);
+            return new Response("Not found", { status: 404 });
         }
     });
 }
