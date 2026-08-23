@@ -104,6 +104,7 @@ import {
     type StoryScenePreviewPaneMode,
     type StoryScenePreviewPaneState,
 } from "./preview/storyScenePreviewSessionStore";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * What an empty scene offers as a starting point. Deliberately the three things a first scene almost
@@ -376,6 +377,9 @@ export function StorySceneOverviewBlock(props: {
                             onChange={event => setNameValue(event.target.value)}
                             onBlur={commitName}
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 // Escape exits and saves, like everywhere else in the editor — blurring
                                 // is what commits. Reverting here made Escape mean three different
                                 // things across one tab; undo is Mod+Z's job.
@@ -400,6 +404,9 @@ export function StorySceneOverviewBlock(props: {
                             onChange={event => setDescriptionValue(event.target.value)}
                             onBlur={commitDescription}
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 // Exit and save (onBlur commits). Enter stays a newline — this one is
                                 // genuinely multi-line, unlike a story row.
                                 if (event.key === "Escape") {

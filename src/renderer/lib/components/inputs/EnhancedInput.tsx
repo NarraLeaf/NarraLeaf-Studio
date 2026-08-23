@@ -15,6 +15,7 @@ import { createPortal } from "react-dom";
 import { useDismissWhenHidden } from "../layout/hostVisibility";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "../../utils/cn";
+import { guardImeKeys, isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 export interface EnhancedInputProps
     extends Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> {
@@ -49,6 +50,7 @@ export function EnhancedInput({
     popoverWhenNarrow = false,
     popoverThreshold = 112,
     popoverZIndex,
+    onKeyDown,
     ...rest
 }: EnhancedInputProps) {
     const { t } = useTranslation();
@@ -220,6 +222,9 @@ export function EnhancedInput({
         };
 
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (isImeKeyEvent(event)) {
+                return;
+            }
             if (event.key === "Escape") {
                 closePopover();
             }
@@ -309,6 +314,7 @@ export function EnhancedInput({
                                   onMouseUp={handleMouseUp}
                                   className={inputElementClassName}
                                   {...rest}
+                                  onKeyDown={guardImeKeys(onKeyDown)}
                               />
 
                               {unit && !hasFocus && (
@@ -379,6 +385,9 @@ export function EnhancedInput({
                 onMouseUp={handleMouseUp}
                 className={inputElementClassName}
                 {...rest}
+                // A composing input method owns Enter, Escape and the arrows; the caller's handler
+                // only hears the keys the author actually meant for it.
+                onKeyDown={guardImeKeys(onKeyDown)}
             />
 
             {unit && !hasFocus && (
