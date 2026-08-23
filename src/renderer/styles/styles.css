@@ -1155,6 +1155,31 @@ input[type="radio"]:focus {
 }
 
 /*
+ * The translation field, and the brackets that delimit a style range in it.
+ *
+ * A translator places the line's tags; they never invent one. The bracket is therefore drawn as a
+ * boundary and not as a control: no background, no hit target of its own, just enough weight to be
+ * seen at the edge of the words it holds. The words between a pair keep the styling they will have
+ * in the game, so the field shows the range and the result at once.
+ *
+ * The chip itself is `contenteditable="false"`, which is what makes the caret step over it whole and
+ * Backspace take it away in one press - the whole reason a tag is an element here rather than four
+ * characters the translator has to select by hand.
+ */
+.story-rt-tag {
+    /* Off the baseline by a hair, so a bracket reads as a mark on the text rather than a letter in it. */
+    position: relative;
+    top: -0.05em;
+    opacity: 0.85;
+}
+
+.nl-translation-field:empty::before {
+    content: attr(data-placeholder);
+    color: rgb(var(--nl-fg-subtle));
+    pointer-events: none;
+}
+
+/*
  * Misspellings in the story editor, drawn by Studio.
  *
  * Chromium used to draw this squiggle itself, off its own spellchecker. It no longer checks

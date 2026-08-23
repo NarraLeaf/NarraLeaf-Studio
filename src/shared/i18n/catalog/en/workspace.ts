@@ -95,6 +95,7 @@ export const workspace = {
             reviewAllClear: "Nothing left to review.",
             staleHint: "The source line changed after this translation. Save it again to mark it current.",
             placeholderHint: "Keep the {n} placeholders. They render inline values.",
+            tagsLabel: "Tags",
             applyStyle: "Give the selected words this styling",
             placeToken: "Place this here",
             clearStyle: "Take the styling off the selected words",
