@@ -120,7 +120,11 @@ export type GameRuntimePackSidecarEntry = {
      * the app dir - e.g. `sidecars/{pluginId}/{sidecarId}/bin/tool.exe`.
      */
     entry: string;
-    /** `executable` spawns the binary directly; `node` runs it under the game's own Electron as Node. */
+    /**
+     * `executable` spawns the binary directly and talks to it over stdin/stdout; `node` runs the
+     * .js as an Electron utility process and talks to it over `process.parentPort`, which is the
+     * one channel a utility process has - it has no stdin.
+     */
     kind: "executable" | "node";
     /** `onGameStart` spawns with the window; `onRequest` waits for the first call. */
     autostart: "onGameStart" | "onRequest";
@@ -642,6 +646,19 @@ export type GameRuntimePreloadBridge = {
      * reloads its page, which for a shell that IS a page is the same act.
      */
     restart(): Promise<void>;
+    /**
+     * Keep the display awake, or let it sleep again.
+     *
+     * Asked for while the story advances on its own: auto mode plays for an hour without a single
+     * input, and neither the animation nor the audio a page draws resets the system's idle timer,
+     * so the screen blanks mid-scene. Every shell can do this honestly - the desktop shell takes a
+     * platform display block, the web export borrows the browser's screen wake lock - which is why
+     * it sits here rather than behind {@link capabilities}.
+     *
+     * Nothing waits on it: the display is not something a game can fail at, and a shell that could
+     * not take the block plays exactly as before.
+     */
+    setDisplayAwake(awake: boolean): void;
     getFullscreen(): Promise<boolean>;
     setFullscreen(fullscreen: boolean): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */

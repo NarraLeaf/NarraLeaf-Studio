@@ -635,6 +635,15 @@ export function GameRuntimeApp() {
         await bridge?.restart();
     }, [bridge]);
 
+    /**
+     * Hold the display for a story moving on its own. Fire-and-forget, and optional-chained because
+     * a build packaged before the bridge carried this has no such method - the shell is loaded from
+     * the game's own files, so a patched game can still be running an older one.
+     */
+    const setDisplayAwake = useCallback((awake: boolean): void => {
+        bridge?.setDisplayAwake?.(awake);
+    }, [bridge]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         return (await bridge?.getFullscreen()) === true;
     }, [bridge]);
@@ -691,6 +700,7 @@ export function GameRuntimeApp() {
             saveStore,
             quitApplication,
             restartApplication,
+            setDisplayAwake,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -720,6 +730,7 @@ export function GameRuntimeApp() {
         resolveStoryAssetUrl,
         resolveWeatherClip,
         runtimeReady,
+        setDisplayAwake,
         setFullscreen,
         subscribeFullscreenChanged,
         subscribeCloseRequested,

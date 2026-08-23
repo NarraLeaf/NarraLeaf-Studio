@@ -76,7 +76,7 @@ import {
 } from "@shared/utils/gameProgressFile";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
-import { installDisplaySleepInhibitor } from "./displaySleep";
+import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
 import { resolveShellText, type ShellText } from "./shellText";
 import { installWindowCrashHandling } from "./windowCrashHandling";
 import {
@@ -250,6 +250,8 @@ let loadedPackName: string | null = null;
 /** What this build does when it stops working, from the pack. */
 let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
+/** The window's display block, driven by the renderer over `runtime:displayAwake:set`. */
+let displaySleep: DisplaySleepInhibitor | null = null;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
@@ -449,7 +451,6 @@ function createSidecarHost(pack: GameRuntimePackV1): SidecarHost {
     return new SidecarHost(collectPackSidecars(pack), {
         appDir,
         userDataDir,
-        execPath: process.execPath,
         mode: pack.mode,
         game: { name: pack.project.name, version: pack.project.version ?? null },
         log: (level, message) => {
@@ -843,9 +844,10 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         })).response,
         now: () => Date.now(),
     });
-    // Reading is idle as far as the system is concerned, and auto mode can play for an hour
-    // without a single input, so the display is held awake for as long as the window is on screen.
-    installDisplaySleepInhibitor(win, {
+    // Auto mode plays for an hour without a single input, which the system reads as an idle
+    // machine; the renderer says when the story is moving on its own and this holds the display
+    // for as long as it is, and the window is on screen.
+    displaySleep = installDisplaySleepInhibitor(win, {
         hold: () => powerSaveBlocker.start("prevent-display-sleep"),
         release: id => {
             powerSaveBlocker.stop(id);
@@ -1255,6 +1257,11 @@ function registerRuntimeIpc(): void {
             return;
         }
         pendingCloseDecisions.get(requestId)?.(payload?.allow !== false);
+    });
+    // Fire-and-forget: nothing in the game waits on the display, and a request arriving after the
+    // window has gone is about a window with no display left to hold.
+    ipcMain.on("runtime:displayAwake:set", (_event, awake: boolean) => {
+        displaySleep?.setRequested(awake === true);
     });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {

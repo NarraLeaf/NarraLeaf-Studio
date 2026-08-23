@@ -201,20 +201,6 @@ export function resolveElectronDistDirForApp(
 export { deriveGameAppId };
 
 /**
- * Whether this build ships a sidecar that runs as JavaScript rather than as its own executable.
- *
- * Such a sidecar is started by running the game's own Electron binary as a Node interpreter, which
- * is a thing `ELECTRON_RUN_AS_NODE` asks for and the `runAsNode` fuse can refuse - so the fuse and
- * the feature cannot both be absolute. Asked of the compiled pack rather than of the project,
- * because the pack is what actually shipped: a plugin declaring a sidecar for another platform
- * contributes nothing to this artifact and must not cost it a fuse.
- */
-export function packShipsNodeSidecar(pack: GameRuntimePackV1 | null | undefined): boolean {
-    return (pack?.plugins ?? []).some(plugin =>
-        (plugin.sidecars ?? []).some(sidecar => sidecar.kind === "node"));
-}
-
-/**
  * Hardening fuse set for shipped games; not user-configurable. Two of the fuses answer to what the
  * build actually is rather than being fixed, and both parameters exist for that reason.
  *
@@ -226,7 +212,6 @@ export function packShipsNodeSidecar(pack: GameRuntimePackV1 | null | undefined)
  * which ships outside the asar with its own protection. So it stays off until real code signing is
  * configured, at which point it earns its keep. (Linux has no asar-integrity support regardless.)
  *
- * `shipsNodeSidecar` gates `runAsNode`; see the comment on that field.
  *
  * `debuggable` is the experimental `debuggable-build` condition and answers over the top of the
  * signing question: an artifact meant to be inspected cannot carry a fuse that hard-quits it the
@@ -237,28 +222,24 @@ export function packShipsNodeSidecar(pack: GameRuntimePackV1 | null | undefined)
 export function gameFusesForPlatform(
     platform: GameBuildDesktopPlatform,
     hasSigningIdentity: boolean,
-    shipsNodeSidecar = false,
     debuggable = false,
 ): GameBuildWorkerFuses {
     return {
         /*
-         * Off unless something in this build needs it on.
+         * Off, always.
          *
-         * `ELECTRON_RUN_AS_NODE` is how a `kind: "node"` plugin sidecar starts: the runtime spawns
-         * the game's own binary with that variable set and the sidecar's .js as its argument. With
-         * the fuse off, the variable is ignored and that spawn silently launches a second copy of
-         * the game instead of a Node process - and only in a packaged build, since preview is not
-         * fused, so the failure appears after shipping and nowhere before it.
+         * `ELECTRON_RUN_AS_NODE` turns the game's executable into a general Node interpreter that
+         * runs whatever script is named on its command line, with the app's own native modules
+         * loadable and none of the main script's guards on the way - including the one route that
+         * steps around asar integrity, because nothing loads the app at all.
          *
-         * The alternative, Electron's `utilityProcess`, is not one here: the sidecar wire protocol
-         * is NDJSON over stdin/stdout with EOF as the shutdown signal, a utility process has no
-         * stdin, and executable sidecars speak the same protocol and cannot move with it.
-         *
-         * So the fuse follows the build. A game that ships no node sidecar - nearly all of them -
-         * is unchanged and keeps the variable refused. One that does has already had its author
-         * accept that plugin's sidecar permission, and relaxes exactly this one fuse to honour it.
+         * It used to follow the build, because a `kind: "node"` plugin sidecar started by spawning
+         * the game's binary with that variable set. Those run as utility processes now, which
+         * Electron starts itself: they read their frames from `process.parentPort` rather than
+         * stdin, which is the one thing a utility process cannot have. So no build needs the fuse
+         * and none gets it. See `src/runtime/main/sidecarUtilityProcess.ts`.
          */
-        runAsNode: shipsNodeSidecar,
+        runAsNode: false,
         // Left off deliberately: a game stores no Chromium cookies (saves and
         // persistence are its own JSON stores), and enabling OS cookie
         // encryption makes the first launch prompt for keychain/secret-store
@@ -1665,7 +1646,6 @@ export class GameBuildManager {
                 fuses: gameFusesForPlatform(
                     target.platform,
                     hasSigningIdentityForPlatform(target.platform, signing),
-                    packShipsNodeSidecar(desktopArtifact?.pack),
                     debuggable,
                 ),
                 ...(target.platform === hostPlatform
