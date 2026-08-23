@@ -3682,7 +3682,14 @@ async function compileImageAction(
         : payload.color;
 
     if ((payload.operation === "create" || payload.operation === "setSource") && src) {
-        statements.push(recordStatement(ctx, image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any), block));
+        // A transition only on the swap. A create DECLARES - the object is mounted at opacity zero
+        // and nothing is looking at it until a `/show` reveals it - so a transition here plays out
+        // in full on an invisible element and changes nothing that reaches the player. The property
+        // editor offers it on the swap alone for the same reason.
+        const transition = payload.operation === "setSource"
+            ? await createTransition(payload.transition, ctx, block.id)
+            : undefined;
+        statements.push(recordStatement(ctx, image.char(src as any, transition as any), block));
     } else if ((payload.operation === "create" || payload.operation === "setSource") && !src) {
         diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
     }
@@ -5317,8 +5324,11 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 duration,
                 easing,
                 color: stringProp(props, "color", "#000"),
-                hold: numberProp(props, "hold", 30) / 100,
+                // Absent leaves the engine's own 30%-of-the-run default in place, which is what a row
+                // that has never been given a hold has always played.
+                ...(transition.holdMs === undefined ? {} : { holdMs: Math.max(0, transition.holdMs) }),
                 ...throughColorPattern(props),
+                ...throughColorUncover(props),
             });
         case "exposure":
             // Stops, not a multiplier: the gain is `2 ** ev`, so a linear-looking slider stays
@@ -5333,7 +5343,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 easing,
                 ev: Math.min(12, Math.max(0, numberProp(props, "ev", 4.6))),
                 lift: Math.min(1, Math.max(0, numberProp(props, "lift", 0.04))),
-                hold: Math.min(1, Math.max(0, numberProp(props, "hold", 0) / 100)),
+                holdMs: Math.max(0, transition.holdMs ?? 0),
             });
         case "ruleReveal": {
             // The only transition that reads an asset, which is why this factory is async. A rule
@@ -5368,6 +5378,9 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 easing,
                 from: Math.min(1, Math.max(0, numberProp(props, "from", 1))),
                 to: Math.min(1, Math.max(0, numberProp(props, "to", 0))),
+                // Held at `from`, where the image swap happens - the window the swap hides in, which
+                // is the same thing the other two transitions call a hold.
+                holdMs: Math.max(0, transition.holdMs ?? 0),
             });
         case "custom":
             // The union's escape hatch: a transition that is nothing but its `props`, with no engine
@@ -5413,20 +5426,56 @@ function reportUnplayableTransition(ctx: SceneCompileContext, blockId: string, k
     return undefined;
 }
 
-/** Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair. */
+/**
+ * Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair.
+ *
+ * The geometries are the {@link Mask} catalogue, the same one `Reveal` draws its kinds from - the
+ * colour covers through a shape, and there is no shape it can cover through that a direct cut cannot
+ * reveal through. Offering four of the seven made "cover the frame with a clock" unreachable while
+ * "cut to the new frame with a clock" was one menu item away.
+ *
+ * `inverted` defaults to `true` for the iris and `false` for the rest, which is the orientation each
+ * is asked for: an iris that closes rim-in is the classic iris-to-black, while a wipe or a clock
+ * covering in reverse is the exception. A row that states `inverted` gets what it states.
+ */
 function throughColorPattern(props: Record<string, StoryLiteralValue>): { pattern?: MaskPattern; inverted?: boolean } {
-    switch (stringProp(props, "pattern", "plain")) {
+    const kind = stringProp(props, "pattern", "plain");
+    const center = () => stringProp(props, "center", "50% 50%");
+    const inverted = (fallback: boolean) => ({ inverted: props.inverted === undefined ? fallback : props.inverted === true });
+    switch (kind) {
         case "linear":
-            return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) };
+            return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }), ...inverted(false) };
         case "blinds":
-            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) };
+            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }), ...inverted(false) };
         case "iris":
-            // The old iris pattern covered rim-in - the pattern's inverted orientation.
-            return { pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12) }), inverted: true };
+            // Rim-in by default: the colour closes over the frame, which is the iris-to-black every
+            // document written before this option existed was getting.
+            return { pattern: Mask.iris({ center: center(), feather: numberProp(props, "feather", 12), shape: stringProp(props, "shape", "circle") as any }), ...inverted(true) };
+        case "barnDoor":
+            return { pattern: Mask.barnDoor({ axis: stringProp(props, "axis", "horizontal") as any, feather: numberProp(props, "feather", 12) }), ...inverted(false) };
+        case "clock":
+            return { pattern: Mask.clock({ center: center(), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 24), direction: stringProp(props, "direction", "clockwise") as any }), ...inverted(false) };
+        case "fan":
+            return { pattern: Mask.fan({ blades: numberProp(props, "blades", 4), center: center(), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 10) }), ...inverted(false) };
+        case "dots":
+            return { pattern: Mask.dots({ rows: numberProp(props, "rows", 6), cols: numberProp(props, "cols", 10), feather: numberProp(props, "feather", 20), stagger: numberProp(props, "stagger", 0) }), ...inverted(false) };
         default:
-            // "plain" → no pattern: the colour simply fades in and out (flash with hold 0).
+            // "plain" → no pattern: the colour simply fades in and out (flash with no hold).
             return {};
     }
+}
+
+/**
+ * How the colour comes back off the frame: `retreat` backs the pattern out the way it came,
+ * `continue` keeps the edge travelling so the geometry passes through - a wipe exits out the far
+ * side, a clock hand completes a second lap.
+ *
+ * Ignored by the engine without a pattern, and left unstated when the row says nothing, so a plain
+ * fade's compiled options are unchanged.
+ */
+function throughColorUncover(props: Record<string, StoryLiteralValue>): { uncover?: "retreat" | "continue" } {
+    const uncover = stringProp(props, "uncover", "retreat");
+    return uncover === "continue" ? { uncover: "continue" } : {};
 }
 
 /**

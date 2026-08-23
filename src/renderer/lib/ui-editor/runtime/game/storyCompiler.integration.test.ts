@@ -1677,18 +1677,84 @@ describe("compileStudioStoryToNlr", () => {
         expect(darkness.to).toBe(0);
     });
 
-    it("passes exposure through in stops, with hold read as a percentage", async () => {
-        // `ev` is stops, not a multiplier — the engine raises 2 to it — and `hold` is stored as the
-        // percentage the inspector shows while the engine wants a fraction, the same split
-        // `throughColor` already uses. Getting either conversion wrong is invisible in the type.
-        const compiled = await compileBackgroundTransition("exposure", { ev: 3, lift: 0.06, hold: 40 });
+    it("passes exposure through in stops, with the hold as the milliseconds it is", async () => {
+        // `ev` is stops, not a multiplier — the engine raises 2 to it. The hold used to be stored as
+        // a percentage of the duration and divided by 100 here; since v22 it is a length of time,
+        // in the same unit as the duration beside it, and goes through untouched.
+        const compiled = await compileBackgroundTransition("exposure", { ev: 3, lift: 0.06 }, { holdMs: 160 });
         const exposure = findTransition(compiled) as any;
 
         expect(compiled.diagnostics).toEqual([]);
         expect(exposure).toBeInstanceOf(Exposure);
         expect(exposure.ev).toBe(3);
         expect(exposure.lift).toBe(0.06);
-        expect(exposure.hold).toBe(0.4);
+        expect(exposure.holdMs).toBe(160);
+    });
+
+    it("holds the colour for the time the row asks for, out of the duration rather than on top", async () => {
+        // The whole point of v22. A share of the run could not promise a number of seconds, and the
+        // engine spent it as a share of *eased* progress on top of that - a nominal 30% played as
+        // 17.8% of the wall clock. Both halves are gone: the compiler hands over milliseconds and the
+        // engine runs its channel linearly.
+        const compiled = await compileBackgroundTransition("throughColor", { pattern: "plain" }, { durationMs: 4000, holdMs: 2000 });
+        const through = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(through).toBeInstanceOf(ThroughColor);
+        expect(through.holdMs).toBe(2000);
+        // Fully covered from a quarter of the run to three quarters of it - one second in, two of
+        // colour, one out - and that is read off the compiled transition, not recomputed here.
+        const overlay = through.createTask().resolve[2];
+        const opacityAt = (t: number) => (typeof overlay === "function" ? overlay(t) : overlay.resolver(t)).style.opacity;
+        expect(opacityAt(0.25)).toBe(1);
+        expect(opacityAt(0.75)).toBe(1);
+        expect(opacityAt(0.2)).toBeLessThan(1);
+        expect(opacityAt(0.8)).toBeLessThan(1);
+    });
+
+    it("leaves the hold unstated when the row states none, so the transition keeps its own default", async () => {
+        const compiled = await compileBackgroundTransition("throughColor", { pattern: "plain" });
+        expect((findTransition(compiled) as any).holdMs).toBeUndefined();
+    });
+
+    it("gives darkness the same hold, sitting at the darkness it starts from", async () => {
+        const compiled = await compileBackgroundTransition("darkness", { from: 1, to: 0 }, { durationMs: 3000, holdMs: 2000 });
+        const darkness = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(darkness).toBeInstanceOf(Darkness);
+        expect(darkness.holdMs).toBe(2000);
+    });
+
+    it("covers through every geometry the mask catalogue has, not the four the editor once offered", async () => {
+        // A colour can cover through any shape a direct cut can reveal through - they are the same
+        // `Mask` patterns - so offering four of the seven made "cover the frame with a clock"
+        // unreachable while "cut to the new frame with a clock" was one menu item away.
+        for (const pattern of ["linear", "blinds", "iris", "barnDoor", "clock", "fan", "dots"]) {
+            const compiled = await compileBackgroundTransition("throughColor", { pattern });
+            const through = findTransition(compiled) as any;
+            expect(compiled.diagnostics, pattern).toEqual([]);
+            expect(through.pattern, pattern).toBeTruthy();
+        }
+        expect((await compileBackgroundTransition("throughColor", { pattern: "plain" }).then(findTransition) as any).pattern).toBeNull();
+    });
+
+    it("closes an iris rim-in unless the row says otherwise, and lets it say otherwise", async () => {
+        // The classic iris-to-black, and what every stored iris was getting while the orientation was
+        // hard-coded - so the default has to stay what it was, and the toggle is additive.
+        const covered = await compileBackgroundTransition("throughColor", { pattern: "iris" });
+        expect((findTransition(covered) as any).inverted).toBe(true);
+        const outward = await compileBackgroundTransition("throughColor", { pattern: "iris", inverted: false });
+        expect((findTransition(outward) as any).inverted).toBe(false);
+        const wipe = await compileBackgroundTransition("throughColor", { pattern: "linear" });
+        expect((findTransition(wipe) as any).inverted).toBe(false);
+    });
+
+    it("passes the uncover mode through, and states nothing when the row wants the default", async () => {
+        const kept = await compileBackgroundTransition("throughColor", { pattern: "clock", uncover: "continue" });
+        expect((findTransition(kept) as any).uncover).toBe("continue");
+        const backed = await compileBackgroundTransition("throughColor", { pattern: "clock" });
+        expect((findTransition(backed) as any).uncover).toBe("retreat");
     });
 
     it("clamps exposure's lift into the 0-1 its filter can express", async () => {
@@ -1727,11 +1793,15 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.diagnostics).toEqual([]);
         expect(exposure.ev).toBe(4.6);
         expect(exposure.lift).toBe(0.04);
-        expect(exposure.hold).toBe(0);
+        expect(exposure.holdMs).toBe(0);
     });
 
     /** Compile a one-row scene whose `/bg` carries `kind`, with every custom transition's props set. */
-    async function compileBackgroundTransition(kind: StoryTransitionRef["kind"], overrides: StoryTransitionRef["props"] = {}) {
+    async function compileBackgroundTransition(
+        kind: StoryTransitionRef["kind"],
+        overrides: StoryTransitionRef["props"] = {},
+        ref: Partial<StoryTransitionRef> = {},
+    ) {
         const bg: StoryBlock = {
             id: "bg",
             kind: "action",
@@ -1747,7 +1817,8 @@ describe("compileStudioStoryToNlr", () => {
                     // unfinished without one. Supplied for every kind because only that one looks.
                     ruleAssetId: "asset-bg",
                     // Superset of every custom transition's params; each kind reads only its own.
-                    props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%", ...overrides },
+                    props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, center: "50% 50%", ...overrides },
+                    ...ref,
                 },
             },
         };

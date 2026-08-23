@@ -552,6 +552,7 @@ export const story = {
         fade: "淡变",
         // "淡变"是相对词，换到差分上指的是另一种做法；这个词只指交叉溶解，在哪儿写都一样。
         dissolve: "溶解",
+        "fade-in": "淡入",
         slide: "推移",
         "slide-left": "左滑",
         "slide-right": "右滑",

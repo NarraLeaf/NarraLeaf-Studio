@@ -303,6 +303,18 @@ const corpus: Record<string, StoryScene> = {
         { id: "b11", kind: "action", payload: { action: "character", operation: "exit", characterId: "char-alice", transform: { to: { opacity: 0 }, durationMs: 300 } } },
     ] as never),
 
+    // A change that stands still in the middle of itself, and the two soft looks spelled apart.
+    // The hold is a slot of its own on the transition tail, not part of the timed word: the word
+    // says how long the whole change takes and this says how much of that is spent sitting still.
+    // Before it existed the script carried the change back at the right length holding for the
+    // wrong time, which is the one way a round trip can lie and still typecheck.
+    "a change that holds in a colour": scene([
+        { id: "h1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "throughColor", durationMs: 4000, holdMs: 2000 } } },
+        //  on a whole-screen change is the crossfade, so the fade-in needs the absolute word.
+        { id: "h2", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "fadeIn", durationMs: 600 } } },
+        { id: "h3", kind: "action", payload: { action: "character", operation: "expression", characterId: "char-alice", pose: "pose-smile", transition: { kind: "exposure", durationMs: 900, holdMs: 300, easing: "easeOut" } } },
+    ] as never),
+
     "characters, every channel": scene([
         { id: "c1", kind: "action", payload: { action: "character", operation: "enter", characterId: "char-alice", tags: { "axis-outfit": "tag-uniform", "axis-mood": "tag-happy" }, transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } }, transition: { kind: "fadeIn", durationMs: 300 } } },
         { id: "c2", kind: "action", payload: { action: "character", operation: "move", characterId: "char-alice", transform: { to: { position: { xalign: 0.5, yalign: 0.5 } }, durationMs: 400, easing: "easeInOut" } } },

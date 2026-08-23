@@ -313,8 +313,9 @@ function transformOf(slots: NarralangSlots, context: "reveal" | "conceal" | "nvl
 function transitionOf(slots: NarralangSlots, context: "scene" | "character"): StoryTransitionRef | undefined | Fail {
     const value = valueOf(slots, "transition");
     const easing = nameOf(slots, "transitionEasing");
+    const holdMs = msOf(slots, "transitionHold");
     if (value === undefined) {
-        return easing === undefined ? undefined : fail("missingValue", "transition");
+        return easing === undefined && holdMs === undefined ? undefined : fail("missingValue", "transition");
     }
     if (value.kind !== "timedWord") {
         return fail("badWord", "transition");
@@ -323,7 +324,7 @@ function transitionOf(slots: NarralangSlots, context: "scene" | "character"): St
     if (!kind) {
         return fail("badWord", value.word);
     }
-    return prune({ kind, durationMs: value.ms, easing });
+    return prune({ kind, durationMs: value.ms, holdMs, easing });
 }
 
 /** Drop the keys whose value is absent, so a built payload equals the one the printer read. */
@@ -1048,8 +1049,13 @@ function characterDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: 
             }
             return { kind: "action", payload: prune({ ...base, operation: "move" as const, transform }) };
         }
-        case "characterExpression":
-            return { kind: "action", payload: prune({ ...base, operation: "expression" as const, ...appearance.value }) };
+        case "characterExpression": {
+            const transition = transitionOf(slots, "character");
+            if (isFail(transition)) {
+                return transition;
+            }
+            return { kind: "action", payload: prune({ ...base, operation: "expression" as const, ...appearance.value, transition }) };
+        }
         case "characterMotion":
             return { kind: "action", payload: prune({ ...base, operation: "setMotion" as const, ...appearance.value }) };
         case "characterSkin":
