@@ -77,7 +77,13 @@ import {
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
 import { installWindowCrashHandling } from "./windowCrashHandling";
-import { hasDebuggingSwitch, reviewStartupArguments } from "@shared/utils/runtimeStartupArguments";
+import {
+    hasDebuggingSwitch,
+    hasStartupSwitch,
+    reviewStartupArguments,
+    RUNTIME_LOGS_SWITCH,
+} from "@shared/utils/runtimeStartupArguments";
+import { silenceRuntimeConsole } from "./runtimeConsole";
 
 const appDir = __dirname;
 
@@ -128,6 +134,29 @@ const shellMode = shellManifest.mode;
  * not is refused by the second gate, which is the one that runs from inside the archive.
  */
 const shellDebuggable = shellManifest.debuggable;
+
+/*
+ * Before anything has had a chance to print. A shipped game keeps its own output to its log file
+ * unless this run asked for it, so that starting the executable from a terminal does not answer
+ * what the game is built with.
+ *
+ * Preview and test keep their console unconditionally: Studio reads the child's stdout to fill the
+ * console panel an author watches, and a build made to be inspected is not one to go quiet on.
+ */
+if (shellMode === "production" && !shellDebuggable
+    && !hasStartupSwitch(startupArguments(), process.platform, RUNTIME_LOGS_SWITCH)) {
+    silenceRuntimeConsole();
+    // Chromium's own logging is written from C++, where no JavaScript reaches it, so the only
+    // thing that turns it off is a switch this process appends to its own command line. Without it
+    // a child process dying still prints a Chromium source path to stderr, which answers the same
+    // question the game's own lines used to.
+    //
+    // Both, because `disable-logging` alone does not stop it: measured on Electron 38, a browser
+    // process killed while its network service was running still printed one ERROR line with the
+    // switch set, and none once the severity floor was raised to FATAL.
+    app.commandLine.appendSwitch("disable-logging");
+    app.commandLine.appendSwitch("log-level", "3");
+}
 
 /**
  * A test asked for this game to run with no way out to the network.

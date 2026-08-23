@@ -15,6 +15,19 @@
  */
 
 /**
+ * The switch that turns the main process's own output back on.
+ *
+ * A shipped game writes to its log file and says nothing on stdout. What it used to say named the
+ * engine in every line, which is a free answer to "what is this built with" for anyone who runs the
+ * executable from a terminal - and the question after that one is about the game's content.
+ *
+ * Deliberately not `--logs`, and not any of the several spellings Chromium already has near it
+ * (`--enable-logging`, `--log-file`, `--log-level`). Support asks for this by name; nothing about
+ * the game invites the guess.
+ */
+export const RUNTIME_LOGS_SWITCH = "use-logs";
+
+/**
  * The switches a shipped game still accepts, and why each one is here.
  *
  * Every entry is a statement about the player's own hardware, and none of them reaches the game's
@@ -26,14 +39,23 @@ export const ALLOWED_STARTUP_SWITCHES: readonly string[] = [
     // than a game that does not draw.
     "disable-gpu",
     "disable-gpu-compositing",
+    "disable-software-rasterizer",
     // The other half of that answer: which backend to draw through.
     "use-angle",
     "use-gl",
-    // A display whose reported scale is wrong, which is a fact about the player's monitor.
+    // Which windowing system to draw into, which on Linux is a fact about the session the player
+    // logged into rather than a preference.
+    "ozone-platform",
+    "ozone-platform-hint",
+    // A display whose reported scale or colour profile is wrong. Both are facts about the monitor.
     "force-device-scale-factor",
+    "force-color-profile",
     // Chromium's own locale, which is what the chrome around the game is drawn in. The game's
     // language is a player setting and is not this.
     "lang",
+    // Turns the main process's own output back on, which a shipped game otherwise keeps to its log
+    // file. See {@link RUNTIME_LOGS_SWITCH}.
+    RUNTIME_LOGS_SWITCH,
 ];
 
 /**
@@ -137,8 +159,18 @@ export const DEBUGGING_SWITCHES: readonly string[] = [
     "inspect-publish-uid",
 ];
 
+/** Every switch name on this command line, whatever it is called and however it is spelled. */
+export function startupSwitchNames(args: readonly string[], platform: NodeJS.Platform): string[] {
+    return reviewStartupArguments(args, platform, []).removable;
+}
+
 /** Whether this command line asked for a debugger. */
 export function hasDebuggingSwitch(args: readonly string[], platform: NodeJS.Platform): boolean {
     const asked = new Set(DEBUGGING_SWITCHES);
-    return reviewStartupArguments(args, platform, []).removable.some(name => asked.has(name));
+    return startupSwitchNames(args, platform).some(name => asked.has(name));
+}
+
+/** Whether this command line carries one named switch, spelled any way Chromium would read it. */
+export function hasStartupSwitch(args: readonly string[], platform: NodeJS.Platform, name: string): boolean {
+    return startupSwitchNames(args, platform).includes(name);
 }
