@@ -29,8 +29,6 @@ export const onboarding = {
      * as the first.
      */
     progress: "{current} / {total}",
-    /** The eyebrow over the pane on the right. */
-    preview: "Preview",
     /**
      * The rail down the left, naming the screens.
      *

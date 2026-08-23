@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { Button, FieldLabel, ProgressCircle } from "@/lib/components/elements";
+import { Button, ProgressCircle } from "@/lib/components/elements";
 import { AppLayout } from "@/lib/components/layout";
 import type { HelpTopicId } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
@@ -186,9 +186,27 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 </div>
                             </div>
 
-                            <div className="hidden w-[420px] shrink-0 flex-col gap-2 border-l border-edge bg-surface-sunken p-4 min-[780px]:flex">
-                                <FieldLabel as="div">{t("onboarding.preview")}</FieldLabel>
-                                <StudioPreview panel={screen.panel} />
+                            {/* A whole Studio window, of which this screen has room for the left
+                                quarter.
+
+                                Not a small window: a full-sized one, laid against the right edge
+                                and cut off by it. The difference is the whole point - a miniature
+                                is a picture of the product, while a window running off the edge is
+                                the product, seen from where the author is standing. It costs the
+                                far side of every row (a line of dialogue ends off-screen, as it
+                                does on a narrow editor), and buys back the two things a miniature
+                                cannot have: type at its real size, and a layout at its real
+                                proportions.
+
+                                No frame of its own either - no divider, no plate, no "Preview"
+                                eyebrow. The only lines drawn here are the window's own edges, and
+                                the right one is missing because it is past the crop. */}
+                            <div className="hidden w-[420px] shrink-0 overflow-hidden py-6 min-[780px]:flex">
+                                <div className="relative min-h-0 flex-1">
+                                    <div className="absolute inset-y-0 left-0 flex w-[1680px]">
+                                        <StudioPreview panel={screen.panel} />
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

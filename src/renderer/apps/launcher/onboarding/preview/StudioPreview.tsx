@@ -75,7 +75,9 @@ export function StudioPreview({ panel }: StudioPreviewProps) {
     const preferences = useOnboardingPreferences();
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface">
+        // Rounded and bordered on the left, open on the right: the window is cut by the screen
+        // edge rather than ending there, and a border down that side would say it ends.
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-l-md border-y border-l border-edge bg-surface">
             {/* The title bar: the project on the left, the window's own toggles on the right. */}
             <div aria-hidden className="flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken px-1.5">
                 <span className="flex h-8 min-w-0 max-w-40 items-center gap-1.5 rounded-md px-2 text-sm text-fg-muted">
