@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
 import type { StoryRichRun, StoryTextMarks } from "@shared/types/story";
 import { targetFromTranslationRuns, translationRunsFromTarget } from "@shared/utils/localizationText";
 import { useTranslation } from "@/lib/i18n";
@@ -176,7 +176,18 @@ export function InlineTargetEditor(props: {
         [props.target, props.sourceRuns],
     );
 
-    const openAtPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    /**
+     * `mousedown`, not `pointerdown`: the story editor's rows enter on the same event, and it is the
+     * one a scripted acceptance pass can reach.
+     *
+     * ⚠ `preventDefault` is what makes the field open at all. The press swaps this element for the
+     * field, which focuses itself on mount - and the browser then completes the press by focusing
+     * whatever is under the pointer, taking the focus straight back off it. The field's own `onBlur`
+     * closes it, so without this the row opens and shuts inside one click and nothing appears to
+     * have happened.
+     */
+    const openAtPointer = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+        event.preventDefault();
         // Read the offset off the rendered text before the swap, so the caret lands where it was aimed.
         const rendered = event.currentTarget.querySelector<HTMLElement>("[data-inline-runs]");
         props.onEdit(rendered ? unitOffsetFromPoint(rendered, event.clientX, event.clientY) : null);
@@ -196,7 +207,7 @@ export function InlineTargetEditor(props: {
                 role="button"
                 tabIndex={0}
                 aria-label={props.ariaLabel}
-                onPointerDown={openAtPointer}
+                onMouseDown={openAtPointer}
                 onKeyDown={openFromKeyboard}
             >
                 {runs.length > 0
