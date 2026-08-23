@@ -91,8 +91,10 @@ const SHOUTED: NarralangDialect = {
             { mark: "italic", tag: "EM" },
             { mark: "color", tag: "COLOUR", arg: "raw" },
             { mark: "fontSize", tag: "SIZE", arg: "number" },
+            { mark: "fontSizeStep", tag: "STEP", arg: "number" },
             { mark: "cps", tag: "CPS", arg: "number" },
             { mark: "ruby", tag: "RUBY", arg: "raw" },
+            { mark: "emphasis", tag: "MARK", arg: "raw" },
         ],
     },
     verbs: {

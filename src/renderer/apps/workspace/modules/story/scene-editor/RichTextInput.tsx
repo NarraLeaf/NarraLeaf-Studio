@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ClipboardEvent, CSSProperties, KeyboardEvent } from "react";
-import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
+import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextEmphasis } from "@shared/types/story";
+import { isStoryTextEmphasis } from "@shared/utils/storyTextMarks";
 import type { StoryCaretTarget } from "./storySceneEditorTypes";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useTranslation } from "@/lib/i18n";
@@ -9,12 +10,14 @@ import {
     createUnitRange,
     domToRuns,
     getSelectionUnitRange,
+    markedRunAt,
     marksAtUnit,
     markSelectedChips,
     normalizeRuns,
     rangeHasMark,
     rangeMarkColor,
     rangeMarkRuby,
+    rangeTextMark,
     renderRunsToElement,
     richRunsToPlain,
     rubyRunAt,
@@ -60,6 +63,18 @@ export type ActiveMarks = {
      */
     ruby?: string;
     canRuby: boolean;
+    /**
+     * The three marks the type panel edits: emphasis, the size step, and the typing speed. Each is
+     * the value shared by the selection, or the one carried by the run a collapsed caret stands in.
+     */
+    emphasis?: StoryTextEmphasis;
+    fontSizeStep?: number;
+    cps?: number;
+    /**
+     * Whether the field holds a real selection. A mark is set over characters, so a control with no
+     * selection can only change a value already written — see {@link RichTextInputHandle.setTypeMark}.
+     */
+    hasSelection: boolean;
 };
 
 /**
@@ -124,6 +139,11 @@ export type RichTextInputHandle = {
      * afresh, which is only right when nothing can have moved the caret in between.
      */
     setRuby: (ruby: string | null, target?: { start: number; end: number }) => void;
+    /**
+     * Set one of the type panel's marks — emphasis, the size step, the typing speed — over the
+     * selection, or over the run a collapsed caret already carries that mark on. `null` clears it.
+     */
+    setTypeMark: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null) => void;
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
@@ -564,6 +584,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             // is always annotatable; a collapsed caret only when it is standing in a reading already.
             let ruby: string | undefined;
             let canRuby = false;
+            // The type panel's three marks travel with ruby: none of them has an execCommand, all
+            // three are set over a range, and each can be changed from a caret standing in a run that
+            // already carries it.
+            let emphasis: StoryTextEmphasis | undefined;
+            let fontSizeStep: number | undefined;
+            let cps: number | undefined;
+            const hasSelection = Boolean(range && range.start !== range.end);
             if (el && range && range.start !== range.end) {
                 // A selection can include inline value chips (contentEditable=false), which execCommand's
                 // query state ignores — derive the active marks from the unit model instead.
@@ -572,15 +599,25 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 italic = rangeHasMark(runs, range.start, range.end, "italic");
                 color = rangeMarkColor(runs, range.start, range.end);
                 ruby = rangeMarkRuby(runs, range.start, range.end);
+                emphasis = rangeTextMark(runs, range.start, range.end, "emphasis");
+                fontSizeStep = rangeTextMark(runs, range.start, range.end, "fontSizeStep");
+                cps = rangeTextMark(runs, range.start, range.end, "cps");
                 canRuby = true;
             } else if (el && selection) {
                 // Read off the DOM, not the unit model. This branch runs on every caret move, and
                 // `domToRuns` walks and normalizes the whole row to answer a question the span the
-                // caret is standing in already carries.
+                // caret is standing in already carries. One `closest` for all four marks: they are
+                // written onto one span per run and those spans do not nest.
                 const node = selection.focusNode;
                 const from = node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node?.parentElement ?? null;
-                const host = from && el.contains(from) ? from.closest<HTMLElement>("[data-ruby]") : null;
-                ruby = host && el.contains(host) ? host.dataset.ruby || undefined : undefined;
+                const host = from && el.contains(from)
+                    ? from.closest<HTMLElement>("[data-ruby],[data-emphasis],[data-fontstep],[data-cps]")
+                    : null;
+                const marked = host && el.contains(host) ? host : null;
+                ruby = marked?.dataset.ruby || undefined;
+                emphasis = isStoryTextEmphasis(marked?.dataset.emphasis) ? marked.dataset.emphasis : undefined;
+                fontSizeStep = marked?.dataset.fontstep ? Number(marked.dataset.fontstep) : undefined;
+                cps = marked?.dataset.cps ? Number(marked.dataset.cps) : undefined;
                 canRuby = ruby !== undefined;
             }
             const previousMarks = lastMarksRef.current;
@@ -589,9 +626,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 || previousMarks.italic !== italic
                 || previousMarks.color !== color
                 || previousMarks.ruby !== ruby
-                || previousMarks.canRuby !== canRuby) {
-                lastMarksRef.current = { bold, italic, color, ruby, canRuby };
-                onActiveRef.current?.({ bold, italic, color, ruby, canRuby });
+                || previousMarks.canRuby !== canRuby
+                || previousMarks.emphasis !== emphasis
+                || previousMarks.fontSizeStep !== fontSizeStep
+                || previousMarks.cps !== cps
+                || previousMarks.hasSelection !== hasSelection) {
+                const next: ActiveMarks = { bold, italic, color, ruby, canRuby, emphasis, fontSizeStep, cps, hasSelection };
+                lastMarksRef.current = next;
+                onActiveRef.current?.(next);
             }
             setCaretColor(color ?? null);
         } catch {
@@ -981,6 +1023,53 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         emitChange();
     }, [emitChange, recordStructural, resolveRubyTarget, saveSelection, scheduleReportActive]);
 
+    /**
+     * Set or clear one of the type panel's marks over the selection, or over the run a collapsed
+     * caret is standing in when that run already carries the mark. `null` removes it.
+     *
+     * The same shape as {@link setRuby}, and for the same reasons: the value comes from a panel that
+     * holds the focus, so the editor must not take it back, and a mark belongs to characters the
+     * author wrote, so inline value chips in the range are left alone.
+     */
+    const setTypeMark = useCallback((mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null) => {
+        const el = editorRef.current;
+        if (!el) {
+            return;
+        }
+        const selection = getSelectionUnitRange(el) ?? savedRange.current;
+        if (!selection) {
+            return;
+        }
+        const runs = domToRuns(el);
+        const range = selection.start !== selection.end ? selection : markedRunAt(runs, selection.start, mark);
+        if (!range) {
+            return;
+        }
+        const next = value === null || value === ""
+            ? undefined
+            : mark === "emphasis" ? value : Number(value);
+        if (next === rangeTextMark(runs, range.start, range.end, mark)) {
+            return;
+        }
+        recordStructural();
+        const applied = applyMarkToRange(
+            runs,
+            range.start,
+            range.end,
+            marks => ({ ...marks, [mark]: next }),
+            { textOnly: true },
+        );
+        renderRunsToElement(el, applied, renderOptionsRef.current);
+        if (globalThis.document.activeElement === el) {
+            setSelectionUnitRange(el, range.start, range.end);
+            saveSelection();
+        } else {
+            savedRange.current = { start: range.start, end: range.end };
+        }
+        scheduleReportActive(true);
+        emitChange();
+    }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
+
     // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
     // focus). Caret is only restored when the editor already holds focus.
     const spliceUnits = useCallback((start: number, deleteCount: number, insert: StoryRichRun[], caretAfter: boolean) => {
@@ -1092,6 +1181,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         toggleMark: (mark) => applyMark(mark),
         setColor: (color) => applyMark("color", color),
         getRubyTarget: resolveRubyTarget,
+        setTypeMark,
         setRuby,
         insertPause,
         updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
@@ -1104,7 +1194,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         replaceSpelling,
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, setRuby, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, setRuby, setTypeMark, spliceUnits]);
 
     return (
         <>

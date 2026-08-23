@@ -149,8 +149,10 @@ const SHOUTED: NarralangDialect = {
             { mark: "italic", tag: "EM" },
             { mark: "color", tag: "COLOUR", arg: "raw" },
             { mark: "fontSize", tag: "SIZE", arg: "number" },
+            { mark: "fontSizeStep", tag: "STEP", arg: "number" },
             { mark: "cps", tag: "CPS", arg: "number" },
             { mark: "ruby", tag: "RUBY", arg: "raw" },
+            { mark: "emphasis", tag: "MARK", arg: "raw" },
         ],
     },
     verbs: {
@@ -465,6 +467,21 @@ const corpus: Record<string, StoryScene> = {
         { id: "h5", kind: "nodeAction", payload: { action: "narration", text: text("大括号 {1} 与反斜杠 \\ 都在", "narration") } },
         { id: "h6", kind: "nodeAction", payload: { action: "narration", text: text(" 缩进过的一行 ", "narration") } },
         { id: "h7", kind: "note", payload: { text: text("注释里也有: 冒号", "note") } },
+        {
+            id: "h12",
+            kind: "nodeAction",
+            payload: {
+                action: "narration",
+                // The two marks the type panel writes. The step carries a sign, which the number
+                // argument has to print and read back as one.
+                text: text("それはわたしが決めた", "narration", [
+                    { text: "それは" },
+                    { text: "わたし", marks: { emphasis: "dot" } },
+                    { text: "が" },
+                    { text: "決めた", marks: { emphasis: "under-dot", fontSizeStep: -2 } },
+                ]),
+            },
+        },
         {
             id: "h10",
             kind: "nodeAction",

@@ -426,6 +426,26 @@ export const story = {
         clickHint: "プレイヤーがクリックするまで待つ",
         remove: "停止を取り除く",
     },
+    /**
+     * 値を選ぶ三つの行内マーク：文字の脇に置く傍点、その範囲の文字サイズ、そして打ち出す速度。
+     */
+    textType: {
+        emphasis: "傍点",
+        emphasisNone: "なし",
+        emphasisDot: "行の上・黒丸",
+        emphasisCircle: "行の上・白丸",
+        emphasisSesame: "行の上・ゴマ",
+        emphasisUnderDot: "行の下・黒丸",
+        /** 傍点のボタンで見本に使う文字。 */
+        emphasisSample: "文",
+        size: "文字サイズ",
+        sizeSmaller: "小さく",
+        sizeLarger: "大きく",
+        sizeUnit: "段",
+        speed: "表示速度",
+        speedUnit: "字/秒",
+        speedPlaceholder: "行と同じ",
+    },
     ruby: {
         title: "ルビ",
         placeholder: "読み",
@@ -467,6 +487,8 @@ export const story = {
         insertExpression: "式による変更を差し込む",
         ruby: "ルビ",
         rubyHint: "ルビ（振りたい語を選んでから）",
+        type: "文字",
+        typeHint: "文字（設定する語を選んでから）",
         tools: "リッチテキストの道具",
         pauseClick: "停止（クリックを待つ）",
         pauseSeconds: "停止 {seconds} 秒",

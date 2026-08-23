@@ -475,6 +475,27 @@ export const story = {
         clickHint: "Waits until the player clicks to continue.",
         remove: "Remove pause",
     },
+    /**
+     * The three run marks a value has to be chosen for: the emphasis set beside the characters, the
+     * size the run is set at, and the speed it is typed out at.
+     */
+    textType: {
+        emphasis: "Emphasis",
+        emphasisNone: "None",
+        emphasisDot: "Dot above",
+        emphasisCircle: "Circle above",
+        emphasisSesame: "Sesame above",
+        emphasisUnderDot: "Dot below",
+        /** The character the emphasis buttons draw their mark on. */
+        emphasisSample: "Ab",
+        size: "Size",
+        sizeSmaller: "Smaller",
+        sizeLarger: "Larger",
+        sizeUnit: "steps",
+        speed: "Typing speed",
+        speedUnit: "cps",
+        speedPlaceholder: "Line",
+    },
     ruby: {
         title: "Ruby text",
         placeholder: "Reading",
@@ -519,6 +540,8 @@ export const story = {
         insertExpression: "Insert expression change",
         ruby: "Ruby text",
         rubyHint: "Ruby text (select the words to annotate)",
+        type: "Type",
+        typeHint: "Type (select the words to set)",
         tools: "Rich text tools",
         pauseClick: "Pause (waits for a click)",
         pauseSeconds: "Pause {seconds}s",

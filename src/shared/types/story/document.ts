@@ -1224,13 +1224,33 @@ export type StoryTextSegment = {
     rich?: StoryRichRun[];
 };
 
+/**
+ * Emphasis marks set beside every character of a run — how East Asian typography stresses a phrase.
+ * The four values name the conventions rather than the CSS behind them; see
+ * `STORY_TEXT_EMPHASIS_VALUES` in `@shared/utils/storyTextMarks`.
+ */
+export type StoryTextEmphasis = "dot" | "circle" | "sesame" | "under-dot";
+
 export type StoryTextMarks = {
     bold?: boolean;
     italic?: boolean;
     color?: string;
     ruby?: string;
     cps?: number;
+    /**
+     * An absolute size in pixels. Legacy: it survives in documents that carry it and in scripts that
+     * spell it, but nothing in the editor writes one. A size pinned in pixels does not follow the
+     * dialogue box it is set in, and it defeats the text scaling that keeps a long line inside its
+     * box; `fontSizeStep` is what the size control writes.
+     */
     fontSize?: number;
+    /**
+     * The run's size as a number of steps away from the line's, positive for larger. A step is
+     * `STORY_FONT_SIZE_STEP_RATIO`. Relative rather than absolute, so the run keeps its weight
+     * against the rest of the line at whatever size the line is set.
+     */
+    fontSizeStep?: number;
+    emphasis?: StoryTextEmphasis;
 };
 
 /**

@@ -41,6 +41,7 @@ import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseEntry, resolveTagSelection } from "@shared/utils/characterVariant";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
+import { storyMarksToWordConfig } from "@shared/utils/storyTextMarks";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
@@ -2888,13 +2889,7 @@ function buildWord(text: string, marks: StoryTextMarks | undefined): string | Wo
     if (!marks) {
         return text;
     }
-    const config: Record<string, unknown> = {};
-    if (marks.bold) config.bold = true;
-    if (marks.italic) config.italic = true;
-    if (marks.color) config.color = marks.color;
-    if (marks.ruby) config.ruby = marks.ruby;
-    if (typeof marks.cps === "number") config.cps = marks.cps;
-    if (typeof marks.fontSize === "number") config.fontSize = marks.fontSize;
+    const config = storyMarksToWordConfig(marks);
     return Object.keys(config).length > 0 ? new Word(text, config as any) : text;
 }
 
