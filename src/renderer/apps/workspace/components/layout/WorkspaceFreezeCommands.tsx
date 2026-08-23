@@ -226,16 +226,11 @@ export function WorkspaceFreezeCommands() {
                 // The same glyph the tab this opens wears (`openVcsChangesTab`).
                 icon: <GitCompare className="w-4 h-4" />,
                 when: () => isVersionRailReachable(),
-                run: async () => {
-                    // `getInfo` is a pure read (`repositoryStatus(scan:false, revisionOnly:true)`),
-                    // so asking for the head's number here costs nothing and is what lets the tab
-                    // call it `#36` rather than by hash - the way every other surface names it.
-                    const info = await versionControl.getInfo();
-                    openVcsChangesTab(context, {
-                        mode: "working-tree",
-                        headLabel: info && info.headNumber > 0 ? `#${info.headNumber}` : undefined,
-                    });
-                },
+                // Opens with no head number, and asks for none: the tab makes that read itself, so
+                // one made here would be a second round trip whose answer is stale the moment the
+                // author commits with the tab still open. The palette has nothing to add - unlike
+                // the rail, which already holds the number it is drawing.
+                run: () => openVcsChangesTab(context, { mode: "working-tree" }),
             },
             {
                 id: "vcs:show-working-tree",
