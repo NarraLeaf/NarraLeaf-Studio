@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { StoryRichRun } from "@shared/types/story";
 import {
     applyMarkToRange,
+    cleanMarks,
+    markedRunAt,
     normalizeRuns,
     rangeHasMark,
     rangeMarkRuby,
+    rangeTextMark,
     richIfMeaningful,
     richRunsToPlain,
     rubyRunAt,
@@ -212,5 +215,39 @@ describe("richText", () => {
             expect(segmentToRuns({ textId: "t", role: "dialogue", value: "ab", rich: [{ text: "a" }, event, { text: "b" }] }))
                 .toEqual([{ text: "a" }, event, { text: "b" }]);
         });
+    });
+});
+
+describe("richText type marks", () => {
+    it("keeps only emphasis values the toolbar offers", () => {
+        expect(cleanMarks({ emphasis: "under-dot" })).toEqual({ emphasis: "under-dot" });
+        expect(cleanMarks({ emphasis: "wobble" as never })).toBeUndefined();
+    });
+
+    it("clamps the size step and reads a step of zero as no step at all", () => {
+        expect(cleanMarks({ fontSizeStep: 2 })).toEqual({ fontSizeStep: 2 });
+        expect(cleanMarks({ fontSizeStep: -2 })).toEqual({ fontSizeStep: -2 });
+        expect(cleanMarks({ fontSizeStep: 0 })).toBeUndefined();
+        expect(cleanMarks({ fontSizeStep: 99 })).toEqual({ fontSizeStep: 6 });
+        expect(cleanMarks({ fontSizeStep: Number.NaN })).toBeUndefined();
+    });
+
+    it("answers with the value a selection shares, and with nothing when it does not", () => {
+        const runs: StoryRichRun[] = [
+            { text: "ab", marks: { emphasis: "dot" } },
+            { text: "cd", marks: { emphasis: "dot" } },
+            { text: "ef" },
+        ];
+        expect(rangeTextMark(runs, 0, 4, "emphasis")).toBe("dot");
+        expect(rangeTextMark(runs, 0, 6, "emphasis")).toBeUndefined();
+    });
+
+    it("lets a collapsed caret address the run it is standing in, but only a marked one", () => {
+        const runs: StoryRichRun[] = [
+            { text: "plain" },
+            { text: "big", marks: { fontSizeStep: 2 } },
+        ];
+        expect(markedRunAt(runs, 6, "fontSizeStep")).toEqual({ start: 5, end: 8, value: 2 });
+        expect(markedRunAt(runs, 2, "fontSizeStep")).toBeNull();
     });
 });

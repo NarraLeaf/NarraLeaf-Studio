@@ -218,8 +218,13 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
             { mark: "bold", tag: "b" },
             { mark: "italic", tag: "i" },
             { mark: "color", tag: "color", arg: "raw" },
+            // `size` is an absolute pixel size and nothing in the editor writes one any more; a
+            // script that spells it still round-trips. `step` is what the size control writes: how
+            // many steps away from the line's own size this run is set, positive for larger.
             { mark: "fontSize", tag: "size", arg: "number" },
+            { mark: "fontSizeStep", tag: "step", arg: "number" },
             { mark: "cps", tag: "cps", arg: "number" },
+            { mark: "emphasis", tag: "em", arg: "raw" },
             // Innermost, because it annotates the base text rather than styling it.
             { mark: "ruby", tag: "ruby", arg: "raw" },
         ],

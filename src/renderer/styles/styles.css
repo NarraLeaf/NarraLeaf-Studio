@@ -1057,6 +1057,39 @@ input[type="radio"]:focus {
 }
 
 /*
+ * Emphasis marks in the story editor: the dot or circle set beside every character of a stressed
+ * phrase (傍点 / 圏点, 着重号).
+ *
+ * Drawn by `text-emphasis` rather than by the pseudo-element the ruby reading above uses. There is
+ * one mark per character and they have to follow the characters through a line break, which is
+ * exactly what a single `::before` cannot do — and unlike a reading, a mark carries no text of its
+ * own, so nothing here can add units the runs never had.
+ *
+ * `text-emphasis-position` names both axes at once: the first keyword is read in horizontal writing
+ * and the second in vertical, where both Japanese and Chinese set the marks to the right.
+ *
+ * The marks sit in the leading the row already has, the same space the ruby reading is drawn in, so
+ * a marked line is exactly as tall as an unmarked one.
+ */
+.story-rt-emphasis {
+    text-emphasis: filled dot;
+    text-emphasis-position: over right;
+}
+
+.story-rt-emphasis[data-emphasis="circle"] {
+    text-emphasis: open circle;
+}
+
+.story-rt-emphasis[data-emphasis="sesame"] {
+    text-emphasis: filled sesame;
+}
+
+.story-rt-emphasis[data-emphasis="under-dot"] {
+    text-emphasis: filled dot;
+    text-emphasis-position: under right;
+}
+
+/*
  * Misspellings in the story editor, drawn by Studio.
  *
  * Chromium used to draw this squiggle itself, off its own spellchecker. It no longer checks

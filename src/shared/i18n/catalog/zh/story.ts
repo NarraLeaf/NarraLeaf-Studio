@@ -393,6 +393,26 @@ export const story = {
         clickHint: "等待玩家点击后继续",
         remove: "移除暂停",
     },
+    /**
+     * 需要选值的三个行内标记：字旁的着重号、这一段的字号、以及它打出来的速度。
+     */
+    textType: {
+        emphasis: "着重号",
+        emphasisNone: "无",
+        emphasisDot: "行上实心点",
+        emphasisCircle: "行上空心圈",
+        emphasisSesame: "行上胡麻点",
+        emphasisUnderDot: "行下实心点",
+        /** 着重号按钮上用来演示的字。 */
+        emphasisSample: "文",
+        size: "字号",
+        sizeSmaller: "调小",
+        sizeLarger: "调大",
+        sizeUnit: "级",
+        speed: "打字速度",
+        speedUnit: "字/秒",
+        speedPlaceholder: "整行",
+    },
     ruby: {
         title: "注音",
         placeholder: "读音",
@@ -434,6 +454,8 @@ export const story = {
         insertExpression: "插入表情切换",
         ruby: "注音",
         rubyHint: "注音（先选中要注音的文字）",
+        type: "文字",
+        typeHint: "文字（先选中要设置的文字）",
         tools: "富文本工具",
         pauseClick: "暂停（等待点击）",
         pauseSeconds: "暂停 {seconds} 秒",

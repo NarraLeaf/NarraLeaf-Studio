@@ -1,5 +1,6 @@
 import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
+import { clampFontSizeStep, fontScaleForStep, isStoryTextEmphasis } from "@shared/utils/storyTextMarks";
 import type { StoryAppearanceSelection } from "./storyAppearanceLabel";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
@@ -22,6 +23,14 @@ const INTERP_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="non
  * which is a requirement rather than a side effect (see the rule in styles.css).
  */
 const RUBY_CLASS = "story-rt-ruby";
+
+/**
+ * Emphasis class. Unlike the ruby reading these marks are drawn by `text-emphasis` off
+ * `data-emphasis`, because there is one per character and a single pseudo-element cannot follow the
+ * characters of a word that wraps. See the rule in styles.css for what keeps them out of the row's
+ * height.
+ */
+const EMPHASIS_CLASS = "story-rt-emphasis";
 
 /** Inline reveal-time event chip class (expression switch / SE). */
 const EVENT_CHIP_CLASS = "story-rt-event mx-0.5 inline-flex select-none items-center rounded-md bg-warning/20 px-1 py-0.5 align-middle text-2xs font-medium text-warning";
@@ -163,6 +172,9 @@ export function cleanMarks(marks: StoryTextMarks | undefined): StoryTextMarks | 
     if (marks.ruby) out.ruby = marks.ruby;
     if (typeof marks.cps === "number" && Number.isFinite(marks.cps)) out.cps = marks.cps;
     if (typeof marks.fontSize === "number" && Number.isFinite(marks.fontSize)) out.fontSize = marks.fontSize;
+    const step = clampFontSizeStep(marks.fontSizeStep);
+    if (step !== undefined) out.fontSizeStep = step;
+    if (isStoryTextEmphasis(marks.emphasis)) out.emphasis = marks.emphasis;
     return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -253,6 +265,11 @@ function readMarksFromElement(el: HTMLElement): StoryTextMarks | undefined {
         const cps = Number(el.dataset.cps);
         if (Number.isFinite(cps)) marks.cps = cps;
     }
+    // Read back off the data attributes rather than the inline styles they wrote: a step is a
+    // multiplier and an emphasis is a convention, and neither survives the round trip through the
+    // `font-size` / `text-emphasis` the browser resolves them into.
+    if (el.dataset.fontstep) marks.fontSizeStep = Number(el.dataset.fontstep);
+    if (el.dataset.emphasis) marks.emphasis = el.dataset.emphasis as StoryTextMarks["emphasis"];
     return cleanMarks(marks);
 }
 
@@ -265,9 +282,20 @@ function createMarkSpan(text: string, marks: StoryTextMarks): HTMLSpanElement {
         span.style.fontSize = `${marks.fontSize}px`;
         span.dataset.fontsize = String(marks.fontSize);
     }
+    if (typeof marks.fontSizeStep === "number") {
+        // A step is a share of the line, so it is drawn as one here too: the row's own display font
+        // is what the author is looking at, and a step written in pixels would only match it at one
+        // editor font size.
+        span.style.fontSize = `${fontScaleForStep(marks.fontSizeStep)}em`;
+        span.dataset.fontstep = String(marks.fontSizeStep);
+    }
     if (marks.ruby) {
         span.dataset.ruby = marks.ruby;
         span.classList.add(RUBY_CLASS);
+    }
+    if (marks.emphasis) {
+        span.dataset.emphasis = marks.emphasis;
+        span.classList.add(EMPHASIS_CLASS);
     }
     if (typeof marks.cps === "number") span.dataset.cps = String(marks.cps);
     span.textContent = text;
@@ -519,8 +547,22 @@ export function rangeMarkColor(runs: StoryRichRun[], start: number, end: number)
  * which is the same answer as "these units disagree" and leads to the same disabled control.
  */
 export function rangeMarkRuby(runs: StoryRichRun[], start: number, end: number): string | undefined {
+    return rangeTextMark(runs, start, end, "ruby");
+}
+
+/**
+ * The single value of one mark shared by every text unit in [start, end), or undefined if they
+ * differ. {@link rangeMarkRuby} is this over `ruby`; the size and emphasis controls read the same
+ * answer about their own mark.
+ */
+export function rangeTextMark<K extends keyof StoryTextMarks>(
+    runs: StoryRichRun[],
+    start: number,
+    end: number,
+    key: K,
+): StoryTextMarks[K] | undefined {
     let pos = 0;
-    let ruby: string | undefined;
+    let shared: StoryTextMarks[K] | undefined;
     let first = true;
     for (const run of runs) {
         const len = runLength(run);
@@ -530,15 +572,15 @@ export function rangeMarkRuby(runs: StoryRichRun[], start: number, end: number):
         if (runEnd <= start || runStart >= end || !isTextRun(run)) {
             continue;
         }
-        const value = run.marks?.ruby;
+        const value = run.marks?.[key];
         if (first) {
-            ruby = value;
+            shared = value;
             first = false;
-        } else if (value !== ruby) {
+        } else if (value !== shared) {
             return undefined;
         }
     }
-    return ruby;
+    return shared;
 }
 
 /**
@@ -553,8 +595,23 @@ export function rangeMarkRuby(runs: StoryRichRun[], start: number, end: number):
  * the last character of an annotated word, and it is the reading the author was just working on.
  */
 export function rubyRunAt(runs: StoryRichRun[], unit: number): { start: number; end: number; ruby: string } | null {
+    const found = markedRunAt(runs, unit, "ruby");
+    return found ? { start: found.start, end: found.end, ruby: found.value } : null;
+}
+
+/**
+ * The run carrying `key` that a collapsed caret sits in, as a unit range plus that mark's value.
+ *
+ * Generalized from the ruby control, and for its reason: a collapsed caret cannot say "these
+ * characters", so a control that edits a value already written needs something else to address.
+ */
+export function markedRunAt<K extends keyof StoryTextMarks>(
+    runs: StoryRichRun[],
+    unit: number,
+    key: K,
+): { start: number; end: number; value: NonNullable<StoryTextMarks[K]> } | null {
     let pos = 0;
-    let seam: { start: number; end: number; ruby: string } | null = null;
+    let seam: { start: number; end: number; value: NonNullable<StoryTextMarks[K]> } | null = null;
     for (const run of runs) {
         const len = runLength(run);
         const runStart = pos;
@@ -563,14 +620,15 @@ export function rubyRunAt(runs: StoryRichRun[], unit: number): { start: number; 
         if (unit < runStart || unit > runEnd || !isTextRun(run)) {
             continue;
         }
-        const ruby = run.marks?.ruby;
-        if (!ruby) {
+        const value = run.marks?.[key];
+        if (value === undefined || value === null || value === false || value === "") {
             continue;
         }
+        const found = { start: runStart, end: runEnd, value: value as NonNullable<StoryTextMarks[K]> };
         if (unit > runStart && unit < runEnd) {
-            return { start: runStart, end: runEnd, ruby };
+            return found;
         }
-        seam = seam ?? { start: runStart, end: runEnd, ruby };
+        seam = seam ?? found;
     }
     return seam;
 }

@@ -883,7 +883,7 @@ function TextEditBox(props: {
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
     const [spellEdit, setSpellEdit] = useState<SpellingClickInfo | null>(null);
     const [dictionaryEdit, setDictionaryEdit] = useState<DictionaryClickInfo | null>(null);
-    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false });
+    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false, hasSelection: false });
     const textStyle = useStoryEditorTextStyle();
     const spellcheck = useStorySpellcheck();
     const dictionary = useStoryDictionary();

@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Superscript, Type } from "lucide-react";
+import { ALargeSmall, Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Smile, Superscript, Type } from "lucide-react";
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
 import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -9,12 +9,18 @@ import { useTranslation } from "@/lib/i18n";
 import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
 import { RubyPopover } from "./RubyPopover";
+import { TypePopover } from "./TypePopover";
 import type { ActiveMarks, RichTextInputHandle, RubyTarget } from "./RichTextInput";
 import { TooltipGroup } from "@/lib/tooltip";
 
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
 const DEFAULT_SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
-const SWATCH_COUNT = 7;
+/**
+ * Four, not seven. The colours were more than half the strip, and the swatches favour the author's
+ * recent ones anyway - a fifth-most-recent colour is one the palette answers better than a permanent
+ * seat does, and the seats it gave back are what the type panel and the marks in it are set in.
+ */
+const SWATCH_COUNT = 4;
 /**
  * The keyboard's cursor inside the strip. See `.nl-focus-ring` in styles.css for why it is a hand-
  * written rule and not `focus:ring-2`: a global `button:focus { box-shadow: none !important }`
@@ -130,7 +136,22 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
      */
     const [ruby, setRuby] = useState<{ top: number; left: number; bottom: number; target: RubyTarget } | null>(null);
     const rubyBtnRef = useRef<HTMLButtonElement | null>(null);
-    const active = props.active ?? { bold: false, italic: false, canRuby: false };
+    /**
+     * The type panel's anchor. Only its position is captured: unlike ruby it holds no draft, and its
+     * controls read the live marks so the sentence and the panel agree after every press.
+     */
+    const [typePanel, setTypePanel] = useState<{ top: number; left: number; bottom: number } | null>(null);
+    const typeBtnRef = useRef<HTMLButtonElement | null>(null);
+    const active = props.active ?? { bold: false, italic: false, canRuby: false, hasSelection: false };
+    /**
+     * What the type panel can act on: a selection, or a run that already carries one of its marks.
+     * Same rule as the ruby control, and for the same reason - a mark is set over characters, and a
+     * collapsed caret does not name any.
+     */
+    const canType = active.hasSelection
+        || active.emphasis !== undefined
+        || active.fontSizeStep !== undefined
+        || active.cps !== undefined;
     const recent = useRecentColors();
     // Quick swatches favour the author's recently used colors, padded with defaults so the strip
     // always stays full and stable-width.
@@ -340,6 +361,30 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         props.editor.current?.focus();
     };
 
+    /**
+     * The panel guards the commit for as long as it is open, the way the palette and the ruby popover
+     * do: it is portalled to the body, so a press inside it takes focus off the row, and the row
+     * reads that as the author having left the line.
+     */
+    const openType = () => {
+        const rect = typeBtnRef.current?.getBoundingClientRect();
+        if (props.commitGuard) {
+            props.commitGuard.current = true;
+        }
+        setTypePanel({
+            top: rect?.top ?? 120,
+            left: rect?.left ?? 120,
+            bottom: rect?.bottom ?? 140,
+        });
+    };
+    const closeType = () => {
+        if (props.commitGuard) {
+            props.commitGuard.current = false;
+        }
+        setTypePanel(null);
+        props.editor.current?.focus();
+    };
+
     const applyColor = (color: string) => {
         props.editor.current?.setColor(color);
         addRecentColor(color);
@@ -444,6 +489,31 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             >
                 <Superscript className="h-3.5 w-3.5" />
             </button>
+            {/*
+              * NOT wrapped in `keepKeyboard`: this hands the author to a panel whose own controls take
+              * the focus, and dragging it back to the strip a frame later would take them out of it.
+              */}
+            <button
+                ref={typeBtnRef}
+                type="button"
+                className={!canType ? BTN_INERT : typePanel || active.emphasis || active.fontSizeStep !== undefined || active.cps !== undefined ? BTN_ACTIVE : BTN}
+                aria-disabled={!canType}
+                aria-expanded={Boolean(typePanel)}
+                onClick={() => {
+                    if (!canType) {
+                        return;
+                    }
+                    if (typePanel) {
+                        closeType();
+                        return;
+                    }
+                    openType();
+                }}
+                data-tip={canType ? t("story.richText.type") : t("story.richText.typeHint")}
+                aria-label={canType ? t("story.richText.type") : t("story.richText.typeHint")}
+            >
+                <ALargeSmall className="h-3.5 w-3.5" />
+            </button>
             <div className="mx-0.5 h-4 w-px bg-fill" />
             {swatches.map(color => {
                 const isActive = activeKey !== null && colorKey(color) === activeKey;
@@ -543,6 +613,17 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                         }}
                     />
                 </div>
+            ) : null}
+            {typePanel ? (
+                <TypePopover
+                    anchor={typePanel}
+                    anchorRef={typeBtnRef}
+                    emphasis={active.emphasis}
+                    fontSizeStep={active.fontSizeStep}
+                    cps={active.cps}
+                    onSet={(mark, value) => props.editor.current?.setTypeMark(mark, value)}
+                    onClose={() => closeType()}
+                />
             ) : null}
             {ruby ? (
                 <RubyPopover
