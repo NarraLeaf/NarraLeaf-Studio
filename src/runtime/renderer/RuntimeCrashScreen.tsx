@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { useTranslation } from "@/lib/i18n";
+import { getShellLocale } from "./shellLocale";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { getRuntimeCrashPolicy } from "./crashPolicy";
 
@@ -67,13 +68,18 @@ ${t("game.crash.logAt", { path: logPath })}` : details);
     };
 
     return (
-        /* Scrolls, and only centres while there is room to.
+        /* `lang` is set here and nowhere higher: it decides which Han forms the browser draws, and
+           the document belongs to the game, whose language is the author's and the player's, not
+           this screen's. Scoping it to the screen keeps the shell in the machine's language without
+           touching a single glyph of the game.
+
+           Scrolls, and only centres while there is room to.
            A game window may be 480x320, and this screen has to work there: with the details open
            its content is taller than that, and a centred flex child that overflows loses its top
            to a scrollbar that does not exist. What the player saw was the stack trace, no title,
            and a Restart button cut off above the first pixel. `min-h-full` on the centring row
            lets short content sit in the middle and tall content grow the scroll container. */
-        <div className="h-screen w-screen overflow-y-auto bg-black text-white">
+        <div lang={getShellLocale()} className="h-screen w-screen overflow-y-auto bg-black text-white">
             <div className="flex min-h-full items-center justify-center p-8">
                 <div className="w-full max-w-xl">
                     <h1 className="text-lg font-medium">{t("game.crash.title")}</h1>
