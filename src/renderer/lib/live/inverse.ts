@@ -126,6 +126,16 @@ export type LiveBefore =
      * document by the time anybody asks, and no message in the session carries it.
      */
     | { op: "delete-block"; block: StoryBlock; at: LivePosition }
+    /**
+     * Every row a batch removed, whole, **in the document order they sat in**.
+     *
+     * The order is load-bearing and it is the opposite of `move-blocks`'s reason. Rows are put back
+     * front to back so that a container is there before the rows that live inside it; the anchors
+     * that then point at siblings not yet restored are exactly what the host's memory of deleted
+     * positions is for, and a walk from the back would place a child into a parent that does not
+     * exist yet.
+     */
+    | { op: "delete-blocks"; rows: readonly { block: StoryBlock; at: LivePosition }[] }
     /** Where the row was before it moved. A move states its destination only. */
     | { op: "move-block"; at: LivePosition }
     /**
@@ -166,7 +176,8 @@ export type LiveBefore =
 export function captureBefore(op: LiveOp, document: StoryDocument): LiveBefore | null {
     switch (op.op) {
         case "insert-block":
-            // Nothing. The inverse is a delete of a row the effect already names.
+        case "insert-blocks":
+            // Nothing. The inverse is a delete of rows the effect already names.
             return null;
 
         case "update-block": {
@@ -224,6 +235,29 @@ export function captureBefore(op: LiveOp, document: StoryDocument): LiveBefore |
             }
             const at = positionOf(scene, op.blockId);
             return at ? { op: "delete-block", block: structuredClone(block), at } : null;
+        }
+
+        case "delete-blocks": {
+            const scene = document.scenes[op.sceneId];
+            if (!scene) {
+                return null;
+            }
+            const rows: { block: StoryBlock; at: LivePosition }[] = [];
+            for (const blockId of op.blockIds) {
+                const block = scene.blocks[blockId];
+                if (!block) {
+                    // A row inside a container an earlier id of this same batch already took with
+                    // it. Nothing to record: the container's record is what puts it back, and the
+                    // guard on inverting insists every child of a recorded row is recorded too.
+                    continue;
+                }
+                const at = positionOf(scene, blockId);
+                if (!at) {
+                    return null;
+                }
+                rows.push({ block: structuredClone(block), at });
+            }
+            return rows.length > 0 ? { op: "delete-blocks", rows } : null;
         }
 
         case "move-block": {
@@ -439,6 +473,80 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                     sceneId: op.sceneId,
                     block: structuredClone(before.block),
                     target: { parentId: before.at.parentId, beforeBlockId: before.at.beforeBlockId },
+                },
+            };
+        }
+
+        case "insert-blocks": {
+            const scene = document.scenes[op.sceneId];
+            if (!scene) {
+                return { impossible: "scene-gone" };
+            }
+            const own = new Set(op.inserts.map(insert => insert.block.id));
+            for (const insert of op.inserts) {
+                const row = scene.blocks[insert.block.id];
+                if (!row) {
+                    return { impossible: "row-gone" };
+                }
+                // A row this batch put down may hold the rows this batch put inside it - a pasted
+                // container is exactly that. What it may NOT hold is anything somebody has written
+                // into it since, because taking the paste back would take that with it.
+                if (row.childrenIds.some(childId => !own.has(childId))) {
+                    return { impossible: "container-filled" };
+                }
+            }
+            // In the order they were placed, so a container is named before the rows inside it. The
+            // applier removes a container's children with it and treats an id already gone as
+            // nothing to do, which is what makes that order safe rather than merely tidy.
+            return {
+                op: {
+                    op: "delete-blocks",
+                    sceneId: op.sceneId,
+                    blockIds: op.inserts.map(insert => insert.block.id),
+                },
+            };
+        }
+
+        case "delete-blocks": {
+            if (!before || before.op !== "delete-blocks") {
+                return { impossible: "no-record" };
+            }
+            const scene = document.scenes[op.sceneId];
+            if (!scene) {
+                return { impossible: "scene-gone" };
+            }
+            const recorded = new Set(before.rows.map(row => row.block.id));
+            for (const row of before.rows) {
+                if (scene.blocks[row.block.id]) {
+                    return { impossible: "row-restored" };
+                }
+                // A container is restorable exactly when the rows that were inside it are coming
+                // back too. One that is not - a selection delete names roots only - would come back
+                // empty, which is not the document the author asked to have back.
+                if (row.block.childrenIds.some(childId => !recorded.has(childId))) {
+                    return { impossible: "subtree-lost" };
+                }
+                if (row.at.parentId !== null && !recorded.has(row.at.parentId) && !scene.blocks[row.at.parentId]) {
+                    return { impossible: "container-gone" };
+                }
+            }
+            // Front to back, which is the order they sat in: a container is put back before the rows
+            // that go inside it. Successors are NOT checked, for the reason a single delete's
+            // inverse does not check its own - the host resolves an insert's anchor against the rows
+            // it watched being deleted, so a row still lands where it was even though its neighbour
+            // in this same batch has not been restored yet.
+            //
+            // Copies, because applying an insert writes the block into the document and edits it on
+            // the way in; handing over the records themselves would leave a redo holding blocks that
+            // belong to the scene.
+            return {
+                op: {
+                    op: "insert-blocks",
+                    sceneId: op.sceneId,
+                    inserts: before.rows.map(row => ({
+                        block: structuredClone(row.block),
+                        target: { parentId: row.at.parentId, beforeBlockId: row.at.beforeBlockId },
+                    })),
                 },
             };
         }

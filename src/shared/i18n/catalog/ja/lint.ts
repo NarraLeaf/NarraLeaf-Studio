@@ -306,6 +306,11 @@ export const lint = {
             description: "翻訳した後に原文が変わっている",
             message: "{locale} の翻訳が原文より古い",
         },
+        localizationMarkup: {
+            title: "訳文に文字装飾がない",
+            description: "原文には装飾があり、訳文はそれを持たずに表示される",
+            message: "{locale} の訳文がこの行の装飾を持っていない",
+        },
         localizationOrphan: {
             title: "対応する行のない翻訳",
             description: "対応する行が存在しない翻訳",

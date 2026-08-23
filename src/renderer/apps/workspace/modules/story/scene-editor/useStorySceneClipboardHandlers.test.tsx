@@ -44,7 +44,7 @@ function setup(options: {
     localizationService?: unknown;
     voiceService?: unknown;
 } = {}) {
-    const storyService = { insertBlock: vi.fn() };
+    const storyService = { insertBlocks: vi.fn() };
     const frozen = { value: false };
     const showNotification = vi.fn();
     const spies = {
@@ -134,7 +134,10 @@ describe("plain paste over the confirm threshold", () => {
         release(true);
         await new Promise(resolve => setTimeout(resolve, 0));
 
-        expect(handlers.storyService.insertBlock).toHaveBeenCalledTimes(STORY_PASTE_CONFIRM_THRESHOLD + 10);
+        // One call carrying every row: the paste is one gesture. What is counted is the rows.
+        expect(handlers.storyService.insertBlocks).toHaveBeenCalledTimes(1);
+        expect((handlers.storyService.insertBlocks.mock.calls[0][2] as unknown[]).length)
+            .toBe(STORY_PASTE_CONFIRM_THRESHOLD + 10);
     });
 
     /**
@@ -153,7 +156,7 @@ describe("plain paste over the confirm threshold", () => {
         release(true);
         await new Promise(resolve => setTimeout(resolve, 0));
 
-        expect(handlers.storyService.insertBlock).not.toHaveBeenCalled();
+        expect(handlers.storyService.insertBlocks).not.toHaveBeenCalled();
         expect(handlers.recordHistory).not.toHaveBeenCalled();
     });
 });
@@ -233,9 +236,9 @@ describe("translations travelling with copied rows", () => {
     }
 
     /** The text id the paste minted, read off the block it handed the story service. */
-    function pastedTextId(storyService: { insertBlock: { mock: { calls: unknown[][] } } }): string {
-        const block = storyService.insertBlock.mock.calls[0][2] as StoryBlock;
-        return (block.payload as unknown as { text: { textId: string } }).text.textId;
+    function pastedTextId(storyService: { insertBlocks: { mock: { calls: unknown[][] } } }): string {
+        const inserts = storyService.insertBlocks.mock.calls[0][2] as { block: StoryBlock }[];
+        return (inserts[0].block.payload as unknown as { text: { textId: string } }).text.textId;
     }
 
     it("re-keys a copied line's translation onto the row the paste created", async () => {
@@ -366,9 +369,9 @@ describe("takes travelling with moved rows", () => {
         } as unknown as ClipboardEvent<HTMLDivElement>;
     }
 
-    function pastedTextId(storyService: { insertBlock: { mock: { calls: unknown[][] } } }): string {
-        const block = storyService.insertBlock.mock.calls[0][2] as StoryBlock;
-        return (block.payload as unknown as { text: { textId: string } }).text.textId;
+    function pastedTextId(storyService: { insertBlocks: { mock: { calls: unknown[][] } } }): string {
+        const inserts = storyService.insertBlocks.mock.calls[0][2] as { block: StoryBlock }[];
+        return (inserts[0].block.payload as unknown as { text: { textId: string } }).text.textId;
     }
 
     it("keeps a voiced line's take when the line is pasted into another scene", async () => {
@@ -425,7 +428,7 @@ describe("takes travelling with moved rows", () => {
         destination.result.current.handlePaste(blocksPasteEvent(JSON.stringify(payload)));
         await new Promise(resolve => setTimeout(resolve, 0));
 
-        expect(destination.storyService.insertBlock).toHaveBeenCalledTimes(1);
+        expect(destination.storyService.insertBlocks).toHaveBeenCalledTimes(1);
         expect(voice.adopted).toEqual([]);
         expect(voice.loaded.size).toBe(0);
     });
@@ -545,9 +548,9 @@ describe("pasting while a live session is open", () => {
         } as unknown as ClipboardEvent<HTMLDivElement>;
     }
 
-    function pastedTextId(storyService: { insertBlock: { mock: { calls: unknown[][] } } }): string {
-        const block = storyService.insertBlock.mock.calls[0][2] as StoryBlock;
-        return (block.payload as unknown as { text: { textId: string } }).text.textId;
+    function pastedTextId(storyService: { insertBlocks: { mock: { calls: unknown[][] } } }): string {
+        const inserts = storyService.insertBlocks.mock.calls[0][2] as { block: StoryBlock }[];
+        return (inserts[0].block.payload as unknown as { text: { textId: string } }).text.textId;
     }
 
     /** A session over this project, which is what freezes everything but its story document. */
@@ -589,16 +592,16 @@ describe("pasting while a live session is open", () => {
         expect(textId).not.toBe("text-1");
         // ⚠ On the insert itself, which is what makes them travel at all: a session hands the
         // operation to the room, and an operation cannot be added to once it has gone.
-        const [first, ...rest] = handlers.storyService.insertBlock.mock.calls;
+        // Once for the paste, on the one operation the whole paste is: the entries belong to the
+        // gesture rather than to a row of it.
+        expect(handlers.storyService.insertBlocks).toHaveBeenCalledTimes(1);
         // What travels is what the ordinary paste writes, unit for unit. The sign-off is not
         // inherited - a review is a review of that unit and nobody has given this one - but the hash
         // it was written against is, and so is everything a take carries.
-        expect(first[4]).toEqual({
+        expect(handlers.storyService.insertBlocks.mock.calls[0][3]).toEqual({
             translations: { ja: { [textId]: { ...JA_UNIT, status: "translated" } } },
             voice: { ja: { [textId]: JA_TAKE } },
         });
-        // Once for the paste, not once per row: the entries belong to the gesture.
-        expect(rest.every(call => call[4] === undefined)).toBe(true);
     });
 
     /**
@@ -629,7 +632,7 @@ describe("pasting while a live session is open", () => {
         expect(voice.adopted).toEqual([]);
         // And it is not that nothing was derived - the entries are on the operation, whole.
         const textId = pastedTextId(handlers.storyService);
-        expect(handlers.storyService.insertBlock.mock.calls[0][4]).toEqual({
+        expect(handlers.storyService.insertBlocks.mock.calls[0][3]).toEqual({
             translations: { ja: { [textId]: { ...JA_UNIT, status: "translated" } } },
             voice: { ja: { [textId]: JA_TAKE } },
         });
@@ -658,7 +661,7 @@ describe("pasting while a live session is open", () => {
         handlers.result.current.handlePaste(blocksPasteEvent(JSON.stringify(payload)));
         await new Promise(resolve => setTimeout(resolve, 0));
 
-        expect(handlers.storyService.insertBlock).toHaveBeenCalledTimes(1);
+        expect(handlers.storyService.insertBlocks).toHaveBeenCalledTimes(1);
         expect(localization.adopted).toEqual([]);
         expect(voice.adopted).toEqual([]);
         expect(voice.loaded.size).toBe(0);
@@ -684,7 +687,7 @@ describe("pasting while a live session is open", () => {
         }
         await new Promise(resolve => setTimeout(resolve, 0));
 
-        expect(handlers.storyService.insertBlock).toHaveBeenCalledTimes(4);
+        expect(handlers.storyService.insertBlocks).toHaveBeenCalledTimes(4);
         expect(handlers.showNotification).toHaveBeenCalledTimes(1);
     });
 });

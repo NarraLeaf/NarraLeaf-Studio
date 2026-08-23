@@ -1,18 +1,25 @@
 /**
  * Source-text serialization and translated-text parsing for game localization.
  *
- * A story text segment is serialized to a translator-facing plain string where
- * each inline interpolation run becomes a numbered `{n}` placeholder (n = the
- * interpolation's order of appearance). Styling marks and pauses are invisible
- * here on purpose: restyling a line must not invalidate its translations.
+ * A story text segment has two translator-facing serializations, and the difference between them is
+ * the whole design:
  *
- * The same serialized form is hashed (FNV-1a) into `LocalizationUnit.sourceHash`
- * so staleness can be derived at read time.
+ *  - **{@link serializeSegmentSourceText} is what a translation is hashed against.** Inline
+ *    interpolations become numbered `{n}` placeholders and everything else - styling, emphasis,
+ *    pauses, reveal-time events - is invisible. That is deliberate: restyling a line must not
+ *    invalidate its translations.
+ *  - **{@link serializeSegmentMarkupText} is what the translator is shown and asked to reproduce.**
+ *    It carries the same text with every styled span and every zero-width token wrapped in a
+ *    numbered run tag, so a translation can put the emphasis, the pause and the portrait change back
+ *    where the target language wants them.
+ *
+ * Both project the same characters, so a line with no styling serializes identically either way and
+ * every translation written before run tags existed keeps working unchanged.
  *
  * Comments in English per project convention.
  */
 
-import type { StoryTextSegment } from "../types/story/document";
+import type { StoryRichRun, StoryTextSegment } from "../types/story/document";
 import { fnv1aHex } from "./contentHash";
 
 const SOURCE_HASH_PREFIX = "fnv1a:";
@@ -38,6 +45,170 @@ export function serializeSegmentSourceText(segment: StoryTextSegment): string {
     return out;
 }
 
+/**
+ * Serialize a segment to the form a translator is shown and asked to reproduce: the same characters
+ * {@link serializeSegmentSourceText} projects, with every styled span and every zero-width token
+ * wrapped in a run tag.
+ *
+ * The number in a tag is the run's index in `segment.rich`, not a count of anything - so `‹4›` means
+ * "run 4, whatever it is", the same bargain the `.txt` script codec strikes. A translator never has
+ * to know what run 4 *is*; they move the tag to where the sentence wants it and the styling follows.
+ *
+ * Interpolations stay bare `{n}` even when the run carries marks of its own: an interpolation's
+ * styling is compiled into the value's own Word, which a translation carries whole.
+ *
+ * A segment with nothing to tag returns exactly what the hashed serialization returns.
+ */
+export function serializeSegmentMarkupText(segment: StoryTextSegment): string {
+    if (!segment.rich || segment.rich.length === 0) {
+        return segment.value;
+    }
+    let out = "";
+    let interpolationIndex = 0;
+    for (let index = 0; index < segment.rich.length; index += 1) {
+        const run = segment.rich[index];
+        if ("pause" in run || "event" in run) {
+            out += `${RUN_TAG_OPEN}${index}${RUN_TAG_CLOSE}`;
+            continue;
+        }
+        if ("interpolation" in run) {
+            out += `{${interpolationIndex}}`;
+            interpolationIndex += 1;
+            continue;
+        }
+        if (!run.text) {
+            continue;
+        }
+        out += run.marks
+            ? `${RUN_TAG_OPEN}${index}${RUN_TAG_CLOSE}${run.text}${RUN_TAG_OPEN}/${index}${RUN_TAG_CLOSE}`
+            : run.text;
+    }
+    return out;
+}
+
+/**
+ * True for a run a tag can name: one that lends styling, or one that projects no characters at all.
+ * An unstyled text run is not one - tagging it would change nothing, so a tag on it is a mistake.
+ */
+function isTaggableRun(run: StoryRichRun | undefined): boolean {
+    if (!run) {
+        return false;
+    }
+    return "pause" in run || "event" in run || ("text" in run && Boolean(run.marks));
+}
+
+/** True when a segment carries anything a run tag would name - styling, a pause, an inline event. */
+export function segmentHasMarkup(segment: StoryTextSegment): boolean {
+    return Boolean(segment.rich?.some(isTaggableRun));
+}
+
+/**
+ * Split a translation into the pieces a line is rebuilt from, resolving run tags against the source
+ * runs they name.
+ *
+ * Every way a tag can be wrong resolves to "render the characters plainly" rather than to an error:
+ * a translation is written by someone who cannot run the game, and a mistyped tag must cost the
+ * styling of one phrase, never the line. {@link validateMarkupParity} is what says so out loud.
+ *
+ *  - A tag naming a run this segment does not have is dropped, and its contents stay.
+ *  - An opening tag never closed styles the rest of the line, which is what the translator was
+ *    reaching for anyway.
+ *  - A closing tag with nothing open is dropped.
+ *  - Tags do not nest: an opening tag inside another closes the outer one first, because a run wears
+ *    exactly one set of marks and a nested span would have to invent a merge rule.
+ */
+export function parseTranslatedRuns(target: string, sourceRuns: readonly StoryRichRun[] = []): TranslatedRunPart[] {
+    const parts: TranslatedRunPart[] = [];
+    let open: number | undefined;
+
+    const pushText = (text: string): void => {
+        if (!text) {
+            return;
+        }
+        const previous = parts[parts.length - 1];
+        if (previous && previous.kind === "text" && previous.runIndex === open) {
+            previous.text += text;
+            return;
+        }
+        parts.push(open === undefined ? { kind: "text", text } : { kind: "text", text, runIndex: open });
+    };
+
+    // The two vocabularies are independent - `{n}` counts interpolations, `‹n›` indexes runs - so one
+    // pass over the tags splits the string and a second over each piece finds the placeholders.
+    const pushSpan = (text: string): void => {
+        for (const part of parseTranslatedText(text)) {
+            if (part.kind === "text") {
+                pushText(part.text);
+            } else {
+                parts.push(part);
+            }
+        }
+    };
+
+    RUN_TAG_PATTERN.lastIndex = 0;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = RUN_TAG_PATTERN.exec(target)) !== null) {
+        pushSpan(target.slice(lastIndex, match.index));
+        lastIndex = match.index + match[0].length;
+        const index = Number(match[2]);
+        const run = sourceRuns[index];
+        if (match[1]) {
+            if (open === index) {
+                open = undefined;
+            }
+            continue;
+        }
+        if (!run) {
+            continue;
+        }
+        if ("pause" in run || "event" in run) {
+            parts.push({ kind: "run", runIndex: index });
+            continue;
+        }
+        // A run with no marks has nothing to lend, so tagging it changes nothing rather than opening
+        // a span that would have to be closed.
+        open = isTaggableRun(run) ? index : undefined;
+    }
+    pushSpan(target.slice(lastIndex));
+    return parts;
+}
+
+export type MarkupParityIssue =
+    /** The translation tags a run this line does not have. */
+    | { kind: "unknownRun"; index: number }
+    /** The source run is styled, or is a pause or an event, and the translation never names it. */
+    | { kind: "missingRun"; index: number };
+
+/**
+ * Compare a translation's run tags against the source segment's runs.
+ *
+ * Both shapes are warnings rather than defects, and for the same reason `{n}` parity is: a
+ * translator may well decide a phrase needs no emphasis in their language, and a line that renders
+ * plainly is a line that renders.
+ */
+export function validateMarkupParity(target: string, segment: StoryTextSegment): MarkupParityIssue[] {
+    const runs = segment.rich ?? [];
+    const referenced = new Set<number>();
+    RUN_TAG_PATTERN.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = RUN_TAG_PATTERN.exec(target)) !== null) {
+        referenced.add(Number(match[2]));
+    }
+    const issues: MarkupParityIssue[] = [];
+    for (const index of [...referenced].sort((a, b) => a - b)) {
+        if (!isTaggableRun(runs[index])) {
+            issues.push({ kind: "unknownRun", index });
+        }
+    }
+    for (let index = 0; index < runs.length; index += 1) {
+        if (isTaggableRun(runs[index]) && !referenced.has(index)) {
+            issues.push({ kind: "missingRun", index });
+        }
+    }
+    return issues;
+}
+
 /** Count of inline interpolation runs (the valid `{n}` placeholder range in translations). */
 export function countSegmentInterpolations(segment: StoryTextSegment): number {
     if (!segment.rich) {
@@ -60,6 +231,31 @@ export type TranslatedTextPart =
     | { kind: "placeholder"; index: number };
 
 const PLACEHOLDER_PATTERN = /\{(\d+)\}/g;
+
+/**
+ * The fences of a run tag, and the same two characters the `.txt` script codec uses to address a run
+ * by index - one problem, one answer, and an author reading both files learns one thing.
+ *
+ * A tag is recognised only as the exact shape `‹digits›` or `‹/digits›`, never on the fence alone.
+ * That is what makes the format additive: `‹` and `›` are single guillemets, which Swiss French and
+ * German set as quotation marks, and prose that uses them is left alone. It is the same rule `{n}`
+ * has always followed - a brace is only a placeholder when digits and a closing brace follow it.
+ */
+const RUN_TAG_OPEN = "‹";
+const RUN_TAG_CLOSE = "›";
+const RUN_TAG_PATTERN = /‹(\/?)(\d+)›/g;
+
+/**
+ * A translation split into the pieces the compiler rebuilds a line from.
+ *
+ * `runIndex` on a text part names the source run whose marks those characters wear; absent means
+ * unstyled. A `run` part is a source run that projects no characters of its own - an inline pause or
+ * a reveal-time event - dropped in at the point the translation puts it.
+ */
+export type TranslatedRunPart =
+    | { kind: "text"; text: string; runIndex?: number }
+    | { kind: "placeholder"; index: number }
+    | { kind: "run"; runIndex: number };
 
 export type PlaceholderParityIssue =
     /** The translation references `{index}` but the source has no such interpolation. */

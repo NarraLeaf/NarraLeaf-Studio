@@ -77,8 +77,22 @@ function apply(document: StoryDocument, op: LiveOp): void {
                 updateBlockPayload(document.scenes[edit.sceneId], edit.blockId, edit.payload);
             }
             return;
+        case "insert-blocks":
+            // In the order given, which is what lets a later entry name an earlier one as its
+            // parent - a pasted container and the rows inside it.
+            for (const insert of op.inserts) {
+                insertBlockInScene(document.scenes[op.sceneId], structuredClone(insert.block), insert.target);
+            }
+            return;
         case "delete-block":
             deleteBlockFromScene(document.scenes[op.sceneId], op.blockId);
+            return;
+        case "delete-blocks":
+            // A container takes the rows inside it, so an id already gone by the time its turn comes
+            // is nothing to do rather than an error.
+            for (const blockId of op.blockIds) {
+                deleteBlockFromScene(document.scenes[op.sceneId], blockId);
+            }
             return;
         case "move-block":
             moveBlockInScene(document.scenes[op.sceneId], op.blockId, op.target);
@@ -417,6 +431,95 @@ describe("taking back a batch", () => {
         expect(asOp(invert(document, done)).op).toBe("update-blocks");
         expect(document.scenes.s1.blocks.a.payload).toEqual({ text: { textId: "text-a", value: "a", role: "note" } });
         expect(document.scenes.s1.blocks.z.payload).toEqual({ text: { textId: "text-z", value: "z", role: "note" } });
+    });
+});
+
+describe("taking back a whole gesture", () => {
+    /**
+     * ⚠ Why the batch verbs exist at all.
+     *
+     * A paste sent as a run of single inserts is a run of undo steps: taking one back inside a
+     * session costs a press per row, while the same paste outside a session costs one. One gesture
+     * is one operation, and the vocabulary says so for updates and moves already.
+     */
+    it("takes a whole paste back in one operation", () => {
+        const document = makeDocument();
+        const done = perform(document, {
+            op: "insert-blocks",
+            sceneId: "s1",
+            inserts: [
+                { block: note("p1"), target: { parentId: null, beforeBlockId: "z" } },
+                { block: note("p2"), target: { parentId: null, beforeBlockId: "z" } },
+                { block: note("p3"), target: { parentId: null, beforeBlockId: "z" } },
+            ],
+        });
+        expect(document.scenes.s1.rootBlockIds).toEqual(["a", "g", "p1", "p2", "p3", "z"]);
+
+        const taken = asOp(invert(document, done));
+
+        expect(taken).toEqual({ op: "delete-blocks", sceneId: "s1", blockIds: ["p1", "p2", "p3"] });
+        apply(document, taken);
+        expect(document.scenes.s1.rootBlockIds).toEqual(["a", "g", "z"]);
+    });
+
+    it("puts a deleted selection back where it sat, in one operation", () => {
+        const document = makeDocument();
+        const done = perform(document, { op: "delete-blocks", sceneId: "s1", blockIds: ["a", "z"] });
+        expect(document.scenes.s1.rootBlockIds).toEqual(["g"]);
+
+        undo(document, done);
+
+        expect(document.scenes.s1.rootBlockIds).toEqual(["a", "g", "z"]);
+    });
+
+    it("puts a pasted container back with the rows that were inside it", () => {
+        // The round trip a paste of a subtree has to survive: undo removes the container and its
+        // rows, redo brings both back. The container comes back empty and each row re-fills it,
+        // which is why the entries are ordered parent-first.
+        const document = makeDocument();
+        const done = perform(document, {
+            op: "insert-blocks",
+            sceneId: "s1",
+            inserts: [
+                { block: group("g2"), target: { parentId: null, beforeBlockId: null } },
+                { block: note("k1"), target: { parentId: "g2" } },
+                { block: note("k2"), target: { parentId: "g2" } },
+            ],
+        });
+        expect(document.scenes.s1.blocks.g2.childrenIds).toEqual(["k1", "k2"]);
+
+        const undone = undo(document, done);
+        expect(document.scenes.s1.rootBlockIds).toEqual(["a", "g", "z"]);
+        expect(document.scenes.s1.blocks.k1).toBeUndefined();
+
+        perform(document, asOp(invert(document, undone)));
+
+        expect(document.scenes.s1.rootBlockIds).toEqual(["a", "g", "z", "g2"]);
+        expect(document.scenes.s1.blocks.g2.childrenIds).toEqual(["k1", "k2"]);
+    });
+
+    it("refuses to put back a container whose rows are not coming with it", () => {
+        // A selection delete names the roots only, so the rows inside a container are gone with no
+        // record of them anywhere. Restoring the container alone would give the author back an empty
+        // one, which is not the document they asked to have back.
+        const document = makeDocument();
+        const done = perform(document, { op: "delete-blocks", sceneId: "s1", blockIds: ["g"] });
+
+        expect(asImpossible(invert(document, done))).toBe("subtree-lost");
+    });
+
+    it("refuses to take back a paste somebody has since written into", () => {
+        const document = makeDocument();
+        const done = perform(document, {
+            op: "insert-blocks",
+            sceneId: "s1",
+            inserts: [{ block: group("g2"), target: { parentId: null, beforeBlockId: null } }],
+        });
+        // Somebody else put a line inside the container this paste created. Taking the paste back
+        // would take their line with it.
+        perform(document, { op: "insert-block", sceneId: "s1", block: note("theirs"), target: { parentId: "g2" } }, OTHER);
+
+        expect(asImpossible(invert(document, done))).toBe("container-filled");
     });
 });
 
