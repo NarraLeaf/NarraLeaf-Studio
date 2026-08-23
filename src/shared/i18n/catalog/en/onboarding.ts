@@ -144,20 +144,28 @@ export const onboarding = {
     /**
      * The words inside the preview.
      *
-     * A scene nobody wrote, standing in for the one the author will. Deliberately generic and
-     * deliberately short: the pane exists to show what a *setting* does to a row, and a sample with
-     * a story in it would be read instead of looked at.
+     * A scene nobody wrote, which greets the reader instead of standing in for the story they have
+     * not written yet. Still deliberately short - the pane exists to show what a *setting* does to
+     * a row, and a scene with a plot in it would be read instead of looked at - but the words are
+     * addressed to the person in setup rather than to nobody, so the one paragraph they do read
+     * tells them what the screen beside it is for.
      */
     sample: {
-        /** In the title bar, where a window names the project it is showing. */
-        projectName: "Sample project",
+        /**
+         * In the title bar, where a window names the project it is showing.
+         *
+         * The same in every language: it is a project's name, and a project's name is whatever its
+         * author typed, not a label Studio translates.
+         */
+        projectName: "Welcome to Studio",
         /** Under the scene's name in the editor header: the story document it belongs to. */
         storyName: "Chapter 1",
-        scene: "Rooftop, evening",
-        speaker: "Anyo",
-        line: "The lights came on all at once, the whole way down the hill.",
-        lineContinued: "You could see where the road ended.",
-        narration: "Below them, the town was already awake.",
+        scene: "Hello!",
+        /** The sample's one character, named after the engine. A name, so it is not translated. */
+        speaker: "Narra",
+        line: "Welcome to NarraLeaf Studio!",
+        lineContinued: "Choose the look you want here.",
+        narration: "More of it can be changed later, in Settings.",
         background: "Rooftop",
         placement: "center",
         transition: "fade",
