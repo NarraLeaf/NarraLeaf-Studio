@@ -1,10 +1,10 @@
 /**
- * Hold the screen awake while the exported game is the page being looked at.
+ * Hold the screen awake while the exported game advances on its own.
  *
- * The desktop shell takes a display block for the same reason (see `main/displaySleep.ts`):
- * reading is idle as far as the system is concerned, and auto mode plays for as long as the script
- * runs without a single input, so the screen blanks mid-scene. Canvas, DOM animation and Web Audio
- * reset no idle timer; only a playing `<video>` does.
+ * The desktop shell takes a display block for the same reason (see `main/displaySleep.ts`): auto
+ * mode plays for an hour without a single input, and neither the animation nor the audio a page
+ * draws resets the system's idle timer - only a playing `<video>` does - so the screen blanks
+ * mid-scene.
  *
  * A browser lends the lock rather than granting it: it is dropped the moment the tab stops being
  * visible and has to be asked for again when it comes back, which is what this keeps track of.
@@ -33,15 +33,23 @@ export interface ScreenWakeLockHost {
     warn(message: string): void;
 }
 
-export function installScreenWakeLock(host: ScreenWakeLockHost): void {
+/** The game's half of the decision. */
+export interface ScreenWakeLockKeeper {
+    /** Whether the game is advancing on its own and wants the screen kept awake. */
+    setRequested(requested: boolean): void;
+}
+
+export function installScreenWakeLock(host: ScreenWakeLockHost): ScreenWakeLockKeeper {
     const request = host.request;
     if (!request) {
-        return;
+        return { setRequested: () => undefined };
     }
     /** The lock currently held, or null when the screen is free to sleep. */
     let held: ScreenWakeLockSentinel | null = null;
-    /** True while a request is in flight, so a burst of visibility changes asks once. */
+    /** True while a request is in flight, so a burst of changes asks once. */
     let asking = false;
+    /** What the game last asked for. */
+    let requested = false;
     /**
      * Set once a request has been refused. Browsers refuse this for reasons that do not change
      * within a session - an insecure origin, a policy, a battery saver - and retrying on every
@@ -49,16 +57,30 @@ export function installScreenWakeLock(host: ScreenWakeLockHost): void {
      */
     let refused = false;
 
-    const acquire = async (): Promise<void> => {
-        if (held || asking || refused || !host.isVisible()) {
+    const wanted = (): boolean => requested && host.isVisible();
+
+    const drop = (): void => {
+        const sentinel = held;
+        held = null;
+        // The browser drops the lock on its own when the page is hidden; releasing it here as well
+        // is what keeps this from believing it still holds one it does not.
+        void sentinel?.release().catch(() => undefined);
+    };
+
+    const sync = async (): Promise<void> => {
+        if (!wanted()) {
+            drop();
+            return;
+        }
+        if (held || asking || refused) {
             return;
         }
         asking = true;
         try {
             const sentinel = await request();
-            // The tab can go away while the request is in flight; the lock granted to a page
-            // nobody is looking at is exactly the one this must not keep.
-            if (host.isVisible()) {
+            // The tab can go away, or the story stop moving, while the request is in flight; the
+            // lock granted for a moment that has passed is exactly the one this must not keep.
+            if (wanted()) {
                 held = sentinel;
             } else {
                 void sentinel.release().catch(() => undefined);
@@ -72,17 +94,15 @@ export function installScreenWakeLock(host: ScreenWakeLockHost): void {
     };
 
     host.onVisibilityChange(() => {
-        if (host.isVisible()) {
-            void acquire();
-            return;
-        }
-        const sentinel = held;
-        held = null;
-        // The browser drops the lock on its own when the page is hidden; releasing it here as well
-        // is what keeps this from believing it still holds one it does not.
-        void sentinel?.release().catch(() => undefined);
+        void sync();
     });
-    void acquire();
+
+    return {
+        setRequested: next => {
+            requested = next === true;
+            void sync();
+        },
+    };
 }
 
 function describe(error: unknown): string {

@@ -108,6 +108,18 @@ const consoleSinks = {
     error: console.error.bind(console),
 } as const;
 
+// Auto mode plays for an hour without a single input, and nothing this page draws resets the
+// system's idle timer, so the screen is held awake while the story moves on its own. The desktop
+// shell does the same with a platform display block.
+const screenWakeLock = installScreenWakeLock({
+    request: navigator.wakeLock ? () => navigator.wakeLock.request("screen") : null,
+    isVisible: () => document.visibilityState === "visible",
+    onVisibilityChange: listener => document.addEventListener("visibilitychange", listener),
+    warn: message => {
+        console.warn(message);
+    },
+});
+
 const bridge: GameRuntimePreloadBridge = {
     readPack,
     assetUrl,
@@ -127,6 +139,9 @@ const bridge: GameRuntimePreloadBridge = {
         // for a page: scripts, module state and every decoded asset go, while the stores this
         // shell keeps its saves and persistence in (see `webStorage`) are the browser's and stay.
         window.location.reload();
+    },
+    setDisplayAwake: awake => {
+        screenWakeLock.setRequested(awake);
     },
     getFullscreen: async () => document.fullscreenElement != null,
     setFullscreen: async (fullscreen: boolean) => {
@@ -301,18 +316,6 @@ window[GAME_RUNTIME_BRIDGE_KEY] = bridge;
 // Ask the browser not to evict saves under storage pressure; a denial is fine
 // (the data is still there, just not guaranteed durable).
 void navigator.storage?.persist?.().catch(() => undefined);
-
-// Reading is idle as far as the system is concerned, and auto mode plays for an
-// hour without a single input, so the screen is held awake while this page is
-// the one on show. The desktop shell does the same with a display block.
-installScreenWakeLock({
-    request: navigator.wakeLock ? () => navigator.wakeLock.request("screen") : null,
-    isVisible: () => document.visibilityState === "visible",
-    onVisibilityChange: listener => document.addEventListener("visibilitychange", listener),
-    warn: message => {
-        console.warn(message);
-    },
-});
 
 // Same policy as the desktop preload: a stray file drop must not navigate the
 // page away from the running game.
