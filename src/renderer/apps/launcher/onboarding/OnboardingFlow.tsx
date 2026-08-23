@@ -14,22 +14,13 @@ import { StudioPreview, type PreviewPanelId } from "./preview/StudioPreview";
 import { AppearanceStep } from "./steps/AppearanceStep";
 import { DoneStep } from "./steps/DoneStep";
 import { IdentityStep } from "./steps/IdentityStep";
-import { IntroStep } from "./steps/IntroStep";
 import { LanguageStep } from "./steps/LanguageStep";
 import { StoryStep } from "./steps/StoryStep";
 import { TeamStep } from "./steps/TeamStep";
+import { WelcomeStep } from "./steps/WelcomeStep";
 import { ZoomStep } from "./steps/ZoomStep";
 
-const STEPS = ["language", "appearance", "zoom", "identity", "team", "story", "done"] as const;
-
-/**
- * Where the run starts: before the first step rather than on it.
- *
- * The cover is not one of {@link STEPS} and is deliberately not in the array. It has no question, no
- * rail entry and no place in the count - "Step 1 of 8" would be a promise that the first of the
- * eight asks something. Everything the rail and the count are about begins at index 0.
- */
-const COVER_INDEX = -1;
+const STEPS = ["welcome", "language", "appearance", "zoom", "identity", "team", "story", "done"] as const;
 
 type OnboardingStep = (typeof STEPS)[number];
 
@@ -47,6 +38,14 @@ const SCREENS: Record<OnboardingStep, {
     expectation: TranslationKey;
     panel: PreviewPanelId;
 }> = {
+    welcome: {
+        rail: "onboarding.steps.welcome",
+        title: "onboarding.welcome.title",
+        expectation: "onboarding.welcome.expectation",
+        // Nothing on this screen changes a surface, so the sample shows what the screens without
+        // one of their own show.
+        panel: "dashboard",
+    },
     language: {
         rail: "onboarding.steps.language",
         title: "onboarding.language.title",
@@ -107,7 +106,8 @@ export interface OnboardingFlowProps {
 }
 
 /**
- * First-run setup: a cover, six questions and a closing screen, inside the launcher window.
+ * First-run setup: eight screens inside the launcher window - a way in, six questions and a closing
+ * screen.
  *
  * **The question on the left, what it does on the right.** Everything setup sets applies the moment
  * it is picked - there is no commit step and Continue is only ever navigation - so the pane beside
@@ -121,10 +121,10 @@ export interface OnboardingFlowProps {
  * launch rather than making the app unusable. Skipping leaves setup, though; it is not a way to step
  * over one question, and the rail is a map of what is coming rather than a set of shortcuts into it.
  *
- * **The cover is not a question.** It has no rail entry, no place in the count and no sample beside
- * it, and the run opens on it at {@link COVER_INDEX} - which is why `screen` is nullable here. It
- * carries the one thing that is about the whole flow rather than about any screen of it: importing a
- * settings file, which ends setup before it starts.
+ * **Every screen is built the same way**, including the first: a heading, one line under it, and its
+ * own control beside a sample. There is no title card - a splash would be the one screen here that
+ * is looked at rather than read, and the screen that opens a six-question flow is the one that can
+ * least afford to say nothing.
  *
  * **It degrades to one column.** `ui.zoomPercent` is answered inside this window, and at the top of
  * the range there is no longer room for two panes - so the preview and then the rail withdraw at
@@ -132,7 +132,7 @@ export interface OnboardingFlowProps {
  */
 export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
     const { t } = useTranslation();
-    const [index, setIndex] = useState<number>(COVER_INDEX);
+    const [index, setIndex] = useState(0);
     /**
      * Which surface the pane shows while the zoom screen is up.
      *
@@ -141,13 +141,12 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
      */
     const [zoomSurface, setZoomSurface] = useState<PreviewPanelId>("dashboard");
 
-    const onCover = index === COVER_INDEX;
-    const step = onCover ? null : STEPS[index];
-    const screen = step ? SCREENS[step] : null;
-    const panel = step === "zoom" ? zoomSurface : screen?.panel;
+    const step = STEPS[index];
+    const screen = SCREENS[step];
+    const panel = step === "zoom" ? zoomSurface : screen.panel;
     const isLast = index === STEPS.length - 1;
 
-    const back = useCallback(() => setIndex(current => Math.max(COVER_INDEX, current - 1)), []);
+    const back = useCallback(() => setIndex(current => Math.max(0, current - 1)), []);
     const next = useCallback(() => setIndex(current => Math.min(STEPS.length - 1, current + 1)), []);
 
     return (
@@ -168,11 +167,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 footer's job, on the one screen that is in front of the reader. */}
                             <div
                                 aria-label={t("onboarding.windowTitle", { name: APP_DISPLAY_NAME })}
-                                className={cn(
-                                    "w-32 shrink-0 flex-col border-r border-edge py-4",
-                                    // Away on the cover, with the sample: the cover is full width.
-                                    onCover ? "hidden" : "hidden min-[600px]:flex",
-                                )}
+                                className="hidden w-32 shrink-0 flex-col border-r border-edge py-4 min-[600px]:flex"
                             >
                                 <ol className="min-h-0 flex-1">
                                     {STEPS.map((entry, entryIndex) => {
@@ -219,25 +214,18 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                             </div>
 
                             <div className="flex min-w-0 flex-1 flex-col overflow-y-auto px-7 py-6">
-                                {screen ? (
-                                    <>
-                                        <h1 className="text-2xl font-semibold text-fg">{t(screen.title)}</h1>
-                                        <p className="mt-1.5 text-sm text-fg-muted">{t(screen.expectation)}</p>
-                                        <div className="mt-6">
-                                            {step === "language" && <LanguageStep />}
-                                            {step === "appearance" && <AppearanceStep />}
-                                            {step === "zoom" && (
-                                                <ZoomStep surface={zoomSurface} onSurfaceChange={setZoomSurface} />
-                                            )}
-                                            {step === "identity" && <IdentityStep />}
-                                            {step === "team" && <TeamStep />}
-                                            {step === "story" && <StoryStep />}
-                                            {step === "done" && <DoneStep onOpenTopic={onFinish} />}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <IntroStep onImported={() => onFinish()} />
-                                )}
+                                <h1 className="text-2xl font-semibold text-fg">{t(screen.title)}</h1>
+                                <p className="mt-1.5 text-sm text-fg-muted">{t(screen.expectation)}</p>
+                                <div className="mt-6">
+                                    {step === "welcome" && <WelcomeStep onImported={() => onFinish()} />}
+                                    {step === "language" && <LanguageStep />}
+                                    {step === "appearance" && <AppearanceStep />}
+                                    {step === "zoom" && <ZoomStep surface={zoomSurface} onSurfaceChange={setZoomSurface} />}
+                                    {step === "identity" && <IdentityStep />}
+                                    {step === "team" && <TeamStep />}
+                                    {step === "story" && <StoryStep />}
+                                    {step === "done" && <DoneStep onOpenTopic={onFinish} />}
+                                </div>
                             </div>
 
                             {/* A whole Studio window, of which this screen has room for the left
@@ -263,15 +251,13 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 the browser scrolls one to reveal a focused element - so putting the
                                 caret in the sample's insert slot slid the whole window sideways and
                                 took the rail off the screen. A clipped box has nothing to scroll. */}
-                            {panel && (
-                                <div className="hidden w-[420px] shrink-0 overflow-clip py-6 min-[780px]:flex">
-                                    <div className="relative min-h-0 flex-1">
-                                        <div className="absolute inset-y-0 left-0 flex w-[960px]">
-                                            <StudioPreview panel={panel} />
-                                        </div>
+                            <div className="hidden w-[420px] shrink-0 overflow-clip py-6 min-[780px]:flex">
+                                <div className="relative min-h-0 flex-1">
+                                    <div className="absolute inset-y-0 left-0 flex w-[960px]">
+                                        <StudioPreview panel={panel} />
                                     </div>
                                 </div>
-                            )}
+                            </div>
                         </div>
 
                         {/* The two ways through the run together on the right, in the order they
@@ -294,7 +280,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 {/* Present but dead on the cover rather than absent: the pair is
                                     the same two buttons in the same two places on every screen, and
                                     a Back that appears on the second screen moves Continue. */}
-                                <Button variant="ghost" onClick={back} disabled={onCover}>
+                                <Button variant="ghost" onClick={back} disabled={index === 0}>
                                     <ChevronLeft className="h-4 w-4" />
                                     {t("common.back")}
                                 </Button>
@@ -304,7 +290,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                     </Button>
                                 ) : (
                                     <Button variant="primary" onClick={next}>
-                                        {onCover ? t("onboarding.nav.begin") : t("common.next")}
+                                        {t("common.next")}
                                         <ChevronRight className="h-4 w-4" />
                                     </Button>
                                 )}

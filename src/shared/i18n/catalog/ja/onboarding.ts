@@ -11,6 +11,7 @@ export const onboarding = {
     windowTitle: "{name} へようこそ",
     progress: "進捗 {current}/{total}",
     steps: {
+        welcome: "ようこそ",
         language: "言語",
         appearance: "外観",
         zoom: "拡大率",
@@ -19,8 +20,8 @@ export const onboarding = {
         story: "ストーリーエディター",
         done: "完了",
     },
-    intro: {
-        greeting: "ようこそ",
+    welcome: {
+        title: "ようこそ",
         expectation: "Studio の見た目と書き心地について、いくつか質問します。どれも後から設定で変更できます。",
         haveSettings: "ほかのコンピューターで Studio を使っていますか？",
     },
@@ -69,7 +70,6 @@ export const onboarding = {
         notice: "画面のプレビュー。入力できる行のほかは、どれも動かない",
     },
     nav: {
-        begin: "セットアップを開始",
         skip: "セットアップをスキップ",
         finish: "Studio を開く",
     },
