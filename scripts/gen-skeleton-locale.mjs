@@ -1,23 +1,25 @@
 // Builds the skeleton project template's content as it reads in another language.
 //
 // The skeleton is authored once, in English (`resources/templates/skeleton/content/`), and the
-// wizard hands an author writing in Chinese a project authored in Chinese instead — story, screens,
-// layer names and all. That second tree is `content.zh/`, and this script is what produces it, so
-// the two can never be two projects: everything structural (ids, layouts, blueprints, assets) is
-// copied from the English tree unchanged, and the only thing that differs is the words.
+// wizard hands an author writing in Chinese or Japanese a project authored in that language instead
+// — story, screens, layer names and all. Those trees are `content.zh/` and `content.ja/`, and this
+// script is what produces them, so a variant can never become a second project: everything
+// structural (ids, layouts, blueprints, assets) is copied from the English tree unchanged, and the
+// only thing that differs is the words.
 //
-// Two sources of words, and neither is invented here:
+// Two sources of words per variant, and neither is invented here:
 //   - the story, the character names and the named keys come from the template's OWN translation
-//     file (`editor/localization/zh-CN.json`), promoted into the source text;
+//     file for that language (`editor/localization/zh-CN.json`, `ja.json`), promoted into the
+//     source text;
 //   - everything the localization system never covered - button labels, screen text, confirm
-//     dialogs, element and blueprint names - comes from the table beside this script.
+//     dialogs, element and blueprint names - comes from that variant's table beside this script.
 //
 // The English text becomes `editor/localization/en.json`, so a project made in Chinese ships an
-// English translation exactly as one made in English ships a Chinese one, and the Japanese file is
-// carried over with its source hashes recomputed against the new source text.
+// English translation exactly as one made in English ships a Chinese one, and the other languages'
+// files are carried over with their source hashes recomputed against the new source text.
 //
 // Regenerate after editing the English skeleton:  node scripts/gen-skeleton-locale.mjs
-// Verify the committed tree matches:              node scripts/gen-skeleton-locale.mjs --check
+// Verify the committed trees match:               node scripts/gen-skeleton-locale.mjs --check
 // A string that has no entry in the table fails the run and is named, so English cannot leak into
 // the variant by being forgotten.
 
@@ -27,7 +29,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_DIR = resolve(HERE, "../resources/templates/skeleton");
-const TABLES = ["zh"];
+const TABLES = ["zh", "ja"];
 
 /** Node params that hold text a player reads, or a name an author reads. Nothing else is touched. */
 const TRANSLATED_NODE_PARAMS = new Set([
@@ -93,10 +95,13 @@ function buildVariant(locale) {
                 props[key] = say(props[key]);
             }
         }
-        // A preview row is text through and through - the line, the name above it, the body of a
-        // notification - so every string in one goes through the table. A field added later shows
-        // up as a missing entry rather than as English nobody noticed.
-        for (const item of props.previewItems ?? []) {
+        // A list draws `items` when no graph has written any, so those rows are what an author
+        // sees on the canvas and what the choice list shows until the game runs. They are text
+        // through and through - the line, the name above it, the body of a notification - so every
+        // string in one goes through the table, discriminators (`type: "say"`) and row ids
+        // included: a field added later then shows up as a missing entry rather than as English
+        // nobody noticed.
+        for (const item of props.items ?? []) {
             for (const [key, value] of Object.entries(item ?? {})) {
                 if (typeof value === "string") {
                     item[key] = say(value);

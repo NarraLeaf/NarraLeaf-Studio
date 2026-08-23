@@ -121,7 +121,10 @@ export function ProgressCircle({
                     cx={size / 2}
                     cy={size / 2}
                     r={radius}
-                    stroke="rgb(255 255 255 / 0.1)"
+                    // The unfilled part of the ring. A token rather than a white overlay: the
+                    // component is drawn on light surfaces too, where white on white is no track
+                    // at all and the arc reads as a fragment floating in space.
+                    stroke="var(--nl-fill)"
                     strokeWidth={strokeWidth}
                     fill="none"
                 />

@@ -1,7 +1,7 @@
 {
     "name": "Skeleton",
     "description": "A three-scene story with a branching choice, and title, scenes, save, load, config and backlog screens with their blueprints already wired.",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "designSize": { "width": 1920, "height": 1080 },
     "locales": {
         "zh": {
@@ -17,6 +17,11 @@
         "zh": {
             "remove": [
                 "editor/localization/zh-CN.json"
+            ]
+        },
+        "ja": {
+            "remove": [
+                "editor/localization/ja.json"
             ]
         }
     }

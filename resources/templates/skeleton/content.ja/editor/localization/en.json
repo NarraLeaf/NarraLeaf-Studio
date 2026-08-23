@@ -1,0 +1,411 @@
+{
+  "locale": "en",
+  "schemaVersion": 1,
+  "units": {
+    "0ef2885e-0186-4327-b43f-ee9676c2a33a": {
+      "sourceHash": "fnv1a:2a097a86",
+      "status": "translated",
+      "target": "So it is my turn."
+    },
+    "0fa2eb35-3aad-424a-9e40-50a420d4bb3d": {
+      "sourceHash": "fnv1a:8775c485",
+      "status": "translated",
+      "target": "Something honest. Even if it's small."
+    },
+    "16565a92-8975-4521-8342-985e1bf3909c": {
+      "sourceHash": "fnv1a:bf67979f",
+      "status": "translated",
+      "target": "Same time tomorrow. Don't be late."
+    },
+    "22c5aa1d-856c-46f5-be7f-3c6341de0e8a": {
+      "sourceHash": "fnv1a:8ed77f93",
+      "status": "translated",
+      "target": "Cold. But not wrong."
+    },
+    "244efc55-d457-4c7e-9c9b-591658c37d5d": {
+      "sourceHash": "fnv1a:d4d61bcd",
+      "status": "translated",
+      "target": "The last bell rang twenty minutes ago."
+    },
+    "2ad31ac5-94dc-4b98-a8e3-1c78549f6edf": {
+      "sourceHash": "fnv1a:33d58ac1",
+      "status": "translated",
+      "target": "This is where the demo ends, and where your game starts."
+    },
+    "2b3a87e6-5d6f-47c2-a1be-cd3a84aaa999": {
+      "sourceHash": "fnv1a:a54c4518",
+      "status": "translated",
+      "target": "The festival is in three weeks and we have nothing."
+    },
+    "3bb15660-8cd1-4d06-b8f9-6d3bb2d3b086": {
+      "sourceHash": "fnv1a:82017b7c",
+      "status": "translated",
+      "target": "It has two. One of them is just slow."
+    },
+    "504bea55-21b8-4b55-b6b7-ec75ff4f1fe6": {
+      "sourceHash": "fnv1a:23903b8a",
+      "status": "translated",
+      "target": "You're late."
+    },
+    "6cc6b2f7-b60e-4279-a94c-cc8860ba5287": {
+      "sourceHash": "fnv1a:be83b6b9",
+      "status": "translated",
+      "target": "Which means one of us has to decide what we are making."
+    },
+    "7838034c-5481-4b4e-beb6-d5815b817b56": {
+      "sourceHash": "fnv1a:9aaa85ec",
+      "status": "translated",
+      "target": "Something honest."
+    },
+    "79796785-4322-45dc-b84d-37efa0e8549e": {
+      "sourceHash": "fnv1a:cf74cb9b",
+      "status": "translated",
+      "target": "Loud is fine. Loud gets people through the door."
+    },
+    "7b9e8fe3-9570-4df1-9adb-f11fee070023": {
+      "sourceHash": "fnv1a:d8c6094d",
+      "status": "translated",
+      "target": "Then we're making something loud."
+    },
+    "8ee513a4-713c-4277-8e8b-2c25be0a29f9": {
+      "sourceHash": "fnv1a:131768c0",
+      "status": "translated",
+      "target": "Something people will actually come to."
+    },
+    "9bbce5a5-e5de-40d3-a6b4-c7c2b75d6193": {
+      "sourceHash": "fnv1a:c96edae0",
+      "status": "translated",
+      "target": "What do we make?"
+    },
+    "9e22391e-e548-4ccd-89fb-f7c424e3ce24": {
+      "sourceHash": "fnv1a:7ba165a7",
+      "status": "translated",
+      "target": "For what it is worth - I would have picked that one too."
+    },
+    "a0ed03b2-7717-4aed-aff2-f27a14259b8d": {
+      "sourceHash": "fnv1a:fca82251",
+      "status": "translated",
+      "target": "That's the first thing you've said this month that wasn't a joke."
+    },
+    "ab801b46-85ba-416f-9df8-48c3a040488a": {
+      "sourceHash": "fnv1a:3470aa7a",
+      "status": "translated",
+      "target": "She spins a pen once and stops it flat under one finger."
+    },
+    "b86c0033-9139-453a-bba4-664f3d2c812c": {
+      "sourceHash": "fnv1a:0b6bdb21",
+      "status": "translated",
+      "target": "One and a half. You keep leaving before it gets dark."
+    },
+    "be532c25-3947-4340-bea6-a8dbc2462abe": {
+      "sourceHash": "fnv1a:c1692dc5",
+      "status": "translated",
+      "target": "...Huh."
+    },
+    "c727b458-0715-4cc0-a44d-237f176d67c3": {
+      "sourceHash": "fnv1a:4cb93cb2",
+      "status": "translated",
+      "target": "We stayed until the windows went orange and the corridor lights came on by themselves."
+    },
+    "d24f89b5-dd27-4fd3-a9e0-9eb42d9eaa4d": {
+      "sourceHash": "fnv1a:c4a3dc26",
+      "status": "translated",
+      "target": "I decided last year."
+    },
+    "d594ab16-35fa-4777-8237-bd2e7bbab4f7": {
+      "sourceHash": "fnv1a:684e9cdf",
+      "status": "translated",
+      "target": "Open any part of it. All of it was made in Studio, the same way you would make yours."
+    },
+    "d8394864-327a-4c4f-bcec-8521d44a9b09": {
+      "sourceHash": "fnv1a:fc6ff7f2",
+      "status": "translated",
+      "target": "The clubroom is a classroom nobody claimed. Four desks pushed together, one window that will not close."
+    },
+    "e783a4da-946b-4c53-af82-5ba464ea88db": {
+      "sourceHash": "fnv1a:131768c0",
+      "status": "translated",
+      "target": "Something people will actually come to."
+    },
+    "f01d556e-e725-4702-b254-cc41352e816b": {
+      "sourceHash": "fnv1a:116b8a71",
+      "status": "translated",
+      "target": "Third time this week. I was starting to think the club had one member."
+    },
+    "fe23a3b0-4e38-40fb-a58b-ee1385975d85": {
+      "sourceHash": "fnv1a:d71fbe7b",
+      "status": "translated",
+      "target": "The corridor still smells of chalk and floor wax. Behind me a locker ticks as it cools."
+    },
+    "key:config.autoForwardDelay": {
+      "sourceHash": "fnv1a:1104cbb2",
+      "status": "translated",
+      "target": "Auto forward delay"
+    },
+    "key:config.categorySound": {
+      "sourceHash": "fnv1a:e61140de",
+      "status": "translated",
+      "target": "Sound"
+    },
+    "key:config.categoryText": {
+      "sourceHash": "fnv1a:e4f82475",
+      "status": "translated",
+      "target": "Text"
+    },
+    "key:config.fullscreen": {
+      "sourceHash": "fnv1a:0f331420",
+      "status": "translated",
+      "target": "Fullscreen"
+    },
+    "key:config.fullscreenOff": {
+      "sourceHash": "fnv1a:1f9312b8",
+      "status": "translated",
+      "target": "Off"
+    },
+    "key:config.fullscreenOn": {
+      "sourceHash": "fnv1a:0592e9ca",
+      "status": "translated",
+      "target": "On"
+    },
+    "key:config.masterVolume": {
+      "sourceHash": "fnv1a:1e467146",
+      "status": "translated",
+      "target": "Master volume"
+    },
+    "key:config.secondsSuffix": {
+      "sourceHash": "fnv1a:577b1035",
+      "status": "translated",
+      "target": "s"
+    },
+    "key:config.skip": {
+      "sourceHash": "fnv1a:48e64dcd",
+      "status": "translated",
+      "target": "Skip"
+    },
+    "key:config.skipAllText": {
+      "sourceHash": "fnv1a:aaaa8ce3",
+      "status": "translated",
+      "target": "All text"
+    },
+    "key:config.skipDelay": {
+      "sourceHash": "fnv1a:9ef221b8",
+      "status": "translated",
+      "target": "Skip delay"
+    },
+    "key:config.skipReadOnly": {
+      "sourceHash": "fnv1a:7ee47747",
+      "status": "translated",
+      "target": "Read only"
+    },
+    "key:config.soundEffects": {
+      "sourceHash": "fnv1a:179008d1",
+      "status": "translated",
+      "target": "Sound effects"
+    },
+    "key:config.textSpeed": {
+      "sourceHash": "fnv1a:2bcc4824",
+      "status": "translated",
+      "target": "Text speed"
+    },
+    "key:config.title": {
+      "sourceHash": "fnv1a:6243fa06",
+      "status": "translated",
+      "target": "Config"
+    },
+    "key:config.voice": {
+      "sourceHash": "fnv1a:bca1bebc",
+      "status": "translated",
+      "target": "Voice"
+    },
+    "key:confirm.cancel": {
+      "sourceHash": "fnv1a:aceb0a14",
+      "status": "translated",
+      "target": "Cancel"
+    },
+    "key:confirm.deleteSave": {
+      "sourceHash": "fnv1a:59124b59",
+      "status": "translated",
+      "target": "Delete this save? It cannot be brought back."
+    },
+    "key:confirm.deleteSaveAnswer": {
+      "sourceHash": "fnv1a:e3edb67b",
+      "status": "translated",
+      "target": "Delete"
+    },
+    "key:confirm.historyBack": {
+      "sourceHash": "fnv1a:d7e871d5",
+      "status": "translated",
+      "target": "Go back to this line? Everything after it is undone."
+    },
+    "key:confirm.historyBackAnswer": {
+      "sourceHash": "fnv1a:f193a383",
+      "status": "translated",
+      "target": "Go back"
+    },
+    "key:confirm.load": {
+      "sourceHash": "fnv1a:b36341f4",
+      "status": "translated",
+      "target": "Load this save? Unsaved progress is lost."
+    },
+    "key:confirm.loadAnswer": {
+      "sourceHash": "fnv1a:48ff805f",
+      "status": "translated",
+      "target": "Load"
+    },
+    "key:confirm.loadAuto": {
+      "sourceHash": "fnv1a:b31c4229",
+      "status": "translated",
+      "target": "Load this auto save? The game you are in is left behind."
+    },
+    "key:confirm.overwrite": {
+      "sourceHash": "fnv1a:e76cec09",
+      "status": "translated",
+      "target": "This slot already holds a save. Overwrite it?"
+    },
+    "key:confirm.overwriteAnswer": {
+      "sourceHash": "fnv1a:4e117976",
+      "status": "translated",
+      "target": "Overwrite"
+    },
+    "key:confirm.quit": {
+      "sourceHash": "fnv1a:561c0e55",
+      "status": "translated",
+      "target": "Quit the game?"
+    },
+    "key:confirm.quitAnswer": {
+      "sourceHash": "fnv1a:008a52b9",
+      "status": "translated",
+      "target": "Quit"
+    },
+    "key:confirm.toTitle": {
+      "sourceHash": "fnv1a:ef42783e",
+      "status": "translated",
+      "target": "Return to the title screen? Unsaved progress is lost."
+    },
+    "key:confirm.toTitleAnswer": {
+      "sourceHash": "fnv1a:e92d6029",
+      "status": "translated",
+      "target": "Return to title"
+    },
+    "key:load.autoSaves": {
+      "sourceHash": "fnv1a:6a0a2620",
+      "status": "translated",
+      "target": "Auto saves"
+    },
+    "key:load.title": {
+      "sourceHash": "fnv1a:48ff805f",
+      "status": "translated",
+      "target": "Load"
+    },
+    "key:log.title": {
+      "sourceHash": "fnv1a:39b03058",
+      "status": "translated",
+      "target": "Log"
+    },
+    "key:menu.continue": {
+      "sourceHash": "fnv1a:8ece9311",
+      "status": "translated",
+      "target": "Continue"
+    },
+    "key:menu.load": {
+      "sourceHash": "fnv1a:48ff805f",
+      "status": "translated",
+      "target": "Load"
+    },
+    "key:menu.quit": {
+      "sourceHash": "fnv1a:008a52b9",
+      "status": "translated",
+      "target": "Quit"
+    },
+    "key:menu.save": {
+      "sourceHash": "fnv1a:e66653cc",
+      "status": "translated",
+      "target": "Save"
+    },
+    "key:menu.scenes": {
+      "sourceHash": "fnv1a:4f2677b7",
+      "status": "translated",
+      "target": "Scenes"
+    },
+    "key:menu.settings": {
+      "sourceHash": "fnv1a:6243fa06",
+      "status": "translated",
+      "target": "Settings"
+    },
+    "key:menu.start": {
+      "sourceHash": "fnv1a:08ea9b7d",
+      "status": "translated",
+      "target": "Start"
+    },
+    "key:nav.back": {
+      "sourceHash": "fnv1a:f193a383",
+      "status": "translated",
+      "target": "Back"
+    },
+    "key:nav.config": {
+      "sourceHash": "fnv1a:6243fa06",
+      "status": "translated",
+      "target": "Config"
+    },
+    "key:nav.load": {
+      "sourceHash": "fnv1a:48ff805f",
+      "status": "translated",
+      "target": "Load"
+    },
+    "key:nav.save": {
+      "sourceHash": "fnv1a:e66653cc",
+      "status": "translated",
+      "target": "Save"
+    },
+    "key:nav.title": {
+      "sourceHash": "fnv1a:52002cab",
+      "status": "translated",
+      "target": "Title"
+    },
+    "key:save.title": {
+      "sourceHash": "fnv1a:e66653cc",
+      "status": "translated",
+      "target": "Save"
+    },
+    "key:scenes.sceneClubroom": {
+      "sourceHash": "fnv1a:b762c709",
+      "status": "translated",
+      "target": "The clubroom"
+    },
+    "key:scenes.sceneCorridor": {
+      "sourceHash": "fnv1a:6359e622",
+      "status": "translated",
+      "target": "The corridor"
+    },
+    "key:scenes.sceneLastLight": {
+      "sourceHash": "fnv1a:7f025da4",
+      "status": "translated",
+      "target": "Last light"
+    },
+    "key:scenes.title": {
+      "sourceHash": "fnv1a:4f2677b7",
+      "status": "translated",
+      "target": "Scenes"
+    },
+    "key:slot.empty": {
+      "sourceHash": "fnv1a:d5c75554",
+      "status": "translated",
+      "target": "No Data"
+    },
+    "scene:5143dcd8-bebc-4468-b4e2-00f6d5781af6": {
+      "sourceHash": "fnv1a:b762c709",
+      "status": "translated",
+      "target": "The clubroom"
+    },
+    "scene:c083e0f3-8665-451a-800a-6d2cd5650d33": {
+      "sourceHash": "fnv1a:7f025da4",
+      "status": "translated",
+      "target": "Last light"
+    },
+    "scene:f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33": {
+      "sourceHash": "fnv1a:6359e622",
+      "status": "translated",
+      "target": "The corridor"
+    }
+  }
+}

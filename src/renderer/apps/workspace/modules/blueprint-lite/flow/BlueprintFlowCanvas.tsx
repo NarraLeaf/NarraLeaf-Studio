@@ -1,8 +1,10 @@
 import "@xyflow/react/dist/style.css";
 import {
+    forwardRef,
     useCallback,
     useEffect,
     useId,
+    useImperativeHandle,
     useLayoutEffect,
     useMemo,
     useRef,
@@ -24,13 +26,19 @@ import {
     type Edge,
     type FinalConnectionState,
     type Node,
+    type OnNodeDrag,
     type Viewport,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
+import { Check, EyeOff } from "lucide-react";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { useTranslation } from "@/lib/i18n";
-import { buildBreakpointContextMenu } from "@/lib/ui-editor/blueprint-debug/breakpointContextMenu";
+import {
+    buildBreakpointContextMenu,
+    canBlueprintNodeCarryBreakpoint,
+    BREAKPOINT_MENU_ROW_IDS,
+} from "@/lib/ui-editor/blueprint-debug/breakpointContextMenu";
 import { useBlueprintBreakpointScope } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
     BLUEPRINT_NODE_PARAM_FN_REF,
@@ -50,6 +58,7 @@ import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
     isValidBlueprintIrExecConnection,
+    writeNodeEditorLayout,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import {
     pickBlueprintDragConnectTargetPin,
@@ -57,11 +66,13 @@ import {
     type BlueprintDragConnectEnablement,
     type BlueprintDragConnectSource,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintDragConnect";
-import { useFreezeGuard } from "../../../components/ui/freezeGuard";
+import { freezeContextMenuRows, useFreezeGuard } from "../../../components/ui/freezeGuard";
+import { editableTextTarget } from "../../../components/EditableTextContextMenu";
 import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
     applyFlowPositionsToIr,
+    BLUEPRINT_FLOW_Z_PLACEMENT_PREVIEW,
     blueprintDynamicSelectOptionsByNodeSignature,
     blueprintElementPreviewsSignature,
     blueprintIrToFlowEdges,
@@ -71,7 +82,36 @@ import {
     type BlueprintDynamicSelectOptionsByNodeId,
 } from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
-import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
+import { BlueprintCanvasToolbar, type BlueprintCanvasTool } from "./components/BlueprintCanvasToolbar";
+import {
+    BLUEPRINT_COMMENT_COLORS,
+    BLUEPRINT_COMMENT_DEFAULT_COLOR,
+    resolveBlueprintCommentColorKey,
+} from "@/lib/ui-editor/blueprint-comment-colors";
+import { blueprintMinimapNodeFill, blueprintMinimapNodeStroke } from "./blueprintMinimapNodeColors";
+import {
+    BLUEPRINT_MINIMAP_SIZE_ORDER,
+    BLUEPRINT_MINIMAP_SIZES,
+    DEFAULT_BLUEPRINT_MINIMAP_PREFERENCE,
+    type BlueprintMinimapPreference,
+    type BlueprintMinimapSize,
+} from "./blueprintMinimapPreference";
+import { layoutBlueprintGraph, type BlueprintLayoutDirection } from "./blueprintAutoLayout";
+import {
+    blueprintGroupMemberIds,
+    computeBlueprintGroupFrame,
+    fitBlueprintGroupFrame,
+    growBlueprintFrameToHold,
+    growBlueprintGroupFramesForDrop,
+    pickBlueprintGroupDropTarget,
+    refitBlueprintGroupFrames,
+    type BlueprintFrameBox,
+    type BlueprintFrameRect,
+} from "./blueprintGroupFrame";
+import {
+    BlueprintGroupDropPreview,
+    type BlueprintGroupDropPreviewHandle,
+} from "./components/BlueprintGroupDropPreview";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
 import { SaveSchemaFieldsModal } from "../components/SaveSchemaFieldsModal";
 import {
@@ -99,6 +139,77 @@ import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
 
+/**
+ * Which mouse buttons drag the canvas itself.
+ *
+ * Middle-drag pans under either tool - that gesture predates the toolbar and nothing about it
+ * changes. The hand tool adds the left button, which is the whole of what "hand" means here: a drag
+ * on empty canvas moves the view instead of drawing a marquee. `selectionOnDrag` has to come off at
+ * the same time, because React Flow gives the marquee priority whenever both are on.
+ *
+ * Module constants, not inline arrays: React Flow compares this prop by identity, and a fresh array
+ * every render would tear down and rebuild d3-zoom's handlers on every keystroke in a node card.
+ */
+const PAN_BUTTONS_SELECT_TOOL = [1];
+
+/**
+ * The event a drag handler is handed, read off React Flow rather than written out.
+ *
+ * The 12.x line has spelled it both ways - React’s synthetic `MouseEvent` and the DOM’s
+ * `MouseEvent | TouchEvent` - and this repository pins no lockfile, so writing either one names a
+ * type that only some installs agree with. Taking it from `OnNodeDrag` asks whichever version is
+ * installed what it passes.
+ */
+type BlueprintNodeDragEvent = Parameters<OnNodeDrag>[0];
+const PAN_BUTTONS_HAND_TOOL = [0, 1];
+
+/** A node the way the group and layout geometry sees it: where it is and how big it measured. */
+type BlueprintCanvasBox = BlueprintFrameBox & { isComment: boolean; isFrame: boolean };
+
+/**
+ * Measured boxes for every real node on the canvas.
+ *
+ * Unmeasured nodes are left out rather than defaulted to zero: a card React Flow has not sized yet
+ * would read as a point, which is inside every frame and takes no room in a layer.
+ */
+function readBlueprintCanvasBoxes(nodes: readonly Node<BlueprintFlowNodeData>[]): BlueprintCanvasBox[] {
+    const out: BlueprintCanvasBox[] = [];
+    for (const node of nodes) {
+        const width = node.measured?.width ?? 0;
+        const height = node.measured?.height ?? 0;
+        if (node.id === BP_PLACEMENT_PREVIEW_ID || width <= 0 || height <= 0) {
+            continue;
+        }
+        const isComment = node.data.catalog.role === "comment";
+        out.push({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+            width,
+            height,
+            isComment,
+            isFrame: isComment && node.data.params.frame === true,
+        });
+    }
+    return out;
+}
+
+/**
+ * The colour the outline of a group's drop preview is drawn in.
+ *
+ * A frame paints itself from its own `color` param, and the preview has to agree with it or the
+ * outline would read as some other piece of chrome rather than as that group opening up. The
+ * selected border is the one used, because a frame about to take a card is a frame in play.
+ */
+const BLUEPRINT_GROUP_DROP_FALLBACK_COLOR =
+    BLUEPRINT_COMMENT_COLORS[BLUEPRINT_COMMENT_DEFAULT_COLOR]!.selectedBorder;
+
+function readBlueprintFrameOutlineColor(nodes: readonly Node<BlueprintFlowNodeData>[], id: string): string {
+    const frame = nodes.find(node => node.id === id);
+    const key = resolveBlueprintCommentColorKey(frame?.data.params.color);
+    return BLUEPRINT_COMMENT_COLORS[key]?.selectedBorder ?? BLUEPRINT_GROUP_DROP_FALLBACK_COLOR;
+}
+
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 
 function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix: string): string {
@@ -125,7 +236,7 @@ function buildPlacementPreviewFlowNode(
         id: BP_PLACEMENT_PREVIEW_ID,
         type: "blueprint",
         position,
-        zIndex: 2,
+        zIndex: BLUEPRINT_FLOW_Z_PLACEMENT_PREVIEW,
         draggable: false,
         selectable: false,
         focusable: false,
@@ -157,14 +268,6 @@ export function removeBlueprintNodeFromIr(ir: BlueprintGraphIr, nodeId: string):
 
 type BlueprintFlowCanvasInnerProps = {
     nodeCatalog: IBlueprintNodeCatalogService;
-    /**
-     * Whether the editor's member panel is out of the way.
-     *
-     * The panel is an overlay - `absolute inset-y-0 left-0 w-56` over this canvas, not a column
-     * beside it - so the canvas's own bottom-left corner is underneath it, and anything parked
-     * there is drawn but unreachable. The zoom control needs to know which corner is actually free.
-     */
-    memberPanelCollapsed?: boolean;
     graphKey: string;
     ir: BlueprintGraphIr;
     revision: number;
@@ -234,10 +337,36 @@ type BlueprintFlowCanvasInnerProps = {
     initialViewport?: BlueprintFlowViewport | null;
     /** Called after pan/zoom changes so the owning editor tab can persist the view. */
     onViewportChange?: (viewport: BlueprintFlowViewport) => void;
+    /**
+     * Whether the graph overview is shown and how large, restored from editor-session state.
+     *
+     * Controlled from the owning tab for the same reason the viewport is: the canvas is remounted
+     * on every graph switch, so a preference kept here would be forgotten each time the author
+     * moved between layers.
+     */
+    minimap?: BlueprintMinimapPreference;
+    /** Called when the author picks a size or closes the overview, so the tab can persist it. */
+    onMinimapChange?: (preference: BlueprintMinimapPreference) => void;
     /** Active blueprint id; enables same-graph Fn signature snapshot sync on Call Fn nodes. */
     currentBlueprintId?: string;
     /** Resolves a callable fn signature (cross-blueprint) when a Call Fn picks a fnRef. */
     resolveCallableFnSignature?: (fnRef: string) => BlueprintFnSignatureSnapshot | null;
+    /**
+     * Adds the frame the toolbar's Group button draws around the current selection, and answers
+     * with its node id so the canvas can select what it just made.
+     *
+     * The canvas works out the rectangle, because only it knows how big the selected cards measured
+     * on screen; the owning tab makes the node, because only it can mint an id and reach the
+     * blueprint document. Withheld (undefined) where grouping is not offered at all.
+     */
+    onCreateGroupFrame?: (frame: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        color: string;
+        name: string;
+    }) => string | undefined;
 };
 
 export type BlueprintFlowViewport = {
@@ -319,7 +448,6 @@ function syncSameGraphFnCallSnapshots(ir: BlueprintGraphIr, currentBlueprintId: 
 
 function BlueprintFlowCanvasInner({
     nodeCatalog,
-    memberPanelCollapsed = false,
     graphKey,
     ir,
     revision,
@@ -345,8 +473,11 @@ function BlueprintFlowCanvasInner({
     onBindElementLiteral,
     initialViewport,
     onViewportChange,
+    minimap = DEFAULT_BLUEPRINT_MINIMAP_PREFERENCE,
+    onMinimapChange,
     currentBlueprintId,
     resolveCallableFnSignature,
+    onCreateGroupFrame,
 }: BlueprintFlowCanvasInnerProps) {
     // React Flow derives document-wide ids from this (the dot-grid `<pattern>`, edge
     // markers, handle element ids, ARIA descriptions) and falls back to a literal "1"
@@ -363,6 +494,18 @@ function BlueprintFlowCanvasInner({
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport, setCenter } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    /**
+     * Which tool the toolbar has selected, which colour the next group takes, and which way the
+     * next format runs.
+     *
+     * All three are view state and stay out of the document on purpose: the tool is where the
+     * author's hand is right now, not something about the blueprint, and a colour or a direction
+     * the toolbar remembers for the session is the difference between one click and two without
+     * writing a preference nobody asked to set.
+     */
+    const [tool, setTool] = useState<BlueprintCanvasTool>("select");
+    const [groupColor, setGroupColor] = useState<string>(BLUEPRINT_COMMENT_DEFAULT_COLOR);
+    const [formatDirection, setFormatDirection] = useState<BlueprintLayoutDirection>("horizontal");
     const nodeDiagnosticsByNodeId = useMemo(
         () => buildNodeDiagnosticsByNodeId(diagnostics, graphKey),
         [diagnostics, graphKey],
@@ -616,6 +759,61 @@ function BlueprintFlowCanvasInner({
      */
     const [saveSchemaEditorOpen, setSaveSchemaEditorOpen] = useState(false);
     const openSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(true), []);
+
+    /**
+     * Groups sized to the cards they hold, from the frame's own title row or the context menu.
+     *
+     * The counterpart to a frame that only ever grows: dropping a card into a group stretches it,
+     * and this is how the author takes the slack back. Membership is read from the canvas at the
+     * moment of the click - the same containment test the drop used - so what a frame closes around
+     * is exactly what it was holding when the button was pressed.
+     *
+     * Smallest first, each answer feeding the next, so fitting a group and the group around it in
+     * one gesture wraps the result rather than the rectangle the inner frame started at. One
+     * commit for the lot: it is one gesture, and one undo should take all of it back.
+     */
+    const fitGroupFrames = useCallback(
+        (frameIds: readonly string[]) => {
+            const wanted = new Set(frameIds);
+            const working = new Map(
+                readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]).map(box => [box.id, box]),
+            );
+            const innermostFirst = [...working.values()]
+                .filter(box => box.isFrame && wanted.has(box.id))
+                .sort((a, b) => a.width * a.height - b.width * b.height || (a.id < b.id ? -1 : 1));
+            const fitted: Array<readonly [string, BlueprintFrameRect]> = [];
+            for (const frame of innermostFirst) {
+                const rect = fitBlueprintGroupFrame(frame, [...working.values()]);
+                if (
+                    rect.x === frame.x &&
+                    rect.y === frame.y &&
+                    rect.width === frame.width &&
+                    rect.height === frame.height
+                ) {
+                    continue;
+                }
+                working.set(frame.id, { ...frame, ...rect });
+                fitted.push([frame.id, rect]);
+            }
+            if (fitted.length === 0) {
+                return;
+            }
+            const next = cloneBlueprintIr(irRef.current);
+            for (const [id, rect] of fitted) {
+                const node = next.nodes?.[id];
+                if (node) {
+                    node.params = { ...(node.params ?? {}), width: rect.width, height: rect.height };
+                    writeNodeEditorLayout(node, { x: rect.x, y: rect.y });
+                }
+            }
+            commitBlueprintIr(next);
+        },
+        [commitBlueprintIr, getNodes],
+    );
+
+    /** The button on a frame's title row acts on that one frame. */
+    const fitGroupFrame = useCallback((frameId: string) => fitGroupFrames([frameId]), [fitGroupFrames]);
+
     const closeSaveSchemaEditor = useCallback(() => setSaveSchemaEditorOpen(false), []);
 
     const stableAddDynamicInputPin = useCallback((nodeId: string) => {
@@ -664,13 +862,15 @@ function BlueprintFlowCanvasInner({
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
-    const [addMenu, setAddMenu] = useState<{
-        clientX: number;
-        clientY: number;
-        flow: { x: number; y: number };
-        /** Set when the menu was opened by dragging off a pin; filters to compatible nodes + auto-wires. */
-        connectSource?: BlueprintDragConnectSource;
-    } | null>(null);
+    /**
+     * The creation menu holds its own open/closed state and is reached through this handle.
+     *
+     * Deliberately a ref rather than canvas state: opening the menu is a right-click, and a right-click
+     * that re-rendered the canvas would put the whole React Flow subtree through reconciliation before
+     * the menu could appear — which is most of what made the gesture take a visible moment. Nothing on
+     * the canvas depends on whether the menu is up, so nothing here has to know.
+     */
+    const addMenuRef = useRef<BlueprintAddNodeMenuHostHandle | null>(null);
 
     const [pendingPlacementEntry, setPendingPlacementEntry] = useState<BlueprintNodeEditorCatalogEntry | null>(null);
     const pendingPlacementEntryRef = useRef<BlueprintNodeEditorCatalogEntry | null>(null);
@@ -849,6 +1049,7 @@ function BlueprintFlowCanvasInner({
                     displayableTargetVariantsByNodeId,
                     onBindElementLiteral,
                     openSaveSchemaEditor,
+                    fitGroupFrame,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
@@ -926,6 +1127,7 @@ function BlueprintFlowCanvasInner({
         displayableTargetVariantsSig,
         onBindElementLiteral,
         openSaveSchemaEditor,
+        fitGroupFrame,
         setEdges,
         setNodes,
     ]);
@@ -989,6 +1191,52 @@ function BlueprintFlowCanvasInner({
         });
     }, [focusRequestKey, focusNodeId, nodes, getViewport, setCenter]);
 
+    /** Clicking the overview goes there, keeping the author's zoom - the same bargain as `setCenter` above. */
+    const jumpToMinimapPoint = useCallback(
+        (_event: ReactMouseEvent, position: { x: number; y: number }) => {
+            void setCenter(position.x, position.y, { zoom: getViewport().zoom, duration: 220 });
+        },
+        [getViewport, setCenter],
+    );
+
+    /** Where the overview's own menu is open, if it is. */
+    const [minimapMenu, setMinimapMenu] = useState<{ x: number; y: number } | null>(null);
+
+    /** Every path that changes the overview goes through here, and closes its menu behind itself. */
+    const applyMinimapPreference = useCallback(
+        (next: BlueprintMinimapPreference) => {
+            onMinimapChange?.(next);
+            setMinimapMenu(null);
+        },
+        [onMinimapChange],
+    );
+
+    const setMinimapSize = useCallback(
+        (size: BlueprintMinimapSize) => applyMinimapPreference({ visible: true, size }),
+        [applyMinimapPreference],
+    );
+
+    const minimapMenuItems = useMemo<ContextMenuDef>(() => {
+        const sizeRows: ContextMenuDef = BLUEPRINT_MINIMAP_SIZE_ORDER.map(size => ({
+            id: `minimap-size-${size}`,
+            label: t(`blueprint.minimap.size.${size}` as const),
+            // The current size wears the tick rather than being disabled: a greyed row reads as
+            // "not available here", and this one is available - it is simply already chosen.
+            icon: minimap.size === size ? <Check className="h-3.5 w-3.5" /> : undefined,
+            onClick: () => setMinimapSize(size),
+        }));
+        return [
+            ...sizeRows,
+            { id: "minimap-sep", separator: true },
+            {
+                id: "minimap-hide",
+                label: t("blueprint.minimap.hide"),
+                icon: <EyeOff className="h-3.5 w-3.5" />,
+                onClick: () => applyMinimapPreference({ ...minimap, visible: false }),
+            },
+        ];
+    }, [applyMinimapPreference, minimap, setMinimapSize, t]);
+
     const onSelectionChange = useCallback(
         ({ nodes: sel }: { nodes: Node[] }) => {
             if (suppressSelectionEventsRef.current || syncedGraphKeyRef.current !== graphKeyRef.current) {
@@ -1003,16 +1251,273 @@ function BlueprintFlowCanvasInner({
         [onSelectNodeIds],
     );
 
-    const onNodeDragStart = useCallback(() => {
-        isNodeDragActiveRef.current = true;
-    }, []);
+    /**
+     * What a frame is carrying, fixed the moment the drag starts.
+     *
+     * Membership has to be settled once and then left alone: recomputing it mid-drag would let a
+     * frame pick up every card it swept over and drop the ones it left behind, so the group would
+     * change shape while the author was only moving it. `origin` is where the frame stood at the
+     * start, which is what the live offset is measured from.
+     */
+    const groupDragRef = useRef<{
+        start: Map<string, { x: number; y: number }>;
+        origin: { x: number; y: number };
+    } | null>(null);
 
-    const onNodeDragStop = useCallback(() => {
-        isNodeDragActiveRef.current = false;
-        const next = cloneBlueprintIr(irRef.current);
-        applyFlowPositionsToIr(next, getNodes() as Node[]);
+    /**
+     * Where the drag would land, read once at the start of it.
+     *
+     * A group has no member list to add a card to, so a drop into one is a drop onto a rectangle -
+     * and until it is over, nothing on the canvas says which rectangle. This is what the outline and
+     * the resize are worked out from: the frames the drag is not carrying, at the size they were
+     * before it started, and every box it is carrying, at where each stood then. Both are fixed for
+     * the length of the drag, so the answer only ever changes because the pointer moved.
+     */
+    const dropTargetRef = useRef<{
+        frames: BlueprintFrameBox[];
+        colorByFrameId: Map<string, string>;
+        dragged: BlueprintFrameBox[];
+        pointerId: string;
+        origin: { x: number; y: number };
+    } | null>(null);
+    const dropPreviewRef = useRef<BlueprintGroupDropPreviewHandle>(null);
+
+    /** The frames as they would stand if the drag were let go now, and which one is taking it. */
+    const readGroupDropAt = useCallback(
+        (position: { x: number; y: number }) => {
+            const drop = dropTargetRef.current;
+            if (!drop) {
+                return null;
+            }
+            const dx = position.x - drop.origin.x;
+            const dy = position.y - drop.origin.y;
+            const moved = drop.dragged.map(box => ({ ...box, x: box.x + dx, y: box.y + dy }));
+            const pointer = moved.find(box => box.id === drop.pointerId);
+            const target = pointer ? pickBlueprintGroupDropTarget(drop.frames, pointer) : null;
+            return target ? { drop, target, moved } : null;
+        },
+        [],
+    );
+
+    const onNodeDragStart = useCallback(
+        (_event: BlueprintNodeDragEvent, node: Node, dragged: Node[]) => {
+            isNodeDragActiveRef.current = true;
+            groupDragRef.current = null;
+            dropTargetRef.current = null;
+            dropPreviewRef.current?.clear();
+
+            const flowNodes = getNodes() as Node<BlueprintFlowNodeData>[];
+            const boxes = readBlueprintCanvasBoxes(flowNodes);
+            const draggedIds = new Set(dragged.map(n => n.id));
+            const frames = boxes.filter(box => box.isFrame && draggedIds.has(box.id));
+
+            // React Flow already moves everything in the selection. Anything it is moving is left
+            // out here, or a card that is both selected and inside the frame would travel twice.
+            const start = new Map<string, { x: number; y: number }>();
+            for (const frame of frames) {
+                for (const id of blueprintGroupMemberIds(frame.id, frame, boxes)) {
+                    if (draggedIds.has(id) || start.has(id)) {
+                        continue;
+                    }
+                    const member = boxes.find(box => box.id === id);
+                    if (member) {
+                        start.set(id, { x: member.x, y: member.y });
+                    }
+                }
+            }
+            if (start.size > 0) {
+                groupDragRef.current = { start, origin: { x: node.position.x, y: node.position.y } };
+            }
+
+            // A frame the drag is carrying cannot be the frame the drag is aimed at: it travels
+            // with the card, so it would claim it wherever the card went. Neither can anything
+            // inside such a frame, which is carried for the same reason.
+            const moving = new Set([...draggedIds, ...start.keys()]);
+            const candidates = boxes.filter(box => box.isFrame && !moving.has(box.id));
+            if (candidates.length === 0 || !boxes.some(box => box.id === node.id)) {
+                return;
+            }
+            dropTargetRef.current = {
+                frames: candidates,
+                colorByFrameId: new Map(
+                    candidates.map(frame => [frame.id, readBlueprintFrameOutlineColor(flowNodes, frame.id)]),
+                ),
+                dragged: boxes.filter(box => moving.has(box.id)),
+                pointerId: node.id,
+                origin: { x: node.position.x, y: node.position.y },
+            };
+        },
+        [getNodes],
+    );
+
+    const onNodeDrag = useCallback(
+        (_event: BlueprintNodeDragEvent, node: Node) => {
+            const carried = groupDragRef.current;
+            if (carried) {
+                const dx = node.position.x - carried.origin.x;
+                const dy = node.position.y - carried.origin.y;
+                setNodes(nds =>
+                    nds.map(n => {
+                        const from = carried.start.get(n.id);
+                        return from ? { ...n, position: { x: from.x + dx, y: from.y + dy } } : n;
+                    }),
+                );
+            }
+            const landing = readGroupDropAt(node.position);
+            if (!landing) {
+                dropPreviewRef.current?.clear();
+                return;
+            }
+            dropPreviewRef.current?.show({
+                rect: growBlueprintFrameToHold(landing.target, landing.moved),
+                color: landing.drop.colorByFrameId.get(landing.target.id) ?? BLUEPRINT_GROUP_DROP_FALLBACK_COLOR,
+            });
+        },
+        [readGroupDropAt, setNodes],
+    );
+
+    /**
+     * Let go: the positions are written, and the group the cards were dropped into is stretched
+     * around them so that it really holds what it looked like it was about to hold.
+     *
+     * One commit, so one undo takes back the move and the resize together - they are one gesture,
+     * and an undo that left a group standing open around nothing would be a puzzle to read.
+     */
+    const onNodeDragStop = useCallback(
+        (_event: BlueprintNodeDragEvent, node: Node) => {
+            isNodeDragActiveRef.current = false;
+            groupDragRef.current = null;
+            dropPreviewRef.current?.clear();
+
+            // A press that went nowhere is a click, and a click reshapes nothing. Without this,
+            // selecting a card that had always straddled a frame's edge would resize the frame
+            // around it - a document change the author never asked for and did not gesture at.
+            const origin = dropTargetRef.current?.origin;
+            const stayedPut = origin ? node.position.x === origin.x && node.position.y === origin.y : true;
+            const landing = stayedPut ? null : readGroupDropAt(node.position);
+            dropTargetRef.current = null;
+            const next = cloneBlueprintIr(irRef.current);
+            applyFlowPositionsToIr(next, getNodes() as Node[]);
+            if (landing) {
+                const grown = growBlueprintGroupFramesForDrop(
+                    landing.drop.frames,
+                    landing.target.id,
+                    landing.moved,
+                );
+                for (const [id, rect] of Object.entries(grown)) {
+                    const frameNode = next.nodes?.[id];
+                    if (frameNode) {
+                        frameNode.params = { ...(frameNode.params ?? {}), width: rect.width, height: rect.height };
+                        writeNodeEditorLayout(frameNode, { x: rect.x, y: rect.y });
+                    }
+                }
+            }
+            commitBlueprintIr(next);
+        },
+        [commitBlueprintIr, getNodes, readGroupDropAt],
+    );
+
+    /**
+     * Draw a frame around a set of cards.
+     *
+     * The rectangle is worked out here because only the canvas knows how big those cards measured;
+     * the node itself is made by the owning tab, which is where ids and the blueprint document are.
+     * The colour is remembered so the next group costs one click rather than two.
+     *
+     * The ids are passed in rather than read off the selection, because the context menu acts on
+     * what it captured when it opened - which is not always what the selection has caught up to.
+     */
+    const createGroupFromIds = useCallback(
+        (ids: readonly string[], color: string) => {
+            if (!onCreateGroupFrame) {
+                return;
+            }
+            setGroupColor(color);
+            const wanted = new Set(ids);
+            const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]).filter(box =>
+                wanted.has(box.id),
+            );
+            const frame = computeBlueprintGroupFrame(boxes);
+            if (!frame) {
+                return;
+            }
+            const id = onCreateGroupFrame({ ...frame, color, name: t("blueprint.group.untitled") });
+            if (id) {
+                onSelectNodeIds([id]);
+            }
+        },
+        [getNodes, onCreateGroupFrame, onSelectNodeIds, t],
+    );
+
+    /** The toolbar's Group button: whatever is selected, in the colour it is showing. */
+    const createGroupFromSelection = useCallback(
+        (color: string) => createGroupFromIds(selectedNodeIdsRef.current, color),
+        [createGroupFromIds],
+    );
+
+    /**
+     * Lay the whole graph out again: left to right along the way its wires run, or down the page
+     * for an author who would rather read a long chain that way.
+     *
+     * Group frames do not take part in the layout - they have no pins, so they would each be an
+     * island of one and end up stacked below the graph. They are re-fitted around wherever their
+     * members landed instead, which is what keeps a group a group. Plain comment notes are left
+     * exactly where the author put them: they annotate a region rather than enclose it, and
+     * resizing somebody's note to fit whatever now happens to sit under it would be worse than
+     * leaving it behind.
+     */
+    const formatGraph = useCallback((direction: BlueprintLayoutDirection) => {
+        setFormatDirection(direction);
+        const boxes = readBlueprintCanvasBoxes(getNodes() as Node<BlueprintFlowNodeData>[]);
+        const cards = boxes.filter(box => !box.isComment);
+        if (cards.length === 0) {
+            return;
+        }
+        const frames = boxes.filter(box => box.isFrame);
+        // Read before anything moves: afterwards the frames still stand where they were, so the
+        // same containment test would be answering about a graph that no longer exists.
+        const membersByFrameId = new Map(
+            frames.map(frame => [frame.id, blueprintGroupMemberIds(frame.id, frame, boxes)] as const),
+        );
+
+        const snap = irRef.current;
+        const positions = layoutBlueprintGraph(
+            cards,
+            (snap.edges ?? []).map(edge => ({ from: edge.from.nodeId, to: edge.to.nodeId })),
+            { direction },
+        );
+        const moved = new Map(
+            cards
+                .filter(card => positions[card.id])
+                .map(card => [
+                    card.id,
+                    { ...positions[card.id]!, width: card.width, height: card.height },
+                ] as const),
+        );
+        const refitted = refitBlueprintGroupFrames(frames, membersByFrameId, moved);
+
+        const next = cloneBlueprintIr(snap);
+        for (const [id, rect] of moved) {
+            const node = next.nodes?.[id];
+            if (node) {
+                writeNodeEditorLayout(node, { x: rect.x, y: rect.y });
+            }
+        }
+        for (const [id, rect] of Object.entries(refitted)) {
+            const node = next.nodes?.[id];
+            if (node) {
+                node.params = { ...(node.params ?? {}), width: rect.width, height: rect.height };
+                writeNodeEditorLayout(node, { x: rect.x, y: rect.y });
+            }
+        }
         commitBlueprintIr(next);
     }, [commitBlueprintIr, getNodes]);
+
+    /** Nothing to arrange on an empty graph, or on one that holds only comments. */
+    const canFormat = useMemo(
+        () => nodes.some(node => node.id !== BP_PLACEMENT_PREVIEW_ID && node.data.catalog.role !== "comment"),
+        [nodes],
+    );
 
     const isValidConnection = useCallback((connection: Connection | Edge) => {
         if (
@@ -1096,7 +1601,7 @@ function BlueprintFlowCanvasInner({
                       };
             lastPointerClientRef.current = point;
             const flow = screenToFlowPosition(point);
-            setAddMenu({
+            addMenuRef.current?.open({
                 clientX: point.x,
                 clientY: point.y,
                 flow: { x: flow.x, y: flow.y },
@@ -1149,6 +1654,30 @@ function BlueprintFlowCanvasInner({
         [commitBlueprintIr],
     );
 
+    /**
+     * The single way a node leaves the graph: the Delete key, and the node menu's Delete row.
+     *
+     * Both hand over ids, so neither has to know that a node takes its wiring with it. The
+     * placement ghost is filtered out here rather than at each caller - it is a React Flow node
+     * with no counterpart in the IR, so removing it is the caller's `cancelPendingPlacement`, not a
+     * document edit.
+     */
+    const deleteNodeIds = useCallback(
+        (ids: readonly string[]) => {
+            const real = ids.filter(id => id !== BP_PLACEMENT_PREVIEW_ID);
+            if (real.length === 0) {
+                return;
+            }
+            const next = cloneBlueprintIr(irRef.current);
+            for (const id of real) {
+                removeBlueprintNodeFromIr(next, id);
+            }
+            onSelectNodeIds([]);
+            commitBlueprintIr(next);
+        },
+        [commitBlueprintIr, onSelectNodeIds],
+    );
+
     const onNodesDelete = useCallback(
         (deleted: Node[]) => {
             if (deleted.length === 0) {
@@ -1157,19 +1686,9 @@ function BlueprintFlowCanvasInner({
             if (deleted.some(n => n.id === BP_PLACEMENT_PREVIEW_ID)) {
                 cancelPendingPlacement();
             }
-            const real = deleted.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
-            if (real.length === 0) {
-                return;
-            }
-            const snap = irRef.current;
-            const next = cloneBlueprintIr(snap);
-            for (const n of real) {
-                removeBlueprintNodeFromIr(next, n.id);
-            }
-            onSelectNodeIds([]);
-            commitBlueprintIr(next);
+            deleteNodeIds(deleted.map(n => n.id));
         },
-        [cancelPendingPlacement, commitBlueprintIr, onSelectNodeIds],
+        [cancelPendingPlacement, deleteNodeIds],
     );
 
     const onPaneClick = useCallback(
@@ -1210,6 +1729,15 @@ function BlueprintFlowCanvasInner({
     );
 
     const onControlPanContextMenuCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+        // The overview is a React Flow `Panel`, and MiniMap forwards none of the props it does not
+        // know - `onContextMenu` included - so its right-click is caught here on the way down and
+        // kept away from the pane, whose own right-click opens the node palette.
+        if (e.target instanceof Element && e.target.closest(".react-flow__minimap")) {
+            e.preventDefault();
+            e.stopPropagation();
+            setMinimapMenu({ x: e.clientX, y: e.clientY });
+            return;
+        }
         if (!e.ctrlKey) {
             return;
         }
@@ -1224,57 +1752,309 @@ function BlueprintFlowCanvasInner({
         commitPendingPlacementRef.current();
     }, []);
 
-    // Breakpoints are debugger state, not document state: they are readable and settable on a
-    // frozen project, and this menu is deliberately outside the freeze guard that withholds the
-    // pane's creation menu.
     const breakpointScope = useBlueprintBreakpointScope();
-    const [nodeMenu, setNodeMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+    /**
+     * The open node menu, plus the nodes it will act on.
+     *
+     * `targetIds` is fixed when the menu opens rather than read back off the selection when a row
+     * is clicked: the retarget below travels out to the owning tab and back as a prop, so at click
+     * time the selection may still be one beat behind what the author is looking at.
+     */
+    const [nodeMenu, setNodeMenu] = useState<
+        {
+            x: number;
+            y: number;
+            /** The node the breakpoint rows would act on, or null when the click landed on one that never runs. */
+            breakpointNodeId: string | null;
+            targetIds: string[];
+            frameIds: string[];
+        } | null
+    >(null);
+
+    /**
+     * Which of these nodes are group frames.
+     *
+     * A group is a comment card with `frame` set: it owns no members, it simply encloses whatever
+     * it is drawn around, and membership is read back off the geometry whenever it matters. So the
+     * frames are all "Ungroup" has to remove, and the cards inside them are left untouched.
+     */
+    const readFrameIds = useCallback(
+        (ids: readonly string[]) => {
+            const wanted = new Set(ids);
+            return (getNodes() as Node<BlueprintFlowNodeData>[])
+                .filter(
+                    node =>
+                        wanted.has(node.id) &&
+                        node.data.catalog.role === "comment" &&
+                        node.data.params.frame === true,
+                )
+                .map(node => node.id);
+        },
+        [getNodes],
+    );
+    /**
+     * The node a breakpoint could be set on, of the one the click landed on.
+     *
+     * A breakpoint stops the graph on its way through a node, so it can only be offered on a node
+     * the graph goes through. A comment - a note or the frame around a group - is drawn on the
+     * canvas and never runs, so the rows were offering a stop that could not happen, on a card with
+     * nowhere to show it.
+     */
+    const readBreakpointNodeId = useCallback(
+        (id: string | null) => {
+            if (!id) {
+                return null;
+            }
+            const node = (getNodes() as Node<BlueprintFlowNodeData>[]).find(n => n.id === id);
+            return node && canBlueprintNodeCarryBreakpoint(node.data.catalog.role) ? id : null;
+        },
+        [getNodes],
+    );
     const onNodeContextMenu = useCallback(
         (event: ReactMouseEvent, node: Node) => {
-            if (!breakpointScope) {
+            // The placement ghost is not a node of the graph yet; right-clicking it has nothing to
+            // offer, and the click falls through to the pane the ghost is floating over.
+            if (node.id === BP_PLACEMENT_PREVIEW_ID) {
+                return;
+            }
+            // A card is not all card: its literal values are text fields, and a right click in one
+            // is a text gesture. Left alone (no `preventDefault`), it reaches the window's editable
+            // menu and comes back as cut/copy/paste - rather than a menu about the node, with a
+            // Delete row sitting over the field the author was typing in.
+            if (editableTextTarget(event.target)) {
                 return;
             }
             event.preventDefault();
             event.stopPropagation();
-            setNodeMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+            // Right-click inside a multi-selection keeps the set - deleting five nodes should not
+            // need five menus. Right-click outside it moves the selection onto the node under the
+            // cursor first, so what the menu acts on is what the author can see is picked.
+            const selected = selectedNodeIdsRef.current;
+            const inSelection = selected.includes(node.id);
+            const targetIds = inSelection ? [...selected] : [node.id];
+            if (!inSelection) {
+                onSelectNodeIds(targetIds);
+            }
+            setNodeMenu({
+                x: event.clientX,
+                y: event.clientY,
+                breakpointNodeId: readBreakpointNodeId(node.id),
+                targetIds,
+                frameIds: readFrameIds(targetIds),
+            });
         },
-        [breakpointScope],
+        [onSelectNodeIds, readBreakpointNodeId, readFrameIds],
+    );
+    /**
+     * The same menu, for a right-click that lands on a box selection.
+     *
+     * After a marquee, React Flow lays its own rectangle over the picked cards and that rectangle
+     * takes the click - `onNodeContextMenu` never fires, and the pane's handler only runs for
+     * clicks on the pane itself, so without this the menu simply never appeared. The selection is
+     * kept as it stands; nothing about a right-click on what is already picked should change it.
+     *
+     * Which card the click landed on is worked out from the geometry, because the rectangle covers
+     * the gaps between the cards as well as the cards themselves. A click in a gap has no node to
+     * speak of, so the menu comes up with the rows that act on the whole selection and none of the
+     * per-node ones. Frames lose to the cards they enclose - a click inside a group is a click on
+     * the card under the cursor, not on the box drawn around it.
+     */
+    const onSelectionContextMenu = useCallback(
+        (event: ReactMouseEvent, nodes: Node[]) => {
+            const targetIds = nodes.map(n => n.id).filter(id => id !== BP_PLACEMENT_PREVIEW_ID);
+            if (targetIds.length === 0) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+            const under = readBlueprintCanvasBoxes(nodes as Node<BlueprintFlowNodeData>[])
+                .filter(
+                    box =>
+                        flow.x >= box.x &&
+                        flow.x <= box.x + box.width &&
+                        flow.y >= box.y &&
+                        flow.y <= box.y + box.height,
+                )
+                .sort((a, b) => a.width * a.height - b.width * b.height);
+            setNodeMenu({
+                x: event.clientX,
+                y: event.clientY,
+                breakpointNodeId: readBreakpointNodeId(under[0]?.id ?? null),
+                targetIds,
+                frameIds: readFrameIds(targetIds),
+            });
+        },
+        [readBreakpointNodeId, readFrameIds, screenToFlowPosition],
     );
     const nodeMenuItems = useMemo<ContextMenuDef>(() => {
-        if (!breakpointScope || !nodeMenu) {
+        if (!nodeMenu) {
             return [];
         }
-        const { nodeId } = nodeMenu;
-        const existing = breakpointScope.byKey.get(
-            blueprintBreakpointKey({
-                blueprintId: breakpointScope.blueprintId,
-                graphId: breakpointScope.graphId,
-                nodeId,
-            }),
-        );
-        return buildBreakpointContextMenu({
-            existing,
-            onToggle: () => {
-                breakpointScope.toggle(nodeId);
-                setNodeMenu(null);
+        const { breakpointNodeId, targetIds, frameIds } = nodeMenu;
+        const items: ContextMenuDef = [
+            {
+                id: "blueprint.node.delete",
+                label: t("common.delete"),
+                onClick: () => {
+                    setNodeMenu(null);
+                    deleteNodeIds(targetIds);
+                },
             },
-            onSetEnabled: enabled => {
-                breakpointScope.setEnabled(nodeId, enabled);
-                setNodeMenu(null);
-            },
-            onEdit: () => {
-                breakpointScope.edit(nodeId);
-                setNodeMenu(null);
-            },
-            labels: {
-                add: t("blueprint.breakpoint.add"),
-                remove: t("blueprint.breakpoint.remove"),
-                enable: t("blueprint.breakpoint.enable"),
-                disable: t("blueprint.breakpoint.disable"),
-                edit: t("blueprint.breakpoint.edit"),
-            },
-        });
-    }, [breakpointScope, nodeMenu, t]);
+        ];
+        // Group and Ungroup are the same pair the toolbar offers, brought to where the cards are:
+        // grouping is about the nodes under the cursor, so reaching the far corner of the canvas
+        // for it was always a detour. The colour is the one the toolbar is showing - picking a
+        // different one stays a toolbar job, so this menu keeps to one row per action.
+        const groupRows: ContextMenuDef = [];
+        if (onCreateGroupFrame) {
+            groupRows.push({
+                id: "blueprint.node.group",
+                label: t("blueprint.group.create"),
+                onClick: () => {
+                    setNodeMenu(null);
+                    createGroupFromIds(targetIds, groupColor);
+                },
+            });
+        }
+        if (frameIds.length > 0) {
+            // Fit sits with the group rows because it is one: it closes the frame around whatever
+            // the group is holding now, which is the only way back from a frame that stretched to
+            // take a card and never shrank again.
+            groupRows.push({
+                id: "blueprint.node.fit",
+                label: t("blueprint.group.fit"),
+                onClick: () => {
+                    setNodeMenu(null);
+                    fitGroupFrames(frameIds);
+                },
+            });
+            groupRows.push({
+                id: "blueprint.node.ungroup",
+                label: t("blueprint.group.ungroup"),
+                onClick: () => {
+                    setNodeMenu(null);
+                    deleteNodeIds(frameIds);
+                },
+            });
+        }
+        if (groupRows.length > 0) {
+            items.push({ separator: true, id: "blueprint.node.sep-group" }, ...groupRows);
+        }
+        // Formatting rearranges the whole graph rather than the selection, so it offers the two
+        // directions outright instead of quietly reusing the last one: a row that moves every card
+        // on the canvas should say which way it is about to move them.
+        if (canFormat) {
+            items.push(
+                { separator: true, id: "blueprint.node.sep-format" },
+                {
+                    id: "blueprint.node.format",
+                    label: t("blueprint.format.graph"),
+                    // Frozen, this row says so itself rather than leaving the freeze pass below to
+                    // grey the two directions inside it: a live row that opens onto two dead ones
+                    // makes the author ask for the submenu to find out they cannot have it.
+                    ...(freeze.frozen ? { disabled: true, tooltip: freeze.reason } : {}),
+                    submenu: [
+                        {
+                            id: "blueprint.node.format.horizontal",
+                            label: t("blueprint.format.horizontal"),
+                            onClick: () => {
+                                setNodeMenu(null);
+                                formatGraph("horizontal");
+                            },
+                        },
+                        {
+                            id: "blueprint.node.format.vertical",
+                            label: t("blueprint.format.vertical"),
+                            onClick: () => {
+                                setNodeMenu(null);
+                                formatGraph("vertical");
+                            },
+                        },
+                    ],
+                },
+            );
+        }
+        if (breakpointScope && breakpointNodeId) {
+            const existing = breakpointScope.byKey.get(
+                blueprintBreakpointKey({
+                    blueprintId: breakpointScope.blueprintId,
+                    graphId: breakpointScope.graphId,
+                    nodeId: breakpointNodeId,
+                }),
+            );
+            items.push(
+                { separator: true, id: "blueprint.node.sep-breakpoint" },
+                ...buildBreakpointContextMenu({
+                    existing,
+                    onToggle: () => {
+                        breakpointScope.toggle(breakpointNodeId);
+                        setNodeMenu(null);
+                    },
+                    onSetEnabled: enabled => {
+                        breakpointScope.setEnabled(breakpointNodeId, enabled);
+                        setNodeMenu(null);
+                    },
+                    onEdit: () => {
+                        breakpointScope.edit(breakpointNodeId);
+                        setNodeMenu(null);
+                    },
+                    labels: {
+                        add: t("blueprint.breakpoint.add"),
+                        remove: t("blueprint.breakpoint.remove"),
+                        enable: t("blueprint.breakpoint.enable"),
+                        disable: t("blueprint.breakpoint.disable"),
+                        edit: t("blueprint.breakpoint.edit"),
+                    },
+                }),
+            );
+        }
+        // Delete writes the document, so a frozen project greys it and says why. The breakpoint
+        // rows are debugger state - readable and settable while frozen - so they are exempt, and
+        // the menu stays open on a frozen project instead of being withheld whole the way the
+        // pane's creation menu is.
+        return freezeContextMenuRows(items, freeze.frozen, BREAKPOINT_MENU_ROW_IDS, freeze.reason);
+    }, [
+        breakpointScope,
+        canFormat,
+        createGroupFromIds,
+        deleteNodeIds,
+        fitGroupFrames,
+        formatGraph,
+        freeze.frozen,
+        freeze.reason,
+        groupColor,
+        nodeMenu,
+        onCreateGroupFrame,
+        t,
+    ]);
+
+    const onAddMenuPickEntry = useCallback(
+        (
+            entry: BlueprintNodeEditorCatalogEntry,
+            flowPos: { x: number; y: number },
+            connectSource: BlueprintDragConnectSource | undefined,
+        ) => {
+            if (connectSource) {
+                const newNodePinId = pickBlueprintDragConnectTargetPin(connectSource, entry);
+                if (!newNodePinId) {
+                    return;
+                }
+                const newId = onAddNodeAtFlowPositionAndConnect?.(entry, flowPos, {
+                    existingNodeId: connectSource.nodeId,
+                    existingHandleId: connectSource.handleId,
+                    existingHandleType: connectSource.handleType,
+                    newNodePinId,
+                });
+                if (typeof newId === "string" && newId.length > 0) {
+                    onSelectNodeIds([newId]);
+                }
+                return;
+            }
+            setPendingPlacementEntry(entry);
+        },
+        [onAddNodeAtFlowPositionAndConnect, onSelectNodeIds],
+    );
 
     const onPaneContextMenu = useCallback(
         (e: MouseEvent | ReactMouseEvent<Element>) => {
@@ -1292,7 +2072,7 @@ function BlueprintFlowCanvasInner({
             const clientY = "clientY" in e ? e.clientY : 0;
             lastPointerClientRef.current = { x: clientX, y: clientY };
             const flow = screenToFlowPosition({ x: clientX, y: clientY });
-            setAddMenu({
+            addMenuRef.current?.open({
                 clientX,
                 clientY,
                 flow: { x: flow.x, y: flow.y },
@@ -1319,6 +2099,7 @@ function BlueprintFlowCanvasInner({
                 onConnect={onConnect}
                 onConnectEnd={onConnectEnd}
                 onNodeDragStart={onNodeDragStart}
+                onNodeDrag={onNodeDrag}
                 onNodeDragStop={onNodeDragStop}
                 onEdgesDelete={onEdgesDelete}
                 // Double-clicking an edge deletes it, so it goes with the rest of the write gestures.
@@ -1329,19 +2110,24 @@ function BlueprintFlowCanvasInner({
                 // click, so a frozen project never gets as far as showing a ghost it will discard.
                 onPaneContextMenu={freeze.gesture(onPaneContextMenu)}
                 onNodeContextMenu={onNodeContextMenu}
+                onSelectionContextMenu={onSelectionContextMenu}
                 onPaneClick={onPaneClick}
                 // Selection stays on - reading a frozen graph is the point - so only the two gestures
                 // that change it are switched off. React Flow keeps the handles drawn either way, so
                 // the pins the author is inspecting still look like pins.
-                nodesDraggable={!freeze.frozen}
+                // The hand tool is navigation, so nothing moves under it: a drag that started on a
+                // card would otherwise edit the graph while the author believed they were only
+                // travelling across it. With node dragging off, that press reaches the pane and
+                // pans like every other one, so the hand has no dead spots either.
+                nodesDraggable={!freeze.frozen && tool === "select"}
                 nodesConnectable={!freeze.frozen}
                 deleteKeyCode={freeze.frozen ? null : deleteKeyCode ?? null}
                 onNodeClick={onPlacementPreviewNodeClick}
                 onSelectionChange={onSelectionChange}
-                selectionOnDrag={!pendingPlacementEntry}
+                selectionOnDrag={!pendingPlacementEntry && tool === "select"}
                 selectionMode={SelectionMode.Partial}
                 multiSelectionKeyCode="Shift"
-                panOnDrag={[1]}
+                panOnDrag={tool === "pan" ? PAN_BUTTONS_HAND_TOOL : PAN_BUTTONS_SELECT_TOOL}
                 panOnScroll
                 panOnScrollMode={PanOnScrollMode.Free}
                 panOnScrollSpeed={1}
@@ -1363,58 +2149,62 @@ function BlueprintFlowCanvasInner({
                 zIndexMode="manual"
             >
                 <Background color="rgb(var(--nl-fg-subtle))" gap={20} size={1} />
-                <BlueprintFlowZoomControls memberPanelCollapsed={memberPanelCollapsed} />
+                <BlueprintGroupDropPreview ref={dropPreviewRef} />
+                <BlueprintCanvasToolbar
+                    tool={tool}
+                    onToolChange={setTool}
+                    groupColor={groupColor}
+                    onCreateGroup={createGroupFromSelection}
+                    canGroup={Boolean(onCreateGroupFrame) && selectedNodeIds.length > 0}
+                    formatDirection={formatDirection}
+                    onFormat={formatGraph}
+                    canFormat={canFormat}
+                    minimap={minimap}
+                    onMinimapChange={applyMinimapPreference}
+                />
+                {/* Shown unless the author closed it. A node-count threshold was tried first and
+                    taken back out: guessing when an overview is worth its corner reads as the
+                    control going missing, and this is the author's call to make rather than ours. */}
+                {minimap.visible ? (
                 <MiniMap
-                    // Dragging the minimap pans the viewport — the quickest way to
-                    // move across a large graph. xyflow ships no cursor affordance
-                    // for it, so add our own (grab, grabbing while held).
+                    // Dragging pans the viewport and a click jumps to it — the two quickest ways
+                    // to cross a large graph. xyflow ships no affordance for either, so the
+                    // cursor and the tip say so.
                     pannable
-                    className="!bg-surface-sunken !border-edge cursor-grab active:cursor-grabbing"
-                    maskColor="rgb(var(--nl-surface-sunken) / 0.65)"
-                    nodeColor={() => "var(--narraleaf-accent, #40a8c4)"}
+                    onClick={jumpToMinimapPoint}
+                    // The size has to go through `style`: the overview's <svg> is sized from
+                    // `style.width ?? 200`, so a width set in classes alone leaves a 200×150
+                    // drawing inside a smaller box, cropped. 16:9 because the canvas it
+                    // summarises is, and a squarer map spends its height on empty margin.
+                    style={BLUEPRINT_MINIMAP_SIZES[minimap.size]}
+                    // React Flow renders this as the <svg>'s own <title>, which is both the
+                    // accessible name and the tooltip a browser shows on hover - so the hint
+                    // about what the map does rides along with the name. Left unset it would
+                    // read as React Flow's English "Mini Map" in every language.
+                    ariaLabel={`${t("blueprint.minimap.label")} — ${t("blueprint.minimap.hint")}`}
+                    nodeColor={blueprintMinimapNodeFill}
+                    nodeStrokeColor={blueprintMinimapNodeStroke}
+                    nodeStrokeWidth={2}
+                    maskColor="rgb(var(--nl-surface-sunken) / 0.55)"
+                    // The one bright thing on the map: without an outline there is nothing to
+                    // read the viewport's position against.
+                    maskStrokeColor="rgb(var(--nl-primary))"
+                    maskStrokeWidth={1}
+                    // `border-edge` alone is a colour with no width. The shell is the toolbar's,
+                    // so the two pieces of canvas chrome read as one set, and `m-4` replaces
+                    // React Flow's own 15px panel margin with the same gap on both edges. The
+                    // border is not decoration here: it is the edge of the graph's whole extent,
+                    // without which the viewport rectangle has nothing to be positioned against.
+                    className="!m-4 !rounded-md !border !border-edge-strong !bg-surface-overlay shadow-lg transition-shadow hover:!ring-1 hover:!ring-edge-strong cursor-grab active:cursor-grabbing"
                 />
+                ) : null}
             </ReactFlow>
-            {addMenu ? (
-                <BlueprintAddNodeMenu
-                    nodeCatalog={nodeCatalog}
-                    open
-                    paletteContext={paletteContext}
-                    anchor={{ x: addMenu.clientX, y: addMenu.clientY }}
-                    flowPosition={addMenu.flow}
-                    connectMode={Boolean(addMenu.connectSource)}
-                    connectSourceLabel={
-                        addMenu.connectSource && !addMenu.connectSource.isExec
-                            ? addMenu.connectSource.valueType
-                            : undefined
-                    }
-                    entryFilter={
-                        addMenu.connectSource
-                            ? entry => pickBlueprintDragConnectTargetPin(addMenu.connectSource!, entry) !== null
-                            : undefined
-                    }
-                    onClose={() => setAddMenu(null)}
-                    onPickEntry={(entry, flowPos) => {
-                        const connectSource = addMenu.connectSource;
-                        if (connectSource) {
-                            const newNodePinId = pickBlueprintDragConnectTargetPin(connectSource, entry);
-                            if (!newNodePinId) {
-                                return;
-                            }
-                            const newId = onAddNodeAtFlowPositionAndConnect?.(entry, flowPos, {
-                                existingNodeId: connectSource.nodeId,
-                                existingHandleId: connectSource.handleId,
-                                existingHandleType: connectSource.handleType,
-                                newNodePinId,
-                            });
-                            if (typeof newId === "string" && newId.length > 0) {
-                                onSelectNodeIds([newId]);
-                            }
-                            return;
-                        }
-                        setPendingPlacementEntry(entry);
-                    }}
-                />
-            ) : null}
+            <BlueprintAddNodeMenuHost
+                ref={addMenuRef}
+                nodeCatalog={nodeCatalog}
+                paletteContext={paletteContext}
+                onPickEntry={onAddMenuPickEntry}
+            />
             <SaveSchemaFieldsModal isOpen={saveSchemaEditorOpen} onClose={closeSaveSchemaEditor} />
             {nodeMenu ? (
                 <ContextMenu
@@ -1424,9 +2214,97 @@ function BlueprintFlowCanvasInner({
                     onClose={() => setNodeMenu(null)}
                 />
             ) : null}
+            {minimapMenu ? (
+                <ContextMenu
+                    items={minimapMenuItems}
+                    position={{ x: minimapMenu.x, y: minimapMenu.y }}
+                    visible
+                    iconsEnabled
+                    onClose={() => setMinimapMenu(null)}
+                />
+            ) : null}
         </div>
     );
 }
+
+/** What the canvas hands the menu when a right-click (or a pin drag) asks for it. */
+type BlueprintAddNodeMenuRequest = {
+    clientX: number;
+    clientY: number;
+    flow: { x: number; y: number };
+    /** Set when the menu was opened by dragging off a pin; filters to compatible nodes + auto-wires. */
+    connectSource?: BlueprintDragConnectSource;
+};
+
+export type BlueprintAddNodeMenuHostHandle = {
+    open: (request: BlueprintAddNodeMenuRequest) => void;
+    close: () => void;
+};
+
+/**
+ * Owns whether the creation menu is up, so the canvas does not have to.
+ *
+ * The canvas is the expensive tree on this page — one React Flow instance, every node card, every
+ * pin row. Keeping "is the menu open" out of it means a right-click renders the menu and nothing
+ * else. The handle is the whole interface: the canvas calls `open` from its gesture handlers and
+ * never reads the answer back.
+ */
+const BlueprintAddNodeMenuHost = forwardRef<
+    BlueprintAddNodeMenuHostHandle,
+    {
+        nodeCatalog: IBlueprintNodeCatalogService;
+        paletteContext: BlueprintPaletteContext;
+        onPickEntry: (
+            entry: BlueprintNodeEditorCatalogEntry,
+            flowPosition: { x: number; y: number },
+            connectSource: BlueprintDragConnectSource | undefined,
+        ) => void;
+    }
+>(function BlueprintAddNodeMenuHost({ nodeCatalog, paletteContext, onPickEntry }, ref) {
+    const [request, setRequest] = useState<BlueprintAddNodeMenuRequest | null>(null);
+
+    useImperativeHandle(ref, () => ({
+        open: next => setRequest(next),
+        close: () => setRequest(null),
+    }), []);
+
+    const connectSource = request?.connectSource;
+    const entryFilter = useMemo(
+        () =>
+            connectSource
+                ? (entry: BlueprintNodeEditorCatalogEntry) =>
+                      pickBlueprintDragConnectTargetPin(connectSource, entry) !== null
+                : undefined,
+        [connectSource],
+    );
+
+    const close = useCallback(() => setRequest(null), []);
+    const pick = useCallback(
+        (entry: BlueprintNodeEditorCatalogEntry, flowPosition: { x: number; y: number }) => {
+            onPickEntry(entry, flowPosition, connectSource);
+        },
+        [connectSource, onPickEntry],
+    );
+
+    if (!request) {
+        return null;
+    }
+
+    return (
+        <BlueprintAddNodeMenu
+            nodeCatalog={nodeCatalog}
+            open
+            paletteContext={paletteContext}
+            anchor={{ x: request.clientX, y: request.clientY }}
+            flowPosition={request.flow}
+            connectMode={Boolean(connectSource)}
+            connectSourceLabel={connectSource && !connectSource.isExec ? connectSource.valueType : undefined}
+            entryFilter={entryFilter}
+            onClose={close}
+            onPickEntry={pick}
+        />
+    );
+});
 
 export type BlueprintFlowCanvasProps = BlueprintFlowCanvasInnerProps;
 

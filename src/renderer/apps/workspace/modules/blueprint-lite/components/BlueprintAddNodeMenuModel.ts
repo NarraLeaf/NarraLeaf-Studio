@@ -78,39 +78,95 @@ export type BlueprintAddNodeLocalizer = {
     category: (category: string) => string;
 };
 
+/**
+ * One entry with every string it can be found by already folded, lowercased and split.
+ *
+ * The palette is ~300 entries wide and each carries half a dozen searchable strings, so scoring a
+ * query used to `normalize("NFKD")` and re-split all of them on every keystroke - the same work, on
+ * the same text, once per character typed. Folding it once per catalogue leaves a keystroke with
+ * only the query itself to fold.
+ */
+export type PreparedBlueprintAddNodeEntry = {
+    entry: BlueprintNodeEditorCatalogEntry;
+    /** Catalogue order, kept so equal scores fall back to the order the palette lists. */
+    index: number;
+    fields: readonly PreparedSearchField[];
+};
+
+type PreparedSearchField = {
+    normalized: string;
+    compact: string;
+    words: readonly string[];
+    /** First letter of each word, for the `madd` -> `Math Add` match. */
+    acronym: string;
+    weight: number;
+};
+
+type PreparedQueryToken = {
+    token: string;
+    compact: string;
+};
+
+/** Fold every entry's searchable text once, for {@link filterPreparedBlueprintAddNodeEntries}. */
+export function prepareBlueprintAddNodeEntries(
+    entries: readonly BlueprintNodeEditorCatalogEntry[],
+    localizer?: BlueprintAddNodeLocalizer,
+): PreparedBlueprintAddNodeEntry[] {
+    return entries.map((entry, index) => ({
+        entry,
+        index,
+        fields: searchFieldsFor(entry, localizer).map(prepareSearchField),
+    }));
+}
+
+export function filterPreparedBlueprintAddNodeEntries(
+    prepared: readonly PreparedBlueprintAddNodeEntry[],
+    activeCategoryId: string,
+    query: string,
+): BlueprintNodeEditorCatalogEntry[] {
+    const inCategory = prepared.filter(
+        item =>
+            activeCategoryId === BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID ||
+            item.entry.category === activeCategoryId,
+    );
+
+    const queryTokens = tokenizeSearchText(query).map<PreparedQueryToken>(token => ({
+        token,
+        compact: readSearchTextForms(token).compact,
+    }));
+    if (queryTokens.length === 0) {
+        return inCategory.map(item => item.entry);
+    }
+
+    const scored: Array<{ entry: BlueprintNodeEditorCatalogEntry; index: number; score: number }> = [];
+    for (const item of inCategory) {
+        const score = scoreBlueprintAddNodeEntry(item, queryTokens);
+        if (score !== null) {
+            scored.push({ entry: item.entry, index: item.index, score });
+        }
+    }
+    return scored
+        .sort((a, b) => a.score - b.score || a.index - b.index)
+        .map(item => item.entry);
+}
+
+/**
+ * Fold and filter in one call.
+ *
+ * The menu keeps the two apart so the folded catalogue survives a keystroke; this is for callers
+ * with a single question to ask.
+ */
 export function filterBlueprintAddNodeEntries(
     entries: readonly BlueprintNodeEditorCatalogEntry[],
     activeCategoryId: string,
     query: string,
     localizer?: BlueprintAddNodeLocalizer,
 ): BlueprintNodeEditorCatalogEntry[] {
-    const queryTokens = tokenizeSearchText(query);
-    const filtered = entries
-        .map((entry, index) => ({ entry, index }))
-        .filter(({ entry }) => {
-            if (
-                activeCategoryId !== BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID &&
-                entry.category !== activeCategoryId
-            ) {
-                return false;
-            }
-            return true;
-        });
-
-    if (queryTokens.length === 0) {
-        return filtered.map(item => item.entry);
-    }
-
-    return filtered
-        .map(({ entry, index }) => {
-            const score = scoreBlueprintAddNodeEntry(entry, queryTokens, localizer);
-            return score === null ? null : { entry, index, score };
-        })
-        .filter((item): item is { entry: BlueprintNodeEditorCatalogEntry; index: number; score: number } =>
-            item !== null
-        )
-        .sort((a, b) => a.score - b.score || a.index - b.index)
-        .map(item => item.entry);
+    return filterPreparedBlueprintAddNodeEntries(
+        prepareBlueprintAddNodeEntries(entries, localizer),
+        activeCategoryId,
+        query,
+    );
 }
 
 type BlueprintAddNodeSearchField = {
@@ -125,14 +181,13 @@ const FIELD_WEIGHTS = {
     category: 18,
 } as const;
 
-function scoreBlueprintAddNodeEntry(
+function searchFieldsFor(
     entry: BlueprintNodeEditorCatalogEntry,
-    queryTokens: readonly string[],
     localizer?: BlueprintAddNodeLocalizer,
-): number | null {
+): BlueprintAddNodeSearchField[] {
     const localizedTitle = localizer?.title(entry.displayName);
     const localizedCategory = localizer?.category(entry.category);
-    const fields: BlueprintAddNodeSearchField[] = [
+    return [
         { text: entry.displayName, weight: FIELD_WEIGHTS.displayName },
         ...(localizedTitle && localizedTitle !== entry.displayName
             ? [{ text: localizedTitle, weight: FIELD_WEIGHTS.displayName }]
@@ -150,12 +205,28 @@ function scoreBlueprintAddNodeEntry(
             : []),
         ...(entry.keywords ?? []).map(keyword => ({ text: keyword, weight: FIELD_WEIGHTS.keyword })),
     ];
+}
 
+function prepareSearchField(field: BlueprintAddNodeSearchField): PreparedSearchField {
+    const { normalized, compact, words } = readSearchTextForms(field.text);
+    return {
+        normalized,
+        compact,
+        words,
+        acronym: words.map(word => word[0]).join(""),
+        weight: field.weight,
+    };
+}
+
+function scoreBlueprintAddNodeEntry(
+    item: PreparedBlueprintAddNodeEntry,
+    queryTokens: readonly PreparedQueryToken[],
+): number | null {
     let totalScore = 0;
     for (const queryToken of queryTokens) {
         let bestScore: number | null = null;
-        for (const field of fields) {
-            const score = scoreSearchToken(field.text, queryToken);
+        for (const field of item.fields) {
+            const score = scoreSearchToken(field, queryToken);
             if (score === null) {
                 continue;
             }
@@ -171,13 +242,13 @@ function scoreBlueprintAddNodeEntry(
     return totalScore;
 }
 
-function scoreSearchToken(text: string, rawToken: string): number | null {
-    const { normalized: token, compact: compactToken } = readSearchTextForms(rawToken);
+function scoreSearchToken(field: PreparedSearchField, queryToken: PreparedQueryToken): number | null {
+    const { token, compact: compactToken } = queryToken;
     if (!compactToken) {
         return null;
     }
 
-    const { normalized: normalizedText, compact: compactText, words } = readSearchTextForms(text);
+    const { normalized: normalizedText, compact: compactText, words } = field;
 
     if (normalizedText === token || compactText === compactToken) {
         return 0;
@@ -204,8 +275,7 @@ function scoreSearchToken(text: string, rawToken: string): number | null {
         return 24 + compactIndex / 10;
     }
 
-    const acronym = words.map(word => word[0]).join("");
-    if (acronym.startsWith(compactToken)) {
+    if (field.acronym.startsWith(compactToken)) {
         return 32;
     }
 
