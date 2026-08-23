@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Upload } from "lucide-react";
-import { Button, Modal, dialogFooterButtonClass } from "@/lib/components/elements";
+import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { applyImport, planImport } from "@/lib/settings/transferSettings";
 import { cn } from "@/lib/utils/cn";
@@ -16,11 +16,12 @@ import type { SettingsImportPlan } from "@shared/utils/settingsDocument";
  * there - the file is JSON an author can edit, and applying one blind is how a settings transfer
  * becomes a settings loss.
  *
- * **In the footer, beside the way onward, because it is one of the ways onward.** An import answers
- * the whole flow, so when it lands setup is over: {@link ImportSettingsActionProps.onImported}
- * leaves it the same way the last screen's button does, and the author arrives at the home screen
- * with the settings they came with. Standing on screen four when it happens is not a special case -
- * the file overwrites what was answered, which is what the plan said it would do.
+ * **On the cover, because it is about the whole run rather than any screen of it.** An import
+ * answers every question at once, so when it lands setup is over:
+ * {@link ImportSettingsActionProps.onImported} leaves it the same way the last screen's button does,
+ * and the author arrives at the home screen with the settings they came with. It sat in the footer
+ * of every screen until it was pointed out what that meant: offered beside question four, "I already
+ * have all of this" reads as a way to answer question four.
  *
  * There is no export half. On a first run there is nothing yet worth writing out, and the pair
  * belongs together in Settings, where the machine being copied FROM is the one that has settings.
@@ -75,10 +76,19 @@ export function ImportSettingsAction({ onImported }: ImportSettingsActionProps) 
 
     return (
         <>
-            <Button variant="ghost" disabled={busy} onClick={() => void runPlan()}>
-                <Upload className="h-4 w-4" />
-                {t("onboarding.import.action")}
-            </Button>
+            {/* The same row every question on these screens is answered with - bordered, full
+                width, an icon then a label - because it is the same kind of thing: one of the
+                answers setup takes. A ghost button here would be the one control in the flow that
+                does not look like the flow's controls. */}
+            <button
+                type="button"
+                disabled={busy}
+                onClick={() => void runPlan()}
+                className="nl-focus-ring flex w-full items-center gap-2.5 rounded-md border border-edge px-3 py-2 text-left text-fg-muted transition-colors duration-150 hover:bg-fill disabled:opacity-60"
+            >
+                <Upload className="h-4 w-4 shrink-0 text-fg-subtle" />
+                <span className="min-w-0 flex-1 truncate text-sm">{t("onboarding.import.action")}</span>
+            </button>
 
             {error && !plan ? <span className="truncate text-xs text-danger">{error}</span> : null}
 
