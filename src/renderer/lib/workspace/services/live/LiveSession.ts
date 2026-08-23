@@ -843,17 +843,17 @@ export class LiveSession {
      */
     private sinkFor(session: ActiveSession): StoryOpSink {
         return {
-            handle: (storyId, op): boolean => {
+            handle: (storyId, op, derived): boolean => {
                 if (this.active !== session || storyId !== session.storyId) {
                     // Another story, or a session that has ended: the mutator carries on exactly as
                     // it would with no sink at all.
                     return false;
                 }
                 if (session.host) {
-                    this.hostApply(session, op, undefined);
+                    this.hostApply(session, op, derived);
                     return true;
                 }
-                session.guest?.intend(op);
+                session.guest?.intend(op, derived);
                 this.publish(session, {});
                 // True even when the intent is refused later, and even for a session with neither
                 // half built: what must never happen is this window changing a shared document on

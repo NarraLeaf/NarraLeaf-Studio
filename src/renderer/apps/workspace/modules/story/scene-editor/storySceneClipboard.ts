@@ -1,3 +1,4 @@
+import type { LiveDerived } from "@shared/live/ops";
 import type { StoryBlock, StoryBlockId, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -60,14 +61,20 @@ export function listBlockTextIds(blocks: Iterable<StoryBlock>): string[] {
     return ids;
 }
 
+/**
+ * `derived` rides the root's own insert and no other. See `StoryOpSink.handle`: it belongs to the
+ * paste rather than to a row, and giving it to the children as well would write the same entries
+ * once per row of the tree.
+ */
 export function insertSerializedClone(
     storyService: StoryService,
     storyId: string,
     sceneId: string,
     source: SerializedStoryBlock,
     target: StoryBlockTarget,
+    derived?: LiveDerived,
 ): void {
-    storyService.insertBlock(storyId, sceneId, source.block, target);
+    storyService.insertBlock(storyId, sceneId, source.block, target, derived);
     for (const child of source.children) {
         insertSerializedClone(storyService, storyId, sceneId, child, { parentId: source.block.id });
     }
