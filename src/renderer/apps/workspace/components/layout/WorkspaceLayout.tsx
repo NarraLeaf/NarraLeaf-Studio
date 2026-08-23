@@ -27,6 +27,7 @@ import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
 import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
+import { LiveSessionFreezeCommands } from "./LiveSessionFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
 import { NarralangCommands } from "../../modules/story/narralang/NarralangCommands";
@@ -1000,6 +1001,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             )}
             <EditorCommands />
             <WorkspaceFreezeCommands />
+            <LiveSessionFreezeCommands />
             <LintCommands />
             <StoryScriptCommands />
             <NarralangCommands />

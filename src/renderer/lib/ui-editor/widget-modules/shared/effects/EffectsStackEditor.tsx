@@ -21,6 +21,7 @@ import { Button } from "@/lib/components/elements/Button";
 import { Select } from "@/lib/components/elements/Select";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Plus, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import {
     clearEffectKindPatch,
@@ -497,6 +498,9 @@ export function EffectsStackEditor({
     const [openKind, setOpenKind] = useState<VisualEffectKind | null>(null);
     const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
     const [pendingAdd, setPendingAdd] = useState<VisualEffectKind | null>(null);
+    // For the detail panel alone, which is portalled out of this subtree. Everything else in this
+    // editor is an ordinary descendant of the inspector's clamp and needs nothing from here.
+    const freeze = useFreezeGuard();
 
     const closePanel = useCallback(() => {
         setOpenKind(null);
@@ -587,14 +591,27 @@ export function EffectsStackEditor({
             ))}
 
             <EffectsAnchoredPanel open={openKind != null} anchorEl={anchorEl} onClose={closePanel}>
-                {openKind ? (
-                    <EffectDetailBody
-                        kind={openKind}
-                        values={values}
-                        onChange={onChange}
-                        draftResetKey={`${draftResetKey}-${openKind}`}
-                    />
-                ) : null}
+                {/* The panel's own clamp: it is portalled into `document.body`, so the
+                    `<fieldset disabled>` the inspector wraps this field in never reaches it. The
+                    button that opens it is inside that clamp and so cannot be pressed on a project
+                    that was already frozen - but a freeze arrives while the workspace is running,
+                    and a panel that was open when it landed kept every slider live. Every control in
+                    here writes, so there is nothing to exempt. */}
+                <fieldset
+                    disabled={freeze.frozen}
+                    aria-readonly={freeze.frozen || undefined}
+                    data-tip={freeze.frozen ? freeze.reason : undefined}
+                    style={{ display: "contents" }}
+                >
+                    {openKind ? (
+                        <EffectDetailBody
+                            kind={openKind}
+                            values={values}
+                            onChange={onChange}
+                            draftResetKey={`${draftResetKey}-${openKind}`}
+                        />
+                    ) : null}
+                </fieldset>
             </EffectsAnchoredPanel>
         </div>
     );

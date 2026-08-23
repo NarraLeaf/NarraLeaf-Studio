@@ -325,6 +325,36 @@ export const workspace = {
         liveJoin: "加入",
         liveLeave: "离开",
         liveEnd: "结束",
+        // 无法开始或加入的原因。工作区同一时刻只有一种冻结，每一条点名的是需要先离开的状态。
+        liveBlockedRevision: "离开正在查看的版本后才能开始或加入实时会话",
+        liveBlockedManual: "解除工作区冻结后才能开始或加入实时会话",
+        liveBlockedMerge: "完成合并后才能开始或加入实时会话",
+        liveBlockedRecovery: "恢复模式下无法使用实时会话",
+        liveBlockedSession: "该工作区已在一场实时会话中",
+        // 本窗口在会话中的位置，占的是不在会话时显示人数的那个位置。
+        liveHost: "主持",
+        liveGuest: "参与",
+        liveEntering: "正在进入",
+        liveLeaving: "正在离开",
+        // 已加入，正在把加入之前会话里发生的事全部应用完。
+        liveCatchingUp: "正在跟上会话进度",
+        // 开始或加入之前必须先满足的条件，每一条点名其中一件。
+        liveNoStory: "先添加一个故事才能开始实时会话",
+        liveNoServer: "先把项目连接到服务器才能开始或加入实时会话",
+        liveNoInstance: "该服务器还没有回应本机",
+        liveNoRepository: "此项目没有版本历史",
+        liveNoRevision: "先记录一个版本才能开始实时会话",
+        liveCloneRequired: "该会话属于 {project}，打开那个项目才能加入",
+        liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
+        liveRoomGone: "该会话已经关闭",
+        liveRefused: "服务器拒绝了这场会话",
+        liveFailed: "无法开始实时会话",
+        // 会话结束的两种情形，都不是作者自己决定的。主动离开不作声。
+        liveEndedHostLeft: "主持方已离开，会话结束",
+        // 说的是本机这份副本发生了什么，不是道别：会话没了，而且这块磁盘上的内容
+        // 已经不是其他人正在看的那一份。
+        liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
+        liveEndedDivergedNext: "重新加入前先从服务器获取",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",
@@ -540,6 +570,10 @@ export const workspace = {
             frozenTitle: "当前不保存任何改动",
             frozenDetailRevision: "当前正在查看版本 {version}，查看期间的改动不会保存",
             frozenDetailManual: "工作区已冻结，解除冻结后恢复保存",
+            // 实时会话只保存自己的那份故事，其余一律拒绝，所以上面那个标题
+            // 对作者正在打字的那份文件是假的。
+            frozenTitleSession: "该文件不会被保存",
+            frozenDetailSession: "实时会话进行中，只有会话的故事会保存；离开会话后可以改动其余内容",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",

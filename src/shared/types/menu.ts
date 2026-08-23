@@ -132,12 +132,17 @@ export type NativeMenuRuntimeStatus = {
     /** A test run holds the run slot exactly as a mode does, so the Test entry becomes Stop too. */
     testActive: boolean;
     /**
-     * Whether the project is frozen, which is what turns Preview and Production Build off.
+     * Whether a freeze that refuses the operations main starts is in force, which is what turns
+     * Preview and Production Build off.
+     *
+     * Not "is the project frozen": one kind of freeze leaves those operations alone (see
+     * `refusesOperations` in `@shared/types/workspaceFreeze`), and the renderer resolves that before
+     * sending, so this field and the managers' own refusal are one answer rather than two.
      *
      * Sent up so the menu can grey them the way the toolbar does. The commands behind them refuse
      * a frozen workspace on their own, but a refusal the user cannot see reads as a broken menu.
      */
-    frozen: boolean;
+    operationsFrozen: boolean;
 };
 
 /** Everything one workspace window pushes up for its native menu. */

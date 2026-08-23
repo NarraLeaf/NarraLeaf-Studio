@@ -43,6 +43,10 @@ export function StoryActionBlueprintPreviewCard(props: {
 }) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    // Deliberately UNSCOPED. With a blueprint to open this card writes nothing and the guard only
+    // reads; without one the click mints a blueprint (see `onOpen`), and that is a document of its
+    // own which no partial freeze leaves writable - so the create path has to keep the conservative
+    // answer even inside a live session that allows the story document this card sits in.
     const { frozen, reason } = useFreezeGuard();
     const blueprintRevision = useBlueprintDocumentRevision();
     const localBp =
@@ -57,8 +61,9 @@ export function StoryActionBlueprintPreviewCard(props: {
     return (
         <div className="space-y-2 rounded-lg border border-edge bg-surface px-3 py-3">
             {/* An `InspectOnlyButton` because the story action inspector clamps its whole field body
-                in a `disabled` `<fieldset>` while the workspace is frozen, and reaching a blueprint
-                to read it is not a write - the blueprint editor enforces the freeze itself.
+                in a `disabled` `<fieldset>` while a freeze covers the story it is editing, and
+                reaching a blueprint to read it is not a write - the blueprint editor enforces the
+                freeze itself.
 
                 **Except when there is nothing to open yet**: this card doubles as the create
                 affordance (`ensureStoryActionBlueprint` runs on the way in and the block's payload
