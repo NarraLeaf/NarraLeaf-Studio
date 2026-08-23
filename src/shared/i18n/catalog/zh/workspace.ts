@@ -347,6 +347,8 @@ export const workspace = {
         liveCloneRequired: "该会话属于 {project}，打开那个项目才能加入",
         liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
         liveRoomGone: "该会话已经关闭",
+        liveRoomStoryUnknown: "该会话没有说它在改哪个故事，请主持方更新 Studio",
+        liveStoryNotHere: "该会话所改的故事不在此项目中",
         liveRefused: "服务器拒绝了这场会话",
         liveFailed: "无法开始实时会话",
         // 会话结束的两种情形，都不是作者自己决定的。主动离开不作声。

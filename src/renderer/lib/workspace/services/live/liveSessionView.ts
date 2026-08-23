@@ -96,6 +96,24 @@ export type LiveEntryFailure =
     | { kind: "merge-conflicts"; paths: readonly string[] }
     /** The room named is not open on this project any more. */
     | { kind: "room-gone"; sessionId: string }
+    /**
+     * The room does not say which document it is about, so there is nothing to follow.
+     *
+     * Only a room opened by a Studio older than the field, against a server older than the
+     * requirement. Refused rather than guessed at: the only document this window could guess is
+     * one it already holds, which is the wrong answer whenever the two copies differ and no answer
+     * at all for somebody who has just arrived. The remedy is on the other machine, so the sentence
+     * has to name it.
+     */
+    | { kind: "room-story-unknown" }
+    /**
+     * The room's document is not in this copy, even after syncing to the revision it opened on.
+     *
+     * Should not happen - the host commits and pushes before opening, so the document is in that
+     * revision - which is exactly why it is worth naming. Without it the session would start,
+     * every read of the document would answer null, and nothing on screen would say why.
+     */
+    | { kind: "story-not-here"; storyId: StoryId }
     /** The server refused, or could not be reached. */
     | { kind: "refused"; problem: TeamProblem }
     /** Something local threw - a checkpoint, a push, a sync. `detail` is for a log, not a screen. */

@@ -161,14 +161,34 @@ describe("what the room row does when pressed", () => {
         expect(world.open).toHaveBeenCalledWith({ storyId: "story-1", title: "Act one" });
     });
 
-    it("joins the room the server is offering, on that same story", () => {
+    it("joins the room the server is offering, and names no story of its own", () => {
         world.view = IDLE_LIVE_SESSION;
         draw({ live: [room()] });
 
         expect(seam("live")?.textContent).toContain("Act one");
         fireEvent.click(seam("live-join") as HTMLElement);
 
-        expect(world.join).toHaveBeenCalledWith({ session: room(), storyId: "story-1" });
+        // Which document the room is about is the room's answer. A story named here could only
+        // ever be one this project already has - the wrong one whenever the copies differ about
+        // which story comes first, and none at all for somebody joining in order to get one.
+        expect(world.join).toHaveBeenCalledWith({ session: room() });
+    });
+
+    it("offers to join even when this project has no story of its own", () => {
+        // ⚠ The regression. A machine that has not got the story yet is the most ordinary new
+        // collaborator there is, and it used to be the one machine this control was disabled for -
+        // told to add a story before joining the session that would have brought it one.
+        world.stories = [];
+        world.defaultStory = undefined;
+        world.view = IDLE_LIVE_SESSION;
+        draw({ live: [room()] });
+
+        expect(seam("live-join")?.matches(":disabled")).toBe(false);
+        // And the line telling them to add a story is not said beside an offer to join one.
+        expect(seam("live-no-story")).toBeNull();
+
+        fireEvent.click(seam("live-join") as HTMLElement);
+        expect(world.join).toHaveBeenCalledWith({ session: room() });
     });
 
     it("offers one way out, named for what leaving actually does", () => {

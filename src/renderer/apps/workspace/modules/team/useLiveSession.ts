@@ -31,7 +31,7 @@ export type LiveSessionSurface = {
      */
     busy: boolean;
     open: (input: { storyId: StoryId; title?: string }) => void;
-    join: (input: { session: TeamLiveSession | string; storyId: StoryId }) => void;
+    join: (input: { session: TeamLiveSession | string }) => void;
     leave: () => void;
 };
 
@@ -73,12 +73,15 @@ export function useLiveSession(): LiveSessionSurface {
 }
 
 /**
- * The story a session opened from this window would be about, or null for a project with none.
+ * The story a session **opened from this window** would be about, or null for a project with none.
  *
- * **The project's default story, and there is no picker.** A room carries no story id
- * (`TeamLiveSession`), so the two windows in it can only be about the same document by both
- * working it out the same way - and a list to choose from would be a way for them to disagree.
- * The default story is the one answer every window in the project computes identically.
+ * **Opening only.** A room carries the story it is about, so joining one reads that rather than
+ * asking here - which is the whole point: a joiner that worked the document out for itself could
+ * only ever arrive at one it already holds.
+ *
+ * The project's default story, and there is still no picker: choosing which document to open a
+ * room on is a decision worth having, but it is a decision about this window's own session and
+ * belongs beside the control that starts one.
  *
  * Read once when the surface showing it mounts. The library is a project-lifetime fact and the
  * panel is opened, read and closed.

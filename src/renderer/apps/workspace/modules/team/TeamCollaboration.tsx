@@ -87,11 +87,13 @@ export function TeamCollaboration({ team }: {
     const endedSentence = ended === null ? null : liveEndSentence(ended);
     const members = liveOtherMembers(live.view);
     const standing = liveStandingKey(live.view);
-    // A session is about one story document, and a project with none has nothing to open a room on.
+    // A session is about one story document, and a project with none has nothing to **open** a room
+    // on. It has everything it needs to join one: the room names the document and the sync on the
+    // way in brings it.
     const noStory = story === null;
-    const entryTip = blocked !== null
-        ? t(blocked.message)
-        : noStory ? t("workspace.shell.team.liveNoStory") : undefined;
+    const blockedTip = blocked !== null ? t(blocked.message) : undefined;
+    const entryTip = blockedTip
+        ?? (noStory ? t("workspace.shell.team.liveNoStory") : undefined);
 
     if (project === null || origin === null) {
         return null;
@@ -154,15 +156,15 @@ export function TeamCollaboration({ team }: {
                                 <span className="shrink-0 text-2xs text-fg-subtle">
                                     {t("workspace.shell.team.liveMembers", { count: String(other.members.length) })}
                                 </span>
+                                {/* Not gated on this project having a story of its own. The room
+                                    says which document it is about and the sync on the way in
+                                    brings it, so "there is nothing here to work on" is the wrong
+                                    thing to say to the very person joining in order to get it. */}
                                 <Quiet
                                     seam="live-join"
-                                    busy={live.busy || blocked !== null || noStory}
-                                    {...(entryTip === undefined ? {} : { tip: entryTip })}
-                                    onClick={() => {
-                                        if (story !== null) {
-                                            live.join({ session: other, storyId: story.id });
-                                        }
-                                    }}
+                                    busy={live.busy || blocked !== null}
+                                    {...(blockedTip === undefined ? {} : { tip: blockedTip })}
+                                    onClick={() => live.join({ session: other })}
                                     label={t("workspace.shell.team.liveJoin")}
                                 />
                             </>
@@ -198,7 +200,10 @@ export function TeamCollaboration({ team }: {
                     {blocked !== null && (
                         <Note seam="live-blocked" tone="text-warning">{t(blocked.message)}</Note>
                     )}
-                    {blocked === null && noStory && !inRoom && (
+                    {/* Only where opening is what is on offer. Said beside a room this window
+                        could join, it would be discouraging somebody from the one act that would
+                        give them the story it is complaining they lack. */}
+                    {blocked === null && noStory && !inRoom && other === null && (
                         <Note seam="live-no-story" tone="text-warning">
                             {t("workspace.shell.team.liveNoStory")}
                         </Note>

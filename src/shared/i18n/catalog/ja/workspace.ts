@@ -361,6 +361,8 @@ export const workspace = {
         liveCloneRequired: "そのセッションは {project} のもの。参加するにはそのプロジェクトを開く",
         liveVersionMismatch: "そのセッションは、このプロジェクトが持つものより古いバージョンで開始されている",
         liveRoomGone: "そのセッションはもう開いていない",
+        liveRoomStoryUnknown: "そのセッションはどのストーリーのものか示していない。ホストに Studio の更新を頼む",
+        liveStoryNotHere: "そのセッションのストーリーはこのプロジェクトにない",
         liveRefused: "そのサーバーはセッションを拒否した",
         liveFailed: "ライブセッションを開始できなかった",
         // 作者が選んだのではない終わり方が二つ。自分で退出したときは何も言わない。

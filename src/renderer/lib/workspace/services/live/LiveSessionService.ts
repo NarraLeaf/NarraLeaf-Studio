@@ -100,7 +100,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         return this.session?.open(input) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
     }
 
-    public join(input: { session: TeamLiveSession | string; storyId: StoryId }): Promise<LiveEntryFailure | null> {
+    public join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null> {
         return this.session?.join(input) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
     }
 

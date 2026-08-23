@@ -110,6 +110,8 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
                 id: "room-1",
                 project: input.project,
                 revision: input.revision,
+                // Carried exactly as the server carries it, because it is what a joiner follows.
+                story: input.story,
                 openedBy: self,
                 openedByInstance: self,
                 openedAt: 0,
@@ -428,7 +430,7 @@ describe("a live session", () => {
             guest.sceneId,
             structuredClone(host.story.getStoryDocument(host.storyId).scenes[host.sceneId]),
         );
-        const failure = await guest.session.join({ session: "room-1", storyId: guest.storyId });
+        const failure = await guest.session.join({ session: "room-1" });
         expect(failure).toBeNull();
         await drain(world.bus);
     }
@@ -443,7 +445,7 @@ describe("a live session", () => {
         it("is a guest in every other window, and catches up before it follows", async () => {
             await openRoom();
             guest.version.syncTo = host.version.head;
-            await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            await guest.session.join({ session: "room-1" });
             const view = guest.session.getView();
             expect(view.role).toBe("guest");
             // Asked the host for everything since the room opened; not following until it answers.
@@ -489,7 +491,7 @@ describe("a live session", () => {
             await openRoom();
             guest.version.uncommitted = true;
             guest.version.syncTo = host.version.head;
-            const failure = await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            const failure = await guest.session.join({ session: "room-1" });
             expect(failure).toBeNull();
             expect(guest.calls).toEqual(["checkpoint", "sync", "join", "freeze"]);
             // Named so the author can be told where their own work went before the session's state
@@ -500,7 +502,7 @@ describe("a live session", () => {
         it("syncs without a checkpoint when there was nothing to record", async () => {
             await openRoom();
             guest.version.syncTo = host.version.head;
-            await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            await guest.session.join({ session: "room-1" });
             expect(guest.calls).toEqual(["sync", "join", "freeze"]);
         });
 
@@ -509,7 +511,6 @@ describe("a live session", () => {
             const room = world.rooms.get("room-1") as TeamLiveSession;
             const failure = await guest.session.join({
                 session: { ...room, project: "some-other-repository" },
-                storyId: guest.storyId,
             });
             expect(failure).toEqual({
                 kind: "clone-required",
@@ -521,10 +522,63 @@ describe("a live session", () => {
             expect(guest.freeze.armed).toBeNull();
         });
 
+        it("follows the document the room names rather than one of its own", async () => {
+            // ⚠ The whole point of the room carrying it. This guest holds a second story and
+            // prefers it - which is what a machine that came by the project some other way looks
+            // like - and joining must still bind the one the host opened on.
+            await openRoom();
+            guest.version.syncTo = host.version.head;
+            // A second story, and the room is about that one. Nothing this window could have
+            // worked out for itself would land here: it is not the story the two copies share and
+            // it is not the one this window opened with.
+            const other = guest.story.createStory("Something else");
+            const room = world.rooms.get("room-1") as TeamLiveSession;
+            expect(other.id).not.toBe(host.storyId);
+            world.rooms.set("room-1", { ...room, story: other.id });
+
+            expect(await guest.session.join({ session: "room-1" })).toBeNull();
+
+            expect(guest.session.getView().storyId).toBe(other.id);
+            // And the freeze leaves the room's document writable, not the one this window shares.
+            expect(guest.freeze.armed?.writable).toEqual([
+                storyDocumentSpec.pathFor({ storyId: other.id }),
+            ]);
+        });
+
+        it("refuses a room that does not say which document it is about", async () => {
+            // Only a room opened by a Studio older than the field, against a server older than the
+            // requirement. Falling back to a guess here is the failure this whole change removes,
+            // so the fallback must not quietly come back.
+            await openRoom();
+            const room = world.rooms.get("room-1") as TeamLiveSession;
+            const { story: _story, ...older } = room;
+            world.rooms.set("room-1", older as TeamLiveSession);
+            guest.version.syncTo = host.version.head;
+
+            expect(await guest.session.join({ session: "room-1" })).toEqual({ kind: "room-story-unknown" });
+            // Nothing was touched on the way to finding out: no checkpoint, no sync, no freeze.
+            expect(guest.calls).toEqual([]);
+            expect(guest.freeze.armed).toBeNull();
+        });
+
+        it("refuses when the room's document is not in this copy after syncing", async () => {
+            await openRoom();
+            const room = world.rooms.get("room-1") as TeamLiveSession;
+            world.rooms.set("room-1", { ...room, story: "story-nobody-here-has" });
+            guest.version.syncTo = host.version.head;
+
+            expect(await guest.session.join({ session: "room-1" }))
+                .toEqual({ kind: "story-not-here", storyId: "story-nobody-here-has" });
+            // The sync ran - this is only knowable afterwards - but the room was never joined and
+            // nothing froze behind a session that could not have worked.
+            expect(guest.calls).toEqual(["sync"]);
+            expect(guest.freeze.armed).toBeNull();
+        });
+
         it("refuses when the tree cannot be brought to the revision the room opened on", async () => {
             await openRoom();
             guest.version.syncTo = "rev-somebody-pushed-past-it";
-            const failure = await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            const failure = await guest.session.join({ session: "room-1" });
             expect(failure).toEqual({
                 kind: "revision-mismatch",
                 expected: host.version.head,
@@ -536,7 +590,7 @@ describe("a live session", () => {
         it("refuses when the sync left files a human has to settle", async () => {
             await openRoom();
             guest.version.conflicts = ["editor/story/stories/x/storydoc.json"];
-            const failure = await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            const failure = await guest.session.join({ session: "room-1" });
             expect(failure).toMatchObject({ kind: "merge-conflicts" });
             expect(guest.freeze.armed).toBeNull();
         });

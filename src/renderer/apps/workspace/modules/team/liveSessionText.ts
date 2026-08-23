@@ -43,6 +43,11 @@ const ENTRY_FAILURES: Record<LiveEntryFailure["kind"], TranslationKey> = {
     // A merge is open now, and a merge is one of the freezes that refuses a session anyway.
     "merge-conflicts": "workspace.shell.team.liveBlockedMerge",
     "room-gone": "workspace.shell.team.liveRoomGone",
+    // The room is there and this window still cannot follow it. Both name the reason rather than
+    // falling back to a guess, because the only story this window could guess is one it already
+    // holds - see `LiveSession.join`.
+    "room-story-unknown": "workspace.shell.team.liveRoomStoryUnknown",
+    "story-not-here": "workspace.shell.team.liveStoryNotHere",
     refused: "workspace.shell.team.liveRefused",
     failed: "workspace.shell.team.liveFailed",
 };
