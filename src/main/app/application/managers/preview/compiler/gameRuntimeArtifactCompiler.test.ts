@@ -19,6 +19,7 @@ import {
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption/runtime";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
+import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -1152,6 +1153,10 @@ describe("game runtime artifact compiler", () => {
 
         expect(result.pack.addOns?.verificationKey)
             .toBe(projectVerificationKey(projectMaterial, "com.example.patchable"));
+        // What a later patch export reads to decide whether this build can be sent the difference
+        // rather than a whole pack. Dropped, every patch made for this build silently goes back to
+        // replacing the content of every other patch installed beside it.
+        expect(result.pack.addOns?.packDeltaVersion).toBe(PACK_DELTA_VERSION);
         // Loose payload, and still a binary beside it.
         await expect(fs.access(path.join(result.appDir, "pack.json"))).resolves.toBeUndefined();
         const binaryPath = path.join(result.appDir, RUNTIME_SUPPORT_FILENAME);

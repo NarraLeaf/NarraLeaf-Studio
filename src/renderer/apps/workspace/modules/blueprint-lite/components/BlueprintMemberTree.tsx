@@ -22,6 +22,7 @@ import { BlueprintVariableDialogContent, type BlueprintVariableDialogValue } fro
 import { ChevronDown, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { UseTranslation } from "@/lib/i18n";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const FIELD_INPUT =
     "w-full rounded-md border border-edge-strong bg-fill-subtle px-2 py-1 text-2xs text-fg outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30";
@@ -208,6 +209,9 @@ function BlueprintVariableRow({
                 onBlur={commitName}
                 onKeyDown={e => {
                     e.stopPropagation();
+                    if (isImeKeyEvent(e)) {
+                        return;
+                    }
                     if (e.key === "Enter") {
                         e.preventDefault();
                         e.currentTarget.blur();
@@ -337,6 +341,9 @@ function BlueprintPersistentVariableRow({
                 onBlur={commitName}
                 onKeyDown={e => {
                     e.stopPropagation();
+                    if (isImeKeyEvent(e)) {
+                        return;
+                    }
                     if (e.key === "Enter") {
                         e.preventDefault();
                         e.currentTarget.blur();

@@ -103,6 +103,7 @@ import { useStoryRowActions } from "./storyRowActions";
 import { StoryRowClaimMark, useStoryRowClaim } from "./storyRowClaims";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * One story row's data.
@@ -2335,6 +2336,13 @@ export function InsertRow(props: {
                         }
                     }}
                     onKeyDown={event => {
+                        // Every branch below belongs to the IME first while it is composing: Escape
+                        // cancels the conversion rather than discarding the slot, the arrows walk the
+                        // candidate list rather than the command menu, and Enter confirms kana into
+                        // kanji rather than committing a half-typed line.
+                        if (isImeKeyEvent(event)) {
+                            return;
+                        }
                         if (event.key === "Backspace" && value === "" && event.currentTarget.selectionStart === 0 && event.currentTarget.selectionEnd === 0) {
                             event.preventDefault();
                             props.onBackspaceEmpty();
@@ -3394,6 +3402,10 @@ export function CharacterSelectTrigger(props: {
                 onMouseDown={event => event.stopPropagation()}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    // The candidate window owns these keys while a name is being converted.
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                         event.preventDefault();
                         picker.moveCharacter(event.key === "ArrowDown" ? 1 : -1);

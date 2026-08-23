@@ -52,6 +52,7 @@ function PatchDialogContent({
         baselineAppDir: string;
         outputFile: string;
         name: string;
+        layer: string;
     }) => void;
     onCancel: () => void;
 }) {
@@ -68,6 +69,11 @@ function PatchDialogContent({
     const [baselineAppDir, setBaselineAppDir] = useState("");
     const [outputFile, setOutputFile] = useState(info.defaultOutputFile);
     const [name, setName] = useState("");
+    /**
+     * Where this patch sits among the others installed on the same build, held as text so a partly
+     * typed value - an empty box, a lone minus sign - stays what the author typed.
+     */
+    const [layer, setLayer] = useState("");
 
     const variantOptions = useMemo<SelectOption[]>(
         () => info.appTags.map(tag => ({ value: tag.id, label: tag.name })),
@@ -165,6 +171,19 @@ function PatchDialogContent({
                         placeholder={t("build.patch.namePlaceholder")}
                     />
                 </div>
+
+                <div className="grid gap-1">
+                    <FieldLabel as="div">{t("build.patch.layerLabel")}</FieldLabel>
+                    <Input
+                        type="number"
+                        step={1}
+                        value={layer}
+                        onChange={event => setLayer(event.target.value)}
+                        placeholder="0"
+                        aria-label={t("build.patch.layerLabel")}
+                    />
+                    <span className="text-2xs text-fg-subtle">{t("build.patch.layerHint")}</span>
+                </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-edge bg-surface-overlay px-6 py-3">
@@ -180,6 +199,7 @@ function PatchDialogContent({
                         baselineAppDir: baselineAppDir.trim(),
                         outputFile: outputFile.trim(),
                         name,
+                        layer,
                     })}
                 >
                     {t("build.patch.exportAction")}
@@ -244,12 +264,15 @@ export async function openPatchDialog(workspace: Workspace): Promise<void> {
                 onCancel={() => uiService.dialogs.close(dialogId)}
                 onExport={choice => {
                     uiService.dialogs.close(dialogId);
+                    // Zero is what a patch that says nothing already gets, so it is not sent.
+                    const layer = Number.parseInt(choice.layer, 10);
                     void buildService.exportPatch({
                         ...(choice.appTagId ? { appTagId: choice.appTagId } : {}),
                         ...(choice.contentAppTagId ? { contentAppTagId: choice.contentAppTagId } : {}),
                         ...(choice.baselineAppDir ? { baselineAppDir: choice.baselineAppDir } : {}),
                         outputFile: choice.outputFile,
                         ...(choice.name.trim() ? { name: choice.name.trim() } : {}),
+                        ...(Number.isInteger(layer) && layer !== 0 ? { order: layer } : {}),
                     });
                 }}
             />

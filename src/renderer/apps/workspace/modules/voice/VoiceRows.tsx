@@ -12,6 +12,7 @@ import { Check, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 export type VoiceTableRow = {
     unitId: string;
@@ -165,6 +166,9 @@ export function VoiceRow(props: VoiceRowProps) {
                                 }
                             }}
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 if (event.key === "Enter") {
                                     (event.target as HTMLInputElement).blur();
                                 }
