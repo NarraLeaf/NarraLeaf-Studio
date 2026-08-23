@@ -179,6 +179,10 @@ export class LiveSession {
             const opened = await ready.rooms.open({
                 project: ready.project.repositoryId,
                 revision,
+                // What the room is about, said once here and read by everybody who joins. The
+                // alternative - letting each joiner work it out - can only ever produce a document
+                // that machine already has.
+                story: input.storyId,
                 ...(input.title === undefined ? {} : { title: input.title }),
             });
             if (!opened.ok) {
@@ -212,7 +216,7 @@ export class LiveSession {
      * room opened, because an operation applied out of the host's order produces a document the
      * host never held.
      */
-    public async join(input: { session: TeamLiveSession | string; storyId: StoryId }): Promise<LiveEntryFailure | null> {
+    public async join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null> {
         const blocked = this.blocked();
         if (blocked) {
             return this.failEntry(blocked);
@@ -229,6 +233,14 @@ export class LiveSession {
                     kind: "room-gone",
                     sessionId: typeof input.session === "string" ? input.session : input.session.id,
                 });
+            }
+            // The room's own answer, never this window's. A joiner that worked out the document
+            // for itself could only ever land on one it already holds - the wrong one whenever the
+            // two copies differ about which story comes first, and none at all for somebody whose
+            // way of getting the project is this very act.
+            const storyId = room.story as StoryId | undefined;
+            if (storyId === undefined) {
+                return this.failEntry({ kind: "room-story-unknown" });
             }
             const plan = planLiveJoin({
                 sessionProject: room.project,
@@ -261,6 +273,12 @@ export class LiveSession {
                     return this.failEntry({ kind: "revision-mismatch", expected: room.revision, actual: head });
                 }
             }
+            if (this.deps.story.document(storyId) === null) {
+                // The sync has landed, so this is the tree the room opened on and the document
+                // still is not in it. Entering anyway would give every read of it null and say
+                // nothing about why.
+                return this.failEntry({ kind: "story-not-here", storyId });
+            }
             const joined = await ready.rooms.join(room.id);
             if (!joined.ok) {
                 return this.failEntry({ kind: "refused", problem: joined.problem });
@@ -270,7 +288,7 @@ export class LiveSession {
                 rooms: ready.rooms,
                 project: ready.project,
                 self: ready.instance,
-                storyId: input.storyId,
+                storyId,
                 checkpoint,
             });
             return null;
@@ -825,17 +843,17 @@ export class LiveSession {
      */
     private sinkFor(session: ActiveSession): StoryOpSink {
         return {
-            handle: (storyId, op): boolean => {
+            handle: (storyId, op, derived): boolean => {
                 if (this.active !== session || storyId !== session.storyId) {
                     // Another story, or a session that has ended: the mutator carries on exactly as
                     // it would with no sink at all.
                     return false;
                 }
                 if (session.host) {
-                    this.hostApply(session, op, undefined);
+                    this.hostApply(session, op, derived);
                     return true;
                 }
-                session.guest?.intend(op);
+                session.guest?.intend(op, derived);
                 this.publish(session, {});
                 // True even when the intent is refused later, and even for a session with neither
                 // half built: what must never happen is this window changing a shared document on

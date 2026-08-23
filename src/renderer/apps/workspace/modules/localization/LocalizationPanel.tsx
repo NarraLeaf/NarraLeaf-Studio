@@ -61,6 +61,7 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { createLocalizationEditorTab } from "./openLocalizationEditorTab";
 import { TranslationExportForm } from "./TranslationExportForm";
 import { LanguageSettingsForm, type FallbackCandidate } from "./LanguageSettingsForm";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /** One translatable unit with translator-facing context (for progress and export). */
 type PanelRow = TranslatableUnitContext;
@@ -693,6 +694,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                         <div
                             className="mt-1 flex items-center gap-1.5"
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 if (event.key === "Escape") {
                                     cancelAddLocale();
                                 }
@@ -710,6 +714,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                 placeholder={t("workspace.localization.panel.codePlaceholder")}
                                 onChange={event => handleCodeDraftChange(event.target.value)}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         void handleAddLocale();
                                     }
@@ -725,6 +732,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                     setNameDraftTouched(true);
                                 }}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         void handleAddLocale();
                                     }

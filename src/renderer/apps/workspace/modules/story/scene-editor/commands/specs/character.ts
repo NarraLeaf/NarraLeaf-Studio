@@ -11,6 +11,7 @@ import {
     asText,
     defineStoryCommand,
     placementParam,
+    holdParam,
     puppetNameParam,
     secondsParam,
     targetParam,
@@ -363,7 +364,7 @@ export const hide = defineStoryCommand({
  * rather than the character, because the character is not the mistake here.
  */
 function validateFaceTransition(
-    args: { readonly character?: StoryCommandValue; readonly t?: StoryCommandValue; readonly d?: StoryCommandValue },
+    args: { readonly character?: StoryCommandValue; readonly t?: StoryCommandValue; readonly d?: StoryCommandValue; readonly hold?: StoryCommandValue },
     ctx: StoryCommandValidateContext,
 ): StoryCommandResolutionIssue[] {
     const character = args.character;
@@ -371,7 +372,7 @@ function validateFaceTransition(
         return [];
     }
     const issues: StoryCommandResolutionIssue[] = [];
-    for (const key of ["t", "d"] as const) {
+    for (const key of ["t", "d", "hold"] as const) {
         const span = args[key] === undefined ? undefined : ctx.spanOf(key);
         if (span) {
             issues.push({ code: "unsupportedParam", span, key, kind: "puppet character" });
@@ -411,6 +412,8 @@ export const face = defineStoryCommand({
         // keeps the vocabulary's own `t=` - it is the same kind of thing a `/bg t=` is.
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("expression") } },
         d: secondsParam(),
+        // Read by `black` / `exposure` / `darkness`, and taken out of `d=` rather than added to it.
+        hold: holdParam(),
     },
     build(args, ctx) {
         const block = createBlockForCommand("characterExpression", ctx.generateId);
@@ -428,7 +431,7 @@ export const face = defineStoryCommand({
         if (puppetName !== undefined) {
             payload.puppetName = puppetName;
         }
-        const transition = withTransitionRef(payload.transition, "expression", args.t, args.d);
+        const transition = withTransitionRef(payload.transition, "expression", args.t, args.d, undefined, args.hold);
         if (transition) {
             payload.transition = transition;
         }

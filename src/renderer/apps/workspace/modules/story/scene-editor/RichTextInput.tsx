@@ -31,6 +31,7 @@ import {
     type RichRenderOptions,
 } from "./richText";
 import { editKindForInputType, RichTextHistory, type RichTextSnapshot } from "./richTextHistory";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { getInterface } from "@/lib/app/bridge";
 import {
     markAtUnit,
@@ -831,6 +832,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, []);
 
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+        // Nothing below is the author's while an IME is composing: Enter confirms the conversion,
+        // Escape cancels it, the arrows walk the candidate list. Taking any of them here would end
+        // the row - or open the next one - in the middle of a word being converted.
+        if (isImeKeyEvent(event)) {
+            return;
+        }
         // Only a vertical arrow continues a vertical run; every other key that reaches the field is
         // the author saying where the caret goes now. Pressing a modifier on its own says nothing.
         const modifierOnly = event.key === "Shift" || event.key === "Control" || event.key === "Alt" || event.key === "Meta";

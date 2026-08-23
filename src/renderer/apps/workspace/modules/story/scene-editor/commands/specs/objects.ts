@@ -9,12 +9,13 @@ import {
     asTarget,
     asText,
     defineStoryCommand,
+    holdParam,
     placementParam,
     secondsParam,
     targetParam,
     type StoryCommandValidateContext,
 } from "../spec";
-import { actionableTargetRef, deriveObjectName, displayableTargetRef, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
+import { actionableTargetRef, deriveObjectName, displayableTargetRef, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { transitionOptions } from "../transitions";
 
 /** Media objects: `/image`, `/text`, `/video`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
@@ -160,9 +161,20 @@ export const swap = defineStoryCommand({
     aliases: ["src"],
     category: "image",
     icon: Replace,
-    examples: ["/swap hero night", "/swap title A new title"],
+    examples: ["/swap hero night", "/swap title A new title", "/swap hero t=fade d=0.4 night"],
     params: {
         target: targetParam(["image", "text"], { core: true }),
+        // The same three slots `/face` carries, for the same reason: an image swap compiles to
+        // `char(src, transition)`, so this row plays a `StoryTransitionRef` too. Without them the
+        // transition an author set in the inspector was a setting no line could say - the row printed
+        // as a bare `/swap`, so the line and the row disagreed about what the row does.
+        //
+        // Before the content and not after it, the rule `/text`'s `name=` already lives under: the
+        // content is greedy, so it takes the rest of the line and nothing may follow it. On a text
+        // target there is no source to swap and nothing reads them; `validate` says so.
+        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("expression") } },
+        d: secondsParam(),
+        hold: holdParam(),
         // Typed by the target: an image's new content is an image asset, a text's is its new words.
         content: { hint: "content", type: { kind: "content", dependsOn: "target", allowSets: true }, positional: true, greedy: true, core: true },
     },
@@ -193,7 +205,24 @@ export const swap = defineStoryCommand({
         if (args.content?.kind === "asset") {
             payload.assetId = args.content.assetId;
         }
-        return { ...block, payload };
+        const transition = withTransitionRef(payload.transition, "expression", args.t, args.d, undefined, args.hold);
+        return { ...block, payload: { ...payload, ...(transition ? { transition } : {}) } };
+    },
+    validate(args, ctx) {
+        const target = asTarget(args.target);
+        if (target?.type !== "stageObject" || target.objectKind !== "text") {
+            return [];
+        }
+        // A text swap replaces words, and there is no frame to change over. Reported rather than
+        // dropped, so the author is told which half of the line did nothing.
+        const issues: StoryCommandResolutionIssue[] = [];
+        for (const key of ["t", "d", "hold"] as const) {
+            const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+            if (span) {
+                issues.push({ code: "unsupportedParam", span, key, kind: "text object" });
+            }
+        }
+        return issues;
     },
 });
 

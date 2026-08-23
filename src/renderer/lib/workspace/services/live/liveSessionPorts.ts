@@ -34,7 +34,13 @@ export type LiveProjectIdentity = {
 /** The rooms on one server, with the origin already baked in. */
 export type LiveRooms = {
     list(project: string): Promise<TeamOutcome<TeamLiveSession[]>>;
-    open(input: { project: string; revision: string; title?: string }): Promise<TeamOutcome<TeamLiveSession>>;
+    open(input: {
+        project: string;
+        revision: string;
+        /** The story document the room is about. Required by the server; see {@link TeamLiveSession}. */
+        story: string;
+        title?: string;
+    }): Promise<TeamOutcome<TeamLiveSession>>;
     join(sessionId: string): Promise<TeamOutcome<TeamLiveSession>>;
     leave(sessionId: string): Promise<TeamOutcome<null>>;
     close(sessionId: string): Promise<TeamOutcome<null>>;

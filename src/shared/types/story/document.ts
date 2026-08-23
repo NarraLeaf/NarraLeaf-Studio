@@ -177,7 +177,19 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // optional, and unlike `cut` the reason is what a v20 Studio would *play*: it reads an unknown
 // control payload as an ordinary group and compiles it to nothing, so the story would run straight
 // past the ending into whatever follows it, recording nothing. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 21 as const;
+// v22 gives a transition its hold as a length of time: `StoryTransitionRef.holdMs`, beside the
+// duration and in the same unit, replacing the `props.hold` percentage `throughColor` and `exposure`
+// carried. A percentage could not say how long the colour is actually held - it was a share of the
+// run, so the seconds it bought moved whenever the duration did - and worse, the engine spent it as a
+// share of *eased* progress, which crosses the middle at its fastest: a nominal 30% hold played as
+// 17.8% of the wall clock. The step converts each stored percentage against that row's own duration,
+// so a row keeps the hold it was actually getting rather than the one it claimed.
+// The same step retires `maskWipe` into `softWipe` with `feather: 0`. The two compile to the identical
+// engine call, but no `t=` word ever named `maskWipe`, so a row carrying it printed `t=maskWipe` and
+// re-parsed as a soft wipe with the default feather of 12 - a hard edge lost to editing the row.
+// The bump is not optional: a v21 Studio meeting `holdMs` ignores it and plays a hold it was not asked
+// for, then writes the document back without it. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 22 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -1782,6 +1794,23 @@ export type StoryTransitionRef = {
      * picture their scene changes depend on.
      */
     ruleAssetId?: string;
+    /**
+     * How long the transition sits at its extreme before finishing, in milliseconds.
+     *
+     * Read by the three transitions that have an extreme to sit at: `throughColor` holds the colour,
+     * `exposure` holds the blown-out frame, `darkness` holds at its starting darkness. It is taken
+     * out of {@link durationMs} rather than added to it, split evenly off the two moving halves, so
+     * `{durationMs: 4000, holdMs: 2000}` is one second in, two of colour, one out.
+     *
+     * A first-class field and not a `props` entry, for the reason `ruleAssetId` is one: `props` is the
+     * per-kind bag, and everything that reads a transition generically - the script export, the
+     * command line - reads the named fields and reports the bag as something it cannot spell. A hold
+     * is a timing, it belongs beside the duration, and a script has to be able to carry it.
+     *
+     * Absent means the transition's own default: 30% of the duration for `throughColor`, nothing for
+     * the other two.
+     */
+    holdMs?: number;
     props?: Record<string, StoryLiteralValue>;
 };
 

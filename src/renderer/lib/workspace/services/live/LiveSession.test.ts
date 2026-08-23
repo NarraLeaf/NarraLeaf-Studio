@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { storyDocumentSpec } from "@shared/documents/specs";
 import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
+import type { LiveDerived } from "@shared/live/ops";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import { DEFAULT_CLAIM_TIMEOUT_MS } from "@/lib/live";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
@@ -110,6 +111,8 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
                 id: "room-1",
                 project: input.project,
                 revision: input.revision,
+                // Carried exactly as the server carries it, because it is what a joiner follows.
+                story: input.story,
                 openedBy: self,
                 openedByInstance: self,
                 openedAt: 0,
@@ -428,7 +431,7 @@ describe("a live session", () => {
             guest.sceneId,
             structuredClone(host.story.getStoryDocument(host.storyId).scenes[host.sceneId]),
         );
-        const failure = await guest.session.join({ session: "room-1", storyId: guest.storyId });
+        const failure = await guest.session.join({ session: "room-1" });
         expect(failure).toBeNull();
         await drain(world.bus);
     }
@@ -443,7 +446,7 @@ describe("a live session", () => {
         it("is a guest in every other window, and catches up before it follows", async () => {
             await openRoom();
             guest.version.syncTo = host.version.head;
-            await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            await guest.session.join({ session: "room-1" });
             const view = guest.session.getView();
             expect(view.role).toBe("guest");
             // Asked the host for everything since the room opened; not following until it answers.
@@ -489,7 +492,7 @@ describe("a live session", () => {
             await openRoom();
             guest.version.uncommitted = true;
             guest.version.syncTo = host.version.head;
-            const failure = await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            const failure = await guest.session.join({ session: "room-1" });
             expect(failure).toBeNull();
             expect(guest.calls).toEqual(["checkpoint", "sync", "join", "freeze"]);
             // Named so the author can be told where their own work went before the session's state
@@ -500,7 +503,7 @@ describe("a live session", () => {
         it("syncs without a checkpoint when there was nothing to record", async () => {
             await openRoom();
             guest.version.syncTo = host.version.head;
-            await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            await guest.session.join({ session: "room-1" });
             expect(guest.calls).toEqual(["sync", "join", "freeze"]);
         });
 
@@ -509,7 +512,6 @@ describe("a live session", () => {
             const room = world.rooms.get("room-1") as TeamLiveSession;
             const failure = await guest.session.join({
                 session: { ...room, project: "some-other-repository" },
-                storyId: guest.storyId,
             });
             expect(failure).toEqual({
                 kind: "clone-required",
@@ -521,10 +523,63 @@ describe("a live session", () => {
             expect(guest.freeze.armed).toBeNull();
         });
 
+        it("follows the document the room names rather than one of its own", async () => {
+            // ⚠ The whole point of the room carrying it. This guest holds a second story and
+            // prefers it - which is what a machine that came by the project some other way looks
+            // like - and joining must still bind the one the host opened on.
+            await openRoom();
+            guest.version.syncTo = host.version.head;
+            // A second story, and the room is about that one. Nothing this window could have
+            // worked out for itself would land here: it is not the story the two copies share and
+            // it is not the one this window opened with.
+            const other = guest.story.createStory("Something else");
+            const room = world.rooms.get("room-1") as TeamLiveSession;
+            expect(other.id).not.toBe(host.storyId);
+            world.rooms.set("room-1", { ...room, story: other.id });
+
+            expect(await guest.session.join({ session: "room-1" })).toBeNull();
+
+            expect(guest.session.getView().storyId).toBe(other.id);
+            // And the freeze leaves the room's document writable, not the one this window shares.
+            expect(guest.freeze.armed?.writable).toEqual([
+                storyDocumentSpec.pathFor({ storyId: other.id }),
+            ]);
+        });
+
+        it("refuses a room that does not say which document it is about", async () => {
+            // Only a room opened by a Studio older than the field, against a server older than the
+            // requirement. Falling back to a guess here is the failure this whole change removes,
+            // so the fallback must not quietly come back.
+            await openRoom();
+            const room = world.rooms.get("room-1") as TeamLiveSession;
+            const { story: _story, ...older } = room;
+            world.rooms.set("room-1", older as TeamLiveSession);
+            guest.version.syncTo = host.version.head;
+
+            expect(await guest.session.join({ session: "room-1" })).toEqual({ kind: "room-story-unknown" });
+            // Nothing was touched on the way to finding out: no checkpoint, no sync, no freeze.
+            expect(guest.calls).toEqual([]);
+            expect(guest.freeze.armed).toBeNull();
+        });
+
+        it("refuses when the room's document is not in this copy after syncing", async () => {
+            await openRoom();
+            const room = world.rooms.get("room-1") as TeamLiveSession;
+            world.rooms.set("room-1", { ...room, story: "story-nobody-here-has" });
+            guest.version.syncTo = host.version.head;
+
+            expect(await guest.session.join({ session: "room-1" }))
+                .toEqual({ kind: "story-not-here", storyId: "story-nobody-here-has" });
+            // The sync ran - this is only knowable afterwards - but the room was never joined and
+            // nothing froze behind a session that could not have worked.
+            expect(guest.calls).toEqual(["sync"]);
+            expect(guest.freeze.armed).toBeNull();
+        });
+
         it("refuses when the tree cannot be brought to the revision the room opened on", async () => {
             await openRoom();
             guest.version.syncTo = "rev-somebody-pushed-past-it";
-            const failure = await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            const failure = await guest.session.join({ session: "room-1" });
             expect(failure).toEqual({
                 kind: "revision-mismatch",
                 expected: host.version.head,
@@ -536,7 +591,7 @@ describe("a live session", () => {
         it("refuses when the sync left files a human has to settle", async () => {
             await openRoom();
             guest.version.conflicts = ["editor/story/stories/x/storydoc.json"];
-            const failure = await guest.session.join({ session: "room-1", storyId: guest.storyId });
+            const failure = await guest.session.join({ session: "room-1" });
             expect(failure).toMatchObject({ kind: "merge-conflicts" });
             expect(guest.freeze.armed).toBeNull();
         });
@@ -675,6 +730,59 @@ describe("a live session", () => {
 
             await host.session.leave();
             expect(record()).toBe(true);
+        });
+    });
+
+    describe("what a paste derives", () => {
+        /** One line's translation, as a paste re-keys it onto the id it has just minted. */
+        const JA: LiveDerived = {
+            translations: {
+                ja: { "text-p": { target: "こんにちは", sourceHash: "h1", status: "translated" } },
+            },
+        };
+
+        it("travels on the operation that carries the rows, to everybody including the paster", async () => {
+            // ⚠ The regression. The entries have to travel WITH the rows: the machine that
+            // pasted read them out of its own memory at the moment of copying, so an effect saying
+            // "look this text id up in your own library" would derive nothing anywhere else - and
+            // the room's libraries would part company silently, one paste at a time.
+            await openRoom();
+            await joinRoom();
+            host.calls.length = 0;
+            guest.calls.length = 0;
+
+            guest.story.insertBlock(guest.storyId, guest.sceneId, note("p"), { parentId: null }, JA);
+            await drain(world.bus);
+
+            expect(textOf(host, "p")).toBe("p");
+            expect(textOf(guest, "p")).toBe("p");
+            // Both windows write them, through the one applier that applies an effect. The paster is
+            // not exempt: a paster that wrote from its own memory would be a second implementation.
+            expect(host.calls).toContain("derived:ja");
+            expect(guest.calls).toContain("derived:ja");
+        });
+
+        it("comes back with the row when a delete of it is taken back", async () => {
+            // What putting the entries on the row buys. The row was pasted with its translation; a
+            // delete takes both away; the undo has to bring both back, and the only place the
+            // entries still exist by then is the effect that carried them.
+            await openRoom();
+            await joinRoom();
+            guest.story.insertBlock(guest.storyId, guest.sceneId, note("p"), { parentId: null }, JA);
+            await drain(world.bus);
+            guest.story.deleteBlock(guest.storyId, guest.sceneId, "p");
+            await drain(world.bus);
+            expect(host.story.getStoryDocument(host.storyId).scenes[host.sceneId].blocks["p"])
+                .toBeUndefined();
+            host.calls.length = 0;
+            guest.calls.length = 0;
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            expect(textOf(host, "p")).toBe("p");
+            expect(host.calls).toContain("derived:ja");
+            expect(guest.calls).toContain("derived:ja");
         });
     });
 

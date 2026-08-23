@@ -1096,8 +1096,11 @@ describe("story document migration ladder", () => {
             // which a transform has, so the transform migration answered with `{mode:"props",to:{}}`
             // and the compiler was left with a transition nothing named.
             expect(payloadOf(migrated, "bg").transition).toEqual({ kind: "dissolve", durationMs: 600 });
-            expect(payloadOf(migrated, "face").transition).toEqual({ kind: "throughColor", durationMs: 800, props: { color: "#000000", hold: 25 } });
             expect(payloadOf(migrated, "swap").transition).toEqual({ kind: "blinds", props: { slats: 6 } });
+            // The kind and the geometry survive this step untouched; the hold is spelled differently
+            // afterwards only because v22 (below) rewrites percentages into milliseconds, which is a
+            // later rung of the same ladder and not this step reaching into a transition.
+            expect(payloadOf(migrated, "face").transition).toEqual({ kind: "throughColor", durationMs: 800, holdMs: 200, props: { color: "#000000" } });
             // The transform beside it on the same row is still migrated.
             const both = migrateStoryDocumentToLatest(v17With({
                 enter: { action: "character", operation: "enter", characterId: "c1", transform: { mode: "preset", preset: "center" }, transition: { kind: "fadeIn", durationMs: 400 } },
@@ -1111,6 +1114,94 @@ describe("story document migration ladder", () => {
                 move: { action: "image", operation: "show", objectName: "hero", transform: { to: { zoom: 1.4 }, durationMs: 200 } },
             });
             expect(payloadOf(migrateStoryDocumentToLatest(already), "move").transform).toEqual({ to: { zoom: 1.4 }, durationMs: 200 });
+        });
+    });
+
+    /**
+     * v21→v22: the hold becomes a length of time, and `maskWipe` retires.
+     *
+     * The percentage is converted against the row's own duration, and the row keeps the share it
+     * STATED rather than the shorter one it was getting - the engine spent the hold as a band of
+     * eased progress, which is the defect, and baking that into the document would preserve it.
+     */
+    describe("v21→v22 the transition hold", () => {
+        const payloadOf = (document: StoryDocument, blockId: string): Record<string, unknown> =>
+            Object.values(document.scenes).flatMap(scene => scene.blocks[blockId] ? [scene.blocks[blockId]] : [])[0]!.payload as Record<string, unknown>;
+
+        function v21With(blocks: Record<string, unknown>): StoryDocument {
+            const document = docAtVersion(21);
+            const sceneId = document.entrySceneId!;
+            const scene = document.scenes[sceneId];
+            return {
+                ...document,
+                scenes: {
+                    [sceneId]: {
+                        ...scene,
+                        blocks: Object.fromEntries(Object.entries(blocks).map(([id, payload]) => [
+                            id,
+                            id === "jump"
+                                ? { id, kind: "jump", parentId: null, childrenIds: [], payload }
+                                : { id, kind: "action", parentId: null, childrenIds: [], payload },
+                        ])) as never,
+                        rootBlockIds: Object.keys(blocks),
+                    },
+                },
+            } as StoryDocument;
+        }
+
+        it("converts the percentage against the row's own duration", () => {
+            const migrated = migrateStoryDocumentToLatest(v21With({
+                bg: { action: "setBackground", assetId: "a", transition: { kind: "throughColor", durationMs: 4000, props: { color: "#fff", hold: 50 } } },
+            }));
+            expect(payloadOf(migrated, "bg").transition).toEqual({
+                kind: "throughColor", durationMs: 4000, holdMs: 2000, props: { color: "#fff" },
+            });
+        });
+
+        it("uses the compiler's own 300ms default when the row never stated a duration", () => {
+            const migrated = migrateStoryDocumentToLatest(v21With({
+                bg: { action: "setBackground", assetId: "a", transition: { kind: "exposure", props: { hold: 40 } } },
+            }));
+            expect(payloadOf(migrated, "bg").transition).toEqual({ kind: "exposure", holdMs: 120 });
+        });
+
+        it("leaves a row that never stated a hold with none, so it keeps the transition's default", () => {
+            const migrated = migrateStoryDocumentToLatest(v21With({
+                bg: { action: "setBackground", assetId: "a", transition: { kind: "throughColor", durationMs: 900 } },
+            }));
+            expect(payloadOf(migrated, "bg").transition).toEqual({ kind: "throughColor", durationMs: 900 });
+        });
+
+        it("ignores a hold prop on a kind that never read one", () => {
+            // `props` is a per-kind bag: a stray key on a kind with no hold means nothing, and
+            // promoting it to a first-class field would invent a setting the row never had.
+            const migrated = migrateStoryDocumentToLatest(v21With({
+                bg: { action: "setBackground", assetId: "a", transition: { kind: "blinds", durationMs: 400, props: { hold: 50 } } },
+            }));
+            expect(payloadOf(migrated, "bg").transition).toEqual({ kind: "blinds", durationMs: 400, props: { hold: 50 } });
+        });
+
+        it("retires maskWipe into the softWipe it always compiled to", () => {
+            const migrated = migrateStoryDocumentToLatest(v21With({
+                bg: { action: "setBackground", assetId: "a", transition: { kind: "maskWipe", durationMs: 500, props: { direction: "right" } } },
+            }));
+            expect(payloadOf(migrated, "bg").transition).toEqual({
+                kind: "softWipe", durationMs: 500, props: { direction: "right", feather: 0 },
+            });
+        });
+
+        it("reaches a jump block, which is not an action and has always been the walk that gets missed", () => {
+            const migrated = migrateStoryDocumentToLatest(v21With({
+                jump: { targetSceneId: "scene-2", transition: { kind: "throughColor", durationMs: 2000, props: { hold: 25 } } },
+            }));
+            expect(payloadOf(migrated, "jump").transition).toEqual({ kind: "throughColor", durationMs: 2000, holdMs: 500 });
+        });
+
+        it("leaves the NVL panel's transition field alone - that one is a transform", () => {
+            const migrated = migrateStoryDocumentToLatest(v21With({
+                nvl: { action: "nvl", transition: { to: { opacity: 1 }, durationMs: 400 } },
+            }));
+            expect(payloadOf(migrated, "nvl").transition).toEqual({ to: { opacity: 1 }, durationMs: 400 });
         });
     });
 

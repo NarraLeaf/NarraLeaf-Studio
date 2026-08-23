@@ -47,6 +47,7 @@ import {
 import { jumpToSearchTarget } from "../search/searchJump";
 import type { PanelComponentProps } from "../types";
 import type { DictionaryPanelPayload } from "./openDictionaryPanel";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const FIELD_CLASS = cn(
     CONTROL_SIZE_CLASS.sm,
@@ -108,6 +109,9 @@ function EntryEditor(props: {
                 onBlur={commitTerm}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "Enter") {
                         event.currentTarget.blur();
                     }
@@ -124,6 +128,9 @@ function EntryEditor(props: {
                 onBlur={() => props.onCommit({ reading: reading.trim() || null })}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "Enter") {
                         event.currentTarget.blur();
                     }
@@ -154,6 +161,9 @@ function EntryEditor(props: {
                 onBlur={() => props.onCommit({ note: note.trim() || null })}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "Enter") {
                         event.currentTarget.blur();
                     }

@@ -62,12 +62,12 @@ describe("getCommandCursor", () => {
     it("offers param names once every positional is given", () => {
         const cursor = at("/bg forest_day |");
         expect(cursor.kind).toBe("paramName");
-        expect((cursor as Extract<StoryCommandCursor, { kind: "paramName" }>).params.map(p => p.name)).toEqual(["t", "rule", "d"]);
+        expect((cursor as Extract<StoryCommandCursor, { kind: "paramName" }>).params.map(p => p.name)).toEqual(["t", "rule", "d", "hold"]);
     });
 
     it("drops a param name that the line already carries", () => {
         const cursor = at("/bg forest_day t=fade |");
-        expect((cursor as Extract<StoryCommandCursor, { kind: "paramName" }>).params.map(p => p.name)).toEqual(["rule", "d"]);
+        expect((cursor as Extract<StoryCommandCursor, { kind: "paramName" }>).params.map(p => p.name)).toEqual(["rule", "d", "hold"]);
     });
 
     it("switches to the value once the caret is past the equals", () => {
@@ -252,14 +252,15 @@ describe("getCommandCandidates", () => {
 
     it("offers transitions by the alias an author would type", () => {
         expect(values("/bg forest_day t=|")).toContain("fade");
-        // "fa" prefixes both `fade` and the 0.16.0 `fan` transition; a longer prefix narrows to one.
-        expect(values("/bg forest_day t=fa|")).toEqual(["fade", "fan"]);
-        expect(values("/bg forest_day t=fad|")).toEqual(["fade"]);
+        // "fa" prefixes `fade`, the 0.16.0 `fan`, and the absolute `fade-in`; a longer prefix narrows.
+        expect(values("/bg forest_day t=fa|")).toEqual(["fade", "fan", "fade-in"]);
+        // ...but not to nothing: `fade-in` is a longer word for a different look and shares the prefix.
+        expect(values("/bg forest_day t=fad|")).toEqual(["fade", "fade-in"]);
     });
 
     it("offers the remaining param names", () => {
-        expect(values("/bg forest_day |")).toEqual(["t", "rule", "d"]);
-        expect(values("/bg forest_day t=fade |")).toEqual(["rule", "d"]);
+        expect(values("/bg forest_day |")).toEqual(["t", "rule", "d", "hold"]);
+        expect(values("/bg forest_day t=fade |")).toEqual(["rule", "d", "hold"]);
     });
 
     it("offers a speaker's forms only once the speaker resolves", () => {
@@ -473,7 +474,7 @@ describe("candidate marks", () => {
     it("keys a word on the canonical value, whatever the row is showing", () => {
         // The glyph table is keyed on the grammar's own spelling, so 向左滑动 and `slide-left` draw the
         // same arrow - the locale changes the word, never what the word means.
-        expect(marks("/bg forest_day t=fad|")).toEqual([{ kind: "word", value: "fade" }]);
+        expect(marks("/bg forest_day t=fad|")).toEqual([{ kind: "word", value: "fade" }, { kind: "word", value: "fade-in" }]);
         expect(marks("/wait cl|")).toEqual([{ kind: "word", value: "click" }]);
     });
 
@@ -484,6 +485,7 @@ describe("candidate marks", () => {
         expect(marks("/bg forest_day |")).toEqual([
             { kind: "options", lead: "fade" },
             { kind: "asset", assetType: "image" },
+            { kind: "number", duration: true },
             { kind: "number", duration: true },
         ]);
         // The two trailing numbers are the overlay knobs `/show` carries for an ambience target;

@@ -47,6 +47,7 @@ import { parseVoiceCsv, serializeVoiceCsv } from "@shared/utils/voiceCsv";
 import { matchKeyForFilename, VOICE_NAME_TOKENS } from "@shared/utils/voiceNaming";
 import { readAudioDuration } from "@/lib/workspace/services/voice/audioDuration";
 import { createVoiceEditorTab } from "./openVoiceEditorTab";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /** Audio containers offered in the batch-import file picker. */
 const AUDIO_IMPORT_EXTENSIONS = ["mp3", "wav", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba"];
@@ -645,6 +646,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                         <div
                             className="mt-1 flex items-center gap-1.5"
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 if (event.key === "Escape") {
                                     cancelAddLocale();
                                 }
@@ -662,6 +666,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                 placeholder={t("workspace.voice.panel.codePlaceholder")}
                                 onChange={event => handleCodeDraftChange(event.target.value)}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         void handleAddLocale();
                                     }
@@ -677,6 +684,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                     setNameDraftTouched(true);
                                 }}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         void handleAddLocale();
                                     }
@@ -729,6 +739,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                 data-tip={freeze.frozen ? freeze.reason : undefined}
                                 onBlur={event => commitNamingPattern(event.target.value)}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         (event.target as HTMLInputElement).blur();
                                     }
