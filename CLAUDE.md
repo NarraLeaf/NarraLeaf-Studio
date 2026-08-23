@@ -56,5 +56,6 @@ of them only fail in a full run.
   references to planning documents, work items or session workflow.
 - The interface has a design system (`docs/design-system.md`) and it is not optional.
 - Editing the English skeleton template under `resources/templates/skeleton/content/` means
-  regenerating the Chinese one: `node scripts/gen-skeleton-locale.mjs --check`, add any missing
-  strings to `scripts/gen-skeleton-locale.zh.json`, then run it without `--check` and commit both.
+  regenerating the Chinese and Japanese ones: `node scripts/gen-skeleton-locale.mjs --check`, add any
+  missing strings to `scripts/gen-skeleton-locale.zh.json` and `scripts/gen-skeleton-locale.ja.json`,
+  then run it without `--check` and commit all of them.
