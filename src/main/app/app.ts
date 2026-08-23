@@ -25,6 +25,7 @@ import {
     resolveFirstLaunchOpenRequest,
 } from "./application/launchOpenRequest";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
+import { LAUNCHER_HOME_SIZE, LAUNCHER_ONBOARDING_SIZE } from "./application/launcherWindow";
 import { TRAY_RESIDENCY_NOTICE_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { getMainTranslator } from "./application/i18n";
 import { ConfirmQuitManager } from "./application/managers/confirmQuit";
@@ -340,6 +341,11 @@ export class App extends BaseApp {
         options: Partial<Electron.BrowserWindowConstructorOptions>,
         { deferShow = false }: LauncherStartupOptions = {},
     ): Promise<AppWindow<WindowAppType.Launcher>> {
+        // Asked once, and used twice: it decides the window's size as well as the mode the
+        // renderer opens in, so setup gets its room from the first frame rather than growing the
+        // window under the author a moment after it appears.
+        const onboarding = this.shouldRunOnboarding();
+        const size = onboarding ? LAUNCHER_ONBOARDING_SIZE : LAUNCHER_HOME_SIZE;
         const config: WindowConfig<WindowAppType.Launcher> = {
             windowType: WindowAppType.Launcher,
             isolated: true,
@@ -347,12 +353,12 @@ export class App extends BaseApp {
             preload: this.getPreloadScript(),
             windowControlPolicy: WindowControlPolicy.MacNativeOutsideTitleBar,
             options: {
-                minWidth: 800,
-                minHeight: 500,
-                maxWidth: 800,
-                maxHeight: 500,
-                width: 800,
-                height: 500,
+                minWidth: size.width,
+                minHeight: size.height,
+                maxWidth: size.width,
+                maxHeight: size.height,
+                width: size.width,
+                height: size.height,
                 frame: false,
                 resizable: false,
                 maximizable: false,
@@ -362,7 +368,7 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow<WindowAppType.Launcher>(this, config, {
-            onboarding: this.shouldRunOnboarding(),
+            onboarding,
         });
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);

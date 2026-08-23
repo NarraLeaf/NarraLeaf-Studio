@@ -261,6 +261,10 @@ export const settings = {
             label: "关闭工作区时记录检查点",
             description: "关窗时记录一次，与上面的间隔各自独立",
         },
+        projectDefaultAuthor: {
+            label: "新建工程的默认作者",
+            description: "创建工程时预填作者一栏，已有工程保持原样",
+        },
         versionControlAuthor: {
             label: "作者名",
             description: "在未连接服务器的项目上记录，留空则记为 NarraLeaf Studio",

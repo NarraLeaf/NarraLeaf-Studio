@@ -281,6 +281,10 @@ export const settings = {
             label: "Record a checkpoint when a workspace closes",
             description: "Records on closing the window, independent of the interval above.",
         },
+        projectDefaultAuthor: {
+            label: "Default author for new projects",
+            description: "Fills the author field when a project is created. Existing projects keep what they were given.",
+        },
         versionControlAuthor: {
             label: "Author name",
             description: "Recorded on projects that are not connected to a server. Leave empty to record NarraLeaf Studio instead.",
