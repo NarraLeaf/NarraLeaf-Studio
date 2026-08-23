@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { getInterface } from "@/lib/app/bridge";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import { SLASH_AT_ALIAS_KEY, slashAtAliasDefault } from "@/lib/settings/slashAliasOptions";
 
 /**
@@ -7,34 +6,10 @@ import { SLASH_AT_ALIAS_KEY, slashAtAliasDefault } from "@/lib/settings/slashAli
  * alongside "/". Unset (the user never touched it) resolves to {@link slashAtAliasDefault}: on for a
  * Simplified-Chinese device, where the "/" key types "、", off otherwise.
  *
- * Re-reads when the window regains focus so a change made in the separate Settings window applies as
- * soon as the author returns, mirroring {@link useMaxActiveEditors} (no cross-window push).
+ * Follows the global-state broadcast, so a change made in the separate Settings window takes effect
+ * in the editor at once (see {@link useGlobalSetting}).
  */
 export function useSlashAtAlias(): boolean {
-    const [value, setValue] = useState(slashAtAliasDefault);
-
-    useEffect(() => {
-        let cancelled = false;
-        const load = async () => {
-            try {
-                const result = await getInterface().app.state.getGlobalState(SLASH_AT_ALIAS_KEY);
-                if (cancelled) {
-                    return;
-                }
-                const stored = result.success ? result.data.value : undefined;
-                setValue(typeof stored === "boolean" ? stored : slashAtAliasDefault());
-            } catch {
-                // Keep the last known-good value on transient IPC failures.
-            }
-        };
-        void load();
-        const onFocus = () => { void load(); };
-        window.addEventListener("focus", onFocus);
-        return () => {
-            cancelled = true;
-            window.removeEventListener("focus", onFocus);
-        };
-    }, []);
-
-    return value;
+    return useGlobalSetting(SLASH_AT_ALIAS_KEY, stored =>
+        typeof stored === "boolean" ? stored : slashAtAliasDefault());
 }

@@ -43,8 +43,9 @@ describe("the easing field", () => {
         expect(markup).toContain("storyInspector.easing.custom");
         // The readout is the stored value: what the row prints and what a line would take back.
         expect(markup).toContain("cubic-bezier(0.4,0,0.2,1)");
-        // Two handles, drawn from the two control points.
-        expect(markup.match(/<circle/g)).toHaveLength(2);
+        // Two handles, drawn from the two control points - each a knob plus the wider circle that
+        // takes the gesture, so the count is per handle rather than per circle.
+        expect(markup.match(/role="button"/g)).toHaveLength(2);
     });
 
     it("keeps the drawn curve across a trip through the named easings", () => {

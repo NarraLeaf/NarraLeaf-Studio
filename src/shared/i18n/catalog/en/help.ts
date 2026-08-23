@@ -478,6 +478,9 @@ export const help = {
                 + "other carries values from one node into the next.\n"
                 + "\n"
                 + "- Right-click the canvas to add a node. It follows the cursor until it is placed.\n"
+                + "- The toolbar sets what a drag on empty canvas does: selecting, or moving the view.\n"
+                + "- A selection can be framed as a group that moves as one, and the whole graph can be "
+                + "arranged from left to right.\n"
                 + "- Each pin takes one wire. Values with no wire are typed on the node itself.\n"
                 + "- Problems are listed under the canvas, and selecting one selects what it refers to.",
         },

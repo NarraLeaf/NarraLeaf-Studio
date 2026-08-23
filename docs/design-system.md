@@ -72,6 +72,13 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 原生控件细节(滚动条、checkbox/radio)另有 `--nl-scrollbar-*`、`--nl-control-*` 变量,只在 styles.css 内部使用。
 
+**滚动条默认不画滑块**,只在滚动时出现,停下约 0.8 秒后消失(规则在 styles.css,"正在滚动"这个状态由
+`styles/scrollbarAutoHide.ts` 打在滚动容器上的 `data-nl-scrollbar` 提供)。8px 槽位**始终占位**,
+所以滑块显示与否不改变布局。浮层里的选择列表(节点选择框、命令候选菜单这类)连槽位都不要,加 `.nl-no-scrollbar`。
+**横向的窄条外壳**(编辑器标签栏这类,整条只有一行高)也加:8px 槽位在这种高度上是明显的一条,而横滑块几乎
+和条一样宽,说不出什么。这类条子改用「被裁掉的那一侧画一段 24px 渐隐」提示还有内容——渐隐要画在滚动容器
+**外面**的定位父级上,画在里面会跟着内容一起滑走。
+
 ## 2. 圆角
 
 | 场景 | 类 |

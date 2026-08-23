@@ -150,6 +150,8 @@
 
     /* Chrome details that can't borrow a Tailwind utility. */
     --nl-scrollbar-thumb: rgb(255 255 255 / 0.15);
+    --nl-scrollbar-thumb-dim: rgb(255 255 255 / 0.08);
+    --nl-scrollbar-thumb-faint: rgb(255 255 255 / 0.03);
     --nl-scrollbar-thumb-hover: rgb(255 255 255 / 0.2);
     --nl-control-border: rgb(255 255 255 / 0.3);
     --nl-control-border-hover: rgb(255 255 255 / 0.5);
@@ -221,6 +223,8 @@
         --nl-fill-strong: rgb(15 23 42 / 0.14);
 
         --nl-scrollbar-thumb: rgb(15 23 42 / 0.25);
+        --nl-scrollbar-thumb-dim: rgb(15 23 42 / 0.13);
+        --nl-scrollbar-thumb-faint: rgb(15 23 42 / 0.05);
         --nl-scrollbar-thumb-hover: rgb(15 23 42 / 0.35);
         --nl-control-border: rgb(15 23 42 / 0.35);
         --nl-control-border-hover: rgb(15 23 42 / 0.55);
@@ -350,7 +354,33 @@ html.nl-studio {
     }
 }
 
-/* Custom scrollbar styles */
+/*
+ * Scrollbars.
+ *
+ * Chrome, not content. A scrollbar answers "how far along am I", and the only
+ * moment that question is live is while the surface is moving - so a scroller
+ * draws no thumb at rest, shows one while it scrolls, and puts it away shortly
+ * after it stops. What does NOT come and go is the 8px gutter: a styled
+ * scrollbar occupies layout in Chromium, and a width that arrived with the thumb
+ * would reflow the content under the pointer on every turn of the wheel.
+ *
+ * CSS has no "is scrolling" state, so `data-nl-scrollbar` is stamped on the
+ * scroller from JS (styles/scrollbarAutoHide.ts) - and the fade-out is STEPPED
+ * through that attribute's value rather than transitioned. Both halves of that
+ * are forced by Chromium, and were measured rather than assumed (Electron 38 /
+ * Chromium 140):
+ *
+ *   - `transition` on a scrollbar pseudo-element does not animate. Whatever
+ *     duration is written there, the thumb jumps straight to the new colour.
+ *   - The one thing that does animate is a registered custom property the thumb
+ *     reads through `var()` - but a custom property only reaches a pseudo by
+ *     INHERITING, so every frame of that fade restyles the scroller's whole
+ *     subtree. On a panel of a few thousand rows that is a recalc storm arriving
+ *     exactly when the reader stopped scrolling to look at something.
+ *
+ * Three attribute values ~90ms apart cost one element-local recalc each, and on
+ * something this faint they read as a fade.
+ */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -361,11 +391,28 @@ html.nl-studio {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--nl-scrollbar-thumb);
+    background: transparent;
     border-radius: 4px;
-    transition: background 150ms ease;
 }
 
+[data-nl-scrollbar]::-webkit-scrollbar-thumb {
+    background: var(--nl-scrollbar-thumb);
+}
+
+[data-nl-scrollbar="dim"]::-webkit-scrollbar-thumb {
+    background: var(--nl-scrollbar-thumb-dim);
+}
+
+[data-nl-scrollbar="faint"]::-webkit-scrollbar-thumb {
+    background: var(--nl-scrollbar-thumb-faint);
+}
+
+/*
+ * The one time a thumb is wanted while nothing moves: the pointer is already on
+ * it, about to drag it. An invisible thumb still hit-tests, so this is what says
+ * it is there. Last in the group deliberately - same specificity as the rules
+ * above, so it also wins over a thumb caught mid-fade.
+ */
 ::-webkit-scrollbar-thumb:hover {
     background: var(--nl-scrollbar-thumb-hover);
 }
@@ -374,7 +421,15 @@ html.nl-studio {
     background: transparent;
 }
 
-/* Opt-in: keep the element scrollable but hide the scrollbar chrome entirely. */
+/*
+ * Opt-in: keep the element scrollable but hide the scrollbar chrome entirely -
+ * the gutter included, so the content gets the full width. This is for surfaces
+ * where even a momentary thumb is wrong: menus and candidate lists, which are
+ * read at a glance and whose whole body is the scroller.
+ *
+ * `scrollbar-width` also switches Chromium off the `::-webkit-scrollbar` rules
+ * above for this element, so the two never have to be kept in agreement.
+ */
 .nl-no-scrollbar {
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* legacy Edge */

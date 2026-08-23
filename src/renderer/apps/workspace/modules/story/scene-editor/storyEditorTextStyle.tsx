@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useMemo } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { STORY_MARK_PX } from "./StoryRowGutterMark";
-import { getInterface } from "@/lib/app/bridge";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import type { StoryEditorDensity } from "./storyEditorSessionStore";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
@@ -146,39 +146,15 @@ export function useStoryEditorTextStyle(): CSSProperties {
 }
 
 /**
- * Reads the editor font preference once and shares it with every story text surface below. Re-reads
- * when the workspace window regains focus, so a change made in the (separate) Settings window
- * applies as soon as the author returns to the editor — without any cross-window IPC push.
+ * Reads the editor font preference and shares it with every story text surface below.
+ *
+ * Both keys follow the global-state broadcast (see {@link useGlobalSetting}), so a size or family
+ * picked in the (separate) Settings window re-types the scene behind it as it is picked, rather
+ * than waiting for the author to click back into the editor.
  */
 export function StoryEditorTextStyleProvider({ children, density }: { children: ReactNode; density?: StoryEditorDensity }) {
-    const [fontSize, setFontSize] = useState(EDITOR_FONT_SIZE_DEFAULT);
-    const [fontFamily, setFontFamily] = useState(() => editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT));
-
-    useEffect(() => {
-        let cancelled = false;
-        const load = async () => {
-            try {
-                const [sizeResult, familyResult] = await Promise.all([
-                    getInterface().app.state.getGlobalState("editor.fontSize"),
-                    getInterface().app.state.getGlobalState("editor.fontFamily"),
-                ]);
-                if (cancelled) {
-                    return;
-                }
-                setFontSize(clampFontSize(sizeResult.success ? sizeResult.data.value : undefined));
-                setFontFamily(editorFontCssFamily(familyResult.success ? familyResult.data.value : undefined));
-            } catch {
-                // Keep the last known-good values on transient IPC failures.
-            }
-        };
-        void load();
-        const onFocus = () => { void load(); };
-        window.addEventListener("focus", onFocus);
-        return () => {
-            cancelled = true;
-            window.removeEventListener("focus", onFocus);
-        };
-    }, []);
+    const fontSize = useGlobalSetting("editor.fontSize", clampFontSize);
+    const fontFamily = useGlobalSetting("editor.fontFamily", editorFontCssFamily);
 
     const style = useMemo(() => toStyle(fontSize, fontFamily, density), [fontSize, fontFamily, density]);
     return (

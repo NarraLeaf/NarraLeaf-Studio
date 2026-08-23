@@ -280,6 +280,10 @@ export const settings = {
             description:
                 "終了時に開いているすべてのプロジェクトのチェックポイントを待つ時間。これを超えたプロジェクトは記録しない。0 にすると終了時は記録しない",
         },
+        projectDefaultAuthor: {
+            label: "新規プロジェクトの既定の作者",
+            description: "プロジェクト作成時に作者欄へ入る。既存のプロジェクトはそのまま",
+        },
         versionControlAuthor: {
             label: "作者名",
             description: "サーバーに接続していないプロジェクトで記録される。空のままなら NarraLeaf Studio と記録する",

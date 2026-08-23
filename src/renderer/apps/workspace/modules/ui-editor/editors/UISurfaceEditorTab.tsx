@@ -52,6 +52,7 @@ import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/
 import { useSurfaceDoubleClick } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceDoubleClick";
 import { useSurfaceInteractionCropDimming } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceInteractionCropDimming";
 import {
+    SurfaceEditorToolbarButton,
     SurfaceEditorToolbarButtonGroup,
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
@@ -574,13 +575,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         [baseDocumentService, openEditorTab],
     );
 
-    const toolButtonClass = (active: boolean) =>
-        `w-9 h-9 rounded-md border flex items-center justify-center text-xs transition-colors ${
-            active
-                ? "border-primary bg-primary/20 text-fg"
-                : "border-edge text-fg-muted hover:border-primary hover:text-fg hover:bg-fill"
-        } disabled:opacity-50 disabled:cursor-not-allowed`;
-
     useSurfaceInteractionCropDimming({
         surfaceId,
         stateService,
@@ -749,22 +743,20 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
 
                     {/* Top toolbar */}
                     <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1">
-                        <button
-                            type="button"
-                            className={toolButtonClass(tool.kind === "select")}
+                        <SurfaceEditorToolbarButton
+                            active={tool.kind === "select"}
                             onClick={handleSelectTool}
                             data-tip={t("uiEditor.editor.selectTool")} aria-label={t("uiEditor.editor.selectTool")}
                         >
                             <MousePointer2 className="w-4 h-4" />
-                        </button>
-                        <button
-                            type="button"
-                            className={toolButtonClass(tool.kind === "pan")}
+                        </SurfaceEditorToolbarButton>
+                        <SurfaceEditorToolbarButton
+                            active={tool.kind === "pan"}
                             onClick={handlePanTool}
                             data-tip={t("uiEditor.editor.panTool")} aria-label={t("uiEditor.editor.panTool")}
                         >
                             <Move className="w-4 h-4" />
-                        </button>
+                        </SurfaceEditorToolbarButton>
                         <SurfaceZoomMenu
                             scale={viewport.scale}
                             fit={zoom.fit}
@@ -798,15 +790,13 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             safeAreaId={previewSafeAreaId}
                         />
                         <div className="mx-1 h-6 w-px bg-fill" />
-                        <button
-                            type="button"
-                            className={toolButtonClass(false)}
+                        <SurfaceEditorToolbarButton
                             onClick={handleStartCurrentSurface}
                             data-tip={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")} aria-label={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
                             disabled={!surfaceId || isComponentEdit}
                         >
                             <Play className="w-4 h-4" />
-                        </button>
+                        </SurfaceEditorToolbarButton>
                     </div>
 
                     {activeBindingSession ? (
