@@ -63,7 +63,12 @@ function styledText(text: string, run: StoryRichRun | undefined, options: RichRe
 }
 
 /**
- * Draw a translation into a contentEditable root.
+ * Draw a translation into an element.
+ *
+ * `brackets` is the difference between the two places this is used, and it is the whole reason there
+ * are two. The field draws them: a translator is placing tags, and a range whose end is invisible is
+ * a range they cannot move. The row at rest does not: what a reader of that table wants is the line
+ * as the player will read it, and a bracket is not in the game.
  *
  * The interpolation a `{n}` names is the source's nth interpolation run, which is the only place the
  * two numbering schemes have to be reconciled; everything else indexes the source runs directly.
@@ -73,6 +78,7 @@ export function renderTranslationTokens(
     tokens: readonly TranslationToken[],
     sourceRuns: readonly StoryRichRun[],
     options: RichRenderOptions,
+    { brackets = true }: { brackets?: boolean } = {},
 ): void {
     const interpolations = sourceRuns.filter(run => "interpolation" in run);
     root.textContent = "";
@@ -83,12 +89,16 @@ export function renderTranslationTokens(
             continue;
         }
         if (token.kind === "open") {
-            root.appendChild(tagChip(token.index, false));
+            if (brackets) {
+                root.appendChild(tagChip(token.index, false));
+            }
             open = token.index;
             continue;
         }
         if (token.kind === "close") {
-            root.appendChild(tagChip(token.index, true));
+            if (brackets) {
+                root.appendChild(tagChip(token.index, true));
+            }
             open = undefined;
             continue;
         }
