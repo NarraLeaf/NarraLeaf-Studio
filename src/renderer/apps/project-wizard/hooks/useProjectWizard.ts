@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { translate, useTranslation } from "@/lib/i18n";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
 import { CloneFailure, CloneStatus, ImportFailure, ImportStatus, ProjectData, ProjectFlow, PublishTarget, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
@@ -93,6 +94,21 @@ export function useProjectWizard() {
     useEffect(() => {
         setProjectData(prev => (prev.sourceLocale ? prev : { ...prev, sourceLocale: locale }));
     }, [locale]);
+
+    /**
+     * And the author line this installation was set up with (`project.defaultAuthor`).
+     *
+     * Same "only ever fills a blank" rule as the language above, for the same reason: it is a
+     * starting point offered to a new project, not a value Studio keeps re-asserting. Somebody who
+     * clears the field, or types a different name for this one project, has answered the question.
+     */
+    const defaultAuthor = useGlobalSetting("project.defaultAuthor", stored => (typeof stored === "string" ? stored : ""));
+    useEffect(() => {
+        if (!defaultAuthor) {
+            return;
+        }
+        setProjectData(prev => (prev.author ? prev : { ...prev, author: defaultAuthor }));
+    }, [defaultAuthor]);
 
     /** The server and repository name the address names, or null while it is not an address yet. */
     const remote = useMemo(() => parseVcsRemoteUrl(projectData.remoteUrl), [projectData.remoteUrl]);

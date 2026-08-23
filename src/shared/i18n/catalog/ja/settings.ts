@@ -275,6 +275,10 @@ export const settings = {
             label: "ワークスペースを閉じるときにチェックポイントを記録",
             description: "上の間隔とは別に、ウィンドウを閉じる時点で記録する",
         },
+        projectDefaultAuthor: {
+            label: "新規プロジェクトの既定の作者",
+            description: "プロジェクト作成時に作者欄へ入る。既存のプロジェクトはそのまま",
+        },
         versionControlAuthor: {
             label: "作者名",
             description: "サーバーに接続していないプロジェクトで記録される。空のままなら NarraLeaf Studio と記録する",

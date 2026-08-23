@@ -311,6 +311,20 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "uiTemplates.registryUrl": string;
     /**
+     * The author line a new project starts with - a person, a studio, a publisher; "" = unset.
+     *
+     * A default rather than a value: the project wizard only ever fills its **blank** author field
+     * with it (the same rule `sourceLocale` follows there), so changing it never rewrites a project
+     * that already named someone. It is stored on this installation and copied into each project's
+     * own config, which is what keeps it out of the `.nlproj` shared with a team - one machine's
+     * habit must not become every collaborator's answer.
+     *
+     * Distinct from {@link GlobalStateType["versionControl.authorName"]}, which signs revisions.
+     * That is who made this change; this is who the work belongs to, and on a studio's machine the
+     * two are routinely different words.
+     */
+    "project.defaultAuthor": string;
+    /**
      * How long between automatic checkpoints, in minutes. **0 disables them.**
      *
      * A checkpoint only happens when a versioned file has actually been written since
@@ -466,6 +480,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "network.downloadRewrites": [],
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",
+    "project.defaultAuthor": "",
     "versionControl.checkpointIntervalMinutes": 15,
     "versionControl.checkpointOnClose": true,
     "versionControl.authorName": "",
