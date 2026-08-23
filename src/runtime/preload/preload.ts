@@ -202,6 +202,9 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
     },
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
     restart: () => ipcRenderer.invoke("runtime:restart") as Promise<void>,
+    setDisplayAwake: (awake: boolean) => {
+        ipcRenderer.send("runtime:displayAwake:set", awake);
+    },
     getFullscreen: () => ipcRenderer.invoke("runtime:fullscreen:get") as Promise<boolean>,
     setFullscreen: (fullscreen: boolean) =>
         ipcRenderer.invoke("runtime:fullscreen:set", fullscreen) as Promise<void>,

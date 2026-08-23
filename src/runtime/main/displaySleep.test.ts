@@ -6,10 +6,13 @@ import { installDisplaySleepInhibitor, type DisplaySleepHost } from "./displaySl
 /**
  * Enough of a window to drive the inhibitor: the three questions it asks, and the events it
  * listens to. The real thing is a display that does or does not blank an hour later, which no test
- * can wait for - what is pinned here is that a block is held exactly while the window is on screen.
+ * can wait for - what is pinned here is that a block is held exactly while the game is advancing on
+ * its own in a window somebody can see.
  */
 function fakeWindow() {
+    const webContents = new EventEmitter();
     const win = Object.assign(new EventEmitter(), {
+        webContents,
         destroyed: false,
         visible: true,
         minimized: false,
@@ -45,18 +48,30 @@ function fakeHost(overrides: Partial<DisplaySleepHost> = {}) {
 }
 
 describe("installDisplaySleepInhibitor", () => {
-    it("holds a block for a window that is already on screen", () => {
+    it("holds nothing until the game asks", () => {
         const win = fakeWindow();
         const { host, held } = fakeHost();
-        installDisplaySleepInhibitor(win, host);
+        const inhibitor = installDisplaySleepInhibitor(win, host);
+        expect(held).toEqual([]);
+        inhibitor.setRequested(true);
         expect(held).toEqual([1]);
+    });
+
+    it("drops the block when the game stops asking", () => {
+        const win = fakeWindow();
+        const { host, released } = fakeHost();
+        const inhibitor = installDisplaySleepInhibitor(win, host);
+        inhibitor.setRequested(true);
+        inhibitor.setRequested(false);
+        expect(released).toEqual([1]);
     });
 
     it("waits for the first paint on a window built hidden", () => {
         const win = fakeWindow();
         win.visible = false;
         const { host, held } = fakeHost();
-        installDisplaySleepInhibitor(win, host);
+        const inhibitor = installDisplaySleepInhibitor(win, host);
+        inhibitor.setRequested(true);
         expect(held).toEqual([]);
         win.visible = true;
         win.emit("show");
@@ -66,7 +81,7 @@ describe("installDisplaySleepInhibitor", () => {
     it("drops the block while the window is minimised and takes it again on restore", () => {
         const win = fakeWindow();
         const { host, held, released } = fakeHost();
-        installDisplaySleepInhibitor(win, host);
+        installDisplaySleepInhibitor(win, host).setRequested(true);
         win.minimized = true;
         win.emit("minimize");
         expect(released).toEqual([1]);
@@ -79,7 +94,9 @@ describe("installDisplaySleepInhibitor", () => {
     it("never stacks a second block", () => {
         const win = fakeWindow();
         const { host, held } = fakeHost();
-        installDisplaySleepInhibitor(win, host);
+        const inhibitor = installDisplaySleepInhibitor(win, host);
+        inhibitor.setRequested(true);
+        inhibitor.setRequested(true);
         win.emit("show");
         win.emit("restore");
         expect(held).toEqual([1]);
@@ -88,10 +105,20 @@ describe("installDisplaySleepInhibitor", () => {
     it("releases the block when the window goes away", () => {
         const win = fakeWindow();
         const { host, released } = fakeHost();
-        installDisplaySleepInhibitor(win, host);
+        installDisplaySleepInhibitor(win, host).setRequested(true);
         win.destroyed = true;
         win.emit("closed");
         expect(released).toEqual([1]);
+    });
+
+    it("forgets a request the reloaded page cannot withdraw", () => {
+        const win = fakeWindow();
+        const { host, held, released } = fakeHost();
+        installDisplaySleepInhibitor(win, host).setRequested(true);
+        win.webContents.emit("did-start-loading");
+        expect(released).toEqual([1]);
+        win.emit("show");
+        expect(held).toEqual([1]);
     });
 
     it("reports a platform that cannot keep the display awake once, then stops asking", () => {
@@ -103,7 +130,8 @@ describe("installDisplaySleepInhibitor", () => {
                 throw new Error("no service");
             },
         });
-        installDisplaySleepInhibitor(win, host);
+        const inhibitor = installDisplaySleepInhibitor(win, host);
+        inhibitor.setRequested(true);
         win.emit("show");
         win.emit("restore");
         expect(attempts).toBe(1);
