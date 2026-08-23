@@ -282,6 +282,131 @@ export const documentDiff = {
         field: "{field} changed",
     },
     /**
+     * Tier 1, the project's palette.
+     *
+     * `subject` is the author's own name for a colour, which the seeded entries do not have - their
+     * names are translated strings the panel supplies, so a row for one carries the two colours and
+     * no name, and `BrandChangeDetail` draws the whole palette underneath.
+     */
+    brand: {
+        added: "Color added",
+        removed: "Color removed",
+        renamed: "Renamed",
+        /** The value pair is the two colours, drawn as swatches rather than read as text. */
+        value: "Color changed",
+        /** The default font stack. One row for the whole list: a rung is stored as an asset id. */
+        fonts: "Default fonts changed",
+    },
+    /**
+     * Tier 1, the build variants - the editions one project ships as.
+     *
+     * Every line below the first three names its field rather than saying "changed", which is the
+     * one shape all eight can take. Four of them are long names the variant panel already uses
+     * ("Page shown when the story ends"), and four of them are used TWICE: once under a variant,
+     * where `subject` names it, and once alone for the value every variant inherits from the
+     * project. A verb would have to be dropped from the first four and reworded for the second.
+     * What happened is on the row already - the marker, and the two values beside it.
+     *
+     * `version` says whose version it is. This surface is full of version numbers of its own
+     * (`#3`, `#7`), and an unqualified "Version" reads as one of those.
+     */
+    appTags: {
+        added: "Variant added",
+        removed: "Variant removed",
+        renamed: "Renamed",
+        /** The three identity fields. An absent value on one side is the variant inheriting it. */
+        displayName: "Application name",
+        identifier: "Identifier",
+        version: "Project version",
+        plugins: "Plugin settings",
+        assetAxes: "Assets the build uses",
+        scenes: "Scenes that can be started",
+        ending: "Page shown when the story ends",
+        order: "Variant order",
+    },
+    /**
+     * Tier 1, the project's mixer.
+     *
+     * `rerouted` is the row this tier exists for. Where a bus feeds decides what its gain is
+     * multiplied by and which fader reaches it, and it moves no count - so under the summary tier a
+     * re-routed track was a file that changed in a way nothing could name. The two bus names are
+     * the value pair; a track that now hangs off the master has no parent to name, which is why
+     * that case has a line of its own instead of half a pair.
+     */
+    audioTracks: {
+        added: "Track added",
+        removed: "Track removed",
+        renamed: "Renamed",
+        rerouted: "Routes into a different bus",
+        reroutedToMaster: "Routes into the master output",
+        /** The value pair is the fader's own number, out of 100, not the stored 0 to 1. */
+        volume: "Volume changed",
+        /** The policy that holds now, because `true` and `false` are the file's words for it. */
+        loopOn: "Loops by default",
+        loopOff: "Plays once by default",
+        order: "Tracks reordered",
+    },
+    /**
+     * Tier 1, the project's saved and global variables.
+     *
+     * `defaultValue` is the row this tier exists for: it is what every playthrough starts from and
+     * what a save written before the variable existed reads as, so it changes the shipped game
+     * while moving no count at all. The scope lines state what the variable now is rather than
+     * pairing two stored words, one of which ("persistent") is not what the panel calls that scope.
+     */
+    variables: {
+        added: "Variable added",
+        removed: "Variable removed",
+        renamed: "Renamed",
+        defaultValue: "Default value changed",
+        valueType: "Type changed",
+        scopeSaved: "Now a saved variable",
+        scopeGlobal: "Now a global variable",
+        /** The key the value is kept under, which a rename is designed never to touch. */
+        storageKey: "Values already saved are no longer found",
+        description: "Note changed",
+    },
+    /**
+     * Tier 1, the fields one save slot carries.
+     *
+     * `removed` is the only line here that says what a change costs, and the only one that needs
+     * to. Adding a field is safe by construction - a slot with no value for it reads the default -
+     * while removing one takes away the pins that read it, and every save already on a player's
+     * disk is left holding a value nothing in the project can ask for again.
+     */
+    saveSchema: {
+        added: "Save field added",
+        removed: "Save field removed. Existing saves keep the value, nothing reads it.",
+        renamed: "Renamed",
+        valueType: "Type changed",
+        defaultValue: "Default changed",
+        /** The key inside the save, fixed at creation so that a rename cannot orphan what is written. */
+        storageKey: "Values already saved are no longer found",
+        description: "Note changed",
+        /** Where it sits among the pins on the save nodes. Nothing about the game changes. */
+        reordered: "Moved among the fields",
+    },
+    /**
+     * Tier 1, the project's own vocabulary.
+     *
+     * There is no `renamed` here and there cannot be one: a dictionary entry has no id, the
+     * spelling is the identity, so a respelt term is one term gone and another arrived. The two
+     * option lines say what the dictionary does now, because they change what the story editor
+     * marks in every script in the project.
+     */
+    dictionary: {
+        added: "Term added",
+        removed: "Term removed",
+        reading: "Reading changed",
+        /** A list, so no value pair: two lists of spellings on one line cannot be read at any width. */
+        variants: "Variant spellings changed",
+        note: "Note changed",
+        readingsOn: "Readings are suggested",
+        readingsOff: "Readings are not suggested",
+        variantsOn: "Variant spellings are checked",
+        variantsOff: "Variant spellings are not checked",
+    },
+    /**
      * Which of the four tiers answered - the caption that stops a structural list from reading as a
      * semantic one. `semantic` has none: it is the claim that needs no caveat.
      */
