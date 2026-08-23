@@ -58,6 +58,41 @@ export const SurfaceEditorToolbarSegButton = forwardRef<HTMLButtonElement, Surfa
 );
 
 /**
+ * Standalone bordered toolbar button: the cell a control that is only ever one button occupies,
+ * beside the segmented groups rather than inside one.
+ *
+ * It is a component rather than a class string because two editors park the same toolbar on two
+ * different canvases - the surface editor's and the blueprint's - and a copy of the string in each
+ * is how the two drifted apart in the first place.
+ */
+const STANDALONE_BASE =
+    "flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-transparent px-0 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
+
+export type SurfaceEditorToolbarButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+    active?: boolean;
+    children: ReactNode;
+};
+
+export const SurfaceEditorToolbarButton = forwardRef<HTMLButtonElement, SurfaceEditorToolbarButtonProps>(
+    function SurfaceEditorToolbarButton({ active, className = "", children, type = "button", disabled, ...rest }, ref) {
+        const state = active
+            ? "border-primary bg-primary/20 text-fg"
+            : "border-edge text-fg-muted hover:border-primary hover:bg-fill hover:text-fg";
+        return (
+            <button
+                ref={ref}
+                type={type}
+                disabled={disabled}
+                className={`${STANDALONE_BASE} ${state} ${className}`.trim()}
+                {...rest}
+            >
+                {children}
+            </button>
+        );
+    },
+);
+
+/**
  * Cell wrapper for a custom trigger (e.g. popover) so it stretches like adjacent segment buttons.
  */
 export function SurfaceEditorToolbarSegSlot({ children, className = "" }: { children: ReactNode; className?: string }) {

@@ -112,6 +112,14 @@ function runtimeAliasPlugin() {
         '@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation',
         '@/lib/workspace/services/ui-editor/blueprint/fnCatalog',
         '@/lib/workspace/services/ui-editor/blueprint/ownerKeys',
+        // The IME composition guards: four functions and a module-level boolean
+        // over React's own event types, with nothing Studio about them. Not
+        // moved under @/lib/ui-editor because they are not a ui-editor concern -
+        // thirty-odd Studio text fields ask them, and only three of the callers
+        // are widget renderers. A player composing Japanese into a text widget
+        // needs the same guard an author composing into a dialog does, so the
+        // runtime needs the module rather than a copy of it.
+        '@/lib/utils/imeComposition',
     ]);
     return {
         name: 'runtime-alias',

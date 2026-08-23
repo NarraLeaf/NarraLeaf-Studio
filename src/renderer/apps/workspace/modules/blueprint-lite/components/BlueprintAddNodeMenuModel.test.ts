@@ -5,6 +5,8 @@ import {
     blueprintAddNodeEntryKey,
     buildBlueprintAddNodeCategories,
     filterBlueprintAddNodeEntries,
+    filterPreparedBlueprintAddNodeEntries,
+    prepareBlueprintAddNodeEntries,
 } from "./BlueprintAddNodeMenuModel";
 
 const entries = [
@@ -186,6 +188,34 @@ describe("BlueprintAddNodeMenuModel", () => {
         expect(
             filterBlueprintAddNodeEntries(entries, "all", "数学", localizer).map(item => item.type),
         ).toEqual(["nl.math.add"]);
+    });
+
+    it("answers the same for a catalogue folded once as for one folded per query", () => {
+        const localizer = {
+            title: (displayName: string) =>
+                displayName === "String Literal" ? "字符串字面量" : displayName,
+            category: (category: string) => (category === "Math" ? "数学" : category),
+        };
+        // The menu folds the catalogue once and keeps it across every keystroke, so the reused
+        // index has to answer exactly what a fold-per-query would.
+        const prepared = prepareBlueprintAddNodeEntries(entries, localizer);
+
+        for (const [category, query] of [
+            ["all", ""],
+            ["all", "literal"],
+            ["all", "字符串"],
+            ["all", "madd"],
+            ["all", "str lit"],
+            ["Math", "literal"],
+            ["Data", "literal"],
+            ["all", "nothing matches this"],
+        ] as const) {
+            expect(
+                filterPreparedBlueprintAddNodeEntries(prepared, category, query).map(item => item.type),
+            ).toEqual(
+                filterBlueprintAddNodeEntries(entries, category, query, localizer).map(item => item.type),
+            );
+        }
     });
 
     it("still matches the original English text when a localizer is provided", () => {

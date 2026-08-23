@@ -31,6 +31,7 @@ import {
     resolveFirstLaunchOpenRequest,
 } from "./application/launchOpenRequest";
 import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
+import { LAUNCHER_HOME_SIZE, LAUNCHER_ONBOARDING_SIZE } from "./application/launcherWindow";
 import { TRAY_RESIDENCY_NOTICE_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { getMainTranslator } from "./application/i18n";
 import { ConfirmQuitManager } from "./application/managers/confirmQuit";
@@ -41,6 +42,7 @@ import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
+import { handOverWorkspace } from "./application/workspaceHandOver";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -77,6 +79,18 @@ const SHUTDOWN_BASE_DEADLINE_MS = 10_000;
  * a second window rather than the same frame with different contents.
  */
 const WINDOW_CASCADE_STEP = 32;
+
+/**
+ * How long a workspace being replaced waits for its replacement to report a project, before it
+ * stops waiting and both windows are simply left on screen.
+ *
+ * The wait is what keeps the switch to one window at a time, and it is bounded because the thing
+ * being waited on is a renderer: one that died before its preflight settled, or hung in it, would
+ * otherwise leave the author holding a workspace under a scrim with nothing on the way. Generous,
+ * because a large project on a cold disk legitimately takes seconds and the only cost of waiting a
+ * moment longer is a moment.
+ */
+const REPLACEMENT_HANDOVER_TIMEOUT_MS = 30_000;
 
 /** How a launcher window is to be brought up. See `App.holdLauncherBack`. */
 interface LauncherStartupOptions {
@@ -339,6 +353,11 @@ export class App extends BaseApp {
         options: Partial<Electron.BrowserWindowConstructorOptions>,
         { deferShow = false }: LauncherStartupOptions = {},
     ): Promise<AppWindow<WindowAppType.Launcher>> {
+        // Asked once, and used twice: it decides the window's size as well as the mode the
+        // renderer opens in, so setup gets its room from the first frame rather than growing the
+        // window under the author a moment after it appears.
+        const onboarding = this.shouldRunOnboarding();
+        const size = onboarding ? LAUNCHER_ONBOARDING_SIZE : LAUNCHER_HOME_SIZE;
         const config: WindowConfig<WindowAppType.Launcher> = {
             windowType: WindowAppType.Launcher,
             isolated: true,
@@ -346,12 +365,12 @@ export class App extends BaseApp {
             preload: this.getPreloadScript(),
             windowControlPolicy: WindowControlPolicy.MacNativeOutsideTitleBar,
             options: {
-                minWidth: 800,
-                minHeight: 500,
-                maxWidth: 800,
-                maxHeight: 500,
-                width: 800,
-                height: 500,
+                minWidth: size.width,
+                minHeight: size.height,
+                maxWidth: size.width,
+                maxHeight: size.height,
+                width: size.width,
+                height: size.height,
                 frame: false,
                 resizable: false,
                 maximizable: false,
@@ -361,7 +380,7 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow<WindowAppType.Launcher>(this, config, {
-            onboarding: this.shouldRunOnboarding(),
+            onboarding,
         });
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
@@ -1501,20 +1520,31 @@ export class App extends BaseApp {
         return window;
     }
 
+    /**
+     * Build a workspace window.
+     *
+     * `options.show === false` covers two different windows, and `deferredShow` is what tells them
+     * apart: a build running with nobody at the screen, which stays hidden for its whole life, and
+     * a window loading a project behind the one it is about to replace, which is on its way to the
+     * screen the moment that project answers. The second is still somebody's window - it keeps the
+     * crash and hang prompts - so only the first drops them.
+     */
     async launchWorkspace(
         parent: AppWindow<WindowAppType.Settings>,
         props: WindowProps[WindowAppType.Workspace],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+        deferredShow: boolean = false,
     ): Promise<AppWindow<WindowAppType.Workspace>> {
-        // A window that is not being shown is not being focused either, and it may not put a native
-        // dialog in front of an operator when its page crashes or hangs. Both are derived from the
-        // one fact rather than passed separately, so a caller cannot ask for half of it.
-        const onScreen = options.show !== false;
+        const hidden = options.show === false;
+        // A window that is not being shown is not being focused either; whoever shows it later
+        // focuses it then. A window nobody will ever look at may not put a native dialog in front
+        // of an operator either, which is the headless case and only that one.
+        const headless = hidden && !deferredShow;
         const config: WindowConfig<WindowAppType.Workspace> = {
             windowType: WindowAppType.Workspace,
             isolated: true,
-            autoFocus: onScreen,
-            failurePrompts: onScreen,
+            autoFocus: !hidden,
+            failurePrompts: !headless,
             preload: this.getPreloadScript(),
             options: {
                 minWidth: 800,
@@ -1531,11 +1561,12 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
-        if (!onScreen) {
+        if (hidden) {
             // Chromium treats a window that is not on screen as backgrounded and drops its timers to
-            // one a second. Every other hidden window in Studio is hidden for a moment on its way to
-            // being shown; this one runs a whole build that way, and a build is full of debounces,
-            // polls and queues that would each pay that second.
+            // one a second. A build runs its whole life that way, and a build is full of debounces,
+            // polls and queues that would each pay that second; a window loading a project before it
+            // takes the screen would pay it on the one stretch the author is waiting through. The
+            // second case turns throttling back on once it is shown - see `presentReplacement`.
             window.getWebContents().setBackgroundThrottling(false);
         }
 
@@ -1697,6 +1728,17 @@ export class App extends BaseApp {
 
         const key = normalizeProjectPath(projectPath);
         const pending = this.projectOpenings.get(key);
+        // A replacement loads out of sight and takes the screen only once its project has answered:
+        // the author asked for this window to become another project, and a second window appearing
+        // over the first and the first closing out from under it is the one thing that does not read
+        // as that. Not for a project someone else already has coming up (`pending`): that window was
+        // launched on their terms and is not ours to hide or show.
+        const handOver = replaceOpener && !options.background && !pending;
+        if (handOver) {
+            // The window in front of the author is the only one on screen while the replacement
+            // loads, so it is the one that has to say what is going on.
+            this.reportWorkspaceCloseStage(opener as AppWindow<WindowAppType.Workspace>, "switching");
+        }
         const launch = pending ?? this.launchWorkspace(
             opener,
             { projectPath, ...(options.commandLineBuild ? { commandLineBuild: options.commandLineBuild } : {}) },
@@ -1705,7 +1747,15 @@ export class App extends BaseApp {
                 // bounds worth choosing, and `show: false` is what keeps it off the operator's
                 // desktop; `launchWorkspace` reads it and declines to focus what it did not show.
                 ? { show: false }
-                : { minWidth: 800, minHeight: 600, ...this.workspacePlacement(opener, replaceOpener) },
+                : {
+                    minWidth: 800,
+                    minHeight: 600,
+                    // Sized and placed as always - it is only held back from the screen until the
+                    // window it replaces has left it.
+                    ...(handOver ? { show: false } : {}),
+                    ...this.workspacePlacement(opener, replaceOpener),
+                },
+            handOver,
         );
 
         if (!pending) {
@@ -1715,7 +1765,20 @@ export class App extends BaseApp {
             });
         }
 
+        if (handOver) {
+            // A launch that threw leaves no window to report anything, and an author sitting under a
+            // scrim that nothing would ever lift.
+            void launch.catch(() => {
+                this.reportWorkspaceCloseStage(opener as AppWindow<WindowAppType.Workspace>, null);
+            });
+        }
+
         const workspaceWindow = await launch;
+
+        if (handOver && workspaceWindow !== opener) {
+            this.handOverToReplacement(opener as AppWindow<WindowAppType.Workspace>, workspaceWindow, retireOpener);
+            return workspaceWindow;
+        }
 
         if ((openerIsLauncher || replaceOpener) && workspaceWindow !== opener) {
             workspaceWindow.onLoadResult(ok => {
@@ -1734,6 +1797,85 @@ export class App extends BaseApp {
             });
         }
         return workspaceWindow;
+    }
+
+    /**
+     * Wire the window being replaced, and the hidden window replacing it, to the order they change
+     * places in - see {@link handOverWorkspace}, which owns that order and nothing else.
+     *
+     * Everything here is the window work that order asks for: what the frame of the outgoing window
+     * is, what closing it involves, and where the incoming one goes if it never gets to replace
+     * anything.
+     */
+    private handOverToReplacement(
+        opener: AppWindow<WindowAppType.Workspace>,
+        replacement: AppWindow<WindowAppType.Workspace>,
+        retireOpener: () => Promise<void>,
+    ): void {
+        handOverWorkspace({
+            opener: {
+                clearSwitchingStage: () => this.reportWorkspaceCloseStage(opener, null),
+                captureFrame: () => ({
+                    bounds: opener.win.getBounds(),
+                    maximized: opener.win.isMaximized(),
+                    fullScreen: opener.win.isFullScreen(),
+                }),
+                retire: retireOpener,
+            },
+            replacement: {
+                isClosed: () => replacement.isClosed(),
+                onLoadResult: fn => replacement.onLoadResult(fn),
+                onClose: fn => {
+                    replacement.onClose(fn);
+                },
+                adoptFrame: frame => {
+                    if (frame.maximized) {
+                        replacement.win.maximize();
+                    } else if (!frame.fullScreen) {
+                        replacement.win.setBounds(frame.bounds);
+                    }
+                },
+                stepAside: () => this.stepAside(opener, replacement),
+                show: () => {
+                    // Exempt from Chromium's timer throttling only while it was loading out of
+                    // sight; a window on screen has no need of it, and minimising this one later
+                    // should cost what minimising any other workspace costs.
+                    replacement.getWebContents().setBackgroundThrottling(true);
+                    void replacement.show();
+                    replacement.focus();
+                },
+                enterFullScreen: () => replacement.win.setFullScreen(true),
+            },
+            timeoutMs: REPLACEMENT_HANDOVER_TIMEOUT_MS,
+            onTimeout: () => {
+                this.logger.warn("[App] The replacement workspace did not report a load result in time; showing it and keeping the window it was replacing.");
+            },
+        });
+    }
+
+    /**
+     * Move a window that was placed to replace another one out from exactly on top of it, because
+     * the replacement did not happen: the project failed to open, so both windows are staying, and
+     * two frames in the same place would read as one.
+     */
+    private stepAside(opener: AppWindow, replacement: AppWindow): void {
+        const placement = this.workspacePlacement(opener, false);
+        if (typeof placement.x === "number" && typeof placement.y === "number"
+            && typeof placement.width === "number" && typeof placement.height === "number") {
+            replacement.win.setBounds({
+                x: placement.x,
+                y: placement.y,
+                width: placement.width,
+                height: placement.height,
+            });
+            return;
+        }
+        // No room to step aside (a maximised opener, most often), so the centred default frame it
+        // would have had is used instead - distinct enough on its own.
+        if (typeof placement.width === "number" && typeof placement.height === "number") {
+            replacement.win.setSize(placement.width, placement.height);
+        }
+        replacement.win.center();
     }
 
     /**
@@ -1955,6 +2097,71 @@ export class App extends BaseApp {
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.ServerTrustPrompt));
+
+        return window;
+    }
+
+    /**
+     * First-run setup's preview, at full size.
+     *
+     * The setup screen has room for the left quarter of a Studio window; this is the rest of it.
+     * An ordinary resizable window rather than a modal: it is something to look at while answering
+     * the questions behind it, so both have to be usable at once, and closing setup while it is
+     * open must not strand it.
+     *
+     * Given no parent for that reason, unlike the two prompt windows setup raises: a child window
+     * closes with the window that owns it, and the launcher retiring itself at the end of setup
+     * must not take the preview with it.
+     */
+    async launchOnboardingPreview(
+        props: WindowProps[WindowAppType.OnboardingPreview] = {},
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.OnboardingPreview>> {
+        const surface = props.surface ?? "story";
+        const existing = this.windowManager.getWindows().find(window =>
+            !window.isClosed() && window.getWindowType() === WindowAppType.OnboardingPreview
+        ) as AppWindow<WindowAppType.OnboardingPreview> | undefined;
+        if (existing) {
+            // One preview at a time: two copies of one sample would disagree the moment a
+            // preference changed in only one of them. Asking for the surface it is already showing
+            // raises it; asking for another builds it again, because the surface travels on the
+            // window's props and a built window cannot be told a new one.
+            if (existing.getProps()?.surface === surface) {
+                existing.getBrowserWindow().focus();
+                return existing;
+            }
+            existing.close();
+        }
+
+        const config: WindowConfig<WindowAppType.OnboardingPreview> = {
+            windowType: WindowAppType.OnboardingPreview,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.Standard,
+            options: {
+                // The size it falls back to when the maximized state is left; a workspace's own
+                // defaults, so un-maximizing lands on a window Studio would have opened.
+                width: 1180,
+                height: 760,
+                minWidth: 760,
+                minHeight: 520,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+                ...options,
+            },
+        };
+        const window = new AppWindow<WindowAppType.OnboardingPreview>(this, config, { surface });
+        window.setTitle("Preview - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        // Maximized, and registered before the show below so it lands in that state rather than
+        // appearing at its constructed size and jumping. The question this window is opened to
+        // answer is how big the interface is drawn, and that cannot be judged in a small window.
+        window.onReady(() => window.getBrowserWindow().maximize());
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.OnboardingPreview));
 
         return window;
     }
