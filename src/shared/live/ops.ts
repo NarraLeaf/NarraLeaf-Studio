@@ -84,7 +84,37 @@ export type LiveOp =
           op: "update-blocks";
           edits: readonly { sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }[];
       }
+    /**
+     * Add many blocks, in the order given, as ONE operation.
+     *
+     * What a paste is. The same reasoning as `update-blocks` and `move-blocks`, and one consequence
+     * of its own: **a paste sent as a run of `insert-block`s is a run of undo steps**, so taking one
+     * back inside a session costs a press per row while taking the same paste back outside one costs
+     * a single press. One gesture is one operation, on both sides of the seam.
+     *
+     * The list is a flattened tree in insertion order - a parent before its children - so an entry
+     * may aim inside or beside another entry of the same batch. Those targets are correct by
+     * construction and the host does not resolve them against the document; see `LiveHost`.
+     */
+    | {
+          op: "insert-blocks";
+          sceneId: StorySceneId;
+          inserts: readonly { block: StoryBlock; target: LiveBlockTarget }[];
+      }
     | { op: "delete-block"; sceneId: StorySceneId; blockId: StoryBlockId }
+    /**
+     * Remove many rows, as ONE operation.
+     *
+     * Deleting a selection is one gesture, and a run of `delete-block`s makes it several: every other
+     * machine draws each intermediate document, one refused row leaves the rest deleted with nothing
+     * saying so, and the author's undo walks back through rows one at a time. It is also the inverse
+     * of `insert-blocks`, which is what lets a paste be taken back in one press.
+     *
+     * The ids are given in document order and removed in that order. Naming a row and its own
+     * container is allowed - the container takes its children with it, and an id already gone by the
+     * time its turn comes is not an error.
+     */
+    | { op: "delete-blocks"; sceneId: StorySceneId; blockIds: readonly StoryBlockId[] }
     | { op: "move-block"; sceneId: StorySceneId; blockId: StoryBlockId; target: LiveBlockTarget }
     /**
      * Move groups of rows, each group to its own target, as ONE operation.
@@ -131,6 +161,7 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-block",
     "update-blocks",
     "delete-block",
+    "delete-blocks",
     "set-block-disabled",
 ]);
 
@@ -151,7 +182,9 @@ export function opBlockId(op: LiveOp): StoryBlockId | null {
         case "move-block":
         case "set-block-disabled":
             return op.blockId;
+        case "insert-blocks":
         case "update-blocks":
+        case "delete-blocks":
         case "move-blocks":
         case "rename-scene":
         case "set-entry-scene":
@@ -181,8 +214,12 @@ export function opBlockIds(op: LiveOp): readonly StoryBlockId[] {
         case "move-block":
         case "set-block-disabled":
             return [op.blockId];
+        case "insert-blocks":
+            return op.inserts.map(insert => insert.block.id);
         case "update-blocks":
             return op.edits.map(edit => edit.blockId);
+        case "delete-blocks":
+            return [...op.blockIds];
         case "move-blocks":
             return op.moves.flatMap(move => [...move.blockIds]);
         case "rename-scene":
@@ -206,8 +243,10 @@ export function opBlockIds(op: LiveOp): readonly StoryBlockId[] {
 export function opSceneId(op: LiveOp): StorySceneId | null {
     switch (op.op) {
         case "insert-block":
+        case "insert-blocks":
         case "update-block":
         case "delete-block":
+        case "delete-blocks":
         case "move-block":
         case "move-blocks":
         case "set-block-disabled":

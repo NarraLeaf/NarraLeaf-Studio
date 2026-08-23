@@ -17,7 +17,9 @@ import {
     type LiveRefusal,
     type LiveResync,
 } from "@shared/live/ops";
+import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
+import type { VoiceUnit } from "@shared/types/voice";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import type { StoryOpSink } from "../story/StoryService";
 import { LiveEffectHistory, type LiveEffectRecord, type LiveStepDirection } from "./liveEffectHistory";
@@ -798,9 +800,7 @@ export class LiveSession {
         // What the inverse will have to carry: the entries this row came with, so that undoing a
         // delete puts the translations and takes back too. `inverseOf` answers with an operation
         // and nothing else, which is the gap this closes.
-        const derived = effect.op.op === "delete-block"
-            ? session.derivedByBlock.get(effect.op.blockId)
-            : undefined;
+        const derived = this.derivedOfDeleted(session, effect.op);
         const record: LiveEffectRecord = {
             effect,
             before,
@@ -812,11 +812,61 @@ export class LiveSession {
         this.publish(session, { lastRefusal: null });
     }
 
-    /** Note that a row arrived with entries derived from the effect that carried it. */
+    /**
+     * Note that a row arrived with entries derived from the effect that carried it.
+     *
+     * Against every row of a batch, because the entries belong to the gesture: a paste is one
+     * operation carrying one set, and any one of its rows being deleted and put back has to bring
+     * that set with it.
+     */
     private rememberDerived(session: ActiveSession, op: LiveOp, derived: LiveDerived | undefined): void {
-        if (derived && op.op === "insert-block") {
-            session.derivedByBlock.set(op.block.id, derived);
+        if (!derived) {
+            return;
         }
+        if (op.op === "insert-block") {
+            session.derivedByBlock.set(op.block.id, derived);
+            return;
+        }
+        if (op.op === "insert-blocks") {
+            for (const insert of op.inserts) {
+                session.derivedByBlock.set(insert.block.id, derived);
+            }
+        }
+    }
+
+    /**
+     * The entries the rows an operation removes arrived with, or undefined for an operation that
+     * removes nothing.
+     *
+     * Merged across the rows of a batch rather than taken from the first of them: a selection can
+     * hold rows from two different pastes, and an inverse carrying one paste's translations would
+     * put half the words back. A locale's entries are keyed by text id and the ids of two pastes are
+     * disjoint, so merging them is addition rather than a choice between them.
+     */
+    private derivedOfDeleted(session: ActiveSession, op: LiveOp): LiveDerived | undefined {
+        const ids = op.op === "delete-block"
+            ? [op.blockId]
+            : op.op === "delete-blocks" ? op.blockIds : [];
+        const found = ids
+            .map(blockId => session.derivedByBlock.get(blockId))
+            .filter((one): one is LiveDerived => one !== undefined);
+        if (found.length <= 1) {
+            return found[0];
+        }
+        const translations: Record<string, Record<string, LocalizationUnit>> = {};
+        const voice: Record<string, Record<string, VoiceUnit>> = {};
+        for (const one of found) {
+            for (const [locale, units] of Object.entries(one.translations ?? {})) {
+                translations[locale] = { ...translations[locale], ...units };
+            }
+            for (const [locale, units] of Object.entries(one.voice ?? {})) {
+                voice[locale] = { ...voice[locale], ...units };
+            }
+        }
+        return {
+            ...(Object.keys(translations).length > 0 ? { translations } : {}),
+            ...(Object.keys(voice).length > 0 ? { voice } : {}),
+        };
     }
 
     private noteRefusal(session: ActiveSession, refusal: LiveRefusal, op: LiveOp["op"] | null): void {

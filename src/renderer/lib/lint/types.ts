@@ -127,6 +127,7 @@ export type LintRuleId =
     | "text/empty"
     | "localization/missing"
     | "localization/stale"
+    | "localization/markup"
     | "localization/orphan"
     | "voice/missing"
     | "voice/stale"

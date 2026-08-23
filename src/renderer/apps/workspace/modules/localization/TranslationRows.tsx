@@ -18,6 +18,12 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 export type TranslationTableRow = {
     unitId: string;
     sourceText: string;
+    /**
+     * The source with its run tags, when the line has any. Shown in place of `sourceText` so the
+     * translator can see - and copy - the styling, the pauses and the reveal-time events they are
+     * being asked to place.
+     */
+    sourceMarkup?: string;
     interpolationCount: number;
     /** Named-key rows: the source text is editable in place (translate mode). */
     editableSource?: boolean;
@@ -116,8 +122,8 @@ function AutosizeTextarea(props: {
 }
 
 /**
- * Target-text editor shared by both modes. The `{0}…{n}` placeholder hint
- * only appears while the textarea is focused, keeping rows quiet otherwise.
+ * Target-text editor shared by both modes. The placeholder and run-tag hints
+ * only appear while the textarea is focused, keeping rows quiet otherwise.
  */
 function TargetEditor(props: {
     row: TranslationTableRow;
@@ -143,9 +149,39 @@ function TargetEditor(props: {
                     {t("workspace.localization.table.placeholderHint")}
                 </div>
             ) : null}
+            {focused && props.row.sourceMarkup ? (
+                <div className="px-2 text-2xs leading-relaxed text-fg-subtle">
+                    {t("workspace.localization.table.runTagHint")}
+                </div>
+            ) : null}
         </div>
     );
 }
+
+/**
+ * The source line as the translator reads it: the tagged form where the line has one.
+ *
+ * The tags are drawn quieter than the words around them. A translator copies them and moves them;
+ * they are not part of the sentence, and a run of them at full contrast reads as if they were.
+ */
+function SourceText({ row }: { row: TranslationTableRow }) {
+    const text = row.sourceMarkup ?? row.sourceText;
+    if (!row.sourceMarkup) {
+        return <>{text}</>;
+    }
+    return (
+        <>
+            {text.split(RUN_TAG_SPLIT).map((piece, index) => (
+                RUN_TAG_SPLIT.test(piece)
+                    ? <span key={index} className="text-fg-subtle">{piece}</span>
+                    : <span key={index}>{piece}</span>
+            ))}
+        </>
+    );
+}
+
+/** The run tags a source line carries, kept whole by `split` so they can be drawn apart. */
+const RUN_TAG_SPLIT = /(‹\/?\d+›)/;
 
 /**
  * Translate mode: a distraction-free bilingual reading row. The text itself
@@ -187,7 +223,7 @@ export function TranslateRow(props: {
                 </div>
             ) : (
                 <div className="col-start-1 row-start-2 min-w-0 cursor-text select-text whitespace-pre-wrap rounded-md border border-transparent px-2 py-1.5 text-sm leading-relaxed text-fg">
-                    {props.row.sourceText}
+                    <SourceText row={props.row} />
                 </div>
             )}
             <div className="col-start-2 row-start-2 min-w-0">

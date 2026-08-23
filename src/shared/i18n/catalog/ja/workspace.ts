@@ -96,6 +96,7 @@ export const workspace = {
             reviewAllClear: "確認するものはもうない",
             staleHint: "この翻訳の後に原文が変わっている。保存し直すと最新として扱う",
             placeholderHint: "{n} のプレースホルダはそのまま残す。行の中の値になる",
+            runTagHint: "‹n› のタグは対応する語に付け直す。文字装飾・間・立ち絵の切り替えを運ぶ",
             emptyStory: "このストーリーにはまだ翻訳できる行がない",
             emptyFilter: "この絞り込みに一致するものがない",
             noStories: "先にストーリーを作る。その行がここに翻訳対象として並ぶ",

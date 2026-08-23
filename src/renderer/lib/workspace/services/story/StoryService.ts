@@ -1553,19 +1553,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }, NO_SCENES);
     }
 
-    /**
-     * `derived` is for a paste, and for the first row of one. See {@link StoryOpSink.handle}: the
-     * entries belong to the gesture rather than to any one row, and the operation carrying them is
-     * the one every machine writes them from.
-     */
-    public insertBlock(
-        storyId: StoryId,
-        sceneId: StorySceneId,
-        block: StoryBlock,
-        target: BlockTarget,
-        derived?: LiveDerived,
-    ): StoryBlock {
-        if (this.handedToSink(storyId, { op: "insert-block", sceneId, block, target }, derived)) {
+    public insertBlock(storyId: StoryId, sceneId: StorySceneId, block: StoryBlock, target: BlockTarget): StoryBlock {
+        if (this.handedToSink(storyId, { op: "insert-block", sceneId, block, target })) {
             // ⚠ The row is NOT in the document. It is still returned because the caller places the
             // caret with it, and the caret has somewhere to be as soon as the row appears - which is
             // when the operation comes back as an effect, not now.
@@ -1579,6 +1568,46 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             insertBlockInScene(scene, block, target);
+        }, [sceneId]);
+    }
+
+    /**
+     * Add many blocks, in the order given, as ONE mutation.
+     *
+     * What a paste and a duplicate are. The list is a flattened tree - a container before the rows
+     * inside it - so an entry may name another entry of the same batch as its parent or its
+     * neighbour. One mutation is one `documentChanged`, one revision and one save, which is what
+     * {@link updateBlocks} exists for as well; inside a live session it is also one operation, one
+     * effect, and **one undo press** for the whole gesture.
+     *
+     * `derived` is what the batch derives rather than what it changes - the translations and takes a
+     * paste re-keys onto the ids it has just minted. See {@link StoryOpSink.handle}.
+     */
+    public insertBlocks(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        inserts: readonly { block: StoryBlock; target: BlockTarget }[],
+        derived?: LiveDerived,
+    ): void {
+        if (inserts.length === 0) {
+            return;
+        }
+        if (this.handedToSink(storyId, { op: "insert-blocks", sceneId, inserts }, derived)) {
+            return;
+        }
+        this.applyBlockInserts(storyId, sceneId, inserts);
+    }
+
+    private applyBlockInserts(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        inserts: readonly { block: StoryBlock; target: BlockTarget }[],
+    ): void {
+        this.mutateDocument(storyId, document => {
+            const scene = this.getSceneOrThrow(document, sceneId);
+            for (const insert of inserts) {
+                insertBlockInScene(scene, insert.block, insert.target);
+            }
         }, [sceneId]);
     }
 
@@ -1641,6 +1670,31 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             deleteBlockFromScene(scene, blockId);
+        }, [sceneId]);
+    }
+
+    /**
+     * Remove many rows, as ONE mutation. Deleting a selection is one gesture.
+     *
+     * An id already gone by the time its turn comes is not an error: a container takes the rows
+     * inside it, so a batch naming both removes the container first and finds the child gone.
+     */
+    public deleteBlocks(storyId: StoryId, sceneId: StorySceneId, blockIds: readonly StoryBlockId[]): void {
+        if (blockIds.length === 0) {
+            return;
+        }
+        if (this.handedToSink(storyId, { op: "delete-blocks", sceneId, blockIds })) {
+            return;
+        }
+        this.applyBlockDeletes(storyId, sceneId, blockIds);
+    }
+
+    private applyBlockDeletes(storyId: StoryId, sceneId: StorySceneId, blockIds: readonly StoryBlockId[]): void {
+        this.mutateDocument(storyId, document => {
+            const scene = this.getSceneOrThrow(document, sceneId);
+            for (const blockId of blockIds) {
+                deleteBlockFromScene(scene, blockId);
+            }
         }, [sceneId]);
     }
 
@@ -1765,8 +1819,19 @@ export class StoryService extends Service<StoryService> implements IStoryService
                         payload: structuredClone(edit.payload),
                     })));
                     return;
+                case "insert-blocks":
+                    // Copies, for the reason a single insert takes one: the blocks arrived inside a
+                    // message the sender may still be holding, and inserting edits them on the way in.
+                    this.applyBlockInserts(storyId, op.sceneId, op.inserts.map(insert => ({
+                        block: structuredClone(insert.block),
+                        target: insert.target,
+                    })));
+                    return;
                 case "delete-block":
                     this.applyBlockDelete(storyId, op.sceneId, op.blockId);
+                    return;
+                case "delete-blocks":
+                    this.applyBlockDeletes(storyId, op.sceneId, op.blockIds);
                     return;
                 case "move-block":
                     this.applyBlockMove(storyId, op.sceneId, op.blockId, op.target);
@@ -1789,6 +1854,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 case "reorder-chapters":
                     this.applyChapterOrder(storyId, op.chapterIds);
                     return;
+                default: {
+                    // The switch is exhaustive over the vocabulary and this is what says so. The
+                    // callback returns void, so a verb nobody applied here would otherwise be a
+                    // silent no-op: the effect lands everywhere else in the room and does nothing on
+                    // this machine, which is the divergence the digest catches one message too late.
+                    const unapplied: never = op;
+                    throw new Error(`No applier for live operation: ${JSON.stringify(unapplied)}`);
+                }
             }
         });
     }

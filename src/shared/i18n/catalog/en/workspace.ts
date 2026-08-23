@@ -95,6 +95,7 @@ export const workspace = {
             reviewAllClear: "Nothing left to review.",
             staleHint: "The source line changed after this translation. Save it again to mark it current.",
             placeholderHint: "Keep the {n} placeholders. They render inline values.",
+            runTagHint: "Copy the ‹n› tags onto the words they belong on. They carry the styling, the pauses and the portrait changes.",
             emptyStory: "This story has no translatable lines yet.",
             emptyFilter: "Nothing matches this filter.",
             noStories: "Create a story first. Its lines appear here for translation.",
