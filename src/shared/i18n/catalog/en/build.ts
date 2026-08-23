@@ -141,14 +141,31 @@ export const build = {
             // second place to say it is a second place for the two to disagree.
             dlcVariantHint: "Set on the DLC in Project \u25B8 App.",
             dlcOutputHint: "Written as {file}, in the DLC folder beside the path above.",
-            variantLabel: "Variant",
-            variantHint: "A patch opens only in builds of the variant it was exported for.",
+            // The first question: which build this file installs into, and how that build is
+            // arrived at. Building it here is the answer for an edition upgrade or a DLC; naming a
+            // folder is the answer for a fix to something that already shipped.
+            baselineModeLabel: "Build this patch updates",
+            baselineModeVariant: "Built as part of this export",
+            baselineModeArtifact: "An existing build folder",
+            baselineModeVariantHint: "The variant below is built first, and the patch carries what differs from it.",
+            baselineModeArtifactHint: "The patch carries only what differs from that folder.",
+            targetLabel: "Variant it installs into",
+            targetHint: "A patch opens only in builds of the variant it was exported for.",
+            artifactLabel: "Build folder",
+            artifactPlaceholder: "Leave empty to include the whole game",
+            artifactReading: "Reading the build\u2026",
+            // Two spellings rather than a placeholder for an absent version: a build made before
+            // the project had one would otherwise read as a product called "Skeleton \u2014".
+            artifactRead: "{product}, built {date}",
+            artifactReadVersioned: "{product} {version}, built {date}",
+            artifactVariantStated: "Read from the build folder.",
+            artifactVariantUnknown: "This build does not state its variant. Select it below.",
+            artifactVariantMismatch: "This build is {build}. The DLC attaches to {variant}.",
+            artifactWholeGame: "The patch includes the whole game.",
             /** The second question: whose content goes in. Only asked where a project has variants. */
-            contentLabel: "Content from",
+            contentLabel: "Variant the content comes from",
             contentHint: "The scenes, variant conditions and art of this variant go into the patch.",
-            baselineLabel: "Build this patch updates",
-            baselinePlaceholder: "Leave empty to include the whole game",
-            baselineHint: "The desktop build folder an earlier build produced. Only the files that differ from it are included.",
+            sameVariant: "The content and the build it updates are the same variant. The patch carries no changes.",
             outputLabel: "Save as",
             nameLabel: "Name",
             namePlaceholder: "Shown in the game's log",

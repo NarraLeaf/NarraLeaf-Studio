@@ -273,6 +273,37 @@ export type BuildConfiguration = {
 };
 
 /**
+ * How the build a patch is measured against is arrived at.
+ *
+ * `variant` builds it as part of the export, from the project as it stands; `artifact` measures
+ * against a build folder the author points at.
+ */
+export type PatchBaselineMode = "variant" | "artifact";
+
+/**
+ * Remembered patch-export selection, so the dialog re-opens on the same two editions, the same
+ * build folder and the same file.
+ *
+ * The name and the layer are deliberately not here. Both belong to one patch rather than to the
+ * project, and a dialog that re-opened holding the previous patch's name would offer to ship a
+ * second file claiming to be the first.
+ */
+export type PatchConfiguration = {
+    baselineMode: PatchBaselineMode;
+    /**
+     * The variant the patch installs into, in `variant` mode. Absent means the release variant,
+     * which is also what a stored id whose variant has since been deleted resolves to.
+     */
+    targetAppTagId?: string;
+    /** The build folder chosen last time, in `artifact` mode. */
+    baselineAppDir?: string;
+    /** The variant whose content the patch carries. Absent means the same one it installs into. */
+    contentAppTagId?: string;
+    /** Absolute path of the file written last time; empty means the default. */
+    outputFile?: string;
+};
+
+/**
  * Which signing credential the project uses for each platform, by credential
  * **id** and nothing else.
  *
@@ -434,6 +465,8 @@ export type ProjectAppConfiguration = {
     signing?: SigningConfiguration;
     /** Last production-build dialog selection; absent until the first build. */
     build?: BuildConfiguration;
+    /** Last patch-export dialog selection; absent until the first export. */
+    patch?: PatchConfiguration;
     /** Project lint policy; absent until configured (see the defaults). */
     linting?: LintingConfiguration;
 };
@@ -645,10 +678,42 @@ export function normalizeBuildConfiguration(value: unknown): BuildConfiguration 
         archs[platform] = normalizeGameBuildArch(platform, stored);
     }
     return {
+        // Carried through so the dialog re-opens on the variant it was last built as. Written by
+        // the build since variants existed; without this line nothing ever read it back.
+        ...(typeof record.appTagId === "string" && record.appTagId.trim()
+            ? { appTagId: record.appTagId.trim() }
+            : {}),
         platforms,
         formats,
         archs,
         outputDir: typeof record.outputDir === "string" ? record.outputDir.trim() : "",
         openWhenDone: typeof record.openWhenDone === "boolean" ? record.openWhenDone : true,
+    };
+}
+
+/**
+ * Coerce an unknown persisted value into a PatchConfiguration. Returns null when nothing usable
+ * was stored, so the dialog falls back to its own defaults.
+ *
+ * An unrecognised mode reads as `artifact`: that is the one mode whose baseline the author states
+ * outright, so a stored value nothing here understands cannot turn into an export measured against
+ * something they did not choose.
+ */
+export function normalizePatchConfiguration(value: unknown): PatchConfiguration | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const text = (key: string): string => (typeof record[key] === "string" ? (record[key] as string).trim() : "");
+    const targetAppTagId = text("targetAppTagId");
+    const baselineAppDir = text("baselineAppDir");
+    const contentAppTagId = text("contentAppTagId");
+    const outputFile = text("outputFile");
+    return {
+        baselineMode: record.baselineMode === "variant" ? "variant" : "artifact",
+        ...(targetAppTagId ? { targetAppTagId } : {}),
+        ...(baselineAppDir ? { baselineAppDir } : {}),
+        ...(contentAppTagId ? { contentAppTagId } : {}),
+        ...(outputFile ? { outputFile } : {}),
     };
 }
