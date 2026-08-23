@@ -272,6 +272,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                 const storyRows: TableRow[] = localizationService.extractRows(document).map(row => ({
                     unitId: row.unitId,
                     sourceText: row.sourceText,
+                    ...(row.sourceMarkup ? { sourceMarkup: row.sourceMarkup } : {}),
                     interpolationCount: row.interpolationCount,
                     groupKey: row.sceneId,
                     groupName: row.sceneName,

@@ -313,6 +313,11 @@ export const lint = {
             description: "The source line changed after it was translated",
             message: "{locale} translation is older than the line",
         },
+        localizationMarkup: {
+            title: "Translation drops styling",
+            description: "The line is styled and the translation renders it plainly",
+            message: "{locale} translation does not carry this line's styling",
+        },
         localizationOrphan: {
             title: "Orphan translation",
             description: "A translation whose line no longer exists",
