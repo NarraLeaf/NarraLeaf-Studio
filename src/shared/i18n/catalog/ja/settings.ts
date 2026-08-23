@@ -100,7 +100,7 @@ export const settings = {
         },
         screenEffectQuality: {
             label: "開発モードでの画面エフェクト",
-            description: "下書きは生成時間がおよそ 3 分の 1 になる。プレビューとビルドは常に最終品質を使う",
+            description: "プレビューとビルドは最終品質しか受け取らないため、下書きを選ぶと各エフェクトを二度焼くことになる。いま一度、初めて実行したときにもう一度",
             options: {
                 draft: "下書き",
                 final: "最終品質",
@@ -274,6 +274,11 @@ export const settings = {
         checkpointOnClose: {
             label: "ワークスペースを閉じるときにチェックポイントを記録",
             description: "上の間隔とは別に、ウィンドウを閉じる時点で記録する",
+        },
+        quitCheckpointTimeout: {
+            label: "終了時のチェックポイントの制限時間",
+            description:
+                "終了時に開いているすべてのプロジェクトのチェックポイントを待つ時間。これを超えたプロジェクトは記録しない。0 にすると終了時は記録しない",
         },
         versionControlAuthor: {
             label: "作者名",

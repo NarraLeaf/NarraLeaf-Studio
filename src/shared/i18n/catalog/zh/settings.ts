@@ -92,7 +92,7 @@ export const settings = {
         },
         screenEffectQuality: {
             label: "开发模式中的屏幕效果",
-            description: "草稿的生成时间约为三分之一。预览与构建始终使用最终画质",
+            description: "预览与构建只认最终画质，所以选草稿的工程每条特效会烘两次：现在一次，第一次运行时再一次",
             options: {
                 draft: "草稿",
                 final: "最终画质",
@@ -260,6 +260,10 @@ export const settings = {
         checkpointOnClose: {
             label: "关闭工作区时记录检查点",
             description: "关窗时记录一次，与上面的间隔各自独立",
+        },
+        quitCheckpointTimeout: {
+            label: "退出时记录检查点的时限",
+            description: "退出时为所有打开的项目记录检查点，超出该时限的项目不记录；填 0 则退出时不记录",
         },
         versionControlAuthor: {
             label: "作者名",

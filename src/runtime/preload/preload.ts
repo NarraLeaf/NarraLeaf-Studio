@@ -19,6 +19,7 @@ import {
 } from "@shared/utils/gameRuntimeAssetUrl";
 import {
     GAME_RUNTIME_TEST_COMMAND_CHANNEL,
+    GAME_RUNTIME_TEST_COMMAND_READY_CHANNEL,
     GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
     type GameRuntimeTestCommandBridge,
     type GameRuntimeTestSignal,
@@ -191,6 +192,10 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
             listener(command);
         };
         ipcRenderer.on(GAME_RUNTIME_TEST_COMMAND_CHANNEL, handler);
+        // Announced from here rather than by the renderer, because here is where the listener
+        // actually exists: the main process holds the first command until it hears this, and a
+        // caller that had to remember to say it would eventually forget.
+        ipcRenderer.send(GAME_RUNTIME_TEST_COMMAND_READY_CHANNEL);
         return () => {
             ipcRenderer.off(GAME_RUNTIME_TEST_COMMAND_CHANNEL, handler);
         };

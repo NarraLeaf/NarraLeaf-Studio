@@ -101,7 +101,7 @@ export const settings = {
         },
         screenEffectQuality: {
             label: "Screen effects in Dev Mode",
-            description: "Draft is generated in about a third of the time. Previews and builds always use the final quality.",
+            description: "Previews and builds only accept the final quality, so choosing draft bakes every effect twice: once now, once the first time you run.",
             options: {
                 draft: "Draft",
                 final: "Final quality",
@@ -280,6 +280,11 @@ export const settings = {
         checkpointOnClose: {
             label: "Record a checkpoint when a workspace closes",
             description: "Records on closing the window, independent of the interval above.",
+        },
+        quitCheckpointTimeout: {
+            label: "Checkpoint deadline when quitting",
+            description:
+                "How long quitting waits for the checkpoints of every open project; a project that takes longer is left unrecorded. Set to 0 to record none when quitting.",
         },
         versionControlAuthor: {
             label: "Author name",

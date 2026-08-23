@@ -25,6 +25,17 @@ export const GAME_RUNTIME_TEST_SIGNAL_CHANNEL = "runtime:test:signal" as const;
 /** Game main process -> renderer. One-way for the same reason: the reply travels as an observation. */
 export const GAME_RUNTIME_TEST_COMMAND_CHANNEL = "runtime:test:command" as const;
 
+/**
+ * Renderer -> game main process, sent the moment the renderer subscribes to the channel above.
+ *
+ * The control socket opens as soon as the main process has read its pack, which is before the
+ * window has finished loading - so a command can be accepted, forwarded, and dropped by Electron
+ * because nothing is listening yet. Studio hears `{ok:true}` either way. This is how the main
+ * process learns there is now a listener, so the one command that must not be lost can be held
+ * until then (see the hold in `main.ts`).
+ */
+export const GAME_RUNTIME_TEST_COMMAND_READY_CHANNEL = "runtime:test:command:ready" as const;
+
 export type GameRuntimeTestSignal =
     | { kind: "runtime-error"; message: string; stack?: string }
     | { kind: "game-end" }

@@ -40,20 +40,28 @@ const ROWS = rows(5);
  * `selectRow` is the controller's: bump nothing, move the active row, hand the set to
  * `nextRowSelection`. The press/click split and the drag arming are the controller's too — only the
  * pointer hit-test is stubbed, since jsdom has no layout for `elementFromPoint` to read.
+ *
+ * The two refs are the controller's pair as well, and keeping both is the point: the *active* row is
+ * the head, which every press moves, while the *anchor* is where a Shift range starts and only a
+ * press without Shift may move it.
  */
 function RowList() {
     const [selected, setSelected] = useState<ReadonlySet<StoryBlockId>>(new Set());
     const [active, setActive] = useState<StoryBlockId | null>(null);
     const activeRef = useRef<StoryBlockId | null>(null);
+    const anchorRef = useRef<StoryBlockId | null>(null);
     const dragFromRef = useRef<StoryBlockId | null>(null);
     /** Which row the pointer is over, as `extendDragSelectionAtPoint` would resolve it. */
     const overRef = useRef<StoryBlockId | null>(null);
 
     const selectRow = (blockId: StoryBlockId, event: MouseEvent) => {
-        const rangeFrom = activeRef.current;
+        const anchorBlockId = anchorRef.current ?? activeRef.current;
+        if (!(event.shiftKey && anchorBlockId)) {
+            anchorRef.current = blockId;
+        }
         activeRef.current = blockId;
         setActive(blockId);
-        setSelected(previous => nextRowSelection({ previous, rows: ROWS, activeBlockId: rangeFrom, blockId, event }));
+        setSelected(previous => nextRowSelection({ previous, rows: ROWS, anchorBlockId, blockId, event }));
     };
 
     const press = (blockId: StoryBlockId, event: MouseEvent) => {
@@ -178,14 +186,28 @@ describe("selecting rows with the mouse", () => {
         expect(selection()).toBe("r2,r3,r4,r5");
     });
 
-    it("re-anchors the range on the last plainly selected row", () => {
+    it("keeps a run of Shift+clicks anchored on the row picked before them", () => {
         render(<RowList />);
         pressRow("r4");
         pressRow("r2", { shiftKey: true });
         expect(selection()).toBe("r2,r3,r4");
+        // Still anchored on r4: the range swings across it rather than starting again from r2, where
+        // the press before this one happened to end.
         pressRow("r5", { shiftKey: true });
-        // The Shift press moved the active row to r2, so the next range runs from there.
-        expect(selection()).toBe("r2,r3,r4,r5");
+        expect(selection()).toBe("r4,r5");
+        // And it can be shrunk back down, which is the half a self-re-anchoring range cannot do.
+        pressRow("r3", { shiftKey: true });
+        expect(selection()).toBe("r3,r4");
+    });
+
+    it("moves the anchor onto the next row picked without Shift", () => {
+        render(<RowList />);
+        pressRow("r1");
+        pressRow("r3", { shiftKey: true });
+        expect(selection()).toBe("r1,r2,r3");
+        pressRow("r4");
+        pressRow("r5", { shiftKey: true });
+        expect(selection()).toBe("r4,r5");
     });
 
     it("still selects the row when the press lands on a field inside it", () => {
