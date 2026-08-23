@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Monitor, Paperclip, Radio } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -46,11 +46,37 @@ export function TeamCollaboration({ team }: {
     // instead of adding to it. The acts behind these controls ask again for the same reason.
     const freeze = useWorkspaceFreeze();
     const inRoom = live.view.phase !== "idle";
-    /** The first room this window is not in, which is the one there is an offer to join. */
-    const other = useMemo(
-        () => team.live.find(session => session.id !== live.view.session?.id) ?? null,
-        [team.live, live.view.session],
-    );
+    /**
+     * The first room this window is not in, which is the one there is an offer to join.
+     *
+     * ⚠ **A room this window has just closed is not one of them, and it has to be excluded by
+     * name.** The list comes from the server and the session's own state does not, so between
+     * ending a room and the server's news of it coming back round there is a stretch in which this
+     * window is in no session and the closed room is still in `team.live`. Matching only against
+     * the session this window is in reads that stretch as "somebody else's room, two people in it,
+     * press to join" - which is what a host saw on a real machine the instant they pressed End.
+     */
+    const other = useMemo(() => {
+        const mine = live.view.session?.id ?? null;
+        const gone = live.view.ended?.closed === true ? live.view.ended.sessionId : null;
+        return team.live.find(session => session.id !== mine && session.id !== gone) ?? null;
+    }, [team.live, live.view.session, live.view.ended]);
+    /**
+     * Read the server again when a session ends here.
+     *
+     * The room list changed because of something this window did, and the server says so on a topic
+     * this project is subscribed to - but a collection that is only ever corrected by somebody
+     * else's news is a collection that stays wrong whenever that news is missed. Asking again after
+     * an act of our own that certainly moved it is the same discipline `serverChanged` follows.
+     */
+    const endedRoom = live.view.ended?.sessionId ?? null;
+    const refresh = team.refresh;
+    useEffect(() => {
+        if (endedRoom === null) {
+            return;
+        }
+        refresh();
+    }, [endedRoom, refresh]);
     // Only where entering is what the author is being offered: inside a session the answer is
     // always this session's own freeze, which would read as the room refusing to let anyone in.
     const blocked = inRoom ? null : refuseLiveSessionEntry(freeze);
