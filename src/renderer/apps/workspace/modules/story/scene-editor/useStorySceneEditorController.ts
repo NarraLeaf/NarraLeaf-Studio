@@ -387,7 +387,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * the tab going away. See {@link useStoryRowClaimHold}: every one of those is the open row
      * changing, so there is no list of endings here that a later one could fall off.
      */
-    const noteRowTyping = useStoryRowClaimHold({
+    useStoryRowClaimHold({
         service: liveSessionService,
         storyId,
         blockId: editorMode.kind === "text" ? editorMode.blockId : null,
@@ -403,11 +403,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         draft.value = value;
         draft.rich = rich;
-        // The cheapest place to keep the claim alive: this already fires on every character and
-        // writes no state. It is NOT a message per keystroke — see `CLAIM_REASSERT_MS` for what the
-        // traffic actually is and why the host's deadline is measured against a pause in typing.
-        noteRowTyping(blockId);
-    }, [noteRowTyping]);
+        // Nothing about a live session happens here. A row is held for as long as its box is open
+        // rather than for as long as somebody is typing into it, so keystrokes have nothing to say
+        // about the claim — see `useStoryRowClaimHold` for why that distinction is load-bearing.
+    }, []);
 
     /**
      * A freeze that lands while a row is open for editing closes the editor, discarding the draft.

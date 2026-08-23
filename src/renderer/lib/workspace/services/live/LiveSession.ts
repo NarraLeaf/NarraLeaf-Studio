@@ -1,4 +1,11 @@
-import { LiveDivergenceGuard, LiveGuest, LiveHost, type LiveDivergence } from "@/lib/live";
+import {
+    CLAIM_REASSERT_MS,
+    LiveClaimStore,
+    LiveDivergenceGuard,
+    LiveGuest,
+    LiveHost,
+    type LiveDivergence,
+} from "@/lib/live";
 import { captureBefore, type LiveBefore } from "@/lib/live/inverse";
 import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
 import {
@@ -92,6 +99,13 @@ type ActiveSession = {
      * claims message at all.
      */
     claimsSeq: number;
+    /**
+     * Cancels the sweep that is due next, or null for a session with none. Host only.
+     *
+     * A lapse is the one movement of the claim set that nobody asked for, so it is the one that
+     * needs a tick of its own to be noticed. See {@link LiveSession.scheduleClaimSweep}.
+     */
+    claimSweep: (() => void) | null;
     /** Set once the copies stop agreeing; the session ends on the next turn of the loop. */
     divergence: LiveDivergence | null;
     /** How many undo or redo steps this window has sent, for the keys their answers arrive under. */
@@ -321,16 +335,46 @@ export class LiveSession {
      * Driven by the store's revision, so every way the set can move goes out by one path: a row
      * taken, a row given back, a row that lapsed on the clock, a row forgotten because it was
      * deleted, and everything a window that left the room was holding.
-     *
-     * ⚠ A lapse travels on the next thing that happens in the room rather than the instant it falls
-     * due, because the store keeps no timers and this has no tick to sweep on. Nothing is at stake
-     * in the delay: the host expires a claim while answering the operation that asks about it, so a
-     * row is free to be written the moment somebody tries, whatever the last set said.
      */
     private broadcastClaims(session: ActiveSession): void {
         if (session.host && session.host.claims.revision !== session.claimsSeq) {
             this.sendClaims(session);
         }
+    }
+
+    /**
+     * Look for claims that have fallen due, and say so if any have. Host only.
+     *
+     * ⚠ **A lapse is the one change to the set that nobody asked for**, and therefore the one with
+     * no answer to ride out on. Every other movement happens while the host is replying to
+     * something - a row taken, given back, deleted, or a window leaving - and the new set goes with
+     * the reply. Without this, a name stayed on screen until the next thing happened in the room,
+     * which could be minutes.
+     *
+     * That was once written off as costing nothing, on the grounds that the host expires a claim
+     * while answering the operation that asks about it - so the row really is free to be written
+     * the moment somebody tries. The reasoning is sound and the conclusion was wrong: a name over a
+     * row is not decoration, it is what stops the person reading it from touching that row, and
+     * showing one that has lapsed invites exactly the edit the claim existed to refuse. On a real
+     * machine somebody deleted a line they had been told alice was writing, and alice lost the
+     * draft in her open box.
+     *
+     * Re-scheduled after each run rather than repeating, so the interval is one thing to cancel and
+     * a session that ended between two of them cannot leave one pending.
+     */
+    private scheduleClaimSweep(session: ActiveSession): void {
+        session.claimSweep = this.deps.schedule(CLAIM_REASSERT_MS, () => {
+            session.claimSweep = null;
+            if (this.active !== session || !session.host) {
+                return;
+            }
+            if (session.host.claims.sweep()) {
+                this.broadcastClaims(session);
+                // The host's own screen reads the set from the store, so it needs telling too.
+                this.publish(session, {});
+            }
+            this.scheduleClaimSweep(session);
+        });
     }
 
     /** The set, said whether or not it has moved. For a machine that has never been told one. */
@@ -441,6 +485,7 @@ export class LiveSession {
             pendingBefore: null,
             seq: 0,
             claimsSeq: 0,
+            claimSweep: null,
             divergence: null,
             steps: 0,
             stopListening: () => undefined,
@@ -450,6 +495,10 @@ export class LiveSession {
 
         if (role === "host") {
             session.host = new LiveHost({
+                // The session's own clock rather than the store's default, so a room runs on one
+                // reading of the time. Two of them would be two answers to "has this lapsed", and
+                // the one that decides a refusal must be the one a test can move.
+                claims: new LiveClaimStore({ now: () => this.deps.now() }),
                 self: input.self,
                 story: input.storyId,
                 readScene: sceneId => this.readScene(session, sceneId),
@@ -466,6 +515,7 @@ export class LiveSession {
                 // than the server's, and the only thing it could produce is a refusal of an intent
                 // that was perfectly legitimate.
             });
+            this.scheduleClaimSweep(session);
         } else {
             session.guard = new LiveDivergenceGuard();
             session.guest = new LiveGuest({
@@ -527,6 +577,8 @@ export class LiveSession {
         this.deps.story.setSink(null);
         session.stopListening();
         session.stopWatching();
+        session.claimSweep?.();
+        session.claimSweep = null;
         session.guest?.close();
         const said = session.role === "host"
             // A host leaving ends the room: it held the only copy that counts, and there is no
