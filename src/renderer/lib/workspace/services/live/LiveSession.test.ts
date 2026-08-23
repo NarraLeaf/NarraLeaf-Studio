@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { storyDocumentSpec } from "@shared/documents/specs";
 import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
+import type { LiveDerived } from "@shared/live/ops";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import { DEFAULT_CLAIM_TIMEOUT_MS } from "@/lib/live";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
@@ -729,6 +730,59 @@ describe("a live session", () => {
 
             await host.session.leave();
             expect(record()).toBe(true);
+        });
+    });
+
+    describe("what a paste derives", () => {
+        /** One line's translation, as a paste re-keys it onto the id it has just minted. */
+        const JA: LiveDerived = {
+            translations: {
+                ja: { "text-p": { target: "こんにちは", sourceHash: "h1", status: "translated" } },
+            },
+        };
+
+        it("travels on the operation that carries the rows, to everybody including the paster", async () => {
+            // ⚠ The regression. The entries have to travel WITH the rows: the machine that
+            // pasted read them out of its own memory at the moment of copying, so an effect saying
+            // "look this text id up in your own library" would derive nothing anywhere else - and
+            // the room's libraries would part company silently, one paste at a time.
+            await openRoom();
+            await joinRoom();
+            host.calls.length = 0;
+            guest.calls.length = 0;
+
+            guest.story.insertBlock(guest.storyId, guest.sceneId, note("p"), { parentId: null }, JA);
+            await drain(world.bus);
+
+            expect(textOf(host, "p")).toBe("p");
+            expect(textOf(guest, "p")).toBe("p");
+            // Both windows write them, through the one applier that applies an effect. The paster is
+            // not exempt: a paster that wrote from its own memory would be a second implementation.
+            expect(host.calls).toContain("derived:ja");
+            expect(guest.calls).toContain("derived:ja");
+        });
+
+        it("comes back with the row when a delete of it is taken back", async () => {
+            // What putting the entries on the row buys. The row was pasted with its translation; a
+            // delete takes both away; the undo has to bring both back, and the only place the
+            // entries still exist by then is the effect that carried them.
+            await openRoom();
+            await joinRoom();
+            guest.story.insertBlock(guest.storyId, guest.sceneId, note("p"), { parentId: null }, JA);
+            await drain(world.bus);
+            guest.story.deleteBlock(guest.storyId, guest.sceneId, "p");
+            await drain(world.bus);
+            expect(host.story.getStoryDocument(host.storyId).scenes[host.sceneId].blocks["p"])
+                .toBeUndefined();
+            host.calls.length = 0;
+            guest.calls.length = 0;
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            expect(textOf(host, "p")).toBe("p");
+            expect(host.calls).toContain("derived:ja");
+            expect(guest.calls).toContain("derived:ja");
         });
     });
 

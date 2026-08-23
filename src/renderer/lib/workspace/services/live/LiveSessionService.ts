@@ -1,5 +1,6 @@
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
+import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
 import { storyDocumentSpec } from "@shared/documents/specs";
 import type { LiveDerived } from "@shared/live/ops";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
@@ -239,29 +240,68 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
      * localization panel, say - has no effect behind it for anybody else to derive the same entry
      * from, and the two libraries diverge on the spot with nothing anywhere noticing.
      *
-     * A locale whose document is not loaded here is skipped rather than loaded: loading is
-     * asynchronous and this runs inside applying an effect, which is synchronous and must stay so.
+     * Read through `planLiveDerived` rather than written as it arrived. What is in the message came
+     * off another machine's Studio, of another version, and one value of the wrong type would go
+     * straight into a translation file; the paster's own side has always read it field by field, and
+     * a second, more trusting reader here is a way for two libraries to end up holding different
+     * things.
+     *
+     * ⚠ **A locale whose document is not open here is loaded and adopted afterwards, not skipped.**
+     * Loading is asynchronous and this runs inside applying an effect, which is synchronous and must
+     * stay so - so the synchronous part does what it can and the rest is finished on its own. It
+     * cannot be dropped: a machine that has never opened the Japanese library would then be missing
+     * entries every machine that had it open has, for good and with nothing anywhere saying so,
+     * which is precisely the divergence carrying the entries exists to prevent.
      */
     private adoptDerived(ctx: WorkspaceContext, derived: LiveDerived): void {
         const projectPath = ctx.project.getConfig().projectPath;
+        const plans = planLiveDerived(derived);
+        const later: (() => Promise<void>)[] = [];
         const release = holdDerivedProjectWrites(projectPath);
         try {
             const localization = ctx.services.get<LocalizationService>(Services.Localization);
-            for (const [locale, units] of Object.entries(derived.translations ?? {})) {
-                if (localization.getDocumentIfLoaded(locale)) {
-                    localization.adoptUnits(locale, units);
+            for (const write of plans.translations.writes) {
+                if (localization.getDocumentIfLoaded(write.locale)) {
+                    localization.adoptUnits(write.locale, write.units);
+                } else {
+                    later.push(async () => {
+                        await localization.loadDocument(write.locale);
+                        this.holding(projectPath, () => localization.adoptUnits(write.locale, write.units));
+                    });
                 }
             }
             const voice = ctx.services.get<VoiceService>(Services.Voice);
-            for (const [locale, units] of Object.entries(derived.voice ?? {})) {
-                if (voice.getDocumentIfLoaded(locale)) {
-                    voice.adoptUnits(locale, units);
+            for (const write of plans.voice.writes) {
+                if (voice.getDocumentIfLoaded(write.locale)) {
+                    voice.adoptUnits(write.locale, write.units);
+                } else {
+                    later.push(async () => {
+                        await voice.loadDocument(write.locale);
+                        this.holding(projectPath, () => voice.adoptUnits(write.locale, write.units));
+                    });
                 }
             }
         } catch (error) {
             // An effect must land whatever the libraries make of what came with it: the document is
             // what every machine in the room has to agree about.
             console.warn("[LiveSession] adopting the entries an effect derived failed", error);
+        } finally {
+            release();
+        }
+        for (const finish of later) {
+            // One at a time and never awaited by the caller: this is the tail of applying an effect,
+            // and the effect has landed whatever the libraries make of it.
+            void finish().catch(error => {
+                console.warn("[LiveSession] opening a library to adopt what an effect derived failed", error);
+            });
+        }
+    }
+
+    /** Run one write inside the window a session's freeze leaves open for derived entries. */
+    private holding(projectPath: string, write: () => void): void {
+        const release = holdDerivedProjectWrites(projectPath);
+        try {
+            write();
         } finally {
             release();
         }

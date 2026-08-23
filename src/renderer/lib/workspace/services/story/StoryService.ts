@@ -1,5 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
-import type { LiveOp } from "@shared/live/ops";
+import type { LiveDerived, LiveOp } from "@shared/live/ops";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import {
@@ -102,8 +102,14 @@ export type StoryOpSink = {
      *
      * True means the sink has it and the document must not be touched. False means this story is not
      * the sink's business and the mutator carries on as usual.
+     *
+     * `derived` is what the operation **derives** rather than what it changes: the translations and
+     * takes a paste re-keys onto the ids it has just minted. It travels with the operation because
+     * the entries themselves have to - the machine that pasted read them out of its own memory, and
+     * an effect saying "look this text id up in your own library" would derive nothing anywhere
+     * else. Absent for every operation that derives nothing, which is all of them but a paste.
      */
-    handle(storyId: StoryId, op: LiveOp): boolean;
+    handle(storyId: StoryId, op: LiveOp, derived?: LiveDerived): boolean;
 };
 
 /** See {@link StoryService.captureStoryStructure}. */
@@ -1547,8 +1553,19 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }, NO_SCENES);
     }
 
-    public insertBlock(storyId: StoryId, sceneId: StorySceneId, block: StoryBlock, target: BlockTarget): StoryBlock {
-        if (this.handedToSink(storyId, { op: "insert-block", sceneId, block, target })) {
+    /**
+     * `derived` is for a paste, and for the first row of one. See {@link StoryOpSink.handle}: the
+     * entries belong to the gesture rather than to any one row, and the operation carrying them is
+     * the one every machine writes them from.
+     */
+    public insertBlock(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        block: StoryBlock,
+        target: BlockTarget,
+        derived?: LiveDerived,
+    ): StoryBlock {
+        if (this.handedToSink(storyId, { op: "insert-block", sceneId, block, target }, derived)) {
             // ⚠ The row is NOT in the document. It is still returned because the caller places the
             // caret with it, and the caret has somewhere to be as soon as the row appears - which is
             // when the operation comes back as an effect, not now.
@@ -1700,8 +1717,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * The single place the eleven mutators ask, so "is this story somebody else's to change" has one
      * answer and one spelling. See {@link StoryOpSink}.
      */
-    private handedToSink(storyId: StoryId, op: LiveOp): boolean {
-        return this.opSink !== null && this.opSink.handle(storyId, op);
+    private handedToSink(storyId: StoryId, op: LiveOp, derived?: LiveDerived): boolean {
+        return this.opSink !== null && this.opSink.handle(storyId, op, derived);
     }
 
     /** Send edits somewhere else, or take them back. Null restores the ordinary behaviour exactly. */
