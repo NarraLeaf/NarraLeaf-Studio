@@ -104,6 +104,7 @@ import {
     GameBuildExportPatchHandler,
     GameBuildSelectPatchFileHandler,
     GameBuildSelectPatchBaselineHandler,
+    GameBuildReadPatchBaselineHandler,
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
 import {
@@ -308,6 +309,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new GameBuildExportPatchHandler(),
         new GameBuildSelectPatchFileHandler(),
         new GameBuildSelectPatchBaselineHandler(),
+        new GameBuildReadPatchBaselineHandler(),
         new GameBuildPreflightHandler(),
 
         // Code-signing credential vault (machine-level; no handler returns a secret)

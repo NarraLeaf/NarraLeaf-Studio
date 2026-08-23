@@ -282,6 +282,7 @@ export enum IPCEventType {
     gameBuildExportPatch = "gameBuild.exportPatch",
     gameBuildSelectPatchFile = "gameBuild.selectPatchFile",
     gameBuildSelectPatchBaseline = "gameBuild.selectPatchBaseline",
+    gameBuildReadPatchBaseline = "gameBuild.readPatchBaseline",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -2747,6 +2748,33 @@ export type IPCGameBuildEvents = {
         };
         response: {
             path: string | null;
+        };
+    };
+    /**
+     * What a build folder says about itself, so the patch dialog can state which edition a patch
+     * made against it installs into rather than asking the author to remember.
+     *
+     * Fails, with the reason, on a path that is not a build of a game: the export would fail on the
+     * same path later, and hearing it while the folder is being chosen is the point.
+     */
+    [IPCEventType.gameBuildReadPatchBaseline]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        };
+        response: {
+            /**
+             * The variant this build was compiled as, or null on a build made before builds stated
+             * it. Null is not the release variant - it is "this build does not say", which is why
+             * the dialog asks rather than assuming.
+             */
+            appTagId: string | null;
+            /** The application name and version the build carries, for confirming it is the right one. */
+            productName: string | null;
+            version: string | null;
+            /** When the build was compiled, ISO-8601. */
+            builtAt: string | null;
         };
     };
     /** Where to write a patch. Answers null when the author closes the dialog. */

@@ -980,6 +980,16 @@ export class GameBuildManager {
                 source: "Build",
                 message: `patch carries the "${contentTag.name}" content for the "${appTag.name}" build`,
             });
+        } else if (request.baselineFromBuild && !request.baselineAppDir && !dlc) {
+            // Both sides of the comparison are the same edition of the same project, so the file
+            // produced is a valid patch that changes nothing. Said here rather than refused: the
+            // export still runs, and an author testing the delivery path has a reason to want it.
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `the content and the build this patch updates are both "${appTag.name}", `
+                    + "so this patch carries no changes",
+            });
         }
 
         // Without a key there is nothing to seal a patch with, and nothing in any
@@ -1012,6 +1022,36 @@ export class GameBuildManager {
         // has it - under the extension the pack no longer names.
         const assetImages = await this.optimizeImages(session, projectPath, projectConfig);
         this.ensureNotCancelled(session);
+
+        /**
+         * The build this patch updates, compiled here rather than named on disk.
+         *
+         * What an author who is shipping an edition upgrade or a DLC has is the project, not a copy
+         * of the edition the player installed - and that edition is reproducible from the project,
+         * so asking them to keep one around was asking them to keep something the export can make.
+         * A folder they did name wins: it is the build that actually shipped, while this one is the
+         * project as it stands now.
+         *
+         * Compiled with the DLC left out and under the edition the patch installs into, so what the
+         * comparison below reports as changed is exactly what this patch adds.
+         */
+        const builtBaseline = !request.baselineAppDir && request.baselineFromBuild
+            ? await this.compilePatchBaseline(session, {
+                projectPath,
+                entry,
+                appTag,
+                appTagDocument,
+                runtimePlugins: pluginSelection.selected,
+                debuggable,
+                identity,
+                distribution,
+                projectConfig,
+                assetImages,
+                ...(encryptionKey ? { encryptionKey } : {}),
+            })
+            : null;
+        const baselineAppDir = request.baselineAppDir || builtBaseline;
+
         let contentAudit: ShippedContentAuditReport | null = null;
         const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
             projectPath,
@@ -1077,7 +1117,16 @@ export class GameBuildManager {
                 path.basename,
             )
             : resolvePatchDeliveryPath(request.outputFile, path.join, path.dirname, path.basename);
-        const summary = await this.sealPatch(session, artifact.appDir, request, outputFile, distribution, dlc, appTag.id);
+        const summary = await this.sealPatch(
+            session,
+            artifact.appDir,
+            request,
+            baselineAppDir,
+            outputFile,
+            distribution,
+            dlc,
+            appTag.id,
+        );
         this.ensureNotCancelled(session);
 
         const outputDir = path.dirname(outputFile);
@@ -1105,6 +1154,79 @@ export class GameBuildManager {
         if (request.openWhenDone !== false) {
             this.revealOutput(outputDir);
         }
+    }
+
+    /**
+     * Compile the build a patch is measured against.
+     *
+     * Not a build in any sense the author sees: nothing is packaged, signed or given an icon, and
+     * the directory is overwritten by the next export. It exists to be read entry by entry and
+     * compared, so it has to be compiled the way the shipped build was - the same protection
+     * setting, the same identity, the same image re-encoding - or every entry would read as changed
+     * and the patch would carry the whole game.
+     *
+     * Its own staging directory, never the one the payload compiles into: that one holds the patch
+     * being made, and comparing a compile against itself produces a patch that installs and changes
+     * nothing.
+     */
+    private async compilePatchBaseline(
+        session: BuildSession,
+        options: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            appTag: ProjectAppTag;
+            appTagDocument: ProjectAppTagDocument | null;
+            runtimePlugins: RuntimePluginPackSelection["selected"];
+            debuggable: boolean;
+            identity: { appId: string; productName: string; identifier?: string };
+            distribution: { key: string; titleId: string };
+            projectConfig: ProjectConfigData | null;
+            assetImages: AssetImageOptimizationResult["images"];
+            encryptionKey?: string;
+        },
+    ): Promise<string> {
+        const { appTag, identity } = options;
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `building the "${appTag.name}" game to compare against`,
+        });
+        const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
+            projectPath: options.projectPath,
+            entry: options.entry,
+            runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+            runtimeVersion: this.readRuntimeVersion(),
+            outputRoot: path.join(options.projectPath, ".nlstudio", "build", "patch-baseline"),
+            runtimePlugins: options.runtimePlugins,
+            mode: "production",
+            ...(options.debuggable ? { debuggable: true } : {}),
+            appTag: { id: appTag.id, name: appTag.name },
+            declaredScenes: resolveAppTagReachableScenes(appTag, options.appTagDocument?.reachableScenes),
+            assetAxes: resolveAppTagAssetAxes(appTag, options.appTagDocument?.assetAxes),
+            packaging: true,
+            // No DLC, whatever this export is. The game a player has before installing this file is
+            // the game without it, and that is the only thing worth comparing against.
+            includedDlc: [],
+            locale: getMainLocale(this.app),
+            ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+            appId: identity.appId,
+            productName: identity.productName,
+            ...(identity.identifier ? { identifier: identity.identifier } : {}),
+            distribution: options.distribution,
+            ...(patchPlatforms(options.projectConfig).length > 0
+                ? { platforms: patchPlatforms(options.projectConfig) }
+                : {}),
+            hostUserDataDir: this.app.getUserDataDir(),
+            downloadRewrites: currentDownloadRewrites(),
+            assetImages: options.assetImages,
+        }, {
+            onStart: worker => { session.worker = worker; },
+            onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
+            cancelled: () => session.cancelled,
+        });
+        session.worker = null;
+        this.ensureNotCancelled(session);
+        return artifact.appDir;
     }
 
     /**
@@ -1191,6 +1313,12 @@ export class GameBuildManager {
         session: BuildSession,
         appDir: string,
         request: GamePatchExportRequest,
+        /**
+         * The build being updated, already resolved: the folder the author named, or the one the
+         * export compiled for them. One value rather than two readings of the request, so the two
+         * ways of arriving at a baseline cannot behave differently from here on.
+         */
+        baselineAppDir: string | null | undefined,
         outputFile: string,
         distribution: { key: string; titleId: string },
         dlc: ProjectDlc | null,
@@ -1206,10 +1334,10 @@ export class GameBuildManager {
          * story, every page and every translation on its own.
          */
         let baselinePack: GameRuntimePackV1 | null = null;
-        if (request.baselineAppDir) {
-            const previous = await openPayload(request.baselineAppDir).catch((error: unknown) => {
+        if (baselineAppDir) {
+            const previous = await openPayload(baselineAppDir).catch((error: unknown) => {
                 throw new Error(
-                    `Could not read the build this patch is for at ${request.baselineAppDir}: `
+                    `Could not read the build this patch is for at ${baselineAppDir}: `
                     + `${error instanceof Error ? error.message : String(error)}`,
                 );
             });
