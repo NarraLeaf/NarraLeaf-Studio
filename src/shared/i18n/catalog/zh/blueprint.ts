@@ -322,6 +322,14 @@ export const blueprint = {
         restoreLayer: "恢复正常注释层级",
         resize: "调整注释大小",
     },
+    group: {
+        create: "创建分组",
+        color: "分组颜色",
+        ungroup: "取消分组",
+        untitled: "分组",
+        rename: "分组名称",
+        fit: "自动调整分组大小",
+    },
     displayable: {
         propertyLabel: "属性",
         valueLabel: "值",
@@ -394,6 +402,27 @@ export const blueprint = {
     tsPane: {
         importHint: "允许的导入：\"narraleaf-studio\"",
         sourceLabel: "TypeScript 蓝图源代码",
+    },
+    tool: {
+        select: "选择工具",
+        pan: "平移画布",
+    },
+    minimap: {
+        label: "蓝图概览",
+        hint: "点击跳转，拖拽平移",
+        size: {
+            small: "小",
+            medium: "中",
+            large: "大",
+        },
+        hide: "隐藏小地图",
+        show: "显示小地图",
+    },
+    format: {
+        graph: "格式化蓝图",
+        direction: "格式化方向",
+        horizontal: "从左到右",
+        vertical: "从上到下",
     },
     zoom: {
         label: "缩放",

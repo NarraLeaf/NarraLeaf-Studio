@@ -1,11 +1,11 @@
 /**
- * Zoom control for the graph canvas, styled like the rest of the workspace (replaces
- * @xyflow/react's own `Controls`).
+ * The zoom the graph canvas is at, and every way to change it deliberately.
  *
- * The same vocabulary the surface editor's zoom offers - actual size, fit, fill, fit width, and a
- * box for an exact percentage - so an author who learned it on one canvas has not learned it for
- * one canvas. What differs is that here they are one-shot actions rather than standing modes: a
- * graph's bounding box changes on every node drag, so a mode that stayed live would re-frame the
+ * It sits in the canvas toolbar and is built out of the surface editor's own toolbar parts, so the
+ * two canvases offer zoom as the same control rather than as two that merely do the same thing.
+ * The vocabulary matches too - actual size, fit, fill, fit width, and a box for an exact
+ * percentage. What differs is that here the modes are one-shot actions rather than standing modes:
+ * a graph's bounding box changes on every node drag, so a mode that stayed live would re-frame the
  * canvas mid-gesture. Nothing is ever checked in the menu for the same reason.
  *
  * Comments in English per project convention.
@@ -13,12 +13,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useReactFlow, useStore, useStoreApi } from "@xyflow/react";
-import { ChevronDown, ZoomIn, ZoomOut } from "lucide-react";
-import { Button } from "@/lib/components/elements/Button";
+import { ChevronDown } from "lucide-react";
 import { Input } from "@/lib/components/elements/Input";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n/catalog/types";
 import { CANVAS_FIT_MODES, formatZoomPercent, parseZoomPercent, type CanvasFitMode } from "@/lib/ui-editor/geometry";
+import {
+    SurfaceEditorToolbarButtonGroup,
+    SurfaceEditorToolbarSegButton,
+} from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import {
     SurfaceToolbarPopoverPanel,
     SurfaceToolbarPopoverRow,
@@ -34,18 +37,9 @@ const FIT_MODE_LABEL_KEYS = {
     width: "blueprint.zoom.fitWidth",
 } as const satisfies Record<CanvasFitMode, TranslationKey>;
 
-const STEP_BUTTON_CLASS = "!min-h-0 !px-1.5 !py-1.5";
-
-/**
- * The canvas's bottom-left corner is underneath the member panel, which is an `absolute` `w-56`
- * overlay rather than a column beside it. Parked at `left-3` the control is drawn and painted over,
- * so it clears the panel while that is open and takes the corner back when it is not.
- */
-const PANEL_CLEARANCE_CLASS = { open: "left-60", collapsed: "left-3" } as const;
-
-export function BlueprintFlowZoomControls({ memberPanelCollapsed = false }: { memberPanelCollapsed?: boolean }) {
+export function BlueprintZoomMenu() {
     const { t } = useTranslation();
-    const { zoomIn, zoomOut, zoomTo, setViewport } = useReactFlow();
+    const { zoomTo, setViewport } = useReactFlow();
     // Read at click time rather than subscribed: what a mode needs - the pane, the zoom limits and
     // every node's measured size - is a snapshot of the store, and subscribing to it would re-render
     // this control on every pointer move over the canvas.
@@ -115,60 +109,30 @@ export function BlueprintFlowZoomControls({ memberPanelCollapsed = false }: { me
     );
 
     return (
-        <div
-            className={`absolute bottom-3 ${memberPanelCollapsed ? PANEL_CLEARANCE_CLASS.collapsed : PANEL_CLEARANCE_CLASS.open} z-[5] flex items-center gap-0.5 rounded-lg border border-edge bg-surface-overlay p-0.5 shadow-lg transition-[left] duration-200 ease-out`}
-            onPointerDown={e => e.stopPropagation()}
-        >
-            <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={STEP_BUTTON_CLASS}
-                aria-label={t("blueprint.zoom.out")}
-                data-tip={t("blueprint.zoom.out")}
-                onClick={() => zoomOut({ duration: 180 })}
-            >
-                <ZoomOut className="h-3.5 w-3.5 text-fg-muted" />
-            </Button>
-            <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={STEP_BUTTON_CLASS}
-                aria-label={t("blueprint.zoom.in")}
-                data-tip={t("blueprint.zoom.in")}
-                onClick={() => zoomIn({ duration: 180 })}
-            >
-                <ZoomIn className="h-3.5 w-3.5 text-fg-muted" />
-            </Button>
-            <div className="mx-0.5 h-5 w-px bg-edge" />
-            {/* The percentage is the one-click way back to seeing the whole graph, which is what an
-                author wants from it nine times out of ten; the chevron opens the rest. */}
-            <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={`${STEP_BUTTON_CLASS} min-w-11 tabular-nums text-fg-muted`}
-                aria-label={t("blueprint.zoom.fitArea")}
-                data-tip={t("blueprint.zoom.fitArea")}
-                onClick={() => applyMode("contain")}
-            >
-                {percent}%
-            </Button>
-            <Button
-                ref={popover.triggerRef}
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={STEP_BUTTON_CLASS}
-                aria-label={t("blueprint.zoom.label")}
-                data-tip={t("blueprint.zoom.label")}
-                aria-expanded={popover.open}
-                aria-haspopup="dialog"
-                onClick={popover.toggle}
-            >
-                <ChevronDown className="h-3.5 w-3.5 text-fg-muted" />
-            </Button>
+        <>
+            <SurfaceEditorToolbarButtonGroup aria-label={t("blueprint.zoom.label")}>
+                {/* The percentage is the one-click way back to seeing the whole graph, which is what
+                    an author wants from it nine times out of ten; the chevron opens the rest. */}
+                <SurfaceEditorToolbarSegButton
+                    onClick={() => applyMode("contain")}
+                    className="w-auto min-w-14 px-2 tabular-nums"
+                    data-tip={t("blueprint.zoom.fitArea")}
+                    aria-label={t("blueprint.zoom.fitArea")}
+                >
+                    {percent}%
+                </SurfaceEditorToolbarSegButton>
+                <SurfaceEditorToolbarSegButton
+                    ref={popover.triggerRef}
+                    active={popover.open}
+                    onClick={popover.toggle}
+                    data-tip={t("blueprint.zoom.label")}
+                    aria-label={t("blueprint.zoom.label")}
+                    aria-expanded={popover.open}
+                    aria-haspopup="dialog"
+                >
+                    <ChevronDown className="h-4 w-4" />
+                </SurfaceEditorToolbarSegButton>
+            </SurfaceEditorToolbarButtonGroup>
             <SurfaceToolbarPopoverPanel popover={popover} dataAttribute="blueprint-zoom">
                 {CANVAS_FIT_MODES.map(mode => (
                     <SurfaceToolbarPopoverRow
@@ -202,6 +166,6 @@ export function BlueprintFlowZoomControls({ memberPanelCollapsed = false }: { me
                     </div>
                 </SurfaceToolbarPopoverSection>
             </SurfaceToolbarPopoverPanel>
-        </div>
+        </>
     );
 }

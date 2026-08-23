@@ -11,6 +11,7 @@ export enum WindowAppType {
     DevMode = "dev-mode",
     PluginPermissionPrompt = "plugin-permission",
     ServerTrustPrompt = "server-trust",
+    OnboardingPreview = "onboarding-preview",
     Raw = "raw",
 }
 
@@ -117,6 +118,15 @@ export type WindowProps = {
     },
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptProps,
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptProps,
+    /**
+     * First-run setup's preview, at full size in a window of its own.
+     *
+     * The surface is the only thing it is told; everything else that decides how the sample looks
+     * is a preference it reads for itself.
+     */
+    [WindowAppType.OnboardingPreview]: {
+        surface?: OnboardingPreviewSurface;
+    },
     [WindowAppType.Raw]: {
     },
 }
@@ -139,6 +149,14 @@ export type WindowProps = {
  * has to be handed `setParentWindow(null)` while both windows still exist.
  */
 export type ChildWindowLifetime = "dependent" | "independent";
+
+/**
+ * Which of Studio's surfaces first-run setup's preview is showing.
+ *
+ * Declared here rather than in the renderer because it travels on a window's props. The renderer's
+ * `PreviewPanelId` is this type; there is no second list.
+ */
+export type OnboardingPreviewSurface = "welcome" | "dashboard" | "story" | "console" | "versions" | "team";
 
 export type WindowVisibilityStatus = "minimized" | "maximized" | "normal";
 
@@ -196,5 +214,6 @@ export type WindowCloseResults = {
     [WindowAppType.DevMode]: null;
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptResult;
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptResult;
+    [WindowAppType.OnboardingPreview]: null;
     [WindowAppType.Raw]: null;
 };

@@ -21,6 +21,8 @@ import path from "path";
 import { MenuManager } from "./managers/menuManager";
 import { TrayManager } from "./managers/trayManager";
 import { WINDOW_ICON_KEY, WindowIconEntry, resolveWindowIcon } from "@shared/constants/windowIcon";
+import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
+import { LAUNCHER_HOME_SIZE, applyLauncherWindowSize } from "./launcherWindow";
 import type { AppWindow } from "./managers/window/appWindow";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
@@ -290,6 +292,20 @@ export class BaseApp {
         // all of them.
         if (key === WINDOW_ICON_KEY) {
             this.refreshWindowIcons();
+        }
+
+        // Setup is over - the marker is written by finishing it and by skipping it, and by nothing
+        // else - so the launcher hands back the extra room it was opened with and becomes the home
+        // screen it is about to show. Hooked to the marker rather than to a channel of its own
+        // because the marker IS the end of the flow; a second signal could only ever disagree with
+        // it. Idempotent, so a profile that writes it again costs nothing.
+        if (key === ONBOARDING_STATE_KEY && !needsOnboarding(value)) {
+            for (const window of this.windowManager.getWindows()) {
+                if (window.isClosed() || window.getWindowType() !== WindowAppType.Launcher) {
+                    continue;
+                }
+                applyLauncherWindowSize(window.getBrowserWindow(), LAUNCHER_HOME_SIZE);
+            }
         }
     }
 

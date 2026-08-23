@@ -57,6 +57,10 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { buildBlueprintPaletteContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
+import {
+    normalizeBlueprintMinimapPreference,
+    type BlueprintMinimapPreference,
+} from "../flow/blueprintMinimapPreference";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
 import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
@@ -97,6 +101,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
@@ -187,6 +192,14 @@ type BlueprintEditorViewportPanelState = {
 };
 
 const BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID = "blueprintEditor.memberPanel";
+/**
+ * The graph overview's size and whether it is up.
+ *
+ * One record for every blueprint rather than one per graph: it is a preference about the editor,
+ * not about a particular layer, and an overview that came and went as the author moved between
+ * layers would read as a bug rather than a setting.
+ */
+const BLUEPRINT_EDITOR_MINIMAP_STATE_ID = "blueprintEditor.minimap";
 const BLUEPRINT_EDITOR_FLOW_VIEWPORT_STATE_PREFIX = "blueprintEditor.flowViewport";
 const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "global", "persistent"];
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
@@ -570,6 +583,23 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID,
             ),
         ),
+    );
+    const [minimapPreference, setMinimapPreference] = useState<BlueprintMinimapPreference>(() =>
+        normalizeBlueprintMinimapPreference(
+            panelStateService.getPanelState<Partial<BlueprintMinimapPreference>>(
+                BLUEPRINT_EDITOR_MINIMAP_STATE_ID,
+            ),
+        ),
+    );
+    const onMinimapChange = useCallback(
+        (next: BlueprintMinimapPreference) => {
+            setMinimapPreference(next);
+            panelStateService.replacePanelState<BlueprintMinimapPreference>(
+                BLUEPRINT_EDITOR_MINIMAP_STATE_ID,
+                next,
+            );
+        },
+        [panelStateService],
     );
     useEffect(() => uidoc.onDocumentChanged(() => setUiDocumentRevision(uidoc.getRevision())), [uidoc]);
     useEffect(
@@ -1036,6 +1066,52 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         targetHandle: entry.magicElementRef.targetPortId,
                     });
                 }
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            } else {
+                localBp.updateFunctionGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            }
+            return id;
+        },
+        [editor.graphView, localBp, payload.blueprintId, uuid],
+    );
+
+    /**
+     * The node behind a group: a comment card in frame mode, at the rectangle the canvas measured
+     * around the selection.
+     *
+     * `background: false` is what puts it behind its members - a frame drawn on the node layer
+     * would tint every card it encloses. There is no group record anywhere; a frame and the cards
+     * that happen to sit inside it are all a group ever is, which is why creating one is a single
+     * ordinary node write and undoes like one.
+     */
+    const onCreateGroupFrame = useCallback(
+        (frame: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            color: string;
+            name: string;
+        }): string | undefined => {
+            if (!editor.graphView) {
+                return undefined;
+            }
+            const id = uuid.generate();
+            const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_FLOW_COMMENT, id);
+            node.params = {
+                ...(node.params ?? {}),
+                text: frame.name,
+                color: frame.color,
+                background: false,
+                frame: true,
+                width: frame.width,
+                height: frame.height,
+            };
+            writeNodeEditorLayout(node, { x: frame.x, y: frame.y });
+            const mut = (draft: BlueprintGraphIr) => {
+                draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
             };
             if (editor.graphView.kind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
@@ -2026,7 +2102,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 <div className="min-h-0 flex-1">
                     <BlueprintFlowCanvas
                         nodeCatalog={nodeCatalog}
-                        memberPanelCollapsed={memberPanelState.memberPanelCollapsed}
                         graphKey={graphKey}
                         ir={ir}
                         revision={revision}
@@ -2052,8 +2127,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         onBindElementLiteral={onBindElementLiteral}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}
+                        minimap={minimapPreference}
+                        onMinimapChange={onMinimapChange}
                         currentBlueprintId={payload.blueprintId}
                         resolveCallableFnSignature={resolveCallableFnSignature}
+                        onCreateGroupFrame={onCreateGroupFrame}
                     />
                 </div>
             </div>

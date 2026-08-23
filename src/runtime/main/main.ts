@@ -77,6 +77,7 @@ import {
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
 import { installWindowCrashHandling } from "./windowCrashHandling";
+import { hasDebuggingSwitch, reviewStartupArguments } from "@shared/utils/runtimeStartupArguments";
 
 const appDir = __dirname;
 
@@ -212,17 +213,6 @@ function progressEnvironment(): GameProgressEnvironment {
  */
 const logRuntime = installRuntimeLogSink(userDataDir);
 
-
-/** Node inspector / Chromium remote-debugging switches refused in production. */
-const DEBUG_SWITCHES = [
-    "remote-debugging-port",
-    "remote-debugging-pipe",
-    "inspect",
-    "inspect-brk",
-    "inspect-port",
-    "inspect-publish-uid",
-];
-
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 /** The game's own name, once the pack has been read. Titles the crash dialogs. */
 let loadedPackName: string | null = null;
@@ -268,13 +258,28 @@ function runtimeResources(): RuntimeResources {
     return resources;
 }
 
-/** Whether the process was started with an inspector / remote-debugging switch. */
-function hasDebuggingSwitch(): boolean {
-    if (DEBUG_SWITCHES.some(name => app.commandLine.hasSwitch(name))) {
-        return true;
-    }
-    const pattern = /^--(remote-debugging-(port|pipe)|inspect(-brk|-port|-publish-uid)?)(=|$)/;
-    return [...process.argv, ...process.execArgv].some(arg => pattern.test(arg));
+/**
+ * What this launch was given that a shipped game does not accept.
+ *
+ * The whole command line rather than a list of switches known to be dangerous: Electron takes every
+ * switch Chromium was compiled with, and naming the bad ones means the list is only ever as current
+ * as the last person who read Chromium's release notes. A game states what it accepts instead, and
+ * everything outside that stops the launch - see `@shared/utils/runtimeStartupArguments`.
+ */
+function refusedStartupArguments(): string[] {
+    return reviewStartupArguments(startupArguments(), process.platform).refused;
+}
+
+/**
+ * The command line as far as it came from whoever started the game.
+ *
+ * `electron <app dir>` puts the directory in `argv[1]`, and a build run that way is how a developer
+ * opens a compiled app directory without packaging it. A shipped game has no such argument - what
+ * follows the executable there is the player's - so the one Electron itself added is dropped only
+ * in the mode Electron adds it in, and a packaged build stays strict about every positional.
+ */
+function startupArguments(): string[] {
+    return [...process.argv.slice(process.defaultApp ? 2 : 1), ...process.execArgv];
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -314,14 +319,34 @@ if (testNetworkBlocked) {
     );
 }
 
-// Earliest possible refusal to run a production game under an attached
-// debugger/CDP: before app-ready, before any window or session exists. The
-// post-pack-read check below stays as the authoritative (tamper-resistant on
-// asar-integrity platforms) second gate.
-const startupBlocked = shellMode === "production" && !shellDebuggable && hasDebuggingSwitch();
-if (startupBlocked) {
+/**
+ * Earliest possible refusal of a command line a shipped game does not accept: before app-ready,
+ * before any window or session exists. The post-pack-read check below stays as the authoritative
+ * (tamper-resistant on asar-integrity platforms) second gate.
+ *
+ * Both halves matter and they are not the same half. Quitting states the policy; taking the
+ * switches off the command line is what stops them being acted on, because Chromium reads several
+ * of them after this script has run. Measured on Electron 38: a launch with
+ * `--remote-debugging-port` that only quit here still had the port accepting connections about
+ * 130ms later, and the same launch with the switch removed here never listened at all.
+ */
+function refuseStartupArguments(): boolean {
+    const refused = refusedStartupArguments();
+    if (refused.length === 0) {
+        return false;
+    }
+    for (const name of reviewStartupArguments(startupArguments(), process.platform).removable) {
+        app.commandLine.removeSwitch(name);
+    }
+    // Written to the log and nowhere else. The player who typed a switch into a launcher gets the
+    // file to send to support; anyone probing the game for what it refuses gets a process that
+    // exits and says nothing.
+    logRuntime("error", `refusing to start: this build does not accept ${refused.join(", ")}`);
     app.quit();
+    return true;
 }
+
+const startupBlocked = shellMode === "production" && !shellDebuggable && refuseStartupArguments();
 
 void app.whenReady().then(async () => {
     if (startupBlocked) {
@@ -339,13 +364,14 @@ void app.whenReady().then(async () => {
         log: logRuntime,
     });
     const pack = await readPack();
-    if (pack.mode === "production" && pack.debuggable !== true && hasDebuggingSwitch()) {
-        // Refuse to run a production game under an attached debugger/CDP.
+    if (pack.mode === "production" && pack.debuggable !== true && refusedStartupArguments().length > 0) {
+        // The pack is what a shipped game is, and it is inside the archive - so this is the gate a
+        // rewritten shell manifest does not get past on the platforms that validate one.
         app.quit();
         return;
     }
     if (pack.debuggable === true) {
-        console.log("[GameRuntime] This build accepts debugging switches (built under an experimental condition).");
+        console.log("[GameRuntime] This build accepts any command line (built under an experimental condition).");
     }
     const allowHttp = pack.network?.allowHttp === true;
     const networkAllowlist = packNetworkAllowlist(pack);
@@ -621,7 +647,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // switch on the command line it starts exactly as a production build does, which is what keeps
     // it usable for testing what players get.
     const devToolsEnabled = pack.mode !== "production"
-        || (pack.debuggable === true && hasDebuggingSwitch());
+        || (pack.debuggable === true && hasDebuggingSwitch(startupArguments(), process.platform));
     const win = new BrowserWindow({
         title: pack.project.name,
         width: size.width,
