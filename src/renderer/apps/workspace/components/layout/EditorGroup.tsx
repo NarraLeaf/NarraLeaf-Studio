@@ -15,6 +15,7 @@ import { openNewTab } from "../../modules/new-tab/openNewTab";
 import { useEditorGroupDrop } from "./useEditorGroupDrop";
 import { EditorGroupDropOverlay } from "./EditorGroupDropOverlay";
 import { tabStripRevealScrollLeft } from "./tabStripReveal";
+import { tabStripOverflow, type StripOverflow } from "./tabStripOverflow";
 import {
     EDITOR_TAB_DRAG_MIME,
     beginEditorTabDrag,
@@ -50,6 +51,10 @@ export function EditorGroup({ group }: EditorGroupProps) {
     // while the caret shows where it would land.
     const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
     const rangeAnchorTabIdRef = useRef<string | null>(null);
+    // Which edges of the tab strip currently clip a tab. The strip draws no scrollbar, so these
+    // drive the short fades that are the only thing saying the row continues past an edge.
+    const [stripOverflow, setStripOverflow] = useState<StripOverflow>({ left: false, right: false });
+    const stripContentRef = useRef<HTMLDivElement | null>(null);
     const { dropTargetProps, stripRef, zone: dropZone, insertion } = useEditorGroupDrop(group);
 
     const activeTab = group.tabs.find((tab) => tab.id === group.focus);
@@ -160,6 +165,39 @@ export function EditorGroup({ group }: EditorGroupProps) {
             strip.scrollLeft = next;
         }
     }, [group.focus, group.tabs.length, stripRef]);
+
+    // Keep the overflow fades in step with the strip. `scroll` covers the wheel and the reveal
+    // above; the observers cover the things that change the fit without scrolling - the pane being
+    // resized, a tab opening or closing, a title arriving after its editor loaded. State is written
+    // only when the pair actually flips, so dragging a splitter does not re-render the strip on
+    // every frame.
+    useEffect(() => {
+        const strip = stripRef.current;
+        if (!strip) {
+            setStripOverflow((prev) => (prev.left || prev.right ? { left: false, right: false } : prev));
+            return;
+        }
+
+        const sync = () => {
+            const next = tabStripOverflow(strip);
+            setStripOverflow((prev) =>
+                prev.left === next.left && prev.right === next.right ? prev : next,
+            );
+        };
+
+        sync();
+        strip.addEventListener("scroll", sync, { passive: true });
+        const observer = new ResizeObserver(sync);
+        observer.observe(strip);
+        if (stripContentRef.current) {
+            observer.observe(stripContentRef.current);
+        }
+
+        return () => {
+            strip.removeEventListener("scroll", sync);
+            observer.disconnect();
+        };
+    }, [group.tabs.length, stripRef]);
 
     const focusTabStrip = useCallback(() => {
         if (!context) return;
@@ -411,128 +449,148 @@ export function EditorGroup({ group }: EditorGroupProps) {
         >
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
-                <div
-                    ref={stripRef}
-                    className="relative bg-surface-sunken border-b border-edge overflow-x-auto outline-none"
-                    tabIndex={0}
-                    onMouseDown={(e) => {
-                        e.stopPropagation();
-                        focusTabStrip();
-                    }}
-                    onFocus={() => focusTabStrip()}
-                    onWheel={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.scrollLeft += e.deltaY;
-                    }}
-                >
-                    <div className="relative flex items-stretch">
-                        {insertion && (
-                            <span
-                                className="pointer-events-none absolute top-0 bottom-0 z-[2] w-0.5 -translate-x-1/2 bg-primary"
-                                style={{ left: insertion.offset }}
-                                aria-hidden
-                            />
-                        )}
-                        {group.tabs.map((tab) => {
-                            const isActive = tab.id === group.focus;
-                            const isSelected = selectedTabIds.has(tab.id);
-                            // The single globally-active tab: this group's current tab AND this
-                            // group owns editor focus. It gets the accent edge; every group's
-                            // current tab gets the low-contrast themed fill.
-                            const isGloballyActive = isActive && isEditorGroupActive;
-                            const closable = tab.closable !== false;
+                // The strip is chrome on a 36px row, so it hides its scrollbar (`nl-no-scrollbar`)
+                // rather than spend 8px of height on a gutter under the tabs — at this scale the
+                // thumb is nearly as wide as the strip and says little. What it replaces the thumb
+                // with is a short fade at each clipped edge, drawn HERE rather than inside the
+                // scroller: an absolutely positioned child of a scroller is positioned against the
+                // content, so it would slide away with the tabs.
+                <div className="relative bg-surface-sunken border-b border-edge">
+                    <div
+                        ref={stripRef}
+                        className="nl-no-scrollbar relative overflow-x-auto outline-none"
+                        tabIndex={0}
+                        onMouseDown={(e) => {
+                            e.stopPropagation();
+                            focusTabStrip();
+                        }}
+                        onFocus={() => focusTabStrip()}
+                        onWheel={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.scrollLeft += e.deltaY;
+                        }}
+                    >
+                        <div ref={stripContentRef} className="relative flex items-stretch">
+                            {insertion && (
+                                <span
+                                    className="pointer-events-none absolute top-0 bottom-0 z-[2] w-0.5 -translate-x-1/2 bg-primary"
+                                    style={{ left: insertion.offset }}
+                                    aria-hidden
+                                />
+                            )}
+                            {group.tabs.map((tab) => {
+                                const isActive = tab.id === group.focus;
+                                const isSelected = selectedTabIds.has(tab.id);
+                                // The single globally-active tab: this group's current tab AND this
+                                // group owns editor focus. It gets the accent edge; every group's
+                                // current tab gets the low-contrast themed fill.
+                                const isGloballyActive = isActive && isEditorGroupActive;
+                                const closable = tab.closable !== false;
 
-                            return (
-                                <div
-                                    key={tab.id}
-                                    data-editor-tab-id={tab.id}
-                                    draggable
-                                    onDragStart={(e) => {
-                                        e.stopPropagation();
-                                        e.dataTransfer.effectAllowed = "move";
-                                        e.dataTransfer.setData(
-                                            EDITOR_TAB_DRAG_MIME,
-                                            encodeEditorTabDragPayload(tab.id, group.id),
-                                        );
-                                        e.dataTransfer.setData("text/plain", String(tab.title));
-                                        beginEditorTabDrag({ tabId: tab.id, groupId: group.id });
-                                        setDraggingTabId(tab.id);
-                                    }}
-                                    onDragEnd={() => {
-                                        endEditorTabDrag();
-                                        setDraggingTabId(null);
-                                    }}
-                                    className={`
-                                        nl-drag-source
-                                        group relative flex items-center gap-2 px-3 h-9 border-r border-edge cursor-default
-                                        transition-colors
-                                        ${draggingTabId === tab.id ? "opacity-40" : ""}
-                                        ${
-                                            isGloballyActive
-                                                ? "bg-primary/[0.15] text-fg"
-                                                : isActive
-                                                  ? "bg-primary/[0.08] text-fg"
-                                                  : isSelected
-                                                    ? "bg-fill text-fg"
-                                                    : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
-                                        }
-                                    `}
-                                    onClick={(e) => handleTabClick(tab.id, e)}
-                                    onContextMenu={(e) => handleTabContextMenu(tab.id, e)}
-                                    onAuxClick={(e) => {
-                                        // Middle click closes, the muscle memory every browser/IDE trains.
-                                        if (e.button === 1 && closable) {
-                                            handleCloseTab(tab.id, e);
-                                        }
-                                    }}
-                                >
-                                    {isGloballyActive && (
-                                        <span
-                                            className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-0.5 bg-primary"
-                                            aria-hidden
-                                        />
-                                    )}
-                                    {tab.icon && <span className="w-4 h-4 flex-shrink-0">{tab.icon}</span>}
+                                return (
+                                    <div
+                                        key={tab.id}
+                                        data-editor-tab-id={tab.id}
+                                        draggable
+                                        onDragStart={(e) => {
+                                            e.stopPropagation();
+                                            e.dataTransfer.effectAllowed = "move";
+                                            e.dataTransfer.setData(
+                                                EDITOR_TAB_DRAG_MIME,
+                                                encodeEditorTabDragPayload(tab.id, group.id),
+                                            );
+                                            e.dataTransfer.setData("text/plain", String(tab.title));
+                                            beginEditorTabDrag({ tabId: tab.id, groupId: group.id });
+                                            setDraggingTabId(tab.id);
+                                        }}
+                                        onDragEnd={() => {
+                                            endEditorTabDrag();
+                                            setDraggingTabId(null);
+                                        }}
+                                        className={`
+                                            nl-drag-source
+                                            group relative flex items-center gap-2 px-3 h-9 border-r border-edge cursor-default
+                                            transition-colors
+                                            ${draggingTabId === tab.id ? "opacity-40" : ""}
+                                            ${
+                                                isGloballyActive
+                                                    ? "bg-primary/[0.15] text-fg"
+                                                    : isActive
+                                                      ? "bg-primary/[0.08] text-fg"
+                                                      : isSelected
+                                                        ? "bg-fill text-fg"
+                                                        : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
+                                            }
+                                        `}
+                                        onClick={(e) => handleTabClick(tab.id, e)}
+                                        onContextMenu={(e) => handleTabContextMenu(tab.id, e)}
+                                        onAuxClick={(e) => {
+                                            // Middle click closes, the muscle memory every browser/IDE trains.
+                                            if (e.button === 1 && closable) {
+                                                handleCloseTab(tab.id, e);
+                                            }
+                                        }}
+                                    >
+                                        {isGloballyActive && (
+                                            <span
+                                                className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-0.5 bg-primary"
+                                                aria-hidden
+                                            />
+                                        )}
+                                        {tab.icon && <span className="w-4 h-4 flex-shrink-0">{tab.icon}</span>}
 
-                                    <span className="text-sm whitespace-nowrap">{String(tab.title)}</span>
+                                        <span className="text-sm whitespace-nowrap">{String(tab.title)}</span>
 
-                                    {tab.modified && (
-                                        <Circle className="w-2 h-2 fill-current text-primary" />
-                                    )}
+                                        {tab.modified && (
+                                            <Circle className="w-2 h-2 fill-current text-primary" />
+                                        )}
 
-                                    {closable && (
-                                        <button
-                                            type="button"
-                                            onClick={(e) => handleCloseTab(tab.id, e)}
-                                            className={`
-                                                w-4 h-4 cursor-default rounded-md flex items-center justify-center transition-colors
-                                                ${
-                                                    isActive
-                                                        ? "hover:bg-fill-strong"
-                                                        : "opacity-0 group-hover:opacity-100 hover:bg-fill"
-                                                }
-                                            `}
-                                            aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
-                                        >
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleNewTab();
-                            }}
-                            className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
-                            aria-label={t("workspace.shell.newTab")}
-                            data-tip={t("workspace.shell.newTab")}
-                        >
-                            <Plus className="w-4 h-4" />
-                        </button>
+                                        {closable && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleCloseTab(tab.id, e)}
+                                                className={`
+                                                    w-4 h-4 cursor-default rounded-md flex items-center justify-center transition-colors
+                                                    ${
+                                                        isActive
+                                                            ? "hover:bg-fill-strong"
+                                                            : "opacity-0 group-hover:opacity-100 hover:bg-fill"
+                                                    }
+                                                `}
+                                                aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleNewTab();
+                                }}
+                                className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
+                                aria-label={t("workspace.shell.newTab")}
+                                data-tip={t("workspace.shell.newTab")}
+                            >
+                                <Plus className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
+                    {stripOverflow.left && (
+                        <span
+                            className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-surface-sunken to-transparent"
+                            aria-hidden
+                        />
+                    )}
+                    {stripOverflow.right && (
+                        <span
+                            className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-surface-sunken to-transparent"
+                            aria-hidden
+                        />
+                    )}
                     <ContextMenu
                         items={tabMenuItems}
                         position={menuState.position}

@@ -133,6 +133,10 @@ export const windowPermissionDeclarations: { [T in WindowAppType]: WindowPermiss
     // which is open to any window and checks the certificate against Studio's own directory
     // rather than trusting whoever named it.
     [WindowAppType.ServerTrustPrompt]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
+    // A sample of the interface, drawn from preferences and nothing else. It reads global state
+    // and the list of servers this installation is signed in to, both of which are open to any
+    // window; it opens no project and touches no file.
+    [WindowAppType.OnboardingPreview]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
     [WindowAppType.Raw]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
 };
 

@@ -308,6 +308,8 @@ export enum IPCEventType {
 
     serverTrustPrompt = "serverTrust.prompt",
 
+    onboardingPreviewOpen = "onboarding.previewOpen",
+
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
     pluginList = "plugin.list",
@@ -490,8 +492,12 @@ export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery" |
  * checkpoint is one call into the backend that answers when it answers. Naming what is happening
  * is the honest amount of detail, and it is also the part that answers "why is this taking so
  * long" - "recording a version" is a reason, "43%" is not.
+ *
+ * "switching" comes before the close rather than during it: when a project is opened in this
+ * window, the replacement loads out of sight first, and this window is the only one on screen for
+ * that wait. Everything after it is the close itself.
  */
-export type WorkspaceCloseStage = "saving" | "checkpoint" | "launcher";
+export type WorkspaceCloseStage = "switching" | "saving" | "checkpoint" | "launcher";
 
 /**
  * Which part of a renderer noticed a failure, so the log line says where to look.
@@ -1054,7 +1060,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents & IPCOnboardingEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -3105,6 +3111,24 @@ export type IPCServerTrustEvents = {
             props: WindowProps[WindowAppType.ServerTrustPrompt];
         },
         response: { trusted: boolean };
+    };
+};
+
+/**
+ * First-run setup asking for its own preview at full size, in a window of its own.
+ *
+ * Answers nothing: the window draws the same sample the setup screen does, from preferences it
+ * reads for itself, and all it is told is which surface to open on. Raised rather than returned,
+ * because it is something to look at rather than a question waiting for an answer.
+ */
+export type IPCOnboardingEvents = {
+    [IPCEventType.onboardingPreviewOpen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            props: WindowProps[WindowAppType.OnboardingPreview];
+        },
+        response: void;
     };
 };
 

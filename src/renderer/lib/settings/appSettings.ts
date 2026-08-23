@@ -1291,6 +1291,21 @@ export const AppSettings: AppSettingDefinition[] = [
         unit: "s",
     },
     {
+        // Read by the project wizard, which fills its author field with this only while that
+        // field is empty (`useProjectWizard`, the same rule the source language follows). It is
+        // therefore a starting point and never an override: a project that already names someone
+        // keeps its name however often this changes.
+        key: "project.defaultAuthor",
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Default author for new projects",
+        labelKey: "settings.items.projectDefaultAuthor.label",
+        description: "Fills the author field when a project is created. Existing projects keep what they were given.",
+        descriptionKey: "settings.items.projectDefaultAuthor.description",
+        defaultValue: "",
+    },
+    {
         // Read by the main process (VcsManager.resolveIdentity) for every commit and
         // checkpoint. Empty records UNCONFIGURED_IDENTITY; deliberately not the OS
         // account name, which is not Studio's to publish on the author's behalf.
