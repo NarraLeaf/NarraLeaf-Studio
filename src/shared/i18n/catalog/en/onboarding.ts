@@ -25,11 +25,14 @@ export const onboarding = {
      * How far into the flow, under the rail that names the screens.
      *
      * A count and not a percentage: the screens are few enough to be named (they are, in the rail),
-     * and "3 of 7" answers "how much is left" without pretending the seventh screen is as much work
-     * as the first. Named rather than bare, because it sits below a list of seven things and a bare
+     * and "3/7" answers "how much is left" without pretending the seventh screen is as much work
+     * as the first. Named rather than bare, because it sits below a list of eight things and a bare
      * "3 / 7" beside one of those would read as a count of something in the list.
+     *
+     * "Progress" rather than "Step", because what it counts is screens behind you and the first
+     * screen is none of them - "Step 0 of 7" would be a screen that does not exist.
      */
-    progress: "Step {current} of {total}",
+    progress: "Progress {current}/{total}",
     /**
      * The rail down the left, naming the screens.
      *
