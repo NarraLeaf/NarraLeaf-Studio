@@ -64,6 +64,7 @@ export const onboarding = {
     },
     sample: {
         projectName: "示例工程",
+        storyName: "第一章",
         scene: "天台，傍晚",
         speaker: "安予",
         line: "灯一下子全亮了，沿着山路一路铺下去。",
