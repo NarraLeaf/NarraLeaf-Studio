@@ -10,7 +10,7 @@ import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
 import { RubyPopover } from "./RubyPopover";
 import { TypePopover } from "./TypePopover";
-import type { ActiveMarks, RichTextInputHandle, RubyTarget } from "./RichTextInput";
+import type { ActiveMarks, RichTextInputHandle, RubyTarget, TypeTarget } from "./RichTextInput";
 import { TooltipGroup } from "@/lib/tooltip";
 
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
@@ -137,10 +137,11 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
     const [ruby, setRuby] = useState<{ top: number; left: number; bottom: number; target: RubyTarget } | null>(null);
     const rubyBtnRef = useRef<HTMLButtonElement | null>(null);
     /**
-     * The type panel's anchor. Only its position is captured: unlike ruby it holds no draft, and its
-     * controls read the live marks so the sentence and the panel agree after every press.
+     * The type panel's anchor and the characters it is editing, both captured at open time. The
+     * range for the reason the ruby popover captures its own: the panel takes the focus, so by the
+     * time a control is pressed the field no longer has a selection to resolve.
      */
-    const [typePanel, setTypePanel] = useState<{ top: number; left: number; bottom: number } | null>(null);
+    const [typePanel, setTypePanel] = useState<{ top: number; left: number; bottom: number; target: TypeTarget } | null>(null);
     const typeBtnRef = useRef<HTMLButtonElement | null>(null);
     const active = props.active ?? { bold: false, italic: false, canRuby: false, hasSelection: false };
     /**
@@ -148,7 +149,8 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
      * Same rule as the ruby control, and for the same reason - a mark is set over characters, and a
      * collapsed caret does not name any.
      */
-    const canType = active.hasSelection
+    const canType = Boolean(typePanel)
+        || active.hasSelection
         || active.emphasis !== undefined
         || active.fontSizeStep !== undefined
         || active.cps !== undefined;
@@ -367,6 +369,10 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
      * reads that as the author having left the line.
      */
     const openType = () => {
+        const target = props.editor.current?.getTypeTarget();
+        if (!target) {
+            return;
+        }
         const rect = typeBtnRef.current?.getBoundingClientRect();
         if (props.commitGuard) {
             props.commitGuard.current = true;
@@ -375,6 +381,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             top: rect?.top ?? 120,
             left: rect?.left ?? 120,
             bottom: rect?.bottom ?? 140,
+            target,
         });
     };
     const closeType = () => {
@@ -618,10 +625,8 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                 <TypePopover
                     anchor={typePanel}
                     anchorRef={typeBtnRef}
-                    emphasis={active.emphasis}
-                    fontSizeStep={active.fontSizeStep}
-                    cps={active.cps}
-                    onSet={(mark, value) => props.editor.current?.setTypeMark(mark, value)}
+                    target={typePanel.target}
+                    onSet={(mark, value, target) => props.editor.current?.setTypeMark(mark, value, target)}
                     onClose={() => closeType()}
                 />
             ) : null}

@@ -84,6 +84,18 @@ export type ActiveMarks = {
  */
 export type RubyTarget = { start: number; end: number; ruby?: string };
 
+/** The three marks the type panel sets, in the order it offers them. */
+const TYPE_MARKS = ["emphasis", "fontSizeStep", "cps"] as const;
+
+/** The unit range the type panel addresses, and the three marks already on it. */
+export type TypeTarget = {
+    start: number;
+    end: number;
+    emphasis?: StoryTextEmphasis;
+    fontSizeStep?: number;
+    cps?: number;
+};
+
 export type PauseClickInfo = {
     unit: number;
     value: number | true;
@@ -140,10 +152,16 @@ export type RichTextInputHandle = {
      */
     setRuby: (ruby: string | null, target?: { start: number; end: number }) => void;
     /**
-     * Set one of the type panel's marks — emphasis, the size step, the typing speed — over the
-     * selection, or over the run a collapsed caret already carries that mark on. `null` clears it.
+     * The characters the type panel would act on, and the marks already on them. Read once, when the
+     * panel opens. `null` when there is nothing to set.
      */
-    setTypeMark: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null) => void;
+    getTypeTarget: () => TypeTarget | null;
+    /**
+     * Set one of the type panel's marks — emphasis, the size step, the typing speed. `null` clears
+     * it. `target` is what {@link RichTextInputHandle.getTypeTarget} gave the panel on the way in,
+     * and passing it back is how the second press writes to the same characters as the first.
+     */
+    setTypeMark: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null, target?: { start: number; end: number }) => void;
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
@@ -1024,27 +1042,65 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, [emitChange, recordStructural, resolveRubyTarget, saveSelection, scheduleReportActive]);
 
     /**
-     * Set or clear one of the type panel's marks over the selection, or over the run a collapsed
-     * caret is standing in when that run already carries the mark. `null` removes it.
+     * The characters the type panel addresses, and the three marks already on them. `null` when
+     * there is nothing to set — see `hasSelection`.
+     *
+     * Resolved once, when the panel opens, and handed back with every write. Reading it afresh per
+     * write cannot work here: the panel is portalled to the body, so the first press takes focus off
+     * the field and empties the selection, and the second press would find nothing to act on.
+     */
+    const resolveTypeTarget = useCallback((): TypeTarget | null => {
+        const el = editorRef.current;
+        if (!el) {
+            return null;
+        }
+        const selection = getSelectionUnitRange(el) ?? savedRange.current;
+        if (!selection) {
+            return null;
+        }
+        const runs = domToRuns(el);
+        const marksOver = (start: number, end: number): TypeTarget => ({
+            start,
+            end,
+            emphasis: rangeTextMark(runs, start, end, "emphasis"),
+            fontSizeStep: rangeTextMark(runs, start, end, "fontSizeStep"),
+            cps: rangeTextMark(runs, start, end, "cps"),
+        });
+        if (selection.start !== selection.end) {
+            return marksOver(selection.start, selection.end);
+        }
+        // A collapsed caret names no characters, so the only thing it can address is a run that is
+        // already marked — the same rule the ruby control follows.
+        for (const mark of TYPE_MARKS) {
+            const found = markedRunAt(runs, selection.start, mark);
+            if (found) {
+                return marksOver(found.start, found.end);
+            }
+        }
+        return null;
+    }, []);
+
+    /**
+     * Set or clear one of the type panel's marks over `target`. `null` removes it.
      *
      * The same shape as {@link setRuby}, and for the same reasons: the value comes from a panel that
      * holds the focus, so the editor must not take it back, and a mark belongs to characters the
      * author wrote, so inline value chips in the range are left alone.
      */
-    const setTypeMark = useCallback((mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null) => {
+    const setTypeMark = useCallback((
+        mark: "emphasis" | "fontSizeStep" | "cps",
+        value: string | number | null,
+        target?: { start: number; end: number },
+    ) => {
         const el = editorRef.current;
         if (!el) {
             return;
         }
-        const selection = getSelectionUnitRange(el) ?? savedRange.current;
-        if (!selection) {
-            return;
-        }
-        const runs = domToRuns(el);
-        const range = selection.start !== selection.end ? selection : markedRunAt(runs, selection.start, mark);
+        const range = target ?? resolveTypeTarget();
         if (!range) {
             return;
         }
+        const runs = domToRuns(el);
         const next = value === null || value === ""
             ? undefined
             : mark === "emphasis" ? value : Number(value);
@@ -1068,7 +1124,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         }
         scheduleReportActive(true);
         emitChange();
-    }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
+    }, [emitChange, recordStructural, resolveTypeTarget, saveSelection, scheduleReportActive]);
 
     // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
     // focus). Caret is only restored when the editor already holds focus.
@@ -1181,6 +1237,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         toggleMark: (mark) => applyMark(mark),
         setColor: (color) => applyMark("color", color),
         getRubyTarget: resolveRubyTarget,
+        getTypeTarget: resolveTypeTarget,
         setTypeMark,
         setRuby,
         insertPause,
@@ -1194,7 +1251,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         replaceSpelling,
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, setRuby, setTypeMark, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, setRuby, setTypeMark, spliceUnits]);
 
     return (
         <>

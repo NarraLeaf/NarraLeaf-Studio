@@ -256,7 +256,10 @@ function readMarksFromElement(el: HTMLElement): StoryTextMarks | undefined {
     if (fontWeight === "bold" || Number(fontWeight) >= 600) marks.bold = true;
     if (el.style.fontStyle === "italic") marks.italic = true;
     if (el.style.color) marks.color = el.style.color;
-    if (el.style.fontSize) {
+    // Pixels only. The legacy absolute mark is written in `px` and so is anything Chromium's own
+    // formatting leaves behind; a size STEP is written in `em`, and parsing that as a length reads
+    // `1.2656em` as a one-pixel font.
+    if (el.style.fontSize.endsWith("px")) {
         const size = parseInt(el.style.fontSize, 10);
         if (Number.isFinite(size)) marks.fontSize = size;
     }
