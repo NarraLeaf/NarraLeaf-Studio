@@ -95,10 +95,13 @@ function buildVariant(locale) {
                 props[key] = say(props[key]);
             }
         }
-        // A preview row is text through and through - the line, the name above it, the body of a
-        // notification - so every string in one goes through the table. A field added later shows
-        // up as a missing entry rather than as English nobody noticed.
-        for (const item of props.previewItems ?? []) {
+        // A list draws `items` when no graph has written any, so those rows are what an author
+        // sees on the canvas and what the choice list shows until the game runs. They are text
+        // through and through - the line, the name above it, the body of a notification - so every
+        // string in one goes through the table, discriminators (`type: "say"`) and row ids
+        // included: a field added later then shows up as a missing entry rather than as English
+        // nobody noticed.
+        for (const item of props.items ?? []) {
             for (const [key, value] of Object.entries(item ?? {})) {
                 if (typeof value === "string") {
                     item[key] = say(value);

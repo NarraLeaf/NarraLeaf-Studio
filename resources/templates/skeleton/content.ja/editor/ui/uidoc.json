@@ -3863,8 +3863,8 @@
           {
             "id": "p0",
             "type": "say",
-            "text": "Line",
-            "character": "Speaker",
+            "text": "セリフ",
+            "character": "話者",
             "voice": "",
             "voiceId": "",
             "selected": "",
@@ -3873,8 +3873,8 @@
           {
             "id": "p1",
             "type": "say",
-            "text": "Line",
-            "character": "Speaker",
+            "text": "セリフ",
+            "character": "話者",
             "voice": "",
             "voiceId": "",
             "selected": "",
@@ -3883,8 +3883,8 @@
           {
             "id": "p2",
             "type": "say",
-            "text": "Line",
-            "character": "Speaker",
+            "text": "セリフ",
+            "character": "話者",
             "voice": "",
             "voiceId": "",
             "selected": "",
@@ -3893,8 +3893,8 @@
           {
             "id": "p3",
             "type": "say",
-            "text": "Line",
-            "character": "Speaker",
+            "text": "セリフ",
+            "character": "話者",
             "voice": "",
             "voiceId": "",
             "selected": "",
@@ -44538,17 +44538,17 @@
         "itemKeyFieldId": "index",
         "items": [
           {
-            "text": "Choice A",
+            "text": "選択肢 A",
             "index": 0,
             "disabled": false
           },
           {
-            "text": "Choice B",
+            "text": "選択肢 B",
             "index": 1,
             "disabled": false
           },
           {
-            "text": "Choice C",
+            "text": "選択肢 C",
             "index": 2,
             "disabled": false
           }
@@ -47475,11 +47475,11 @@
         "items": [
           {
             "id": "preview-1",
-            "message": "Notification message"
+            "message": "通知メッセージ"
           },
           {
             "id": "preview-2",
-            "message": "Another message"
+            "message": "別の通知"
           }
         ]
       }
@@ -69499,12 +69499,12 @@
         "itemKeyFieldId": "index",
         "items": [
           {
-            "text": "Return to title",
+            "text": "タイトルへ",
             "index": 0,
             "disabled": false
           },
           {
-            "text": "Cancel",
+            "text": "キャンセル",
             "index": 1,
             "disabled": false
           }
