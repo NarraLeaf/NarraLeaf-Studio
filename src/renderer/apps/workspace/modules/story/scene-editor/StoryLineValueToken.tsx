@@ -135,17 +135,21 @@ function ValuePopover(props: {
         props.onClose();
     };
 
-    // A word list is as narrow as its longest word; the curve editor is a graph with a ruler down
-    // its side, and at the list's width the graph would be the thing that had to shrink.
-    const wide = control.kind === "number" || (control.kind === "enum" && control.curve && isStoryBezierEasing(edit.value));
+    // A word list is as narrow as its longest word. The curve editor is a graph with a ruler down its
+    // side and the `cubic-bezier(…)` it spells along the bottom, and at the list's width both of
+    // those would be the things that had to shrink.
+    const curve = control.kind === "enum" && control.curve && isStoryBezierEasing(edit.value);
+    const width = curve ? "w-64" : control.kind === "number" ? "w-56" : "w-48";
 
     return createPortal(
         <div
             ref={panelRef}
-            className={`fixed z-[70] rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl ${wide ? "w-56" : "w-48"}`}
+            className={`fixed z-[70] rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl ${width}`}
             style={{
                 top: Math.max(8, Math.min(props.anchor.bottom + 6, window.innerHeight - 220)),
-                left: Math.max(8, Math.min(props.anchor.left, window.innerWidth - 236)),
+                // Held clear of the right edge by its own width plus the margin, since that width
+                // is no longer one number.
+                left: Math.max(8, Math.min(props.anchor.left, window.innerWidth - (curve ? 268 : 236))),
             }}
             onMouseDown={event => event.stopPropagation()}
         >
