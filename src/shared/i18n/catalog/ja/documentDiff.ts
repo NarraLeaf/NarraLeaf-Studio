@@ -66,6 +66,7 @@ export const documentDiff = {
      */
     count: {
         appTags: "ビルドバリアント",
+        dlc: "DLC",
 
         assetSets: "アセットセット",
         assets: "アセット",

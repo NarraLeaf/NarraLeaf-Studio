@@ -131,6 +131,10 @@ export const build = {
     },
         patch: {
             title: "パッチを書き出す",
+            kindLabel: "書き出す対象",
+            kindPatch: "パッチ",
+            dlcVariantHint: "プロジェクト ▸ アプリ の DLC で設定します。",
+            dlcOutputHint: "上のパスの隣にある DLC フォルダーに {file} として書き出します。",
             variantLabel: "バリアント",
             variantHint: "パッチは、書き出した対象のバリアントのビルドでのみ開く",
             contentLabel: "内容の取得元",

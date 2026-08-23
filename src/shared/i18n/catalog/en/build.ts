@@ -134,6 +134,13 @@ export const build = {
     },
         patch: {
             title: "Export patch",
+            // What this dialog is exporting. Only offered where the project has DLC to offer.
+            kindLabel: "Export",
+            kindPatch: "Patch",
+            // Stated rather than picked: the DLC record says which build it loads into, and a
+            // second place to say it is a second place for the two to disagree.
+            dlcVariantHint: "Set on the DLC in Project \u25B8 App.",
+            dlcOutputHint: "Written as {file}, in the DLC folder beside the path above.",
             variantLabel: "Variant",
             variantHint: "A patch opens only in builds of the variant it was exported for.",
             /** The second question: whose content goes in. Only asked where a project has variants. */

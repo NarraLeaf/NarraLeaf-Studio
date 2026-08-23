@@ -32,10 +32,15 @@ import type { BuildService } from "@/lib/workspace/services/core/BuildService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
+import type { ProjectDlc } from "@shared/types/dlc";
+import { dlcArtifactFileName } from "@shared/utils/dlcDelivery";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
 
 type PatchDialogInfo = {
     appTags: ProjectAppTag[];
+    /** The project's DLC, each of which this dialog can export instead of a patch. */
+    dlcs: ProjectDlc[];
     /** Where the save dialog starts, and the name it offers. */
     defaultOutputFile: string;
 };
@@ -47,6 +52,7 @@ function PatchDialogContent({
 }: {
     info: PatchDialogInfo;
     onExport: (choice: {
+        dlcId: string;
         appTagId: string;
         contentAppTagId: string;
         baselineAppDir: string;
@@ -57,6 +63,14 @@ function PatchDialogContent({
     onCancel: () => void;
 }) {
     const { t } = useTranslation();
+    /**
+     * What this dialog is exporting: a patch, or one of the project's DLC.
+     *
+     * One choice rather than a second dialog, because everything below it is the same question
+     * either way - which build, what to leave out, where to write it - and a DLC only answers three
+     * of them from its own record instead of from a field.
+     */
+    const [dlcId, setDlcId] = useState("");
     const [appTagId, setAppTagId] = useState("");
     /**
      * Which variant's content goes in, when it is not the one the patch attaches to.
@@ -80,6 +94,16 @@ function PatchDialogContent({
         [info.appTags],
     );
 
+    const kindOptions = useMemo<SelectOption[]>(
+        () => [
+            { value: "", label: t("build.patch.kindPatch") },
+            ...info.dlcs.map(dlc => ({ value: dlc.id, label: dlc.name })),
+        ],
+        [info.dlcs, t],
+    );
+
+    const dlc = useMemo(() => info.dlcs.find(entry => entry.id === dlcId) ?? null, [dlcId, info.dlcs]);
+
     const pickBaseline = useCallback(async () => {
         const result = await getInterface().gameBuild.selectPatchBaseline(baselineAppDir || undefined);
         if (result.success && result.data.path) {
@@ -100,6 +124,31 @@ function PatchDialogContent({
         // than a rule drawn inside the form. The fields keep that padding back.
         <div className="-mx-6 -my-4 flex min-w-0 flex-col">
             <div className="grid gap-3 px-6 py-4 [&>*]:min-w-0">
+                {info.dlcs.length > 0 && (
+                    <div className="grid gap-1">
+                        <FieldLabel as="div">{t("build.patch.kindLabel")}</FieldLabel>
+                        <Select
+                            options={kindOptions}
+                            value={dlcId}
+                            onChange={value => setDlcId(String(value))}
+                            fullWidth
+                            portalMenu
+                            ariaLabel={t("build.patch.kindLabel")}
+                        />
+                    </div>
+                )}
+
+                {/* A DLC states which build it loads into and what it carries, so neither is asked
+                    here: two places to say it is one place for the two to disagree. */}
+                {dlc ? (
+                    <div className="grid gap-1">
+                        <FieldLabel as="div">{t("build.patch.variantLabel")}</FieldLabel>
+                        <span className="text-xs text-fg">
+                            {info.appTags.find(tag => tag.id === dlc.attachTo)?.name ?? dlc.attachTo}
+                        </span>
+                        <span className="text-2xs text-fg-subtle">{t("build.patch.dlcVariantHint")}</span>
+                    </div>
+                ) : (
                 <div className="grid gap-1">
                     <FieldLabel as="div">{t("build.patch.variantLabel")}</FieldLabel>
                     <Select
@@ -115,8 +164,9 @@ function PatchDialogContent({
                         nothing says so until a player tries it. */}
                     <span className="text-2xs text-fg-subtle">{t("build.patch.variantHint")}</span>
                 </div>
+                )}
 
-                {info.appTags.length > 1 && (
+                {!dlc && info.appTags.length > 1 && (
                     <div className="grid gap-1">
                         <FieldLabel as="div">{t("build.patch.contentLabel")}</FieldLabel>
                         <Select
@@ -161,6 +211,13 @@ function PatchDialogContent({
                             {t("build.patch.browse")}
                         </Button>
                     </div>
+                    {/* The chosen path decides the folder; the name comes from the DLC's id, which
+                        the author already settled once and a player will see. */}
+                    {dlc ? (
+                        <span className="text-2xs text-fg-subtle">
+                            {t("build.patch.dlcOutputHint", { file: dlcArtifactFileName(dlc.id) })}
+                        </span>
+                    ) : null}
                 </div>
 
                 <div className="grid gap-1">
@@ -168,7 +225,7 @@ function PatchDialogContent({
                     <Input
                         value={name}
                         onChange={event => setName(event.target.value)}
-                        placeholder={t("build.patch.namePlaceholder")}
+                        placeholder={dlc ? dlc.name : t("build.patch.namePlaceholder")}
                     />
                 </div>
 
@@ -194,6 +251,7 @@ function PatchDialogContent({
                     variant="primary"
                     disabled={!outputFile.trim()}
                     onClick={() => onExport({
+                        dlcId,
                         appTagId,
                         contentAppTagId,
                         baselineAppDir: baselineAppDir.trim(),
@@ -243,8 +301,16 @@ export async function openPatchDialog(workspace: Workspace): Promise<void> {
     const projectPath = context.project.getConfig().projectPath;
     const stem = (projectConfig.name?.trim() || basename(projectPath) || "patch")
         .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-");
+    let dlcService: DlcService | null = null;
+    try {
+        dlcService = services.get<DlcService>(Services.Dlc);
+    } catch (error) {
+        console.warn("[patch] dlc service unavailable", error);
+    }
+
     const info: PatchDialogInfo = {
         appTags: appTagService?.listTags() ?? [RELEASE_APP_TAG],
+        dlcs: dlcService?.list() ?? [],
         // Inside a `patch` folder, because that folder is what gets zipped and
         // extracted. The export puts it there regardless; showing it here means the
         // field says where the file will actually be.
@@ -267,6 +333,7 @@ export async function openPatchDialog(workspace: Workspace): Promise<void> {
                     // Zero is what a patch that says nothing already gets, so it is not sent.
                     const layer = Number.parseInt(choice.layer, 10);
                     void buildService.exportPatch({
+                        ...(choice.dlcId ? { dlcId: choice.dlcId } : {}),
                         ...(choice.appTagId ? { appTagId: choice.appTagId } : {}),
                         ...(choice.contentAppTagId ? { contentAppTagId: choice.contentAppTagId } : {}),
                         ...(choice.baselineAppDir ? { baselineAppDir: choice.baselineAppDir } : {}),

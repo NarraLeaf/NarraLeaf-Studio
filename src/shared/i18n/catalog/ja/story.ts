@@ -12,6 +12,10 @@ export const story = {
         emptyStories: "このプロジェクトにストーリーがない",
         storyActions: "ストーリーの操作",
         setDefault: "既定にする",
+            dlc: {
+                title: "所属",
+                base: "ゲーム本体",
+            },
         outline: "アウトライン",
         newChapter: "新規チャプター",
         newSceneInChapter: "チャプターに新規シーン",

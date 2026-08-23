@@ -129,6 +129,10 @@ export const build = {
     },
         patch: {
             title: "导出补丁",
+            kindLabel: "导出",
+            kindPatch: "补丁",
+            dlcVariantHint: "在 工程 ▸ 应用 的 DLC 上设置。",
+            dlcOutputHint: "写入上面路径旁的 DLC 文件夹，文件名为 {file}。",
             variantLabel: "变体",
             variantHint: "补丁只能在所针对变体的构建中打开",
             contentLabel: "内容取自",
