@@ -63,7 +63,7 @@ export const onboarding = {
     done: {
         title: "Studio 设置完成",
         expectation: "这里问过的一切，以及更多个性化选项，都在设置中；在任意位置按 F1 可查看光标所在处的说明",
-        topics: "帮助主题",
+        docs: "查看文档",
     },
     previewWindow: {
         open: "查看完整窗口",

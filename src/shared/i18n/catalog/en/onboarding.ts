@@ -111,11 +111,8 @@ export const onboarding = {
     done: {
         title: "Studio is set up",
         expectation: "Everything asked here, and a good deal more, is in Settings. Press F1 anywhere for help on what is under the cursor.",
-        /**
-         * Lead-in for the three links under it. Only the label: the links themselves are titled
-         * from `help.topics.*`, so setup cannot name a topic differently from the list it opens.
-         */
-        topics: "Help topics",
+        /** The one button under it, which opens the manual on narraleaf.com in a browser. */
+        docs: "Read the documentation",
     },
     /** The preview at full size, in a window of its own. */
     previewWindow: {
