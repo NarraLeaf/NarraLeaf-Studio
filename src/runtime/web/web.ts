@@ -9,6 +9,7 @@ import {
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { packNetworkAllowlist } from "@shared/types/networkAllowlist";
+import { installScreenWakeLock } from "./screenWakeLock";
 import { WebGameStorage } from "./webStorage";
 import { webProgressBridge } from "./webProgress";
 
@@ -300,6 +301,18 @@ window[GAME_RUNTIME_BRIDGE_KEY] = bridge;
 // Ask the browser not to evict saves under storage pressure; a denial is fine
 // (the data is still there, just not guaranteed durable).
 void navigator.storage?.persist?.().catch(() => undefined);
+
+// Reading is idle as far as the system is concerned, and auto mode plays for an
+// hour without a single input, so the screen is held awake while this page is
+// the one on show. The desktop shell does the same with a display block.
+installScreenWakeLock({
+    request: navigator.wakeLock ? () => navigator.wakeLock.request("screen") : null,
+    isVisible: () => document.visibilityState === "visible",
+    onVisibilityChange: listener => document.addEventListener("visibilitychange", listener),
+    warn: message => {
+        console.warn(message);
+    },
+});
 
 // Same policy as the desktop preload: a stray file drop must not navigate the
 // page away from the running game.
