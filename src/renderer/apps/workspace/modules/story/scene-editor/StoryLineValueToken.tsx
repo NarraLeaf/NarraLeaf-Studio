@@ -135,10 +135,14 @@ function ValuePopover(props: {
         props.onClose();
     };
 
+    // A word list is as narrow as its longest word; the curve editor is a graph with a ruler down
+    // its side, and at the list's width the graph would be the thing that had to shrink.
+    const wide = control.kind === "number" || (control.kind === "enum" && control.curve && isStoryBezierEasing(edit.value));
+
     return createPortal(
         <div
             ref={panelRef}
-            className={`fixed z-[70] rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl ${control.kind === "number" ? "w-56" : "w-48"}`}
+            className={`fixed z-[70] rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl ${wide ? "w-56" : "w-48"}`}
             style={{
                 top: Math.max(8, Math.min(props.anchor.bottom + 6, window.innerHeight - 220)),
                 left: Math.max(8, Math.min(props.anchor.left, window.innerWidth - 236)),

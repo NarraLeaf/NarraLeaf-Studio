@@ -122,6 +122,13 @@ export const storyInspector = {
         custom: "カスタムカーブ",
     },
 
+    curve: {
+        startHandle: "開始ハンドル",
+        endHandle: "終了ハンドル",
+        reset: "カーブをリセット",
+        value: "カーブの値",
+    },
+
     transition: {
         dissolve: "ディゾルブ",
         blurDissolve: "ぼかしディゾルブ",
