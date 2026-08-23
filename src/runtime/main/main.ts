@@ -77,6 +77,7 @@ import {
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
 import { installDisplaySleepInhibitor } from "./displaySleep";
+import { resolveShellText, type ShellText } from "./shellText";
 import { installWindowCrashHandling } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
@@ -586,13 +587,40 @@ process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
  */
 function reportFatalRuntimeError(headline: string): void {
     try {
+        const text = shellText();
         dialog.showErrorBox(
             gameDisplayName(),
-            `${headline}\n\nThe game has to close. Details were written to ${runtimeLogPath(userDataDir)}`,
+            `${headline}\n\n${text.fatalClose} ${text.logAt(runtimeLogPath(userDataDir))}`,
         );
     } catch {
         /* No window server, or a dialog that refused. The log line above is the report. */
     }
+}
+
+/**
+ * What this process says to the player, in the language this machine asked for.
+ *
+ * `getLocale()` leads, and that ordering is the whole point: it is the same tag the page's
+ * `navigator.languages` leads with, so the native dialogs and the game's own crash screen cannot
+ * end up in different languages. It also moves with `--lang`, which is on the startup allowlist
+ * and which the system list does not follow - a player who launches the game in Japanese on a
+ * Chinese machine gets a Japanese page, and would otherwise get a Chinese dialog over it.
+ *
+ * The system list follows as the preference order proper. Before the app is ready `getLocale()`
+ * answers an empty string rather than throwing, and an empty tag is dropped, so the list degrades
+ * to the system one on its own - which matters because the earliest caller here is the
+ * uncaught-exception monitor, and that can fire before ready.
+ *
+ * Resolved once. Nothing about a running game can change the answer, and a crash is a bad moment
+ * to start asking questions.
+ */
+let cachedShellText: ShellText | null = null;
+
+function shellText(): ShellText {
+    if (!cachedShellText) {
+        cachedShellText = resolveShellText([app.getLocale(), ...app.getPreferredSystemLanguages()]);
+    }
+    return cachedShellText;
 }
 
 /** The game's own name once the pack has been read, and something honest before that. */
@@ -793,6 +821,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         log: logRuntime,
         logPath: runtimeLogPath(userDataDir),
         displayName: gameDisplayName,
+        text: shellText(),
         // Read through rather than captured: the pack settles the policy as the window is being
         // built, and a snapshot taken here could be one step behind it.
         policy: () => crashPolicy,

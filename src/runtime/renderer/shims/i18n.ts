@@ -8,12 +8,16 @@
  * `@/lib/i18n` to this shim.
  *
  * The shim resolves the same catalog keys against the shared i18n core
- * (`@shared/i18n`, process-agnostic) using a fixed source-locale translator. Shared
- * widget code therefore renders real text (the source-locale strings that were
- * hardcoded here before i18n) with no dependency on the editor store and no live
- * locale switching (the runtime has no Studio language picker).
+ * (`@shared/i18n`, process-agnostic). Shared widget code therefore renders real text with no
+ * dependency on the editor store.
+ *
+ * The locale is the machine's, fixed for the life of the window (see `../shellLocale`). There is
+ * no picker and no setter: this is the game's shell speaking, not the game, and the one screen a
+ * player actually reads out of it is the one drawn after the game has stopped working. All three
+ * catalogs are in this bundle either way - the registry is imported whole - so following the
+ * machine costs nothing over pinning English.
  */
-import { createTranslator, DEFAULT_LOCALE } from "@shared/i18n";
+import { createTranslator } from "@shared/i18n";
 import type {
     InterpolationParams,
     Locale,
@@ -21,8 +25,9 @@ import type {
     TranslationKey,
     Translator,
 } from "@shared/i18n";
+import { getShellLocale } from "../shellLocale";
 
-const translator: Translator = createTranslator(DEFAULT_LOCALE);
+const translator: Translator = createTranslator(getShellLocale());
 
 export interface UseTranslation extends Translator {
     /** No-op in the runtime bundle: there is no Studio language picker here. */
@@ -35,7 +40,7 @@ const noopUnsubscribe = (): (() => void) => noop;
 /** Mirrors the editor `i18nStore` surface used by shared widget code, minus mutation. */
 export const i18nStore = {
     getLocale(): Locale {
-        return DEFAULT_LOCALE;
+        return getShellLocale();
     },
     getTranslator(): Translator {
         return translator;
