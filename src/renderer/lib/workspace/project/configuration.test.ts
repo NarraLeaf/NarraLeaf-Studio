@@ -1,7 +1,56 @@
 import { describe, expect, it } from "vitest";
-import { normalizeBuildConfiguration, normalizeCrashConfiguration } from "./configuration";
+import {
+    normalizeBuildConfiguration,
+    normalizeCrashConfiguration,
+    normalizePatchConfiguration,
+} from "./configuration";
+
+describe("normalizePatchConfiguration", () => {
+    it("returns null for empty / malformed input", () => {
+        expect(normalizePatchConfiguration(undefined)).toBeNull();
+        expect(normalizePatchConfiguration("variant")).toBeNull();
+    });
+
+    it("reads a mode it does not recognise as the folder one", () => {
+        // The folder mode is the one whose baseline the author states outright, so a stored value
+        // nothing here understands cannot become an export measured against something else.
+        expect(normalizePatchConfiguration({})?.baselineMode).toBe("artifact");
+        expect(normalizePatchConfiguration({ baselineMode: "whatever" })?.baselineMode).toBe("artifact");
+        expect(normalizePatchConfiguration({ baselineMode: "variant" })?.baselineMode).toBe("variant");
+    });
+
+    it("drops blank fields rather than storing an empty string", () => {
+        expect(normalizePatchConfiguration({
+            baselineMode: "variant",
+            targetAppTagId: "  demo  ",
+            contentAppTagId: "   ",
+            baselineAppDir: 42,
+            outputFile: "D:/out/game.patch.dat",
+        })).toEqual({
+            baselineMode: "variant",
+            targetAppTagId: "demo",
+            outputFile: "D:/out/game.patch.dat",
+        });
+    });
+});
 
 describe("normalizeBuildConfiguration", () => {
+    it("carries the variant the last build was made as", () => {
+        // Written by every build since variants existed; without this it was never read back, and
+        // the dialog always reopened on the release variant.
+        const result = normalizeBuildConfiguration({
+            appTagId: "demo",
+            platforms: ["windows"],
+            formats: { windows: ["nsis"] },
+        });
+        expect(result?.appTagId).toBe("demo");
+        expect(normalizeBuildConfiguration({
+            appTagId: "   ",
+            platforms: ["windows"],
+            formats: { windows: ["nsis"] },
+        })).not.toHaveProperty("appTagId");
+    });
+
     it("returns null for empty / malformed input", () => {
         expect(normalizeBuildConfiguration(undefined)).toBeNull();
         expect(normalizeBuildConfiguration({})).toBeNull();

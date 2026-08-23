@@ -14,6 +14,7 @@ import {
     LocalizationConfiguration,
     MobileConfiguration,
     NetworkConfiguration,
+    PatchConfiguration,
     PlayerPreferences,
     ProjectAppConfiguration,
     VfxConfiguration,
@@ -32,6 +33,7 @@ import {
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
+    normalizePatchConfiguration,
     normalizePlayerPreferences,
     normalizeSaveCompatibilityConfiguration,
     normalizeSaveLocationConfiguration,
@@ -696,6 +698,32 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 build,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the remembered patch-export selection, or null when the project has
+     * never had a patch exported from it.
+     */
+    public getPatchConfiguration(): PatchConfiguration | null {
+        return normalizePatchConfiguration(this.getProjectConfig().app?.patch);
+    }
+
+    /**
+     * Persist the patch dialog's selection so the next export reopens with the
+     * same editions, build folder and file.
+     */
+    public async updatePatchConfiguration(patch: PatchConfiguration): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                patch,
             };
             return {
                 ...config,
