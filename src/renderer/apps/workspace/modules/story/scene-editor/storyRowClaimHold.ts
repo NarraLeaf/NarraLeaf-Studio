@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { CLAIM_REASSERT_MS } from "@/lib/live";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 
@@ -9,8 +9,8 @@ import type { StoryBlockId, StoryId } from "@shared/types/story";
  * just typed, silently: the editing atom here is a committed line rather than a keystroke, so the
  * loser of a race over a row does not lose a character. Taking one is therefore not optional
  * bookkeeping, and neither is giving it back - **a claim that is never given back is a row nobody
- * can edit for the rest of the session.** The host expires one after a pause in typing, which is the
- * safety net rather than the plan.
+ * can edit for the rest of the session.** The host expires one after a pause in the assertions
+ * below, which is the safety net for a machine that has gone rather than the plan.
  *
  * The whole design is the shape of one effect, and that is deliberate. Editing a row's text begins
  * when the draft box opens on it and ends when the box closes, whether that was Enter, blur, Escape,
@@ -18,6 +18,15 @@ import type { StoryBlockId, StoryId } from "@shared/types/story";
  * of those is the same thing seen from React: the open row changed, or the tree went away. A rule
  * written once at that seam cannot miss an ending; a list of endings written out by hand would miss
  * the next one somebody adds.
+ *
+ * ⚠ **The claim is asserted for as long as the box is open, not for as long as its author is
+ * typing.** Those are different lengths of time and the difference cost somebody their draft on a
+ * real machine: the assertion used to ride on keystrokes, so an author who stopped to think about a
+ * sentence went on holding an open box, went on being named on that row on every screen in the room,
+ * and stopped holding it after thirty seconds. Somebody else was then shown "alice is writing this
+ * line" over a line they were free to delete - which is precisely the loss the claim exists to
+ * prevent, arranged by the thing that was meant to prevent it. The box being open is what a claim
+ * means, so the box being open is what asserts it.
  */
 
 /** The one thing this needs of a live session. See `LiveSession.claimRow`. */
@@ -32,61 +41,32 @@ export type StoryRowClaimHoldInput = {
     storyId: StoryId | undefined;
     /** The row whose text is open for writing, or null when none is. */
     blockId: StoryBlockId | null;
-    /**
-     * Milliseconds from any source that only moves forward.
-     *
-     * Injected so that "still typing half a minute later" is something a test can state in a line
-     * rather than something it has to sit through.
-     */
-    now?: () => number;
 };
 
 /**
- * Take the open row, give it back when it closes, and keep it while its author types.
+ * Take the open row, keep saying so while it is open, and give it back when it closes.
  *
- * Returns what to call when a character lands in a row: see {@link CLAIM_REASSERT_MS} for why that
- * is not a message per keystroke, and why there is no timer here.
+ * The timer runs in every workspace, session or not, because this hook deliberately knows nothing
+ * about sessions - `claimRow` is silent outside one. What it costs a window with nobody to tell is
+ * one call every ten seconds while a draft box is open, which returns immediately; what asking
+ * first would cost is this file having an opinion about when a claim matters, and there is exactly
+ * one place that is allowed to have one.
  */
-export function useStoryRowClaimHold(input: StoryRowClaimHoldInput): (blockId: StoryBlockId) => void {
+export function useStoryRowClaimHold(input: StoryRowClaimHoldInput): void {
     const { service, storyId, blockId } = input;
-    const now = input.now ?? Date.now;
-    /**
-     * The row this window is holding and when it last said so, or null when it holds none.
-     *
-     * A ref rather than state: nothing renders it, and a keystroke that re-rendered the editor to
-     * record that it had happened would cost more than the claim is worth - see `textDraftRef`,
-     * which exists for exactly that reason.
-     */
-    const standing = useRef<{ blockId: StoryBlockId; assertedAt: number } | null>(null);
-    // Read from a ref by the callback below so its identity never changes: it is handed to the row
-    // action surface, which is deliberately built once because a new one re-renders every row.
-    const clock = useRef(now);
-    clock.current = now;
 
     useEffect(() => {
         if (!service || storyId === undefined || blockId === null) {
             return;
         }
         service.claimRow(storyId, blockId, true);
-        standing.current = { blockId, assertedAt: clock.current() };
+        // See `CLAIM_REASSERT_MS` for why this is an interval and not a message per keystroke.
+        const timer = setInterval(() => {
+            service.claimRow(storyId, blockId, true);
+        }, CLAIM_REASSERT_MS);
         return () => {
-            standing.current = null;
+            clearInterval(timer);
             service.claimRow(storyId, blockId, false);
         };
     }, [service, storyId, blockId]);
-
-    return useCallback((typedIn: StoryBlockId) => {
-        const held = standing.current;
-        if (!service || storyId === undefined || held === null || held.blockId !== typedIn) {
-            // A character in a row this window is not holding. The claim was refused, or the row
-            // was never taken - either way saying so again would not make it this author's.
-            return;
-        }
-        const at = clock.current();
-        if (at - held.assertedAt < CLAIM_REASSERT_MS) {
-            return;
-        }
-        held.assertedAt = at;
-        service.claimRow(storyId, typedIn, true);
-    }, [service, storyId]);
 }

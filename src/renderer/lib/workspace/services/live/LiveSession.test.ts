@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { storyDocumentSpec } from "@shared/documents/specs";
 import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import { DEFAULT_CLAIM_TIMEOUT_MS } from "@/lib/live";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import { HistoryService } from "../history/HistoryService";
 import { storySceneHistoryScope } from "../history/historyScopes";
@@ -256,6 +257,10 @@ type Window = {
     forgotten: string[];
     instance: string | null;
     hasRepository: boolean;
+    /** This window's reading of the time, in milliseconds. Moved by hand. See {@link fireTimers}. */
+    clock: number;
+    /** Everything this window has asked to have run later, in the order it asked. */
+    timers: { delayMs: number; run: () => void; cancelled: boolean }[];
 };
 
 function createWindow(world: World, instance: string): Window {
@@ -274,6 +279,8 @@ function createWindow(world: World, instance: string): Window {
         forgotten: [],
         instance,
         hasRepository: true,
+        clock: 0,
+        timers: [],
     };
     let checkpoints = 0;
 
@@ -342,13 +349,35 @@ function createWindow(world: World, instance: string): Window {
             forgetStoryScenes: storyId => window.forgotten.push(storyId),
         },
         storyDocumentPath: storyId => storyDocumentSpec.pathFor({ storyId }),
-        now: () => 0,
-        // Never fires. The guest's re-send timer is its own tested concern, and a live timer here
-        // would only be a way for a test to outlive itself.
-        schedule: () => () => undefined,
+        now: () => window.clock,
+        // Recorded and never run of its own accord: a live timer here would only be a way for a
+        // test to outlive itself. A test that is about one calls `fireTimers`.
+        schedule: (delayMs, run) => {
+            const timer = { delayMs, run, cancelled: false };
+            window.timers.push(timer);
+            return () => {
+                timer.cancelled = true;
+            };
+        },
     };
     window.session = new LiveSession(deps);
     return window;
+}
+
+/**
+ * Run whatever this window has waiting, once each.
+ *
+ * Snapshotted first, because a timer that re-schedules itself would otherwise be run again by the
+ * same pass - which is a loop rather than a tick.
+ */
+function fireTimers(window: Window): void {
+    const due = window.timers;
+    window.timers = [];
+    for (const timer of due) {
+        if (!timer.cancelled) {
+            timer.run();
+        }
+    }
 }
 
 /** Deliver what is in flight, and let the promises delivering it started settle. */
@@ -705,6 +734,86 @@ describe("a live session", () => {
                 await drain(world.bus);
             }
             expect(countClaimsMessages(world) - said).toBe(0);
+        });
+
+        it("says a claim has lapsed on its own tick, rather than on the next thing that happens", async () => {
+            // ⚠ The regression this pins. Every other movement of the set happens while the host
+            // is answering something, so the new set travels with the answer; a lapse is the one
+            // change nobody asked for, and without a tick the name stayed on screen until somebody
+            // did something else in the room - which can be minutes.
+            //
+            // That was once written off as harmless, on the grounds that the host expires a claim
+            // while answering the operation that asks about it, so the row really is free the
+            // moment anybody tries. The row being free is exactly the problem: a name over a row is
+            // what stops the person reading it from touching it, so a name that outlives its claim
+            // invites the edit the claim existed to refuse.
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+            expect(guest.session.getView().claims).toEqual({ b: "instance-guest" });
+
+            // Nobody says anything and nobody asks for anything; the deadline simply passes.
+            host.clock += DEFAULT_CLAIM_TIMEOUT_MS + 1;
+            fireTimers(host);
+            await drain(world.bus);
+
+            expect(host.session.getView().claims).toEqual({});
+            expect(guest.session.getView().claims).toEqual({});
+        });
+
+        it("keeps sweeping, so a second lapse is announced like the first", async () => {
+            // The sweep re-schedules itself rather than repeating, and a session whose tick stopped
+            // after one round would be one that told the truth once.
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+            host.clock += DEFAULT_CLAIM_TIMEOUT_MS + 1;
+            fireTimers(host);
+            await drain(world.bus);
+
+            guest.session.claimRow(guest.storyId, "c", true);
+            await drain(world.bus);
+            expect(guest.session.getView().claims).toEqual({ c: "instance-guest" });
+
+            host.clock += DEFAULT_CLAIM_TIMEOUT_MS + 1;
+            fireTimers(host);
+            await drain(world.bus);
+            expect(guest.session.getView().claims).toEqual({});
+        });
+
+        it("says nothing on a tick where nothing has lapsed", async () => {
+            // The tick is a look, not an announcement. A set per tick would be a message every ten
+            // seconds to every machine in the room for the whole life of a session in which
+            // nobody is writing anything.
+            await openRoom();
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            const said = countClaimsMessages(world);
+            for (let tick = 0; tick < 5; tick += 1) {
+                fireTimers(host);
+                await drain(world.bus);
+            }
+            expect(countClaimsMessages(world) - said).toBe(0);
+            expect(guest.session.getView().claims).toEqual({ b: "instance-guest" });
+        });
+
+        it("stops sweeping once the session is over", async () => {
+            await openRoom();
+            await joinRoom();
+            expect(host.timers.some(timer => !timer.cancelled)).toBe(true);
+
+            await host.session.leave();
+            await drain(world.bus);
+
+            // Cancelled outright rather than left to notice on its next run that there is nothing
+            // to sweep: a window with no session must have nothing waiting to happen in it.
+            expect(host.timers.every(timer => timer.cancelled)).toBe(true);
+            fireTimers(host);
+            expect(host.timers).toEqual([]);
         });
 
         it("refuses everybody else's edit to a claimed row, naming the holder", async () => {

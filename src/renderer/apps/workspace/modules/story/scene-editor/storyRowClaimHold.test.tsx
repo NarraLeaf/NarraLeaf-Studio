@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CLAIM_REASSERT_MS } from "@/lib/live";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import { useStoryRowClaimHold, type StoryRowClaimPort } from "./storyRowClaimHold";
@@ -37,10 +37,10 @@ function recorder(): { port: StoryRowClaimPort; said: Said[] } {
 }
 
 /** The hook as the controller drives it: one open row at a time, or none. */
-function hold(port: StoryRowClaimPort | null, now?: () => number) {
+function hold(port: StoryRowClaimPort | null) {
     return renderHook(
         ({ blockId }: { blockId: StoryBlockId | null }) =>
-            useStoryRowClaimHold({ service: port, storyId: STORY, blockId, ...(now ? { now } : {}) }),
+            useStoryRowClaimHold({ service: port, storyId: STORY, blockId }),
         { initialProps: { blockId: null as StoryBlockId | null } },
     );
 }
@@ -63,7 +63,7 @@ describe("taking the row an author is writing", () => {
         const view = hold(null);
         view.rerender({ blockId: "b" as StoryBlockId });
         // Nothing to assert but the absence of a throw: there is nobody to have asked.
-        expect(view.result.current).toBeInstanceOf(Function);
+        expect(view.result.current).toBeUndefined();
     });
 });
 
@@ -125,65 +125,104 @@ describe("every way editing a row ends", () => {
     });
 });
 
-describe("keeping the row while its author types", () => {
-    it("says nothing for the first keystrokes, because it has only just said it", () => {
-        let clock = 0;
-        const { port, said } = recorder();
-        const view = hold(port, () => clock);
-        view.rerender({ blockId: "b" as StoryBlockId });
-        said.length = 0;
+describe("keeping the row for as long as its box is open", () => {
+    /**
+     * ⚠ The regression this whole block exists for.
+     *
+     * The assertion used to ride on keystrokes, which made a claim last as long as somebody was
+     * typing rather than as long as their box was open. An author who paused to think about a
+     * sentence therefore stopped holding a row they were visibly in the middle of writing, and on a
+     * real machine somebody else deleted that row - having been shown "alice is writing this line"
+     * over it - and alice's draft went with it.
+     */
+    it("says so again on the interval, with nobody touching the keyboard", () => {
+        vi.useFakeTimers();
+        try {
+            const { port, said } = recorder();
+            const view = hold(port);
+            act(() => {
+                view.rerender({ blockId: "b" as StoryBlockId });
+            });
+            said.length = 0;
 
-        for (let keystroke = 0; keystroke < 500; keystroke += 1) {
-            clock += 10;
-            view.result.current("b" as StoryBlockId);
+            // Four minutes of an open box and an author who is thinking.
+            act(() => {
+                vi.advanceTimersByTime(240_000);
+            });
+
+            expect(said.every(one => one.holding && one.blockId === "b")).toBe(true);
+            expect(said).toHaveLength(240_000 / CLAIM_REASSERT_MS);
+        } finally {
+            vi.useRealTimers();
         }
-        // Five seconds of fast typing, which is not yet the interval.
-        expect(said).toEqual([]);
     });
 
-    it("re-asserts on the interval, so the traffic is the interval and not the typing", () => {
-        // The point of the whole arrangement: this travels to every machine in the room, so a
-        // message per keystroke would be a room shouting one bit of news at itself.
-        let clock = 0;
-        const { port, said } = recorder();
-        const view = hold(port, () => clock);
-        view.rerender({ blockId: "b" as StoryBlockId });
-        said.length = 0;
+    it("says nothing at all for the first interval, having only just said it", () => {
+        // The traffic this costs is the interval and not the writing: what travels here goes to
+        // every machine in the room, so a message per keystroke would be a room shouting one bit
+        // of news at itself.
+        vi.useFakeTimers();
+        try {
+            const { port, said } = recorder();
+            const view = hold(port);
+            act(() => {
+                view.rerender({ blockId: "b" as StoryBlockId });
+            });
+            said.length = 0;
 
-        // Four minutes of writing at ten characters a second.
-        for (let keystroke = 0; keystroke < 2400; keystroke += 1) {
-            clock += 100;
-            view.result.current("b" as StoryBlockId);
+            act(() => {
+                vi.advanceTimersByTime(CLAIM_REASSERT_MS - 1);
+            });
+            expect(said).toEqual([]);
+        } finally {
+            vi.useRealTimers();
         }
-
-        expect(said.every(one => one.holding && one.blockId === "b")).toBe(true);
-        expect(said).toHaveLength(240_000 / CLAIM_REASSERT_MS);
     });
 
-    it("says nothing for a character in a row this window is not holding", () => {
-        // A claim the host refused, or a row that was never taken. Saying so again would not make
-        // it this author's.
-        let clock = 0;
-        const { port, said } = recorder();
-        const view = hold(port, () => clock);
-        view.rerender({ blockId: "b" as StoryBlockId });
-        said.length = 0;
+    it("stops saying anything once the box closes", () => {
+        // The give-back is the last word. A timer left running past it would go on taking a row
+        // whose author has moved to another line, which is the "never given back" failure arriving
+        // by a different route.
+        vi.useFakeTimers();
+        try {
+            const { port, said } = recorder();
+            const view = hold(port);
+            act(() => {
+                view.rerender({ blockId: "b" as StoryBlockId });
+            });
+            act(() => {
+                view.rerender({ blockId: null });
+            });
+            said.length = 0;
 
-        clock += CLAIM_REASSERT_MS * 4;
-        view.result.current("c" as StoryBlockId);
-        expect(said).toEqual([]);
+            act(() => {
+                vi.advanceTimersByTime(240_000);
+            });
+            expect(said).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
-    it("stops saying anything once the row is given back", () => {
-        let clock = 0;
-        const { port, said } = recorder();
-        const view = hold(port, () => clock);
-        view.rerender({ blockId: "b" as StoryBlockId });
-        view.rerender({ blockId: null });
-        said.length = 0;
+    it("carries the interval to the next row when the author moves to one", () => {
+        vi.useFakeTimers();
+        try {
+            const { port, said } = recorder();
+            const view = hold(port);
+            act(() => {
+                view.rerender({ blockId: "b" as StoryBlockId });
+            });
+            act(() => {
+                view.rerender({ blockId: "c" as StoryBlockId });
+            });
+            said.length = 0;
 
-        clock += CLAIM_REASSERT_MS * 4;
-        view.result.current("b" as StoryBlockId);
-        expect(said).toEqual([]);
+            act(() => {
+                vi.advanceTimersByTime(CLAIM_REASSERT_MS);
+            });
+            expect(said).toEqual([{ blockId: "c", holding: true }]);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

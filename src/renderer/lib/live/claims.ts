@@ -4,11 +4,17 @@ import type { StoryBlockId } from "@shared/types/story";
 /**
  * How long a claim survives without being asserted again, in milliseconds.
  *
- * Thirty seconds, and the number is chosen against a **pause in typing** rather than against how
- * long a paragraph takes to write: the box holding a row asserts the claim again as its author
- * types, so the deadline only has to outlast the gap between two of those assertions while somebody
- * thinks about a word. Half a minute is far longer than such a gap, and short enough that a machine
- * which died holding a line does not hold it for the rest of the session.
+ * Thirty seconds, and the number is chosen against **a machine that has gone** rather than against
+ * anything an author does: the box holding a row asserts the claim again on a timer for as long as
+ * it is open, so the deadline only has to outlast the gap between two of those assertions. Half a
+ * minute is three of them, and short enough that a machine which died holding a line does not hold
+ * it for the rest of the session.
+ *
+ * ⚠ It was once measured against a pause in typing, because the assertion used to ride on
+ * keystrokes. That is the same number describing a different thing, and on a real machine it cost
+ * somebody their draft: an author who had stopped to think about a sentence still had the box open,
+ * still had a name on the row on everybody's screen, and no longer held it. See
+ * `useStoryRowClaimHold`.
  *
  * Lapsing costs a holder that is still there nothing: its next assertion takes the row again, and
  * that can only fail if somebody else claimed it in the meantime - which is exactly the case the
@@ -17,17 +23,21 @@ import type { StoryBlockId } from "@shared/types/story";
 export const DEFAULT_CLAIM_TIMEOUT_MS = 30_000;
 
 /**
- * How often a box that is being typed into says so again, in milliseconds.
+ * How often an open box says again that it holds its row, in milliseconds.
  *
- * **This is what makes a claim survive a paragraph**, and it is deliberately not a message per
- * keystroke: what travels here goes to every machine in the room, and a room of six people typing
- * would otherwise be a few hundred messages a second carrying one bit of news between them.
+ * **This is what makes a claim last exactly as long as the box does**, and it is deliberately not a
+ * message per keystroke: what travels here goes to every machine in the room, and a room of six
+ * people typing would otherwise be a few hundred messages a second carrying one bit of news between
+ * them.
  *
  * A third of {@link DEFAULT_CLAIM_TIMEOUT_MS}, so two assertions fit inside one deadline with room
  * to spare - a claim therefore survives a lost assertion, which matters because nothing here is
- * re-sent or acknowledged. The traffic that buys is at most one message per author per ten seconds
- * while they are writing, and none at all while they are not: an author who stops typing lets the
- * claim lapse, and their next keystroke takes the row again.
+ * re-sent or acknowledged. The traffic that buys is one message per open box per ten seconds, and
+ * none at all from a window whose author is not writing a row.
+ *
+ * The same interval is what the host sweeps its own set on, so a claim that lapses is announced
+ * within one of these rather than waiting for the next thing to happen in the room. See
+ * `LiveSession.scheduleClaimSweep`.
  */
 export const CLAIM_REASSERT_MS = DEFAULT_CLAIM_TIMEOUT_MS / 3;
 
