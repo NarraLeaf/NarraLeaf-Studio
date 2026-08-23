@@ -640,6 +640,11 @@ export async function compileGameRuntimeArtifact(
                             input.distribution.titleId,
                         ),
                         packDeltaVersion: PACK_DELTA_VERSION,
+                        // Which variant this build is, so that it can refuse a DLC belonging to
+                        // another one. Two variants that override no identity are sealed under
+                        // the same material, so without this a demo would happily open the full
+                        // game's extra chapter.
+                        appTagId: input.appTag?.id ?? APP_TAG_ID_RELEASE,
                     },
                 }
                 : {}),

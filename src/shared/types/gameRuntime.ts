@@ -309,6 +309,18 @@ export type GameRuntimePackV1 = {
          * patches installed together both take effect.
          */
         packDeltaVersion?: number;
+        /**
+         * The build variant this pack was compiled as, as an app tag id.
+         *
+         * Here rather than beside the project's name because it is not a fact about the title, it
+         * is a fact about which add-ons this build accepts: a DLC states the variant it belongs to,
+         * and a build that cannot say which variant it is could not refuse one meant for another.
+         *
+         * Absent on packs produced before this field existed, which reads as the release variant -
+         * the variant every such pack was compiled as unless its author had made a second one, and
+         * the only reading that leaves an ordinary patch unaffected.
+         */
+        appTagId?: string;
     };
     /**
      * The one string every edition of this title shares, naming the file progress is carried in.
