@@ -380,6 +380,11 @@ export const workspace = {
         liveCloneRequired: "That session is on {project}. Open that project to join it.",
         liveVersionMismatch: "That session opened on an older version than this project holds.",
         liveRoomGone: "That session is no longer open.",
+        // The room is there and this window still cannot follow it: the first because the
+        // host is old enough not to say which story it opened on, the second because the
+        // story it named is not in this copy even after syncing.
+        liveRoomStoryUnknown: "That session does not say which story it is about. Ask the host to update Studio.",
+        liveStoryNotHere: "That session is about a story this project does not have.",
         liveRefused: "That server refused the session.",
         liveFailed: "The live session could not be started.",
         // How a session ended, for the two endings the author did not ask for. Leaving is

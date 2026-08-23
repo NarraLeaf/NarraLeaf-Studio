@@ -430,6 +430,7 @@ export function readLiveSession(value: unknown): TeamLiveSession | null {
         return null;
     }
     const revision = text(from, "revision");
+    const story = text(from, "story");
     const title = text(from, "title");
     const members = Array.isArray(from["members"])
         ? from["members"].map(readLiveMember).filter((one): one is TeamLiveMember => one !== null)
@@ -438,6 +439,7 @@ export function readLiveSession(value: unknown): TeamLiveSession | null {
         id,
         project,
         ...(revision === undefined ? {} : { revision }),
+        ...(story === undefined ? {} : { story }),
         ...(title === undefined ? {} : { title }),
         openedBy,
         openedByInstance,
@@ -483,7 +485,7 @@ export async function listLiveSessions(
  */
 export async function openLiveSession(
     remoteOrigin: string,
-    input: { project: string; revision?: string; title?: string },
+    input: { project: string; revision: string; story: string; title?: string },
 ): Promise<TeamOutcome<TeamLiveSession>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveOpen, input);
     if (!answered.ok) return answered;

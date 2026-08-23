@@ -1494,8 +1494,13 @@ interface ILiveSessionService extends IService {
     ownsStory(storyId: StoryId): boolean;
     /** Record a checkpoint, then open a room on that revision. Null means this window is in it. */
     open(input: { storyId: StoryId; title?: string }): Promise<LiveEntryFailure | null>;
-    /** Join one somebody else opened, checkpointing and syncing on the way in. */
-    join(input: { session: TeamLiveSession | string; storyId: StoryId }): Promise<LiveEntryFailure | null>;
+    /**
+     * Join one somebody else opened, checkpointing and syncing on the way in.
+     *
+     * No story to name: which document the room is about is the room's own answer, and a caller
+     * that supplied one could only ever supply a document this machine already has.
+     */
+    join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null>;
     /** Leave: the freeze lifts and what is on disk is this author's own, committable as usual. */
     leave(): Promise<void>;
     /**
