@@ -120,7 +120,11 @@ export type GameRuntimePackSidecarEntry = {
      * the app dir - e.g. `sidecars/{pluginId}/{sidecarId}/bin/tool.exe`.
      */
     entry: string;
-    /** `executable` spawns the binary directly; `node` runs it under the game's own Electron as Node. */
+    /**
+     * `executable` spawns the binary directly and talks to it over stdin/stdout; `node` runs the
+     * .js as an Electron utility process and talks to it over `process.parentPort`, which is the
+     * one channel a utility process has - it has no stdin.
+     */
     kind: "executable" | "node";
     /** `onGameStart` spawns with the window; `onRequest` waits for the first call. */
     autostart: "onGameStart" | "onRequest";
