@@ -114,6 +114,8 @@ export const onboarding = {
     sample: {
         /** In the title bar, where a window names the project it is showing. */
         projectName: "Sample project",
+        /** Under the scene's name in the editor header: the story document it belongs to. */
+        storyName: "Chapter 1",
         scene: "Rooftop, evening",
         speaker: "Anyo",
         line: "The lights came on all at once, the whole way down the hill.",

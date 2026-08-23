@@ -64,6 +64,7 @@ export const onboarding = {
     },
     sample: {
         projectName: "サンプルプロジェクト",
+        storyName: "第 1 章",
         scene: "屋上、夕方",
         speaker: "アンヨ",
         line: "灯りが一斉に点いて、坂の下までずっと続いていた。",
