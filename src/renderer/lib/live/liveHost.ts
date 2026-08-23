@@ -2,6 +2,7 @@ import {
     CLAIMED_OPS,
     opBlockIds,
     opSceneId,
+    type LiveBlockTarget,
     type LiveCatchUp,
     type LiveDerived,
     type LiveEffect,
@@ -15,7 +16,7 @@ import {
     type LiveRowClaim,
 } from "@shared/live/ops";
 import { sceneDigest } from "@shared/live/sceneDigest";
-import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
 import { DeletedPositions, resolveInsertTarget } from "./deletedPositions";
 import { LiveEffectLog } from "./effectLog";
@@ -94,9 +95,11 @@ export type LiveHostDeps = {
 /** Every verb this host can apply, as a record so that a verb added to the vocabulary fails here. */
 const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "insert-block": true,
+    "insert-blocks": true,
     "update-block": true,
     "update-blocks": true,
     "delete-block": true,
+    "delete-blocks": true,
     "move-block": true,
     "move-blocks": true,
     "set-block-disabled": true,
@@ -338,6 +341,59 @@ export class LiveHost {
                     return { refuse: "anchor-gone" };
                 }
                 return { op: { ...op, target } };
+            }
+
+            case "insert-blocks": {
+                const scene = this.deps.readScene(op.sceneId);
+                if (!scene) {
+                    return { refuse: "scene-gone" };
+                }
+                // The ids this operation is about to create. A row aimed inside or beside one of
+                // them names a place this very operation is making, so there is nothing in the
+                // document to resolve it against and nothing to check: it is correct by
+                // construction, and the entries are ordered so that it exists by the time the row
+                // is placed. Everything aimed at the document proper resolves exactly as a single
+                // insert does, deleted anchors included.
+                const own = new Set(op.inserts.map(insert => insert.block.id));
+                const inserts: { block: StoryBlock; target: LiveBlockTarget }[] = [];
+                for (const insert of op.inserts) {
+                    const parentId = insert.target.parentId ?? null;
+                    const beforeBlockId = insert.target.beforeBlockId ?? null;
+                    if ((parentId !== null && own.has(parentId)) || (beforeBlockId !== null && own.has(beforeBlockId))) {
+                        inserts.push(insert);
+                        continue;
+                    }
+                    const target = resolveInsertTarget(scene, this.positions, insert.target);
+                    if (!target) {
+                        // Whole or not at all, as every batch is: half a paste is an arrangement
+                        // the author never asked for, sitting in everybody's document.
+                        return { refuse: "anchor-gone" };
+                    }
+                    inserts.push({ block: insert.block, target });
+                }
+                return { op: { ...op, inserts } };
+            }
+
+            case "delete-blocks": {
+                const scene = this.deps.readScene(op.sceneId);
+                if (!scene) {
+                    return { refuse: "scene-gone" };
+                }
+                // Every row first, then the claims, and one failure refuses the lot - the rule every
+                // batch follows. ⚠ A row named after its own container is NOT missing: the container
+                // takes its children with it, so a subtree deleted whole names rows that are gone by
+                // the time their turn comes. Present-or-covered is the test.
+                const covered = new Set(op.blockIds);
+                for (const blockId of op.blockIds) {
+                    if (scene.blocks[blockId]) {
+                        continue;
+                    }
+                    const wasAt = this.positions.get(scene.id, blockId);
+                    if (!wasAt || wasAt.parentId === null || !covered.has(wasAt.parentId)) {
+                        return { refuse: "row-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
             }
 
             case "move-block": {

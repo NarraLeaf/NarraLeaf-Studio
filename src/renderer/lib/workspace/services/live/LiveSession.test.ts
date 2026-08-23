@@ -733,6 +733,61 @@ describe("a live session", () => {
         });
     });
 
+    describe("one gesture, one operation", () => {
+        it("sends a whole paste as one effect and takes it back in one press", async () => {
+            // ⚠ What the batch verbs are for. Sent row by row, a paste of three lines is three
+            // effects - three arrivals on every other screen - and three presses of Ctrl+Z to undo
+            // something the author did once. Outside a session the same paste is one step.
+            await openRoom();
+            await joinRoom();
+            const said = world.bus.said.length;
+
+            guest.story.insertBlocks(guest.storyId, guest.sceneId, [
+                { block: note("p1"), target: { parentId: null } },
+                { block: note("p2"), target: { parentId: null } },
+                { block: note("p3"), target: { parentId: null } },
+            ]);
+            await drain(world.bus);
+
+            expect(textOf(host, "p3")).toBe("p3");
+            expect(textOf(guest, "p3")).toBe("p3");
+            // One intent out and one effect back, whatever the row count.
+            const intents = world.bus.said.slice(said)
+                .filter(payload => (payload as { kind?: unknown }).kind === "intent");
+            const effects = world.bus.said.slice(said)
+                .filter(payload => (payload as { kind?: unknown }).kind === "effect");
+            expect(intents).toHaveLength(1);
+            expect(effects).toHaveLength(1);
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            for (const id of ["p1", "p2", "p3"]) {
+                expect(host.story.getStoryDocument(host.storyId).scenes[host.sceneId].blocks[id]).toBeUndefined();
+                expect(guest.story.getStoryDocument(guest.storyId).scenes[guest.sceneId].blocks[id]).toBeUndefined();
+            }
+        });
+
+        it("deletes a selection as one operation and puts it back as one", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.story.deleteBlocks(guest.storyId, guest.sceneId, ["a", "c"]);
+            await drain(world.bus);
+            expect(host.story.getStoryDocument(host.storyId).scenes[host.sceneId].blocks["a"]).toBeUndefined();
+            expect(textOf(host, "b")).toBe("b");
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            // Back where they sat, on both machines, rather than appended to the end.
+            const scene = host.story.getStoryDocument(host.storyId).scenes[host.sceneId];
+            expect(scene.rootBlockIds).toEqual(["a", "b", "c"]);
+            expect(guest.story.getStoryDocument(guest.storyId).scenes[guest.sceneId].rootBlockIds)
+                .toEqual(["a", "b", "c"]);
+        });
+    });
+
     describe("what a paste derives", () => {
         /** One line's translation, as a paste re-keys it onto the id it has just minted. */
         const JA: LiveDerived = {
@@ -751,7 +806,7 @@ describe("a live session", () => {
             host.calls.length = 0;
             guest.calls.length = 0;
 
-            guest.story.insertBlock(guest.storyId, guest.sceneId, note("p"), { parentId: null }, JA);
+            guest.story.insertBlocks(guest.storyId, guest.sceneId, [{ block: note("p"), target: { parentId: null } }], JA);
             await drain(world.bus);
 
             expect(textOf(host, "p")).toBe("p");
@@ -768,7 +823,7 @@ describe("a live session", () => {
             // entries still exist by then is the effect that carried them.
             await openRoom();
             await joinRoom();
-            guest.story.insertBlock(guest.storyId, guest.sceneId, note("p"), { parentId: null }, JA);
+            guest.story.insertBlocks(guest.storyId, guest.sceneId, [{ block: note("p"), target: { parentId: null } }], JA);
             await drain(world.bus);
             guest.story.deleteBlock(guest.storyId, guest.sceneId, "p");
             await drain(world.bus);

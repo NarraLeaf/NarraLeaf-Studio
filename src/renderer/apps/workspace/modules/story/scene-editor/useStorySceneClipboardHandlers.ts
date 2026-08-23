@@ -53,7 +53,7 @@ import {
     cloneSerializedBlock,
     exportBlockPlainText,
     getPasteAnchorId,
-    insertSerializedClone,
+    flattenSerializedClone,
     isStoryClipboardPayload,
     listBlockTextIds,
     parseDialogueLine,
@@ -204,18 +204,16 @@ export function useStorySceneClipboardHandlers(params: {
     /**
      * Insert already-built blocks in order, under ONE history entry recorded by the caller.
      *
-     * There is no batch insert API, so this is N `documentChanged` events; the single `recordHistory`
-     * in front of it is what makes the whole paste one undo step. The `target` is reused unmutated,
-     * which is what keeps the pasted order: every insert goes before the same following sibling.
+     * One operation for the lot: one `documentChanged`, one undo step, and inside a live session one
+     * effect rather than a row-by-row run of them. The `target` is reused unmutated, which is what
+     * keeps the pasted order: every insert goes before the same following sibling.
      */
     const insertPastedBlocks = useCallback((blocks: StoryBlock[], target: StoryBlockTarget) => {
         const { storyService, storyId, sceneId } = params;
         if (!storyService || !storyId || !sceneId || blocks.length === 0) {
             return;
         }
-        for (const block of blocks) {
-            storyService.insertBlock(storyId, sceneId, block, target);
-        }
+        storyService.insertBlocks(storyId, sceneId, blocks.map(block => ({ block, target })));
         if (pasteMayTakeFocus()) {
             params.setActiveBlockId(blocks[0].id);
             params.setSelectedBlockIds(new Set(blocks.map(block => block.id)));
@@ -252,10 +250,10 @@ export function useStorySceneClipboardHandlers(params: {
      * Write rows already minted into the scene, as one undo step.
      *
      * `derived` is what the paste derives - the translations and takes re-keyed onto the ids these
-     * rows now carry - and it rides the **first** insert. It belongs to the gesture rather than to
-     * any one row, and one operation carrying it is what makes every machine in a session write the
-     * same entries from the same message; see `StoryOpSink.handle`. Undefined outside a session and
-     * for a project that is neither translated nor dubbed.
+     * rows now carry - and it travels on the one operation the whole paste becomes. It belongs to
+     * the gesture rather than to any row of it, which is what makes every machine in a session
+     * write the same entries from the same message; see `StoryOpSink.handle`. Undefined outside a
+     * session and for a project that is neither translated nor dubbed.
      */
     const insertClones = useCallback((
         clones: SerializedStoryBlock[],
@@ -267,18 +265,11 @@ export function useStorySceneClipboardHandlers(params: {
             return false;
         }
         params.recordHistory();
-        const insertedRoots: StoryBlockId[] = [];
-        for (const [index, cloned] of clones.entries()) {
-            insertSerializedClone(
-                storyService,
-                storyId,
-                sceneId,
-                cloned,
-                target,
-                index === 0 ? derived : undefined,
-            );
-            insertedRoots.push(cloned.block.id);
-        }
+        // One list, one call, one operation: a paste is one gesture, so it is one undo step here
+        // and one effect in a live session rather than a row-by-row run of either.
+        const inserts = clones.flatMap(cloned => flattenSerializedClone(cloned, target));
+        storyService.insertBlocks(storyId, sceneId, inserts, derived);
+        const insertedRoots = clones.map(cloned => cloned.block.id);
         if (insertedRoots[0] && pasteMayTakeFocus()) {
             params.setActiveBlockId(insertedRoots[0]);
             params.setSelectedBlockIds(new Set(insertedRoots));
