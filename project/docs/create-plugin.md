@@ -94,7 +94,7 @@ Manifest 字段：
 | `tests` | `string[]` | 插件向 `app.services.tests` 注册的测试 id（必须以插件 ID 为前缀）。注册未声明的 id 会抛错。**不派生安装权限**：测试只在作者从 Run ▸ Test 里挑中并启动时才跑。 |
 | `locales` | `PluginLocaleContribution[]` | Studio 界面语言包。 |
 | `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，九选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale`。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
-| `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的原生子进程。声明它本身就是权限请求，无需再声明能力。 |
+| `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的子进程。声明它本身就是权限请求，无需再声明能力。字段与两种 kind 的通道差异见下面的 [sidecars](#sidecars随游戏发布的子进程) 一节。 |
 | `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
 | `buildConfig` | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。 |
 
@@ -147,6 +147,66 @@ plugin.install.approve
 ```
 
 文件系统权限的 `path` 是真实路径字符串。授权按 `pluginId@version` 保存；插件版本号改变后需要用户重新授权。
+
+## sidecars（随游戏发布的子进程）
+
+一个 sidecar 是插件塞进作者游戏里、由游戏在玩家机器上启动的子进程。它是插件能声明的最重的东西，
+所以声明本身就是权限请求，不用再写 `permissions`。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | `string` | 以插件 ID 为前缀。 |
+| `kind` | `"executable" \| "node"` | `executable` 是一个真程序；`node` 是一个 `.js`。两者的通道不同，见下。 |
+| `transport` | `"jsonl"` | 逐行 JSON。这是**帧格式**，不是通道；通道由 `kind` 决定。旧拼法 `stdio-jsonl` 一直接受，新插件写 `jsonl`。 |
+| `autostart` | `"onGameStart" \| "onRequest"` | 随窗口启动，还是等第一次调用。 |
+| `startupTimeoutMs` | `number` | 握手超过这个时间就算不可用。 |
+| `shutdownTimeoutMs` | `number` | 从收到停止消息到被强制结束之间的宽限。 |
+| `restart` | `{ maxRetries, backoffMs }` | 异常退出后重试几次、间隔多久。 |
+| `targets` | `Record<平台键, { entry, include, sha256 }>` | 每个平台各自的入口与随附文件。没有二进制的平台直接不写，游戏会把它当作"这台机器上没有这个 sidecar"。 |
+
+### 两种 kind 的通道不一样
+
+帧都是逐行 JSON，`stderr` 都是纯日志通道（想写什么写什么，永远不会被解析）。
+
+**`executable`**：帧走 `stdin` / `stdout`，**`stdin` 关闭表示"立即结束"**。
+
+**`node`**：Electron 以 utility process 启动这个 `.js`，帧走 **`process.parentPort`**，
+**收到 `null` 消息表示"立即结束"**。这是因为 utility process 没有 stdin——那里的 `process.stdin`
+是一个已经结束的流，且是不可配置的 getter，谁都换不掉它。它的 `stdout` 和 `stderr` 都是日志通道。
+
+```js
+// kind: "node" 的最小骨架
+const port = process.parentPort;
+port.on("message", event => {
+    if (event.data === null) { process.exit(0); }          // 输入结束 = 立即结束
+    for (const line of String(event.data).split("\n")) {
+        if (!line.trim()) continue;
+        const frame = JSON.parse(line);
+        if (frame.t === "hello") {
+            port.postMessage(JSON.stringify({ t: "ready", protocol: 1, caps: [] }) + "\n");
+        }
+    }
+});
+```
+
+握手与帧序列（两种 kind 相同）：
+
+```text
+host -> sidecar  {"t":"hello","protocol":1,"pluginId":…,"sidecarId":…,"cwd":…,
+                  "mode":"preview"|"production","game":{"name":…,"version":…}}
+sidecar -> host  {"t":"ready","protocol":1,"caps":[…]}
+host -> sidecar  {"t":"req","id":1,"method":"…","params":…}    // 没有 id 就是通知
+sidecar -> host  {"t":"res","id":1,"result":…}                 // 或 "error":{message,code?}
+sidecar -> host  {"t":"evt","method":"…","params":…}
+host -> sidecar  {"t":"bye"}
+```
+
+两条容易忽略的事实：
+
+- **cwd 是游戏给的每个 sidecar 各自的可写目录**（在玩家的 userData 下），不是 app 目录。app 目录在
+  打包产物里是只读的。
+- **出厂游戏会丢掉 info 级的 sidecar stderr**，只留警告和错误——判据是行首的 `warn` / `error` 之类
+  前缀。preview 全都显示。调试期看不到自己的输出时先看这一条。
 
 ## main.js（studio entry）
 

@@ -87,10 +87,22 @@ export type PluginSidecarTargetContribution = {
 export type PluginSidecarContribution = {
     /** Prefixed with the plugin id, like every other contributed identifier. */
     id: string;
-    /** `executable` spawns the binary directly; `node` runs it under the game's own Electron as Node. */
+    /**
+     * `executable` spawns the binary directly and talks to it over stdin/stdout; `node` runs the
+     * .js as an Electron utility process and talks to it over `process.parentPort`, which is the
+     * one channel a utility process has - it has no stdin.
+     */
     kind: PluginSidecarKind;
-    /** v1 speaks newline-delimited JSON over stdio; stderr stays a plain log channel. */
-    transport: "stdio-jsonl";
+    /**
+     * Newline-delimited JSON, which is the framing and not the channel: where the frames travel is
+     * {@link kind}'s business, and only an executable sidecar's travel over stdio. Either way
+     * stderr stays a plain log channel.
+     *
+     * `stdio-jsonl` is the older spelling of the same thing, from when there was only one channel
+     * it could mean. Manifests that say it keep working and always will - a published plugin is a
+     * file somebody already shipped - but a new one should say `jsonl`.
+     */
+    transport: "jsonl" | "stdio-jsonl";
     /** `onGameStart` spawns with the window; `onRequest` waits for the first call. */
     autostart: "onGameStart" | "onRequest";
     /** How long the handshake may take before the sidecar counts as unavailable. */
