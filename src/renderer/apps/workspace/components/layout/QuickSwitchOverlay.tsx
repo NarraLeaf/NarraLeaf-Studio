@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Circle } from "lucide-react";
-import { compositionHandlers } from "./imeComposition";
+import { compositionHandlers, guardImeKeys } from "@/lib/utils/imeComposition";
 
 /**
  * One row in a {@link QuickSwitchOverlay}. `title`/`trailing` are `ReactNode` so callers can pass
@@ -114,7 +114,7 @@ export function QuickSwitchOverlay({
                             autoCorrect="off"
                             className="h-11 w-full bg-transparent text-sm text-fg placeholder:text-fg-subtle focus:outline-none"
                             onChange={(event) => search.onChange(event.target.value)}
-                            onKeyDown={search.onKeyDown}
+                            onKeyDown={guardImeKeys(search.onKeyDown)}
                             {...compositionHandlers}
                         />
                     </div>

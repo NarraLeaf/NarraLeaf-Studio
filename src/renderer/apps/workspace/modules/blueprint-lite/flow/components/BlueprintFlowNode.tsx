@@ -66,6 +66,7 @@ import {
     resolveBlueprintLabel,
     resolveBlueprintNodeTitle,
 } from "../../blueprintNodeI18n";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -1669,6 +1670,9 @@ function CardNumberInput({
                 }}
                 onBlur={commitDraft}
                 onKeyDown={e => {
+                    if (isImeKeyEvent(e)) {
+                        return;
+                    }
                     if (e.key === "Enter") {
                         e.currentTarget.blur();
                     } else if (e.key === "Escape") {

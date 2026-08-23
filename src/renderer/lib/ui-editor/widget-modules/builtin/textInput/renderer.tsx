@@ -36,6 +36,7 @@ import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/Gam
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { getTextInputProps } from "./helpers";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * `number` constrains the accepted characters only; `type="number"` is deliberately not used because
@@ -209,6 +210,12 @@ export function TextInputRenderer(props: WidgetRendererProps) {
     const handleKeyDown = useCallback(
         (event: KeyboardEvent<HTMLInputElement>) => {
             if (!canRunInteraction || !blueprintRuntime || event.key !== "Enter") {
+                return;
+            }
+            // The Enter that confirms an IME conversion is not the player submitting. Naming the
+            // protagonist is standard fare in a Japanese release, and without this the field would
+            // hand over the unconverted kana the moment the reader confirmed the kanji.
+            if (isImeKeyEvent(event)) {
                 return;
             }
             // No stopPropagation: the widget's own `keyDown` event is dispatched from a window

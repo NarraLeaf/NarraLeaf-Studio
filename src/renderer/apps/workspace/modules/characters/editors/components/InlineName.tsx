@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * A name you edit where it is written.
@@ -87,6 +88,9 @@ export function InlineName(props: {
                 onMouseDown={event => event.stopPropagation()}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "Enter") {
                         event.preventDefault();
                         commit();

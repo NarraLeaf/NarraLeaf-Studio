@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { matchedSourcePreset } from "@/lib/settings/sourceSelection";
 import { SETTING_CONTROL_WIDTH_PX } from "./settingControlWidth";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * Download-source chooser for a `SettingValueType.Source` row: the sources Studio knows the address
@@ -238,6 +239,9 @@ export function SettingSourcePicker({
                     value={draft}
                     onChange={event => setDraft(event.target.value)}
                     onKeyDown={event => {
+                        if (isImeKeyEvent(event)) {
+                            return;
+                        }
                         if (event.key === "Enter") {
                             event.preventDefault();
                             close();

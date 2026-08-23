@@ -12,6 +12,7 @@ import {
     sanitizeFontFamilyName,
 } from "@/lib/settings/editorFontOptions";
 import { loadSystemFontFamilies, type SystemFontFamily, type SystemFontsResult } from "@/lib/settings/systemFonts";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * Font chooser for a `SettingValueType.Font` row: the four presets, then every family installed on
@@ -354,6 +355,9 @@ export function SettingFontPicker({
 
     const onKeyDown = useCallback(
         (event: React.KeyboardEvent) => {
+            if (isImeKeyEvent(event)) {
+                return;
+            }
             switch (event.key) {
                 case "ArrowDown":
                     event.preventDefault();
