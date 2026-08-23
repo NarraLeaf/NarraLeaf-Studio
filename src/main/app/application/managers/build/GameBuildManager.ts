@@ -95,9 +95,10 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY } from "@narraleaf/encryption";
 import { formatBytes } from "@shared/utils/formatBytes";
-import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
+import { GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY, GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { readDistributionKey } from "@shared/utils/distributionKey";
+import { diffPack, PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
 import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
@@ -1078,15 +1079,6 @@ export class GameBuildManager {
     }
 
     /**
-     * Seal the freshly compiled payload into one patch file, carrying only what
-     * the baseline does not already have.
-     *
-     * The pack descriptor always goes in. It is what a new scene arrives in, it is
-     * small next to any asset, and it is rewritten on every compile anyway - so
-     * comparing it would only ever answer "changed" while costing a reader the
-     * doubt about whether it might not have.
-     */
-    /**
      * Say what this patch does to saves players already have.
      *
      * Two counts, never one. They are different events for a player: an action anchor that is gone
@@ -1157,6 +1149,15 @@ export class GameBuildManager {
         }
     }
 
+    /**
+     * Seal the freshly compiled payload into one patch file, carrying only what
+     * the baseline does not already have.
+     *
+     * The game's content - the story, the pages, the translations, the compiled scripts - travels
+     * as the difference from the baseline rather than as a pack of its own, so that two patches
+     * installed on one build both take effect. A baseline that predates that reads a whole pack and
+     * nothing else, and gets one.
+     */
     private async sealPatch(
         session: BuildSession,
         appDir: string,
@@ -1166,6 +1167,14 @@ export class GameBuildManager {
     ): Promise<string> {
         const payload = await openPayload(appDir);
         let baseline: Map<string, string> | null = null;
+        /**
+         * The pack of the build being patched, kept past the reader that produced it.
+         *
+         * It is what the patch states its content changes against, so that installing this patch
+         * beside another one leaves both installed rather than the later file deciding the whole
+         * story, every page and every translation on its own.
+         */
+        let baselinePack: GameRuntimePackV1 | null = null;
         if (request.baselineAppDir) {
             const previous = await openPayload(request.baselineAppDir).catch((error: unknown) => {
                 throw new Error(
@@ -1175,6 +1184,7 @@ export class GameBuildManager {
             });
             try {
                 baseline = await digestPayload(previous);
+                baselinePack = previous.pack;
                 // Before anything is written: what this patch does to saves is the author's to know
                 // while they can still decide not to ship it. A warning, never a refusal - a patch
                 // that breaks saves is sometimes exactly the patch an author means to make, and a
@@ -1189,6 +1199,11 @@ export class GameBuildManager {
                 source: "Build",
                 message: "no previous build to compare against, so nothing was checked about existing saves",
             });
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "this patch replaces the game content whole; what another patch installed beside it changes there is not kept",
+            });
         }
 
         try {
@@ -1197,20 +1212,60 @@ export class GameBuildManager {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
             });
+            // Zero is the default the reader already applies, so it is left unsaid rather than
+            // written out; a negative layer is a patch the author means to sit under the others.
+            const order = Number.isInteger(request.order) ? Math.trunc(request.order as number) : 0;
             const descriptor = {
                 ...(request.name?.trim() ? { name: request.name.trim() } : {}),
-                ...(request.order ? { order: request.order } : {}),
+                ...(order !== 0 ? { order } : {}),
             };
             await writer.add(LAYER_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
+
+            /*
+             * What this patch changes about the game's content, rather than a pack of its own.
+             *
+             * Only for a build that says it composes them. A build made before that reads one name
+             * and one only, so a patch that carried a delta to it would install and change nothing
+             * about the story - which is the failure this whole seam has to avoid. Such a build
+             * gets the whole pack, exactly as it always did.
+             */
+            const composesDeltas = (baselinePack?.addOns?.packDeltaVersion ?? 0) >= PACK_DELTA_VERSION;
+            if (baselinePack && composesDeltas) {
+                const delta = diffPack(baselinePack, payload.pack);
+                await writer.add(
+                    GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY,
+                    Buffer.from(JSON.stringify(delta), "utf-8"),
+                );
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: delta.ops.length > 0
+                        ? `${delta.ops.length} content change(s) carried; other patches installed beside this one keep theirs`
+                        : "no content changes; this patch carries files only",
+                });
+            } else if (baselinePack) {
+                this.emit(session, {
+                    level: "warning",
+                    source: "Build",
+                    message: "the build this patch updates predates layered content, so the patch carries the "
+                        + "game content whole; what another patch changes there is not kept",
+                });
+            }
 
             let carried = 0;
             let skipped = 0;
             let bytes = 0;
             for (const name of payload.names) {
-                if (name === LAYER_DESCRIPTOR_ENTRY) {
-                    // A payload cannot carry this name, but a future one that did
-                    // would collide with the descriptor written above rather than
-                    // being noticed, so it is dropped here instead.
+                if (name === LAYER_DESCRIPTOR_ENTRY || name === GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY) {
+                    // A payload cannot carry either name, but a future one that did
+                    // would collide with what was written above rather than being
+                    // noticed, so both are dropped here instead.
+                    continue;
+                }
+                if (name === GAME_RUNTIME_BUNDLE_PACK_ENTRY && baselinePack && composesDeltas) {
+                    // The delta above says everything this pack would, addressed so that a patch
+                    // beside this one keeps its own changes. Carrying both would hand the reader two
+                    // answers, and the whole one is the answer that erases the other patch.
                     continue;
                 }
                 const data = await payload.read(name);
