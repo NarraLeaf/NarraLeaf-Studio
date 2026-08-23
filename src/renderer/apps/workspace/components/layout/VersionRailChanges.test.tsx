@@ -118,14 +118,14 @@ describe("the rail's change section", () => {
         )!;
         expect(entry).not.toBeNull();
         fireEvent.click(entry);
-        // The label travels with it: the tab's heading has to name the head the same way this panel
-        // does, and left to itself it named it by hash.
-        expect(openTab).toHaveBeenCalledWith(workspace.context, { mode: "working-tree", headLabel: "#36" });
+        // The head's NUMBER travels with it, not a rendered name and never a hash: the tab's
+        // heading has to open on the same `#36` this panel is drawing.
+        expect(openTab).toHaveBeenCalledWith(workspace.context, { mode: "working-tree", headNumber: 36 });
     });
 
-    it("passes no label when the head has no number yet, rather than inventing one", () => {
-        // `getInfo` has not answered. The tab then names the version by its hash, which is honest -
-        // a number made up here would be a version that does not exist.
+    it("passes no number when the head has none yet, rather than inventing one", () => {
+        // `getInfo` has not answered here. The tab asks for the number itself, so passing nothing
+        // costs a frame; passing a number made up here would name a version that does not exist.
         const { container } = section([change("editor/brand.json")], {
             kind: "current",
             head: "a91f3c8d2e4b6",
@@ -137,7 +137,7 @@ describe("the rail's change section", () => {
         )!);
         expect(openTab).toHaveBeenCalledWith(workspace.context, {
             mode: "working-tree",
-            headLabel: undefined,
+            headNumber: undefined,
         });
     });
 
