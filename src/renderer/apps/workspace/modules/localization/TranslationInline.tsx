@@ -21,6 +21,7 @@ import type { TranslationToken } from "@shared/utils/localizationText";
 import { useTranslation } from "@/lib/i18n";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { compositionHandlers, isComposingText, isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { renderRunsToElement, type RichRenderOptions } from "@/apps/workspace/modules/story/scene-editor/richText";
 import {
     caretOffsetIn,
@@ -66,13 +67,19 @@ export function InlineRuns(props: { runs: StoryRichRun[]; className?: string }) 
     return <span ref={rootRef} data-inline-runs className={props.className} />;
 }
 
-/** A translation drawn read-only: tags and all, so the row reads the same open or shut. */
+/**
+ * A translation drawn read-only, without its brackets: the line as the player will read it.
+ *
+ * This is the preview half of the arrangement. The field shows where each range begins and ends
+ * because that is what a translator is moving; the row at rest shows the result, because that is
+ * what the translation is for.
+ */
 function InlineTokens(props: { tokens: TranslationToken[]; sourceRuns: StoryRichRun[]; className?: string }) {
     const options = useRenderOptions();
     const rootRef = useRef<HTMLSpanElement | null>(null);
     useEffect(() => {
         if (rootRef.current) {
-            renderTranslationTokens(rootRef.current, props.tokens, props.sourceRuns, options);
+            renderTranslationTokens(rootRef.current, props.tokens, props.sourceRuns, options, { brackets: false });
         }
     }, [props.tokens, props.sourceRuns, options]);
     return <span ref={rootRef} data-inline-runs className={props.className} />;
@@ -87,9 +94,12 @@ function InlineTokens(props: { tokens: TranslationToken[]; sourceRuns: StoryRich
  * keystroke takes away. It is redrawn only when a tag is placed, and the caret is put back by
  * counting positions, because that edit changes the shape of the line rather than its letters.
  */
+/** A token a palette button places: never text, always one of the line's own tags. */
+type PlaceableToken = Exclude<TranslationToken, { kind: "text" }>;
+
 export type TranslationFieldHandle = {
     /** Place a token at the caret, or wrap the selection when the token is a style. */
-    place: (token: TranslationToken, closing?: TranslationToken) => void;
+    place: (token: PlaceableToken, closing?: PlaceableToken) => void;
     focus: () => void;
 };
 
@@ -117,6 +127,24 @@ function TranslationField(props: {
         const value = printTranslationTokens(translationTokensFromDom(root));
         emitted.current = value;
         props.onChange(value);
+    }, [props]);
+
+    /**
+     * Enter and Escape leave the field - unless an input method is composing, where both belong to
+     * the candidate window: Enter confirms the conversion and Escape cancels it. Taking either one
+     * there ends the line the translator is halfway through writing.
+     */
+    const onFieldKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (isImeKeyEvent(event)) {
+            return;
+        }
+        // The table is not the story: none of the keys that move between rows there mean anything
+        // here, and a translation is one line.
+        event.stopPropagation();
+        if (event.key === "Enter" || event.key === "Escape") {
+            event.preventDefault();
+            props.onDone();
+        }
     }, [props]);
 
     const redraw = useCallback((tokens: TranslationToken[], caret: number) => {
@@ -154,15 +182,25 @@ function TranslationField(props: {
             const start = caretOffsetIn(root, range.startContainer, range.startOffset);
             const end = caretOffsetIn(root, range.endContainer, range.endOffset);
             const tokens = translationTokensFromDom(root);
-            const flat = splitAt(tokens, closing ? [start, end] : [start]);
             if (closing) {
+                // Pressing a style the caret is already inside takes that range off, rather than
+                // opening a second one inside the first. A tag is a thing the translator places, so
+                // the button that places it is the button that picks it back up.
+                const enclosing = enclosingRange(tokens, token.index, start);
+                if (enclosing) {
+                    const without = tokens.filter((_, index) => index !== enclosing.open && index !== enclosing.close);
+                    redraw(without, Math.max(0, start - 1));
+                    return;
+                }
                 // A style wraps what is selected; with nothing selected it opens and closes on the
                 // spot, which is how a translator marks a range before typing into it.
+                const flat = splitAt(tokens, [start, end]);
                 flat.splice(indexAt(flat, end), 0, closing);
                 flat.splice(indexAt(flat, start), 0, token);
                 redraw(flat, end + 2);
                 return;
             }
+            const flat = splitAt(tokens, [start]);
             flat.splice(indexAt(flat, start), 0, token);
             redraw(flat, start + 1);
         },
@@ -183,9 +221,13 @@ function TranslationField(props: {
                     emit();
                 }
             }}
-            onCompositionStart={() => { composing.current = true; }}
+            onCompositionStart={() => {
+                composing.current = true;
+                compositionHandlers.onCompositionStart();
+            }}
             onCompositionEnd={() => {
                 composing.current = false;
+                compositionHandlers.onCompositionEnd();
                 emit();
             }}
             onPaste={event => {
@@ -195,18 +237,47 @@ function TranslationField(props: {
                 const text = event.clipboardData.getData("text/plain").replace(/\r?\n/g, " ");
                 globalThis.document.execCommand("insertText", false, text);
             }}
-            onKeyDown={event => {
-                // The table is not the story: none of the keys that move between rows there mean
-                // anything here, and a translation is one line.
-                event.stopPropagation();
-                if (event.key === "Enter" || event.key === "Escape") {
-                    event.preventDefault();
+            onKeyDown={onFieldKeyDown}
+            onBlur={() => {
+                // Composing on macOS opens a real native window, and the web contents fire `blur` on
+                // the field while it does. Closing the row there would take the input out from under
+                // the input method halfway through a word.
+                if (!isComposingText()) {
                     props.onDone();
                 }
             }}
-            onBlur={props.onDone}
         />
     );
+}
+
+/**
+ * The open/close pair of style `index` that `offset` falls inside, or null.
+ *
+ * An unclosed range counts as reaching the end of the line, which is what it does when the line is
+ * rendered - so pressing its button takes it off from anywhere after it.
+ */
+function enclosingRange(
+    tokens: readonly TranslationToken[],
+    index: number,
+    offset: number,
+): { open: number; close: number } | null {
+    let position = 0;
+    let openAt: number | null = null;
+    let openOffset = 0;
+    for (let i = 0; i < tokens.length; i += 1) {
+        const token = tokens[i];
+        if (token.kind === "open" && token.index === index) {
+            openAt = i;
+            openOffset = position;
+        } else if (token.kind === "close" && token.index === index && openAt !== null) {
+            if (offset > openOffset && offset <= position) {
+                return { open: openAt, close: i };
+            }
+            openAt = null;
+        }
+        position += token.kind === "text" ? token.text.length : 1;
+    }
+    return openAt !== null && offset > openOffset ? { open: openAt, close: -1 } : null;
 }
 
 /** Split text tokens so that every offset in `points` falls on a token boundary. */
@@ -260,7 +331,7 @@ function indexAt(tokens: readonly TranslationToken[], target: number): number {
 function TagPalette(props: {
     sourceRuns: StoryRichRun[];
     placed: ReadonlySet<string>;
-    onPlace: (token: TranslationToken, closing?: TranslationToken) => void;
+    onPlace: (token: PlaceableToken, closing?: PlaceableToken) => void;
 }) {
     const { t } = useTranslation();
     const entries: { key: string; label: ReactNode; tip: string; place: () => void }[] = [];
