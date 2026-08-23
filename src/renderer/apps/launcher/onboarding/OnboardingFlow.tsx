@@ -109,8 +109,8 @@ export interface OnboardingFlowProps {
  *
  * **Deliberately not a gate.** Skipping is on every screen that asks something, and the last
  * screen's button is the same exit - so a screen that somehow fails to render costs one press per
- * launch rather than making the app unusable. Nothing here gates anything either, which is why the
- * rail can be clicked (the project wizard's cannot: its pages genuinely depend on each other).
+ * launch rather than making the app unusable. Skipping leaves setup, though; it is not a way to step
+ * over one question, and the rail is a map of what is coming rather than a set of shortcuts into it.
  *
  * **It degrades to one column.** `ui.zoomPercent` is answered inside this window, and at the top of
  * the range there is no longer room for two panes - so the preview and then the rail withdraw at
@@ -145,45 +145,62 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                 <OnboardingServersProvider>
                     <div className="flex h-full min-h-0 flex-col">
                         <div className="flex min-h-0 flex-1">
-                            <nav
+                            {/* What setup will ask, in the order it asks - a map, not a control.
+                                The entries are not buttons: jumping ahead from here would land on a
+                                screen without the Back button having anything to go back to, and it
+                                would let the run be walked out of order for no gain, since every
+                                screen is one question and none of them takes long. Forward is the
+                                footer's job, on the one screen that is in front of the reader. */}
+                            <div
                                 aria-label={t("onboarding.windowTitle", { name: APP_DISPLAY_NAME })}
                                 className="hidden w-32 shrink-0 flex-col border-r border-edge py-4 min-[600px]:flex"
                             >
-                                {STEPS.map((entry, entryIndex) => {
-                                    const done = entryIndex < index;
-                                    const active = entryIndex === index;
-                                    return (
-                                        <button
-                                            key={entry}
-                                            type="button"
-                                            aria-current={active ? "step" : undefined}
-                                            onClick={() => setIndex(entryIndex)}
-                                            className={cn(
-                                                "nl-focus-ring flex items-center gap-1.5 border-l-2 py-1.5 pl-3 pr-2 text-left text-xs transition-colors duration-150",
-                                                active ? "border-primary text-fg" : "border-transparent hover:bg-fill",
-                                                !active && (done ? "text-fg-muted" : "text-fg-subtle"),
-                                            )}
-                                        >
-                                            {done ? <Check className="h-3 w-3 shrink-0" /> : null}
-                                            <span className="truncate">{t(SCREENS[entry].rail)}</span>
-                                        </button>
-                                    );
-                                })}
-                            </nav>
+                                <ol className="min-h-0 flex-1">
+                                    {STEPS.map((entry, entryIndex) => {
+                                        const done = entryIndex < index;
+                                        const active = entryIndex === index;
+                                        return (
+                                            <li
+                                                key={entry}
+                                                aria-current={active ? "step" : undefined}
+                                                className={cn(
+                                                    "flex items-center gap-1.5 border-l-2 py-1.5 pl-3 pr-2 text-xs",
+                                                    active ? "border-primary text-fg" : "border-transparent",
+                                                    !active && (done ? "text-fg-muted" : "text-fg-subtle"),
+                                                )}
+                                            >
+                                                {done ? <Check className="h-3 w-3 shrink-0" /> : null}
+                                                <span className="truncate">{t(SCREENS[entry].rail)}</span>
+                                            </li>
+                                        );
+                                    })}
+                                </ol>
 
-                            <div className="flex min-w-0 flex-1 flex-col overflow-y-auto px-7 py-6">
-                                {/* How far in, above every screen's heading. It replaced the
-                                    product's own mark and the line beside it: this is the first
-                                    window anyone sees, the title bar already names the product, and
-                                    what a seven-screen flow owes the reader is how much of it is
-                                    left. The ring says it at a glance, the count exactly. */}
-                                <div className="flex items-center gap-2">
-                                    <ProgressCircle value={index + 1} max={STEPS.length} size={20} strokeWidth={2.5} />
+                                {/* How far in, under the list it is measuring - the ring says it at
+                                    a glance, the count exactly. It sat above each screen's heading
+                                    until it was pointed out that the thing it counts is right here:
+                                    beside the list of steps it reads as a position in that list,
+                                    while above the heading it read as a label on the question. */}
+                                <div className="mt-4 flex items-center gap-1.5 border-l-2 border-transparent pl-3 pr-2">
+                                    {/* Sized and spaced as the ticks above it, and sitting in their
+                                        column: it is one more mark against one more line of the
+                                        list, so anything larger would read as a heading over the
+                                        list rather than the last entry of it. */}
+                                    <ProgressCircle
+                                        value={index + 1}
+                                        max={STEPS.length}
+                                        size={12}
+                                        strokeWidth={2}
+                                        className="shrink-0"
+                                    />
                                     <span className="truncate text-xs tabular-nums text-fg-subtle">
                                         {t("onboarding.progress", { current: index + 1, total: STEPS.length })}
                                     </span>
                                 </div>
-                                <h1 className="mt-5 text-2xl font-semibold text-fg">{t(screen.title)}</h1>
+                            </div>
+
+                            <div className="flex min-w-0 flex-1 flex-col overflow-y-auto px-7 py-6">
+                                <h1 className="text-2xl font-semibold text-fg">{t(screen.title)}</h1>
                                 <p className="mt-1.5 text-sm text-fg-muted">{t(screen.expectation)}</p>
                                 <div className="mt-6">
                                     {step === "language" && <LanguageStep />}

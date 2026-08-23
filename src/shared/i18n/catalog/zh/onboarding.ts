@@ -9,7 +9,7 @@ import type { LocaleNamespace } from "../types";
  */
 export const onboarding = {
     windowTitle: "欢迎使用 {name}",
-    progress: "{current} / {total}",
+    progress: "进度 {current}/{total}",
     steps: {
         language: "语言",
         appearance: "外观",
