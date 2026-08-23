@@ -136,8 +136,18 @@ function apply(scenes: Record<StorySceneId, StoryScene>, story: World["story"], 
                 updateBlockPayload(scenes[edit.sceneId], edit.blockId, edit.payload);
             }
             return;
+        case "insert-blocks":
+            for (const insert of op.inserts) {
+                insertBlockInScene(scenes[op.sceneId], structuredClone(insert.block), insert.target);
+            }
+            return;
         case "delete-block":
             deleteBlockFromScene(scenes[op.sceneId], op.blockId);
+            return;
+        case "delete-blocks":
+            for (const blockId of op.blockIds) {
+                deleteBlockFromScene(scenes[op.sceneId], blockId);
+            }
             return;
         case "move-block":
             moveBlockInScene(scenes[op.sceneId], op.blockId, op.target);
@@ -434,6 +444,97 @@ describe("a batch, which is one gesture", () => {
         expect(effect.seq).toBe(1);
         expect(world.applied).toHaveLength(1);
         expect(order(world.scenes.s1)).toEqual(["c", "d", "a", "b"]);
+    });
+
+    it("pastes a whole tree as one operation, resolving only the anchors that face the document", () => {
+        // A paste is one gesture. The rows inside the container it creates name that container as
+        // their parent - a place this very operation is making - so there is nothing in the document
+        // to resolve them against and nothing to check; only the container's own anchor faces the
+        // scene, and that one resolves exactly as a single insert's does.
+        const world = makeWorld({
+            scenes: [makeScene("s1", [{ block: note("a") }, { block: note("z") }])],
+        });
+
+        const effect = asEffect(send(world, {
+            op: "insert-blocks",
+            sceneId: "s1",
+            inserts: [
+                { block: group("g2"), target: { parentId: null, beforeBlockId: "z" } },
+                { block: note("k1"), target: { parentId: "g2" } },
+            ],
+        }));
+
+        expect(effect.seq).toBe(1);
+        expect(world.applied).toHaveLength(1);
+        // Flattened depth first, so the row inside the container follows it.
+        expect(order(world.scenes.s1)).toEqual(["a", "g2", "k1", "z"]);
+        expect(order(world.scenes.s1, "g2")).toEqual(["k1"]);
+    });
+
+    it("lands a paste where a deleted anchor used to be, as a single insert does", () => {
+        const world = makeWorld({
+            scenes: [makeScene("s1", [{ block: note("a") }, { block: note("b") }, { block: note("z") }])],
+        });
+        send(world, { op: "delete-block", sceneId: "s1", blockId: "b" });
+
+        const effect = asEffect(send(world, {
+            op: "insert-blocks",
+            sceneId: "s1",
+            inserts: [{ block: note("p1"), target: { parentId: null, beforeBlockId: "b" } }],
+        }));
+
+        // The effect carries the target that was used, never the one that was asked for.
+        expect(effect.op).toMatchObject({ op: "insert-blocks" });
+        expect(order(world.scenes.s1)).toEqual(["a", "p1", "z"]);
+    });
+
+    it("refuses a whole delete batch when one row of it is claimed", () => {
+        // Deleting a selection is one gesture, so it is refused whole. Letting the unheld rows go
+        // would leave the author with a selection half deleted and one line they were told nothing
+        // about still sitting in it.
+        const world = makeWorld({ claims: { b: "guest-2" } });
+
+        const refusal = asRefusal(send(world, {
+            op: "delete-blocks",
+            sceneId: "s1",
+            blockIds: ["a", "b"],
+        }, "guest-1"));
+
+        expect(refusal.reason).toBe("row-claimed");
+        expect(refusal.heldBy).toBe("guest-2");
+        expect(world.applied).toHaveLength(0);
+        expect(world.scenes.s1.blocks.a).toBeDefined();
+    });
+
+    it("deletes a container and the rows inside it in one operation", () => {
+        // ⚠ A row named after its own container is not missing. The container takes its children
+        // with it, so by the time the child's turn comes it is already gone - and refusing there
+        // would make a paste of a subtree impossible to take back.
+        const world = makeWorld({
+            scenes: [makeScene("s1", [
+                { block: group("g2") },
+                { block: note("k1"), parentId: "g2" },
+                { block: note("z") },
+            ])],
+        });
+
+        const effect = asEffect(send(world, { op: "delete-blocks", sceneId: "s1", blockIds: ["g2", "k1"] }));
+
+        expect(effect.seq).toBe(1);
+        expect(order(world.scenes.s1)).toEqual(["z"]);
+    });
+
+    it("refuses a delete batch naming a row nobody ever had", () => {
+        const world = makeWorld({});
+
+        const refusal = asRefusal(send(world, {
+            op: "delete-blocks",
+            sceneId: "s1",
+            blockIds: ["a", "never-here"],
+        }));
+
+        expect(refusal.reason).toBe("row-gone");
+        expect(world.applied).toHaveLength(0);
     });
 
     it("refuses the whole of a batch when one row of it is claimed, and writes none of it", () => {

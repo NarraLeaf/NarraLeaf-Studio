@@ -81,7 +81,7 @@ import {
     tallyStoryRows,
     type StoryRowFilter,
 } from "./storyRowFilter";
-import { cloneSerializedBlock, insertSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
+import { cloneSerializedBlock, flattenSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
 import { collectSubtreeBlocks } from "./storyForeignPaste";
 import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
 import { carryVoiceWithinProject } from "./storyVoiceTransfer";
@@ -2767,7 +2767,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Which row to land on, computed against the tree *before* it changes.
         const focusTargetId = nextSelectionAfterDelete(scene, visibleRows, roots);
         recordHistory();
-        roots.forEach(id => storyService.deleteBlock(storyId, sceneId, id));
+        // One operation for the whole selection. A run of single deletes draws every intermediate
+        // document on everybody else's screen, and leaves the author walking back through the rows
+        // one press at a time.
+        storyService.deleteBlocks(storyId, sceneId, roots);
         setEditorMode({ kind: "idle" });
         if (focusTargetId) {
             // Select it (not edit it): a delete is a row operation, so staying in row-selection keeps
@@ -3039,17 +3042,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const anchorId = orderedRoots[orderedRoots.length - 1] ?? roots[roots.length - 1];
         recordHistory();
         const target = getInsertionTargetAfter(scene, anchorId);
-        const insertedIds: StoryBlockId[] = [];
         // Duplicating mints fresh textIds exactly as a paste does, so the copies would arrive
         // untranslated and unvoiced unless the units follow them. Collected before the clone, because
         // the source ids are what the project's languages and voice libraries are keyed by.
         const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
         const textIdMap = new Map<string, string>();
-        for (const rootId of orderedRoots) {
-            const cloned = cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate(), textIdMap);
-            insertSerializedClone(storyService, storyId, sceneId, cloned, target);
-            insertedIds.push(cloned.block.id);
-        }
+        const clones = orderedRoots.map(rootId =>
+            cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate(), textIdMap));
+        // One operation for the whole gesture, as the paste is: duplicating five rows is one act and
+        // takes one press to undo.
+        storyService.insertBlocks(storyId, sceneId, clones.flatMap(cloned => flattenSerializedClone(cloned, target)));
+        const insertedIds: StoryBlockId[] = clones.map(cloned => cloned.block.id);
         if (insertedIds[0]) {
             setActiveBlockId(insertedIds[0]);
             setSelectedBlockIds(new Set(insertedIds));

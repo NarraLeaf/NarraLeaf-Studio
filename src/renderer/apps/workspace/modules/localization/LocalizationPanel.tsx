@@ -176,7 +176,12 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                         });
                     }
                     for (const row of localizationService.extractRows(document)) {
-                        collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.sceneName });
+                        collected.push({
+                            unitId: row.unitId,
+                            sourceText: row.sourceText,
+                            ...(row.sourceMarkup ? { sourceMarkup: row.sourceMarkup } : {}),
+                            context: row.sceneName,
+                        });
                     }
                 } catch {
                     // A broken story must not take the panel down.

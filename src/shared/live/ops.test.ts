@@ -96,8 +96,9 @@ describe("the operation vocabulary", () => {
         // The line between the two is what a loser loses. Editing, deleting or disabling a row while
         // its author is mid-paragraph takes the paragraph; renaming a scene under somebody takes a
         // word. The first is worth the ceremony of a claim and the second is not.
-        expect([...CLAIMED_OPS].sort()).toEqual(["delete-block", "set-block-disabled", "update-block", "update-blocks"]);
-        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block"] as const) {
+        expect([...CLAIMED_OPS].sort())
+            .toEqual(["delete-block", "delete-blocks", "set-block-disabled", "update-block", "update-blocks"]);
+        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
     });
@@ -108,6 +109,30 @@ describe("the operation vocabulary", () => {
         // word of them and is not - exactly as their single-row counterparts.
         expect(CLAIMED_OPS.has("update-blocks")).toBe(CLAIMED_OPS.has("update-block"));
         expect(CLAIMED_OPS.has("move-blocks")).toBe(CLAIMED_OPS.has("move-block"));
+        expect(CLAIMED_OPS.has("delete-blocks")).toBe(CLAIMED_OPS.has("delete-block"));
+        expect(CLAIMED_OPS.has("insert-blocks")).toBe(CLAIMED_OPS.has("insert-block"));
+    });
+
+    it("names every row of a batch, so one held row refuses the whole gesture", () => {
+        // The question a claim check asks is a set for a batch, and `opBlockId` cannot answer it:
+        // a batch that named one of its rows there would have that row checked and the rest let
+        // through, which is the half-applied gesture batching exists to prevent.
+        const inserts: LiveOp = {
+            op: "insert-blocks",
+            sceneId: "s1",
+            inserts: [
+                { block: { ...BLOCK, id: "block-1" }, target: { parentId: null } },
+                { block: { ...BLOCK, id: "block-2" }, target: { parentId: "block-1" } },
+            ],
+        };
+        const deletes: LiveOp = { op: "delete-blocks", sceneId: "s1", blockIds: ["block-1", "block-2"] };
+        expect(opBlockIds(inserts)).toEqual(["block-1", "block-2"]);
+        expect(opBlockIds(deletes)).toEqual(["block-1", "block-2"]);
+        expect(opBlockId(inserts)).toBeNull();
+        expect(opBlockId(deletes)).toBeNull();
+        // Both are about one scene, so both keep the digest that guards against two copies drifting.
+        expect(opSceneId(inserts)).toBe("s1");
+        expect(opSceneId(deletes)).toBe("s1");
     });
 
     it("claims by row rather than by field, so a claimed row is claimed whole", () => {
