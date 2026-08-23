@@ -1,0 +1,161 @@
+{
+  "keys": {
+    "config.autoForwardDelay": {
+      "sourceText": "自動送りの待ち時間"
+    },
+    "config.bgm": {
+      "sourceText": "BGM"
+    },
+    "config.categorySound": {
+      "sourceText": "サウンド"
+    },
+    "config.categoryText": {
+      "sourceText": "テキスト"
+    },
+    "config.fullscreen": {
+      "sourceText": "フルスクリーン"
+    },
+    "config.fullscreenOff": {
+      "sourceText": "オフ"
+    },
+    "config.fullscreenOn": {
+      "sourceText": "オン"
+    },
+    "config.masterVolume": {
+      "sourceText": "全体音量"
+    },
+    "config.secondsSuffix": {
+      "sourceText": "秒"
+    },
+    "config.skip": {
+      "sourceText": "スキップ"
+    },
+    "config.skipAllText": {
+      "sourceText": "すべて"
+    },
+    "config.skipDelay": {
+      "sourceText": "スキップ待ち時間"
+    },
+    "config.skipReadOnly": {
+      "sourceText": "既読のみ"
+    },
+    "config.soundEffects": {
+      "sourceText": "効果音"
+    },
+    "config.textSpeed": {
+      "sourceText": "文字表示速度"
+    },
+    "config.title": {
+      "sourceText": "設定"
+    },
+    "config.voice": {
+      "sourceText": "ボイス"
+    },
+    "confirm.cancel": {
+      "sourceText": "キャンセル"
+    },
+    "confirm.deleteSave": {
+      "sourceText": "このセーブデータを削除しますか？元に戻せません。"
+    },
+    "confirm.deleteSaveAnswer": {
+      "sourceText": "削除"
+    },
+    "confirm.historyBack": {
+      "sourceText": "この行まで戻りますか？それ以降は取り消されます。"
+    },
+    "confirm.historyBackAnswer": {
+      "sourceText": "戻る"
+    },
+    "confirm.load": {
+      "sourceText": "このセーブデータをロードしますか？セーブしていない進行状況は失われます。"
+    },
+    "confirm.loadAnswer": {
+      "sourceText": "ロード"
+    },
+    "confirm.loadAuto": {
+      "sourceText": "このオートセーブをロードしますか？いま進めているゲームは失われます。"
+    },
+    "confirm.overwrite": {
+      "sourceText": "このスロットにはすでにセーブデータがあります。上書きしますか？"
+    },
+    "confirm.overwriteAnswer": {
+      "sourceText": "上書き"
+    },
+    "confirm.quit": {
+      "sourceText": "ゲームを終了しますか？"
+    },
+    "confirm.quitAnswer": {
+      "sourceText": "終了"
+    },
+    "confirm.toTitle": {
+      "sourceText": "タイトル画面に戻りますか？セーブしていない進行状況は失われます。"
+    },
+    "confirm.toTitleAnswer": {
+      "sourceText": "タイトルへ"
+    },
+    "load.autoSaves": {
+      "sourceText": "オートセーブ"
+    },
+    "load.title": {
+      "sourceText": "ロード"
+    },
+    "log.title": {
+      "sourceText": "ログ"
+    },
+    "menu.continue": {
+      "sourceText": "つづきから"
+    },
+    "menu.load": {
+      "sourceText": "ロード"
+    },
+    "menu.quit": {
+      "sourceText": "終了"
+    },
+    "menu.save": {
+      "sourceText": "セーブ"
+    },
+    "menu.scenes": {
+      "sourceText": "シーン"
+    },
+    "menu.settings": {
+      "sourceText": "設定"
+    },
+    "menu.start": {
+      "sourceText": "はじめから"
+    },
+    "nav.back": {
+      "sourceText": "戻る"
+    },
+    "nav.config": {
+      "sourceText": "設定"
+    },
+    "nav.load": {
+      "sourceText": "ロード"
+    },
+    "nav.save": {
+      "sourceText": "セーブ"
+    },
+    "nav.title": {
+      "sourceText": "タイトル"
+    },
+    "save.title": {
+      "sourceText": "セーブ"
+    },
+    "scenes.sceneClubroom": {
+      "sourceText": "部室"
+    },
+    "scenes.sceneCorridor": {
+      "sourceText": "廊下"
+    },
+    "scenes.sceneLastLight": {
+      "sourceText": "最後の光"
+    },
+    "scenes.title": {
+      "sourceText": "シーン"
+    },
+    "slot.empty": {
+      "sourceText": "データなし"
+    }
+  },
+  "schemaVersion": 1
+}

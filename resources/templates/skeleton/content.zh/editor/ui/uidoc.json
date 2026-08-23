@@ -682,7 +682,7 @@
           "layout": {
             "x": 0,
             "y": 0,
-            "width": 80,
+            "width": 96,
             "height": 40,
             "visible": true,
             "opacity": 1
@@ -708,7 +708,7 @@
           "layout": {
             "x": 0,
             "y": 0,
-            "width": 80,
+            "width": 96,
             "height": 40,
             "visible": true,
             "opacity": 1
@@ -739,7 +739,7 @@
         }
       },
       "previewMeta": {
-        "width": 80,
+        "width": 96,
         "height": 40
       },
       "createdAt": "2026-08-07T04:10:39.278Z",
@@ -28561,7 +28561,7 @@
       "layout": {
         "x": 1540,
         "y": 265,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -48458,9 +48458,9 @@
         "d334eb23-3689-48c2-88a9-f8ece0768d34"
       ],
       "layout": {
-        "x": 1294,
+        "x": 1182,
         "y": 668,
-        "width": 596,
+        "width": 708,
         "height": 44,
         "visible": true,
         "opacity": 1
@@ -48831,7 +48831,7 @@
       "layout": {
         "x": 0,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -48948,9 +48948,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 86,
+        "x": 102,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -49067,9 +49067,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 172,
+        "x": 204,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -49105,9 +49105,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 258,
+        "x": 306,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -49143,9 +49143,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 344,
+        "x": 408,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -49181,9 +49181,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 430,
+        "x": 510,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -76042,9 +76042,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 516,
+        "x": 612,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
