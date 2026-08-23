@@ -11,6 +11,7 @@ export const onboarding = {
     windowTitle: "欢迎使用 {name}",
     progress: "进度 {current}/{total}",
     steps: {
+        welcome: "欢迎",
         language: "语言",
         appearance: "外观",
         zoom: "缩放",
@@ -19,8 +20,8 @@ export const onboarding = {
         story: "故事编辑器",
         done: "完成",
     },
-    intro: {
-        greeting: "欢迎使用",
+    welcome: {
+        title: "欢迎",
         expectation: "接下来是几个关于 Studio 长什么样、怎么写字的问题。这些之后都能在设置里改。",
         haveSettings: "已经在别的机器上用过 Studio？",
     },
@@ -70,7 +71,6 @@ export const onboarding = {
     },
     nav: {
         skip: "跳过设置",
-        begin: "开始设置",
         finish: "打开 Studio",
     },
     sample: {

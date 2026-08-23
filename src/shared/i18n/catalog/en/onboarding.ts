@@ -39,6 +39,7 @@ export const onboarding = {
      * flows in this product do not disagree about where "where am I" is written.
      */
     steps: {
+        welcome: "Welcome",
         language: "Language",
         appearance: "Appearance",
         zoom: "Zoom",
@@ -48,16 +49,16 @@ export const onboarding = {
         done: "Done",
     },
     /**
-     * The cover, before the first question.
+     * The screen setup opens on.
      *
-     * The greeting sits above the product name rather than around it: "Welcome to X", "欢迎使用 X"
-     * and "X へようこそ" disagree about which side the name goes on, so a single sentence with
-     * `{name}` in it can only be accented correctly in the language it was written for.
+     * A heading like every other screen's - one word, the thing the screen is - rather than the
+     * product name across a title card. The title bar already names the product, and it names it
+     * two lines above where a heading would repeat it.
      */
-    intro: {
-        greeting: "Welcome to",
+    welcome: {
+        title: "Welcome",
         expectation: "A few questions about how Studio looks and how it writes. Every one of them is in Settings afterwards.",
-        /** Above the import button: who the button is for, since most first runs are not. */
+        /** Above the import row: who the row is for, since most first runs are not. */
         haveSettings: "Already using Studio on another computer?",
     },
     language: {
@@ -130,8 +131,6 @@ export const onboarding = {
     },
     nav: {
         skip: "Skip setup",
-        /** The cover's primary button. "Next" on a cover names nothing to be next to. */
-        begin: "Start setup",
         finish: "Open Studio",
     },
     /**
