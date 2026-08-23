@@ -252,7 +252,7 @@ export function TextRenderer({
             p.textOrientation,
             p.tateChuYoko ? p.tateChuYokoMaxLength : 0,
             editorFontFamily ?? "",
-        ].join(" "),
+        ].join("\u0000"),
     });
 
     const textBodyStyle: CSSProperties = {
