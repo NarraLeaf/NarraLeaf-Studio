@@ -4,7 +4,10 @@ import {
     formatStoryBezierEasing,
     isStoryBezierEasing,
     parseStoryEasing,
+    matchStoryBezierPreset,
+    parseStoryBezierInput,
     storyBezierPoints,
+    STORY_BEZIER_PRESETS,
     STORY_DEFAULT_BEZIER_EASING,
 } from "./storyEasing";
 
@@ -58,5 +61,30 @@ describe("storyEasing", () => {
         expect(clampStoryBezierPoints([-1, -4, 2, 4])).toEqual([0, -0.5, 1, 1.5]);
         expect(clampStoryBezierPoints([0.3, 1.2, 0.7, -0.2])).toEqual([0.3, 1.2, 0.7, -0.2]);
         expect(clampStoryBezierPoints([Number.NaN, Number.NaN, Number.NaN, Number.NaN])).toEqual([0, -0.5, 0, -0.5]);
+    });
+
+    it("names the preset a curve is, and only while it is that one", () => {
+        // The four preset buttons light up by this: a curve that IS an ease-out has to read as one,
+        // or the toolbar tells the author their curve is a shape of their own when it is not.
+        for (const preset of STORY_BEZIER_PRESETS) {
+            expect(matchStoryBezierPreset(preset.points)).toBe(preset.id);
+        }
+        // Rounding to two decimals is what the stored value does, so a preset must survive it.
+        expect(matchStoryBezierPreset([0.42, 0, 0.58, 1])).toBe("easeInOut");
+        expect(matchStoryBezierPreset([0.42, 0, 0.6, 0.83])).toBeNull();
+        expect(matchStoryBezierPreset([0.4, 0, 0.58, 1])).toBeNull();
+        expect(matchStoryBezierPreset([0.42, 0])).toBeNull();
+    });
+
+    it("takes a curve typed or pasted in whatever spelling it arrives in", () => {
+        // What a browser's dev tools, a CSS file and a design tool each hand over.
+        expect(parseStoryBezierInput("cubic-bezier(0.42, 0, 0.58, 1)")).toEqual([0.42, 0, 0.58, 1]);
+        expect(parseStoryBezierInput("CUBIC-BEZIER(.25,.1,.25,1)")).toEqual([0.25, 0.1, 0.25, 1]);
+        expect(parseStoryBezierInput("  0.5 -0.25 0.5 1.25  ")).toEqual([0.5, -0.25, 0.5, 1.25]);
+        // Not a curve: the field keeps what it had rather than emptying the graph out.
+        expect(parseStoryBezierInput("cubic-bezier(0.42, 0, 0.58)")).toBeNull();
+        expect(parseStoryBezierInput("0.1,0.2,0.3,x")).toBeNull();
+        expect(parseStoryBezierInput("easeInOut")).toBeNull();
+        expect(parseStoryBezierInput("")).toBeNull();
     });
 });

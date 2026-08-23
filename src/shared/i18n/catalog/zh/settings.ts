@@ -265,6 +265,10 @@ export const settings = {
             label: "退出时记录检查点的时限",
             description: "退出时为所有打开的项目记录检查点，超出该时限的项目不记录；填 0 则退出时不记录",
         },
+        projectDefaultAuthor: {
+            label: "新建工程的默认作者",
+            description: "创建工程时预填作者一栏，已有工程保持原样",
+        },
         versionControlAuthor: {
             label: "作者名",
             description: "在未连接服务器的项目上记录，留空则记为 NarraLeaf Studio",

@@ -110,6 +110,12 @@ export const storyInspector = {
         anticipate: "预备",
         custom: "自定义曲线",
     },
+    curve: {
+        startHandle: "起始控制柄",
+        endHandle: "结束控制柄",
+        reset: "重置曲线",
+        value: "曲线数值",
+    },
     transition: {
         dissolve: "溶解",
         blurDissolve: "模糊溶解",

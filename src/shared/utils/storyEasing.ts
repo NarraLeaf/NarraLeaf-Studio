@@ -86,3 +86,59 @@ function clamp(value: number, min: number, max: number): number {
 function roundBezierPoint(value: number): number {
     return Math.round(value * 100) / 100;
 }
+
+/** The named shape a preset button stands for. */
+export type StoryBezierPresetId = "linear" | "easeIn" | "easeOut" | "easeInOut";
+
+export type StoryBezierPreset = {
+    readonly id: StoryBezierPresetId;
+    readonly points: StoryBezierPoints;
+};
+
+/**
+ * The four shapes the curve editor offers as one click each, in the CSS spelling of them.
+ *
+ * They are the same four curves the easing word list already names, which is the point: a curve
+ * editor that opens on a hand-drawn shape gives an author no way back to a plain ease-in, and
+ * leaving the editor to pick the word instead would throw away the curve they came to adjust. The
+ * numbers are the CSS keyword definitions (`ease-in` is `cubic-bezier(0.42,0,1,1)`), so a preset
+ * and the word that names it are the same motion.
+ */
+export const STORY_BEZIER_PRESETS: readonly StoryBezierPreset[] = [
+    { id: "linear", points: [0, 0, 1, 1] },
+    { id: "easeIn", points: [0.42, 0, 1, 1] },
+    { id: "easeOut", points: [0, 0, 0.58, 1] },
+    { id: "easeInOut", points: [0.42, 0, 0.58, 1] },
+];
+
+/**
+ * Which preset this curve is, or `null` when it is a shape of the author's own.
+ *
+ * Compared with a tolerance rather than exactly, because the stored numbers are rounded to two
+ * decimals on the way out and a handle dragged onto a preset's position lands on it to within less
+ * than that. Half of the rounding step is the widest tolerance that still cannot claim one preset
+ * while the author is looking at another - the closest two differ by 0.42 in x.
+ */
+export function matchStoryBezierPreset(points: readonly number[]): StoryBezierPresetId | null {
+    const preset = STORY_BEZIER_PRESETS.find(candidate =>
+        candidate.points.every((value, index) => Math.abs(value - (points[index] ?? Number.NaN)) <= 0.005));
+    return preset ? preset.id : null;
+}
+
+/**
+ * A curve typed or pasted into the editor's value field, or `null` when it says no curve.
+ *
+ * Deliberately looser than {@link parseStoryEasing}, which reads what Studio stores: this reads what
+ * a person has in the clipboard. A curve arrives from a browser's dev tools, a CSS file or a design
+ * tool's export, so `cubic-bezier(.25, .1, .25, 1)` and a bare `.25 .1 .25 1` both have to land -
+ * anything else makes the author retype numbers they are holding.
+ */
+export function parseStoryBezierInput(text: string): StoryBezierPoints | null {
+    const inner = text.trim().replace(/^cubic-bezier\s*\(/i, "").replace(/\)$/, "");
+    const parts = inner.split(/[\s,]+/).filter(part => part !== "");
+    if (parts.length !== 4) {
+        return null;
+    }
+    const points = parts.map(Number);
+    return points.every(point => Number.isFinite(point)) ? points as StoryBezierPoints : null;
+}
