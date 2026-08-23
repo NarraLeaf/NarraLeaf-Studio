@@ -447,7 +447,6 @@ function createSidecarHost(pack: GameRuntimePackV1): SidecarHost {
     return new SidecarHost(collectPackSidecars(pack), {
         appDir,
         userDataDir,
-        execPath: process.execPath,
         mode: pack.mode,
         game: { name: pack.project.name, version: pack.project.version ?? null },
         log: (level, message) => {

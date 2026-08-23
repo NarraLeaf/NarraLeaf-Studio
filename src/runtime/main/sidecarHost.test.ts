@@ -128,20 +128,25 @@ function createHost(
     const children: FakeChild[] = [];
     const logs: Array<{ level: SidecarLogLevel; message: string }> = [];
     const sent: GameRuntimeSidecarMessage[] = [];
-    const spawned: Array<{ command: string; args: readonly string[]; cwd: string; env: Record<string, string | undefined> }> = [];
+    const spawned: Array<{
+        command: string;
+        args: readonly string[];
+        cwd: string;
+        env: Record<string, string | undefined>;
+        kind: "executable" | "node";
+    }> = [];
     const chmods: Array<{ entryPath: string; mode: number }> = [];
     // Pinned to posix with an already-executable entry, so every test exercises
     // the same branch whatever machine it runs on.
     const host = new SidecarHost([declaration], {
         appDir: "/app",
         userDataDir: "/user",
-        execPath: "/app/electron",
         mode,
         game: { name: "Test Game", version: "1.2.3" },
         log: (level, message) => logs.push({ level, message }),
         send: message => sent.push(message),
         spawn: (command, args, options) => {
-            spawned.push({ command, args, cwd: options.cwd, env: options.env });
+            spawned.push({ command, args, cwd: options.cwd, env: options.env, kind: options.kind });
             const child = new FakeChild();
             children.push(child);
             return child;
@@ -235,17 +240,36 @@ describe("SidecarHost", () => {
         expect(children).toHaveLength(1);
     });
 
-    it("runs a node sidecar under the game's own Electron", async () => {
+    /*
+     * A node sidecar is a utility process, and the mechanism is the whole point of this test.
+     * Running it under the game's own binary meant shipping a build whose executable doubles as a
+     * Node interpreter for any script named on its command line - a way into the game that has
+     * nothing to do with sidecars, and the one route that steps around asar integrity.
+     */
+    it("starts a node sidecar as a utility process, with nothing in the environment that reopens the binary", async () => {
         const { host, children, spawned } = createHost({ kind: "node", entry: "sidecars/a/b/main.js" });
         void start(host).catch(() => undefined);
         children[0]!.sendFrame({ t: "ready" });
         await vi.advanceTimersByTimeAsync(0);
-        expect(spawned[0]!.command).toBe("/app/electron");
-        expect(spawned[0]!.args).toHaveLength(1);
-        expect(spawned[0]!.env.ELECTRON_RUN_AS_NODE).toBe("1");
+        expect(spawned[0]!.kind).toBe("node");
+        // The entry itself, not the game's binary with the entry as an argument. Separators are
+        // the host platform's, so the comparison is made on one spelling.
+        expect(spawned[0]!.command.replace(/\\/g, "/")).toContain("app/sidecars/a/b/main.js");
+        expect(spawned[0]!.args).toHaveLength(0);
+        expect(spawned[0]!.env.ELECTRON_RUN_AS_NODE).toBeUndefined();
         // cwd is the per-sidecar writable dir under userData, never the app dir.
         expect(spawned[0]!.cwd).toContain("sidecars");
-        expect(spawned[0]!.cwd).not.toContain("/app");
+        expect(spawned[0]!.cwd).not.toContain("/app/sidecars");
+    });
+
+    /* An inherited marker must not reach a real executable either: it changes how it reads argv. */
+    it("clears the run-as-node marker for an executable sidecar as well", async () => {
+        const { host, children, spawned } = createHost();
+        void start(host).catch(() => undefined);
+        children[0]!.sendFrame({ t: "ready" });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(spawned[0]!.kind).toBe("executable");
+        expect(spawned[0]!.env.ELECTRON_RUN_AS_NODE).toBeUndefined();
     });
 
     it("routes replies to their own requests, whatever order they arrive in", async () => {
