@@ -37,6 +37,7 @@ export const project = {
     group: {
         details: "詳細",
         appTags: "ビルドバリアント",
+        dlc: "DLC",
         userData: "プレイヤーのファイル",
         icons: "アイコン",
         screenEffects: "画面エフェクト",
@@ -172,6 +173,29 @@ export const project = {
         // どのバリアントも名指さないカットポイントは何も終わらせない。
         deleteDetailCuts: {
             other: "スクリプトの {count} 箇所のカットポイントは残り、効かなくなる",
+        },
+    },
+    dlc: {
+        add: "DLC を追加",
+        history: {
+            add: "DLC {name} を追加",
+            rename: "DLC の名前を {name} に変更",
+            delete: "DLC {name} を削除",
+            edit: "DLC を編集",
+        },
+        newDlcName: "新しい DLC",
+        nameTitle: "名前",
+        idTitle: "ID",
+        idFile: "出力されるファイル: {file}",
+        idChangeConfirm: "ID を「{id}」に変更しますか？",
+        idChangeDetail: "すでに配布したファイルのファイル名は変わらず、元の ID を指定したストーリーはこの DLC を指さなくなります。",
+        idChangeAction: "変更",
+        attachTitle: "組み込む先",
+        delete: "削除",
+        deleteConfirm: "「{name}」を削除しますか？",
+        deleteDetail: {
+            one: "{count} 件のストーリーがベースビルドに戻ります。",
+            other: "{count} 件のストーリーがベースビルドに戻ります。",
         },
     },
     assets: {

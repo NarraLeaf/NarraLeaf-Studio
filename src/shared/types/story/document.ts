@@ -2,7 +2,14 @@ import type { StoryExpression } from "./expression";
 import { resolveAssetVariantMember, type AssetVariantMap } from "../assetSet";
 import type { WeatherSeedRef } from "../../weather/model";
 
-export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
+// v2 gives a library entry an optional `dlcId`: the DLC the story belongs to, absent on a story
+// the game itself carries. Additive, and a v1 index cannot contain one, so the migration is the
+// stamp and nothing else.
+// The bump is still not optional, and the reason is what an older Studio would BUILD. It has no
+// reading for the field, so it would compile a DLC's story into the base package and ship the
+// content the author had sold separately - silently, in the one direction nobody checks. Refusing
+// the document is the point.
+export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive - v3 documents
 // load unchanged - but a v3 Studio would silently drop an unresolved command line and render a
 // temp-speaker line with no speaker, so the bump makes it refuse the document instead.
@@ -219,6 +226,18 @@ export type StoryLibraryEntry = {
     updatedAt: string;
     importSource?: StoryImportSource;
     exportMeta?: StoryExportMeta;
+    /**
+     * The DLC this story belongs to (schema v2), absent on a story the game itself carries.
+     *
+     * On the library entry rather than inside the document because it is a fact about how the story
+     * is shipped, not about what it says: a build reads it to decide whether the document goes in
+     * the package at all, and reading it from inside would mean loading what it may not ship.
+     *
+     * An id naming no DLC is reported rather than refused, the way a cut point naming no variant is.
+     * The failure direction is the same - the story rejoins the base build - and refusing here would
+     * make deleting a DLC lock the project.
+     */
+    dlcId?: string;
 };
 
 export type StoryImportSource = {

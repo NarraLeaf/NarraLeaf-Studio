@@ -123,6 +123,20 @@ export type GamePatchExportRequest = {
      */
     contentAppTagId?: string;
     /**
+     * The DLC this export is, or absent for an ordinary patch.
+     *
+     * Present turns three things at once, which is why it is one field rather than
+     * three: the payload gains that DLC's stories (and only that one's), the file is
+     * sealed for and named after the edition the DLC record attaches to rather than
+     * anything the dialog says, and it is written under the DLC folder as
+     * `<id>_DLC.pak`.
+     *
+     * Absent is the safe direction on purpose. An ordinary patch carries the base
+     * game's content and no DLC's, so a patch cannot hand a player content they did
+     * not buy by an author forgetting a field.
+     */
+    dlcId?: string;
+    /**
      * The app directory of the build this patch is for, so the export can carry
      * only what changed. Absent means carry the whole payload: always correct,
      * and the answer when the author no longer has that build to point at.

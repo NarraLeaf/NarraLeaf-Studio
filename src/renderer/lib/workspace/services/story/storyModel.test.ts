@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { StoryBlock, StoryDocument, StoryExpr, StoryVariableRef } from "@shared/types/story";
+import type { StoryBlock, StoryDocument, StoryExpr, StoryLibraryIndex, StoryVariableRef } from "@shared/types/story";
 import { isStoryExpressionEvaluable, storyVariableRefKey, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
     bindRowsToCharacter,
@@ -61,7 +61,7 @@ describe("storyModel", () => {
     it("creates an empty library without forcing a story document", () => {
         const index = createEmptyStoryLibraryIndex("2026-06-08T00:00:00.000Z");
 
-        expect(index.schemaVersion).toBe(1);
+        expect(index.schemaVersion).toBe(2);
         expect(index.stories).toEqual([]);
         expect(index.defaultStoryId).toBeUndefined();
     });
@@ -90,8 +90,10 @@ describe("storyModel", () => {
 
     it("keeps only UUID story ids and canonical document paths in the library index", () => {
         const now = "2026-06-08T00:00:00.000Z";
+        // Version 1, which is also what makes this the migration test: an index written before the
+        // entries could name a DLC is read, and comes back stamped at the version that was read.
         const index = {
-            schemaVersion: 1 as const,
+            schemaVersion: 1 as unknown as StoryLibraryIndex["schemaVersion"],
             defaultStoryId: "story-1",
             stories: [
                 {
@@ -120,6 +122,7 @@ describe("storyModel", () => {
 
         const normalized = normalizeStoryLibraryIndex(index, now);
 
+        expect(normalized.schemaVersion).toBe(2);
         expect(normalized.defaultStoryId).toBeUndefined();
         expect(normalized.stories.map(story => story.id)).toEqual([STORY_ID_1]);
         expect(normalized.stories[0]?.documentPath).toBe(`editor/story/stories/${STORY_ID_1}/storydoc.json`);
