@@ -48,5 +48,6 @@ export const game = {
         copied: "クリップボードにコピーした",
         copyFailed: "コピーできなかった：{error}",
         logAt: "レポートは {path} にある",
+        bridgeUnavailable: "ゲームのランタイムブリッジを読み込めなかった",
     },
 } satisfies LocaleNamespace<"game">;
