@@ -21,6 +21,15 @@ import { ZoomStep } from "./steps/ZoomStep";
 
 const STEPS = ["welcome", "language", "appearance", "zoom", "identity", "team", "story", "done"] as const;
 
+/**
+ * What the count counts: screens behind you, not the screen you are on.
+ *
+ * The welcome screen is the way in rather than a question, so it reads 0 - nothing has been
+ * answered yet, and a run that says "1 of 8" before asking anything overstates itself. The last
+ * screen reads 7 of 7, which is the one place a progress count should be full.
+ */
+const PROGRESS_TOTAL = STEPS.length - 1;
+
 type OnboardingStep = (typeof STEPS)[number];
 
 /**
@@ -206,14 +215,14 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                         list, so anything larger would read as a heading over the
                                         list rather than the last entry of it. */}
                                     <ProgressCircle
-                                        value={index + 1}
-                                        max={STEPS.length}
+                                        value={index}
+                                        max={PROGRESS_TOTAL}
                                         size={12}
                                         strokeWidth={2}
                                         className="shrink-0"
                                     />
                                     <span className="truncate text-xs tabular-nums text-fg-subtle">
-                                        {t("onboarding.progress", { current: index + 1, total: STEPS.length })}
+                                        {t("onboarding.progress", { current: index, total: PROGRESS_TOTAL })}
                                     </span>
                                 </div>
                             </div>
