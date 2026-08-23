@@ -204,6 +204,10 @@ export async function digestPayload(reader: PayloadReader): Promise<Map<string, 
  * would only ever answer "changed" while leaving a reader wondering whether it
  * might not have. With no baseline everything goes in, which is always correct
  * and is the answer when the author no longer has the build to compare against.
+ *
+ * A caller patching a build that composes content deltas carries that difference instead and drops
+ * the pack itself; this still answers for it, because whether the pack has to travel at all is a
+ * question about the baseline rather than about the entry.
  */
 export function patchCarriesEntry(
     name: string,

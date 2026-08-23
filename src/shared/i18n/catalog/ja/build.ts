@@ -141,6 +141,8 @@ export const build = {
             outputLabel: "保存先",
             nameLabel: "名前",
             namePlaceholder: "ゲームのログに表示される",
+            layerLabel: "レイヤー",
+            layerHint: "同じ箇所を変更するパッチが複数ある場合、レイヤーの高い方が有効になる",
             browse: "参照…",
             exportAction: "書き出す",
             busy: "ビルドがすでに実行中",
