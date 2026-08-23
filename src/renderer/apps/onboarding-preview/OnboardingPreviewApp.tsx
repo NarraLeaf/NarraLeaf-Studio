@@ -1,11 +1,16 @@
+import { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
+import { getInterface } from "@/lib/app/bridge";
 import { Select } from "@/lib/components/elements";
 import { TitleBar, windowRootProps } from "@/lib/components/layout";
 import { TooltipHost } from "@/lib/tooltip";
 import { useTranslation } from "@/lib/i18n";
 import { ZOOM_PERCENT_STEPS } from "@shared/constants/zoom";
-import { WindowControlPolicy } from "@shared/types/window";
-import { OnboardingPreferencesProvider, useOnboardingPreferences } from "@/apps/launcher/onboarding/onboardingPreferences";
+import { WindowAppType, WindowControlPolicy, type OnboardingPreviewSurface } from "@shared/types/window";
+import {
+    OnboardingPreferencesProvider,
+    useOnboardingPreferences,
+} from "@/apps/launcher/onboarding/onboardingPreferences";
 import { OnboardingServersProvider } from "@/apps/launcher/onboarding/onboardingServers";
 import {
     PreviewControlBar,
@@ -25,13 +30,38 @@ import {
  * on a strip of their own with a copy of a workspace's title bar beneath them. So the shared
  * `TitleBar` is given the sample's two clusters to draw instead. The result is the arrangement a
  * workspace has - the buttons in their usual place, the project on the left, the dock toggles on
- * the right - with the notice in the slot a workspace keeps its search box in.
+ * the right - with the notice and the zoom in the slot a workspace keeps its search box in.
  *
- * The rail's own eye is absent here, and so is everything else it could answer: this is the scene
- * editor, whole, and the rail beside it is furniture. There is nothing left to open.
+ * The rail and the tabs are furniture here as they are on the setup screen. What the window shows
+ * is decided before it is built, by the screen that opened it.
  */
 export function OnboardingPreviewApp() {
-    const { t } = useTranslation();
+    /**
+     * `null` only for the moment between mount and the window answering what it was opened with.
+     * Rendering nothing during it keeps the window from showing one surface and swapping to
+     * another a frame later - the same reason first-run setup itself renders nothing until its own
+     * props arrive.
+     */
+    const [surface, setSurface] = useState<OnboardingPreviewSurface | null>(null);
+
+    useEffect(() => {
+        let alive = true;
+        void getInterface()
+            .getWindowProps<WindowAppType.OnboardingPreview>()
+            .then(result => {
+                if (alive) {
+                    setSurface(result.success ? result.data?.surface ?? "story" : "story");
+                }
+            })
+            .catch(() => {
+                if (alive) {
+                    setSurface("story");
+                }
+            });
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     return (
         <div {...windowRootProps} className="h-screen w-screen bg-surface text-fg">
@@ -53,7 +83,7 @@ export function OnboardingPreviewApp() {
                         />
 
                         <main className="flex h-full min-h-0 flex-col overflow-hidden">
-                            <StudioPreview panel="story" frameClassName="" titleBar={false} />
+                            {surface ? <StudioPreview panel={surface} frameClassName="" titleBar={false} /> : null}
                         </main>
                     </div>
                 </OnboardingServersProvider>
@@ -68,18 +98,18 @@ export function OnboardingPreviewApp() {
  * The zoom sits in the title bar rather than on the setup screen behind it because this is where it
  * can be answered: `ui.zoomPercent` is applied by the main process to every window, so a step
  * picked here re-draws this window at that size while it fills the screen - which is the only way
- * to tell 110% from 125% without guessing. It writes the same key the setup screen's own dropdown
+ * to tell 110% from 125% without guessing. It writes the same key the setup screen's own control
  * does, and both follow the broadcast, so the two can never disagree.
  *
- * In the slot a workspace keeps its search box in. Everything else on this bar is a likeness; this
- * strip is the preview speaking for itself, which is why it says so before it offers the control.
+ * `no-drag`, because the title bar is a drag region and a press on a control inside one starts
+ * moving the window instead of reaching the control.
  */
 function PreviewNotice() {
     const { t } = useTranslation();
     const { zoomPercent, setZoomPercent } = useOnboardingPreferences();
 
     return (
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="no-drag flex min-w-0 items-center gap-3">
             <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted">
                 <Eye className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{t("onboarding.previewWindow.notice")}</span>

@@ -31,6 +31,8 @@ export const onboarding = {
     zoom: {
         title: "界面缩放",
         expectation: "Studio 界面绘制的大小。这个窗口本身就是样张",
+        custom: "自定义",
+        surface: "预览显示",
     },
     identity: {
         title: "谁在写",
@@ -85,6 +87,16 @@ export const onboarding = {
             latest: "天台一场，初稿",
             earlier: "开篇",
             checkpoint: "检查点",
+        },
+        dashboard: {
+            lastActive: "刚刚",
+            trackedSince: "本周",
+        },
+        console: {
+            start: "正在构建预览…",
+            assets: "86 个资源，12 个场景",
+            warning: "场景「天台，傍晚」里有个角色没有立绘",
+            done: "预览就绪，用时 3.4 秒",
         },
         teamAlone: "在本机上工作",
     },

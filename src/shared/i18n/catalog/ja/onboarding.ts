@@ -31,6 +31,8 @@ export const onboarding = {
     zoom: {
         title: "画面の拡大率",
         expectation: "Studio の画面を描く大きさ。このウィンドウそのものが見本になる",
+        custom: "カスタム",
+        surface: "プレビューに出す画面",
     },
     identity: {
         title: "書いている人",
@@ -85,6 +87,16 @@ export const onboarding = {
             latest: "屋上のシーン、初稿",
             earlier: "章の始まり",
             checkpoint: "チェックポイント",
+        },
+        dashboard: {
+            lastActive: "たった今",
+            trackedSince: "今週",
+        },
+        console: {
+            start: "プレビューをビルド中…",
+            assets: "アセット 86 個、シーン 12 個",
+            warning: "シーン「屋上、夕方」に立ち絵のないキャラクターがいる",
+            done: "プレビュー完了、3.4 秒",
         },
         teamAlone: "この端末で作業中",
     },
