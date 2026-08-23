@@ -182,12 +182,17 @@ export function storyAnimationDocumentRelativePath(animationId: StoryAnimationAs
     return `editor/story/animations/${animationId}.json`;
 }
 
+/**
+ * Older is read and stamped, newer is refused.
+ *
+ * Every version below the current one so far differs only by fields it does not have, so there is
+ * nothing to convert - `normalizeStoryLibraryIndex` writes the current version out and that is the
+ * whole migration. A version this Studio has never heard of is the other direction and stays a
+ * refusal: the entries could say things about how the project ships that this build would ignore.
+ */
 export function assertSupportedStoryLibraryIndex(index: StoryLibraryIndex): void {
     if (index.schemaVersion > STORY_LIBRARY_INDEX_SCHEMA_VERSION) {
         throw new Error("Story library index schema is newer than this Studio version");
-    }
-    if (index.schemaVersion !== STORY_LIBRARY_INDEX_SCHEMA_VERSION) {
-        throw new Error("Story library index migration is not implemented");
     }
 }
 
@@ -232,6 +237,10 @@ export function normalizeStoryLibraryIndex(index: StoryLibraryIndex, now: string
             : undefined;
     return {
         ...index,
+        // Stamped rather than carried through: an index read at an older version has been brought
+        // up to this one by being read, and writing the old number back would migrate it again on
+        // every load.
+        schemaVersion: STORY_LIBRARY_INDEX_SCHEMA_VERSION,
         stories,
         defaultStoryId,
         meta: {

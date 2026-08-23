@@ -10,6 +10,7 @@
 
 import { ProjectDetailsSection } from "../sections/ProjectDetailsSection";
 import { ProjectAppTagsSection } from "../sections/ProjectAppTagsSection";
+import { ProjectDlcSection } from "../sections/ProjectDlcSection";
 import { ProjectUserDataSection } from "../sections/ProjectUserDataSection";
 import { ProjectIconsSection } from "../sections/ProjectIconsSection";
 import { ProjectScreenEffectsSection } from "../sections/ProjectScreenEffectsSection";
@@ -23,6 +24,10 @@ export function ProjectAppPage(props: ProjectSectionProps) {
             {/* Directly under the fields it varies: a variant states one of those three or inherits
                 it, so the values it is read against are the rows immediately above. */}
             <ProjectAppTagsSection {...props} />
+            {/* Under the variants because a DLC states which of them it loads into, and the
+                picker offers exactly that list. Not one of them: a build is one variant, and has
+                any number of DLC beside it. */}
+            <ProjectDlcSection {...props} />
             {/* Also under those fields, for the same reason: the directory a shipped game writes the
                 player's files to is named after the identifier, and this is where it is changed. */}
             <ProjectUserDataSection {...props} />

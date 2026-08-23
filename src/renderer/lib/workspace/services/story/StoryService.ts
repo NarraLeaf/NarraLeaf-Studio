@@ -346,6 +346,40 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return true;
     }
 
+    /**
+     * Which DLC ships this story, or null for one the game itself carries.
+     *
+     * On the library entry rather than in the document, so a build can decide whether to load the
+     * document at all - see `StoryLibraryEntry.dlcId`. Nothing validates the id against the DLC
+     * registry here: deleting a DLC would otherwise have to sweep every story, and a story naming
+     * one that no longer exists is reported by the project check rather than silently repaired.
+     */
+    public setStoryDlc(storyId: StoryId, dlcId: string | null): boolean {
+        const entry = this.getStoryEntry(storyId);
+        if (!entry) {
+            return false;
+        }
+        const next = dlcId?.trim() || null;
+        if ((entry.dlcId ?? null) === next) {
+            return false;
+        }
+        this.mutateLibrary(index => {
+            const target = index.stories.find(story => story.id === storyId);
+            if (!target) {
+                return;
+            }
+            if (next) {
+                target.dlcId = next;
+            } else {
+                // Deleted rather than left blank: absent is what "the game itself carries this" has
+                // always looked like, and an empty string would be a second spelling of it.
+                delete target.dlcId;
+            }
+            target.updatedAt = new Date().toISOString();
+        });
+        return true;
+    }
+
     private applyStoryName(storyId: StoryId, name: string): void {
         this.mutateLibrary(index => {
             const target = index.stories.find(story => story.id === storyId);

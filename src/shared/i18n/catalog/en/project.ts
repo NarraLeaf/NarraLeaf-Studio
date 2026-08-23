@@ -36,6 +36,7 @@ export const project = {
     group: {
         details: "Details",
         appTags: "Build variants",
+        dlc: "DLC",
         userData: "Player files",
         icons: "Icons",
         screenEffects: "Screen effects",
@@ -188,6 +189,34 @@ export const project = {
         deleteDetailCuts: {
             one: "{count} cut point stays in the script and stops taking effect.",
             other: "{count} cut points stay in the script and stop taking effect.",
+        },
+    },
+    dlc: {
+        add: "Add DLC",
+        // Names for the undo steps these leave behind ("Undo delete DLC Summer Route").
+        history: {
+            add: "add DLC {name}",
+            rename: "rename DLC to {name}",
+            delete: "delete DLC {name}",
+            edit: "edit DLC",
+        },
+        newDlcName: "New DLC",
+        nameTitle: "Name",
+        // The id is the filename, so the field says what the file will be called rather than
+        // explaining what an id is. It is the one thing here a player ever sees.
+        idTitle: "Id",
+        idFile: "Ships as {file}",
+        // Changing it is allowed and is not a rename: copies already delivered keep the old name.
+        idChangeConfirm: "Change the id to \"{id}\"?",
+        idChangeDetail: "Copies already delivered keep the old filename, and a story marked for the old id stops naming this DLC.",
+        idChangeAction: "Change",
+        // Which builds this DLC loads into. A build of another variant refuses it.
+        attachTitle: "Loads into",
+        delete: "Delete",
+        deleteConfirm: "Delete \"{name}\"?",
+        deleteDetail: {
+            one: "{count} story goes back into the base build.",
+            other: "{count} stories go back into the base build.",
         },
     },
     assets: {

@@ -99,7 +99,10 @@ import { GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY, GAME_RUNTIME_BUNDLE_PACK_ENTRY } 
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { readDistributionKey } from "@shared/utils/distributionKey";
 import { diffPack, PACK_DELTA_VERSION } from "@shared/utils/packDelta";
+import { dlcArtifactFileName, dlcDirectoryName, resolveDlcDeliveryPath } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
+import { findDlc, type ProjectDlc } from "@shared/types/dlc";
+import { readProjectDlcFromDir } from "../../utils/dlcFile";
 import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
@@ -950,11 +953,21 @@ export class GameBuildManager {
         const debuggable = this.reportDebuggableBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
-        const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        // Read before the variant, because a DLC decides which variant this is: the record is the
+        // one place that says where the DLC belongs, and letting the dialog say it too would make
+        // "sealed for the demo, declared for the release" a state an author could reach.
+        const dlc = await this.resolveExportedDlc(projectPath, request);
+        const appTag = await this.resolveBuildVariant(
+            session,
+            projectPath,
+            dlc ? { appTagId: dlc.attachTo } : request,
+        );
         // What the patch carries, which is not always the edition it attaches to. The identity below
         // stays with `appTag` - it is what decides whether the player's build can open the file at
         // all - while everything about the payload is read from this one.
-        const contentTag = request.contentAppTagId?.trim() && request.contentAppTagId.trim() !== appTag.id
+        // A DLC adds content to the edition it attaches to; it is never the other edition's content
+        // carried across, which is what the second variant is for.
+        const contentTag = !dlc && request.contentAppTagId?.trim() && request.contentAppTagId.trim() !== appTag.id
             ? await this.resolveBuildVariant(session, projectPath, { appTagId: request.contentAppTagId })
             : appTag;
         const appTagDocument = await readProjectAppTagDocumentFromDir(projectPath).catch(() => null);
@@ -1019,6 +1032,9 @@ export class GameBuildManager {
             // The payload a player receives, so it plans a scene drop and refuses a
             // graph it cannot fold - exactly as the build it patches did.
             packaging: true,
+            // The base game's content plus this one DLC's, so the difference from the build being
+            // updated is exactly what the DLC adds. An ordinary patch gets the base game's alone.
+            includedDlc: dlc ? [dlc.id] : [],
             locale: getMainLocale(this.app),
             ...(encryptionKey ? { encryptionKey } : {}),
             appId: identity.appId,
@@ -1048,11 +1064,20 @@ export class GameBuildManager {
         this.ensureNotCancelled(session);
 
         session.snapshot = { ...session.snapshot, status: "packaging" };
-        // Always inside a `patch` folder: that folder is what the author zips and
-        // what the player extracts, so a patch written loose beside it would be a
-        // patch nobody can deliver.
-        const outputFile = resolvePatchDeliveryPath(request.outputFile, path.join, path.dirname, path.basename);
-        const summary = await this.sealPatch(session, artifact.appDir, request, outputFile, distribution);
+        // Always inside the delivery folder: that folder is what the author ships and what the
+        // player ends up with, so a file written loose beside it would be one nobody can deliver.
+        // The name comes from the DLC's id rather than from the dialog, because it is the name the
+        // player sees beside their game and the author has already chosen it once.
+        const outputFile = dlc
+            ? resolveDlcDeliveryPath(
+                path.join(path.dirname(request.outputFile), dlcArtifactFileName(dlc.id)),
+                process.platform,
+                path.join,
+                path.dirname,
+                path.basename,
+            )
+            : resolvePatchDeliveryPath(request.outputFile, path.join, path.dirname, path.basename);
+        const summary = await this.sealPatch(session, artifact.appDir, request, outputFile, distribution, dlc, appTag.id);
         this.ensureNotCancelled(session);
 
         const outputDir = path.dirname(outputFile);
@@ -1064,15 +1089,18 @@ export class GameBuildManager {
             artifacts: [outputFile],
             outputDir,
         };
+        const folder = dlc ? dlcDirectoryName(process.platform) : PATCH_DIRECTORY_NAME;
         this.emit(session, {
             level: "success",
             source: "Build",
-            message: `patch written: ${PATCH_DIRECTORY_NAME}/${path.basename(outputFile)} (${summary})`,
+            message: `${dlc ? "DLC" : "patch"} written: ${folder}/${path.basename(outputFile)} (${summary})`,
         });
         this.emit(session, {
             level: "info",
             source: "Build",
-            message: `deliver it by zipping the ${PATCH_DIRECTORY_NAME} folder; a player extracts it into the game's own folder`,
+            message: dlc
+                ? `deliver the ${folder} folder as this DLC's download; it lands in the game's own folder`
+                : `deliver it by zipping the ${folder} folder; a player extracts it into the game's own folder`,
         });
         if (request.openWhenDone !== false) {
             this.revealOutput(outputDir);
@@ -1165,6 +1193,8 @@ export class GameBuildManager {
         request: GamePatchExportRequest,
         outputFile: string,
         distribution: { key: string; titleId: string },
+        dlc: ProjectDlc | null,
+        appTagId: string,
     ): Promise<string> {
         const payload = await openPayload(appDir);
         let baseline: Map<string, string> | null = null;
@@ -1217,8 +1247,14 @@ export class GameBuildManager {
             // written out; a negative layer is a patch the author means to sit under the others.
             const order = Number.isInteger(request.order) ? Math.trunc(request.order as number) : 0;
             const descriptor = {
-                ...(request.name?.trim() ? { name: request.name.trim() } : {}),
+                // A DLC's own name when the dialog offers none: the author already wrote one on the
+                // record, and it is what the game's log and the player's folder both want.
+                ...(request.name?.trim() || dlc ? { name: request.name?.trim() || dlc?.name } : {}),
                 ...(order !== 0 ? { order } : {}),
+                // The edition, taken from the tag this file was actually sealed under rather than
+                // from the record a second time - the two are the same by construction above, and
+                // stating the resolved one is what makes that checkable from the file alone.
+                ...(dlc ? { dlc: { id: dlc.id, attachTo: appTagId } } : {}),
             };
             await writer.add(LAYER_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
 
@@ -2547,6 +2583,27 @@ export class GameBuildManager {
      * reading the tag again somewhere else, and a build whose identity, whose file names and whose
      * story disagreed about which variant it is is exactly the failure this is all about.
      */
+    /**
+     * The DLC this export is for, or null for an ordinary patch.
+     *
+     * Refuses an id the project does not have rather than falling back to "no DLC": the fallback
+     * would produce a perfectly good patch under a DLC's name, holding none of its content.
+     */
+    private async resolveExportedDlc(
+        projectPath: string,
+        request: GamePatchExportRequest,
+    ): Promise<ProjectDlc | null> {
+        const requested = request.dlcId?.trim();
+        if (!requested) {
+            return null;
+        }
+        const dlc = findDlc(await readProjectDlcFromDir(projectPath), requested);
+        if (!dlc) {
+            throw new Error(`The project has no DLC "${requested}". Pick one in the DLC dialog.`);
+        }
+        return dlc;
+    }
+
     private async resolveBuildVariant(
         session: BuildSession,
         projectPath: string,

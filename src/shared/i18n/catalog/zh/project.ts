@@ -35,6 +35,7 @@ export const project = {
     group: {
         details: "详情",
         appTags: "变体",
+        dlc: "DLC",
         userData: "玩家文件",
         icons: "图标",
         screenEffects: "屏幕效果",
@@ -167,6 +168,29 @@ export const project = {
         deleteDetailCuts: {
             one: "剧本中的 {count} 处截断点将保留，并不再生效",
             other: "剧本中的 {count} 处截断点将保留，并不再生效",
+        },
+    },
+    dlc: {
+        add: "添加 DLC",
+        history: {
+            add: "添加 DLC {name}",
+            rename: "将 DLC 重命名为 {name}",
+            delete: "删除 DLC {name}",
+            edit: "编辑 DLC",
+        },
+        newDlcName: "新建 DLC",
+        nameTitle: "名称",
+        idTitle: "ID",
+        idFile: "产出文件为 {file}",
+        idChangeConfirm: "将 ID 改为“{id}”？",
+        idChangeDetail: "已经发出去的文件仍然是原文件名，标记为原 ID 的故事将不再指向这个 DLC。",
+        idChangeAction: "更改",
+        attachTitle: "装入",
+        delete: "删除",
+        deleteConfirm: "删除“{name}”？",
+        deleteDetail: {
+            one: "{count} 个故事将回到基础构建中。",
+            other: "{count} 个故事将回到基础构建中。",
         },
     },
     assets: {
