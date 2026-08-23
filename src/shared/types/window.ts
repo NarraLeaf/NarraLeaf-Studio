@@ -156,7 +156,7 @@ export type ChildWindowLifetime = "dependent" | "independent";
  * Declared here rather than in the renderer because it travels on a window's props. The renderer's
  * `PreviewPanelId` is this type; there is no second list.
  */
-export type OnboardingPreviewSurface = "dashboard" | "story" | "console";
+export type OnboardingPreviewSurface = "welcome" | "dashboard" | "story" | "console" | "versions" | "team";
 
 export type WindowVisibilityStatus = "minimized" | "maximized" | "normal";
 
