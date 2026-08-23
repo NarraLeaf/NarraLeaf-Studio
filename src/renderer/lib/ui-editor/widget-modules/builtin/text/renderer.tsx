@@ -52,6 +52,7 @@ import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const OPENING_BLUR_GRACE_MS = 300;
 const TEXT_VALUE_PROP_PATH = "text";
@@ -424,6 +425,9 @@ export function TextRenderer({
 
     const handleTextareaKeyDown = useCallback(
         (e: KeyboardEvent<HTMLTextAreaElement>) => {
+            if (isImeKeyEvent(e)) {
+                return;
+            }
             if (e.key === "Escape") {
                 e.preventDefault();
                 skipBlurCommitRef.current = true;

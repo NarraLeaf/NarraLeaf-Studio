@@ -145,6 +145,8 @@ export const build = {
             outputLabel: "Save as",
             nameLabel: "Name",
             namePlaceholder: "Shown in the game's log",
+            layerLabel: "Layer",
+            layerHint: "Where two patches change the same thing, the higher layer applies over the lower one.",
             browse: "Browse…",
             exportAction: "Export",
             busy: "A build is already running.",

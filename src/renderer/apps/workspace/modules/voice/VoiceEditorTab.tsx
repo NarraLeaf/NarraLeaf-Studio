@@ -38,6 +38,7 @@ import type { VoiceConfiguration, VoiceDocument } from "@shared/types/voice";
 import { buildAssetNameKeyMap, voiceMatchKeyForEntry, withSceneIndices } from "@/lib/workspace/services/voice/voiceScript";
 import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
 import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 type EditorMode = "assign" | "audition";
 type GroupAxis = "scene" | "character";
@@ -693,6 +694,9 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                             }
                                         }}
                                         onKeyDown={event => {
+                                            if (isImeKeyEvent(event)) {
+                                                return;
+                                            }
                                             if (event.key === "Enter") {
                                                 (event.target as HTMLInputElement).blur();
                                             }
