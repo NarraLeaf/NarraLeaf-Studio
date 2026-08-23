@@ -2008,4 +2008,64 @@ export class App extends BaseApp {
 
         return window;
     }
+
+    /**
+     * First-run setup's preview, at full size.
+     *
+     * The setup screen has room for the left quarter of a Studio window; this is the rest of it.
+     * An ordinary resizable window rather than a modal: it is something to look at while answering
+     * the questions behind it, so both have to be usable at once, and closing setup while it is
+     * open must not strand it.
+     *
+     * Independent of whoever raised it for that reason - `setParentWindow(null)` once both exist,
+     * the same treatment the project wizard gets - so the launcher retiring itself does not take
+     * the preview with it.
+     */
+    async launchOnboardingPreview(
+        parent: AppWindow,
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.OnboardingPreview>> {
+        const existing = this.windowManager.getWindows().find(window =>
+            !window.isClosed() && window.getWindowType() === WindowAppType.OnboardingPreview
+        ) as AppWindow<WindowAppType.OnboardingPreview> | undefined;
+        if (existing) {
+            // One preview, raised again rather than duplicated: two copies of one sample would
+            // disagree the moment a preference changed in only one of them.
+            existing.getBrowserWindow().focus();
+            return existing;
+        }
+
+        const config: WindowConfig<WindowAppType.OnboardingPreview> = {
+            windowType: WindowAppType.OnboardingPreview,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.Standard,
+            options: {
+                // The size it falls back to when the maximized state is left; a workspace's own
+                // defaults, so un-maximizing lands on a window Studio would have opened.
+                width: 1180,
+                height: 760,
+                minWidth: 760,
+                minHeight: 520,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+                ...options,
+            },
+        };
+        const window = new AppWindow<WindowAppType.OnboardingPreview>(this, config, {});
+        window.setTitle("Preview - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        // Maximized, and registered before the show below so it lands in that state rather than
+        // appearing at its constructed size and jumping. The question this window is opened to
+        // answer is how big the interface is drawn, and that cannot be judged in a small window.
+        window.onReady(() => window.getBrowserWindow().maximize());
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.OnboardingPreview));
+        void parent;
+
+        return window;
+    }
 }

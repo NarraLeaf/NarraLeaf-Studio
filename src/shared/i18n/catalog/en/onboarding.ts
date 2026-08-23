@@ -98,6 +98,18 @@ export const onboarding = {
          */
         topics: "Help topics",
     },
+    /** The preview at full size, in a window of its own. */
+    previewWindow: {
+        /** The eye in the sample's own rail, and the window's own name. */
+        open: "See the whole window",
+        /**
+         * Across the top of that window, where a title would be.
+         *
+         * Said once and plainly: what is under it looks like Studio and answers almost nothing,
+         * and somebody who clicks a menu in it and gets nothing deserves to have been told why.
+         */
+        notice: "A preview of the interface. Nothing here is wired up except the line you can type on.",
+    },
     nav: {
         skip: "Skip setup",
         finish: "Open Studio",

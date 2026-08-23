@@ -11,6 +11,7 @@ export enum WindowAppType {
     DevMode = "dev-mode",
     PluginPermissionPrompt = "plugin-permission",
     ServerTrustPrompt = "server-trust",
+    OnboardingPreview = "onboarding-preview",
     Raw = "raw",
 }
 
@@ -117,6 +118,14 @@ export type WindowProps = {
     },
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptProps,
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptProps,
+    /**
+     * First-run setup's preview, at full size in a window of its own.
+     *
+     * No props: it draws the same sample every setup screen shows, and everything that decides how
+     * that sample looks is a preference it reads for itself.
+     */
+    [WindowAppType.OnboardingPreview]: {
+    },
     [WindowAppType.Raw]: {
     },
 }
@@ -196,5 +205,6 @@ export type WindowCloseResults = {
     [WindowAppType.DevMode]: null;
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptResult;
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptResult;
+    [WindowAppType.OnboardingPreview]: null;
     [WindowAppType.Raw]: null;
 };

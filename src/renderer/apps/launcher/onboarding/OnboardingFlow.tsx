@@ -201,7 +201,11 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 No frame of its own either - no divider, no plate, no "Preview"
                                 eyebrow. The only lines drawn here are the window's own edges, and
                                 the right one is missing because it is past the crop. */}
-                            <div className="hidden w-[420px] shrink-0 overflow-hidden py-6 min-[780px]:flex">
+                            {/* `overflow-clip`, not `overflow-hidden`: a hidden box is still a scroll container, and
+                                the browser scrolls one to reveal a focused element - so putting the
+                                caret in the sample's insert slot slid the whole window sideways and
+                                took the rail off the screen. A clipped box has nothing to scroll. */}
+                            <div className="hidden w-[420px] shrink-0 overflow-clip py-6 min-[780px]:flex">
                                 <div className="relative min-h-0 flex-1">
                                     <div className="absolute inset-y-0 left-0 flex w-[1680px]">
                                         <StudioPreview panel={screen.panel} />
