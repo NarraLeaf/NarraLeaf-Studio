@@ -33,7 +33,7 @@ import { OptionList } from "./OptionList";
  */
 
 /** The three sizes almost every answer is one of. Everything else is behind "Custom". */
-const PRESETS = [100, 125, 150] as const;
+const PRESETS = [90, 100, 125] as const;
 
 const CUSTOM = "custom";
 
