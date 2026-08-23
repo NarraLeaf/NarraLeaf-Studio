@@ -120,6 +120,14 @@ export const storyInspector = {
         custom: "Custom curve",
     },
 
+    /** The curve editor under an `Easing` field: presets, draggable handles, and the value they spell. */
+    curve: {
+        startHandle: "Start handle",
+        endHandle: "End handle",
+        reset: "Reset curve",
+        value: "Curve value",
+    },
+
     transition: {
         dissolve: "Dissolve",
         blurDissolve: "Blur dissolve",
