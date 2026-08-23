@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { getInterface } from "@/lib/app/bridge";
+import { useMemo } from "react";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import {
     BLUEPRINT_DRAG_CONNECT_SETTING_KEYS,
     type BlueprintDragConnectEnablement,
@@ -13,42 +13,17 @@ function readBool(value: unknown, fallback: boolean): boolean {
 
 /**
  * Reads the three `blueprint.dragConnect.*` toggles that gate the "drag off a pin onto empty
- * canvas → create a compatible node" flow. Re-reads when the window regains focus so a change
- * made in the separate Settings window applies on return (mirrors {@link useMaxActiveEditors}).
+ * canvas → create a compatible node" flow. Each follows the global-state broadcast, so a change
+ * made in the separate Settings window reaches the open canvas at once (see
+ * {@link useGlobalSetting}).
  */
 export function useBlueprintDragConnectSettings(): BlueprintDragConnectEnablement {
-    const [value, setValue] = useState<BlueprintDragConnectEnablement>(DEFAULTS);
+    const execOutput = useGlobalSetting(BLUEPRINT_DRAG_CONNECT_SETTING_KEYS.execOutput,
+        stored => readBool(stored, DEFAULTS.execOutput));
+    const dataOutput = useGlobalSetting(BLUEPRINT_DRAG_CONNECT_SETTING_KEYS.dataOutput,
+        stored => readBool(stored, DEFAULTS.dataOutput));
+    const input = useGlobalSetting(BLUEPRINT_DRAG_CONNECT_SETTING_KEYS.input,
+        stored => readBool(stored, DEFAULTS.input));
 
-    useEffect(() => {
-        let cancelled = false;
-        const load = async () => {
-            try {
-                const state = getInterface().app.state;
-                const [execOutput, dataOutput, input] = await Promise.all([
-                    state.getGlobalState(BLUEPRINT_DRAG_CONNECT_SETTING_KEYS.execOutput),
-                    state.getGlobalState(BLUEPRINT_DRAG_CONNECT_SETTING_KEYS.dataOutput),
-                    state.getGlobalState(BLUEPRINT_DRAG_CONNECT_SETTING_KEYS.input),
-                ]);
-                if (cancelled) {
-                    return;
-                }
-                setValue({
-                    execOutput: readBool(execOutput.success ? execOutput.data.value : undefined, DEFAULTS.execOutput),
-                    dataOutput: readBool(dataOutput.success ? dataOutput.data.value : undefined, DEFAULTS.dataOutput),
-                    input: readBool(input.success ? input.data.value : undefined, DEFAULTS.input),
-                });
-            } catch {
-                // Keep the last known-good values on transient IPC failures.
-            }
-        };
-        void load();
-        const onFocus = () => { void load(); };
-        window.addEventListener("focus", onFocus);
-        return () => {
-            cancelled = true;
-            window.removeEventListener("focus", onFocus);
-        };
-    }, []);
-
-    return value;
+    return useMemo(() => ({ execOutput, dataOutput, input }), [execOutput, dataOutput, input]);
 }
