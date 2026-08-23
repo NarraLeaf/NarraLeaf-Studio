@@ -43,12 +43,34 @@ describe("the transition vocabulary", () => {
         }
     });
 
-    it("names back every kind a swap can write", () => {
-        for (const word of supportedTransitionWords("expression")) {
-            const kind = transitionKindFor("expression", word);
-            expect(kind, word).toBeTruthy();
-            expect(transitionWordFor("expression", kind!), word).toBe(word);
+
+    it("names back every kind a whole-screen change or a swap can write", () => {
+        // Widened from the swap alone, because the property editor now derives its own menu from
+        // this mapping. A kind with no word behind it used to be reachable from the right-hand
+        // side only: the row then printed the raw kind, and `maskWipe` is an alias of `wipe`, so
+        // reading the line back turned a hard-edged wipe into a feathered one.
+        for (const context of ["scene", "character", "expression"] as const) {
+            for (const word of supportedTransitionWords(context)) {
+                const kind = transitionKindFor(context, word);
+                expect(kind, `${context}: ${word}`).toBeTruthy();
+                expect(transitionWordFor(context, kind!), `${context}: ${word}`).toBe(word);
+            }
         }
+    });
+
+    it("gives each soft look an absolute word in the context where `fade` means the other one", () => {
+        // `fade` is relative and each context spends it on one of the two: a crossfade on a whole-screen
+        // change, a fade-in on a swap. Whichever it does not spend it on is the one that needs a
+        // word of its own, or the look is reachable from the property editor and unsayable on the
+        // line - which is how a scene fade-in used to print as `t=fadeIn` and re-read as a
+        // crossfade, silently.
+        expect(transitionKindFor("scene", "fade-in")).toBe("fadeIn");
+        expect(transitionWordFor("scene", "fadeIn")).toBe("fade-in");
+        expect(supportedTransitionWords("scene")).toContain("fade-in");
+        // And the mirror image: on a swap `fade` already IS the fade-in, so the absolute spelling
+        // would be a second menu entry for the first one.
+        expect(supportedTransitionWords("expression")).not.toContain("fade-in");
+        expect(transitionWordFor("expression", "fadeIn")).toBe("fade");
     });
 
     it("reads `fade` as a fade-in on a swap and as a crossfade on a scene", () => {

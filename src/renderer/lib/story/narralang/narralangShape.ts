@@ -186,6 +186,7 @@ export type NarralangSlot =
     | "transformEasing"
     // Transition tail
     | "transition"
+    | "transitionHold"
     | "transitionEasing"
     // Plain effect timing
     | "duration"

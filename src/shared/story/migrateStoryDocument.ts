@@ -101,6 +101,9 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 19) {
         migrated = migrateStoryDocumentV18toV19(migrated);
     }
+    if (version < 22) {
+        migrated = migrateStoryDocumentV21toV22(migrated);
+    }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
     // flag), v8 (the `event` rich-text run), v11 (a withdrawn marker block - see the version
     // history in document.ts), v14 (the expression language's `array`/`index` nodes), v15 (its
@@ -124,6 +127,107 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
     // stamp here means the next additive bump cannot reopen that hole.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
+}
+
+/**
+ * v21→v22: a transition's hold becomes a length of time, and `maskWipe` retires into `softWipe`.
+ *
+ * The hold was `props.hold`, a percentage of the duration, on `throughColor` and `exposure`. It is
+ * converted against the row's own duration - the same duration the compiler was handing the engine -
+ * so the number a row ends up with is the share it was set to, spelled in the unit that can hold it.
+ *
+ * The seconds the row was *getting* were shorter than that share, because the engine spent the hold
+ * as a band of eased progress and every eased curve crosses the middle at its fastest (a nominal 30%
+ * played as 17.8% of the wall clock). The migration deliberately carries over the **stated** share,
+ * not the measured one: the author set 30% meaning something like a third of the run, the engine is
+ * what was wrong, and rewriting their number down to match the old defect would preserve the bug in
+ * the document.
+ *
+ * A row that never stated a hold gets no `holdMs`, which is how it keeps the transition's own default
+ * (30% of the duration for `throughColor`) rather than being pinned to whatever its duration is today.
+ *
+ * `maskWipe` is the second half. It compiles to `Reveal` + `Mask.wipe(feather 0)`, which is exactly
+ * what `softWipe` with `feather: 0` compiles to, so the rewrite is behaviour-identical. It has to
+ * happen because no `t=` word ever named `maskWipe`: the command line printed the raw kind, and
+ * `maskwipe` is an alias of `wipe`, so re-reading the row it had just printed turned a hard edge into
+ * a feathered one. Nothing writes `maskWipe` any more; the kind stays in the union because
+ * `isPlayableStoryTransitionKind` answers about strings off disk.
+ */
+function migrateStoryDocumentV21toV22(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks ?? {})) {
+            blocks[blockId] = migrateTransitionBlock(block);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, scenes };
+}
+
+/** The transition kinds that read a hold, and so the only ones whose `props.hold` meant anything. */
+const HOLDING_TRANSITION_KINDS = new Set(["throughColor", "exposure"]);
+
+/** What the compiler used when a transition row stated no duration - the divisor for a percentage. */
+const DEFAULT_TRANSITION_DURATION_MS = 300;
+
+function migrateTransitionBlock(block: StoryBlock): StoryBlock {
+    const key = transitionRefKey(block);
+    if (!key) {
+        return block;
+    }
+    const payload = block.payload as Record<string, unknown>;
+    const ref = payload[key];
+    if (!ref || typeof ref !== "object") {
+        return block;
+    }
+    return { ...block, payload: { ...payload, [key]: migrateTransitionRef(ref as Record<string, unknown>) } } as StoryBlock;
+}
+
+function migrateTransitionRef(ref: Record<string, unknown>): Record<string, unknown> {
+    let next = ref;
+
+    if (next.kind === "maskWipe") {
+        const props = (next.props ?? {}) as Record<string, unknown>;
+        next = { ...next, kind: "softWipe", props: { ...props, feather: 0 } };
+    }
+
+    const props = next.props as Record<string, unknown> | undefined;
+    if (props && typeof props.hold === "number" && HOLDING_TRANSITION_KINDS.has(String(next.kind))) {
+        const duration = typeof next.durationMs === "number" ? next.durationMs : DEFAULT_TRANSITION_DURATION_MS;
+        const share = Math.min(100, Math.max(0, props.hold)) / 100;
+        const rest = { ...props };
+        delete rest.hold;
+        next = {
+            ...next,
+            holdMs: Math.round(duration * share),
+            ...(Object.keys(rest).length > 0 ? { props: rest } : {}),
+        };
+        if (Object.keys(rest).length === 0) {
+            delete (next as Record<string, unknown>).props;
+        }
+    }
+
+    return next;
+}
+
+/**
+ * Which key of a block's payload holds a {@link StoryTransitionRef} - `null` when none does.
+ *
+ * The same trap {@link transformRefKeys} documents, read the other way round: `transition` on an
+ * `nvl` payload is a transform ref and must not be touched here. And the `jump` block is not an
+ * `action` at all, so a walker that only looks at actions silently skips the one row kind whose
+ * whole purpose is a scene change.
+ */
+function transitionRefKey(block: StoryBlock): string | null {
+    if (block.kind === "jump") {
+        return "transition";
+    }
+    if (block.kind !== "action") {
+        return null;
+    }
+    const action = (block.payload as Record<string, unknown>).action;
+    return action === "setBackground" || action === "character" || action === "image" ? "transition" : null;
 }
 
 /**

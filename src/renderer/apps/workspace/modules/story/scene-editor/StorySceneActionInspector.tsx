@@ -1,5 +1,5 @@
 import { expandLegacyTransformPreset } from "@shared/story/transformLegacy";
-import { placementWordFor } from "./commands/transitions";
+import { placementWordFor, supportedTransitionWords, transitionKindFor } from "./commands/transitions";
 import type {
     StoryActionPayload,
     StoryBlock,
@@ -325,26 +325,44 @@ const transformPresetOptions = (t: TFunc, current?: string): SelectOption[] => [
         : []),
 ];
 
-const transitionOptions = (t: TFunc): SelectOption[] => [
-    { value: "none", label: t("common.none") },
-    { value: "dissolve", label: t("storyInspector.transition.dissolve") },
-    { value: "blurDissolve", label: t("storyInspector.transition.blurDissolve") },
-    { value: "fadeIn", label: t("storyInspector.transition.fadeIn") },
-    { value: "maskCircle", label: t("storyInspector.transition.maskCircle") },
-    { value: "softIris", label: t("storyInspector.transition.softIris") },
-    { value: "maskWipe", label: t("storyInspector.transition.maskWipe") },
-    { value: "softWipe", label: t("storyInspector.transition.softWipe") },
-    { value: "blinds", label: t("storyInspector.transition.blinds") },
-    { value: "barnDoor", label: t("storyInspector.transition.barnDoor") },
-    { value: "clock", label: t("storyInspector.transition.clock") },
-    { value: "fan", label: t("storyInspector.transition.fan") },
-    { value: "dots", label: t("storyInspector.transition.dots") },
-    { value: "slide", label: t("storyInspector.transition.slide") },
-    { value: "throughColor", label: t("storyInspector.transition.throughColor") },
-    { value: "darkness", label: t("storyInspector.transition.darkness") },
-    { value: "exposure", label: t("storyInspector.transition.exposure") },
-    { value: "ruleReveal", label: t("storyInspector.transition.ruleReveal") },
+/**
+ * Where a transition editor sits, which decides both which kinds it offers and how they are named.
+ *
+ * `scene` is a whole-screen change (`/bg`, `/jump`); `expression` is one object's frame changing in
+ * place - a portrait swap, or an image row setting a new source. They differ by more than taste: a
+ * rule image is painted for the whole frame, so playing one through a sprite-sized window shows a
+ * corner of a picture, which is why the `t=` vocabulary refuses it on a swap.
+ */
+type TransitionEditorContext = "scene" | "expression";
+
+/** The kinds, in menu order, with the word the editor calls each one. */
+const TRANSITION_KIND_ORDER: readonly StoryTransitionRef["kind"][] = [
+    "dissolve", "fadeIn", "blurDissolve", "maskCircle", "softIris", "softWipe", "blinds",
+    "barnDoor", "clock", "fan", "dots", "slide", "throughColor", "darkness", "exposure", "ruleReveal",
 ];
+
+/**
+ * The kinds this context offers.
+ *
+ * Filtered through the `t=` vocabulary rather than listed by hand, so the menu and the command line
+ * cannot drift apart. Both halves of that drift were real: the menu offered `ruleReveal` on a
+ * portrait swap, which the vocabulary refuses outright, and it offered `maskWipe`, which no word
+ * names at all - so a row set to it printed `t=maskWipe`, and `maskwipe` is an alias of `wipe`, so
+ * reading the line back turned the hard edge into a feathered one.
+ */
+const transitionOptions = (t: TFunc, context: TransitionEditorContext): SelectOption[] => {
+    const offered = new Set(
+        supportedTransitionWords(context)
+            .map(word => transitionKindFor(context, word))
+            .filter((kind): kind is StoryTransitionRef["kind"] => Boolean(kind)),
+    );
+    return [
+        { value: "none", label: t("common.none") },
+        ...TRANSITION_KIND_ORDER
+            .filter(kind => offered.has(kind))
+            .map(kind => ({ value: kind, label: t(`storyInspector.transition.${kind}` as TranslationKey) })),
+    ];
+};
 
 const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
     { value: "left", label: t("storyInspector.wipeDirection.left") },
@@ -373,6 +391,16 @@ const throughColorPatternOptions = (t: TFunc): SelectOption[] => [
     { value: "linear", label: t("storyInspector.throughColorPattern.linear") },
     { value: "blinds", label: t("storyInspector.throughColorPattern.blinds") },
     { value: "iris", label: t("storyInspector.throughColorPattern.iris") },
+    { value: "barnDoor", label: t("storyInspector.transition.barnDoor") },
+    { value: "clock", label: t("storyInspector.transition.clock") },
+    { value: "fan", label: t("storyInspector.transition.fan") },
+    { value: "dots", label: t("storyInspector.transition.dots") },
+];
+
+/** How the colour comes back off the frame once the hold is over. */
+const throughColorUncoverOptions = (t: TFunc): SelectOption[] => [
+    { value: "retreat", label: t("storyInspector.throughColorUncover.retreat") },
+    { value: "continue", label: t("storyInspector.throughColorUncover.continue") },
 ];
 
 const transitionHints = (t: TFunc): Record<string, string> => ({
@@ -381,7 +409,6 @@ const transitionHints = (t: TFunc): Record<string, string> => ({
     fadeIn: t("storyInspector.transitionHint.fadeIn"),
     maskCircle: t("storyInspector.transitionHint.maskCircle"),
     softIris: t("storyInspector.transitionHint.softIris"),
-    maskWipe: t("storyInspector.transitionHint.maskWipe"),
     softWipe: t("storyInspector.transitionHint.softWipe"),
     blinds: t("storyInspector.transitionHint.blinds"),
     barnDoor: t("storyInspector.transitionHint.barnDoor"),
@@ -745,6 +772,7 @@ function InspectorFields(props: {
                 </div>
                 <TransitionEditor
                     value={payload.transition}
+                    context="scene"
                     onChange={transition => props.onUpdatePayload({ ...payload, transition })}
                 />
             </div>
@@ -965,7 +993,17 @@ function ActionPayloadFields(props: {
                     storyName={props.document.name}
                     onChange={transform => props.onChange({ ...payload, transform })}
                 />
-                <TransitionEditor value={payload.transition} onChange={transition => props.onChange({ ...payload, transition })} />
+                {/* Only where a transition acts. `image.char(src, transition)` is what plays one, and
+                    a row that sets no source never calls it - a `show`/`hide` is a transform, and a
+                    `create` declares an object nothing is looking at yet. Offering the editor on
+                    those rows wrote a setting into the document that nothing would ever read. */}
+                {payload.operation === "setSource" ? (
+                    <TransitionEditor
+                        value={payload.transition}
+                        context="expression"
+                        onChange={transition => props.onChange({ ...payload, transition })}
+                    />
+                ) : null}
             </div>
         );
     }
@@ -2193,6 +2231,7 @@ function CharacterActionEditor(props: {
             {payload.operation === "expression" ? (
                 <TransitionEditor
                     value={payload.transition}
+                    context="expression"
                     onChange={transition => onChange({ ...payload, transition })}
                 />
             ) : null}
@@ -2430,6 +2469,7 @@ function TransformPresetEditor(props: {
 
 function TransitionEditor(props: {
     value: StoryTransitionRef | undefined;
+    context: TransitionEditorContext;
     onChange: (value: StoryTransitionRef | undefined) => void;
 }) {
     const value = props.value ?? { kind: "none" as const };
@@ -2444,7 +2484,7 @@ function TransitionEditor(props: {
             <FieldGrid cols={4}>
                 <SelectField
                     label={t("storyInspector.field.kind")}
-                    options={transitionOptions(t)}
+                    options={transitionOptions(t, props.context)}
                     value={kind}
                     onChange={next => next === "none"
                         ? props.onChange(undefined)
@@ -2460,6 +2500,17 @@ function TransitionEditor(props: {
                         />
                     </>
                 )}
+                {HOLDING_TRANSITION_KINDS.has(kind) ? (
+                    // Seconds, out of the duration rather than on top of it: a 4s change holding for
+                    // 2s is one second in, two of colour, one out. The number is what the player
+                    // sees, which a percentage of the run could not promise - see the v22 note in
+                    // `document.ts`.
+                    <SecondsField
+                        label={t("storyInspector.field.hold")}
+                        value={value.holdMs}
+                        onChange={holdMs => setBase({ holdMs })}
+                    />
+                ) : null}
                 {kind === "fadeIn" ? (
                     <>
                         <NumberField label={t("storyInspector.transition.startX")} value={paramNumber(value.props, "x")} onChange={x => setParam({ x })} />
@@ -2470,14 +2521,6 @@ function TransitionEditor(props: {
                     // 0.16.0: a hard iris (Mask.iris feather 0). The old partial from/to radii have no
                     // engine equivalent and are no longer offered - only the centre is adjustable.
                     <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
-                ) : null}
-                {kind === "maskWipe" ? (
-                    <SelectField
-                        label={t("storyInspector.field.direction")}
-                        options={wipeDirectionOptions(t)}
-                        value={paramString(value.props, "direction", "left")}
-                        onChange={direction => setParam({ direction: String(direction) })}
-                    />
                 ) : null}
                 {kind === "softWipe" ? (
                     <>
@@ -2499,6 +2542,9 @@ function TransitionEditor(props: {
                             onChange={orientation => setParam({ orientation: String(orientation) })}
                         />
                         <NumberField label={t("storyInspector.field.slats")} value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
+                        {/* Hard slats by default, which is why this went unnoticed - but the compiler
+                            has always read it, and every other feathered geometry offers it. */}
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
                     </>
                 ) : null}
                 {kind === "slide" ? (
@@ -2587,14 +2633,13 @@ function TransitionEditor(props: {
                         <SelectField
                             label={t("storyInspector.field.pattern")}
                             options={throughColorPatternOptions(t)}
-                            value={paramString(value.props, "pattern", "plain")}
+                            value={throughColorPatternOf(value)}
                             onChange={pattern => setParam({ pattern: String(pattern) })}
                         />
                         <ColorTextField label={t("storyInspector.field.color")} value={paramString(value.props, "color", "#000000")} onChange={color => setParam({ color })} />
-                        <NumberField label={t("storyInspector.transition.holdPct")} value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
                     </>
                 ) : null}
-                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "linear" ? (
+                {kind === "throughColor" && throughColorPatternOf(value) === "linear" ? (
                     <>
                         <SelectField
                             label={t("storyInspector.field.direction")}
@@ -2605,7 +2650,7 @@ function TransitionEditor(props: {
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
                     </>
                 ) : null}
-                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "blinds" ? (
+                {kind === "throughColor" && throughColorPatternOf(value) === "blinds" ? (
                     <>
                         <SelectField
                             label={t("storyInspector.field.orientation")}
@@ -2614,12 +2659,79 @@ function TransitionEditor(props: {
                             onChange={orientation => setParam({ orientation: String(orientation) })}
                         />
                         <NumberField label={t("storyInspector.field.slats")} value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
                     </>
                 ) : null}
-                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "iris" ? (
+                {kind === "throughColor" && throughColorPatternOf(value) === "iris" ? (
                     <>
                         <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <SelectField
+                            label={t("storyInspector.field.shape")}
+                            options={irisShapeOptions(t)}
+                            value={paramString(value.props, "shape", "circle")}
+                            onChange={shape => setParam({ shape: String(shape) })}
+                        />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) === "barnDoor" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.axis")}
+                            options={blindsOrientationOptions(t)}
+                            value={paramString(value.props, "axis", "horizontal")}
+                            onChange={axis => setParam({ axis: String(axis) })}
+                        />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) === "clock" ? (
+                    <>
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromAngle")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <SelectField
+                            label={t("storyInspector.field.direction")}
+                            options={clockDirectionOptions(t)}
+                            value={paramString(value.props, "direction", "clockwise")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) === "fan" ? (
+                    <>
+                        <NumberField label={t("storyInspector.field.blades")} value={paramNumber(value.props, "blades")} onChange={blades => setParam({ blades })} />
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromAngle")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) === "dots" ? (
+                    <>
+                        <NumberField label={t("storyInspector.field.rows")} value={paramNumber(value.props, "rows")} onChange={rows => setParam({ rows })} />
+                        <NumberField label={t("storyInspector.field.cols")} value={paramNumber(value.props, "cols")} onChange={cols => setParam({ cols })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <NumberField label={t("storyInspector.field.stagger")} value={paramNumber(value.props, "stagger")} onChange={stagger => setParam({ stagger })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) !== "plain" ? (
+                    <>
+                        {/* Which way the geometry runs while it covers. The iris defaults the other
+                            way round - closing rim-in is the classic iris-to-black, and is what every
+                            iris written before this toggle existed was playing. */}
+                        <ToggleField
+                            label={t("storyInspector.field.reverse")}
+                            checked={value.props?.inverted === undefined
+                                ? throughColorPatternOf(value) === "iris"
+                                : value.props.inverted === true}
+                            onChange={inverted => setParam({ inverted })}
+                        />
+                        <SelectField
+                            label={t("storyInspector.field.uncover")}
+                            options={throughColorUncoverOptions(t)}
+                            value={paramString(value.props, "uncover", "retreat")}
+                            onChange={uncover => setParam({ uncover: String(uncover) })}
+                        />
                     </>
                 ) : null}
                 {kind === "darkness" ? (
@@ -2636,7 +2748,6 @@ function TransitionEditor(props: {
                     <>
                         <NumberField label={t("storyInspector.transition.exposureEv")} value={paramNumber(value.props, "ev")} onChange={ev => setParam({ ev })} />
                         <NumberField label={t("storyInspector.transition.exposureLift")} value={paramNumber(value.props, "lift")} onChange={lift => setParam({ lift })} />
-                        <NumberField label={t("storyInspector.transition.holdPct")} value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
                     </>
                 ) : null}
             </FieldGrid>
@@ -2645,6 +2756,17 @@ function TransitionEditor(props: {
             )}
         </Section>
     );
+}
+
+/**
+ * The three transitions with an extreme to sit at, and so the three that read
+ * {@link StoryTransitionRef.holdMs}: the colour, the blown-out frame, the starting darkness.
+ */
+const HOLDING_TRANSITION_KINDS = new Set<string>(["throughColor", "exposure", "darkness"]);
+
+/** The geometry a through-colour row covers through - `plain` being no geometry at all. */
+function throughColorPatternOf(value: StoryTransitionRef): string {
+    return paramString(value.props, "pattern", "plain");
 }
 
 function ColorTextField(props: { label: string; value: string; onChange: (value: string) => void }) {
@@ -2870,6 +2992,7 @@ function BackgroundActionEditor(props: {
 
             <TransitionEditor
                 value={props.payload.transition}
+                context="scene"
                 onChange={transition => props.onChange({ ...props.payload, transition })}
             />
 

@@ -587,6 +587,7 @@ export const story = {
         fade: "フェード",
         // 「フェード」は文脈で意味が変わる語。こちらは常にクロスフェードそのものを指す。
         dissolve: "ディゾルブ",
+        "fade-in": "フェードイン",
         slide: "スライド",
         "slide-left": "左スライド",
         "slide-right": "右スライド",

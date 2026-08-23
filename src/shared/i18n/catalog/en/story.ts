@@ -650,6 +650,7 @@ export const story = {
         fade: "fade",
         // The crossfade named outright, for the contexts where `fade` means something else.
         dissolve: "dissolve",
+        "fade-in": "fade-in",
         slide: "slide",
         "slide-left": "slide-left",
         "slide-right": "slide-right",
