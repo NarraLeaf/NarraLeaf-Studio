@@ -34,49 +34,71 @@ function fakeHost(overrides: Partial<ScreenWakeLockHost> = {}) {
     };
 }
 
+/** Two turns: the request itself, and the check that follows it. */
+async function settle(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+}
+
 describe("installScreenWakeLock", () => {
-    it("asks for the lock on a visible page", async () => {
+    it("asks for nothing until the game does", async () => {
         const fake = fakeHost();
-        installScreenWakeLock(fake.host);
-        await Promise.resolve();
+        const keeper = installScreenWakeLock(fake.host);
+        await settle();
+        expect(fake.grants()).toBe(0);
+        keeper.setRequested(true);
+        await settle();
         expect(fake.grants()).toBe(1);
+    });
+
+    it("releases when the game stops asking", async () => {
+        const fake = fakeHost();
+        const keeper = installScreenWakeLock(fake.host);
+        keeper.setRequested(true);
+        await settle();
+        keeper.setRequested(false);
+        await settle();
+        expect(fake.released).toEqual([1]);
     });
 
     it("waits until a page that starts hidden is looked at", async () => {
         const fake = fakeHost();
         fake.setVisible(false);
-        installScreenWakeLock(fake.host);
-        await Promise.resolve();
+        const keeper = installScreenWakeLock(fake.host);
+        keeper.setRequested(true);
+        await settle();
         expect(fake.grants()).toBe(0);
         fake.setVisible(true);
-        await Promise.resolve();
+        await settle();
         expect(fake.grants()).toBe(1);
     });
 
     it("releases when the tab is hidden and asks again when it comes back", async () => {
         const fake = fakeHost();
-        installScreenWakeLock(fake.host);
-        await Promise.resolve();
+        const keeper = installScreenWakeLock(fake.host);
+        keeper.setRequested(true);
+        await settle();
         fake.setVisible(false);
-        await Promise.resolve();
+        await settle();
         expect(fake.released).toEqual([1]);
         fake.setVisible(true);
-        await Promise.resolve();
+        await settle();
         expect(fake.grants()).toBe(2);
     });
 
-    it("drops a lock granted after the tab went away", async () => {
+    it("drops a lock granted after the story stopped moving", async () => {
         const fake = fakeHost();
-        installScreenWakeLock(fake.host);
-        fake.setVisible(false);
-        await Promise.resolve();
-        await Promise.resolve();
+        const keeper = installScreenWakeLock(fake.host);
+        keeper.setRequested(true);
+        keeper.setRequested(false);
+        await settle();
         expect(fake.released).toEqual([1]);
     });
 
-    it("stays silent in a browser without the API", () => {
+    it("stays silent in a browser without the API", async () => {
         const fake = fakeHost({ request: null });
-        installScreenWakeLock(fake.host);
+        installScreenWakeLock(fake.host).setRequested(true);
+        await settle();
         expect(fake.warned).toEqual([]);
         expect(fake.grants()).toBe(0);
     });
@@ -89,12 +111,12 @@ describe("installScreenWakeLock", () => {
                 throw new Error("not allowed");
             },
         });
-        installScreenWakeLock(fake.host);
-        await Promise.resolve();
-        await Promise.resolve();
+        const keeper = installScreenWakeLock(fake.host);
+        keeper.setRequested(true);
+        await settle();
         fake.setVisible(false);
         fake.setVisible(true);
-        await Promise.resolve();
+        await settle();
         expect(attempts).toBe(1);
         expect(fake.warned).toHaveLength(1);
         expect(fake.warned[0]).toContain("not allowed");
