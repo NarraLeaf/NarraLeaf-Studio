@@ -3863,8 +3863,8 @@
           {
             "id": "p0",
             "type": "say",
-            "text": "Line",
-            "character": "Speaker",
+            "text": "台词",
+            "character": "说话人",
             "voice": "",
             "voiceId": "",
             "selected": "",
@@ -3873,8 +3873,8 @@
           {
             "id": "p1",
             "type": "say",
-            "text": "Line",
-            "character": "Speaker",
+            "text": "台词",
+            "character": "说话人",
             "voice": "",
             "voiceId": "",
             "selected": "",
@@ -3883,8 +3883,8 @@
           {
             "id": "p2",
             "type": "say",
-            "text": "Line",
-            "character": "Speaker",
+            "text": "台词",
+            "character": "说话人",
             "voice": "",
             "voiceId": "",
             "selected": "",
@@ -3893,8 +3893,8 @@
           {
             "id": "p3",
             "type": "say",
-            "text": "Line",
-            "character": "Speaker",
+            "text": "台词",
+            "character": "说话人",
             "voice": "",
             "voiceId": "",
             "selected": "",
@@ -44538,17 +44538,17 @@
         "itemKeyFieldId": "index",
         "items": [
           {
-            "text": "Choice A",
+            "text": "选项 A",
             "index": 0,
             "disabled": false
           },
           {
-            "text": "Choice B",
+            "text": "选项 B",
             "index": 1,
             "disabled": false
           },
           {
-            "text": "Choice C",
+            "text": "选项 C",
             "index": 2,
             "disabled": false
           }
@@ -47475,11 +47475,11 @@
         "items": [
           {
             "id": "preview-1",
-            "message": "Notification message"
+            "message": "通知内容"
           },
           {
             "id": "preview-2",
-            "message": "Another message"
+            "message": "另一条通知"
           }
         ]
       }
@@ -69499,12 +69499,12 @@
         "itemKeyFieldId": "index",
         "items": [
           {
-            "text": "Return to title",
+            "text": "返回标题",
             "index": 0,
             "disabled": false
           },
           {
-            "text": "Cancel",
+            "text": "取消",
             "index": 1,
             "disabled": false
           }
