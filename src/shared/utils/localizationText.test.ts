@@ -4,8 +4,12 @@ import {
     countSegmentInterpolations,
     hashSourceText,
     isSourceHashStale,
+    parseTranslatedRuns,
     parseTranslatedText,
+    segmentHasMarkup,
+    serializeSegmentMarkupText,
     serializeSegmentSourceText,
+    validateMarkupParity,
 } from "./localizationText";
 import {
     findLocaleFallbackConflict,
@@ -265,5 +269,112 @@ describe("findLocaleFallbackConflict", () => {
             ],
         };
         expect(findLocaleFallbackConflict(sourceWithFallback, "ja", "en")).toBeNull();
+    });
+});
+
+/** A line with one styled span, one pause, one event and one interpolation - one of each shape. */
+function markedSegment(): StoryTextSegment {
+    return segment({
+        value: "I decided last year.",
+        rich: [
+            { text: "I " },
+            { text: "decided", marks: { emphasis: "dot", bold: true } },
+            { pause: 400 },
+            { text: " last " },
+            { event: { sound: { assetId: "asset-se" } } },
+            { text: "year, " },
+            { interpolation: { kind: "variable", target: { scope: "saved", variableId: "name" } } },
+            { text: "." },
+        ],
+    });
+}
+
+describe("serializeSegmentMarkupText", () => {
+    it("tags every styled span and every zero-width token by run index", () => {
+        expect(serializeSegmentMarkupText(markedSegment())).toBe("I ‹1›decided‹/1›‹2› last ‹4›year, {0}.");
+    });
+
+    it("is identical to the hashed serialization when there is nothing to tag", () => {
+        const plain = segment({ value: "Hello {0}", rich: [{ text: "Hello " }, { interpolation: { kind: "blueprint", blueprintId: "bp" } }] });
+        expect(serializeSegmentMarkupText(plain)).toBe(serializeSegmentSourceText(plain));
+        expect(segmentHasMarkup(plain)).toBe(false);
+        expect(segmentHasMarkup(markedSegment())).toBe(true);
+    });
+
+    it("leaves the hashed serialization alone, so tagging a line does not go stale", () => {
+        const source = markedSegment();
+        expect(serializeSegmentSourceText(source)).toBe("I decided last year, {0}.");
+    });
+});
+
+describe("parseTranslatedRuns", () => {
+    const runs = markedSegment().rich ?? [];
+
+    it("carries a tagged span's marks onto the characters the translation put inside it", () => {
+        expect(parseTranslatedRuns("私が‹1›去年‹/1›決めた。", runs)).toEqual([
+            { kind: "text", text: "私が" },
+            { kind: "text", text: "去年", runIndex: 1 },
+            { kind: "text", text: "決めた。" },
+        ]);
+    });
+
+    it("drops a zero-width run in wherever the translation names it", () => {
+        expect(parseTranslatedRuns("‹2›決めた", runs)).toEqual([
+            { kind: "run", runIndex: 2 },
+            { kind: "text", text: "決めた" },
+        ]);
+        expect(parseTranslatedRuns("決めた‹4›", runs)).toEqual([
+            { kind: "text", text: "決めた" },
+            { kind: "run", runIndex: 4 },
+        ]);
+    });
+
+    it("still reads interpolation placeholders, inside a span and out", () => {
+        expect(parseTranslatedRuns("{0}は‹1›決めた‹/1›", runs)).toEqual([
+            { kind: "placeholder", index: 0 },
+            { kind: "text", text: "は" },
+            { kind: "text", text: "決めた", runIndex: 1 },
+        ]);
+    });
+
+    it("renders the characters plainly for every way a tag can be wrong", () => {
+        // A run this line does not have.
+        expect(parseTranslatedRuns("a‹9›b‹/9›c", runs)).toEqual([{ kind: "text", text: "abc" }]);
+        // A closing tag with nothing open.
+        expect(parseTranslatedRuns("a‹/1›b", runs)).toEqual([{ kind: "text", text: "ab" }]);
+        // An unstyled run lends nothing, so a tag on it opens no span.
+        expect(parseTranslatedRuns("a‹0›b‹/0›c", runs)).toEqual([{ kind: "text", text: "abc" }]);
+    });
+
+    it("styles the rest of the line when a span is never closed", () => {
+        expect(parseTranslatedRuns("a‹1›b", runs)).toEqual([
+            { kind: "text", text: "a" },
+            { kind: "text", text: "b", runIndex: 1 },
+        ]);
+    });
+
+    it("leaves prose that merely contains guillemets alone", () => {
+        expect(parseTranslatedRuns("Er sagte ‹leise›.", runs)).toEqual([{ kind: "text", text: "Er sagte ‹leise›." }]);
+    });
+
+    it("reads a translation written before run tags existed exactly as before", () => {
+        expect(parseTranslatedRuns("私が決めた、{0}。", runs)).toEqual([
+            { kind: "text", text: "私が決めた、" },
+            { kind: "placeholder", index: 0 },
+            { kind: "text", text: "。" },
+        ]);
+    });
+});
+
+describe("validateMarkupParity", () => {
+    it("names the runs a translation dropped and the ones it invented", () => {
+        const source = markedSegment();
+        expect(validateMarkupParity("私が‹1›去年‹/1›決めた{0}。‹2›‹4›", source)).toEqual([]);
+        expect(validateMarkupParity("私が決めた{0}。", source)).toEqual([
+            { kind: "missingRun", index: 1 },
+            { kind: "missingRun", index: 2 },
+            { kind: "missingRun", index: 4 },
+        ]);
+        expect(validateMarkupParity("‹1›‹2›‹4›‹9›", source)).toEqual([{ kind: "unknownRun", index: 9 }]);
     });
 });

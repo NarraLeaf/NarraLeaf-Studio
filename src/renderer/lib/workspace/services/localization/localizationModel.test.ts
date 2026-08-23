@@ -104,6 +104,50 @@ describe("extractStoryTranslationRows", () => {
     });
 });
 
+describe("run-tagged source", () => {
+    /** A line whose emphasis a translation should be able to put back. */
+    function markedDocument() {
+        const document = buildDocument();
+        document.scenes["scene-b"].blocks.d1.payload = {
+            action: "dialogue",
+            characterId: "char-1",
+            text: {
+                textId: "t-d1",
+                value: "We should go home.",
+                role: "dialogue",
+                rich: [
+                    { text: "We should go " },
+                    { text: "home", marks: { emphasis: "dot" } },
+                    { text: "." },
+                ],
+            },
+        } as never;
+        return document;
+    }
+
+    it("carries a tagged source beside the hashed one, and only where there is something to tag", () => {
+        const rows = extractStoryTranslationRows(markedDocument());
+        const dialogue = rows.find(row => row.unitId === "t-d1");
+        expect(dialogue?.sourceText).toBe("We should go home.");
+        expect(dialogue?.sourceMarkup).toBe("We should go ‹1›home‹/1›.");
+        expect(rows.find(row => row.unitId === "t-c1")?.sourceMarkup).toBeUndefined();
+    });
+
+    it("exports the tagged source but derives the state from the plain one", () => {
+        const source = "We should go home.";
+        const units = [{ unitId: "t-d1", context: "Chapter scene", sourceText: source, sourceMarkup: "We should go ‹1›home‹/1›." }];
+        const document: LocalizationDocument = {
+            schemaVersion: LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
+            locale: "ja",
+            units: { "t-d1": { target: "帰ろう。", sourceHash: hashSourceText(source), status: "translated" } },
+        };
+        const rows = buildTranslationExchangeRows(units, document);
+        expect(rows[0].source).toBe("We should go ‹1›home‹/1›.");
+        // The styling is not part of the hash, so a line that was restyled is not stale.
+        expect(rows[0].status).toBe("translated");
+    });
+});
+
 describe("extractCharacterTranslationRows", () => {
     it("maps characters to char:<id> units sorted by name", () => {
         const rows = extractCharacterTranslationRows([
