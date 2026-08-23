@@ -69,6 +69,10 @@ export const onboarding = {
         open: "ウィンドウ全体を見る",
         notice: "画面のプレビュー。入力できる行のほかは、どれも動かない",
     },
+    skipConfirm: {
+        title: "セットアップをスキップしますか？",
+        message: "Studio は既定の設定で開きます。セットアップは再表示されませんが、ここで尋ねる項目はすべて設定にあります。",
+    },
     nav: {
         skip: "セットアップをスキップ",
         finish: "Studio を開く",

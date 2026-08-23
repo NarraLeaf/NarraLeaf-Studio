@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { Button, ProgressCircle } from "@/lib/components/elements";
+import { Button, ConfirmModal, ProgressCircle } from "@/lib/components/elements";
 import { AppLayout } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
@@ -113,8 +113,9 @@ export interface OnboardingFlowProps {
  * them to this very window.
  *
  * **Deliberately not a gate.** Skipping is on every screen that asks something, and the last
- * screen's button is the same exit - so a screen that somehow fails to render costs one press per
- * launch rather than making the app unusable. Skipping leaves setup, though; it is not a way to step
+ * screen's button is the same exit - so a screen that somehow fails to render costs two presses per
+ * launch rather than making the app unusable. Two because Skip asks first: it is the one press here
+ * that cannot be taken back, since the completion marker is written whichever way setup is left. Skipping leaves setup, though; it is not a way to step
  * over one question, and the rail is a map of what is coming rather than a set of shortcuts into it.
  *
  * **Every screen is built the same way**, including the first: a heading, one line under it, and its
@@ -136,6 +137,14 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
      * the pane is the shell's. Every other screen shows what its own entry in {@link SCREENS} says.
      */
     const [zoomSurface, setZoomSurface] = useState<PreviewPanelId>("dashboard");
+    /**
+     * Whether Skip has been pressed and not yet answered.
+     *
+     * Skip is the one button here that cannot be taken back: the completion marker is written
+     * either way, so setup is never offered again. Continue and Back are free, and a press that
+     * ends the run for good should not cost what a press that advances it costs.
+     */
+    const [confirmingSkip, setConfirmingSkip] = useState(false);
 
     const step = STEPS[index];
     const screen = SCREENS[step];
@@ -266,7 +275,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 {/* Absent on the last screen, where the only thing left to do is
                                     leave and the primary button already does it. */}
                                 {!isLast && (
-                                    <Button variant="ghost" onClick={() => onFinish()}>
+                                    <Button variant="ghost" onClick={() => setConfirmingSkip(true)}>
                                         {t("onboarding.nav.skip")}
                                     </Button>
                                 )}
@@ -292,6 +301,22 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 )}
                             </div>
                         </div>
+
+                        {/* Not danger-coloured: nothing is destroyed by leaving, and setup answers
+                            nothing that Settings cannot answer later. What it is is one-way, which
+                            is what the message says. */}
+                        <ConfirmModal
+                            isOpen={confirmingSkip}
+                            onClose={() => setConfirmingSkip(false)}
+                            onConfirm={() => {
+                                setConfirmingSkip(false);
+                                onFinish();
+                            }}
+                            variant="primary"
+                            title={t("onboarding.skipConfirm.title")}
+                            message={t("onboarding.skipConfirm.message")}
+                            confirmText={t("onboarding.nav.skip")}
+                        />
                     </div>
                 </OnboardingServersProvider>
             </OnboardingPreferencesProvider>
