@@ -60,13 +60,13 @@ const SCREENS: Record<OnboardingStep, {
         rail: "onboarding.steps.identity",
         title: "onboarding.identity.title",
         expectation: "onboarding.identity.expectation",
-        panel: "dashboard",
+        panel: "versions",
     },
     team: {
         rail: "onboarding.steps.team",
         title: "onboarding.team.title",
         expectation: "onboarding.team.expectation",
-        panel: "dashboard",
+        panel: "team",
     },
     story: {
         rail: "onboarding.steps.story",
@@ -78,7 +78,9 @@ const SCREENS: Record<OnboardingStep, {
         rail: "onboarding.steps.done",
         title: "onboarding.done.title",
         expectation: "onboarding.done.expectation",
-        panel: "dashboard",
+        // The page a project opens on: setup ends, a project opens, and this is what is in front
+        // of the author next. Showing it is better than describing it.
+        panel: "welcome",
     },
 };
 
@@ -195,13 +197,14 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                             </div>
 
                             {/* A whole Studio window, of which this screen has room for the left
-                                third.
+                                half.
 
                                 Not a small window: one at a real width, laid against the right
-                                edge and cut off by it. 1120 is the narrow end of what Studio is
+                                edge and cut off by it. 960 is the narrow end of what Studio is
                                 worked in, and it is chosen for what it does to the surfaces behind
-                                the crop: the dashboard centres its column, so on a wider window the
-                                only thing in the left third would be that column's margin. The difference is the whole point - a miniature
+                                the crop: the dashboard and the welcome page both centre a column of
+                                fixed width, so on a wider window the only thing in the visible half
+                                would be that column's margin. The difference is the whole point - a miniature
                                 is a picture of the product, while a window running off the edge is
                                 the product, seen from where the author is standing. It costs the
                                 far side of every row (a line of dialogue ends off-screen, as it
@@ -218,7 +221,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 took the rail off the screen. A clipped box has nothing to scroll. */}
                             <div className="hidden w-[420px] shrink-0 overflow-clip py-6 min-[780px]:flex">
                                 <div className="relative min-h-0 flex-1">
-                                    <div className="absolute inset-y-0 left-0 flex w-[1120px]">
+                                    <div className="absolute inset-y-0 left-0 flex w-[960px]">
                                         <StudioPreview panel={panel} />
                                     </div>
                                 </div>

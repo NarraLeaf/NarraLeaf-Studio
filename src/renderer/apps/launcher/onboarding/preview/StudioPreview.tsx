@@ -5,8 +5,11 @@ import {
     BookOpen,
     ChevronDown,
     Cloud,
+    CloudOff,
     FolderOpen,
     GitBranch,
+    GitCommitHorizontal,
+    Home,
     LayoutDashboard,
     PanelBottom,
     PanelLeft,
@@ -20,9 +23,14 @@ import type { LucideIcon } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import type { OnboardingPreviewSurface } from "@shared/types/window";
 import { useOnboardingPreferences } from "../onboardingPreferences";
+import { ServerRow } from "@/lib/vcs/servers";
+import { APP_DISPLAY_NAME } from "@shared/constants/app";
+import { composeVcsIdentity } from "@shared/types/vcs";
+import { useOnboardingServers } from "../onboardingServers";
 import { ConsolePreview } from "./ConsolePreview";
 import { DashboardPreview } from "./DashboardPreview";
 import { StoryScenePreview } from "./StoryScenePreview";
+import { WelcomePreview } from "./WelcomePreview";
 
 /**
  * Studio's own window, small: the pane on the right of every setup screen.
@@ -51,11 +59,11 @@ import { StoryScenePreview } from "./StoryScenePreview";
 /**
  * Which of Studio's surfaces the sample is showing.
  *
- * The dashboard is what every screen that is not about the story editor shows: it is the first
- * thing a workspace opens on, it holds still, and it is mostly type - so it says what a language, a
- * theme and a zoom do to the product without pretending the question is about rows. The console is
- * offered beside it on the zoom screen, because it is the densest surface in the product and
- * therefore the one that decides whether a size is too small.
+ * Four of them are editor tabs - the welcome page a project opens on, the dashboard, a scene, the
+ * console - and two are docked panels: the version panel and the team panel, which are what the
+ * screens that ask about a signature and a server are about. Every screen shows the surface its own
+ * question lives on; where a question has no surface of its own (language, theme, zoom) the
+ * dashboard stands in, because it is the first thing a workspace opens on and it holds still.
  *
  * The shared type, because it travels on the preview window's props.
  */
@@ -67,8 +75,8 @@ const RAIL: { icon: LucideIcon; labelKey: TranslationKey; panel?: PreviewPanelId
     { icon: BookOpen, labelKey: "placeholders.moduleTitles.story", panel: "story" },
     { icon: Users, labelKey: "placeholders.moduleTitles.characters" },
     { icon: FolderOpen, labelKey: "placeholders.moduleTitles.assets" },
-    { icon: GitBranch, labelKey: "onboarding.sample.rail.versions" },
-    { icon: Cloud, labelKey: "onboarding.sample.rail.team" },
+    { icon: GitBranch, labelKey: "onboarding.sample.rail.versions", panel: "versions" },
+    { icon: Cloud, labelKey: "onboarding.sample.rail.team", panel: "team" },
 ];
 
 /** The window's three toggles and its settings button, as `ControlBar` draws them. */
@@ -130,12 +138,27 @@ export function StudioPreview({
 
                 </div>
 
+                {/* A docked panel is a column beside the editor, not a page in place of it - which
+                    is also what puts it inside the crop: 280px against the rail rather than
+                    something centred in the whole window. */}
+                {panel === "versions" ? (
+                    <PanelSurface icon={GitBranch} title={t("onboarding.sample.rail.versions")}>
+                        <VersionsPanel />
+                    </PanelSurface>
+                ) : panel === "team" ? (
+                    <PanelSurface icon={Cloud} title={t("onboarding.sample.rail.team")}>
+                        <TeamPanel />
+                    </PanelSurface>
+                ) : null}
+
                 <div className="flex min-w-0 flex-1 flex-col">
                     <EditorTabStrip panel={panel} />
                     {panel === "story" ? (
                         <StoryScenePreview story={preferences.story} textStyle={preferences.storyTextStyle} />
                     ) : panel === "console" ? (
                         <ConsolePreview />
+                    ) : panel === "welcome" ? (
+                        <WelcomePreview />
                     ) : (
                         <DashboardPreview />
                     )}
@@ -195,16 +218,30 @@ export function PreviewControlBar() {
  */
 function EditorTabStrip({ panel }: { panel: PreviewPanelId }) {
     const { t } = useTranslation();
-    const tabs: { id: PreviewPanelId; icon: LucideIcon; label: string }[] = [
+    const all: { id: PreviewPanelId; icon: LucideIcon; label: string }[] = [
+        { id: "welcome", icon: Home, label: t("placeholders.moduleTitles.welcome") },
         { id: "dashboard", icon: LayoutDashboard, label: t("placeholders.moduleTitles.dashboard") },
         { id: "story", icon: BookOpen, label: t("onboarding.sample.scene") },
         { id: "console", icon: Terminal, label: t("placeholders.moduleTitles.console") },
+    ];
+    /*
+     * A docked panel is not an editor tab, so on those screens the editor behind it is still the
+     * dashboard - which is the tab that stays in front.
+     *
+     * The open one is listed first. In a real window its position is the history of what was
+     * opened when, and a sample has no history; what it does have is a screen with room for two
+     * tabs, and the one being looked at has to be one of them.
+     */
+    const front = panel === "versions" || panel === "team" ? "dashboard" : panel;
+    const tabs = [
+        ...all.filter(tab => tab.id === front),
+        ...all.filter(tab => tab.id !== front),
     ];
     return (
         <div aria-hidden className="relative shrink-0 overflow-hidden border-b border-edge bg-surface-sunken">
             <div className="flex items-stretch">
                 {tabs.map(tab => {
-                    const active = tab.id === panel;
+                    const active = tab.id === front;
                     return (
                         <span
                             key={tab.id}
@@ -222,6 +259,91 @@ function EditorTabStrip({ panel }: { panel: PreviewPanelId }) {
                 })}
             </div>
             <span className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-surface-sunken to-transparent" />
+        </div>
+    );
+}
+
+/** A docked panel, headed the way `LeftSidebar` heads one. */
+function PanelSurface({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
+    return (
+        // The width a left dock opens at, and its own edge against the editor beside it.
+        <div className="flex min-h-0 w-[280px] shrink-0 flex-col border-r border-edge bg-surface">
+            <div aria-hidden className="flex h-12 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-4">
+                <span className="flex min-w-0 items-center gap-2">
+                    <Icon className="h-4 w-4 shrink-0 text-fg-muted" />
+                    <span className="truncate text-sm font-medium text-fg">{title}</span>
+                </span>
+                <X className="h-4 w-4 shrink-0 text-fg-subtle" />
+            </div>
+            {children}
+        </div>
+    );
+}
+
+/**
+ * The version panel: two recorded revisions, signed the way this installation signs them.
+ *
+ * The signature is composed by `composeVcsIdentity`, the same fold that reaches the repository, so
+ * what the sample prints is the string a commit would actually carry - including the `Name <email>`
+ * shape, and including the tool's own name when both fields are empty.
+ */
+function VersionsPanel() {
+    const { t } = useTranslation();
+    const { authorName, authorEmail } = useOnboardingPreferences();
+    const identity = composeVcsIdentity(authorName, authorEmail) || APP_DISPLAY_NAME;
+
+    const entries: TranslationKey[] = [
+        "onboarding.sample.versions.latest",
+        "onboarding.sample.versions.earlier",
+    ];
+
+    return (
+        <div aria-hidden className="min-h-0 flex-1 overflow-y-auto p-2">
+            {entries.map(key => (
+                <div key={key} className="flex items-start gap-2 rounded-md px-2 py-1.5">
+                    <GitCommitHorizontal className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+                    <div className="min-w-0">
+                        <div className="truncate text-xs text-fg">{t(key)}</div>
+                        <div className="truncate text-2xs text-fg-subtle">
+                            {t("onboarding.sample.versions.checkpoint")} · {identity}
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/**
+ * The team panel: the servers this installation is signed in to, drawn with the row every other
+ * screen draws a server with.
+ *
+ * Read live rather than mocked, because this one genuinely can be: the Team step signs in through
+ * the ordinary dialog, so the moment a server is added it appears here - which is the whole answer
+ * to "did that work".
+ */
+function TeamPanel() {
+    const { t } = useTranslation();
+    const { servers, loading } = useOnboardingServers();
+
+    if (loading) {
+        return <div className="min-h-0 flex-1" />;
+    }
+
+    if (servers.length === 0) {
+        return (
+            <div aria-hidden className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">
+                <CloudOff className="h-5 w-5 text-fg-subtle" />
+                <span className="text-xs text-fg-subtle">{t("onboarding.sample.teamAlone")}</span>
+            </div>
+        );
+    }
+
+    return (
+        <div aria-hidden className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+            {servers.map(session => (
+                <ServerRow key={session.remoteOrigin} session={session} size="sm" />
+            ))}
         </div>
     );
 }
