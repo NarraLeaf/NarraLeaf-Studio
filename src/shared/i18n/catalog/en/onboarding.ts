@@ -60,7 +60,7 @@ export const onboarding = {
      */
     welcome: {
         title: "Welcome",
-        expectation: "A few questions about how Studio looks and how it writes. Every one of them is in Settings afterwards.",
+        expectation: "A few quick settings before you start.",
         /** Above the import row: who the row is for, since most first runs are not. */
         haveSettings: "Already using Studio on another computer?",
     },
@@ -71,35 +71,35 @@ export const onboarding = {
     },
     appearance: {
         title: "Appearance",
-        expectation: "The theme and the accent, both applied the moment they are picked.",
+        expectation: "Pick the theme and the accent you want.",
     },
     zoom: {
         title: "Interface zoom",
-        expectation: "How large Studio's interface is drawn. This window is the sample.",
+        expectation: "How large Studio's interface is drawn. Click \"See the whole window\" below to preview it at that size.",
         /** The fourth option: the setting's whole 50-200 range, behind one more click. */
-        custom: "Custom",
+        custom: "Custom zoom",
         /** Over the three surfaces the pane can show while this screen is up. */
         surface: "Show in the preview",
     },
     identity: {
-        title: "Who is writing",
-        expectation: "The name on your revisions, and the author line each new project starts with.",
+        title: "Who you are",
+        expectation: "Shown in version control, so revisions can be told apart by who made them.",
         /** Under the two version-control fields: what an empty pair records. */
         unsigned: "Left empty, revisions are recorded as {name}.",
     },
     team: {
         title: "Team server",
-        expectation: "Where a shared project lives. Studio works fully without one.",
+        expectation: "NarraLeaf Team is for working together. If your team runs a server, you can connect to it here.",
         /** The button that opens the ordinary add-a-server dialog. */
         connect: "Connect a server",
         /** Above the list, once there is one. */
         connected: "Signed in",
         /** Nothing connected, which is the ordinary case and not a problem. */
-        none: "No server. Projects stay on this computer, and one can be added later in Settings.",
+        none: "A server can also be added later, in Team on the home screen.",
     },
     story: {
-        title: "Story editor",
-        expectation: "How the scene editor reads and what it accepts. Every one of these is in Settings.",
+        title: "Editor preferences",
+        expectation: "A few of the story editor's settings. The rest of them are in Settings.",
     },
     /**
      * The way past every question at once, on the first screen. See `ImportSettingsRow` for why it
@@ -109,11 +109,11 @@ export const onboarding = {
         /** The cover's button. Names the file, because "Import…" beside "Skip setup" names nothing. */
         action: "Import settings…",
         /** In the dialog, under the summary: what applying it does to the flow it was opened from. */
-        leaves: "Applying these opens Studio; the rest of setup is answered by the file.",
+        leaves: "Applying these imports the settings and opens Studio.",
     },
     done: {
-        title: "Studio is set up",
-        expectation: "Everything asked here, and a good deal more, is in Settings. Press F1 anywhere for help on what is under the cursor.",
+        title: "Your story starts here",
+        expectation: "NarraLeaf Studio is set up, and Settings holds a good deal more to make it your own. Now go and make your visual novel the best way there is. A journey of a thousand miles begins with a single step.",
         /** The one button under it, which opens the manual on narraleaf.com in a browser. */
         docs: "Read the documentation",
     },
@@ -126,8 +126,9 @@ export const onboarding = {
          *
          * Said once and plainly: what is under it looks like Studio and answers almost nothing,
          * and somebody who clicks a menu in it and gets nothing deserves to have been told why.
+         * It also names the one control that does answer, which is the zoom beside it.
          */
-        notice: "A preview of the interface. Nothing here is wired up except the line you can type on.",
+        notice: "This window previews the zoom. Nothing in it responds; the dropdown shows the other sizes.",
     },
     /**
      * The dialog behind Skip.
@@ -138,7 +139,7 @@ export const onboarding = {
      */
     skipConfirm: {
         title: "Skip setup?",
-        message: "Studio opens with its defaults. Setup is not offered again, but every question it asks is in Settings.",
+        message: "Studio opens with its defaults. Settings holds a good deal more to make it your own.",
     },
     nav: {
         skip: "Skip setup",

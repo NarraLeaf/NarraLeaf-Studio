@@ -22,7 +22,7 @@ export const onboarding = {
     },
     welcome: {
         title: "ようこそ",
-        expectation: "Studio の見た目と書き心地について、いくつか質問します。どれも後から設定で変更できます。",
+        expectation: "始める前に、いくつか簡単な設定をします。",
         haveSettings: "ほかのコンピューターで Studio を使っていますか？",
     },
     language: {
@@ -32,46 +32,46 @@ export const onboarding = {
     },
     appearance: {
         title: "外観",
-        expectation: "テーマとアクセント。選んだ瞬間に反映される",
+        expectation: "好みのテーマとアクセントを選んでください",
     },
     zoom: {
         title: "画面の拡大率",
-        expectation: "Studio の画面を描く大きさ。このウィンドウそのものが見本になる",
-        custom: "カスタム",
+        expectation: "Studio の画面を描く大きさ。下の「ウィンドウ全体を見る」を押すと、実際の大きさを確かめられる",
+        custom: "カスタム倍率",
         surface: "プレビューに出す画面",
     },
     identity: {
-        title: "書いている人",
-        expectation: "改訂に記録される名前と、新しいプロジェクトに最初から入る作者名",
+        title: "あなたは誰？",
+        expectation: "バージョン管理に表示され、どの改訂を誰が入れたかを見分けるために使う",
         unsigned: "空のままなら、改訂は {name} として記録される",
     },
     team: {
-        title: "チームサーバー",
-        expectation: "共有プロジェクトの置き場所。サーバーがなくても Studio の機能は欠けない",
+        title: "Team サーバー",
+        expectation: "NarraLeaf Team はチームでの制作に向けた機能。チームがサーバーを用意しているなら、ここで接続できる",
         connect: "サーバーに接続",
         connected: "サインイン済み",
-        none: "サーバーは未接続。プロジェクトはこの端末に置かれ、あとから設定で追加できる",
+        none: "サーバーはあとからホーム画面の Team でも追加できる",
     },
     story: {
-        title: "ストーリーエディター",
-        expectation: "シーンエディターの読み方と入力の受け方。どれも設定にある",
+        title: "エディターの設定",
+        expectation: "ストーリーエディターの設定をいくつか。残りはすべて設定にある",
     },
     import: {
         action: "設定ファイルを読み込む…",
-        leaves: "適用するとそのまま Studio が開く。残りのセットアップはこのファイルが答える",
+        leaves: "適用するとこれらの設定が読み込まれ、そのまま Studio が開く",
     },
     done: {
-        title: "セットアップ完了",
-        expectation: "ここで訊いたことも、その先の細かい調整も設定にある。どの画面でも F1 を押すと、カーソルの下にあるもののヘルプが開く",
+        title: "創作はここから",
+        expectation: "NarraLeaf Studio のセットアップが終わった。設定には好みに合わせる項目がまだたくさんある。さあ、いちばん良いやり方で自分のビジュアルノベルを作ろう。千里の道も一歩から",
         docs: "ドキュメントを読む",
     },
     previewWindow: {
         open: "ウィンドウ全体を見る",
-        notice: "画面のプレビュー。入力できる行のほかは、どれも動かない",
+        notice: "このウィンドウは拡大率のプレビュー。中のものは操作できない。ほかの拡大率はドロップダウンから見られる",
     },
     skipConfirm: {
         title: "セットアップをスキップしますか？",
-        message: "Studio は既定の設定で開きます。セットアップは再表示されませんが、ここで尋ねる項目はすべて設定にあります。",
+        message: "Studio は既定の設定で開きます。好みに合わせる項目は設定にたくさんあります。",
     },
     nav: {
         skip: "セットアップをスキップ",
