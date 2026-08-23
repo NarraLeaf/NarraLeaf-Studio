@@ -3074,7 +3074,7 @@ function CharacterPicker(props: {
                     props.panelRef.current = node;
                 }
             }}
-            className="z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
+            className="nl-no-scrollbar z-[70] max-h-72 w-[320px] overflow-auto rounded-xl border border-edge bg-surface-raised p-1 shadow-xl"
             style={props.frame.style}
             onMouseDown={event => {
                 event.preventDefault();

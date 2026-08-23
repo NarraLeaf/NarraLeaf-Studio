@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ClipboardEvent, CSSProperties, KeyboardEvent } from "react";
-import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextEmphasis } from "@shared/types/story";
+import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextEmphasis, StoryTextMarks } from "@shared/types/story";
 import { isStoryTextEmphasis } from "@shared/utils/storyTextMarks";
 import type { StoryCaretTarget } from "./storySceneEditorTypes";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -163,6 +163,16 @@ export type RichTextInputHandle = {
      * and passing it back is how the second press writes to the same characters as the first.
      */
     setTypeMark: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null, target?: { start: number; end: number }) => void;
+    /**
+     * Write a whole set of marks over the selection, replacing whatever it wore. `null` strips it
+     * bare.
+     *
+     * One entry on the undo stack for the lot, which is the point: the marks that arrive here come
+     * from somewhere they were already decided together - the translation editor hands over a source
+     * run's styling whole - and applying them one call at a time would cost the author six presses of
+     * `Mod+Z` to undo one press of a button.
+     */
+    applyMarks: (marks: StoryTextMarks | null) => void;
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
@@ -1133,6 +1143,32 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         emitChange();
     }, [emitChange, recordStructural, resolveTypeTarget, saveSelection, scheduleReportActive]);
 
+    /** Write `marks` over the selection, replacing what it had. See {@link RichTextInputHandle.applyMarks}. */
+    const applyMarks = useCallback((marks: StoryTextMarks | null) => {
+        const el = editorRef.current;
+        if (!el) {
+            return;
+        }
+        const range = getSelectionUnitRange(el) ?? savedRange.current;
+        if (!range || range.start === range.end) {
+            return;
+        }
+        recordStructural();
+        const runs = domToRuns(el);
+        // `textOnly` for the reason ruby uses it: styling belongs to characters somebody wrote, and an
+        // inline value chip carries the styling it was compiled with.
+        const next = applyMarkToRange(runs, range.start, range.end, () => ({ ...(marks ?? {}) }), { textOnly: true });
+        renderRunsToElement(el, next, renderOptionsRef.current);
+        if (globalThis.document.activeElement === el) {
+            setSelectionUnitRange(el, range.start, range.end);
+            saveSelection();
+        } else {
+            savedRange.current = { start: range.start, end: range.end };
+        }
+        scheduleReportActive(true);
+        emitChange();
+    }, [emitChange, recordStructural, saveSelection, scheduleReportActive]);
+
     // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
     // focus). Caret is only restored when the editor already holds focus.
     const spliceUnits = useCallback((start: number, deleteCount: number, insert: StoryRichRun[], caretAfter: boolean) => {
@@ -1246,6 +1282,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         getRubyTarget: resolveRubyTarget,
         getTypeTarget: resolveTypeTarget,
         setTypeMark,
+        applyMarks,
         setRuby,
         insertPause,
         updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
@@ -1258,7 +1295,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         replaceSpelling,
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, setRuby, setTypeMark, spliceUnits]);
+    }), [applyMark, applyMarks, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, setRuby, setTypeMark, spliceUnits]);
 
     return (
         <>

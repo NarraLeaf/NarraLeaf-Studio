@@ -92,6 +92,10 @@ export const workspace = {
             reviewAllClear: "没有待校对的条目",
             staleHint: "翻译之后原文有改动；重新保存该译文即可标记为最新",
             placeholderHint: "请保留 {n} 占位符，它们用于渲染内联数值",
+            applyStyle: "把这个样式给选中的文字",
+            placeToken: "把它放在这里",
+            clearStyle: "去掉选中文字的样式",
+            clearStyleShort: "纯文本",
             runTagHint: "把 ‹n› 标记抄到对应的词上，它们带着样式、停顿与立绘切换",
             emptyStory: "该故事没有可翻译的文本",
             emptyFilter: "没有符合当前筛选的条目",
@@ -1051,6 +1055,10 @@ export const workspace = {
         // 真正花时间的是检查点那一步，也正是需要点名说清楚的那一步。
         closing: {
             title: "正在关闭工作区",
+            // 「在当前窗口打开」另一个项目时：新项目在看不见的地方加载，这个窗口一直留到它就绪，
+            // 所以这里说的是这段等待，而不是关闭。
+            switchingTitle: "正在切换项目",
+            switching: "正在打开另一个项目…",
             saving: "正在保存更改…",
             checkpoint: "正在记录项目的检查点…",
             launcher: "正在返回启动器…",

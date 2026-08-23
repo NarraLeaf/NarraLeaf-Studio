@@ -63,8 +63,14 @@ function selectionAsTerm(element: HTMLElement): string | null {
     return term;
 }
 
-/** Whether a right click landed on something the author can type into. */
-function editableTarget(node: EventTarget | null): HTMLElement | null {
+/**
+ * Whether a right click landed on something the author can type into.
+ *
+ * Exported for the surfaces that open a menu of their own on right click: a canvas whose cards
+ * carry text fields has to know which clicks are not its own, or its menu covers the field's
+ * cut/copy/paste with rows about the card.
+ */
+export function editableTextTarget(node: EventTarget | null): HTMLElement | null {
     const element = node instanceof HTMLElement ? node : null;
     if (!element) {
         return null;
@@ -132,7 +138,7 @@ export function EditableTextContextMenu(): React.ReactElement | null {
             if (event.defaultPrevented) {
                 return;
             }
-            const element = editableTarget(event.target);
+            const element = editableTextTarget(event.target);
             if (!element) {
                 return;
             }

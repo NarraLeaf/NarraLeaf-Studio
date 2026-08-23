@@ -318,6 +318,18 @@ export interface RuntimeResourcesOptions {
     userDataDir?: string;
     /** Where discovery notes go. Silent when omitted. */
     log?: (level: "info" | "warning", message: string) => void;
+    /**
+     * Say why a patch file was not applied, rather than only that it was not.
+     *
+     * Off for a shipped game. The reason comes from the layer reader, and its wording describes how
+     * a patch is bound to the build it belongs to - which is a description of the protection, sitting
+     * in a file the player can open. What a player needs is the name of the file that did nothing.
+     *
+     * On for a build made to be inspected, where the author is the reader and the reason is the
+     * whole point: a patch built for another project and a patch with a byte flipped are the same
+     * line without it.
+     */
+    explainRefusedPatches?: boolean;
 }
 
 /**
@@ -743,7 +755,7 @@ async function openLayers(
         // The build was made without a distribution key, so it has nothing to read a
         // layer through. Worth one line: the files are sitting there and the player
         // would otherwise see no effect and no reason.
-        options.log?.("warning", `${found.length} patch or DLC file(s) present, but this build cannot read them`);
+        options.log?.("warning", `${found.length} patch or DLC file(s) present; this build applies neither`);
         return [];
     }
 
@@ -777,10 +789,12 @@ async function openLayers(
                 at,
             });
         } catch (error) {
-            options.log?.(
-                "warning",
-                `${entry.kind.noun} not applied: ${label} - ${error instanceof Error ? error.message : String(error)}`,
-            );
+            // The reason is the reader's own wording about how a layer is bound to its build, so a
+            // shipped game states the file and stops there.
+            const reason = options.explainRefusedPatches
+                ? ` - ${error instanceof Error ? error.message : String(error)}`
+                : "";
+            options.log?.("warning", `${entry.kind.noun} not applied: ${label}${reason}`);
         }
     }
 
@@ -789,10 +803,12 @@ async function openLayers(
     // is the only order a player can influence.
     opened.sort((a, b) => (a.rank - b.rank) || (a.order - b.order) || (a.at - b.at));
     for (const entry of opened) {
+        // What the patch does, not what let it do it. "files only" is the effect an author and a
+        // player can both act on; how a layer earns more than that is not a fact a game log states.
         options.log?.(
             "info",
-            `${entry.patch.dlcId ? "DLC" : "patch"} applied: ${entry.patch.label} `
-            + `(${entry.patch.proven ? "proven" : "unproven, assets only"})`,
+            `${entry.patch.dlcId ? "DLC" : "patch"} applied: ${entry.patch.label}`
+            + `${entry.patch.proven ? "" : " (files only)"}`,
         );
     }
     return opened.map(entry => entry.patch);

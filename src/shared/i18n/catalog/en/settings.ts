@@ -286,6 +286,10 @@ export const settings = {
             description:
                 "How long quitting waits for the checkpoints of every open project; a project that takes longer is left unrecorded. Set to 0 to record none when quitting.",
         },
+        projectDefaultAuthor: {
+            label: "Default author for new projects",
+            description: "Fills the author field when a project is created. Existing projects keep what they were given.",
+        },
         versionControlAuthor: {
             label: "Author name",
             description: "Recorded on projects that are not connected to a server. Leave empty to record NarraLeaf Studio instead.",

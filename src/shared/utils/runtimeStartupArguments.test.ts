@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { hasDebuggingSwitch, reviewStartupArguments } from "./runtimeStartupArguments";
+import {
+    hasDebuggingSwitch,
+    hasStartupSwitch,
+    reviewStartupArguments,
+    RUNTIME_LOGS_SWITCH,
+} from "./runtimeStartupArguments";
 
 /**
  * The command line a shipped game will and will not take.
@@ -85,5 +90,44 @@ describe("hasDebuggingSwitch", () => {
     it("does not mistake an ordinary launch for one", () => {
         expect(hasDebuggingSwitch([], "win32")).toBe(false);
         expect(hasDebuggingSwitch(["--disable-gpu"], "win32")).toBe(false);
+    });
+});
+
+describe("the switch that turns the main process's output back on", () => {
+    it("is accepted, so asking support for it does not stop the game", () => {
+        expect(review([`--${RUNTIME_LOGS_SWITCH}`]).refused).toEqual([]);
+    });
+
+    it("is not the spelling anyone would guess", () => {
+        // Named apart from Chromium's own logging switches on purpose, and each of those stays
+        // refused - one of them writes the network log to a file.
+        for (const guess of ["--logs", "--log", "--enable-logging", "--log-file=x", "--log-net-log=x"]) {
+            expect(review([guess]).refused).toEqual([guess]);
+        }
+    });
+
+    it("is found however Chromium would have read it", () => {
+        expect(hasStartupSwitch([`--${RUNTIME_LOGS_SWITCH}`], "linux", RUNTIME_LOGS_SWITCH)).toBe(true);
+        expect(hasStartupSwitch([`/USE-LOGS`], "win32", RUNTIME_LOGS_SWITCH)).toBe(true);
+        expect(hasStartupSwitch([`-${RUNTIME_LOGS_SWITCH}=1`], "darwin", RUNTIME_LOGS_SWITCH)).toBe(true);
+        expect(hasStartupSwitch(["--disable-gpu"], "win32", RUNTIME_LOGS_SWITCH)).toBe(false);
+    });
+});
+
+describe("what a player may still ask for", () => {
+    it("takes the driver and display switches a support thread hands out", () => {
+        expect(review([
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--use-angle=d3d11",
+            "--ozone-platform=wayland",
+            "--force-color-profile=srgb",
+        ]).refused).toEqual([]);
+    });
+
+    it("does not take the ones that weaken a process boundary, however often they are suggested", () => {
+        for (const suggestion of ["--no-sandbox", "--disable-gpu-sandbox", "--disable-web-security", "--in-process-gpu"]) {
+            expect(review([suggestion]).refused).toEqual([suggestion]);
+        }
     });
 });

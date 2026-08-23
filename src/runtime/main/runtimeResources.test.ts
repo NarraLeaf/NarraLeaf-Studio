@@ -277,17 +277,23 @@ describe("patched runtime resources", () => {
             },
         );
 
-        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        const applied: string[] = [];
+        const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
+            log: (level, message) => { if (level === "info") { applied.push(message); } },
+        });
         try {
             expect((await readPackOf(resources)).marker).toBe("base");
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("reskinned");
             expect(await resources.readRuntimeFile("/plugins/evil/runtime.js")).toBeNull();
+            // What it did, not what it failed to prove.
+            expect(applied.join("\n")).toContain("mod.patch.dat (files only)");
         } finally {
             await resources.dispose();
         }
     });
 
-    it("ignores a patch made for another project", async () => {
+    it("ignores a patch made for another project, and names the file without saying why", async () => {
         const material = createProjectMaterial();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         await writePatch(
@@ -303,7 +309,39 @@ describe("patched runtime resources", () => {
         });
         try {
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("original");
-            expect(warnings.some(line => line.includes("foreign.patch.dat"))).toBe(true);
+            const line = warnings.find(entry => entry.includes("foreign.patch.dat"));
+            /*
+             * The reason a layer gives is its own account of how a patch is bound to a build, and a
+             * shipped game writes its log into a file the player can open. So the file is named and
+             * nothing else is - asserted as an equality rather than a "does not contain", because
+             * the wording that would leak comes from a dependency and can change without anything
+             * here noticing.
+             */
+            expect(line).toBe("patch not applied: foreign.patch.dat");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /* A build made to be inspected is read by its author, and there the reason is the whole point. */
+    it("says why a patch was refused when it was built to be inspected", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir } = await makeApp(material, "original");
+        await writePatch(
+            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "foreign.patch.dat"),
+            { projectMaterial: createProjectMaterial() },
+            { "assets/one": "stranger" },
+        );
+
+        const warnings: string[] = [];
+        const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
+            explainRefusedPatches: true,
+            log: (level, message) => { if (level === "warning") { warnings.push(message); } },
+        });
+        try {
+            const line = warnings.find(entry => entry.includes("foreign.patch.dat")) ?? "";
+            expect(line.length).toBeGreaterThan("patch not applied: foreign.patch.dat".length);
         } finally {
             await resources.dispose();
         }
@@ -441,7 +479,7 @@ describe("patched runtime resources", () => {
         });
         try {
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("original");
-            expect(warnings.join("\n")).toContain("cannot read them");
+            expect(warnings.join("\n")).toContain("applies neither");
         } finally {
             await resources.dispose();
         }

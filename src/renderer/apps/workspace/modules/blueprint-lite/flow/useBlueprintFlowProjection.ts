@@ -6,6 +6,11 @@ import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/bluepri
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
 import { blueprintEdgeStyle } from "@/lib/ui-editor/blueprint-graph-edge-style";
+import {
+    blueprintFrameContains,
+    readBlueprintCommentSize,
+    type BlueprintFrameRect,
+} from "./blueprintGroupFrame";
 import type { BlueprintFlowNodeData, BlueprintFlowNodeDiagnostic } from "./components/BlueprintFlowNode";
 import {
     withInferredBlueprintVariableValueTypeParam,
@@ -25,15 +30,104 @@ export type BlueprintDynamicSelectOptionsByNodeId = Record<
     Record<string, BlueprintInspectorParamSelectOption[]>
 >;
 
+/**
+ * The cards drawn behind the graph: notes the author sent back, and every group frame.
+ *
+ * A frame has no layer to choose. It is a rectangle stretched around other cards, so level with
+ * them the document's own order would decide what it covers - everything written before it - and
+ * what covers it. That is the tint an author sees over their own nodes with nothing on screen to
+ * explain it, and it is not a state a frame should be able to reach. `background` stays the note's
+ * switch; a document that has it set on a frame is read the same way as every other frame.
+ */
 function isBackgroundLayerComment(node: Node<BlueprintFlowNodeData>): boolean {
-    return node.data.catalog.role === "comment" && node.data.params.background === false;
+    if (node.data.catalog.role !== "comment") {
+        return false;
+    }
+    return node.data.params.frame === true || node.data.params.background === false;
+}
+
+/**
+ * The stack the canvas is drawn in.
+ *
+ * Group frames and notes sent behind sit under everything, then the wires, then the cards. The
+ * background band is wide because the cards in it are stacked among themselves as well; anything
+ * nested deeper than the band simply shares its top rung, which is nesting no author will reach.
+ */
+export const BLUEPRINT_FLOW_Z_BACKGROUND = 0;
+export const BLUEPRINT_FLOW_Z_BACKGROUND_TOP = 99;
+export const BLUEPRINT_FLOW_Z_EDGE = 100;
+export const BLUEPRINT_FLOW_Z_NODE = 101;
+export const BLUEPRINT_FLOW_Z_NODE_SELECTED = 102;
+/** The ghost that follows the cursor while a node is being placed: above every card it passes. */
+export const BLUEPRINT_FLOW_Z_PLACEMENT_PREVIEW = 103;
+
+function readBackgroundLayerRect(node: Node<BlueprintFlowNodeData>): BlueprintFrameRect {
+    return {
+        x: node.position.x,
+        y: node.position.y,
+        ...readBlueprintCommentSize(node.data.params),
+    };
+}
+
+/**
+ * Where each card behind the graph goes in that band: one rung per frame enclosing it.
+ *
+ * A group drawn inside another group belongs on top of it. Left level with the frame around it, the
+ * order would fall to whichever card the document happened to list last, and the inner group would
+ * be read through the outer one's tint - the blur an author sees after grouping inside a group.
+ * Depth is counted from the geometry rather than stored, the same way membership is, so dragging a
+ * frame out of another one re-stacks it with no bookkeeping to go stale.
+ *
+ * Frames that merely overlap stay level: neither encloses the other, so there is nothing to say
+ * about which is in front.
+ */
+function backgroundLayerZIndex(rect: BlueprintFrameRect, enclosing: readonly BlueprintFrameRect[]): number {
+    const depth = enclosing.filter(other => other !== rect && blueprintFrameContains(other, rect)).length;
+    return Math.min(BLUEPRINT_FLOW_Z_BACKGROUND + depth, BLUEPRINT_FLOW_Z_BACKGROUND_TOP);
+}
+
+/** Every node's place in the stack, worked out from what is drawn behind what. */
+function withBlueprintFlowNodeLayering(
+    nodes: Node<BlueprintFlowNodeData>[],
+): Node<BlueprintFlowNodeData>[] {
+    const rects = new Map<string, BlueprintFrameRect>();
+    for (const node of nodes) {
+        if (isBackgroundLayerComment(node)) {
+            rects.set(node.id, readBackgroundLayerRect(node));
+        }
+    }
+    const background = [...rects.values()];
+    return nodes.map(node => {
+        const rect = rects.get(node.id);
+        return {
+            ...node,
+            zIndex: rect ? backgroundLayerZIndex(rect, background) : BLUEPRINT_FLOW_Z_NODE,
+        };
+    });
+}
+
+/**
+ * A group frame is a comment card stretched around other cards, so its middle is exactly where the
+ * author's nodes are. React Flow gives every node wrapper `pointer-events: all`, which over that
+ * area would mean a frame that quietly ate every click aimed at what it encloses - and every
+ * marquee started inside it. Switching the wrapper off hands those pixels back; the card itself
+ * turns the pointer on again for the two parts a frame is actually operated by, its title row and
+ * its resize corner.
+ */
+export function blueprintFlowNodeStyle(
+    role: string,
+    params: Record<string, unknown>,
+): { pointerEvents: "none" } | undefined {
+    return role === "comment" && params.frame === true ? { pointerEvents: "none" } : undefined;
 }
 
 function readBlueprintFlowNodeZIndex(node: Node<BlueprintFlowNodeData>): number {
     if (isBackgroundLayerComment(node)) {
-        return 0;
+        // Selecting a frame leaves it where it is drawn. Lifting it over the cards it encloses
+        // would hide them behind its tint for as long as it stayed picked.
+        return typeof node.zIndex === "number" ? node.zIndex : BLUEPRINT_FLOW_Z_BACKGROUND;
     }
-    return node.selected ? 2 : 1;
+    return node.selected ? BLUEPRINT_FLOW_Z_NODE_SELECTED : BLUEPRINT_FLOW_Z_NODE;
 }
 
 function wiredInputPortIdsByNodeId(ir: BlueprintGraphIr): Map<string, Set<string>> {
@@ -69,6 +163,7 @@ export function blueprintIrToFlowNodes(
     displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>,
     onBindElementLiteral?: (nodeId: string) => void,
     onEditSaveSchema?: () => void,
+    onFitGroupFrame?: (nodeId: string) => void,
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
     const wiredIn = wiredInputPortIdsByNodeId(ir);
@@ -76,17 +171,16 @@ export function blueprintIrToFlowNodes(
         memberVariables,
         persistentVariables,
     };
-    return Object.values(nodes).map(n => {
+    const flowNodes = Object.values(nodes).map(n => {
         const params = n.params ?? {};
         const inferredParams =
             withInferredBlueprintVariableValueTypeParam(n.type, params, variableTypeContext) ?? params;
         const catalog = nodeCatalog.resolveCatalogEntryForNode(n.type, inferredParams);
-        const backgroundEnabled = params.background !== false;
         return {
             id: n.id,
             type: "blueprint",
             position: readNodeEditorLayout(n),
-            zIndex: catalog.role === "comment" && !backgroundEnabled ? 0 : 1,
+            style: blueprintFlowNodeStyle(catalog.role ?? "", inferredParams),
             data: {
                 catalog,
                 nodeId: n.id,
@@ -106,9 +200,11 @@ export function blueprintIrToFlowNodes(
                 displayableTargetVariants: displayableTargetVariantsByNodeId?.[n.id],
                 onBindElementLiteral,
                 onEditSaveSchema,
+                onFitGroupFrame,
             },
         };
     });
+    return withBlueprintFlowNodeLayering(flowNodes);
 }
 
 /** Stable key for effect deps when the selected id *set* changes (order ignored). */
@@ -211,6 +307,8 @@ export function blueprintIrToFlowEdges(
             selectable: true,
             focusable: true,
             interactionWidth: 24,
+            // Above every group frame: a wire crossing a group has to stay readable through it.
+            zIndex: BLUEPRINT_FLOW_Z_EDGE,
             style: blueprintEdgeStyle(data),
         };
     });

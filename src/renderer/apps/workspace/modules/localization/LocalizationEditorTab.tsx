@@ -47,7 +47,7 @@ import { isValidLocalizationKeyName, type LocalizationDocument } from "@shared/t
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import type { StoryLibraryEntry } from "@shared/types/story";
 import type { LocalizationEditorTabPayload } from "./localizationEditorTabId";
-import { AddKeyRow, ReviewRow, TranslateRow, type TranslationTableRow } from "./TranslationRows";
+import { AddKeyRow, ReviewRow, TranslateRow, type InlineEditing, type TranslationTableRow } from "./TranslationRows";
 
 type EditorMode = "translate" | "review";
 type RowFilter = "all" | "untranslated" | "stale" | "completed";
@@ -140,6 +140,14 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
      * the focus is not, and losing it mid-line is the same defect to whoever is doing the work.
      */
     const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
+    /**
+     * The one row whose translation is open in the inline field, and where its caret went in.
+     *
+     * One at a time, the way the story editor opens one row at a time: the field is a
+     * contentEditable with a selection listener and an undo stack, and a table of three hundred of
+     * them would pay for all of it while only one can ever hold the caret.
+     */
+    const [inlineEdit, setInlineEdit] = useState<{ unitId: string; caret: number | null } | null>(null);
 
     const speakerNameFor = useCallback((row: StoryTranslationRow): string => {
         if (row.role === "narration") {
@@ -273,6 +281,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                     unitId: row.unitId,
                     sourceText: row.sourceText,
                     ...(row.sourceMarkup ? { sourceMarkup: row.sourceMarkup } : {}),
+                    ...(row.sourceRuns ? { sourceRuns: row.sourceRuns } : {}),
                     interpolationCount: row.interpolationCount,
                     groupKey: row.sceneId,
                     groupName: row.sceneName,
@@ -509,6 +518,13 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
         setFocusedItemIndex(null);
     }, []);
 
+    const inlineEditing = useMemo<InlineEditing>(() => ({
+        unitId: inlineEdit?.unitId ?? null,
+        caret: inlineEdit?.caret ?? null,
+        onEdit: (unitId, caret) => setInlineEdit({ unitId, caret }),
+        onStopEdit: () => setInlineEdit(null),
+    }), [inlineEdit]);
+
     const handleTargetChange = useCallback((row: TranslationTableRow, target: string) => {
         localizationService?.updateUnit(locale, row.unitId, row.sourceText, { target });
     }, [localizationService, locale]);
@@ -715,6 +731,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                                             speaker={entry.row.speaker}
                                             state={state}
                                             target={target}
+                                            editing={inlineEditing}
                                             onTargetChange={handleTargetChange}
                                             onApprove={handleApprove}
                                             onReturn={handleReturn}
@@ -725,6 +742,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                                             speaker={entry.row.speaker}
                                             state={state}
                                             target={target}
+                                            editing={inlineEditing}
                                             onTargetChange={handleTargetChange}
                                             onSourceChange={handleKeySourceChange}
                                             onRemove={removed => void handleKeyRemove(removed)}

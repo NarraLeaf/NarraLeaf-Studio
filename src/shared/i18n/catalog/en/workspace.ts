@@ -95,6 +95,10 @@ export const workspace = {
             reviewAllClear: "Nothing left to review.",
             staleHint: "The source line changed after this translation. Save it again to mark it current.",
             placeholderHint: "Keep the {n} placeholders. They render inline values.",
+            applyStyle: "Give the selected words this styling",
+            placeToken: "Place this here",
+            clearStyle: "Take the styling off the selected words",
+            clearStyleShort: "Plain",
             runTagHint: "Copy the ‹n› tags onto the words they belong on. They carry the styling, the pauses and the portrait changes.",
             emptyStory: "This story has no translatable lines yet.",
             emptyFilter: "Nothing matches this filter.",
@@ -1241,6 +1245,10 @@ export const workspace = {
         // time, and the one that needs naming.
         closing: {
             title: "Closing workspace",
+            // Opening another project in this window: the replacement loads out of sight and this
+            // window stays up until it is ready, so what is said here is the wait, not the close.
+            switchingTitle: "Switching project",
+            switching: "Opening the other project…",
             saving: "Saving changes…",
             checkpoint: "Recording a version of the project…",
             launcher: "Returning to the launcher…",

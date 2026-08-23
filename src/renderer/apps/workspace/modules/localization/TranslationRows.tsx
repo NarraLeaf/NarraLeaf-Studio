@@ -9,6 +9,8 @@
  */
 
 import { useLayoutEffect, useRef, useState } from "react";
+import type { StoryRichRun } from "@shared/types/story";
+import { InlineRuns, InlineTargetEditor } from "./TranslationInline";
 import { Check, Plus, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { LocalizationUnitState } from "@/lib/workspace/services/localization/localizationModel";
@@ -24,6 +26,12 @@ export type TranslationTableRow = {
      * being asked to place.
      */
     sourceMarkup?: string;
+    /**
+     * The line's own runs, when it has tags. Their presence is what puts this row on the inline
+     * path: the source is drawn rather than spelled, and the translation is written in a field that
+     * draws it too.
+     */
+    sourceRuns?: StoryRichRun[];
     interpolationCount: number;
     /** Named-key rows: the source text is editable in place (translate mode). */
     editableSource?: boolean;
@@ -122,16 +130,55 @@ function AutosizeTextarea(props: {
 }
 
 /**
- * Target-text editor shared by both modes. The placeholder and run-tag hints
- * only appear while the textarea is focused, keeping rows quiet otherwise.
+ * Which row currently owns the inline field, and how a row asks for it.
+ *
+ * Held by the tab rather than by the row: one field at a time is what a windowed table of a few
+ * hundred rows can afford, and it is the same arrangement the story editor's rows have.
+ */
+export type InlineEditing = {
+    unitId: string | null;
+    /** Where the pointer landed when the field was opened. `null` lands the caret at the end. */
+    caret: number | null;
+    onEdit: (unitId: string, caret: number | null) => void;
+    onStopEdit: () => void;
+};
+
+/**
+ * Target-text editor shared by both modes.
+ *
+ * Two shapes, and which one a row gets is decided by the line, not by a setting. A line that carries
+ * tags gets the inline field, where the styling is drawn and placed from a palette. Everything else -
+ * a character name, a menu label, a line with nothing but words - keeps the plain box it always had,
+ * because there is nothing for the other one to draw and a contentEditable is a worse text box.
+ *
+ * The placeholder hint only appears while the box has focus, keeping rows quiet otherwise.
  */
 function TargetEditor(props: {
     row: TranslationTableRow;
     target: string;
+    editing?: InlineEditing;
     onTargetChange: (row: TranslationTableRow, target: string) => void;
 }) {
     const { t } = useTranslation();
     const [focused, setFocused] = useState(false);
+
+    if (props.row.sourceRuns && props.editing) {
+        const editing = props.editing;
+        return (
+            <InlineTargetEditor
+                unitId={props.row.unitId}
+                sourceRuns={props.row.sourceRuns}
+                target={props.target}
+                editing={editing.unitId === props.row.unitId}
+                caret={editing.caret}
+                placeholder={t("workspace.localization.table.targetPlaceholder")}
+                ariaLabel={t("workspace.localization.table.targetColumn")}
+                onEdit={caret => editing.onEdit(props.row.unitId, caret)}
+                onStopEdit={editing.onStopEdit}
+                onTargetChange={target => props.onTargetChange(props.row, target)}
+            />
+        );
+    }
 
     return (
         <div className="flex min-w-0 flex-col gap-1">
@@ -149,39 +196,23 @@ function TargetEditor(props: {
                     {t("workspace.localization.table.placeholderHint")}
                 </div>
             ) : null}
-            {focused && props.row.sourceMarkup ? (
-                <div className="px-2 text-2xs leading-relaxed text-fg-subtle">
-                    {t("workspace.localization.table.runTagHint")}
-                </div>
-            ) : null}
         </div>
     );
 }
 
 /**
- * The source line as the translator reads it: the tagged form where the line has one.
+ * The source line as the translator reads it.
  *
- * The tags are drawn quieter than the words around them. A translator copies them and moves them;
- * they are not part of the sentence, and a run of them at full contrast reads as if they were.
+ * A line with tags is drawn: the emphasis is dotted, the pause is a chip, the value is a chip. That
+ * is the whole of what Studio has over the `.po` file the same line would arrive in - there, run 1
+ * can only ever be the characters `‹1›`.
  */
 function SourceText({ row }: { row: TranslationTableRow }) {
-    const text = row.sourceMarkup ?? row.sourceText;
-    if (!row.sourceMarkup) {
-        return <>{text}</>;
+    if (!row.sourceRuns) {
+        return <>{row.sourceText}</>;
     }
-    return (
-        <>
-            {text.split(RUN_TAG_SPLIT).map((piece, index) => (
-                RUN_TAG_SPLIT.test(piece)
-                    ? <span key={index} className="text-fg-subtle">{piece}</span>
-                    : <span key={index}>{piece}</span>
-            ))}
-        </>
-    );
+    return <InlineRuns runs={row.sourceRuns} className="whitespace-pre-wrap" />;
 }
-
-/** The run tags a source line carries, kept whole by `split` so they can be drawn apart. */
-const RUN_TAG_SPLIT = /(‹\/?\d+›)/;
 
 /**
  * Translate mode: a distraction-free bilingual reading row. The text itself
@@ -195,6 +226,8 @@ export function TranslateRow(props: {
     speaker: string;
     state: LocalizationUnitState;
     target: string;
+    /** Present in translate mode; a row whose line carries tags edits inline through it. */
+    editing?: InlineEditing;
     onTargetChange: (row: TranslationTableRow, target: string) => void;
     onSourceChange?: (row: TranslationTableRow, sourceText: string) => void;
     onRemove?: (row: TranslationTableRow) => void;
@@ -227,7 +260,7 @@ export function TranslateRow(props: {
                 </div>
             )}
             <div className="col-start-2 row-start-2 min-w-0">
-                <TargetEditor row={props.row} target={props.target} onTargetChange={props.onTargetChange} />
+                <TargetEditor row={props.row} target={props.target} editing={props.editing} onTargetChange={props.onTargetChange} />
             </div>
             {removable ? (
                 <button
@@ -253,6 +286,7 @@ export function ReviewRow(props: {
     speaker: string;
     state: LocalizationUnitState;
     target: string;
+    editing?: InlineEditing;
     onTargetChange: (row: TranslationTableRow, target: string) => void;
     onApprove: (row: TranslationTableRow) => void;
     onReturn: (row: TranslationTableRow) => void;
@@ -283,7 +317,7 @@ export function ReviewRow(props: {
                         {t("workspace.localization.table.staleHint")}
                     </div>
                 ) : null}
-                <TargetEditor row={row} target={target} onTargetChange={props.onTargetChange} />
+                <TargetEditor row={row} target={target} editing={props.editing} onTargetChange={props.onTargetChange} />
                 <div className="flex items-center gap-1.5">
                     <button
                         type="button"
