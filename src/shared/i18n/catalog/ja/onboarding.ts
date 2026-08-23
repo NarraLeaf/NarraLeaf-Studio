@@ -19,6 +19,11 @@ export const onboarding = {
         story: "ストーリーエディター",
         done: "完了",
     },
+    intro: {
+        greeting: "ようこそ",
+        expectation: "Studio の見た目と書き心地について、いくつか質問します。どれも後から設定で変更できます。",
+        haveSettings: "ほかのコンピューターで Studio を使っていますか？",
+    },
     language: {
         title: "言語",
         expectation: "Studio の画面表示に使う言語。設定でいつでも変更できる",
@@ -64,6 +69,7 @@ export const onboarding = {
         notice: "画面のプレビュー。入力できる行のほかは、どれも動かない",
     },
     nav: {
+        begin: "セットアップを開始",
         skip: "セットアップをスキップ",
         finish: "Studio を開く",
     },

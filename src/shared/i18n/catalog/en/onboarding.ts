@@ -47,6 +47,19 @@ export const onboarding = {
         story: "Story editor",
         done: "Done",
     },
+    /**
+     * The cover, before the first question.
+     *
+     * The greeting sits above the product name rather than around it: "Welcome to X", "欢迎使用 X"
+     * and "X へようこそ" disagree about which side the name goes on, so a single sentence with
+     * `{name}` in it can only be accented correctly in the language it was written for.
+     */
+    intro: {
+        greeting: "Welcome to",
+        expectation: "A few questions about how Studio looks and how it writes. Every one of them is in Settings afterwards.",
+        /** Above the import button: who the button is for, since most first runs are not. */
+        haveSettings: "Already using Studio on another computer?",
+    },
     language: {
         title: "Language",
         expectation: "The language of Studio's interface. It can be changed in Settings.",
@@ -89,7 +102,7 @@ export const onboarding = {
      * is offered there and not at the end.
      */
     import: {
-        /** The footer button. Names the file, because "Import…" beside "Skip setup" names nothing. */
+        /** The cover's button. Names the file, because "Import…" beside "Skip setup" names nothing. */
         action: "Import settings…",
         /** In the dialog, under the summary: what applying it does to the flow it was opened from. */
         leaves: "Applying these opens Studio; the rest of setup is answered by the file.",
@@ -117,6 +130,8 @@ export const onboarding = {
     },
     nav: {
         skip: "Skip setup",
+        /** The cover's primary button. "Next" on a cover names nothing to be next to. */
+        begin: "Start setup",
         finish: "Open Studio",
     },
     /**
