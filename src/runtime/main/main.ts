@@ -78,6 +78,7 @@ import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
 import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
 import { resolveShellText, type ShellText } from "./shellText";
+import { claimSingleInstance } from "./singleInstance";
 import { installWindowCrashHandling } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
@@ -381,8 +382,33 @@ function refuseStartupArguments(): boolean {
 
 const startupBlocked = shellMode === "production" && !shellDebuggable && refuseStartupArguments();
 
+/**
+ * A shipped game runs once at a time; see `singleInstance` for what a second copy costs the player.
+ *
+ * Only a shipped one. Studio's preview and its test runner start several copies of the same build
+ * on purpose - two authors' windows, a test suite and the game it is testing - and they do not
+ * share a player directory to damage either: a preview writes beside the compiled app rather than
+ * into the installed game's (see `useSiblingUserData`).
+ *
+ * After the command-line gate above, so a launch this build refuses is refused for that reason
+ * rather than reported as a second copy.
+ */
+const secondCopy = shellMode === "production" && !startupBlocked && !claimSingleInstance({
+    requestLock: () => app.requestSingleInstanceLock(),
+    quit: () => {
+        app.quit();
+    },
+    onSecondInstance: listener => {
+        app.on("second-instance", () => {
+            listener();
+        });
+    },
+    window: () => mainWindow,
+    log: logRuntime,
+});
+
 void app.whenReady().then(async () => {
-    if (startupBlocked) {
+    if (startupBlocked || secondCopy) {
         return;
     }
     resources = await createRuntimeResources(appDir, {

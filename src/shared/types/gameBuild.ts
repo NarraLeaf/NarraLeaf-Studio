@@ -142,6 +142,21 @@ export type GamePatchExportRequest = {
      * and the answer when the author no longer has that build to point at.
      */
     baselineAppDir?: string;
+    /**
+     * Build the game this patch updates as part of the export, instead of naming one on disk.
+     *
+     * What gets built is the edition this patch installs into - {@link appTagId}, or the one a DLC
+     * attaches to - with no DLC in it. It is compared against and then discarded, so the difference
+     * between that edition and the content named in {@link contentAppTagId} is exactly what the
+     * patch carries. That is what makes an edition upgrade, or a DLC, one action.
+     *
+     * The comparison is therefore against the project as it stands now. A patch for a build made
+     * from an earlier state of the project names that build in {@link baselineAppDir} instead.
+     *
+     * Ignored where {@link baselineAppDir} is set: a build that exists answers the question better
+     * than one derived from a project that has moved on since.
+     */
+    baselineFromBuild?: boolean;
     /** Absolute path of the file to write, chosen through the save dialog. */
     outputFile: string;
     /** The author's name for it, carried inside and shown in the game's log. */
