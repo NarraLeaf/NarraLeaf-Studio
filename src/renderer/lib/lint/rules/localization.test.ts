@@ -143,6 +143,64 @@ describe("localization/missing", () => {
     });
 });
 
+describe("localization/markup", () => {
+    /** The same line, with the emphasis a translation is expected to put back. */
+    const MARKED = [
+        { text: "We should go " },
+        { text: "home", marks: { emphasis: "dot" as const } },
+        { text: "." },
+    ];
+
+    it("reports a translation that renders a styled line plainly", async () => {
+        const findings = await run(
+            "localization/markup",
+            contextOf([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue", MARKED))], {
+                "t-1": unit("家に帰ろう。", LINE),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({ ruleId: "localization/markup", messageParams: { locale: "ja" } });
+    });
+
+    it("is silent once the translation carries the tag", async () => {
+        const findings = await run(
+            "localization/markup",
+            contextOf([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue", MARKED))], {
+                "t-1": unit("‹1›家‹/1›に帰ろう。", LINE),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a tag naming a run the line does not have", async () => {
+        const findings = await run(
+            "localization/markup",
+            contextOf([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue", MARKED))], {
+                "t-1": unit("‹1›家‹/1›に‹7›帰ろう‹/7›。", LINE),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+    });
+
+    it("says nothing about a line with no styling, or one with no translation at all", async () => {
+        expect(await run(
+            "localization/markup",
+            contextOf([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue"))], { "t-1": unit("家に帰ろう。", LINE) }),
+        )).toEqual([]);
+        expect(await run(
+            "localization/markup",
+            contextOf([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue", MARKED))], {}),
+        )).toEqual([]);
+    });
+
+    it("is silent when the project has no localization", async () => {
+        const ctx = createTestLintContext({
+            stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue", MARKED))]),
+        });
+        expect(await run("localization/markup", ctx)).toEqual([]);
+    });
+});
+
 describe("localization/stale", () => {
     it("reports a translation hashed against text that has since changed", async () => {
         const findings = await run(

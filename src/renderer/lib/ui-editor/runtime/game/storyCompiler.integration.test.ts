@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BlurDissolve, Control, Darkness, DevTools, Exposure, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import { BlurDissolve, Control, Darkness, DevTools, Exposure, Pause, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
@@ -1930,6 +1930,103 @@ describe("compileStudioStoryToNlr localization", () => {
         const words = getSaySentence(compiled, "say").text as any[];
         expect(words.every(word => typeof word.text !== "function")).toBe(true);
         expect(renderDynamicResult(words.map(word => word.text))).toBe("没有翻译的行。");
+    });
+
+    it("carries styling, an inline pause and a reveal-time event through into a translation", async () => {
+        let locale = "en";
+        const say: StoryBlock = {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "narration",
+                text: {
+                    textId: "text-marked",
+                    value: "我去年决定的。",
+                    role: "narration",
+                    rich: [
+                        { text: "我" },
+                        { text: "去年", marks: { emphasis: "under-dot", bold: true } },
+                        { pause: 400 },
+                        { text: "决定的。" },
+                    ],
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say }, ["say"]),
+            sceneId: "scene-1",
+            localization: {
+                sourceLocale: "zh-CN",
+                locales: [{ code: "zh-CN", displayName: "简体中文" }, { code: "en", displayName: "English" }],
+                // The translator moved the emphasis onto the English words it belongs on, and the
+                // beat to where English wants it.
+                tables: { en: { "text-marked": "I ‹1›did‹/1› decide‹2› last year." } },
+                getLocale: () => locale,
+            },
+        });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const dynamic = (getSaySentence(compiled, "say").text as any[])[0].text;
+        const parts = dynamic({}) as any[];
+        expect(renderDynamicResult(parts)).toBe("I did decide last year.");
+
+        // The tagged span wears run 1's marks, and only that span does.
+        const marked = parts.filter(part => part?.config?.emphasis);
+        expect(marked).toHaveLength(1);
+        expect(marked[0].text).toBe("did");
+        expect(marked[0].config).toMatchObject({
+            bold: true,
+            emphasis: { mark: "dot", fill: "filled", position: "under" },
+        });
+
+        // The pause survives as a pause, not as the characters of its own tag.
+        // `Pause.isPause` is internal to the engine and stripped from the shipped declarations.
+        const pauses = parts.filter(part => part instanceof Pause);
+        expect(pauses).toHaveLength(1);
+        expect((pauses[0] as any).config.duration).toBe(400);
+        expect(renderDynamicResult(parts)).not.toContain("‹");
+
+        // The source language still renders its own runs, untouched.
+        locale = "zh-CN";
+        expect(renderDynamicResult(dynamic({}))).toBe("我去年决定的。");
+    });
+
+    it("renders a translation written before run tags existed exactly as it always did", async () => {
+        const say: StoryBlock = {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "narration",
+                text: {
+                    textId: "text-old",
+                    value: "我去年决定的。",
+                    role: "narration",
+                    rich: [
+                        { text: "我" },
+                        { text: "去年", marks: { bold: true } },
+                        { text: "决定的。" },
+                    ],
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say }, ["say"]),
+            sceneId: "scene-1",
+            localization: {
+                sourceLocale: "zh-CN",
+                locales: [{ code: "zh-CN", displayName: "简体中文" }, { code: "en", displayName: "English" }],
+                tables: { en: { "text-old": "I decided last year." } },
+                getLocale: () => "en",
+            },
+        });
+        const dynamic = (getSaySentence(compiled, "say").text as any[])[0].text;
+        const parts = dynamic({}) as any[];
+        expect(renderDynamicResult(parts)).toBe("I decided last year.");
+        expect(parts.some(part => part?.config?.bold)).toBe(false);
     });
 
     it("maps {n} placeholders in translations back to the source interpolation words", async () => {
