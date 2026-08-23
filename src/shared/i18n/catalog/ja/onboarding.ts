@@ -57,6 +57,10 @@ export const onboarding = {
         expectation: "ここで訊いたことも、その先の細かい調整も設定にある。どの画面でも F1 を押すと、カーソルの下にあるもののヘルプが開く",
         topics: "ヘルプトピック",
     },
+    previewWindow: {
+        open: "ウィンドウ全体を見る",
+        notice: "画面のプレビュー。入力できる行のほかは、どれも動かない",
+    },
     nav: {
         skip: "セットアップをスキップ",
         finish: "Studio を開く",

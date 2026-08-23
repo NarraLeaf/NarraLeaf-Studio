@@ -1,10 +1,11 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { BookOpen, ChevronRight, Code, FileText, Filter, MonitorPlay, Quote, Rows3 } from "lucide-react";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { SOURCE_LOCALE, type TranslationKey } from "@shared/i18n";
 import { getCommandGroup } from "@/apps/workspace/modules/story/scene-editor/storyCommandCategories";
 import type { StoryPreferences } from "../onboardingPreferences";
+import { SampleCommandMenu, filterSampleCommands, useSampleCommandLabels } from "./SampleCommandMenu";
 
 /**
  * A scene nobody wrote, drawn the way the scene editor draws one.
@@ -97,7 +98,20 @@ export function StoryScenePreview({ story, textStyle }: StoryScenePreviewProps) 
      * it). Everything around it - the header's controls, the scene card - is inert.
      */
     const [selected, setSelected] = useState<number | null>(null);
+    /**
+     * What has been typed into the insert slot.
+     *
+     * The one thing in this window that takes input, and deliberately so: the slot is where a line
+     * starts in the real editor, and the trigger character - the thing `editor.slashAtAlias` is
+     * about - is only ever met by typing it. Nothing is committed; there is no document under this
+     * to commit to. What it buys is the gesture: type the trigger, the action creator opens, the
+     * words in it are in whichever language the command vocabulary is set to.
+     */
+    const [draft, setDraft] = useState("");
     const [insertFocused, setInsertFocused] = useState(false);
+    const [activeToken, setActiveToken] = useState<string | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const commandLabel = useSampleCommandLabels();
 
     const trigger = story.slashAtAlias ? "@" : "/";
     /** The command language, which the vocabulary is spelled in - not the interface language. */
@@ -128,6 +142,28 @@ export function StoryScenePreview({ story, textStyle }: StoryScenePreviewProps) 
     };
 
     /** A committed command line, coloured by role and dimmed the way a committed row is. */
+    /**
+     * What has been typed after the trigger, or null when this is not a command line at all.
+     *
+     * Both triggers are accepted whichever one the setting advertises, exactly as the editor's own
+     * parser does: "@" is an alias for "/" rather than a replacement, so a script written on one
+     * machine goes on parsing on another.
+     */
+    const commandQuery = /^[/@]/.test(draft) ? draft.slice(1) : null;
+    const candidates = useMemo(
+        () => (commandQuery === null ? [] : filterSampleCommands(commandQuery, commandLabel)),
+        // `commandLabel` closes over the command translator, which changes with the vocabulary.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [commandQuery, commandLocale],
+    );
+
+    /** Take a command from the menu: the line becomes the verb, and the caret waits after it. */
+    const writeCommand = (token: string) => {
+        setDraft(`${trigger}${commandLabel(token)} `);
+        setActiveToken(null);
+        inputRef.current?.focus({ preventScroll: true });
+    };
+
     const commandLine = (command: SampleCommand): ReactNode => (
         <span
             className="flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center text-sm opacity-80"
@@ -293,19 +329,10 @@ export function StoryScenePreview({ story, textStyle }: StoryScenePreviewProps) 
 
                 {commandRow(4, "character", show)}
 
-                {/* The insert slot, which is where the trigger character is actually advertised -
-                    and the reason `editor.slashAtAlias` is worth a question rather than a footnote. */}
+                {/* The insert slot: where a line starts, where the trigger character is advertised,
+                    and the one thing here that takes input. */}
                 <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setInsertFocused(true)}
-                    onBlur={() => setInsertFocused(false)}
-                    onKeyDown={event => {
-                        if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            setInsertFocused(true);
-                        }
-                    }}
+                    onClick={() => inputRef.current?.focus({ preventScroll: true })}
                     className={cn(
                         "grid cursor-text grid-cols-[var(--nl-story-gutter)_1fr] items-start border-l-2 border-transparent pr-3",
                         insertFocused ? "bg-fill-subtle" : "hover:bg-fill-subtle",
@@ -315,16 +342,61 @@ export function StoryScenePreview({ story, textStyle }: StoryScenePreviewProps) 
                     <div className="relative min-w-0 py-1">
                         <div className="flex min-h-[var(--nl-story-row-box)] min-w-0 items-center" style={{ gap: MARK_GAP_PX }}>
                             <span className="shrink-0" style={{ width: MARK_PX }} />
-                            <span className="min-w-0 flex-1 truncate text-fg-subtle" style={textStyle}>
-                                {insertFocused ? (
-                                    <>
-                                        <span className={ROLE_SCAFFOLD}>{trigger}</span>
-                                        <span className="ml-px inline-block h-[1.1em] w-px bg-fg align-middle" />
-                                    </>
-                                ) : (
-                                    t("story.rows.insertPlaceholder", { trigger })
-                                )}
-                            </span>
+                            <div className="relative min-w-0 flex-1">
+                                <input
+                                    ref={inputRef}
+                                    value={draft}
+                                    placeholder={t("story.rows.insertPlaceholder", { trigger })}
+                                    onFocus={() => setInsertFocused(true)}
+                                    onBlur={() => setInsertFocused(false)}
+                                    onChange={event => {
+                                        setDraft(event.target.value);
+                                        setActiveToken(null);
+                                        // Typing implies the caret is here, and says so even where
+                                        // the focus event did not reach us - a window that is not
+                                        // the one the operating system considers focused still has
+                                        // a caret, and the menu has to open under it.
+                                        setInsertFocused(true);
+                                    }}
+                                    onKeyDown={event => {
+                                        // `""` is a command line with nothing typed after the
+                                        // trigger, which is exactly when the menu is longest.
+                                        if (commandQuery === null) {
+                                            return;
+                                        }
+                                        if (event.key === "Escape") {
+                                            event.preventDefault();
+                                            setDraft("");
+                                            return;
+                                        }
+                                        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                                            event.preventDefault();
+                                            const step = event.key === "ArrowDown" ? 1 : -1;
+                                            const at = candidates.findIndex(entry => entry.token === activeToken);
+                                            const next = candidates[(Math.max(0, at) + step + candidates.length) % candidates.length];
+                                            setActiveToken(next?.token ?? null);
+                                            return;
+                                        }
+                                        if (event.key === "Enter") {
+                                            event.preventDefault();
+                                            const chosen = candidates.find(entry => entry.token === activeToken) ?? candidates[0];
+                                            if (chosen) {
+                                                writeCommand(chosen.token);
+                                            }
+                                        }
+                                    }}
+                                    className="w-full min-w-0 truncate border-none bg-transparent p-0 text-fg outline-none placeholder:text-fg-subtle"
+                                    style={textStyle}
+                                />
+                                {commandQuery !== null && insertFocused ? (
+                                    <SampleCommandMenu
+                                        query={commandQuery}
+                                        activeToken={activeToken}
+                                        onHighlight={setActiveToken}
+                                        onChoose={writeCommand}
+                                    />
+                                ) : null}
+                            </div>
                         </div>
                     </div>
                 </div>

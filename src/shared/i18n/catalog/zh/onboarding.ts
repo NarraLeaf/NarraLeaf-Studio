@@ -57,6 +57,10 @@ export const onboarding = {
         expectation: "这里问过的一切，以及更多个性化选项，都在设置中；在任意位置按 F1 可查看光标所在处的说明",
         topics: "帮助主题",
     },
+    previewWindow: {
+        open: "查看完整窗口",
+        notice: "界面预览。除了可以输入的那一行，这里的东西都不接受操作",
+    },
     nav: {
         skip: "跳过设置",
         finish: "打开 Studio",

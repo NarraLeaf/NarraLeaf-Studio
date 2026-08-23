@@ -68,38 +68,45 @@ const CONTROL_BAR: LucideIcon[] = [PanelLeft, PanelBottom, PanelRight, Settings]
 export interface StudioPreviewProps {
     /** Which surface this screen is about. */
     panel: PreviewPanelId;
+    /**
+     * The window's own edges. Defaults to the cropped treatment the setup screen needs - rounded
+     * and bordered on the left, open on the right, because it is cut by the screen edge rather than
+     * ending there. The window that shows this at full size passes nothing to draw.
+     */
+    frameClassName?: string;
+    /**
+     * Draw the sample's own title bar. Off where a real one is drawn around it: the window that
+     * shows this at full size hands {@link PreviewProjectSwitcher} and {@link PreviewControlBar} to
+     * the shared `TitleBar` instead, so the macOS traffic lights land where a workspace puts them
+     * rather than on a second bar above the first.
+     */
+    titleBar?: boolean;
 }
 
-export function StudioPreview({ panel }: StudioPreviewProps) {
+export function StudioPreview({
+    panel,
+    frameClassName = "rounded-l-md border-y border-l border-edge",
+    titleBar = true,
+}: StudioPreviewProps) {
     const { t } = useTranslation();
     const preferences = useOnboardingPreferences();
 
     return (
-        // Rounded and bordered on the left, open on the right: the window is cut by the screen
-        // edge rather than ending there, and a border down that side would say it ends.
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-l-md border-y border-l border-edge bg-surface">
-            {/* The title bar: the project on the left, the window's own toggles on the right. */}
-            <div aria-hidden className="flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken px-1.5">
-                <span className="flex h-8 min-w-0 max-w-40 items-center gap-1.5 rounded-md px-2 text-sm text-fg-muted">
-                    <FolderOpen className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{t("onboarding.sample.projectName")}</span>
-                    <ChevronDown className="h-3 w-3 shrink-0" />
-                </span>
-                <span className="ml-auto flex items-center gap-1">
-                    {CONTROL_BAR.map((Icon, index) => (
-                        <span key={index} className="grid h-8 w-8 place-items-center rounded-md text-fg-muted">
-                            <Icon className="h-4 w-4" />
-                        </span>
-                    ))}
-                </span>
-            </div>
+        <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden bg-surface", frameClassName)}>
+            {/* The title bar: the project on the left, the window's own toggles on the right.
+                Absent when the host is drawing a real one around this - see `titleBar`. */}
+            {titleBar ? (
+                <div aria-hidden className="flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken px-1.5">
+                    <PreviewProjectSwitcher />
+                    <span className="ml-auto flex items-center gap-1">
+                        <PreviewControlBar />
+                    </span>
+                </div>
+            ) : null}
 
-            <div className="flex min-h-0 flex-1 border-t border-edge">
+            <div className={cn("flex min-h-0 flex-1", titleBar && "border-t border-edge")}>
                 {/* The panel rail. The panel this screen is about is the one lit. */}
-                <div
-                    aria-hidden
-                    className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-edge bg-surface-sunken px-1 py-2"
-                >
+                <div aria-hidden className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-edge bg-surface-sunken px-1 py-2">
                     {RAIL.map((entry, index) => (
                         <span
                             key={index}
@@ -111,6 +118,7 @@ export function StudioPreview({ panel }: StudioPreviewProps) {
                             <entry.icon className="h-4 w-4" />
                         </span>
                     ))}
+
                 </div>
 
                 <div className="flex min-w-0 flex-1 flex-col">
@@ -143,6 +151,34 @@ export function StudioPreview({ panel }: StudioPreviewProps) {
                 </span>
             </div>
         </div>
+    );
+}
+
+/** The project the window is showing, as the workspace's own switcher draws it. Inert. */
+export function PreviewProjectSwitcher() {
+    const { t } = useTranslation();
+    return (
+        <span
+            aria-hidden
+            className="flex h-8 min-w-0 max-w-56 items-center gap-1.5 rounded-md px-2 text-sm text-fg-muted"
+        >
+            <FolderOpen className="h-4 w-4 shrink-0" />
+            <span className="truncate">{t("onboarding.sample.projectName")}</span>
+            <ChevronDown className="h-3 w-3 shrink-0" />
+        </span>
+    );
+}
+
+/** The three dock toggles and the settings button, as `ControlBar` draws them. Inert. */
+export function PreviewControlBar() {
+    return (
+        <>
+            {CONTROL_BAR.map((Icon, index) => (
+                <span aria-hidden key={index} className="grid h-8 w-8 place-items-center rounded-md text-fg-muted">
+                    <Icon className="h-4 w-4" />
+                </span>
+            ))}
+        </>
     );
 }
 
