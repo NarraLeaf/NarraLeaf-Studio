@@ -14,7 +14,6 @@ import {
     type StoryBezierPoints,
 } from "@shared/utils/storyEasing";
 import { useTranslation } from "@/lib/i18n";
-import { CONTROL_HEIGHT_CLASS } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "./freezeGuard";
@@ -186,11 +185,18 @@ export function EasingCurveEditor(props: { easing: string; onChange: (easing: st
         );
     };
 
-    // Capped rather than free: in a wide inspector column an uncapped graph would grow into a panel
-    // the field is a caption for. Small is what it is - a curve to nudge.
+    // One frame around all three strips - the presets, the ruler and plot, the value - the way a
+    // graph editor is one panel rather than a graph with controls scattered around it. Everything
+    // that states a number is inside it, including the ruler: numbers sitting on the panel behind
+    // the card read as a caption someone forgot to place.
+    //
+    // As wide as the field above it, too: the card sits directly under a select that fills the
+    // column, and a graph stopping short of that edge reads as a control that failed to lay itself
+    // out rather than as a deliberate size. The height follows from the `viewBox`, so a wider column
+    // gets a bigger graph rather than a stretched one.
     return (
-        <div className="grid max-w-56 gap-1.5">
-            <div className="flex items-center gap-0.5">
+        <div className="overflow-hidden rounded-md border border-edge bg-surface-sunken">
+            <div className="flex items-center gap-0.5 border-b border-edge-subtle px-1 py-1">
                 {/*
                   * The button's own hover text goes through the freeze guard rather than beside it:
                   * the guard supplies `data-tip` too, so a `data-tip` written next to the spread
@@ -224,18 +230,18 @@ export function EasingCurveEditor(props: { easing: string; onChange: (easing: st
                 </ToolbarButton>
             </div>
 
-            <div className="flex items-stretch gap-1">
+            <div className="flex items-stretch">
                 {/*
-                  * The value ruler, in the markup rather than in the drawing: text inside a `viewBox`
-                  * is scaled with the graph, so it would land on whatever size the column happens to
-                  * be instead of on the one type scale.
+                  * The ruler is markup rather than drawing: text inside a `viewBox` is scaled with
+                  * the graph, so it would land on whatever size the column happens to be instead of
+                  * on the one type scale.
                   */}
-                <div className="relative w-7 shrink-0">
+                <div className="relative w-9 shrink-0">
                     {VALUE_RULER.map(mark => (
                         <div
                             key={mark}
                             className={cn(
-                                "absolute right-0 -translate-y-1/2 text-2xs tabular-nums",
+                                "absolute right-1.5 -translate-y-1/2 text-2xs tabular-nums",
                                 mark === 0 || mark === 1 ? "text-fg-muted" : "text-fg-subtle",
                             )}
                             style={{ top: `${toViewY(mark) / VIEW_H * 100}%` }}
@@ -248,7 +254,7 @@ export function EasingCurveEditor(props: { easing: string; onChange: (easing: st
                     <svg
                         ref={svgRef}
                         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-                        className="block h-auto w-full touch-none rounded-md border border-edge bg-surface-sunken"
+                        className="block h-auto w-full touch-none"
                     >
                         {/* The band between "not started" and "finished" — everything outside it is overshoot. */}
                         <rect
@@ -292,11 +298,13 @@ export function EasingCurveEditor(props: { easing: string; onChange: (easing: st
                 type="text"
                 spellCheck={false}
                 aria-label={t("storyInspector.curve.value")}
+                // A strip of the card rather than a control in a row of controls, so it carries its
+                // own height instead of the shared 28px floor - a bordered box here would have been
+                // a second frame inside the frame.
                 className={cn(
-                    "w-full rounded-md border border-edge bg-fill-subtle px-1.5 py-1 text-center font-mono text-2xs tabular-nums",
-                    "text-fg-muted transition-colors focus:border-primary focus:text-fg",
+                    "w-full border-t border-edge-subtle bg-transparent px-1.5 py-1 text-center font-mono text-2xs tabular-nums",
+                    "text-fg-muted transition-colors focus:bg-fill-subtle focus:text-fg",
                     "disabled:cursor-not-allowed disabled:opacity-50",
-                    CONTROL_HEIGHT_CLASS.sm,
                 )}
                 value={draft ?? value}
                 onChange={event => setDraft(event.target.value)}
