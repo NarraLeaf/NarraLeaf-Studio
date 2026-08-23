@@ -5,7 +5,7 @@ import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
 import { shell } from "electron";
-import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, session } from "electron/main";
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerSaveBlocker, protocol, screen, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GameTestCommand, GameTestEvent } from "@shared/types/gameTest";
 import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
@@ -76,6 +76,7 @@ import {
 } from "@shared/utils/gameProgressFile";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
+import { installDisplaySleepInhibitor } from "./displaySleep";
 import { installWindowCrashHandling } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
@@ -812,6 +813,15 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             noLink: true,
         })).response,
         now: () => Date.now(),
+    });
+    // Reading is idle as far as the system is concerned, and auto mode can play for an hour
+    // without a single input, so the display is held awake for as long as the window is on screen.
+    installDisplaySleepInhibitor(win, {
+        hold: () => powerSaveBlocker.start("prevent-display-sleep"),
+        release: id => {
+            powerSaveBlocker.stop(id);
+        },
+        log: logRuntime,
     });
     if (devToolsEnabled) {
         win.webContents.on("before-input-event", (_event, input) => {
