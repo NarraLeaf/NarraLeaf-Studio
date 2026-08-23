@@ -3,7 +3,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useWorkspace } from "../context";
 import { useRegistry } from "../registry";
-import { useWorkspaceFrozen } from "./useWorkspaceFrozen";
+import { useWorkspaceOperationsFrozen } from "./useWorkspaceFrozen";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionMenuAction, isActionMenuSeparator } from "../components/ui/actionMenuModel";
 import type { ActionMenuItem } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
@@ -36,7 +36,10 @@ export function useNativeMenuSync(): void {
     const { t } = useTranslation();
     const { actionGroups } = useRegistry();
     const { context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
+    // Only the Develop menu reads this, and only to grey Preview and Production Build - so it is the
+    // "does this freeze stop main starting things" question, not "is anything frozen". The two part
+    // company during a live session, where main runs both.
+    const operationsFrozen = useWorkspaceOperationsFrozen();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
     const [devModeStatus, setDevModeStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
@@ -109,10 +112,10 @@ export function useNativeMenuSync(): void {
                 devModeActive: isDevModeRuntimeActive(devModeStatus),
                 previewActive: isPreviewRuntimeActive(previewStatus),
                 testActive,
-                frozen,
+                operationsFrozen,
             },
         };
-    }, [actionGroups, focusContext, devModeStatus, previewStatus, testActive, frozen, t]);
+    }, [actionGroups, focusContext, devModeStatus, previewStatus, testActive, operationsFrozen, t]);
 
     useEffect(() => {
         if (!isMacPlatform()) return;

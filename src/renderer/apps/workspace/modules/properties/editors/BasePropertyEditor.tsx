@@ -7,6 +7,7 @@ import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FIELD_INPUT_CLASS, FIELD_TEXTAREA_CLASS } from "../fieldControlClass";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * Base property editor with common name, tags, and description editing functionality
@@ -150,6 +151,9 @@ export function BasePropertyEditor<T extends AssetType>({ asset, onChange, child
                         value={newTag}
                         onChange={(e) => setNewTag(e.target.value)}
                         onKeyDown={(e) => {
+                            if (isImeKeyEvent(e)) {
+                                return;
+                            }
                             if (e.key === 'Enter') {
                                 e.preventDefault();
                                 handleAddTag();

@@ -47,6 +47,7 @@ import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const OPENING_BLUR_GRACE_MS = 300;
 const BUTTON_LABEL_PROP_PATH = "label";
@@ -351,6 +352,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     const handleTextareaKeyDown = useCallback(
         (e: KeyboardEvent<HTMLTextAreaElement>) => {
+            if (isImeKeyEvent(e)) {
+                return;
+            }
             if (e.key === "Escape") {
                 e.preventDefault();
                 skipBlurCommitRef.current = true;

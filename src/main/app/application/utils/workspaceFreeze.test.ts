@@ -92,6 +92,20 @@ describe("workspaceFrozenMessage", () => {
 });
 
 describe("who consults the freeze record", () => {
+    it("asks the predicate rather than each naming the kinds it lets through", async () => {
+        // Four call sites across three managers. Each spelling out its own exemption is how one of
+        // them ends up spelling a different one, and the failure - a build refused for the length of
+        // a session, or run against a revision the author is only reading - is invisible until
+        // somebody is in that state.
+        const managersRoot = path.resolve(__dirname, "..", "managers");
+        for (const file of ["build/GameBuildManager.ts", "gameTest/GameTestManager.ts", "preview/PreviewManager.ts"]) {
+            const source = await fs.readFile(path.join(managersRoot, ...file.split("/")), "utf-8");
+            expect(source).toContain("refusesOperations");
+            expect(source).not.toContain("\"live-session\"");
+        }
+    });
+
+
     it("is refused by the build, the preview and a test's game - Dev Mode reads it to run the revision", async () => {
         // The decision is that a frozen workspace still runs Dev Mode, and
         // that Dev Mode runs the FOCUSED REVISION rather than the working tree. So the list below has

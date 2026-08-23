@@ -14,6 +14,7 @@ import {
 } from "@narraleaf/encryption";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
+import { diffPack } from "@shared/utils/packDelta";
 import { openSealedBundle } from "@narraleaf/encryption/runtime";
 import { BoundedBufferCache, createRuntimeResources } from "./runtimeResources";
 
@@ -191,6 +192,14 @@ describe("patched runtime resources", () => {
             assets: { items: { "asset-1": { id: "asset-1", relativePath: "assets/one", type: "image", name: "one", source: "local" } } },
             addOns: { verificationKey: projectVerificationKey(material, TITLE) },
             marker: "base",
+            bundle: {
+                storyHash: "base",
+                storyLibrary: {
+                    documents: {
+                        "story-1": { id: "story-1", scenes: { "sc-1": { id: "sc-1", text: "one" }, "sc-2": { id: "sc-2", text: "two" } } },
+                    },
+                },
+            },
         } as unknown as GameRuntimePackV1;
         await fs.writeFile(path.join(appDir, "pack.json"), JSON.stringify(pack));
         await fs.writeFile(path.join(appDir, "assets", "one"), assetBytes);
@@ -258,6 +267,7 @@ describe("patched runtime resources", () => {
             { projectMaterial: material, proven: false },
             {
                 pack: JSON.stringify({ ...pack, marker: "hostile" }),
+                "pack.delta": JSON.stringify(diffPack(pack, { ...pack, marker: "hostile" })),
                 "assets/one": "reskinned",
                 "plugins/evil/runtime.js": "export default 1",
             },
@@ -337,6 +347,75 @@ describe("patched runtime resources", () => {
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("later");
             expect(applied[0]).toContain("earlier");
             expect(applied[1]).toContain("later");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /**
+     * The reason a delta exists. Two patches made against one build, neither aware of the other -
+     * an episode and a language pack are the ordinary case - and installing both has to leave both
+     * installed. A patch that carried the whole pack made the second one quietly undo the first.
+     */
+    it("composes what each proven patch changes rather than taking the last pack whole", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir } = await makeApp(material, "original");
+        const scenesOf = (value: unknown) =>
+            (value as { bundle: { storyLibrary: { documents: Record<string, { scenes: Record<string, { id: string; text: string }> }> } } })
+                .bundle.storyLibrary.documents["story-1"].scenes;
+        const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as unknown;
+
+        const first = JSON.parse(JSON.stringify(base)) as unknown;
+        scenesOf(first)["sc-1"] = { id: "sc-1", text: "rewritten" };
+        const second = JSON.parse(JSON.stringify(base)) as unknown;
+        scenesOf(second)["sc-3"] = { id: "sc-3", text: "new scene" };
+
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "fix.patch.dat"), { projectMaterial: material }, {
+            layer: JSON.stringify({ name: "fix", order: 10 }),
+            "pack.delta": JSON.stringify(diffPack(base, first)),
+        });
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "episode.patch.dat"), { projectMaterial: material }, {
+            layer: JSON.stringify({ name: "episode", order: 20 }),
+            "pack.delta": JSON.stringify(diffPack(base, second)),
+        });
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            const composed = await readPackOf(resources);
+            expect(scenesOf(composed)["sc-1"].text).toBe("rewritten");
+            expect(scenesOf(composed)["sc-3"].text).toBe("new scene");
+            expect(Object.keys(scenesOf(composed)).sort()).toEqual(["sc-1", "sc-2", "sc-3"]);
+            // The stories in hand are not the stories either patch was built from, so the
+            // fingerprint saves are matched against has to be taken again.
+            expect((composed.bundle as { storyHash: string }).storyHash).not.toBe("base");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /*
+     * A patch made before deltas existed still means what it always meant: this is the pack now.
+     * The one below it carries both, which is the shape an export produced while the two overlapped.
+     */
+    it("lets a patch that carries only a whole pack replace what a delta below it composed", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir } = await makeApp(material, "original");
+        const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as Record<string, unknown>;
+        const delta = { ...base, marker: "composed" };
+
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "a.patch.dat"), { projectMaterial: material }, {
+            layer: JSON.stringify({ order: 10 }),
+            "pack.delta": JSON.stringify(diffPack(base, delta)),
+            pack: JSON.stringify(delta),
+        });
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "b.patch.dat"), { projectMaterial: material }, {
+            layer: JSON.stringify({ order: 20 }),
+            pack: JSON.stringify({ ...base, marker: "whole" }),
+        });
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            expect((await readPackOf(resources)).marker).toBe("whole");
         } finally {
             await resources.dispose();
         }

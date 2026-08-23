@@ -647,8 +647,12 @@ function GroupChips({
             {groups.map(group => (
                 renamingId === group.id ? (
                     <div key={group.id} className="w-32">
+                        {/* `readOnly` as well as the gesture that opens it: the double-click is
+                            unattached while frozen, but a rename already in flight when the freeze
+                            landed would still commit on blur, into a write that is refused. */}
                         <InlineNameInput
                             value={group.name}
+                            readOnly={freeze.frozen}
                             onCommit={name => {
                                 setRenamingId(null);
                                 onRename(group.id, name);

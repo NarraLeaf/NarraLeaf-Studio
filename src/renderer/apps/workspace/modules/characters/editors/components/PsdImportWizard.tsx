@@ -4,6 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
@@ -45,6 +46,15 @@ const DROP_REASON_KEYS = {
  *
  * Nothing here is destructive. A PSD Studio still recognises refreshes the layers it made last time
  * and leaves their names, order and axis bindings alone; anything else is added.
+ *
+ * ## The freeze
+ *
+ * Reading a PSD and looking at the mapping is inspection and stays available; Import is the write and
+ * goes off. The check is asked twice for one reason: this dialog is a conversation, and its opener in
+ * the character editor was greyed on a render that happened before the author started reading a
+ * fifty-layer tree. A freeze that arms in between - a session opening on this project is enough -
+ * would otherwise find the button live, and Import bakes every layer to disk and copies each one into
+ * the library before anything downstream could refuse it.
  */
 export function PsdImportWizard(props: {
     open: boolean;
@@ -54,6 +64,7 @@ export function PsdImportWizard(props: {
 }) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
+    const freeze = useFreezeGuard();
     const [filePath, setFilePath] = useState<string | null>(null);
     const [document, setDocument] = useState<PsdDocument | null>(null);
     const [resolutions, setResolutions] = useState<Record<string, BlendResolution>>({});
@@ -101,7 +112,7 @@ export function PsdImportWizard(props: {
 
     const runImport = useCallback(async () => {
         const assetsService = context?.services.get<AssetsService>(Services.Assets);
-        if (!assetsService || !filePath || !document) return;
+        if (!assetsService || !filePath || !document || freeze.frozen) return;
         setBusy("importing");
         setError(null);
         try {
@@ -152,7 +163,7 @@ export function PsdImportWizard(props: {
         } finally {
             setBusy(null);
         }
-    }, [close, context, document, filePath, plan, props, t]);
+    }, [close, context, document, filePath, freeze.frozen, plan, props, t]);
 
     /** What is being flattened onto a given layer, so a clip or a merge is never invisible. */
     const attachedTo = (leaf: PsdLeaf) => (plan.attachments[joinPath(leaf.path)] ?? []).map(entry => (
@@ -194,10 +205,10 @@ export function PsdImportWizard(props: {
                         aria-label={t("characters.editor.psd.import")}
                         className={dialogFooterButtonClass({
                             variant: "primary",
-                            disabled: !document || undecided.length > 0 || busy !== null,
+                            disabled: !document || undecided.length > 0 || busy !== null || freeze.frozen,
                         })}
                         onClick={() => void runImport()}
-                        disabled={!document || undecided.length > 0 || busy !== null}
+                        {...freeze.writes(!document || undecided.length > 0 || busy !== null)}
                     >
                         {busy === "importing" ? t("characters.editor.psd.importing") : t("characters.editor.psd.import")}
                     </button>

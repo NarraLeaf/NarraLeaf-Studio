@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, forwardRef } from "react";
 import { Search, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 interface SearchBoxProps {
     value: string;
@@ -34,6 +35,9 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
         }, [onChange]);
 
         const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (isImeKeyEvent(e)) {
+                return;
+            }
             if (e.key === "Escape") {
                 handleClear();
             }

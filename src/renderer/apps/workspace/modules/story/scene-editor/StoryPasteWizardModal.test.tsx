@@ -1,10 +1,28 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import React, { useRef } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { PastePlan, SpeakerMappingTarget, StoryPasteMemory } from "@/lib/story/paste/storyPasteTypes";
+import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
+import { StoryDocumentScopeProvider, storyDocumentFreezeScope } from "./storySceneReadOnly";
 import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
+
+/** The story the wizard is pasting into, and the one a session below may leave writable. */
+const THIS_STORY = "chapter-one";
+
+/** The reason a control shows when the freeze it hit spares this story document. */
+const IN_A_SESSION = "Unavailable in a live session. Choose an existing character.";
+
+let freeze: WorkspaceFreezeReason | null = null;
+
+vi.mock("@/apps/workspace/hooks/useWorkspaceFrozen", () => ({
+    useWorkspaceFreeze: () => freeze,
+}));
+
+beforeEach(() => {
+    freeze = null;
+});
 
 afterEach(cleanup);
 
@@ -26,21 +44,28 @@ function character(id: string, name: string, nicknames: string[] = []): Characte
 function renderWizard(overrides: Partial<React.ComponentProps<typeof StoryPasteWizardModal>> = {}) {
     const onConfirm = vi.fn<(plan: PastePlan, mappings: Record<string, SpeakerMappingTarget>) => void>();
     const onCancel = vi.fn();
-    const view = render(
-        <StoryPasteWizardModal
-            open
-            text={SCRIPT}
-            inferred={{ kind: "fullwidthColon" }}
-            characters={[]}
-            memory={EMPTY_MEMORY}
-            onSaveSeparator={() => undefined}
-            onForgetSeparator={() => undefined}
-            onCancel={onCancel}
-            onConfirm={onConfirm}
-            {...overrides}
-        />,
+    // Built fresh on every call rather than held: `rerender` with the very same element lets React
+    // bail out of the subtree, and the freeze below changes underneath the wizard rather than in it.
+    const tree = () => (
+        // The scope the scene editor puts around it: which document the rows this paste makes land
+        // in, which is what tells a freeze that spares it from one that does not.
+        <StoryDocumentScopeProvider value={storyDocumentFreezeScope(THIS_STORY)}>
+            <StoryPasteWizardModal
+                open
+                text={SCRIPT}
+                inferred={{ kind: "fullwidthColon" }}
+                characters={[]}
+                memory={EMPTY_MEMORY}
+                onSaveSeparator={() => undefined}
+                onForgetSeparator={() => undefined}
+                onCancel={onCancel}
+                onConfirm={onConfirm}
+                {...overrides}
+            />
+        </StoryDocumentScopeProvider>
     );
-    return { view, onConfirm, onCancel };
+    const view = render(tree());
+    return { view, onConfirm, onCancel, rerender: () => view.rerender(tree()) };
 }
 
 /**
@@ -51,16 +76,112 @@ function renderWizard(overrides: Partial<React.ComponentProps<typeof StoryPasteW
  * so "Name only" appears three times on screen and only one of them is a thing to click.
  */
 function chooseTarget(label: string, optionText: string): void {
+    fireEvent.click(within(openTargetMenu(label)).getByText(optionText));
+}
+
+/** The same menu, left open, for the assertions that are about an option rather than about picking it. */
+function openTargetMenu(label: string): HTMLElement {
     const row = document.querySelector(`[data-story-paste-speaker="${label}"]`);
     expect(row).not.toBeNull();
     fireEvent.click(within(row as HTMLElement).getAllByRole("button")[0]!);
     const panels = document.body.querySelectorAll(":scope > div");
-    fireEvent.click(within(panels[panels.length - 1] as HTMLElement).getByText(optionText));
+    return panels[panels.length - 1] as HTMLElement;
+}
+
+/** One option row of an open target menu, as the control the author would press. */
+function targetOption(menu: HTMLElement, optionText: string): HTMLButtonElement {
+    const option = within(menu).getByText(optionText).closest("button");
+    expect(option, optionText).not.toBeNull();
+    return option as HTMLButtonElement;
 }
 
 function confirm(): void {
     fireEvent.click(screen.getByText("Paste"));
 }
+
+/** The wizard's confirm, as a control rather than as a gesture. */
+function pasteButton(): HTMLButtonElement {
+    return screen.getByText("Paste").closest("button") as HTMLButtonElement;
+}
+
+const liveSession = (storyId: string): WorkspaceFreezeReason => ({
+    kind: "live-session",
+    session: "room-1",
+    writable: [storyDocumentFreezeScope(storyId)!],
+});
+
+/**
+ * The wizard's second way to make a cast member, under a freeze that leaves this story writable.
+ *
+ * The rows a paste produces are this story document, and a live session on it is being sent them; the
+ * characters the plan names are not, and they would exist on this machine and on no other, leaving
+ * every pasted row pointing at nothing on everybody else's. So the target comes off and the rest of
+ * the wizard keeps working - the same bargain the row's own picker makes.
+ *
+ * `matches(":disabled")` throughout: `Select` renders its rows as real buttons, and the property
+ * would answer for the option's own attribute rather than for anything above it.
+ */
+describe("StoryPasteWizardModal speaker targets under a freeze", () => {
+    it("offers the New character target while the project is writable", () => {
+        renderWizard();
+
+        const option = targetOption(openTargetMenu("林"), "New character");
+
+        expect(option.matches(":disabled")).toBe(false);
+    });
+
+    it("shows the New character target switched off, with a reason, inside a live session", () => {
+        freeze = liveSession(THIS_STORY);
+        renderWizard();
+
+        const option = targetOption(openTargetMenu("林"), "New character");
+
+        expect(option.matches(":disabled")).toBe(true);
+        // Shown, not dropped: a target that vanished reads as the wizard having lost the ability.
+        expect(option.textContent).toContain("New character");
+        expect(option.textContent).toContain(IN_A_SESSION);
+    });
+
+    it("leaves every other target pickable inside that same session", () => {
+        // Binding to a character that exists, or keeping a bare name, writes the rows and nothing
+        // else - which is exactly what the session is carrying.
+        freeze = liveSession(THIS_STORY);
+        const { onConfirm } = renderWizard();
+
+        chooseTarget("早苗", "Not a speaker");
+        expect(pasteButton().matches(":disabled")).toBe(false);
+        confirm();
+
+        expect(onConfirm.mock.calls[0]![1]).toEqual({ 早苗: { kind: "notASpeaker" } });
+    });
+
+    it("says the workspace's own sentence when the freeze covers this story too", () => {
+        // No panel invents a live-session claim under a freeze that is not one: the editor around it
+        // is already off, and the reason it is showing everywhere else is the right one here.
+        freeze = { kind: "manual" };
+        renderWizard();
+
+        const option = targetOption(openTargetMenu("林"), "New character");
+
+        expect(option.matches(":disabled")).toBe(true);
+        expect(option.textContent).toContain("Unavailable while the project is frozen.");
+    });
+
+    it("refuses the confirm when a session starts under the open dialog", () => {
+        // The one way a plan can still carry a character to create: the author chose the target and
+        // the workspace changed underneath them. Saying so on the button is what keeps it from
+        // looking like it would work - the controller refuses this plan either way.
+        const { rerender } = renderWizard();
+        chooseTarget("林", "New character");
+        expect(pasteButton().matches(":disabled")).toBe(false);
+
+        freeze = liveSession(THIS_STORY);
+        rerender();
+
+        expect(pasteButton().matches(":disabled")).toBe(true);
+        expect(pasteButton().getAttribute("data-tip")).toBe(IN_A_SESSION);
+    });
+});
 
 /**
  * What the wizard hands back to be REMEMBERED.

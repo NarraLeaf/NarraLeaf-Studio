@@ -91,6 +91,34 @@ export const story = {
             speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
         },
     },
+    // 因为实时会话而无法动作的控件所显示的话。会话能带走的故事操作只有固定的一组，这一组之外的
+    // 编辑只写在本机、传不到任何别处。每个界面被拿掉的都是同一样东西，所以只用一句话说，不按面
+    // 各写各的托词。
+    live: {
+        editUnavailable: "实时会话期间不可用，退出会话后再修改",
+        // 该行正被他人书写时那个标记的悬停文字。要点名到人：标记旁边没有写名字的宽度，
+        // 而截断的名字谁也认不出。
+        rowClaimed: "{name} 正在写这一行",
+        // 会话主持方拒绝的修改。作者已经打出来的文字原样留在屏幕上——被拒绝的那一行，
+        // 屏幕上的内容就是它唯一的一份——所以这几条只说发生了什么。
+        refusedRowClaimed: "{name} 正在写该行，本次修改未生效",
+        refusedRowGone: "该行已不存在，本次修改未生效",
+        refusedAnchorGone: "移动的目标行已不存在，本次修改未生效",
+        refusedSceneGone: "该场景已不存在，本次修改未生效",
+        refusedNotInSession: "本机已不在该会话中",
+        refusedUnknownOp: "该会话没有接受这次修改",
+        // 上一次撤销或重做没有发出任何内容的原因，每一条点名让该步骤无法回退的状态。
+        undoNotMine: "该步骤是他人所做",
+        undoNoRecord: "该步骤已无法撤销",
+        undoSceneGone: "该场景已不存在",
+        undoRowGone: "该行已不存在",
+        undoRowRestored: "该行已重新回到场景中",
+        undoContainerGone: "该行所在的区块已不存在",
+        undoAnchorGone: "该行原来的位置已不存在",
+        undoContainerFilled: "该区块中现在已有其他行",
+        undoSubtreeLost: "其中原有的行无法恢复",
+        undoChaptersChanged: "章节与该步骤记录的那一份不一致",
+    },
     narralang: {
         exportScene: "导出为 NarraLang…",
         exportStory: "将故事导出为 NarraLang…",
@@ -195,6 +223,8 @@ export const story = {
         },
         bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
         scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+        // 实时会话期间从其他工程粘贴的行。每场会话只提示一次。
+        sessionRowsOnly: "实时会话期间，从其他工程粘贴的行只带来行本身；离开会话后重新粘贴，才能带上译文、配音与资产",
         translationsCarried: {
             other: "已带入 {count} 条译文",
         },
@@ -805,6 +835,8 @@ export const story = {
         cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
         tempSpeaker: "仅名字",
         createCharacter: "创建角色「{name}」",
+        // 上面那一项变灰时的悬停提示，也用在粘贴向导的「新建角色」上：同一件事的两个入口。
+        createCharacterUnavailable: "实时会话期间不可用，改选已有角色",
         voiceOutdated: "配音待更新，打开配音表",
         voiceManage: "打开配音表",
         voicePlay: "试听配音",
