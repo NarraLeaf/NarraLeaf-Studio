@@ -11,26 +11,15 @@
  * and the windows cannot end up in different languages.
  */
 
-import { resolvePreferredLocale, type LocaleCode } from "@shared/i18n";
+import { deviceLanguageTags, resolvePreferredLocale, type LocaleCode } from "@shared/i18n";
 
 /**
  * The device's preferred languages, most-preferred first, normalized to lower-case hyphen form.
  *
- * `navigator.languages` is the ordered list; `navigator.language` is appended because some
- * environments leave the list empty and answer only the singular. Underscores fold to hyphens
- * because both spellings turn up in the wild ("zh_CN" from some Linux locale setups).
- *
- * Empty where there is no `navigator` at all, which is what tests and anything outside a renderer
- * get.
+ * Re-exported rather than implemented here: a shipped game reads the same list to pick the
+ * language of its crash screen, and it cannot reach Studio renderer modules.
  */
-export function deviceLanguageTags(): string[] {
-    if (typeof navigator === "undefined") {
-        return [];
-    }
-    return [...(navigator.languages ?? []), navigator.language]
-        .map(raw => String(raw ?? "").toLowerCase().replace(/_/g, "-"))
-        .filter(tag => tag.length > 0);
-}
+export { deviceLanguageTags };
 
 /** The language to use, and to preselect in first-run setup, when none has ever been chosen. */
 export function deviceDefaultLocale(): LocaleCode {

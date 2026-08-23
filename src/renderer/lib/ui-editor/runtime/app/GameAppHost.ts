@@ -235,6 +235,17 @@ export type GameAppHost = {
      * exactly like one where the restart failed.
      */
     restartApplication?: () => Promise<void>;
+    /**
+     * Keep the display awake, or let it sleep again.
+     *
+     * Asked for while the story advances on its own - see `displayAwake`, which decides when.
+     * Nothing waits on it: a shell that could not take the block plays exactly as before.
+     *
+     * Omitted by hosts that are not a game a player is sitting in front of: Dev Mode and the
+     * workspace story preview are windows inside Studio, where the author is working rather than
+     * watching, and a preview left running with auto on must not hold the machine's display.
+     */
+    setDisplayAwake?: (awake: boolean) => void;
     /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
     getFullscreen?: () => Promise<boolean>;
     setFullscreen?: (fullscreen: boolean) => Promise<void>;

@@ -76,7 +76,8 @@ import {
 } from "@shared/utils/gameProgressFile";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
-import { installDisplaySleepInhibitor } from "./displaySleep";
+import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
+import { resolveShellText, type ShellText } from "./shellText";
 import { installWindowCrashHandling } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
@@ -249,6 +250,8 @@ let loadedPackName: string | null = null;
 /** What this build does when it stops working, from the pack. */
 let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
+/** The window's display block, driven by the renderer over `runtime:displayAwake:set`. */
+let displaySleep: DisplaySleepInhibitor | null = null;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
@@ -448,7 +451,6 @@ function createSidecarHost(pack: GameRuntimePackV1): SidecarHost {
     return new SidecarHost(collectPackSidecars(pack), {
         appDir,
         userDataDir,
-        execPath: process.execPath,
         mode: pack.mode,
         game: { name: pack.project.name, version: pack.project.version ?? null },
         log: (level, message) => {
@@ -586,13 +588,40 @@ process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
  */
 function reportFatalRuntimeError(headline: string): void {
     try {
+        const text = shellText();
         dialog.showErrorBox(
             gameDisplayName(),
-            `${headline}\n\nThe game has to close. Details were written to ${runtimeLogPath(userDataDir)}`,
+            `${headline}\n\n${text.fatalClose} ${text.logAt(runtimeLogPath(userDataDir))}`,
         );
     } catch {
         /* No window server, or a dialog that refused. The log line above is the report. */
     }
+}
+
+/**
+ * What this process says to the player, in the language this machine asked for.
+ *
+ * `getLocale()` leads, and that ordering is the whole point: it is the same tag the page's
+ * `navigator.languages` leads with, so the native dialogs and the game's own crash screen cannot
+ * end up in different languages. It also moves with `--lang`, which is on the startup allowlist
+ * and which the system list does not follow - a player who launches the game in Japanese on a
+ * Chinese machine gets a Japanese page, and would otherwise get a Chinese dialog over it.
+ *
+ * The system list follows as the preference order proper. Before the app is ready `getLocale()`
+ * answers an empty string rather than throwing, and an empty tag is dropped, so the list degrades
+ * to the system one on its own - which matters because the earliest caller here is the
+ * uncaught-exception monitor, and that can fire before ready.
+ *
+ * Resolved once. Nothing about a running game can change the answer, and a crash is a bad moment
+ * to start asking questions.
+ */
+let cachedShellText: ShellText | null = null;
+
+function shellText(): ShellText {
+    if (!cachedShellText) {
+        cachedShellText = resolveShellText([app.getLocale(), ...app.getPreferredSystemLanguages()]);
+    }
+    return cachedShellText;
 }
 
 /** The game's own name once the pack has been read, and something honest before that. */
@@ -793,6 +822,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         log: logRuntime,
         logPath: runtimeLogPath(userDataDir),
         displayName: gameDisplayName,
+        text: shellText(),
         // Read through rather than captured: the pack settles the policy as the window is being
         // built, and a snapshot taken here could be one step behind it.
         policy: () => crashPolicy,
@@ -814,9 +844,10 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         })).response,
         now: () => Date.now(),
     });
-    // Reading is idle as far as the system is concerned, and auto mode can play for an hour
-    // without a single input, so the display is held awake for as long as the window is on screen.
-    installDisplaySleepInhibitor(win, {
+    // Auto mode plays for an hour without a single input, which the system reads as an idle
+    // machine; the renderer says when the story is moving on its own and this holds the display
+    // for as long as it is, and the window is on screen.
+    displaySleep = installDisplaySleepInhibitor(win, {
         hold: () => powerSaveBlocker.start("prevent-display-sleep"),
         release: id => {
             powerSaveBlocker.stop(id);
@@ -1226,6 +1257,11 @@ function registerRuntimeIpc(): void {
             return;
         }
         pendingCloseDecisions.get(requestId)?.(payload?.allow !== false);
+    });
+    // Fire-and-forget: nothing in the game waits on the display, and a request arriving after the
+    // window has gone is about a window with no display left to hold.
+    ipcMain.on("runtime:displayAwake:set", (_event, awake: boolean) => {
+        displaySleep?.setRequested(awake === true);
     });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {

@@ -27,9 +27,21 @@
  * Correlation ids are the host's business: a plugin only ever sees
  * `request(method, params) => Promise`.
  *
- * A sidecar must also treat **stdin EOF as "terminate now"**. That is the one
+ * A sidecar must also treat **the end of its input as "terminate now"**. That is the one
  * shutdown signal that still arrives if the game's main process dies without
  * running any of its own cleanup.
+ *
+ * ## Where those frames travel, which depends on the kind
+ *
+ * An **executable** sidecar is a program: the frames are its stdin and stdout, the end of input is
+ * stdin EOF, and stderr is the log channel.
+ *
+ * A **node** sidecar is an Electron utility process, because running one under the game's own
+ * binary meant shipping an executable that doubles as a Node interpreter for any script named on
+ * its command line. A utility process has no stdin - `process.stdin` there is an already-ended
+ * stream that nothing can replace - so its frames travel over `process.parentPort` instead, the
+ * same newline-delimited JSON, and a `null` message is the end of input. Both of its pipes are log
+ * channels there, stdout included, since the protocol is not on them.
  */
 
 import { spawn as spawnChildProcess } from "child_process";
@@ -101,6 +113,14 @@ export type SidecarChildProcess = {
 export type SidecarSpawnOptions = {
     cwd: string;
     env: Record<string, string | undefined>;
+    /**
+     * Which mechanism this declaration asks for. The default implementation dispatches on it: an
+     * executable is spawned, a `node` entry is forked as a utility process. One seam rather than
+     * two, so a test that fakes spawning fakes both.
+     */
+    kind: SidecarDeclaration["kind"];
+    /** The sidecar's own name, for whatever the mechanism shows in process listings. */
+    label: string;
 };
 
 export type SidecarSpawnFn = (
@@ -117,8 +137,7 @@ export type SidecarHostDeps = {
     appDir: string;
     /** Root of the per-sidecar writable working directories. */
     userDataDir: string;
-    /** The game's own Electron binary; `kind: "node"` sidecars run under it as Node. */
-    execPath: string;
+
     mode: "preview" | "production";
     game: { name: string; version: string | null };
     log(level: SidecarLogLevel, message: string): void;
@@ -343,21 +362,20 @@ class SidecarInstance {
                 }
             }
 
-            const command = this.declaration.kind === "node" ? this.deps.execPath : entryPath;
-            const args = this.declaration.kind === "node" ? [entryPath] : [];
             const env: Record<string, string | undefined> = { ...process.env };
-            if (this.declaration.kind === "node") {
-                // Run the game's own Electron as a plain Node interpreter.
-                env.ELECTRON_RUN_AS_NODE = "1";
-            } else {
-                // Never leak an inherited marker into a real executable: it would
-                // change how that program interprets its own arguments.
-                delete env.ELECTRON_RUN_AS_NODE;
-            }
+            // Never leak an inherited marker into a child: it would change how a real executable
+            // interprets its own arguments, and no sidecar this game starts needs it - a `node`
+            // entry is a utility process, which Electron starts without it.
+            delete env.ELECTRON_RUN_AS_NODE;
 
             let child: SidecarChildProcess;
             try {
-                child = this.spawnProcess(command, args, { cwd, env });
+                child = this.spawnProcess(entryPath, [], {
+                    cwd,
+                    env,
+                    kind: this.declaration.kind,
+                    label: this.label,
+                });
             } catch (error) {
                 this.chargeFailure(`spawn failed: ${describeError(error)}`, { scheduleRestart: false });
                 reject(new Error(`Sidecar "${this.label}": spawn failed: ${describeError(error)}`));
@@ -872,14 +890,26 @@ function decodeChunk(decoder: StringDecoder, chunk: unknown): string {
     return String(chunk);
 }
 
-const defaultSpawn: SidecarSpawnFn = (command, args, options) =>
-    spawnChildProcess(command, [...args], {
+const defaultSpawn: SidecarSpawnFn = (command, args, options) => {
+    if (options.kind === "node") {
+        /*
+         * Loaded here rather than imported at the top, so this module's graph stays free of
+         * Electron. The host is unit-tested against a fake spawn and never reaches this line there;
+         * a static import would mean the tests could not load the module at all.
+         */
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { forkSidecarUtilityProcess } = require("./sidecarUtilityProcess") as
+            typeof import("./sidecarUtilityProcess");
+        return forkSidecarUtilityProcess(command, args, options);
+    }
+    return spawnChildProcess(command, [...args], {
         cwd: options.cwd,
         env: options.env,
         stdio: ["pipe", "pipe", "pipe"],
         // No console window flashing behind the game on Windows.
         windowsHide: true,
     }) as unknown as SidecarChildProcess;
+};
 
 /**
  * Every sidecar this game shipped, keyed by plugin and sidecar id.
