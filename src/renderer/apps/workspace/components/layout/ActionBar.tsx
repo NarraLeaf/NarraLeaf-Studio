@@ -9,7 +9,7 @@ import { FocusContext } from "@/lib/workspace/services/ui";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from "../ui/actionMenuModel";
 import { isActionFrozenOut, resolveFrozenActionDisabled } from "../ui/freezeActionPolicy";
 import { RunControl } from "../../modules/actions/RunControl";
-import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
 import { useTitleBarActionGroups } from "../../hooks/useTitleBarActionGroups";
 import { useTranslation } from "@/lib/i18n";
 import { WorkspaceMenuAction } from "@shared/types/menu";
@@ -60,7 +60,9 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     // second dropdown that reads the same word (`useTitleBarActionGroups`).
     const actionGroups = useTitleBarActionGroups();
     const { workspace, context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
+    // The kind, not merely "frozen": one of them leaves the operations main starts alone, and the
+    // policy below is what knows which actions those are.
+    const freeze = useWorkspaceFreezeReason();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
 
     // Subscribe to focus changes
@@ -101,8 +103,8 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
             {standaloneActions.map((action) => {
                 // Computed for the render only; the registered object is left exactly as it was, so
                 // thawing restores it without anyone having to remember what it used to be.
-                const frozenOut = isActionFrozenOut(action, frozen);
-                const disabled = resolveFrozenActionDisabled(action, frozen);
+                const frozenOut = isActionFrozenOut(action, freeze);
+                const disabled = resolveFrozenActionDisabled(action, freeze);
                 const stateClasses = disabled
                     ? "text-fg-subtle cursor-not-allowed"
                     : "text-fg-muted hover:bg-fill hover:text-fg";

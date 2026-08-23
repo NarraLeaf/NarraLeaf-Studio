@@ -607,4 +607,7 @@ vi.mock("@/lib/app/bridge", () => ({
 let frozen = false;
 vi.mock("../../hooks/useWorkspaceFrozen", () => ({
     useWorkspaceFrozen: () => frozen,
+    // The guard reads the whole reason now, so it can ask whether a partial freeze spares the
+    // document a surface names. Nothing in this dialog names one, so any kind will do.
+    useWorkspaceFreeze: () => (frozen ? { kind: "manual" } : null),
 }));

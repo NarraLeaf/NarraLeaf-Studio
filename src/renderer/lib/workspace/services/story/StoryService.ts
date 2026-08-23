@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
+import type { LiveOp } from "@shared/live/ops";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import {
@@ -81,6 +82,30 @@ type BlockTarget = {
     beforeBlockId?: StoryBlockId | null;
 };
 
+/**
+ * Somewhere for an edit to go instead of into the document.
+ *
+ * **The seam a live session hangs off, and the reason the editor needs no live-session code at all.**
+ * Every editing gesture already ends in one of this service's mutators; with a sink installed, those
+ * mutators hand the gesture over as an operation and change nothing. The row on screen moves when
+ * the operation comes back as somebody's effect and {@link StoryService.applyLiveOp} applies it -
+ * which is the whole design: nothing is applied optimistically, so nothing ever has to be taken back,
+ * and there is no window in which this machine's copy says something no other machine has agreed to.
+ *
+ * One method, because there are exactly two outcomes and a second method would be a second way to
+ * spell one of them. `false` is the ordinary answer for a story the sink does not speak for, and the
+ * service then does precisely what it does with no sink at all.
+ */
+export type StoryOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the document must not be touched. False means this story is not
+     * the sink's business and the mutator carries on as usual.
+     */
+    handle(storyId: StoryId, op: LiveOp): boolean;
+};
+
 /** See {@link StoryService.captureStoryStructure}. */
 type StoryStructureSnapshot = {
     chapters: StoryChapter[];
@@ -148,6 +173,8 @@ export class StoryService extends Service<StoryService> implements IStoryService
     private readonly animationAssets = new Map<StoryAnimationAssetId, StoryAnimationAsset>();
     private readonly documents = new Map<StoryId, StoryDocument>();
     private readonly events = new EventEmitter<StoryServiceEvents>();
+    /** Where edits go instead of into the document, when something else owns them. See {@link StoryOpSink}. */
+    private opSink: StoryOpSink | null = null;
     private dirty = false;
     private revision = 0;
     /**
@@ -304,20 +331,29 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (!entry) {
             return false;
         }
+        if (this.handedToSink(storyId, { op: "rename-story", name: trimmed })) {
+            // True because the request stands, not because the name has changed yet. False is this
+            // method's word for "there is nothing to rename", and that is not what happened.
+            return true;
+        }
+        this.applyStoryName(storyId, trimmed);
+        return true;
+    }
+
+    private applyStoryName(storyId: StoryId, name: string): void {
         this.mutateLibrary(index => {
             const target = index.stories.find(story => story.id === storyId);
             if (target) {
-                target.name = trimmed;
+                target.name = name;
                 target.updatedAt = new Date().toISOString();
             }
         });
         const document = this.documents.get(storyId);
         if (document) {
             this.mutateDocument(storyId, doc => {
-                doc.name = trimmed;
+                doc.name = name;
             }, NO_SCENES);
         }
-        return true;
     }
 
     /**
@@ -1011,6 +1047,15 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public moveChapter(storyId: StoryId, chapterId: string, beforeChapterId: string | null): boolean {
+        if (this.opSink) {
+            // The vocabulary states an order and this method states a hop, so the order the hop
+            // would produce has to be worked out before anything moves. Null means there is no such
+            // chapter, which is the ordinary path's answer too - and it goes there to give it.
+            const chapterIds = this.chapterOrderAfterMove(storyId, chapterId, beforeChapterId);
+            if (chapterIds && this.handedToSink(storyId, { op: "reorder-chapters", chapterIds })) {
+                return true;
+            }
+        }
         let changed = false;
         this.mutateDocument(storyId, document => {
             const from = document.chapters.findIndex(chapter => chapter.id === chapterId);
@@ -1029,6 +1074,45 @@ export class StoryService extends Service<StoryService> implements IStoryService
             changed = true;
         }, NO_SCENES);
         return changed;
+    }
+
+    /** The chapter order {@link moveChapter} would leave behind, or null when there is no such chapter. */
+    private chapterOrderAfterMove(storyId: StoryId, chapterId: string, beforeChapterId: string | null): string[] | null {
+        const ids = this.getStoryDocument(storyId).chapters.map(chapter => chapter.id);
+        const from = ids.indexOf(chapterId);
+        if (from === -1) {
+            return null;
+        }
+        ids.splice(from, 1);
+        const to = beforeChapterId ? ids.indexOf(beforeChapterId) : -1;
+        if (to === -1) {
+            ids.push(chapterId);
+        } else {
+            ids.splice(to, 0, chapterId);
+        }
+        return ids;
+    }
+
+    /**
+     * Put the chapters in the order given.
+     *
+     * Chapters the order does not name keep their places at the end rather than being dropped: an
+     * order written against a document that has since gained a chapter is a stale statement about
+     * position, never a request to delete the chapter it says nothing about.
+     */
+    private applyChapterOrder(storyId: StoryId, chapterIds: readonly string[]): void {
+        this.mutateDocument(storyId, document => {
+            const byId = new Map(document.chapters.map(chapter => [chapter.id, chapter]));
+            const ordered: StoryChapter[] = [];
+            for (const id of chapterIds) {
+                const chapter = byId.get(id);
+                if (chapter) {
+                    ordered.push(chapter);
+                    byId.delete(id);
+                }
+            }
+            document.chapters = [...ordered, ...byId.values()];
+        }, NO_SCENES);
     }
 
     public createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene {
@@ -1065,6 +1149,15 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (!trimmed) {
             return false;
         }
+        if (this.handedToSink(storyId, { op: "rename-scene", sceneId, name: trimmed })) {
+            // True for the reason `renameStory` returns it: the request stands. Whether the scene is
+            // still there is the session's answer to give, and it gives it as a refusal.
+            return true;
+        }
+        return this.applySceneName(storyId, sceneId, trimmed);
+    }
+
+    private applySceneName(storyId: StoryId, sceneId: StorySceneId, trimmed: string): boolean {
         let changed = false;
         this.mutateDocument(storyId, document => {
             const scene = document.scenes[sceneId];
@@ -1437,6 +1530,15 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public setEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void {
+        if (this.handedToSink(storyId, { op: "set-entry-scene", sceneId: sceneId ?? null })) {
+            // Whether the scene is still there is not this machine's question to answer once the
+            // sink has it: the answer comes back as an effect or as a refusal naming the scene.
+            return;
+        }
+        this.applyEntryScene(storyId, sceneId);
+    }
+
+    private applyEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void {
         this.mutateDocument(storyId, document => {
             if (sceneId && !document.scenes[sceneId]) {
                 throw new RendererError(`Scene not found: ${sceneId}`);
@@ -1446,14 +1548,31 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public insertBlock(storyId: StoryId, sceneId: StorySceneId, block: StoryBlock, target: BlockTarget): StoryBlock {
+        if (this.handedToSink(storyId, { op: "insert-block", sceneId, block, target })) {
+            // ⚠ The row is NOT in the document. It is still returned because the caller places the
+            // caret with it, and the caret has somewhere to be as soon as the row appears - which is
+            // when the operation comes back as an effect, not now.
+            return block;
+        }
+        this.applyBlockInsert(storyId, sceneId, block, target);
+        return block;
+    }
+
+    private applyBlockInsert(storyId: StoryId, sceneId: StorySceneId, block: StoryBlock, target: BlockTarget): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             insertBlockInScene(scene, block, target);
         }, [sceneId]);
-        return block;
     }
 
     public updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void {
+        if (this.handedToSink(storyId, { op: "update-block", sceneId, blockId, payload })) {
+            return;
+        }
+        this.applyBlockPayload(storyId, sceneId, blockId, payload);
+    }
+
+    private applyBlockPayload(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             updateBlockPayload(scene, blockId, payload);
@@ -1476,6 +1595,16 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (edits.length === 0) {
             return;
         }
+        if (this.handedToSink(storyId, { op: "update-blocks", edits })) {
+            return;
+        }
+        this.applyBlockPayloads(storyId, edits);
+    }
+
+    private applyBlockPayloads(
+        storyId: StoryId,
+        edits: readonly { sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }[],
+    ): void {
         this.mutateDocument(storyId, document => {
             for (const edit of edits) {
                 const scene = this.getSceneOrThrow(document, edit.sceneId);
@@ -1485,6 +1614,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void {
+        if (this.handedToSink(storyId, { op: "delete-block", sceneId, blockId })) {
+            return;
+        }
+        this.applyBlockDelete(storyId, sceneId, blockId);
+    }
+
+    private applyBlockDelete(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             deleteBlockFromScene(scene, blockId);
@@ -1493,6 +1629,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     /** Set or clear a block's compiled-out flag (schema v7). Clearing deletes the field so an enabled block stays clean. */
     public setBlockDisabled(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, disabled: boolean): void {
+        if (this.handedToSink(storyId, { op: "set-block-disabled", sceneId, blockId, disabled })) {
+            return;
+        }
+        this.applyBlockDisabled(storyId, sceneId, blockId, disabled);
+    }
+
+    private applyBlockDisabled(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, disabled: boolean): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             const block = scene.blocks[blockId];
@@ -1515,6 +1658,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public moveBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, target: BlockTarget): void {
+        if (this.handedToSink(storyId, { op: "move-block", sceneId, blockId, target })) {
+            return;
+        }
+        this.applyBlockMove(storyId, sceneId, blockId, target);
+    }
+
+    private applyBlockMove(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, target: BlockTarget): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
             moveBlockInScene(scene, blockId, target);
@@ -1527,10 +1677,103 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * repaint on a document where half the selection has landed.
      */
     public moveBlocks(storyId: StoryId, sceneId: StorySceneId, moves: { blockIds: StoryBlockId[]; target: BlockTarget }[]): void {
+        if (this.handedToSink(storyId, { op: "move-blocks", sceneId, moves })) {
+            return;
+        }
+        this.applyBlockMoves(storyId, sceneId, moves);
+    }
+
+    private applyBlockMoves(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        moves: readonly { blockIds: readonly StoryBlockId[]; target: BlockTarget }[],
+    ): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
-            moveBlocksInScene(scene, moves);
+            moveBlocksInScene(scene, moves.map(move => ({ blockIds: [...move.blockIds], target: move.target })));
         }, [sceneId]);
+    }
+
+    /**
+     * Hand one operation to the sink, if there is one that wants it.
+     *
+     * The single place the eleven mutators ask, so "is this story somebody else's to change" has one
+     * answer and one spelling. See {@link StoryOpSink}.
+     */
+    private handedToSink(storyId: StoryId, op: LiveOp): boolean {
+        return this.opSink !== null && this.opSink.handle(storyId, op);
+    }
+
+    /** Send edits somewhere else, or take them back. Null restores the ordinary behaviour exactly. */
+    public setOperationSink(sink: StoryOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * Apply one operation to the document, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the row is
+     * finally allowed to move. It deliberately does not go through the eleven public mutators, which
+     * would hand the operation straight back to the sink it just came from; it goes through the same
+     * private appliers they do, so an arrival and a local edit change the document in exactly one way
+     * and there is no second applier to drift from the first.
+     *
+     * Everything reaches `mutateDocument`, which is not a detail: the asset lock table, the dirty
+     * marking, the autosave and `documentChanged` all hang off it. A document that changed without
+     * them is a document the editor never redraws and the disk never receives.
+     *
+     * **Nothing recorded here enters this author's undo stack.** An effect is somebody's edit landing
+     * on this machine, and an undo stack that offered to take it back would be offering to delete a
+     * stranger's paragraph. Suppressed here rather than at the callers because it is a property of
+     * applying an arrival - and there is more than one caller, so a rule kept at the call site is a
+     * rule the next caller will not have. Inside a session, undo is sending the inverse of one's own
+     * last operation instead; see the live layer's `inverseOf`.
+     */
+    public applyLiveOp(storyId: StoryId, op: LiveOp): void {
+        this.getHistoryService().withoutRecording(() => {
+            switch (op.op) {
+                case "insert-block":
+                    // A copy, because the block arrived inside a message the sender may still be
+                    // holding - the host keeps every effect it broadcast - and inserting writes the
+                    // block into the document and edits it on the way in.
+                    this.applyBlockInsert(storyId, op.sceneId, structuredClone(op.block), op.target);
+                    return;
+                case "update-block":
+                    this.applyBlockPayload(storyId, op.sceneId, op.blockId, structuredClone(op.payload));
+                    return;
+                case "update-blocks":
+                    this.applyBlockPayloads(storyId, op.edits.map(edit => ({
+                        sceneId: edit.sceneId,
+                        blockId: edit.blockId,
+                        payload: structuredClone(edit.payload),
+                    })));
+                    return;
+                case "delete-block":
+                    this.applyBlockDelete(storyId, op.sceneId, op.blockId);
+                    return;
+                case "move-block":
+                    this.applyBlockMove(storyId, op.sceneId, op.blockId, op.target);
+                    return;
+                case "move-blocks":
+                    this.applyBlockMoves(storyId, op.sceneId, op.moves);
+                    return;
+                case "set-block-disabled":
+                    this.applyBlockDisabled(storyId, op.sceneId, op.blockId, op.disabled);
+                    return;
+                case "rename-scene":
+                    this.applySceneName(storyId, op.sceneId, op.name);
+                    return;
+                case "set-entry-scene":
+                    this.applyEntryScene(storyId, op.sceneId ?? undefined);
+                    return;
+                case "rename-story":
+                    this.applyStoryName(storyId, op.name);
+                    return;
+                case "reorder-chapters":
+                    this.applyChapterOrder(storyId, op.chapterIds);
+                    return;
+            }
+        });
     }
 
     public canImportStoryPackage(): false {

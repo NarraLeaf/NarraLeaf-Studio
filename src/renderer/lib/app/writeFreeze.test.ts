@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sep } from "@shared/utils/path";
 import {
+    freezeAllowsWrite,
     freezeProjectWrites,
     getProjectWriteFreeze,
+    holdDerivedProjectWrites,
     isFrozenProjectData,
     observeProjectWriteFreeze,
     observeRefusedWrites,
@@ -209,5 +211,189 @@ describe("thawForeignProjectWrites", () => {
         thawForeignProjectWrites(PROJECT);
         expect(seen).toEqual([]);
         stop();
+    });
+});
+
+const STORY = "editor/story/stories/s1/storydoc.json";
+const CHARACTERS = "editor/services/character.json";
+const LOCALIZATION = "editor/localization/ja.json";
+const VOICE = "editor/voice/ja.json";
+
+function armSession(writable: readonly string[] = [STORY]): void {
+    freezeProjectWrites({
+        projectPath: PROJECT,
+        reason: { kind: "live-session", session: "room-1", writable },
+    });
+}
+
+/**
+ * The one freeze that is partial: a live session, which leaves the document it is about writable
+ * and refuses the rest of the project.
+ *
+ * Both ends need guarding. Refusing the story document would stop the session dead; allowing
+ * anything else would let a participant create, say, a character that never travels - only story
+ * operations are broadcast, so the row referring to it points at nothing on everybody else's
+ * machine and neither side is told.
+ */
+describe("live-session freeze", () => {
+    it("writes the document the session is about, and announces nothing", () => {
+        const refusals: RefusedWrite[] = [];
+        const stop = observeRefusedWrites(refusal => refusals.push(refusal));
+
+        armSession();
+
+        expect(refuseFrozenWrite(`${PROJECT}/${STORY}`)).toBeNull();
+        // Nothing was refused, so there is nothing to say. A notice here would tell the author their
+        // work is being discarded at the moment it is being saved.
+        expect(refusals).toEqual([]);
+        stop();
+    });
+
+    it("refuses project data outside the writable set, and says so out loud", () => {
+        const refusals: RefusedWrite[] = [];
+        const stop = observeRefusedWrites(refusal => refusals.push(refusal));
+
+        armSession();
+        const refused = refuseFrozenWrite(`${PROJECT}/${CHARACTERS}`);
+
+        expect(refused?.reason.kind).toBe("live-session");
+        // A component that did not know about the session gets the harmless no-op, and the author
+        // is told - rather than typing into a workspace that quietly drops everything.
+        expect(refusals).toEqual([{
+            path: `${PROJECT}/${CHARACTERS}`,
+            reason: { kind: "live-session", session: "room-1", writable: [STORY] },
+        }]);
+        stop();
+    });
+
+    it("refuses a story document the session is not about", () => {
+        armSession();
+        expect(refuseFrozenWrite(`${PROJECT}/editor/story/stories/s2/storydoc.json`)).not.toBeNull();
+    });
+
+    it("leaves editor state alone, the same as every other freeze", () => {
+        armSession();
+        expect(refuseFrozenWrite(`${PROJECT}/.nlstudio/editor.json`)).toBeNull();
+        expect(refuseFrozenWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/asset-1.png`)).toBeNull();
+    });
+
+    it("matches the writable set through the separator and the host's casing rule", () => {
+        armSession();
+
+        // The write names its path with the host separator, the session declared it with the
+        // repository's. Two spellings of one file, and it stays writable through both.
+        expect(refuseFrozenWrite(`${PROJECT}\\editor\\story\\stories\\s1\\storydoc.json`)).toBeNull();
+
+        // Casing follows the host for the reason `FOLD_CASE` does: on a case-sensitive filesystem
+        // these really are two files and refusing is the right answer, not a missing feature.
+        expect(refuseFrozenWrite(`${PROJECT}/Editor/Story/Stories/S1/StoryDoc.json`) === null)
+            .toBe(sep === "\\");
+    });
+
+    it("stays total for every other reason, writable set or not", () => {
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "revision", revision: "aa" } });
+        expect(refuseFrozenWrite(`${PROJECT}/${STORY}`)).not.toBeNull();
+
+        // And directly, because the interface reads the same predicate the gate does: "a revision
+        // view with one editable document" is not a state that exists.
+        for (const reason of [
+            { kind: "revision", revision: "aa" },
+            { kind: "manual" },
+            { kind: "merge" },
+            { kind: "recovery" },
+        ] as const) {
+            expect(freezeAllowsWrite(reason, STORY)).toBe(false);
+        }
+    });
+});
+
+/**
+ * The window in which one broadcast effect may also write what it derives.
+ *
+ * The translation and voice libraries are rebuilt on every participant's machine from the effect
+ * they were all sent, so they have to be writable while one is being applied - and at no other
+ * time. Listing them in `writable` instead would also allow an edit typed into the localization
+ * panel, and that edit has no effect behind it for anybody else to derive: the libraries diverge
+ * there and then, with nothing anywhere to notice.
+ */
+describe("holdDerivedProjectWrites", () => {
+    it("refuses a library write while no effect is being applied", () => {
+        const refusals: RefusedWrite[] = [];
+        const stop = observeRefusedWrites(refusal => refusals.push(refusal));
+
+        armSession();
+
+        expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).not.toBeNull();
+        expect(refusals.map(refusal => refusal.path)).toEqual([`${PROJECT}/${LOCALIZATION}`]);
+        stop();
+    });
+
+    it("allows the translation and voice libraries while one is, and closes again after", () => {
+        armSession();
+        const release = holdDerivedProjectWrites(PROJECT);
+
+        expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).toBeNull();
+        expect(refuseFrozenWrite(`${PROJECT}/${VOICE}`)).toBeNull();
+
+        release();
+        expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).not.toBeNull();
+    });
+
+    it("widens by the derived libraries and by nothing else", () => {
+        armSession();
+        const release = holdDerivedProjectWrites(PROJECT);
+
+        expect(refuseFrozenWrite(`${PROJECT}/${CHARACTERS}`)).not.toBeNull();
+        // The named-string registry sits inside `editor/localization/<locale>.json`'s pattern with a
+        // locale of `keys`, and it is developer-authored rather than derived from anything. The
+        // registry resolves it to its own kind, which is why it is still refused here.
+        expect(refuseFrozenWrite(`${PROJECT}/editor/localization/keys.json`)).not.toBeNull();
+
+        release();
+    });
+
+    it("counts nested holds, so only the last release closes the window", () => {
+        armSession();
+        const outer = holdDerivedProjectWrites(PROJECT);
+        const inner = holdDerivedProjectWrites(PROJECT);
+
+        inner();
+        expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).toBeNull();
+
+        outer();
+        expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).not.toBeNull();
+    });
+
+    it("ignores a release called twice, rather than lifting somebody else's hold", () => {
+        armSession();
+        const outer = holdDerivedProjectWrites(PROJECT);
+        const inner = holdDerivedProjectWrites(PROJECT);
+
+        inner();
+        inner();
+        expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).toBeNull();
+
+        outer();
+    });
+
+    it("changes nothing under a freeze that is not a session", () => {
+        // No session means nothing is deriving anything, and a hold left over from one that ended
+        // must not be able to turn a total freeze into a partial one.
+        freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "revision", revision: "aa" } });
+        const release = holdDerivedProjectWrites(PROJECT);
+
+        expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).not.toBeNull();
+        expect(refuseFrozenWrite(`${PROJECT}/${VOICE}`)).not.toBeNull();
+
+        release();
+    });
+
+    it("does not widen a session running in a different project", () => {
+        armSession();
+        const release = holdDerivedProjectWrites("D:/projects/other-game");
+
+        expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).not.toBeNull();
+
+        release();
     });
 });

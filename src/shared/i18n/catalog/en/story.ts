@@ -101,6 +101,37 @@ export const story = {
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
         },
     },
+    // What a control shows while a live session is the reason it cannot act. A session carries a
+    // closed set of story operations, and an edit outside that set would be written on this machine
+    // and on no other - so the same thing is taken away wherever it is offered, and one string says
+    // so everywhere rather than a different excuse per surface.
+    live: {
+        editUnavailable: "Unavailable in a live session. Leave the session to make this change.",
+        // On the mark a row wears while somebody else is writing it. A person is named:
+        // there is no width for a name beside the glyph, and a truncated one names nobody.
+        rowClaimed: "{name} is writing this line",
+        // What the session's host would not take. The words the author typed stay exactly
+        // where they are - a refused row is the case where what is on screen is the only
+        // copy of them - so each of these says what happened and nothing else.
+        refusedRowClaimed: "{name} is writing that line. The change was not applied.",
+        refusedRowGone: "That line is gone. The change was not applied.",
+        refusedAnchorGone: "The line it was moving to is gone. The change was not applied.",
+        refusedSceneGone: "That scene is gone. The change was not applied.",
+        refusedNotInSession: "This machine is no longer in the session.",
+        refusedUnknownOp: "The session did not take that change.",
+        // Why the last undo or redo sent nothing. Each names the state that leaves the step
+        // with no operation to take it back with.
+        undoNotMine: "That step was somebody else's.",
+        undoNoRecord: "That step can no longer be taken back.",
+        undoSceneGone: "That scene is gone.",
+        undoRowGone: "That line is gone.",
+        undoRowRestored: "That line is in the scene again.",
+        undoContainerGone: "The block that line was in is gone.",
+        undoAnchorGone: "Where that line moved from is gone.",
+        undoContainerFilled: "That block has lines in it now.",
+        undoSubtreeLost: "The lines that were inside it cannot be put back.",
+        undoChaptersChanged: "The chapters are not the ones that step recorded.",
+    },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`
     // is keyed by the printer's own codes (see `narralangPrinter`), so a new code fails the parity
@@ -234,6 +265,8 @@ export const story = {
         },
         bulkConfirmDetail: "This adds them below the current line as one undo step.",
         scriptFile: "This is a story script. Use Import Script to bring it back in.",
+        // Rows from another project, pasted while a live session is open. Shown once per session.
+        sessionRowsOnly: "During a live session, rows from another project arrive on their own. Leave the session and paste again to bring their translations, takes and assets across.",
         // Translations that travelled with copied rows. Part of the cross-project line; on their
         // own, and only the second of them, after a paste back into the same project.
         translationsCarried: {
@@ -920,6 +953,11 @@ export const story = {
         cutPointInactiveTitle: "The variant this line ended has been deleted, so it ends nothing.",
         tempSpeaker: "name only",
         createCharacter: "Create character “{name}”",
+        // On the rung above while it is greyed, and on the paste wizard's "New character" target,
+        // which is the same offer made from the other surface. A live session carries story
+        // operations and nothing else, so the cast is the one thing a speaker cannot become while
+        // one is open.
+        createCharacterUnavailable: "Unavailable in a live session. Choose an existing character.",
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
         voicePlay: "Play voice take",

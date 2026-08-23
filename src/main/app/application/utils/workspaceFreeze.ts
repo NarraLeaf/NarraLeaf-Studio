@@ -1,5 +1,6 @@
 import path from "path";
 import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { WorkspaceRefusingFreezeKind } from "@shared/types/workspaceFreeze";
 import type { RevisionId } from "@shared/types/vcs";
 
 /**
@@ -22,6 +23,11 @@ import type { RevisionId } from "@shared/types/vcs";
  * Keyed per project, like every other per-project state in main (`GameBuildManager`'s sessions,
  * `PreviewManager`'s, `VcsManager`'s): Studio is one project per window, and a single flag would let
  * the window browsing history refuse the build in the window next to it.
+ *
+ * **Which kinds of freeze refuse is not decided here.** `refusesOperations`
+ * (`@shared/types/workspaceFreeze`) is the one answer, asked by main's managers below and by the
+ * renderer controls that grey themselves out; what stays in this module is main's prose - the
+ * sentence the author reads and the way out of each kind.
  */
 
 /** The operations main refuses while frozen, named as the author would name them. */
@@ -116,23 +122,36 @@ export function forgetWorkspaceFreeze(projectPath: string): void {
 }
 
 /**
+ * The way out of each kind of freeze, in the author's terms.
+ *
+ * A record rather than a chain of comparisons so that it is exhaustive: a new kind that refuses
+ * operations does not compile until somebody has written the sentence the author will read.
+ */
+const FREEZE_REMEDIES: Record<WorkspaceRefusingFreezeKind, string> = {
+    revision: "Leave the revision you are looking at, or unfreeze the workspace, and try again.",
+    // A merge has no "unfreeze": the working tree holds two sides at once, and what a build
+    // produced from it is something nobody wrote. Finishing the merge is the only way out, and
+    // naming it is the difference between a refusal and a dead end.
+    merge: "Finish the merge in the version panel - choose which side to keep for each file - and try again.",
+    // Recovery mode has no "unfreeze" either, and refusing here is not merely consistency:
+    // the shell starts almost none of the services a build reads from, so what it produced
+    // would be a game missing most of the project rather than a build of it.
+    recovery: "Leave recovery mode - this window reopens as a normal workspace - and try again.",
+    manual: "Unfreeze the workspace and try again.",
+};
+
+/**
  * What the author is told. Written for a person, because it is the only explanation they get: the
  * refusal reaches them through the workspace console and the build dialog, not a log file.
+ *
+ * Takes only the kinds that refuse. A caller holding a plain `WorkspaceFreezeKind` has to pass it
+ * through `refusesOperations` (`@shared/types/workspaceFreeze`) first, which is the same question it
+ * needed to ask anyway.
  */
-export function workspaceFrozenMessage(reason: WorkspaceFreezeKind, operation: WorkspaceFrozenOperation): string {
-    const remedy = reason === "revision"
-        ? "Leave the revision you are looking at, or unfreeze the workspace, and try again."
-        // A merge has no "unfreeze": the working tree holds two sides at once, and what a build
-        // produced from it is something nobody wrote. Finishing the merge is the only way out, and
-        // naming it is the difference between a refusal and a dead end.
-        : reason === "merge"
-            ? "Finish the merge in the version panel - choose which side to keep for each file - and try again."
-            // Recovery mode has no "unfreeze" either, and refusing here is not merely consistency:
-            // the shell starts almost none of the services a build reads from, so what it produced
-            // would be a game missing most of the project rather than a build of it.
-            : reason === "recovery"
-                ? "Leave recovery mode - this window reopens as a normal workspace - and try again."
-                : "Unfreeze the workspace and try again.";
+export function workspaceFrozenMessage(
+    reason: WorkspaceRefusingFreezeKind,
+    operation: WorkspaceFrozenOperation,
+): string {
     return `The ${operation} is unavailable while this workspace is frozen: what it produced would `
-        + `not be what you are looking at. ${remedy}`;
+        + `not be what you are looking at. ${FREEZE_REMEDIES[reason]}`;
 }

@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronLeft, LayoutTemplate, RefreshCw } from "lucide-re
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { Button, EmptyState, Modal, SearchInput, TabStrip } from "@/lib/components/elements";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
@@ -68,6 +69,17 @@ export function UITemplateStoreModal({
     const [applyingId, setApplyingId] = useState<string | null>(null);
     /** The template whose detail view is open, if any. */
     const [detailId, setDetailId] = useState<string | null>(null);
+    /**
+     * Browsing the shelf reads a remote registry; only Add touches the project, so only Add is
+     * switched off here.
+     *
+     * The button that opens this store is greyed while frozen, but that is not enough on its own:
+     * a freeze arrives while the workspace is running - a collaborator opens a session, the author
+     * steps back to a past revision - and the store already on screen keeps its Add buttons. Applying
+     * a template then imports its assets and rewrites the interface document, all of it refused at
+     * the write boundary, and the author is left with a tab for a page that was never written.
+     */
+    const freeze = useFreezeGuard();
 
     const loadPreviews = useCallback(async (loaded: UITemplateRegistryEntry[]) => {
         if (loaded.length === 0) {
@@ -199,7 +211,7 @@ export function UITemplateStoreModal({
     }, [occupiedStageSlotIds, t]);
 
     const handleApply = async (entry: UITemplateRegistryEntry) => {
-        if (!documentService || applyingId) {
+        if (!documentService || applyingId || freeze.frozen) {
             return;
         }
         setApplyingId(entry.id);
@@ -266,6 +278,7 @@ export function UITemplateStoreModal({
                     runtimeBridge={runtimeBridge}
                     placementLabel={placementLabel(detailEntry)}
                     blockedReason={blockedReason(detailEntry)}
+                    addDisabledReason={freeze.frozen ? freeze.reason : undefined}
                     busy={applyingId === detailEntry.id}
                     onAdd={() => void handleApply(detailEntry)}
                     onBack={() => setDetailId(null)}
@@ -345,6 +358,7 @@ export function UITemplateStoreModal({
                         runtimeBridge={runtimeBridge}
                         placementLabel={placementLabel(entry)}
                         blockedReason={blockedReason(entry)}
+                        addDisabledReason={freeze.frozen ? freeze.reason : undefined}
                         busy={applyingId === entry.id}
                         onAdd={() => void handleApply(entry)}
                         onOpenDetail={() => setDetailId(entry.id)}

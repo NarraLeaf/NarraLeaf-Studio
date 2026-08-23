@@ -355,6 +355,40 @@ export const workspace = {
         liveJoin: "Join",
         liveLeave: "Leave",
         liveEnd: "End",
+        // Why one may not be started or joined. A workspace holds one freeze at a time, so
+        // each of these names the state that has to be left first.
+        liveBlockedRevision: "Leave the version you are looking at to start or join a live session.",
+        liveBlockedManual: "Unfreeze the workspace to start or join a live session.",
+        liveBlockedMerge: "Finish the merge to start or join a live session.",
+        liveBlockedRecovery: "Live sessions are unavailable in recovery mode.",
+        liveBlockedSession: "This workspace is already in a live session.",
+        // Where this window stands in the room it is in, in the slot the member count uses
+        // outside one. Values with no labels, like every other fact in this panel.
+        liveHost: "Host",
+        liveGuest: "Guest",
+        liveEntering: "Entering",
+        liveLeaving: "Leaving",
+        // Joined, and still applying everything the room did before this window arrived.
+        liveCatchingUp: "Catching up with the session.",
+        // What stands between this project and a session, each naming the one thing that
+        // has to be true before a room can be opened or joined.
+        liveNoStory: "Add a story to start a live session.",
+        liveNoServer: "Connect this project to a server to start or join a live session.",
+        liveNoInstance: "That server has not answered this machine yet.",
+        liveNoRepository: "This project has no version history.",
+        liveNoRevision: "Record a version to start a live session.",
+        liveCloneRequired: "That session is on {project}. Open that project to join it.",
+        liveVersionMismatch: "That session opened on an older version than this project holds.",
+        liveRoomGone: "That session is no longer open.",
+        liveRefused: "That server refused the session.",
+        liveFailed: "The live session could not be started.",
+        // How a session ended, for the two endings the author did not ask for. Leaving is
+        // silent: they pressed the control and watched the row change.
+        liveEndedHostLeft: "The host left. The session is over.",
+        // Said as what happened to this copy rather than as a goodbye: the session is gone
+        // AND what is on this disk is not what the others are looking at.
+        liveEndedDiverged: "This copy stopped matching the session and left it.",
+        liveEndedDivergedNext: "Get from the server before joining again.",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",
@@ -583,6 +617,10 @@ export const workspace = {
             frozenTitle: "Changes are not being saved",
             frozenDetailRevision: "Version {version} is open. Nothing is saved while a version is open.",
             frozenDetailManual: "The workspace is frozen. Unfreeze it to resume saving.",
+            // A live session saves its own story and refuses the rest, so the title above
+            // would be false about the file the author is most likely typing into.
+            frozenTitleSession: "That file is not being saved",
+            frozenDetailSession: "A live session is open. Only its story is saved; leave the session to change anything else.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
             frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",

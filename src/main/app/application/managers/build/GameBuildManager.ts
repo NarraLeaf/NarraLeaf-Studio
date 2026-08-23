@@ -119,6 +119,7 @@ import {
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { collectPluginBuildConfigFields, pluginBuildConfigSlots } from "@shared/utils/pluginBuildConfig";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
@@ -847,7 +848,7 @@ export class GameBuildManager {
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
-        if (frozen) {
+        if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "production build");
             // Refused before anything happens - before the checkpoint, before the
             // compile. Recorded on the session so the build dialog shows the
@@ -921,7 +922,7 @@ export class GameBuildManager {
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
-        if (frozen) {
+        if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "patch export");
             session.snapshot = {
                 status: "error",

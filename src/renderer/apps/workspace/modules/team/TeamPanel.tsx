@@ -182,10 +182,7 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                     {/* Who is on this project, what room is open, and what is attached to it -
                         every one of them read from the server rather than from this disk. Draws
                         nothing at all until the server has confirmed it holds this project. */}
-                    <TeamCollaboration
-                        team={team}
-                        {...(team.instance === undefined ? {} : { instance: team.instance })}
-                    />
+                    <TeamCollaboration team={team} />
 
                     {/* Who the next version is recorded as. Two shapes for two mechanisms, and the
                         dialog never shows both: a session's account wins over anything in settings
