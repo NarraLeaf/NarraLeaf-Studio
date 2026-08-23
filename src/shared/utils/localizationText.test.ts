@@ -8,6 +8,8 @@ import {
     parseTranslatedText,
     segmentHasMarkup,
     serializeSegmentMarkupText,
+    targetFromTranslationRuns,
+    translationRunsFromTarget,
     serializeSegmentSourceText,
     validateMarkupParity,
 } from "./localizationText";
@@ -291,7 +293,7 @@ function markedSegment(): StoryTextSegment {
 
 describe("serializeSegmentMarkupText", () => {
     it("tags every styled span and every zero-width token by run index", () => {
-        expect(serializeSegmentMarkupText(markedSegment())).toBe("I ‹1›decided‹/1›‹2› last ‹4›year, {0}.");
+        expect(serializeSegmentMarkupText(markedSegment())).toBe("I ‹1›decided‹/1›‹2/› last ‹4/›year, {0}.");
     });
 
     it("is identical to the hashed serialization when there is nothing to tag", () => {
@@ -319,13 +321,18 @@ describe("parseTranslatedRuns", () => {
     });
 
     it("drops a zero-width run in wherever the translation names it", () => {
-        expect(parseTranslatedRuns("‹2›決めた", runs)).toEqual([
+        expect(parseTranslatedRuns("‹2/›決めた", runs)).toEqual([
             { kind: "run", runIndex: 2 },
             { kind: "text", text: "決めた" },
         ]);
-        expect(parseTranslatedRuns("決めた‹4›", runs)).toEqual([
+        expect(parseTranslatedRuns("決めた‹4/›", runs)).toEqual([
             { kind: "text", text: "決めた" },
             { kind: "run", runIndex: 4 },
+        ]);
+        // The bare spelling, from before the self-closing one existed, still lands on the same run.
+        expect(parseTranslatedRuns("‹2›決めた", runs)).toEqual([
+            { kind: "run", runIndex: 2 },
+            { kind: "text", text: "決めた" },
         ]);
     });
 
@@ -369,12 +376,40 @@ describe("parseTranslatedRuns", () => {
 describe("validateMarkupParity", () => {
     it("names the runs a translation dropped and the ones it invented", () => {
         const source = markedSegment();
-        expect(validateMarkupParity("私が‹1›去年‹/1›決めた{0}。‹2›‹4›", source)).toEqual([]);
+        expect(validateMarkupParity("私が‹1›去年‹/1›決めた{0}。‹2/›‹4/›", source)).toEqual([]);
         expect(validateMarkupParity("私が決めた{0}。", source)).toEqual([
             { kind: "missingRun", index: 1 },
             { kind: "missingRun", index: 2 },
             { kind: "missingRun", index: 4 },
         ]);
-        expect(validateMarkupParity("‹1›‹2›‹4›‹9›", source)).toEqual([{ kind: "unknownRun", index: 9 }]);
+        expect(validateMarkupParity("‹1›‹2/›‹4/›‹9/›", source)).toEqual([{ kind: "unknownRun", index: 9 }]);
+    });
+});
+
+describe("translation runs", () => {
+    const runs = markedSegment().rich ?? [];
+
+    it("borrows the source's own runs so a translation renders like a line", () => {
+        expect(translationRunsFromTarget("私が‹1›去年‹/1›‹2/›決めた{0}。", runs)).toEqual([
+            { text: "私が" },
+            { text: "去年", marks: { emphasis: "dot", bold: true } },
+            { pause: 400 },
+            { text: "決めた" },
+            { interpolation: { kind: "variable", target: { scope: "saved", variableId: "name" } } },
+            { text: "。" },
+        ]);
+    });
+
+    it("writes those runs back as the tags they came from", () => {
+        const target = "私が‹1›去年‹/1›‹2/›決めた{0}。";
+        expect(targetFromTranslationRuns(translationRunsFromTarget(target, runs), runs)).toBe(target);
+    });
+
+    it("keeps the characters of a run that matches no tag, and drops the tag", () => {
+        expect(targetFromTranslationRuns([{ text: "x", marks: { italic: true } }], runs)).toBe("x");
+    });
+
+    it("round-trips an untagged translation untouched", () => {
+        expect(targetFromTranslationRuns(translationRunsFromTarget("ただの文。", runs), runs)).toBe("ただの文。");
     });
 });

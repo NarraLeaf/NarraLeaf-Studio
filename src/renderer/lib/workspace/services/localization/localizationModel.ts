@@ -9,6 +9,7 @@ import type {
     StoryBlock,
     StoryBlockId,
     StoryDocument,
+    StoryRichRun,
     StoryScene,
     StoryTextSegment,
 } from "@shared/types/story";
@@ -47,6 +48,11 @@ export type StoryTranslationRow = {
      * `serializeSegmentMarkupText`.
      */
     sourceMarkup?: string;
+    /**
+     * The segment's own runs, when it has any worth tagging. What lets the translation editor draw
+     * the line rather than describe it, and what a placed tag is resolved against.
+     */
+    sourceRuns?: StoryRichRun[];
     interpolationCount: number;
 };
 
@@ -141,7 +147,10 @@ export function extractStoryTranslationRows(document: StoryDocument): StoryTrans
                         // serialization, and carrying a second copy of it would put run tags in front
                         // of translators who have no use for them.
                         ...(segmentHasMarkup(translatable.segment)
-                            ? { sourceMarkup: serializeSegmentMarkupText(translatable.segment) }
+                            ? {
+                                sourceMarkup: serializeSegmentMarkupText(translatable.segment),
+                                sourceRuns: translatable.segment.rich,
+                            }
                             : {}),
                         interpolationCount: countSegmentInterpolations(translatable.segment),
                     });

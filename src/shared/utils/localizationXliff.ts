@@ -20,13 +20,18 @@ import type {
     TranslationExchangeRow,
 } from "./localizationExchange";
 import {
+    printTranslationToken,
+    tokenizeTranslation,
+    type TranslationToken,
+} from "./localizationText";
+import {
     escapeXmlText,
     findElements,
     firstChildElement,
     parseXml,
     xmlAttributes,
-    xmlTextContent,
     type XmlElement,
+    type XmlNode,
 } from "./xml";
 
 /** Studio state to XLIFF 1.2 `state`. Every value here is legal in the 1.2 schema. */
@@ -88,8 +93,145 @@ function decodeSegment(raw: string): string {
     return /^[ \t]*\r?\n/.test(raw) && /\r?\n[ \t]*$/.test(raw) ? raw.trim() : raw;
 }
 
+/**
+ * Studio's inline vocabulary as XLIFF inline elements, and back.
+ *
+ * The mapping is total in both directions, which is the only reason it is here at all: a tag a
+ * translation tool cannot show is a tag the translator deletes.
+ *
+ *  - `‹1›…‹/1›` is a paired inline code: `<g id="r1">…</g>` in 1.2, `<pc id="r1">` in 2.0.
+ *  - `‹2/›` is a standalone code: `<x id="r2"/>` in 1.2, `<ph id="r2"/>` in 2.0.
+ *  - `{0}` is a standalone code as well, under its own id prefix: `<x id="v0"/>`.
+ *
+ * The two prefixes exist because the two vocabularies number independently - run 0 and value 0 are
+ * different things - and one id space has to tell them apart.
+ *
+ * `equiv-text` carries the Studio spelling of every standalone code. That is what the attribute is
+ * for, and without it a tool that hides empty codes shows the translator nothing where a pause is.
+ *
+ * `ctype` is deliberately absent. This layer holds strings, not marks: it knows run 1 is styled and
+ * not that it is bold, and a `ctype` guessed from nothing would be worse than none. Adding one later
+ * changes no reader, since every reader here goes by `id`.
+ */
+const RUN_ID_PREFIX = "r";
+const VALUE_ID_PREFIX = "v";
+
+/** The token an inline element's id names, or null when it is not one of ours. */
+function tokenIdOf(id: string | undefined): { kind: "run" | "value"; index: number } | null {
+    if (!id) {
+        return null;
+    }
+    const match = /^([rv])(\d+)$/.exec(id.trim());
+    if (!match) {
+        return null;
+    }
+    return { kind: match[1] === RUN_ID_PREFIX ? "run" : "value", index: Number(match[2]) };
+}
+
+/** One Studio segment as XLIFF inline markup. `version` picks the element names. */
+function encodeInline(text: string, version: "1.2" | "2.0"): string {
+    const paired = version === "1.2" ? "g" : "pc";
+    const standalone = version === "1.2" ? "x" : "ph";
+    let out = "";
+    let open = 0;
+    for (const token of tokenizeTranslation(text)) {
+        if (token.kind === "text") {
+            out += encodeSegment(token.text);
+            continue;
+        }
+        if (token.kind === "open") {
+            out += `<${paired}${xmlAttributes({ id: `${RUN_ID_PREFIX}${token.index}` })}>`;
+            open += 1;
+            continue;
+        }
+        if (token.kind === "close") {
+            // A stray closing tag would close an element that was never opened, and an unbalanced
+            // document is one no tool will read at all.
+            if (open > 0) {
+                out += `</${paired}>`;
+                open -= 1;
+            }
+            continue;
+        }
+        const id = token.kind === "standalone"
+            ? `${RUN_ID_PREFIX}${token.index}`
+            : `${VALUE_ID_PREFIX}${token.index}`;
+        out += `<${standalone}${xmlAttributes({ id, "equiv-text": printTranslationToken(token) })}/>`;
+    }
+    // A span the translator never closed styles the rest of the line, which is exactly what closing
+    // it here means - and it leaves the document well-formed.
+    out += `</${paired}>`.repeat(open);
+    return out;
+}
+
+/**
+ * Read an element's content back into Studio's inline vocabulary.
+ *
+ * Every inline element XLIFF defines lands in one of three rules, which is what makes the reader
+ * total rather than a list of the ones we happen to emit:
+ *
+ *  - **Ours, by id** (`g`/`pc`/`x`/`ph`/`sc`/`ec` carrying `r<n>` or `v<n>`) becomes the token it
+ *    came from.
+ *  - **Native code we did not write** (`bpt`, `ept`, `ph`, `it` in 1.2) is skipped whole. Its content
+ *    is markup from some other pipeline, not words: a tool that re-encoded our tags this way loses
+ *    them, and keeps every word of the sentence, which is the right way round to fail.
+ *  - **Anything else** (`mrk` annotations, an unrecognised `g`, a `sub` flow) is walked into, so the
+ *    words inside it survive whatever the tool wrapped them in.
+ */
+function decodeInline(node: XmlElement): string {
+    let out = "";
+    const walk = (nodes: readonly XmlNode[]): void => {
+        for (const child of nodes) {
+            if (child.kind === "text") {
+                out += child.value;
+                continue;
+            }
+            const token = tokenIdOf(child.attributes.id ?? child.attributes.startRef);
+            const name = child.name;
+            if (name === "g" || name === "pc") {
+                if (token?.kind === "run") {
+                    out += printTranslationToken({ kind: "open", index: token.index });
+                    walk(child.children);
+                    out += printTranslationToken({ kind: "close", index: token.index });
+                    continue;
+                }
+                walk(child.children);
+                continue;
+            }
+            if (name === "x" || name === "ph") {
+                // 1.2's `<ph>` holds native code and 2.0's is a standalone placeholder. The id tells
+                // them apart: ours carries one, other people's does not.
+                if (token) {
+                    out += printTranslationToken(token.kind === "run"
+                        ? { kind: "standalone", index: token.index }
+                        : { kind: "value", index: token.index });
+                }
+                continue;
+            }
+            if (name === "sc") {
+                if (token?.kind === "run") {
+                    out += printTranslationToken({ kind: "open", index: token.index });
+                }
+                continue;
+            }
+            if (name === "ec") {
+                if (token?.kind === "run") {
+                    out += printTranslationToken({ kind: "close", index: token.index });
+                }
+                continue;
+            }
+            if (name === "bpt" || name === "ept" || name === "it") {
+                continue;
+            }
+            walk(child.children);
+        }
+    };
+    walk(node.children);
+    return out;
+}
+
 function elementText(element: XmlElement | undefined): string {
-    return element ? decodeSegment(xmlTextContent(element)) : "";
+    return element ? decodeSegment(decodeInline(element)) : "";
 }
 
 export function serializeTranslationXliff(document: TranslationExchangeDocument): string {
@@ -108,9 +250,9 @@ export function serializeTranslationXliff(document: TranslationExchangeDocument)
     for (const row of document.rows) {
         const state = STATE_TO_XLIFF[row.status] ?? "new";
         lines.push(`      <trans-unit${xmlAttributes({ id: row.unitId, resname: row.unitId, "xml:space": "preserve" })}>`);
-        lines.push(`        <source>${encodeSegment(row.source)}</source>`);
+        lines.push(`        <source>${encodeInline(row.source, "1.2")}</source>`);
         lines.push(row.target
-            ? `        <target${xmlAttributes({ state })}>${encodeSegment(row.target)}</target>`
+            ? `        <target${xmlAttributes({ state })}>${encodeInline(row.target, "1.2")}</target>`
             : `        <target${xmlAttributes({ state })}/>`);
         if (row.context) {
             lines.push(`        <note${xmlAttributes({ from: "developer", annotates: "source" })}>${encodeSegment(row.context)}</note>`);
