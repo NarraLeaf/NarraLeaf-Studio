@@ -42,6 +42,17 @@ const AWKWARD_ROWS: TranslationExchangeRow[] = [
     row({ unitId: "char:alice", context: "Characters", source: "Alice", target: "", status: "" }),
     row({ unitId: "ui:title.text", context: "Title screen", source: "New game", target: "新游戏", status: "machine" }),
     row({ unitId: "t-9", context: "", source: "Backslash \\ and tab\there", target: "反斜杠", status: "stale" }),
+    // Every shape of Studio's inline vocabulary at once. XLIFF turns these into inline elements and
+    // the other three carry them as text, so this row is what proves all four agree on the result.
+    row({
+        unitId: "t-inline",
+        context: "The clubroom",
+        source: "So it is ‹1›my turn‹/1›‹2/›, {0}.",
+        target: "所以这次‹1›轮到我‹/1›‹2/›，{0}。",
+        status: "translated",
+    }),
+    // Prose that merely contains guillemets, which Swiss French and German set as quotation marks.
+    row({ unitId: "t-quotes", context: "", source: "Er sagte ‹leise›.", target: "他轻声说‹是›。", status: "translated" }),
 ];
 
 const document = (rows: readonly TranslationExchangeRow[]): TranslationExchangeDocument => ({
@@ -165,6 +176,55 @@ describe("xliff specifics", () => {
             note: "from the translator",
         })]);
         expect([parsed.sourceLocale, parsed.targetLocale]).toEqual(["en", "fr"]);
+    });
+
+    it("writes Studio's inline vocabulary as inline elements, and reads it back", () => {
+        const text = serializeTranslationExchange("xliff", document([row({
+            unitId: "t-1",
+            source: "So it is ‹1›my turn‹/1›‹2/›, {0}.",
+            target: "所以这次‹1›轮到我‹/1›‹2/›，{0}。",
+            status: "translated",
+        })]));
+        expect(text).toContain("<source>So it is <g id=\"r1\">my turn</g><x id=\"r2\" equiv-text=\"‹2/›\"/>, <x id=\"v0\" equiv-text=\"{0}\"/>.</source>");
+        expect(parse(text).rows[0]).toMatchObject({
+            source: "So it is ‹1›my turn‹/1›‹2/›, {0}.",
+            target: "所以这次‹1›轮到我‹/1›‹2/›，{0}。",
+        });
+    });
+
+    it("closes a span the translator left open, rather than writing an unbalanced document", () => {
+        const text = serializeTranslationExchange("xliff", document([row({ unitId: "t-1", target: "半途‹1›而废", status: "translated" })]));
+        expect(text).toContain("<target state=\"translated\">半途<g id=\"r1\">而废</g></target>");
+        // A stray closing tag is dropped for the same reason: the document has to stay well-formed.
+        const stray = serializeTranslationExchange("xliff", document([row({ unitId: "t-1", target: "无中‹/3›生有", status: "translated" })]));
+        expect(stray).toContain("<target state=\"translated\">无中生有</target>");
+    });
+
+    it("reads back what a tool did to our tags, whatever it did", () => {
+        const parsed = parse(`<xliff version="1.2"><file><body>
+  <trans-unit id="paired"><target><g id="r1">wrapped</g></target></trans-unit>
+  <trans-unit id="split"><target><sc id="r1"/>started<ec startRef="r1"/> done</target></trans-unit>
+  <trans-unit id="annotated"><target><mrk mtype="term"><g id="r2">term</g></mrk></target></trans-unit>
+  <trans-unit id="recoded"><target><bpt id="1">&lt;g id="r1"&gt;</bpt>words<ept id="1">&lt;/g&gt;</ept></target></trans-unit>
+  <trans-unit id="theirs"><target>plain <x id="tool-1"/><ph id="p1">&lt;br/&gt;</ph>text</target></trans-unit>
+</body></file></xliff>`);
+        const targets = Object.fromEntries(parsed.rows.map(entry => [entry.unitId, entry.target]));
+        // Ours, however the tool chose to spell it.
+        expect(targets.paired).toBe("‹1›wrapped‹/1›");
+        expect(targets.split).toBe("‹1›started‹/1› done");
+        // An annotation the tool wrapped around our tag: walked into, so both survive.
+        expect(targets.annotated).toBe("‹2›term‹/2›");
+        // A tool that re-encoded our tag as native code: the tag is gone, every word is not.
+        expect(targets.recoded).toBe("words");
+        // Codes that were never ours contribute nothing, and the words around them stay.
+        expect(targets.theirs).toBe("plain text");
+    });
+
+    it("reads XLIFF 2.0 inline codes", () => {
+        const parsed = parse(`<xliff version="2.0" srcLang="en" trgLang="ja"><file>
+  <unit id="t-1"><segment><source>a</source><target>私が<pc id="r1">去年</pc><ph id="r2"/>決めた<ph id="v0"/>。</target></segment></unit>
+</file></xliff>`);
+        expect(parsed.rows[0].target).toBe("私が‹1›去年‹/1›‹2/›決めた{0}。");
     });
 
     it("flattens inline markup a CAT tool introduced", () => {
