@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Minus, Plus } from "lucide-react";
@@ -8,11 +8,36 @@ import { useTranslation } from "@/lib/i18n";
 import { useDismissWhenHidden } from "@/lib/components/layout";
 import { TooltipGroup } from "@/lib/tooltip";
 import type { StoryTextEmphasis } from "@shared/types/story";
+import type { TypeTarget } from "./RichTextInput";
 import {
     STORY_FONT_SIZE_STEP_MAX,
     STORY_FONT_SIZE_STEP_MIN,
     STORY_TEXT_EMPHASIS_VALUES,
 } from "@shared/utils/storyTextMarks";
+
+/**
+ * One sample character wearing one of the marks, drawn with the very class the row uses so what the
+ * panel offers and what the line gets cannot drift apart.
+ *
+ * The leading is what keeps the five samples on one baseline. A mark grows the line box it sits in -
+ * upwards for `over`, downwards for `under` - unless the line already has room for it, so a sample
+ * set solid would put the unmarked character 5px below the one whose mark hangs underneath. At this
+ * leading every mark fits inside the space the line already had and all five boxes measure alike;
+ * it is the same bargain the ruby reading strikes one file over, in styles.css.
+ */
+const EMPHASIS_SAMPLE_LEADING = 2.8;
+
+function EmphasisSample(props: { sample: string; emphasis?: StoryTextEmphasis }) {
+    return (
+        <span
+            className="story-rt-emphasis"
+            style={{ lineHeight: EMPHASIS_SAMPLE_LEADING }}
+            data-emphasis={props.emphasis}
+        >
+            {props.sample}
+        </span>
+    );
+}
 
 /** One catalog key per emphasis value, written out so the keys stay findable by search. */
 const EMPHASIS_LABELS = {
@@ -33,20 +58,32 @@ const EMPHASIS_LABELS = {
  * Every control writes through immediately, like {@link PausePopover} and unlike {@link RubyPopover}:
  * each value here is complete on its own, so there is no half-typed state to protect and the author
  * sees the sentence change under the choice they just made.
+ *
+ * What each control shows is held here rather than read back off the row, and the characters written
+ * to are the ones captured when the panel opened. The panel is portalled to the body, so the first
+ * press takes the focus - and with it the selection - out of the field: a control reading the live
+ * marks would find none the moment it had written one, and the second press would have nothing left
+ * to write to.
  */
 export function TypePopover(props: {
     anchor: { top: number; left: number; bottom: number };
     /** The button this opened from; it counts as inside for light dismiss. */
     anchorRef?: RefObject<HTMLElement | null>;
-    emphasis?: StoryTextEmphasis;
-    fontSizeStep?: number;
-    cps?: number;
-    onSet: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null) => void;
+    /** The characters this panel writes to, and the marks they carried when it opened. */
+    target: TypeTarget;
+    onSet: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null, target: { start: number; end: number }) => void;
     onClose: () => void;
 }) {
     useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const [emphasis, setEmphasis] = useState(props.target.emphasis);
+    const [step, setStepValue] = useState(props.target.fontSizeStep ?? 0);
+    const [cps, setCps] = useState(props.target.cps === undefined ? "" : String(props.target.cps));
+    const range = { start: props.target.start, end: props.target.end };
+    const set = (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null) => {
+        props.onSet(mark, value, range);
+    };
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
@@ -74,10 +111,10 @@ export function TypePopover(props: {
         return () => globalThis.document.removeEventListener("mousedown", onDown, true);
     }, [props]);
 
-    const step = props.fontSizeStep ?? 0;
     const setStep = (next: number) => {
         const clamped = Math.min(STORY_FONT_SIZE_STEP_MAX, Math.max(STORY_FONT_SIZE_STEP_MIN, next));
-        props.onSet("fontSizeStep", clamped === 0 ? null : clamped);
+        setStepValue(clamped);
+        set("fontSizeStep", clamped === 0 ? null : clamped);
     };
 
     const onFieldKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -104,33 +141,34 @@ export function TypePopover(props: {
             <TooltipGroup className="mt-1 flex items-center gap-1">
                 <ToolbarButton
                     size="xs"
-                    className="h-7 w-7 text-xs"
-                    active={props.emphasis === undefined}
+                    className="h-9 w-9 text-xs"
+                    active={emphasis === undefined}
                     aria-label={t("story.textType.emphasisNone")}
                     data-tip={t("story.textType.emphasisNone")}
-                    onClick={() => props.onSet("emphasis", null)}
+                    onClick={() => {
+                        setEmphasis(undefined);
+                        set("emphasis", null);
+                    }}
                 >
-                    {t("story.textType.emphasisSample")}
+                    <EmphasisSample sample={t("story.textType.emphasisSample")} />
                 </ToolbarButton>
                 {STORY_TEXT_EMPHASIS_VALUES.map(value => (
                     <ToolbarButton
                         key={value}
                         size="xs"
-                        className="h-7 w-7 text-xs"
-                        active={props.emphasis === value}
+                        className="h-9 w-9 text-xs"
+                        active={emphasis === value}
                         aria-label={t(EMPHASIS_LABELS[value])}
                         data-tip={t(EMPHASIS_LABELS[value])}
                         // Pressing the mark already on the text takes it off, the way every other
                         // toggle in the strip does.
-                        onClick={() => props.onSet("emphasis", props.emphasis === value ? null : value)}
+                        onClick={() => {
+                            const next = emphasis === value ? undefined : value;
+                            setEmphasis(next);
+                            set("emphasis", next ?? null);
+                        }}
                     >
-                        {/*
-                          * The sample wears the very class the row does, so what the panel offers and
-                          * what the line gets cannot drift apart.
-                          */}
-                        <span className="story-rt-emphasis leading-none" data-emphasis={value}>
-                            {t("story.textType.emphasisSample")}
-                        </span>
+                        <EmphasisSample sample={t("story.textType.emphasisSample")} emphasis={value} />
                     </ToolbarButton>
                 ))}
             </TooltipGroup>
@@ -172,12 +210,13 @@ export function TypePopover(props: {
                     type="number"
                     min={1}
                     className="w-20"
-                    value={props.cps === undefined ? "" : String(props.cps)}
+                    value={cps}
                     placeholder={t("story.textType.speedPlaceholder")}
                     onChange={event => {
-                        const raw = event.target.value.trim();
-                        const numeric = Number(raw);
-                        props.onSet("cps", raw === "" || !Number.isFinite(numeric) || numeric <= 0 ? null : numeric);
+                        const raw = event.target.value;
+                        setCps(raw);
+                        const numeric = Number(raw.trim());
+                        set("cps", raw.trim() === "" || !Number.isFinite(numeric) || numeric <= 0 ? null : numeric);
                     }}
                     onKeyDown={onFieldKeyDown}
                 />

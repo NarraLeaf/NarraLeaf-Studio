@@ -1069,11 +1069,21 @@ input[type="radio"]:focus {
  * and the second in vertical, where both Japanese and Chinese set the marks to the right.
  *
  * The marks sit in the leading the row already has, the same space the ruby reading is drawn in, so
- * a marked line is exactly as tall as an unmarked one.
+ * a marked row is 36.2px against an unmarked row's 36 - the mark clears the leading by a fifth of a
+ * pixel. Measured, not assumed. A reading had to cost nothing at all because it is written over
+ * whole words at a time and the rows below it visibly moved; a fifth of a pixel is below the device
+ * pixel this is drawn at, and the glyphs inside the row do not move at all.
  */
 .story-rt-emphasis {
-    text-emphasis: filled dot;
     text-emphasis-position: over right;
+}
+
+/*
+ * Every mark is named by its value, so the class alone draws nothing. The type panel's "none" sample
+ * wears the class with no value, and a default on the bare class would put a dot on it.
+ */
+.story-rt-emphasis[data-emphasis="dot"] {
+    text-emphasis: filled dot;
 }
 
 .story-rt-emphasis[data-emphasis="circle"] {
