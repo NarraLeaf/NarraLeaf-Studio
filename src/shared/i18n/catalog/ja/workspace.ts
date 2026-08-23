@@ -96,6 +96,7 @@ export const workspace = {
             reviewAllClear: "確認するものはもうない",
             staleHint: "この翻訳の後に原文が変わっている。保存し直すと最新として扱う",
             placeholderHint: "{n} のプレースホルダはそのまま残す。行の中の値になる",
+            tagsLabel: "タグ",
             applyStyle: "選んだ語にこの装飾を付ける",
             placeToken: "ここに置く",
             clearStyle: "選んだ語の装飾を外す",

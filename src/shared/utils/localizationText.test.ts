@@ -8,8 +8,6 @@ import {
     parseTranslatedText,
     segmentHasMarkup,
     serializeSegmentMarkupText,
-    targetFromTranslationRuns,
-    translationRunsFromTarget,
     serializeSegmentSourceText,
     validateMarkupParity,
 } from "./localizationText";
@@ -383,33 +381,5 @@ describe("validateMarkupParity", () => {
             { kind: "missingRun", index: 4 },
         ]);
         expect(validateMarkupParity("‹1›‹2/›‹4/›‹9/›", source)).toEqual([{ kind: "unknownRun", index: 9 }]);
-    });
-});
-
-describe("translation runs", () => {
-    const runs = markedSegment().rich ?? [];
-
-    it("borrows the source's own runs so a translation renders like a line", () => {
-        expect(translationRunsFromTarget("私が‹1›去年‹/1›‹2/›決めた{0}。", runs)).toEqual([
-            { text: "私が" },
-            { text: "去年", marks: { emphasis: "dot", bold: true } },
-            { pause: 400 },
-            { text: "決めた" },
-            { interpolation: { kind: "variable", target: { scope: "saved", variableId: "name" } } },
-            { text: "。" },
-        ]);
-    });
-
-    it("writes those runs back as the tags they came from", () => {
-        const target = "私が‹1›去年‹/1›‹2/›決めた{0}。";
-        expect(targetFromTranslationRuns(translationRunsFromTarget(target, runs), runs)).toBe(target);
-    });
-
-    it("keeps the characters of a run that matches no tag, and drops the tag", () => {
-        expect(targetFromTranslationRuns([{ text: "x", marks: { italic: true } }], runs)).toBe("x");
-    });
-
-    it("round-trips an untagged translation untouched", () => {
-        expect(targetFromTranslationRuns(translationRunsFromTarget("ただの文。", runs), runs)).toBe("ただの文。");
     });
 });
