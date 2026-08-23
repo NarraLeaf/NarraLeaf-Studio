@@ -8,8 +8,9 @@
  *   the Core is redistributable, so no prebuilt Live2D adapter may be published by anyone. Needs a
  *   bundler, so the work happens in the host; this is the call.
  * - **From a prebuilt adapter.** The author points at a module they built themselves. The route for
- *   Spine (Studio carries no Spine glue, because integrating a Spine runtime requires the integrator to
- *   hold a Spine Editor licence and NarraLeaf holds none) and for any runtime an author wrote.
+ *   Spine, whose runtimes every author has to be licensed for individually, and for any runtime an
+ *   author wrote. Studio leaves a README beside what it files, because it did not build the code and
+ *   the directory has to be able to say so.
  *
  * Studio never downloads either. Both routes end with `<project>/runtimes/puppet/<backend>/index.js`,
  * which is what the editor lists, the pack step copies, and Dev Mode loads.
@@ -25,6 +26,7 @@ import type { FsRequestResult } from "@shared/types/os";
 import type { PuppetRuntimeInstallResult } from "@shared/types/puppetRuntime";
 import {
     PUPPET_RUNTIME_ENTRY_FILE,
+    knownPuppetRuntimeFor,
     type KnownPuppetRuntimeId,
 } from "@shared/utils/puppetRuntimes";
 import type { Porject } from "@/lib/workspace/project/project";
@@ -67,6 +69,63 @@ async function required<T>(
 
 function runtimeDir(project: Porject, backend: string): string {
     return project.resolve(ProjectNameConvention.PuppetRuntimes, backend);
+}
+
+/**
+ * What a runtime Studio did not build says about itself.
+ *
+ * The SDK route generates the whole directory and can account for every file in it. This route copies
+ * the author's own, so without this the project holds someone's licensed code with nothing beside it
+ * saying whose, or what has to travel with the game. The pack step publishes every file in the
+ * directory, which is why "put the licence here" is a working instruction rather than advice.
+ */
+function prebuiltReadmeText(backend: string): string {
+    const runtime = knownPuppetRuntimeFor(backend);
+    const vendorNote = runtime?.id === "spine"
+        ? "\nThe Spine Runtimes are licensed by Esoteric Software. Everyone who works with Spine needs "
+        + "their own Spine Editor licence, and the Spine Runtimes License Agreement has to be published "
+        + "with the game you ship.\n"
+        : "";
+    return `# ${runtime?.productName ?? backend} puppet runtime
+
+\`${PUPPET_RUNTIME_ENTRY_FILE}\` in this directory is a runtime you supplied. NarraLeaf Studio filed it
+here and did not build it: Studio ships no drawing runtime and holds no licence for one.
+
+## Licensing
+
+You are the party distributing this code, in the game you build from this project. Any licence text and
+copyright notice it requires must be published with that game.
+${vendorNote}
+Every file in this directory is published with the game, so a licence text placed here beside
+\`${PUPPET_RUNTIME_ENTRY_FILE}\` reaches it.
+
+## Replacing
+
+Remove this runtime in Studio and install it again. Nothing else in your project refers to the contents
+of \`${PUPPET_RUNTIME_ENTRY_FILE}\`, only to the \`${backend}\` backend name.
+`;
+}
+
+/**
+ * Write that note, unless the author's own directory already carries one.
+ *
+ * An existing `README.md` came with the runtime and is theirs; replacing it would be Studio deleting a
+ * file it did not write. A failure to write is reported and nothing more: the runtime is installed and
+ * works, and rolling that back over a missing note would be the worse outcome.
+ */
+async function writePrebuiltReadme(directory: string, backend: string): Promise<void> {
+    const target = `${directory}/README.md`;
+    try {
+        if (await required(appPrivilegedFacade.fs.isFileExists(target), "check the runtime directory")) {
+            return;
+        }
+        await required(
+            appPrivilegedFacade.fs.writeFileNoFollowOrCreate(target, prebuiltReadmeText(backend)),
+            "write the runtime's README",
+        );
+    } catch (error) {
+        console.warn("[installPuppetRuntime]", `could not write ${target}:`, error);
+    }
 }
 
 /** Ask the author for the vendor's SDK archive. Returns null when they cancelled. */
@@ -220,6 +279,7 @@ export async function installPrebuiltPuppetRuntime(
     }
 
     if (registered.includes(backend)) {
+        await writePrebuiltReadme(target, backend);
         return { backend, registered };
     }
     const actual = registered[0];
@@ -231,6 +291,7 @@ export async function installPrebuiltPuppetRuntime(
         );
     }
     await required(appPrivilegedFacade.fs.rename(target, actual, true), `name the runtime "${actual}"`);
+    await writePrebuiltReadme(renamed, actual);
     return { backend: actual, registered, renamedFrom: backend };
 }
 

@@ -2478,21 +2478,39 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         updateBlockPayloads(edits);
     }, [document, knownCharacterIds, sceneId, updateBlockPayloads]);
 
+    /**
+     * Where a Shift range starts, for this render.
+     *
+     * The anchor is the last row picked *without* Shift, which is not the same row as `activeBlockId`:
+     * the active row is the head of the range and every press moves it, Shift presses included. A run
+     * of Shift+clicks has to range from one fixed place — that is what lets the second one shrink the
+     * range the first one made instead of growing a new one from wherever the first one ended.
+     *
+     * Falls back to the active row when the anchor has left the screen (its row was deleted, or the
+     * row filter hid it), because a range reaching back to a row the author cannot see is not the
+     * range they asked for. The active row is kept visible by the filter, so it is always a real one.
+     */
+    const resolveSelectionAnchor = useCallback((): StoryBlockId | null => {
+        const anchorId = selectionAnchorRef.current;
+        return anchorId && rowIndexById.has(anchorId) ? anchorId : activeBlockId;
+    }, [activeBlockId, rowIndexById]);
+
     const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent) => {
         // Bumped on every select gesture, including one that lands on the row already active. The right
         // rail follows the selection, and something else in the app (clicking an asset) may have taken
         // the rail since the last time this row was picked — without a revision, re-clicking it would
         // change no state at all and the rail would stay on the asset.
         setSelectionRevision(revision => revision + 1);
-        // `activeBlockId` is this render's — the row that was active BEFORE this press, which is where
-        // a Shift range starts. Shift leaves the anchor where it is; every other press re-anchors on
-        // the row it landed on.
-        if (!(event?.shiftKey && activeBlockId)) {
+        // Shift extends from the anchor and leaves it where it is; every other press re-anchors on the
+        // row it landed on. See {@link resolveSelectionAnchor} for why the anchor is not the row that
+        // happened to be active before this press.
+        const anchorBlockId = resolveSelectionAnchor();
+        if (!(event?.shiftKey && anchorBlockId)) {
             selectionAnchorRef.current = blockId;
         }
         setActiveBlockId(blockId);
-        setSelectedBlockIds(previous => nextRowSelection({ previous, rows: visibleRows, activeBlockId, blockId, event }));
-    }, [activeBlockId, visibleRows]);
+        setSelectedBlockIds(previous => nextRowSelection({ previous, rows: visibleRows, anchorBlockId, blockId, event }));
+    }, [resolveSelectionAnchor, visibleRows]);
 
     /**
      * The `mousedown` half of a row's press. See {@link pressSelectsRow} for why the row needs two
@@ -2936,7 +2954,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (visibleRows.length === 0) {
             return;
         }
-        const anchorId = selectionAnchorRef.current ?? activeBlockId;
+        const anchorId = resolveSelectionAnchor();
         const headIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
         if (!anchorId || headIndex === -1) {
             moveActiveRowSelection(direction);
@@ -2952,7 +2970,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setSelectedBlockIds(selectRange(visibleRows, anchorId, head.block.id));
         setActiveBlockId(head.block.id);
-    }, [activeBlockId, moveActiveRowSelection, rowIndexById, visibleRows]);
+    }, [activeBlockId, moveActiveRowSelection, resolveSelectionAnchor, rowIndexById, visibleRows]);
 
     const jumpRowSelection = useCallback((edge: "first" | "last") => {
         const row = edge === "first" ? visibleRows[0] : visibleRows[visibleRows.length - 1];

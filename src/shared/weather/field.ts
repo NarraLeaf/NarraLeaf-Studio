@@ -41,13 +41,33 @@
  * fall line that is fastest exactly where the face is thinnest. That coupling is the difference
  * between a petal and a dot on a sine wave, and it costs one extra term.
  *
- * ## Wind rotates the field, it does not shear it
+ * ## Wind rotates the fall line, and nothing else
  *
  * A tilt done by drifting each particle sideways as it falls would break the seam (the drift per
  * loop is not generally a whole screen width) and would look wrong anyway — rain falls in parallel
  * lines, not along a shear. So the field is built in a basis aligned to the fall direction, wraps
- * along that axis, and is mapped back to the screen. The seam survives because the motion never
+ * along that axis, and is mapped back to the screen.
+ *
+ * ⚠ For a long time the FLUTTER was rotated with it, and that was wrong in a way that shows. Wind
+ * tilts the path a particle takes because it adds a sideways push to a downward fall; it does not
+ * tilt gravity, and it does not tilt the plane a petal flutters in. Carrying the sway in the
+ * fall-aligned basis gave it a vertical component that grew with the angle — at 45 degrees a petal
+ * with sakura's sway rose and fell 78 pixels every cycle, climbing against gravity twice a second
+ * — and the whole field read as the picture having been rotated rather than as weather in wind.
+ * The mean path is still the tilted line; the flutter about it is horizontal, in screen space. The seam survives because the motion never
  * leaves that one axis.
+ *
+ * ## A flutter is a circulation, not a slide
+ *
+ * A falling petal does not slide from side to side in a plane. It circles the line it is descending
+ * along, and the two halves of that circle are what an eye reads as depth: the petal is nearer for
+ * half of it and farther for the other half, so it grows and shrinks and turns as it goes round.
+ * Drawn as a pure lateral offset it has no such half, and forty of them read as forty things on
+ * rails — the report this was rewritten from was exactly "it is not going around any axis".
+ *
+ * So one phase drives the whole circulation: the lateral offset on its sine, the depth on its
+ * cosine — a quarter turn out, because that is what a circle IS — and the face turn with it. The
+ * depth is spent on apparent size and brightness, since a 2D clip has nowhere else to put it.
  *
  * ## Everything is additive onto black
  *
@@ -78,10 +98,37 @@ type Particle = {
     swayAmp: number;
     /**
      * Integer flutter harmonic: cycles per loop, converted from the seed's rate in cycles a second.
-     * Drives the sway, the face turn and the hang together, which is what couples them.
+     *
+     * ⚠ There are only a handful of these in any field, and that is forced: the seam needs a whole
+     * number of cycles per loop, so a rate of 0.3 Hz over a 24-second loop can only be 5, 6, 7, 8 or
+     * 9 - five rates for forty petals, fourteen of them identical. Particles sharing one do not
+     * merely look similar, they sway at exactly the same rate for ever, and a phase offset does not
+     * hide that: neighbours visibly keep time with each other. {@link Particle.swayHarm2} is what
+     * breaks it.
      */
     swayHarm: number;
+    /**
+     * A second, faster integer harmonic mixed into the sway.
+     *
+     * Two sines at different rates make a shape neither of them has, and it is the SHAPE an eye
+     * recognises, not the rate. Drawn independently of {@link Particle.swayHarm}, so two petals that
+     * collide on the first almost never collide on both - five rates become fifty-odd waveforms, and
+     * the field stops keeping time with itself. Still an integer, so the seam is untouched.
+     */
+    swayHarm2: number;
     swayPhase: number;
+    /** Phase of the second mode, independent of the first. */
+    swayPhase2: number;
+    /** How much of the sway the second mode carries, relative to the first. */
+    swayMix: number;
+    /**
+     * How much of its own size the particle gains at the near half of its circulation.
+     *
+     * The depth half of the circle, which a flat clip has nowhere to put except into apparent size
+     * and brightness. Without it the lateral offset is the whole motion and the particle is sliding
+     * along a rail rather than going round anything.
+     */
+    swirlDepth: number;
     /**
      * How far the flutter's hang displaces the particle along its own fall line, in px.
      *
@@ -109,9 +156,11 @@ type Particle = {
     /**
      * How much light this particle lays down: its depth ramp times the seed's `solidity`.
      *
-     * May exceed 1, and is meant to. Everything accumulates in float and is clamped once when the
-     * frame is written, so a gain past 1 saturates the particle's core and compresses its falloff
-     * into a narrower rim - which is what makes a large petal read as a shape rather than a wash.
+     * May exceed 1, and is meant to - but what it buys past 1 is SHAPE rather than brightness. A
+     * particle's coverage is clamped at full before its tint is applied, so nothing it draws is ever
+     * brighter than the tint; what a gain past 1 does is push the falloff out of the core and
+     * compress it into a narrower rim, which is what makes a large petal read as an object rather
+     * than as a wash.
      */
     gain: number;
 };
@@ -269,14 +318,32 @@ export function buildWeatherField(
         // apart. Kept inside a third either way, because a petal drifting at half its neighbour's
         // rate reads as two different weathers in one picture.
         const harm = Math.max(1, Math.round(flutterHarm * (0.72 + rnd() * 0.56)));
+        // The second mode, well clear of the first so the sum is a new shape rather than a fatter
+        // version of the same one. `+ 1` on a collision rather than a redraw: a redraw could collide
+        // again, and one cycle per loop is already a different waveform.
+        let harm2 = Math.max(1, Math.round(harm * (SWAY_SECOND_RATIO_MIN + rnd() * SWAY_SECOND_RATIO_SPAN)));
+        if (harm2 === harm) {
+            harm2 = harm + 1;
+        }
+        // How far round the circle carries the particle toward and away from the lens. Per particle,
+        // because a field where every petal swung the same distance in depth would trade one
+        // uniformity for another.
+        const swirlDepth = SWIRL_DEPTH_MIN + rnd() * SWIRL_DEPTH_SPAN;
         particles.push({
             u0: rnd() * fallSpan,
             v0: rnd() * vSpan,
             fall,
             swayAmp: params.sway * (0.4 + rnd() * 0.6),
             swayHarm: harm,
+            swayHarm2: harm2,
             swayPhase: rnd(),
-            // A fraction of the distance one flutter cycle covers. `HANG_FRACTION` is under the
+            swayPhase2: rnd(),
+            // Scaled down by how much faster the second mode is, so it contributes a comparable
+            // SPEED rather than a comparable distance - an equal-amplitude fast mode is a jitter,
+            // not a flutter.
+            swayMix: (SWAY_SECOND_WEIGHT * harm) / harm2,
+            swirlDepth,
+            // A fraction of the distance one circulation covers. `HANG_FRACTION` is far under the
             // 1/4pi that would let the hang out-run the fall itself; see the constant.
             bobAmp: flutters ? (HANG_FRACTION * fall * fallSpan) / harm : 0,
             rockAmp: 0.3 + rnd() * 0.5,
@@ -333,25 +400,50 @@ export function buildWeatherField(
 export const WEATHER_SUB_STEPS = 8;
 
 /**
- * How much of one flutter cycle's travel the hang moves a particle along its own fall line.
+ * How much of one circulation's travel the drag variation moves a particle along its own fall line.
  *
- * The ceiling is arithmetic rather than taste. The term is `-bobAmp * sin(2 * flutter)` with
+ * A particle presents more of itself to the air on part of its circle than on the rest, so it does
+ * not descend at a perfectly even rate. The term is `-bobAmp * sin(2 * swirl)` with
  * `bobAmp = k * fall * fallSpan / harm`, so its steepest slope against phase is `k * 4pi` times the
- * particle's own fall rate. At `k = 1/4pi` the hang exactly cancels the fall for an instant and
- * beyond it the particle climbs, which no falling thing does. 0.06 sits under that with room to
- * spare and still varies the descent rate by about seven to one across a cycle, which is what
- * "hangs, then drops" has to look like to read as one.
+ * particle's own fall rate — which makes the ratio between the fastest and slowest instant
+ * `(1 + 4pi k) / (1 - 4pi k)`, and `k = 1/4pi` the point where the particle stops and then climbs.
+ *
+ * ⚠ This was 0.06, which is a ratio of **seven to one**, and it was reported exactly as it behaves:
+ * "it moves down a bit, waits, then repeats". A pure sine at that depth is not a drag variation, it
+ * is a stepper motor. 0.01 is a ratio of 1.29 — present, and not something an eye can count.
  */
-const HANG_FRACTION = 0.06;
+const HANG_FRACTION = 0.01;
 
 /**
- * How much of the sway is carried by its second octave.
+ * How much of its own size a particle gains at the near end of its circulation, as a range.
  *
- * A single sine is a pendulum, and a field of pendulums in a picture reads as a mechanism. Adding
- * the octave at a third of the amplitude bends each swing without changing what a swing IS - and
- * twice an integer harmonic is still an integer, so it is free of the seam.
+ * This is the depth half of the flutter and the only place a flat clip can put it. Small on purpose:
+ * a particle that doubled in size would read as coming at the lens rather than as circling a line a
+ * few centimetres across, and the cue only has to be present to be believed.
  */
-const SWAY_OCTAVE = 0.32;
+const SWIRL_DEPTH_MIN = 0.12;
+const SWIRL_DEPTH_SPAN = 0.20;
+
+/** How much of the near half's brightness gain rides along with its size. A nearer thing is also lit better. */
+const SWIRL_BRIGHTNESS = 0.5;
+
+/**
+ * How much of the sway the second mode carries at equal rate, before the rate scaling.
+ *
+ * A single sine is a pendulum, and a field of pendulums reads as a mechanism - the more so because
+ * the seam allows only a handful of rates, so most of the pendulums are the SAME pendulum. A second
+ * sine at an unrelated rate is what makes each particle's path its own: the sum of two harmonics is
+ * a shape neither has, and a shape is what an eye matches against its neighbour.
+ *
+ * The actual weight each particle uses is this times `harm / harm2`, so a mode three times faster
+ * moves a third as far and contributes a comparable SPEED. Equal amplitudes would make the fast mode
+ * a jitter riding on a swing rather than part of one motion.
+ */
+const SWAY_SECOND_WEIGHT = 0.9;
+
+/** How much faster the second mode is than the first, as a range of ratios. Clear of 1, so it never reads as one thicker sine. */
+const SWAY_SECOND_RATIO_MIN = 1.7;
+const SWAY_SECOND_RATIO_SPAN = 1.6;
 
 /**
  * How much light one particle lays down: the depth ramp, lifted toward flat, times the solidity.
@@ -383,8 +475,13 @@ export type WeatherRenderer = {
  * Add one ellipse of light, oriented along the fall direction, into the accumulator.
  *
  * Additive with a squared falloff: the core reads solid and the rim dies out without leaving the ring
- * a linear falloff produces. It accumulates in **float** rather than saturating per write, so two
- * particles crossing do not clip early — the clamp happens once, when the frame is written out.
+ * a linear falloff produces. Two particles crossing still accumulate in **float** and are clamped
+ * once, when the frame is written out, so neither clips early against the other.
+ *
+ * Coverage is clamped at full before the tint, and `weight` — this sub-step's share of the shutter —
+ * is applied after. {@link addPetal} carries the reasoning for both; it is the seed those two rules
+ * were written for, and this path has to follow them or the two would disagree about what a
+ * `solidity` above 1 means.
  */
 function addParticle(
     acc: Float32Array,
@@ -397,6 +494,7 @@ function addParticle(
     dirX: number,
     dirY: number,
     gain: number,
+    weight: number,
     tint: WeatherTint,
 ): void {
     const bound = Math.max(across, along);
@@ -425,7 +523,7 @@ function addParticle(
             if (d2 >= 1) {
                 continue;
             }
-            const falloff = (1 - d2) * (1 - d2) * gain;
+            const falloff = Math.min(1, (1 - d2) * (1 - d2) * gain) * weight;
             acc[index] += tr * falloff;
             acc[index + 1] += tg * falloff;
             acc[index + 2] += tb * falloff;
@@ -443,6 +541,29 @@ function addParticle(
  * `squash` is the tumble across the plane - the petal turning its face away - applied to the across
  * axis only. It never reaches zero, because a petal exactly edge-on for one frame reads as a
  * flicker rather than as a turn.
+ *
+ * ## Coverage is clamped per particle, and that is what keeps the tint
+ *
+ * `value` is how much of this particle covers the pixel, and it is clamped at 1 BEFORE the tint is
+ * applied. Left unclamped, a `gain` above 1 sends all three channels past 255 and the clamp at
+ * write-out arrives channel by channel - the brightest first, the others a moment behind. Any tint
+ * whose channels are near each other therefore turns WHITE across the middle of the shape, which is
+ * precisely where the shape is most solid: the setting that exists to give a petal an edge was
+ * spending the seed's colour to do it. Measured on sakura's shipping defaults, 70% of the lit area
+ * was pure white and the frame averaged 5% saturation.
+ *
+ * Clamping coverage separates the two questions. `solidity` still decides how much of the petal is
+ * at full - the falloff is still pushed into a narrow rim - and the tint decides what full LOOKS
+ * like. A white seed is unaffected: for a white tint, clamping each particle and then summing writes
+ * the same byte as summing and then clamping.
+ *
+ * ## `weight` is applied after the clamp, and has to be
+ *
+ * A frame is integrated over several sub-steps, each contributing `1 / subSteps`, so a particle
+ * arrives here already divided. Clamping the divided value would clamp nothing; clamping the sum
+ * would undo the shutter, because a pixel the petal crossed for three sub-steps out of eight would
+ * still write full - three eighths of a gain of six is over 1. That is why a fast petal used to
+ * carry a hard white smear where it should have carried a blurred one.
  */
 function addPetal(
     acc: Float32Array,
@@ -454,6 +575,7 @@ function addPetal(
     angle: number,
     squash: number,
     gain: number,
+    weight: number,
     tint: WeatherTint,
 ): void {
     const sprite = petalSprite();
@@ -501,7 +623,7 @@ function addPetal(
             const p11 = ix1 >= 0 && ix1 < PETAL_SPRITE_SIZE && iy1 >= 0 && iy1 < PETAL_SPRITE_SIZE ? sprite[iy1 * PETAL_SPRITE_SIZE + ix1] : 0;
             const top = p00 + (p10 - p00) * fx;
             const bottom = p01 + (p11 - p01) * fx;
-            const value = (top + (bottom - top) * fy) * scale;
+            const value = Math.min(1, (top + (bottom - top) * fy) * scale) * weight;
             if (value <= 0) {
                 continue;
             }
@@ -527,40 +649,56 @@ function accumulateInstant(
     const crossY = -dirX;
 
     for (const p of field.particles) {
-        // The one phase the whole flutter is built on: the sway, the face and the hang all read it,
-        // which is what makes them consequences of each other rather than three coincidences.
-        const flutter = twoPi * (p.swayHarm * phase + p.swayPhase);
-        // How much of its face the particle is showing, 0 = edge on, 1 = flat on. Also its drag.
-        const face = Math.abs(Math.cos(flutter));
+        // The circulation. One phase for the whole of it, because a circle has one: the lateral
+        // offset rides its sine, the depth its cosine a quarter turn behind, and the face turns with
+        // them. Three separate phases is what made this read as three coincidences on rails.
+        const swirl = twoPi * (p.swayHarm * phase + p.swayPhase);
+        const lateral = Math.sin(swirl);
+        // Toward the lens on the near half, away on the far half. Spent on apparent size and light,
+        // which is where a flat clip has to put a depth.
+        const nearness = Math.cos(swirl);
+        // Widest at the ends of the swing, where the particle is turning and briefly still; thinnest
+        // crossing the middle, where it is moving fastest. Also its drag.
+        const face = Math.abs(lateral);
 
         // Along the fall line: an integer number of spans per loop, wrapped out of sight, less the
         // hang. The hang is steepest against the fall exactly where `face` is largest, so the
         // particle slows as it turns its face down and drops away as it goes edge-on. Inside the
         // wrap rather than outside it, so a hang can never carry a particle past the padded band and
         // into view at the moment it repeats.
-        const u = originU + wrap(p.u0 + phase * p.fall * fallSpan - p.bobAmp * Math.sin(2 * flutter), fallSpan);
-        // Across it: the sway and its octave, both periodic, so phase 1 is phase 0's position.
-        const sway = (Math.sin(flutter) + SWAY_OCTAVE * Math.sin(2 * flutter + twoPi * p.spinPhase)) / (1 + SWAY_OCTAVE);
-        const v = originV + p.v0 + p.swayAmp * sway;
+        const u = originU + wrap(p.u0 + phase * p.fall * fallSpan - p.bobAmp * Math.sin(2 * swirl), fallSpan);
+        // The mean path: the tilted fall line and this particle's own place across it.
+        const v = originV + p.v0;
+        // The flutter about that path, in SCREEN space and horizontal. Wind tilts the path because it
+        // adds a sideways push to a downward fall; it does not tilt gravity, so carrying this in the
+        // fall-aligned basis gave every particle a vertical climb that grew with the angle. Two modes
+        // at unrelated integer rates, so the path is this particle's own rather than one of the
+        // handful the seam allows. Both periodic, so phase 1 is phase 0's position.
+        const sway = (lateral + p.swayMix * Math.sin(twoPi * (p.swayHarm2 * phase + p.swayPhase2)))
+            / (1 + p.swayMix);
 
-        const cx = u * dirX + v * crossX;
+        const cx = u * dirX + v * crossX + p.swayAmp * sway;
         const cy = u * dirY + v * crossY;
+        // The near half of the circle, as size and as light.
+        const swirlScale = 1 + p.swirlDepth * nearness;
+        const swirlGain = 1 + p.swirlDepth * SWIRL_BRIGHTNESS * nearness;
 
         if (field.sprite) {
             // The petal banks INTO its sway rather than spinning through it - a petal sliding left
             // leans left - and drifts slowly round on top of that, so its attitude never repeats at
             // the rate its position does. The angle starts from the fall direction, so a tilted
             // field carries its petals with it instead of leaving them upright in a slanted wind.
-            const bank = p.rockAmp * Math.sin(flutter);
+            const bank = p.rockAmp * lateral;
             const drift = twoPi * (p.spinHarm * phase + p.spinPhase);
             const angle = Math.atan2(dirX, dirY) + bank + drift;
             // Never quite zero: a petal exactly edge-on for one frame reads as a flicker, not a turn.
-            addPetal(acc, width, height, cx, cy, p.radius, angle, 0.3 + 0.7 * face, p.gain * weight, tint);
+            addPetal(acc, width, height, cx, cy, p.radius * swirlScale, angle, 0.3 + 0.7 * face, p.gain * swirlGain, weight, tint);
             continue;
         }
 
-        const across = field.tumbles ? p.radius * (0.35 + 0.65 * face) : p.radius;
-        addParticle(acc, width, height, cx, cy, across, p.length, dirX, dirY, p.gain * weight, tint);
+        const radius = p.radius * swirlScale;
+        const across = field.tumbles ? radius * (0.35 + 0.65 * face) : radius;
+        addParticle(acc, width, height, cx, cy, across, p.length * swirlScale, dirX, dirY, p.gain * swirlGain, weight, tint);
     }
 }
 
