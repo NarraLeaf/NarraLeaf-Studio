@@ -2,7 +2,6 @@
 import { renderHook } from "@testing-library/react";
 import React, { type ClipboardEvent } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LiveDerived } from "@shared/live/ops";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -44,8 +43,6 @@ function setup(options: {
     sceneId?: string;
     localizationService?: unknown;
     voiceService?: unknown;
-    /** Where a paste inside a live session hands out what it derived. */
-    reportPasteDerived?: (derived: LiveDerived) => void;
 } = {}) {
     const storyService = { insertBlock: vi.fn() };
     const frozen = { value: false };
@@ -88,7 +85,6 @@ function setup(options: {
         setSelectedBlockIds: vi.fn(),
         setEditorMode: vi.fn(),
         isFrozen: () => frozen.value,
-        reportPasteDerived: options.reportPasteDerived,
         ...spies,
     };
     const { result } = renderHook(() => useStorySceneClipboardHandlers(params));
@@ -574,16 +570,14 @@ describe("pasting while a live session is open", () => {
      * The entries themselves, not ids to look up. A copy reads the copier's own memory, so an effect
      * naming ids would derive nothing anywhere else in the room.
      */
-    it("hands out the entries its own rows derive, keyed by the ids the paste minted", async () => {
+    it("sends the entries its own rows derive with the operation that carries the rows", async () => {
         openSession("room-derive");
         const localization = localizationStub();
         const voice = voiceStub();
-        const derived: LiveDerived[] = [];
         const handlers = setup({
             scene: SCENE_HERE,
             localizationService: localization.service,
             voiceService: voice.service,
-            reportPasteDerived: entries => derived.push(entries),
         });
 
         const copied = copyEvent();
@@ -593,20 +587,30 @@ describe("pasting while a live session is open", () => {
 
         const textId = pastedTextId(handlers.storyService);
         expect(textId).not.toBe("text-1");
+        // ⚠ On the insert itself, which is what makes them travel at all: a session hands the
+        // operation to the room, and an operation cannot be added to once it has gone.
+        const [first, ...rest] = handlers.storyService.insertBlock.mock.calls;
         // What travels is what the ordinary paste writes, unit for unit. The sign-off is not
         // inherited - a review is a review of that unit and nobody has given this one - but the hash
         // it was written against is, and so is everything a take carries.
-        expect(derived).toEqual([{
+        expect(first[4]).toEqual({
             translations: { ja: { [textId]: { ...JA_UNIT, status: "translated" } } },
             voice: { ja: { [textId]: JA_TAKE } },
-        }]);
+        });
+        // Once for the paste, not once per row: the entries belong to the gesture.
+        expect(rest.every(call => call[4] === undefined)).toBe(true);
     });
 
     /**
-     * The paster is not exempt from the derivation: it runs the same applier the effect makes every
-     * other machine run, so what it writes is what they write.
+     * ⚠ The paster writes nothing of its own, and that is the point rather than an oversight.
+     *
+     * The entries go out with the operation and come back as an effect, and every machine in the
+     * room - this one included - writes them through the one applier that applies an effect. A
+     * paster that also wrote from memory would be a second implementation for the libraries to
+     * disagree through, and it would be the implementation that skips the field-by-field reading
+     * the wire value gets.
      */
-    it("writes the entries it handed out, through the window a session opens", async () => {
+    it("writes nothing itself, leaving the entries to the applier every machine runs", async () => {
         openSession("room-apply");
         const localization = localizationStub();
         const voice = voiceStub();
@@ -621,19 +625,14 @@ describe("pasting while a live session is open", () => {
         handlers.result.current.handlePaste(blocksPasteEvent(copied.written.get(STORY_ACTIONS_MIME) ?? ""));
         await new Promise(resolve => setTimeout(resolve, 0));
 
+        expect(localization.adopted).toEqual([]);
+        expect(voice.adopted).toEqual([]);
+        // And it is not that nothing was derived - the entries are on the operation, whole.
         const textId = pastedTextId(handlers.storyService);
-        // Unanchored and unsigned, because an effect carries the text and the clip and nothing else:
-        // both read as "look at this again", which is the direction to err in.
-        // Byte for byte what the same paste writes outside a session. Rebuilding a unit from its
-        // words alone would land it with no hash at all - read as stale - and strip a take back to
-        // `linked`, so pasting inside a session would quietly demote work that pasting outside one
-        // keeps, and nobody would see it until they re-read the language.
-        expect(localization.adopted).toEqual([
-            { locale: "ja", units: { [textId]: { ...JA_UNIT, status: "translated" } } },
-        ]);
-        expect(voice.adopted).toEqual([
-            { locale: "ja", units: { [textId]: JA_TAKE } },
-        ]);
+        expect(handlers.storyService.insertBlock.mock.calls[0][4]).toEqual({
+            translations: { ja: { [textId]: { ...JA_UNIT, status: "translated" } } },
+            voice: { ja: { [textId]: JA_TAKE } },
+        });
     });
 
     /**

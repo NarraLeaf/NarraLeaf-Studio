@@ -67,6 +67,7 @@ import {
 } from "../../../../../buildWorker/pluginBuildDependencies";
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
+import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
@@ -638,6 +639,7 @@ export async function compileGameRuntimeArtifact(
                             input.distribution.key,
                             input.distribution.titleId,
                         ),
+                        packDeltaVersion: PACK_DELTA_VERSION,
                     },
                 }
                 : {}),

@@ -256,6 +256,19 @@ export function secondsParam(hint = "duration"): StoryCommandParamSpec {
     return { aliases: ["duration"], hint, type: SECONDS_TYPE };
 }
 
+/**
+ * `hold=` — the seconds a transition spends sitting at its extreme, taken OUT of its `d=` rather
+ * than added on top: a four-second change holding for two is a second in, two of colour, a second
+ * out. Read by the three transitions that have an extreme to sit at (`black`, `exposure`,
+ * `darkness`); stored and inert on any other word, the way `d=` is on `t=none`.
+ *
+ * Not {@link secondsParam}, which hands out a `duration` alias: every row that carries a hold also
+ * carries `d=`, which already answers to that spelling, and one key cannot mean two slots.
+ */
+export function holdParam(): StoryCommandParamSpec {
+    return { hint: "hold", type: SECONDS_TYPE };
+}
+
 /** The `pos=` word list. Exported so a positional placement slot spells the same three words. */
 export const PLACEMENT_OPTIONS = [{ value: "left" }, { value: "center" }, { value: "right" }] as const;
 

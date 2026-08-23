@@ -57,6 +57,7 @@ import {
     type StoryTimelineRow,
 } from "./storyRuntimeDebugModel";
 import { buildStoryRowLookups } from "./runtimeIssueModel";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 type StoryRuntimeTabId = "variables" | "context" | "timeline" | "scene";
 
@@ -704,6 +705,9 @@ function VariableTextEditor(props: {
             }}
             onChange={event => setDraft(event.target.value)}
             onKeyDown={event => {
+                if (isImeKeyEvent(event)) {
+                    return;
+                }
                 if (event.key === "Enter") {
                     event.preventDefault();
                     commit();

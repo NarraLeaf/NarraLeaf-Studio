@@ -139,6 +139,8 @@ export const build = {
             outputLabel: "保存为",
             nameLabel: "名称",
             namePlaceholder: "显示在游戏日志中",
+            layerLabel: "层级",
+            layerHint: "两个补丁改动同一处时，层级更高的一方生效",
             browse: "浏览…",
             exportAction: "导出",
             busy: "已有构建正在运行",

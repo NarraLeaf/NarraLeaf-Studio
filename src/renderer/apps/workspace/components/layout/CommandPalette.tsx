@@ -11,7 +11,7 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import { QuickSwitchOverlay, type QuickListRow } from "./QuickSwitchOverlay";
-import { isComposingText, isImeKeyEvent } from "./imeComposition";
+import { isComposingText, isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { PALETTE_CARD_WIDTH_CLASS, usePaletteAnchorLeft } from "./paletteAnchor";
 import { clampIndex, rankFuzzyList, wrapIndex } from "./fuzzyListModel";
 import { buildEditorQuickSwitchOrder } from "./editorQuickSwitchModel";

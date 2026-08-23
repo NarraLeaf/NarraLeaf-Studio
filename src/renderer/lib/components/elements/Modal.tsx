@@ -6,6 +6,7 @@ import { useHostDocument, useWindowOverlayHost } from "@/lib/components/layout";
 import { useTranslation } from "@/lib/i18n";
 import { CONTROL_HEIGHT_CLASS } from "./controlSize";
 import { cn } from "../../utils/cn";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * Footer action buttons — same classes as DialogContainer (workspace input / info dialogs).
@@ -53,6 +54,9 @@ export function useEscapeToClose(active: boolean, onClose: () => void): void {
             return;
         }
         const handleEscape = (event: KeyboardEvent) => {
+            if (isImeKeyEvent(event)) {
+                return;
+            }
             if (event.key === "Escape") {
                 onClose();
             }

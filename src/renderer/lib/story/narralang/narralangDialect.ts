@@ -173,6 +173,10 @@ const TRANSFORM_TAIL: readonly NarralangSlotSyntax[] = [
  */
 const TRANSITION_TAIL: readonly NarralangSlotSyntax[] = [
     { slot: "transition", lead: "with", value: "timedWord" },
+    // Its own slot and not part of the timed word, because it is a second time on the same change:
+    // the word carries how long the whole change takes, this carries how much of that is spent
+    // sitting still in the middle of it.
+    { slot: "transitionHold", lead: "hold", value: "seconds" },
     { slot: "transitionEasing", lead: "ease", value: "name" },
 ];
 
@@ -269,7 +273,10 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         },
         characterExit: { keyword: "hide", slots: [SUBJECT, ...TRANSFORM_TAIL, ...TRANSITION_TAIL] },
         characterMove: { keyword: "move", slots: [SUBJECT, ...TRANSFORM_TAIL] },
-        characterExpression: { keyword: "face", slots: [SUBJECT, { slot: "appearance", value: "names" }] },
+        // The transition tail belongs here more than anywhere: `/face` is the ONE character row the
+        // compiler plays a `StoryTransitionRef` on (`char(src, transition)`), while `enter` and
+        // `exit` animate through their transform and carry the tail only for the rows that set one.
+        characterExpression: { keyword: "face", slots: [SUBJECT, { slot: "appearance", value: "names" }, ...TRANSITION_TAIL] },
         characterRename: { keyword: "rename", slots: [SUBJECT, { slot: "displayName", value: "name" }] },
         characterMotion: { keyword: "motion", slots: [SUBJECT, { slot: "appearance", value: "names" }] },
         characterSkin: { keyword: "skin", slots: [SUBJECT, { slot: "appearance", value: "names" }] },

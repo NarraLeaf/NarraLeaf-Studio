@@ -299,6 +299,16 @@ export type GameRuntimePackV1 = {
      */
     addOns?: {
         verificationKey: string;
+        /**
+         * The delta version this build composes patch content with, absent on builds made before
+         * patches carried one.
+         *
+         * Read by the export, not by the game: a patch made for a build that states nothing here
+         * carries a whole pack, because that is the only thing such a build knows how to read. A
+         * patch made for a build that states this carries what it changes instead, so that two
+         * patches installed together both take effect.
+         */
+        packDeltaVersion?: number;
     };
     /**
      * The one string every edition of this title shares, naming the file progress is carried in.
