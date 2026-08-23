@@ -12,12 +12,15 @@ import {
 } from "@narraleaf/encryption/runtime";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import {
+    GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY,
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
     gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
+import { applyPackDelta, type PackDelta } from "@shared/utils/packDelta";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
+import { computeStoryContentHash } from "@shared/utils/storyContentHash";
 import { resolveRuntimeAssetPath } from "./runtimeProtocol";
 
 // Runtime files served from the store are limited to the author-supplied code
@@ -100,7 +103,7 @@ export async function createRuntimeResources(
         : new LooseRuntimeResources(appDir);
 
     const patches = await openPatches(appDir, await readVerificationKey(base), options);
-    return patches.length > 0 ? new PatchedRuntimeResources(base, patches) : base;
+    return patches.length > 0 ? new PatchedRuntimeResources(base, patches, options.log) : base;
 }
 
 /**
@@ -337,10 +340,14 @@ type OpenPatch = {
 class PatchedRuntimeResources implements RuntimeResources {
     private readonly readCache = new BoundedBufferCache(STORE_READ_CACHE_MAX_BYTES);
 
+    /** The composed pack, built once: every caller reads the same one and building it parses the lot. */
+    private composedPack: Promise<Buffer> | null = null;
+
     /** @param patches lowest priority first. */
     constructor(
         private readonly base: RuntimeResources,
         private readonly patches: OpenPatch[],
+        private readonly log?: (level: "info" | "warning", message: string) => void,
     ) {}
 
     /** The last patch that carries `name`, or null. */
@@ -373,9 +380,85 @@ class PatchedRuntimeResources implements RuntimeResources {
         return data;
     }
 
-    async readPack(): Promise<Buffer> {
-        const found = this.resolve(GAME_RUNTIME_BUNDLE_PACK_ENTRY, true);
-        return found ? this.read(found, GAME_RUNTIME_BUNDLE_PACK_ENTRY) : this.base.readPack();
+    readPack(): Promise<Buffer> {
+        this.composedPack ??= this.composePack();
+        return this.composedPack;
+    }
+
+    /**
+     * The pack every proven layer has had its say in, lowest first.
+     *
+     * A layer states what it changes rather than what the pack is, so two patches that touch
+     * different scenes both land - which is the only reason a player can install an episode and a
+     * language pack together. A layer that carries a whole pack instead was made before deltas
+     * existed and keeps its old meaning: it becomes the pack, and anything above it applies on top.
+     */
+    private async composePack(): Promise<Buffer> {
+        const original = await this.base.readPack();
+        let pack = parseJson(original);
+        if (!pack) {
+            return original;
+        }
+        let composed = 0;
+        let restateStoryHash = false;
+        for (const [index, patch] of this.patches.entries()) {
+            if (!patch.proven) {
+                continue;
+            }
+            const delta = await this.readLayerDelta(patch, index);
+            if (delta) {
+                const report = applyPackDelta(pack, delta);
+                composed++;
+                restateStoryHash ||= report.touchedStory;
+                if (report.skipped.length > 0) {
+                    // Not fatal and not rare: a patch made against a build the player does not have
+                    // names places this one has never had. What it could apply, it applied.
+                    this.log?.(
+                        "warning",
+                        `${patch.label}: ${report.skipped.length} change(s) name nothing in this build`,
+                    );
+                }
+                continue;
+            }
+            if (!patch.reader.has(GAME_RUNTIME_BUNDLE_PACK_ENTRY)) {
+                continue;
+            }
+            const whole = parseJson(await this.read({ patch, index }, GAME_RUNTIME_BUNDLE_PACK_ENTRY));
+            if (whole) {
+                pack = whole;
+                composed++;
+                // A whole pack carries its own fingerprint for its own content.
+                restateStoryHash = false;
+            }
+        }
+        if (composed === 0) {
+            return original;
+        }
+        // Worth a line of its own: a patch that installs and changes nothing about the story looks
+        // exactly like one that was never read, and this is the difference.
+        this.log?.("info", `game content composed from ${composed} patch(es)`);
+        if (restateStoryHash) {
+            // The stories in hand are no longer the stories any single build shipped, and the
+            // fingerprint decides which of a player's saves this game offers to load. Left alone it
+            // would be the last patch's answer for content that patch never saw.
+            const bundle = (pack as { bundle?: unknown }).bundle;
+            if (bundle && typeof bundle === "object") {
+                const library = (bundle as { storyLibrary?: { documents?: Record<string, unknown> } }).storyLibrary;
+                (bundle as { storyHash?: string }).storyHash = computeStoryContentHash(library?.documents);
+            }
+        }
+        return Buffer.from(JSON.stringify(pack), "utf-8");
+    }
+
+    /** What this layer changes about the pack, or null when it carries no delta or an unreadable one. */
+    private async readLayerDelta(patch: OpenPatch, index: number): Promise<PackDelta | null> {
+        if (!patch.reader.has(GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY)) {
+            return null;
+        }
+        const parsed = parseJson(await this.read({ patch, index }, GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY));
+        // A delta that will not parse falls back to the whole pack beside it, which is the same file
+        // saying the same thing in the way every build before this one read it.
+        return parsed && Array.isArray((parsed as PackDelta).ops) ? parsed as unknown as PackDelta : null;
     }
 
     async readAsset(pack: GameRuntimePackV1, assetId: string): Promise<Buffer> {
@@ -439,6 +522,7 @@ class PatchedRuntimeResources implements RuntimeResources {
 
     async dispose(): Promise<void> {
         this.readCache.clear();
+        this.composedPack = null;
         for (const patch of this.patches) {
             await patch.reader.close().catch(() => undefined);
         }
@@ -577,6 +661,16 @@ async function readVerificationKey(base: RuntimeResources): Promise<string | und
         return pack.addOns?.verificationKey;
     } catch {
         return undefined;
+    }
+}
+
+/** Parse JSON that came out of a file, as an object or not at all. */
+function parseJson(data: Buffer): Record<string, unknown> | null {
+    try {
+        const parsed = JSON.parse(data.toString("utf-8")) as unknown;
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+    } catch {
+        return null;
     }
 }
 

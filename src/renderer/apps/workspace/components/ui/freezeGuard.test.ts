@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { freezeContextMenuRows, isDeferredWriteAllowed, makeFreezeGuard } from "./freezeGuard";
+import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
+import { freezeContextMenuRows, isDeferredWriteAllowed, isFreezeBlocking, makeFreezeGuard } from "./freezeGuard";
 
 /**
  * The frozen editors' read-only affordance, asserted on the decision rather than on rendered React.
@@ -21,6 +22,43 @@ describe("isDeferredWriteAllowed", () => {
 
     it("defers it while frozen, so opening a panel writes nothing", () => {
         expect(isDeferredWriteAllowed(true)).toBe(false);
+    });
+});
+
+describe("isFreezeBlocking", () => {
+    const SESSION_STORY = "editor/story/stories/chapter-one/storydoc.json";
+    const OTHER_STORY = "editor/story/stories/chapter-two/storydoc.json";
+    const LIVE_SESSION: WorkspaceFreezeReason = {
+        kind: "live-session",
+        session: "room-1",
+        writable: [SESSION_STORY],
+    };
+
+    it("blocks nothing while the workspace is writable", () => {
+        expect(isFreezeBlocking(null)).toBe(false);
+        expect(isFreezeBlocking(null, SESSION_STORY)).toBe(false);
+    });
+
+    it("blocks a caller that names no document, whatever the freeze is", () => {
+        // The default the dozens of un-migrated call sites rely on. A default that answered
+        // "writable" would unlock every one of them the day a partial freeze shipped.
+        expect(isFreezeBlocking({ kind: "manual" })).toBe(true);
+        expect(isFreezeBlocking(LIVE_SESSION)).toBe(true);
+    });
+
+    it("leaves the session's own document alone, and refuses every other one", () => {
+        expect(isFreezeBlocking(LIVE_SESSION, SESSION_STORY)).toBe(false);
+        expect(isFreezeBlocking(LIVE_SESSION, OTHER_STORY)).toBe(true);
+        expect(isFreezeBlocking(LIVE_SESSION, "editor/characters/characters.json")).toBe(true);
+    });
+
+    it("blocks a scoped caller under every total freeze", () => {
+        // Naming a document is not a way out of a freeze; it is a way of asking the one predicate
+        // that knows whether this freeze is partial, and four of the five are not.
+        for (const kind of ["manual", "merge", "recovery"] as const) {
+            expect(isFreezeBlocking({ kind }, SESSION_STORY), kind).toBe(true);
+        }
+        expect(isFreezeBlocking({ kind: "revision", revision: "abc" }, SESSION_STORY)).toBe(true);
     });
 });
 

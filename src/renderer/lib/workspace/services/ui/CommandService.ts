@@ -92,7 +92,17 @@ export class CommandService extends Service<CommandService> {
             // Read straight off the latch rather than through WorkspaceFreezeService: this is a
             // per-window module and the palette is collected on every keystroke, so the freshest
             // answer with no subscription to keep in sync is the right one here.
-            frozen: getProjectWriteFreeze() !== null,
+            //
+            // **The whole reason, not "is anything frozen".** A partial freeze leaves one document
+            // writable, and a command cannot say whether it is the one - a palette entry is an id
+            // and a callback, with no statement anywhere of which file it edits. So commands stay
+            // conservative: everything the bar greys out is still dropped from the list under every
+            // kind of freeze. What the kind buys is the other half of the same policy - the entry
+            // that merely STARTS something main owns (Production Build) survives a freeze main
+            // itself does not refuse, which is `freezeActionPolicy`'s call to make and not this
+            // service's. A boolean here would have forced that decision to be wrong one way or the
+            // other, so the kind travels and the decision stays in one place.
+            freeze: getProjectWriteFreeze()?.reason.kind ?? null,
         });
     }
 

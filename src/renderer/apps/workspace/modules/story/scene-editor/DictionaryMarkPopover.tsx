@@ -9,6 +9,7 @@ import type { DictionaryService } from "@/lib/workspace/services/dictionary/Dict
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { openDictionaryPanel } from "@/apps/workspace/modules/dictionary/openDictionaryPanel";
+import { useStoryDocumentScope } from "./storySceneReadOnly";
 import type { DictionaryClickInfo } from "./RichTextInput";
 
 const PANEL_WIDTH_PX = 224;
@@ -40,7 +41,14 @@ export function DictionaryMarkPopover(props: {
     useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
-    const freeze = useFreezeGuard();
+    // Both actions below go through the field's own edit path, so what they write is the text of one
+    // row - this story document and nothing else. Scoped to it, because the panel opens on a row the
+    // author is already editing: a live session that let them type into the line and then refused the
+    // dictionary's own one-click correction would be saying two things about one write.
+    //
+    // The scope comes from the surrounding scene editor rather than from a prop, the way the rows
+    // themselves take it. Outside one there is no scope and this is frozen by any freeze at all.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { mark, anchor } = props.target;
 
@@ -95,8 +103,8 @@ export function DictionaryMarkPopover(props: {
         props.onClose();
     }, [context, mark.term, props]);
 
-    // The row is already read-only on a frozen project, so the edit cannot happen; saying so is what
-    // keeps the panel from accepting a change it would drop.
+    // A freeze that covers this story has already made the row read-only, so the edit cannot happen;
+    // saying so is what keeps the panel from accepting a change it would drop.
     const editProps = freeze.writes();
 
     return (

@@ -3,6 +3,7 @@ import { translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import type { GameTestEventPayload } from "@shared/types/gameTest";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { ProjectNameConvention } from "../workspace/project/nameConvention";
 import { Service } from "../workspace/services/Service";
 import { Services, type ITestRunService, type WorkspaceContext } from "../workspace/services/services";
@@ -928,9 +929,20 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         testRegistry.ensureBuiltInTestsRegistered({ services: () => this.getContext().services });
     }
 
+    /**
+     * Whether a freeze that stops Studio launching a game is in force.
+     *
+     * The refusal below is about the game a windowed test runs, and `GameTestManager` refuses that
+     * same launch in the main process on exactly this predicate - so asking anything else here
+     * would grey a test row out over a game main would have started, with the picker explaining a
+     * refusal that was never going to happen.
+     */
     private isFrozen(): boolean {
         try {
-            return this.getContext().services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze).isFrozen();
+            const kind = this.getContext().services
+                .get<WorkspaceFreezeService>(Services.WorkspaceFreeze)
+                .getReason()?.kind ?? null;
+            return kind !== null && refusesOperations(kind);
         } catch {
             // No freeze service to ask means nothing has frozen anything.
             return false;

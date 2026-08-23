@@ -42,4 +42,9 @@ export {
     type TeamOutcome,
     type ThreadPage,
 } from "./teamCall";
+export {
+    refuseLiveSessionEntry,
+    type LiveSessionEntryRefusal,
+    type LiveSessionRefusalKey,
+} from "./liveSessionEntry";
 export { useTeamCapability, useTeamConnection, useTeamTopics } from "./useTeam";

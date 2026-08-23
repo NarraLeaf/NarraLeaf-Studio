@@ -9,6 +9,7 @@ import {
     type KeyboardEvent,
     type InputHTMLAttributes,
 } from "react";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "onBlur" | "onKeyDown">;
 
@@ -138,6 +139,9 @@ export function DeferredNumberInput({
 
     const handleKeyDown = useCallback(
         (event: KeyboardEvent<HTMLInputElement>) => {
+            if (isImeKeyEvent(event)) {
+                return;
+            }
             if (event.key === "Enter") {
                 event.preventDefault();
                 void handleCommit();

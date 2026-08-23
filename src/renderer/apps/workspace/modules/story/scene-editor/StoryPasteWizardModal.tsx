@@ -8,6 +8,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { planPastedRows, speakerMemoryKey, splitPastedText } from "@/lib/story/paste/storyPasteModel";
+import { useCreateCharacterFreeze } from "./storySceneReadOnly";
 import type {
     PastePlan,
     PastePlanRow,
@@ -70,6 +71,9 @@ export function StoryPasteWizardModal(props: {
     onConfirm: (plan: PastePlan, authoredMappings: Record<string, SpeakerMappingTarget>) => void;
 }) {
     const { t, tn } = useTranslation();
+    // The wizard's second way to mint a cast member, and the same answer the row picker's rung gets:
+    // the rows a paste makes are this story document, the characters it names are not.
+    const createCharacter = useCreateCharacterFreeze();
     const [choice, setChoice] = useState<PasteSeparatorChoice>(props.inferred);
     const [regexSource, setRegexSource] = useState(props.inferred.kind === "regex" ? props.inferred.source : "");
     /**
@@ -164,14 +168,32 @@ export function StoryPasteWizardModal(props: {
 
     const targetOptions = useMemo<SelectOption[]>(() => [
         { value: "tempSpeaker", label: t("story.paste.target.tempSpeaker") },
-        { value: "createCharacter", label: t("story.paste.target.createCharacter") },
+        {
+            value: "createCharacter",
+            label: t("story.paste.target.createCharacter"),
+            // Shown and switched off rather than dropped from the list: an author who cannot find the
+            // target reads it as the wizard having lost the ability, and the reason beside it is what
+            // points them at the entries below, which are still pickable.
+            disabled: createCharacter.unavailable,
+            secondaryLabel: createCharacter.reason,
+        },
         { value: "notASpeaker", label: t("story.paste.target.notASpeaker") },
         ...props.characters.map(character => ({
             value: `character:${character.profile.getId()}`,
             label: character.profile.getName(),
             secondaryLabel: t("story.paste.target.existing"),
         })),
-    ], [props.characters, t]);
+    ], [createCharacter.reason, createCharacter.unavailable, props.characters, t]);
+
+    /**
+     * A plan that would mint cast members while that is unavailable.
+     *
+     * Only reachable through a decision made before the freeze landed - the target above is off, and
+     * nothing the wizard computes for itself ever chooses it - so this is the dialog that was already
+     * open when the workspace changed underneath it. The confirm is refused either way; saying so on
+     * the button is what keeps it from looking like it would work.
+     */
+    const wouldCreateWhileUnavailable = createCharacter.unavailable && plan.charactersToCreate.length > 0;
 
     const setChoiceKind = (kind: Exclude<PasteSeparatorKind, "regex">) => setChoice({ kind });
     const setRegexChoice = (source: string) => {
@@ -204,9 +226,13 @@ export function StoryPasteWizardModal(props: {
                     </button>
                     <button
                         type="button"
-                        className={dialogFooterButtonClass({ variant: "primary", disabled: plan.rows.length === 0 })}
+                        className={dialogFooterButtonClass({
+                            variant: "primary",
+                            disabled: plan.rows.length === 0 || wouldCreateWhileUnavailable,
+                        })}
                         onClick={() => props.onConfirm(plan, authoredMappings)}
-                        disabled={plan.rows.length === 0}
+                        disabled={plan.rows.length === 0 || wouldCreateWhileUnavailable}
+                        data-tip={wouldCreateWhileUnavailable ? createCharacter.reason : undefined}
                     >
                         {t("story.paste.action")}
                     </button>

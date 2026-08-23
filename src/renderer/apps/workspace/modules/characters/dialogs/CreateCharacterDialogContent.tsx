@@ -3,7 +3,7 @@ import { Input, InputGroup } from "@/lib/components/elements/Input";
 import { useTranslation } from "@/lib/i18n";
 import { listKnownPuppetRuntimes } from "@shared/utils/puppetRuntimes";
 import type { CharacterAppearanceKind } from "@/lib/workspace/services/character/types";
-import { isImeKeyEvent } from "../../../components/layout/imeComposition";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { isBrandLink } from "@shared/brand/brandLink";
 import { ColorPickerTrigger } from "../../properties/framework/fields/ColorPickerField";
 import { addRecentColor } from "../../properties/framework/fields/recentColors";

@@ -47,6 +47,7 @@ import { parseVoiceCsv, serializeVoiceCsv } from "@shared/utils/voiceCsv";
 import { matchKeyForFilename, VOICE_NAME_TOKENS } from "@shared/utils/voiceNaming";
 import { readAudioDuration } from "@/lib/workspace/services/voice/audioDuration";
 import { createVoiceEditorTab } from "./openVoiceEditorTab";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /** Audio containers offered in the batch-import file picker. */
 const AUDIO_IMPORT_EXTENSIONS = ["mp3", "wav", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba"];
@@ -419,9 +420,13 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
      *
      * The export side has existed since the module shipped; this is the return leg it never had, so
      * everything a booth or a director wrote in the spreadsheet had to be retyped by hand.
+     *
+     * Frozen projects are refused before the picker rather than at the save: the notes and approvals
+     * in that file are somebody's afternoon, and a dialog that takes it and drops it silently is
+     * worse than one that never opened.
      */
     const handleImportScript = useCallback(async (code: string) => {
-        if (!voiceService || !context) {
+        if (!voiceService || !context || freeze.frozen) {
             return;
         }
         try {
@@ -446,10 +451,18 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }
-    }, [voiceService, context, uiService, t]);
+    }, [voiceService, context, freeze.frozen, uiService, t]);
 
+    /**
+     * Take a booth's folder of clips into the library and link each one to the line it belongs to.
+     *
+     * The freeze is answered before the picker opens, not after the copy: this is a hundreds-of-files
+     * import, and the menu row it hangs off is a row the author may have opened before a session
+     * started. Copying a folder of takes into the library and then discovering the library would not
+     * take them is the refusal this arrives ahead of.
+     */
     const handleImportAudio = useCallback(async (code: string) => {
-        if (!voiceService || !context || !config) {
+        if (!voiceService || !context || !config || freeze.frozen) {
             return;
         }
         try {
@@ -495,7 +508,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }
-    }, [voiceService, context, config, gatherEntries, uiService, t]);
+    }, [voiceService, context, config, freeze.frozen, gatherEntries, uiService, t]);
 
     const localeMenuItems = useMemo<ContextMenuDef>(() => {
         if (!localeMenu) {
@@ -633,6 +646,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                         <div
                             className="mt-1 flex items-center gap-1.5"
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 if (event.key === "Escape") {
                                     cancelAddLocale();
                                 }
@@ -650,6 +666,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                 placeholder={t("workspace.voice.panel.codePlaceholder")}
                                 onChange={event => handleCodeDraftChange(event.target.value)}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         void handleAddLocale();
                                     }
@@ -665,6 +684,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                     setNameDraftTouched(true);
                                 }}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         void handleAddLocale();
                                     }
@@ -717,6 +739,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                                 data-tip={freeze.frozen ? freeze.reason : undefined}
                                 onBlur={event => commitNamingPattern(event.target.value)}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         (event.target as HTMLInputElement).blur();
                                     }

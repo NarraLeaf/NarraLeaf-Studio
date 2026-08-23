@@ -1,6 +1,8 @@
+// @vitest-environment jsdom
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { UIHostAdapterBlueprintRuntime } from "@/lib/ui-editor/runtime/types";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -137,5 +139,56 @@ describe("TextInputRenderer", () => {
 
         expect(markup).toContain('value="👍👍"');
         expect(markup).not.toContain("maxlength");
+    });
+});
+
+describe("TextInputRenderer submit and IME composition", () => {
+    afterEach(cleanup);
+
+    function renderLive(dispatch: (elementId: string, event: string, payload: unknown) => void) {
+        const document = createDocument({ value: "" });
+        const element = document.elements.textInput as UIElement;
+        render(
+            <WidgetRuntimeStateProvider>
+                <TextInputRenderer
+                    element={element}
+                    document={document}
+                    surface={document.surfaces[0]!}
+                    hostAdapter={{
+                        host: "app",
+                        blueprintRuntime: {
+                            ...createBlueprintRuntime(),
+                            dispatchElementBlueprintEvent: async (elementId, event, payload) => {
+                                dispatch(elementId, event, payload);
+                            },
+                        },
+                    }}
+                />
+            </WidgetRuntimeStateProvider>,
+        );
+        return screen.getByPlaceholderText("Your name");
+    }
+
+    it("submits on Enter", () => {
+        const events: string[] = [];
+        fireEvent.keyDown(renderLive((_id, event) => events.push(event)), { key: "Enter" });
+
+        expect(events).toEqual(["submit"]);
+    });
+
+    it("stays silent on the Enter that confirms an IME conversion", () => {
+        // Naming the protagonist in Japanese: the first Enter turns kana into kanji and belongs to
+        // the candidate window. Submitting on it hands the game the unconverted reading.
+        const events: string[] = [];
+        fireEvent.keyDown(renderLive((_id, event) => events.push(event)), { key: "Enter", isComposing: true });
+
+        expect(events).toEqual([]);
+    });
+
+    it("stays silent on the legacy 229 keycode some layouts send instead", () => {
+        const events: string[] = [];
+        fireEvent.keyDown(renderLive((_id, event) => events.push(event)), { key: "Enter", keyCode: 229 });
+
+        expect(events).toEqual([]);
     });
 });

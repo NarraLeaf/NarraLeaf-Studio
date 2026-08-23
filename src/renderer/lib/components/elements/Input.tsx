@@ -1,5 +1,6 @@
 import React from "react";
 import { cn } from "../../utils/cn";
+import { guardImeKeys } from "../../utils/imeComposition";
 import { CONTROL_SIZE_CLASS, type ControlSize } from "./controlSize";
 
 export type InputVariant = "default" | "error" | "success";
@@ -86,6 +87,7 @@ export function Input({
     rightIcon,
     onRightIconClick,
     rightIconLabel,
+    onKeyDown,
     ...props
 }: BaseInputProps) {
     return (
@@ -109,6 +111,11 @@ export function Input({
                     className,
                 )}
                 {...props}
+                // Enter, Escape and the arrows belong to the candidate window while an input method
+                // is composing, so a caller that commits on Enter or cancels on Escape never sees
+                // them: the field would otherwise submit half-converted kana, or throw the
+                // conversion away, on the keystroke that was meant to finish the word.
+                onKeyDown={guardImeKeys(onKeyDown)}
             />
             {rightIcon && (
                 <div className={cn(
@@ -139,6 +146,7 @@ export function TextArea({
     className = "",
     fullWidth = false,
     rows = 3,
+    onKeyDown,
     ...props
 }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
     variant?: InputVariant;
@@ -158,6 +166,7 @@ export function TextArea({
                 className,
             )}
             {...props}
+            onKeyDown={guardImeKeys(onKeyDown)}
         />
     );
 }

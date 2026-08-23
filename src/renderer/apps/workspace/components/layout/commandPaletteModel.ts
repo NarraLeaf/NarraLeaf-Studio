@@ -1,6 +1,7 @@
 import { createElement, type ReactNode } from "react";
 import { Keyboard, type LucideIcon } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
+import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { Workspace } from "@/lib/workspace/workspace";
 import type { FocusContext, Keybinding } from "@/lib/workspace/services/ui/types";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -85,18 +86,23 @@ export interface PaletteCommandSources {
     /** Resolves an i18n key to the active locale's string (imperative `translate`). */
     translate: (key: TranslationKey) => string;
     /**
-     * Whether the workspace is frozen, which drops the actions a frozen top bar disables.
+     * Why the workspace is frozen, or null when it is writable - which drops the actions a frozen
+     * top bar disables.
      *
      * Not cosmetic. The top bar renders those buttons greyed with a reason, but the palette runs the
      * SAME registrations, so without this the Build icon is dead to the mouse and one Ctrl+P away
      * from running - and the point of disabling them is the side effects the write boundary cannot
      * catch (kicking off a build, calling out to a service, changing a global setting).
      *
+     * The kind rather than a boolean because `freezeActionPolicy` is what decides, and it answers
+     * differently for the one action that only starts something main owns; the palette must show the
+     * same list the bar does.
+     *
      * Omitted rather than listed-and-inert because that is already this list's convention for a
      * disabled action, and an un-runnable search result is noise; the top bar is where the greyed
      * control explains itself.
      */
-    frozen?: boolean;
+    freeze?: WorkspaceFreezeKind | null;
 }
 
 const FALLBACK_FOCUS: FocusContext = { area: FocusArea.None };
@@ -167,7 +173,7 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         workspace,
         focusContext,
         translate,
-        frozen = false,
+        freeze = null,
     } = sources;
 
     const out: PaletteCommand[] = [];
@@ -258,7 +264,7 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
             pushAction(
                 action,
                 action.paletteCategoryKey ? translate(action.paletteCategoryKey) : undefined,
-                isActionFrozenOut(action, frozen),
+                isActionFrozenOut(action, freeze),
             ),
         );
 
@@ -280,7 +286,7 @@ export function collectPaletteCommands(sources: PaletteCommandSources): PaletteC
         const category = group.labelKey ? translate(group.labelKey) : group.label;
         // Decided per GROUP, not per item: a menu entry does not carry the group it was declared in,
         // so asking `isActionFrozenOut` about it would read every File entry as unexempt.
-        walkItems(getActionGroupItems(group), category, frozen && !isFreezeExemptActionGroup(group.id));
+        walkItems(getActionGroupItems(group), category, freeze !== null && !isFreezeExemptActionGroup(group.id));
     });
 
     // 4) Sidebar/dock panels → "open <panel>" navigation commands. Body panels open by flipping

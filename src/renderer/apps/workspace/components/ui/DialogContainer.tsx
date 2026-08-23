@@ -6,6 +6,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import { HelpTrigger, requestContextHelp } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * Individual dialog component
@@ -65,6 +66,9 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                     height: dialog.height,
                 }}
                 onKeyDown={event => {
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "Escape" && dialog.closable) {
                         event.preventDefault();
                         event.stopPropagation();

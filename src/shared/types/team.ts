@@ -317,6 +317,18 @@ export interface TeamLiveSession {
     project: string;
     /** What the project stood at when it was opened, as the opener reported it. */
     revision?: string;
+    /**
+     * Which story document the room is about, as the opener named it.
+     *
+     * **This is what a joiner follows instead of guessing.** The server requires it of every
+     * room opened, so a current one always has it; it is optional here for the reason `revision`
+     * is - what arrives is read defensively, and a room opened against an older deployment has
+     * none. Joining such a room is refused by name rather than by falling back to a guess: the
+     * only thing this window could guess is a document it already holds, which is both the wrong
+     * answer for somebody whose copy differs and no answer at all for somebody who has just
+     * arrived.
+     */
+    story?: string;
     title?: string;
     /** Who opened it, by username. */
     openedBy: string;

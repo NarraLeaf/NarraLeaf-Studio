@@ -628,6 +628,12 @@ export function AssetSelector({
 
     const handleImportAssets = useCallback(async () => {
         if (!assetsService) return;
+        // Refused here and not only on the button, because the button is not the last thing that
+        // happens before bytes move: `importLocalAssets` opens the file dialog itself and then copies
+        // every file the author picked into the library. A refusal that arrives after the copy is a
+        // frozen project that has already written; and this picker is a portal on `document.body`, so
+        // a freeze that arms while it is open reaches nothing that would have closed it.
+        if (freeze.frozen) return;
 
         try {
             const result = await assetsService.importLocalAssets(assetType);
@@ -653,7 +659,7 @@ export function AssetSelector({
         } catch (error) {
             console.error('Error importing assets:', error);
         }
-    }, [assetsService, assetType, loadAssets]);
+    }, [assetsService, assetType, freeze.frozen, loadAssets]);
 
     if (!visible) {
         return null;
@@ -695,6 +701,7 @@ export function AssetSelector({
                         <button
                             onClick={handleImportAssets}
                             className="p-1 rounded-md hover:bg-fill disabled:opacity-50"
+                            aria-label={t("assets.selector.importFromDisk")}
                             {...freeze.writes(loading, t("assets.selector.importFromDisk"))}
                         >
                             <FolderOpen className="w-4 h-4" />

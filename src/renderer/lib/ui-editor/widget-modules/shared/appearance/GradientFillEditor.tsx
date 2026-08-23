@@ -18,8 +18,10 @@ import { GripVertical, Plus, Trash2, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
+import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Select } from "@/lib/components/elements/Select";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useEscapeToClose } from "@/lib/components/elements/Modal";
 import { useWindowOverlayHost } from "@/lib/components/layout";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -309,8 +311,13 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
     const overlayHost = useWindowOverlayHost();
     const [open, setOpen] = useState(false);
     const [position, setPosition] = useState({ left: 0, top: 0 });
-    const triggerRef = useRef<HTMLButtonElement | null>(null);
+    const triggerRef = useRef<HTMLSpanElement | null>(null);
     const panelRef = useRef<HTMLDivElement | null>(null);
+    // Asked here rather than taken as a prop, because the panel below is portalled into the window's
+    // overlay host: it is not a descendant of the `<fieldset disabled>` the properties framework
+    // wraps this field in, so no clamp an ancestor applies can reach it. The same arrangement the
+    // container's per-side padding popover uses, and for the same reason.
+    const freeze = useFreezeGuard();
 
     const fill = value ?? DEFAULT_GRADIENT_FILL;
     const stops = useMemo(() => sortStops(fill.stops), [fill.stops]);
@@ -404,6 +411,17 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
                       style={{ backgroundImage: css }}
                   />
 
+                  {/* The panel's own clamp. It starts below the title bar so the close button keeps
+                      working: a popover that cannot be dismissed is worse than one that cannot be
+                      edited. Everything under here writes, and there is nothing to exempt - the kind
+                      Select stays readable through its own `readOnly` arm rather than an exemption,
+                      since `disabled` would hide the list of kinds this gradient could have been. */}
+                  <fieldset
+                      disabled={freeze.frozen}
+                      aria-readonly={freeze.frozen || undefined}
+                      data-tip={freeze.frozen ? freeze.reason : undefined}
+                      style={{ display: "contents" }}
+                  >
                   <div className="mt-3">
                       <FieldLabel as="div">{t("widgetAppearance.gradient.kind")}</FieldLabel>
                       <Select
@@ -411,6 +429,7 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
                           options={KIND_OPTIONS.map((option) => ({ value: option.value, labelKey: option.labelKey }))}
                           fullWidth
                           size="sm"
+                          readOnly={freeze.frozen}
                           ariaLabel={t("widgetAppearance.gradient.kind")}
                           onChange={(next) => patch({ ...fill, kind: String(next) as GradientKind })}
                       />
@@ -572,6 +591,7 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
                           </SortableContext>
                       </DndContext>
                   </div>
+                  </fieldset>
               </div>,
               overlayHost,
           )
@@ -579,20 +599,25 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
 
     return (
         <>
-            <button
+            {/* An {@link InspectOnlyButton}, because opening this panel is looking: the swatch paints
+                the gradient but says nothing about the stops behind it, and their offsets and colours
+                live nowhere else. As a `<button>` the inspector's `<fieldset disabled>` caught it, so
+                on a frozen project a gradient could be seen and never read. */}
+            <InspectOnlyButton
                 ref={triggerRef}
-                type="button"
                 onClick={() => setOpen((prev) => !prev)}
                 aria-label={t("widgetAppearance.gradient.openEditorAria")}
                 aria-expanded={open}
                 data-tip={t("widgetAppearance.gradient.openEditorAria")}
                 className={cn(
-                    "h-9 w-9 shrink-0 cursor-default rounded-md border border-edge bg-transparent transition",
+                    "inline-block h-9 w-9 shrink-0 cursor-default rounded-md border border-edge bg-transparent transition",
                     "hover:border-edge-strong focus:outline-none",
                     className,
                 )}
                 style={{ backgroundImage: css }}
-            />
+            >
+                {null}
+            </InspectOnlyButton>
             {panel}
         </>
     );
