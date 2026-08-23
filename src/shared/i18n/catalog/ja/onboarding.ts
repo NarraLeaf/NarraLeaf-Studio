@@ -10,7 +10,6 @@ import type { LocaleNamespace } from "../types";
 export const onboarding = {
     windowTitle: "{name} へようこそ",
     progress: "{current} / {total}",
-    preview: "プレビュー",
     steps: {
         language: "言語",
         appearance: "外観",
