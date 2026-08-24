@@ -9,6 +9,7 @@ import {
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { packNetworkAllowlist } from "@shared/types/networkAllowlist";
+import { installBrowserGestureGuards } from "./browserGestures";
 import { installScreenWakeLock } from "./screenWakeLock";
 import { WebGameStorage } from "./webStorage";
 import { webProgressBridge } from "./webProgress";
@@ -320,3 +321,8 @@ const prevent = (event: DragEvent) => {
 };
 window.addEventListener("dragover", prevent);
 window.addEventListener("drop", prevent);
+
+// Same idea, for the gestures a browser owns rather than the drops: a pinch that
+// leaves the stage zoomed, or a long press that puts "Reload" over a running game.
+// The other half of that policy is CSS in the entry document; see `browserGestures.ts`.
+installBrowserGestureGuards(window);
