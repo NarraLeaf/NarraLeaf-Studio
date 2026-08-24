@@ -1,12 +1,16 @@
 /**
  * Keeping the browser's Back out of a running playthrough.
  *
- * A game served as a page occupies one history entry, and the player's Back - a swipe from the edge
- * of a phone screen, a mouse's fourth button, Android's own back gesture, all of which the mobile
- * shells route through this same history - leaves it. Nothing about that is recoverable: the page is
- * gone, and with it every line since the last save. It is the one navigation a page can reliably
- * catch, unlike the tab being closed (see `capabilities.closeRequested`, which says out loud that
- * the shell cannot answer for that one).
+ * A game served as a page occupies one history entry, and the player's Back - a browser's back
+ * button, a swipe from the edge of a phone screen, a mouse's fourth button - leaves it. Nothing
+ * about that is recoverable: the page is gone, and with it every line since the last save. It is
+ * the one navigation a page can reliably catch, unlike the tab being closed (see
+ * `capabilities.closeRequested`, which says out loud that the shell cannot answer for that one).
+ *
+ * Which host it actually reaches: the web target. The iOS shell has no back gesture to catch, and
+ * the Android shell's activity never asks the WebView about its history - its own Back finishes the
+ * app outright, so a page cannot see it at all, let alone refuse it. That is the shell template's
+ * to fix, not this file's; here the guard simply costs those two hosts nothing.
  *
  * The guard is an extra history entry this page owns. Back consumes it, the pop puts the entry
  * straight back, and the player stays where they were. What it costs is Back as a way out of the
