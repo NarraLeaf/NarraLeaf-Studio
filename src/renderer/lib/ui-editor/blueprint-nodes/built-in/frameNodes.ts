@@ -8,7 +8,10 @@ import {
     BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
+    BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_PAGE_BACK,
@@ -20,6 +23,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
 } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
@@ -245,6 +249,94 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             const mode = toFullscreenMode(ctx.params.mode);
             const fullscreen = mode === "toggle" ? !(await api.navigation.getFullscreen()) : mode === "enter";
             await api.navigation.setFullscreen(fullscreen);
+            return { nextPort: "next" };
+        },
+    },
+    {
+        /**
+         * The sizes a configuration screen may offer for the game's window.
+         *
+         * The list is the author's own, from Project -> App -> Window, and it is what makes a size
+         * row possible to build once: the row is drawn from whatever comes back rather than from
+         * numbers typed into the graph, so changing the offered sizes changes the screen.
+         *
+         * **Empty is an answer, not a failure.** A shell with no window of its own to size - the web
+         * export, Dev Mode, the story preview - returns nothing here, and a row built from it draws
+         * nothing there. That is the point: a size control that cannot move a window is worse than
+         * no control at all.
+         *
+         * Each entry is a multiple of the size the game is drawn at: 1 is the design size, 0.5 is
+         * half of it. What that means in pixels depends on the project, which is why the numbers
+         * are ratios and not widths.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
+        displayName: "Get Window Scale Options",
+        category: "App",
+        keywords: ["window", "size", "scale", "options", "resolution", "app", "display", "config"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: false,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "scales",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                label: "Scales",
+            },
+        ],
+        execute(ctx) {
+            const scales = requireHostApi(ctx).navigation.getWindowScaleOptions();
+            return { nextPort: "next", outputValues: { scales } };
+        },
+    },
+    {
+        /** The size the window is at now, as one of the offered multiples. */
+        type: BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
+        displayName: "Get Window Scale",
+        category: "App",
+        keywords: ["window", "size", "scale", "app", "display", "config"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "scale", kind: "output", semantic: "data", valueType: "float", label: "Scale" },
+        ],
+        async execute(ctx) {
+            const scale = await requireHostApi(ctx).navigation.getWindowScale();
+            return { nextPort: "next", outputValues: { scale } };
+        },
+    },
+    {
+        /**
+         * Resize the game's window to one of the offered multiples of its design size.
+         *
+         * A size the project does not offer is answered with the nearest one it does, rather than
+         * refused: the ladder belongs to the author, and a graph that computed 0.8 should move the
+         * window rather than fail. Full screen and maximised are left first - both are answers to
+         * the same question, and a window sized underneath either would spring back the moment the
+         * player left it.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SCALE,
+        displayName: "Set Window Scale",
+        category: "App",
+        keywords: ["window", "size", "scale", "resize", "app", "display", "config"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "scale", kind: "input", semantic: "data", valueType: "float", label: "Scale" },
+        ],
+        async execute(ctx) {
+            const raw = Number(readPin(ctx, "scale") ?? 1);
+            const scale = Number.isFinite(raw) && raw > 0 ? raw : 1;
+            await requireHostApi(ctx).navigation.setWindowScale(scale);
             return { nextPort: "next" };
         },
     },

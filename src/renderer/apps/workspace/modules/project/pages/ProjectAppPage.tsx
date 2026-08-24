@@ -13,6 +13,7 @@ import { ProjectAppTagsSection } from "../sections/ProjectAppTagsSection";
 import { ProjectDlcSection } from "../sections/ProjectDlcSection";
 import { ProjectUserDataSection } from "../sections/ProjectUserDataSection";
 import { ProjectIconsSection } from "../sections/ProjectIconsSection";
+import { ProjectWindowSection } from "../sections/ProjectWindowSection";
 import { ProjectScreenEffectsSection } from "../sections/ProjectScreenEffectsSection";
 import { ProjectDependenciesSection } from "../sections/ProjectDependenciesSection";
 import type { ProjectSectionProps } from "../sections/types";
@@ -32,6 +33,9 @@ export function ProjectAppPage(props: ProjectSectionProps) {
                 player's files to is named after the identifier, and this is where it is changed. */}
             <ProjectUserDataSection {...props} />
             <ProjectIconsSection {...props} />
+            {/* Beside the icons for the same reason they are here: both are what the application
+                looks like before a player has reached the game inside it. */}
+            <ProjectWindowSection {...props} />
             {/* Also a property of the application rather than of the game: it decides what the
                 package carries and what a build spends producing it, and no player ever meets it. */}
             <ProjectScreenEffectsSection {...props} />
