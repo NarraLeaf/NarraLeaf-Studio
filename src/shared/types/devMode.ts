@@ -1,6 +1,7 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
+import type { WindowConfiguration } from "./appWindow";
 import type { DialogueConfiguration } from "./dialogue";
 import type { ProjectFontEntry } from "./typography";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
@@ -361,6 +362,17 @@ export type DevModeBundle = {
      * predate the section, which every consumer reads as the engine's own values.
      */
     dialogue?: DialogueConfiguration;
+    /**
+     * What the shipped game's window may do, baked from `.nlproj` `app.window`.
+     *
+     * Read by two halves that must not disagree: the shell opens the window it describes, and the
+     * game's own configuration screen offers its scale steps as the list a player chooses from (see
+     * the `Get Window Scale Options` node). Carried by the bundle rather than as a pack field of its
+     * own so both halves read the one answer.
+     *
+     * Absent on bundles that predate the section, which every consumer reads as the defaults.
+     */
+    window?: WindowConfiguration;
     /**
      * The frame rate this project's screen effects are baked at, from `.nlproj` `app.vfx`.
      *

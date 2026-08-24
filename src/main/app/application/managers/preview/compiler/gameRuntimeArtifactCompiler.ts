@@ -21,7 +21,7 @@ import {
     normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
 import type { AppTagBaseIdentity, AppTagPluginConfig, AppTagReachableScenes, ProjectAppTag } from "@shared/types/appTag";
-import { APP_TAG_ID_RELEASE, isBuiltinAppTagId } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { gameProgressKey } from "@shared/types/gameProgress";
 import { resolveShippedPluginBuildConfig } from "@shared/utils/pluginBuildConfig";
 import {
@@ -74,7 +74,13 @@ import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
-import { deriveGameAppId, type GameBuildPlatform } from "@shared/types/gameBuild";
+import {
+    deriveGameAppId,
+    totalShippedAssetBytes,
+    type GameBuildPlatform,
+    type ShippedAssetReport,
+    type ShippedAssetReportEntry,
+} from "@shared/types/gameBuild";
 import { normalizeSaveLocationConfiguration, userDataDirectoryName } from "@shared/utils/userDataLocation";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
@@ -364,6 +370,15 @@ export type GameRuntimeArtifactCompileResult = {
      * ones it reaches for.
      */
     collapsedBuildAxis: boolean;
+    /**
+     * What this compile carried out of the asset library and what it left behind.
+     *
+     * Present exactly when the compile narrowed the library, which is every packaging compile and no
+     * preview. **The worker decides whether to audit by whether this is here**, so the two can no
+     * longer drift: trimming without the audit is the dangerous half, because it removes assets with
+     * nothing checking that the shipped game still reaches every one it asks for.
+     */
+    assetReport?: ShippedAssetReport;
 };
 
 /**
@@ -471,29 +486,31 @@ export async function compileGameRuntimeArtifact(
         onNotice: message => notices.push(message),
         onAssetSetCollapse: () => { collapsedBuildAxis = true; },
     });
-    // A variant that removed story also carries an asset library sized for the story it removed, and
-    // a package is public the moment someone opens it. The release edition removes nothing, so it
-    // narrows nothing: there is no unreachable content for it to be carrying.
+    // Every package narrows the library to what it references, and only a package does: a preview
+    // and a test address whatever the author points them at, so both carry it whole.
     //
-    // Unless an asset set collapsed a build axis. That drops variants from every edition including
-    // the release one - the axis is a statement about the art, not about which edition is narrower -
-    // so the premise above stops holding and the library has to be narrowed either way. Skipping it
-    // there would leave the withheld variants sitting in the package, which is the one failure a
-    // build axis exists to prevent.
-    const stripping = Boolean(input.packaging)
-        && (collapsedBuildAxis
-            || (Boolean(input.appTag) && !isBuiltinAppTagId(input.appTag?.id ?? APP_TAG_ID_RELEASE)));
+    // This used to ask which edition was being built, on the grounds that only an edition that
+    // removed story could be carrying content it could no longer reach. Two things made that false.
+    // A collapsed build axis drops art from every edition including the release one. And a DLC's
+    // stories are left out of the build they attach to, which takes their prose but not the art it
+    // named - so the base package shipped the pictures of content nobody bought. A library sized for
+    // content the package does not carry is public the moment someone opens the package, and an
+    // asset nothing references is not reachable by any edition.
+    const stripping = Boolean(input.packaging);
     const shipped = stripping
         ? await planShippedAssets(
             input.projectPath,
             assembled,
             input.runtimePlugins ?? [],
             message => notices.push(message),
+            input.assetImages,
         )
         : null;
     const bundle = shippedBundle(shipped?.bundle ?? assembled, mode);
-    if (shipped && shipped.removedAssetCount > 0) {
-        notices.push(`${shipped.removedAssetCount} assets are unreachable in this edition and do not ship`);
+    if (shipped && shipped.report.excluded.length > 0) {
+        notices.push(
+            `${shipped.report.excluded.length} asset(s) are not referenced by this build and were left out`,
+        );
     }
 
     // Bound before anything is written into it. A build with a distribution key
@@ -704,6 +721,7 @@ export async function compileGameRuntimeArtifact(
             copiedAssetCount: Object.keys(assetManifest).length,
             notices,
             collapsedBuildAxis,
+            ...(shipped ? { assetReport: shipped.report } : {}),
         };
     } catch (error) {
         if (target.kind === "sealed") {
@@ -992,13 +1010,15 @@ async function planShippedAssets(
     bundle: DevModeBundle,
     runtimePlugins: readonly GameRuntimePluginSource[],
     onNotice?: (message: string) => void,
+    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>,
 ): Promise<{
     bundle: DevModeBundle;
     include: Set<string>;
     characterIds: Set<string>;
-    removedAssetCount: number;
+    report: ShippedAssetReport;
 }> {
-    const libraryAssetIds = await readLibraryAssetIds(projectPath);
+    const library = await readLibraryAssetRecords(projectPath);
+    const libraryAssetIds = new Set(library.keys());
     // A plugin's published data ships inside the pack and a plugin can ask for an asset's URL, so a
     // catalogue naming one is a reference like any other. It is swept from the same files the plugin
     // copier reads rather than from its output, because that copier runs after the assets are chosen.
@@ -1037,8 +1057,91 @@ async function planShippedAssets(
         },
         include,
         characterIds: cast.characterIds,
-        removedAssetCount: libraryAssetIds.size - include.size,
+        report: await describeShippedAssets({
+            library,
+            include,
+            characters: bundle.storyLibrary?.characters ?? [],
+            shippedCharacterIds: cast.characterIds,
+            ...(assetImages ? { assetImages } : {}),
+        }),
     };
+}
+
+/**
+ * What this build carried out of the library and what it left behind, as an author reads it.
+ *
+ * Measured rather than counted: the number that answers "should this asset have shipped" is the
+ * name, and the number that answers "was leaving it out worth anything" is its size. Both lists are
+ * ordered largest first, because the entry worth looking at in a list of four hundred is the one
+ * that costs the most.
+ *
+ * A size that cannot be read is left absent rather than reported as zero. An asset shown as "0 B"
+ * reads as an empty file, which is a different problem from one nobody could measure.
+ */
+async function describeShippedAssets(input: {
+    library: ReadonlyMap<string, LibraryAssetRecord>;
+    include: ReadonlySet<string>;
+    characters: readonly { id: string; name?: string }[];
+    shippedCharacterIds: ReadonlySet<string>;
+    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+}): Promise<ShippedAssetReport> {
+    const included: ShippedAssetReportEntry[] = [];
+    const excluded: ShippedAssetReportEntry[] = [];
+    for (const [assetId, record] of input.library) {
+        const carried = input.include.has(assetId);
+        // What the package holds for an asset it carried, what the project holds for one it did
+        // not: a re-encoded image ships as the smaller file, and reporting its source size would
+        // credit the build with bytes it never wrote.
+        const measured = carried
+            ? input.assetImages?.[assetId]?.path ?? record.sourcePath
+            : record.sourcePath;
+        const bytes = await measureAssetBytes(measured);
+        const entry: ShippedAssetReportEntry = {
+            id: assetId,
+            name: record.name,
+            type: record.type,
+            ...(bytes === undefined ? {} : { bytes }),
+        };
+        (carried ? included : excluded).push(entry);
+    }
+    const bySize = (a: ShippedAssetReportEntry, b: ShippedAssetReportEntry): number =>
+        (b.bytes ?? 0) - (a.bytes ?? 0) || a.name.localeCompare(b.name);
+    included.sort(bySize);
+    excluded.sort(bySize);
+    return {
+        included,
+        excluded,
+        excludedCharacters: input.characters
+            .filter(character => !input.shippedCharacterIds.has(character.id))
+            .map(character => ({ id: character.id, name: character.name?.trim() || character.id })),
+        includedBytes: totalShippedAssetBytes(included),
+        excludedBytes: totalShippedAssetBytes(excluded),
+    };
+}
+
+/**
+ * Bytes at `target`, or undefined when it cannot be read.
+ *
+ * A model bundle is a directory, and its size is the sum of the files that would ship out of it -
+ * the same walk the copier uses, so the two agree about what a bundle is made of.
+ */
+async function measureAssetBytes(target: string): Promise<number | undefined> {
+    try {
+        const stats = await fs.stat(target);
+        if (stats.isFile()) {
+            return stats.size;
+        }
+        if (!stats.isDirectory()) {
+            return undefined;
+        }
+        let total = 0;
+        for (const relative of await listBundleFiles(target)) {
+            total += (await fs.stat(path.join(target, ...relative.split("/")))).size;
+        }
+        return total;
+    } catch {
+        return undefined;
+    }
 }
 
 /**
@@ -1179,18 +1282,37 @@ function shippedAssetManifest(
     return withModelBundles(items);
 }
 
-/** Every asset id the project's library declares, across all shards. */
-async function readLibraryAssetIds(projectPath: string): Promise<Set<string>> {
-    const ids = new Set<string>();
+/** One entry of the project's asset library, as the trimming pass and its report need it. */
+type LibraryAssetRecord = {
+    name: string;
+    type: string;
+    /** Where the project keeps the bytes: a file, or a directory for a model bundle. */
+    sourcePath: string;
+};
+
+/**
+ * The whole asset library, keyed by id.
+ *
+ * Read once and used twice: the ids decide what the sweep is allowed to keep, and the names and
+ * paths are what the build's report names an asset by. Reading it a second time to answer the
+ * second question would be a second reading of the same shards that could disagree with the first.
+ */
+async function readLibraryAssetRecords(projectPath: string): Promise<Map<string, LibraryAssetRecord>> {
+    const records = new Map<string, LibraryAssetRecord>();
     for (const type of ASSET_TYPES) {
-        const metadata = await readOptionalJson<Record<string, unknown>>(
+        const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(
             path.join(projectPath, "assets", `assets.metadata.${type}.json`),
         );
-        for (const assetId of Object.keys(metadata ?? {})) {
-            ids.add(assetId);
+        for (const [assetId, rawAsset] of Object.entries(metadata ?? {})) {
+            const normalized = normalizeAssetRecord(assetId, type, rawAsset);
+            records.set(assetId, {
+                name: normalized.name,
+                type,
+                sourcePath: resolveAssetSourcePath(projectPath, normalized),
+            });
         }
     }
-    return ids;
+    return records;
 }
 
 async function copyProjectAssets(input: {

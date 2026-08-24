@@ -358,6 +358,51 @@ export const build = {
         submitted: "Build started. Progress is in the console.",
         done: "Build finished.",
         failed: "Build failed.",
+        patchDone: "Patch exported.",
+        patchFailed: "Patch export failed.",
+        // Buttons on the notification. The message above each one stands without it: the
+        // notifications panel keeps the message and drops the button.
+        openReport: "Open report",
+    },
+    /**
+     * The build report: one finished run, what it produced, and what it carried out of the asset
+     * library. Opened from the notification that run posts.
+     *
+     * Two words are used precisely and mean different things: an artifact is a file the build wrote,
+     * an asset is an entry of the project's library. The report states both.
+     */
+    report: {
+        title: "Build report",
+        empty: "No finished build to report.",
+        outcome: {
+            done: "Succeeded",
+            error: "Failed",
+            cancelled: "Stopped",
+        },
+        kind: {
+            build: "Production build",
+            patch: "Patch export",
+        },
+        summary: "Summary",
+        variant: "Variant",
+        platforms: "Platforms",
+        duration: "Duration",
+        artifacts: "Artifacts",
+        artifactsEmpty: "This run wrote no artifacts.",
+        outputDir: "Output folder",
+        durationSeconds: "{seconds}s",
+        durationMinutes: "{minutes}m {seconds}s",
+        includedTitle: "Assets carried",
+        includedEmpty: "This run carried no assets.",
+        excludedTitle: "Assets left out",
+        excludedEmpty: "This run left no assets out.",
+        charactersTitle: "Characters left out",
+        // Shown in place of both asset lists for a run that packaged the library as it stands.
+        wholeLibrary: "This run carried the asset library whole.",
+        search: "Search assets",
+        noMatches: "No asset matches this search.",
+        showAll: "Show all {count}",
+        failure: "Reason",
     },
     invalidCommand: "Invalid command in {story} / {scene}: {source}",
     invalidCommandSummary: {
@@ -427,6 +472,14 @@ export const build = {
      * resolve.
      */
     contentCoverageGap: "{location} could not be read, so what the {variant} build leaves out cannot be decided.",
+    // The one construct the asset sweep cannot read, refused for every build rather than only for
+    // the ones that also drop scenes: every package carries the assets its bytes name, and a pin fed
+    // by a computed value names none.
+    contentComputedPinGap: "{location} receives its asset from a computed value, so this build cannot tell which asset it needs.",
+    contentComputedPinSummary: {
+        one: "Build stopped: {count} pin receives its asset from a computed value. Select the asset on the pin. See the console.",
+        other: "Build stopped: {count} pins receive their asset from a computed value. Select the asset on each pin. See the console.",
+    },
     /** What `{location}` becomes for a gap that is the whole index rather than one document. */
     contentCoverageWholeProject: "The project",
     contentCoverageSummary: {

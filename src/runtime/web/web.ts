@@ -9,6 +9,7 @@ import {
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { packNetworkAllowlist } from "@shared/types/networkAllowlist";
+import { installBrowserGestureGuards } from "./browserGestures";
 import { installScreenWakeLock } from "./screenWakeLock";
 import { WebGameStorage } from "./webStorage";
 import { webProgressBridge } from "./webProgress";
@@ -143,6 +144,12 @@ const bridge: GameRuntimePreloadBridge = {
     setDisplayAwake: awake => {
         screenWakeLock.setRequested(awake);
     },
+    // A page is the window, and no script may resize the one the browser gave it: `resizeTo` is
+    // ignored for anything the player opened themselves. Reported through `capabilities` below, so
+    // a configuration screen builds its size row from an empty list here rather than showing the
+    // player a row that does nothing.
+    getWindowScale: async () => 1,
+    setWindowScale: async () => undefined,
     getFullscreen: async () => document.fullscreenElement != null,
     setFullscreen: async (fullscreen: boolean) => {
         // Browsers gate requestFullscreen behind a user gesture; a rejected
@@ -170,14 +177,10 @@ const bridge: GameRuntimePreloadBridge = {
     onCloseRequested: () => () => undefined,
     // Says out loud what the no-op above implies, so callers gate on it instead of registering a
     // handler that can never run (runtime plugins surface it as events.available("closeRequested")).
-    capabilities: { closeRequested: false },
-    // A page has no channel that arrives before its own scripts, so this build cannot answer until
-    // the pack has been fetched. `null` says exactly that, and the renderer keeps its default
-    // until `readPack` resolves rather than treating unknown as an answer.
-    crashPolicy: null,
-    // No log file at all here: this shell prints to the browser console, so there is no path a
-    // crash screen could send anyone to.
-    logPath: null,
+    capabilities: { closeRequested: false, windowScale: false },
+    // Nothing here states a crash policy or a log path. This page is a static file nobody
+    // navigates to with a query, so the crash screen keeps its default until `readPack` resolves,
+    // and there is no log file to send anyone to - this shell prints to the browser console.
     save: {
         write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
             (await getStorage()).writeSave(id, savedGame, capture, metadata, compatibility, playtimeSeconds),
@@ -324,3 +327,8 @@ const prevent = (event: DragEvent) => {
 };
 window.addEventListener("dragover", prevent);
 window.addEventListener("drop", prevent);
+
+// Same idea, for the gestures a browser owns rather than the drops: a pinch that
+// leaves the stage zoomed, or a long press that puts "Reload" over a running game.
+// The other half of that policy is CSS in the entry document; see `browserGestures.ts`.
+installBrowserGestureGuards(window);

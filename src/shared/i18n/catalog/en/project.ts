@@ -39,6 +39,7 @@ export const project = {
         dlc: "DLC",
         userData: "Player files",
         icons: "Icons",
+        window: "Window",
         screenEffects: "Screen effects",
         dependencies: "Dependencies",
         saving: "Saving",
@@ -493,6 +494,17 @@ export const project = {
     // Project -> App -> Screen effects. The `/vfx` sources Studio makes for a project, and the one
     // decision that is the same for all of them. What the rate costs is the `screenEffects` help
     // topic, reached by the `?` on this heading.
+    window: {
+        sizesTitle: "Window sizes",
+        sizesDescription: "Sizes the player may choose from, as multiples of the design size. The design size is always offered.",
+        sizeOption: "{percent}%",
+        resizableTitle: "Resizable window",
+        resizableDescription: "The player may drag the window to a size of their own. The stage keeps its shape inside it.",
+        rememberTitle: "Remember the window",
+        rememberDescription: "The game reopens at the size, position and screen mode it was last closed at.",
+        fullscreenTitle: "Start full-screen",
+        fullscreenDescription: "The game opens full-screen on a first launch.",
+    },
     screenEffects: {
         // Named for the sources this reaches rather than for the command they belong to. A clip the
         // author imported plays at the rate it was made at, and nothing here changes that.

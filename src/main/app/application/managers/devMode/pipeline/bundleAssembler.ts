@@ -30,6 +30,7 @@ import {
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
 import type { DialogueConfiguration } from "@shared/types/dialogue";
+import { normalizeWindowConfiguration, type WindowConfiguration } from "@shared/types/appWindow";
 import { normalizeDialogueConfiguration } from "@shared/types/dialogue";
 import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
@@ -172,6 +173,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
     const dialogue = await loadDialogueConfiguration(context.projectPath);
+    const window = await loadWindowConfiguration(context.projectPath);
     const vfx = await loadVfxConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
@@ -199,6 +201,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         languageChange,
         saveCompatibility,
         dialogue,
+        window,
         vfx,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
@@ -1215,6 +1218,17 @@ export async function loadDialogueConfiguration(projectPath: string): Promise<Di
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeDialogueConfiguration(app?.dialogue);
+}
+
+/**
+ * Load the window settings from `.nlproj` `app.window`. Dense like the ones above: the shell opens
+ * a window on every launch whether or not the author ever opened the page, and the game's own
+ * configuration screen reads the offered sizes out of the same field. Exported for tests.
+ */
+export async function loadWindowConfiguration(projectPath: string): Promise<WindowConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeWindowConfiguration(app?.window);
 }
 
 /**

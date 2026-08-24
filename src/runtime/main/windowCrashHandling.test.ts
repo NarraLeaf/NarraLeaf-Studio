@@ -90,6 +90,10 @@ describe("a renderer that dies outright", () => {
         const url = new URL(win.loaded[0]);
         expect(url.pathname).toBe("/index.html");
         expect(url.searchParams.get("nlcrash")).toBe(describeProcessDeath(resolveShellText([]), "crashed", 2));
+        // Both go back on the address, because the page that draws this has no preload to ask and
+        // the log is the one thing the player can act on.
+        expect(url.searchParams.get("nlpolicy")).toBe("details");
+        expect(url.searchParams.get("nllog")).toBe(host.logPath);
     });
 
     it("goes straight back to the game when the project asked it to", async () => {
@@ -101,6 +105,9 @@ describe("a renderer that dies outright", () => {
 
         // No marker: the page boots the game rather than drawing anything about the crash.
         expect(win.loaded[0]).not.toContain("nlcrash");
+        // The policy still travels. Without it the fresh page would answer "show the error" at the
+        // next crash, in the build whose author asked for the opposite.
+        expect(new URL(win.loaded[0]).searchParams.get("nlpolicy")).toBe("restart");
     });
 
     it("ignores the process this reload is itself replacing", async () => {
