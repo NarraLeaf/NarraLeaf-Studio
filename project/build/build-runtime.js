@@ -18,8 +18,13 @@ function runtimeHtml() {
     // injected into <head> at serve time by the runtime main process
     // (src/runtime/main/networkPolicy.ts), because the policy is gated on the
     // project's per-launch `allowHttp` flag which is only known at runtime.
+    // No `lang`: this document is built once and shipped inside every game, so it cannot name a
+    // language any of them is in, and `en` was answering for all of them - the attribute picks the
+    // Han forms a fallback font draws, so a Japanese title was being set in an English page's face.
+    // The renderer writes the real one as soon as the game publishes it (see the runtime's
+    // `documentLanguage`); until then the document says nothing, which is what it knows.
     return `<!doctype html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

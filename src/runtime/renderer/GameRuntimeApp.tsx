@@ -5,7 +5,7 @@ import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { GameRuntimePackV1, GameRuntimePreloadBridge } from "@shared/types/gameRuntime";
+import type { GameRuntimePackV1, GameRuntimePreloadBridge, GameSessionClaim } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { translate } from "@/lib/i18n";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -18,6 +18,7 @@ import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFra
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
+import { RuntimeSessionTakenScreen } from "./RuntimeSessionTakenScreen";
 import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
@@ -122,6 +123,46 @@ function RuntimeErrorScreen(props: { message: string }): ReactNode {
 
 function RuntimeLoadingScreen(): ReactNode {
     return <div className="h-screen w-screen bg-black" />;
+}
+
+/**
+ * Which copy of the game this page is, where a shell can be opened more than once.
+ *
+ * Asked before anything is drawn and before the game touches its store: two tabs of one web export
+ * share a single IndexedDB, and the harm is done the moment the second one saves. The desktop
+ * shells have no such method - their main process refuses a second copy long before a renderer
+ * exists - and an absent method is a granted session, which is also what a game packaged before
+ * this existed gets.
+ *
+ * A shell that fails to answer is granted too. The gate protects saves; refusing to run because a
+ * lock could not be reached would cost the player the game instead.
+ */
+function useGameSessionClaim(): "pending" | GameSessionClaim {
+    const [claim, setClaim] = useState<"pending" | GameSessionClaim>(
+        () => (getGameRuntimeBridge()?.claimSession ? "pending" : "granted"),
+    );
+    useEffect(() => {
+        const claimSession = getGameRuntimeBridge()?.claimSession;
+        if (!claimSession) {
+            return;
+        }
+        let disposed = false;
+        void claimSession()
+            .then(result => {
+                if (!disposed) {
+                    setClaim(result);
+                }
+            })
+            .catch(() => {
+                if (!disposed) {
+                    setClaim("granted");
+                }
+            });
+        return () => {
+            disposed = true;
+        };
+    }, []);
+    return claim;
 }
 
 function useRuntimePackPreload(input: {
@@ -334,7 +375,29 @@ function createRuntimePluginHost(
     });
 }
 
+/**
+ * The gate in front of the game, and everything the game costs to start.
+ *
+ * A page that is not this game's session may not read the pack, preload its assets or run its
+ * plugins - a plugin's `setup()` can write to the very store this is protecting - so the claim is
+ * settled here, above the component that does all of it, rather than inside it. On every shell
+ * without the method (both desktop ones, and any game packaged before this existed) the answer is
+ * granted from the first render and this costs a component that renders once.
+ */
 export function GameRuntimeApp() {
+    const sessionClaim = useGameSessionClaim();
+    if (sessionClaim === "taken") {
+        return <RuntimeSessionTakenScreen />;
+    }
+    if (sessionClaim === "pending") {
+        // The black screen a boot already shows, for the fraction of a second a lock takes to
+        // answer - and for the second and a half it takes to conclude that another tab holds it.
+        return <RuntimeLoadingScreen />;
+    }
+    return <GameRuntimeSession />;
+}
+
+function GameRuntimeSession() {
     const { pack, error } = useRuntimePack();
     const [renderScale, setRenderScale] = useState(1);
     const bridge = getGameRuntimeBridge();
@@ -548,6 +611,18 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * Whether this shell's saves stay written - the desktop answer is always yes, the web export's
+     * is whatever grant the browser gave the page.
+     *
+     * Optional-chained because a game packaged before the shell carried this is still a game that
+     * can be patched: the shell it boots is its own, and one that cannot answer says `unknown`.
+     */
+    const storageDurability = useCallback<NonNullable<GameAppHost["storageDurability"]>>(
+        async () => (await bridge?.storageDurability?.()) ?? "unknown",
+        [bridge],
+    );
+
+    /**
      * A model bundle resolves to the URL of its *entry file*, not of the asset id.
      *
      * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
@@ -711,6 +786,7 @@ export function GameRuntimeApp() {
             openExternal,
             exportProgress,
             importProgress,
+            storageDurability,
         };
     }, [
         entrySurfaceId,
@@ -719,6 +795,7 @@ export function GameRuntimeApp() {
         openExternal,
         exportProgress,
         importProgress,
+        storageDurability,
         getFullscreen,
         listPuppetBackendModules,
         log,

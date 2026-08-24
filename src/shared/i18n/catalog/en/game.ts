@@ -57,4 +57,16 @@ export const game = {
         // of a dead renderer is, because both are read by whoever the player sends them to.
         bridgeUnavailable: "The game's runtime bridge did not load",
     },
+    /**
+     * The web export refusing to be a second copy of a game that is already open.
+     *
+     * Two tabs of one export share a single store, so the second one would be writing over the
+     * first one's saves. Nothing is said about that: what the player needs is the state and the way
+     * out of it, and both fit in a line.
+     */
+    session: {
+        title: "The game is already open",
+        detail: "It is running in another browser tab. Close that tab, then reload this page.",
+        reload: "Reload",
+    },
 } as const;

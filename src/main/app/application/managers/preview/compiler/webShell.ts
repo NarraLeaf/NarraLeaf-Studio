@@ -103,8 +103,9 @@ export function buildWebIndexHtml(
         ? `    <meta name="${WEB_SHELL_VARIANT_META}" content="mobile" />\n`
         : "";
     const cspMeta = buildWebCspMeta(pack);
+    const language = resolveDocumentLanguage(pack);
     return `<!doctype html>
-<html lang="en">
+<html${language ? ` lang="${language}"` : ""}>
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="${viewport}" />
@@ -131,6 +132,27 @@ ${iconLinks}    <link rel="stylesheet" href="./renderer.css" />
 </body>
 </html>
 `;
+}
+
+/**
+ * The language attribute of the entry document.
+ *
+ * It decides which Han forms a system font draws, how the browser breaks lines and where it sets
+ * emphasis marks by default, so a Japanese title served with `lang="en"` is read in whatever face
+ * an English page resolves to. The pack states the language the project is written in, and this
+ * document is generated per project, so the first paint is already right.
+ *
+ * A player who has chosen another language, or whose system matched one, is a language this file
+ * cannot know: the choice lives in the store the page has yet to open. The runtime rewrites
+ * `documentElement.lang` once it has read it (see the runtime's `documentLanguage`), and this is
+ * what stands until then.
+ *
+ * Empty for a project with no localization set up, and for a source language that is not a language
+ * tag - an attribute the browser cannot parse is worse than none, which simply means "unknown".
+ */
+function resolveDocumentLanguage(pack: GameRuntimePackV1): string {
+    const source = pack.bundle?.localization?.sourceLocale?.trim() ?? "";
+    return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(source) ? source : "";
 }
 
 /**
