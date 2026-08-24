@@ -389,6 +389,35 @@ export function totalShippedAssetBytes(entries: ShippedAssetReportEntry[]): numb
     return entries.reduce((total, entry) => total + (entry.bytes ?? 0), 0);
 }
 
+/** Which pipeline produced a run: the production build, or a patch/DLC export. */
+export type GameBuildRunKind = "build" | "patch";
+
+/**
+ * What the last run of this project's pipeline came to, kept on disk beside the build's own staging
+ * directory.
+ *
+ * Written by the pipeline rather than assembled by whichever window happened to be watching, and
+ * for two reasons. A report an author opens the morning after describes a run no session is holding
+ * any more, so something has to have written it down. And the output directory in it is the one the
+ * "show in the file manager" action reveals - a path the pipeline recorded, never one a window
+ * handed over.
+ */
+export type LastGameBuildRun = {
+    kind: GameBuildRunKind;
+    /** The variant it ran as. Absent means the release variant. */
+    appTagId?: string;
+    /**
+     * The variant's name at the time of the run.
+     *
+     * Recorded rather than resolved from the id when the report is read: a variant can be renamed
+     * or deleted afterwards, and what this run was is not a thing that changes later.
+     */
+    appTagName: string;
+    /** True when the author stopped the run, which the pipeline reports as a failure. */
+    cancelled: boolean;
+    state: GameBuildStateSnapshot;
+};
+
 /** Snapshot returned by build.getStatus; the renderer polls this. */
 export type GameBuildStateSnapshot = {
     status: GameBuildStatus;

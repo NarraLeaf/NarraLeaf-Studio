@@ -24,6 +24,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "../../context";
 import { DashboardSection, StatList, StatRow } from "./DashboardPrimitives";
 import { CastSection } from "./CastSection";
+import { LastBuildSection } from "./LastBuildSection";
 import { WritingActivityChart } from "./WritingActivityChart";
 import {
     buildActivityTimeline,
@@ -423,6 +424,8 @@ export function DashboardTab({ active }: EditorTabComponentProps) {
                     <WritingActivityChart points={windowPoints} peak={summary.peakDelta} />
                     {!hasCurve && <p className="text-2xs text-fg-subtle">{t("dashboard.activity.empty")}</p>}
                 </DashboardSection>
+
+                {context ? <LastBuildSection context={context} /> : null}
 
                 <DashboardSection title={t("dashboard.builds.title")}>
                     {recentBuilds.length > 0 ? (
