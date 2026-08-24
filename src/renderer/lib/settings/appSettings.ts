@@ -410,10 +410,14 @@ export const AppSettings: AppSettingDefinition[] = [
             default: "settings.items.windowIcon.options.default",
             narra: "settings.items.windowIcon.options.narra",
         },
+        // Hidden on macOS, like the ⌘Q row above and for the mirror-image reason: a Mac window
+        // has no icon of its own to set, so the row could only ever say "not available on this
+        // operating system". Linux keeps it disabled with that reason instead of hidden - a
+        // window icon does exist there, it is just the compositor's to honour or ignore.
+        visible: () => !isMacPlatform(),
         availability: async () => {
-            // Static for the lifetime of the window, like the ⌘Q row above: macOS has no
-            // per-window icon to set, and a Linux window icon is the compositor's to honour or
-            // ignore, so Windows is the only platform where the choice takes effect.
+            // Static for the lifetime of the window: Windows is the only platform left here where
+            // the choice takes effect.
             const { isWindowsPlatform } = await import("@/lib/app/platform");
             return isWindowsPlatform()
                 ? { enabled: true }
@@ -1051,6 +1055,11 @@ export const AppSettings: AppSettingDefinition[] = [
         // hides them there and draws the hamburger that holds them (`MainMenuButton`). The same
         // choice is on the title bar's own right-click menu, which is where an author who has just
         // lost their File menu goes looking for it.
+        //
+        // Hidden on macOS: there the groups go to the system menu bar (`useNativeMenuSync`) and
+        // neither value moves anything, so the row had nothing to govern. The stored value still
+        // travels - see `getAllAppSettings` - so a settings file that came from a Windows machine
+        // keeps the arrangement it chose.
         key: MENU_BAR_MODE_KEY,
         category: "appearance",
         scope: SettingScope.Global,
@@ -1067,16 +1076,7 @@ export const AppSettings: AppSettingDefinition[] = [
             hamburger: "workspace.shell.mainMenu.modes.hamburger",
             toolbar: "workspace.shell.mainMenu.modes.toolbar",
         },
-        availability: async () => {
-            // macOS puts these groups on the system menu bar instead (`useNativeMenuSync`), so
-            // neither value would move anything. Shown disabled with the reason rather than hidden
-            // like the ⌘Q row: this preference has a meaning on every platform and the author can
-            // still read which one is stored - it is only the applying of it that macOS takes over.
-            const { isMacPlatform } = await import("@/lib/app/platform");
-            return isMacPlatform()
-                ? { enabled: false, reasonKey: "settings.items.menuBarMode.unsupportedPlatform" }
-                : { enabled: true };
-        },
+        visible: () => !isMacPlatform(),
     },
     {
         // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working -
