@@ -603,6 +603,15 @@ export async function compileGameRuntimeArtifact(
             target,
         });
 
+        // What this payload can say about DLC: the ones whose stories are in it. Derived here
+        // rather than taken from the request, so the answer follows the content rather than the
+        // intent - see the field on the pack below.
+        const installedDlc = [...new Set(
+            (bundle.storyLibrary?.index.stories ?? [])
+                .map(story => story.dlcId?.trim())
+                .filter((id): id is string => Boolean(id)),
+)];
+
         const pack: GameRuntimePackV1 = {
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
             generatedAt: new Date().toISOString(),
@@ -654,6 +663,18 @@ export async function compileGameRuntimeArtifact(
             // the same tag that decides the build's name. Omitted when blank, which is the state
             // every build was in before this field and the one the runtime treats as "show nothing".
             ...(endingSurfaceId ? { endingSurfaceId } : {}),
+            // The DLC whose content is in this payload, read off the stories it actually carries
+            // rather than off what was asked for - they are the same answer, and deriving it means a
+            // story dropped for any other reason cannot leave its DLC claiming to be here.
+            //
+            // Empty on the ordinary build, which is the point: a base build states nothing about
+            // what else exists to buy. Dev Mode carries every story, so it states every DLC - which
+            // is what an author testing there wants, because they are looking at the whole game.
+            //
+            // The runtime adds to this the DLC it finds beside the game (`installedDlcIds`). The two
+            // writers state the same thing about different halves: what shipped inside, and what was
+            // installed outside.
+            ...(installedDlc.length > 0 ? { installedDlc } : {}),
             // The public half only, and only when this build was given a key: a
             // build that carries no way to check a proof must say so by having no
             // field, rather than by carrying an empty one that reads as "checked".

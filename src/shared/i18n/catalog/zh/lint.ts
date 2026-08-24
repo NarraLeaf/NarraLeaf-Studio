@@ -201,6 +201,7 @@ export const lint = {
             messageEnding: "指向的结局已不存在",
             messageCharacter: "指向的角色已不存在",
             messageTextKey: "指向的文本键在工程中未声明",
+            messageDlc: "指向的 DLC 在工程中不存在",
         },
         blueprintElementRefMissing: {
             title: "控件缺失",
@@ -219,6 +220,11 @@ export const lint = {
             title: "无法到达的节点",
             description: "图中没有任何入口可以到达该节点",
             message: "没有任何路径可以到达该节点，它不会被执行",
+        },
+        blueprintDlcEntranceUnguarded: {
+            title: "没有守卫的 DLC 入口",
+            description: "开始了属于 DLC 的故事，却没有任何地方问过这个 DLC 在不在",
+            message: "这张图里没有任何节点问过这个 DLC 是否已安装",
         },
         blueprintEmptyEvent: {
             title: "空事件",

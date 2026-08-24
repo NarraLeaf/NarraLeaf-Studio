@@ -37,6 +37,8 @@ import {
     type AppTagIdentity,
     type ProjectAppTag,
 } from "@shared/types/appTag";
+import type { ProjectDlc } from "@shared/types/dlc";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import {
     collectPluginBuildConfigFields,
     type PluginBuildConfigDeclaringPlugin,
@@ -127,6 +129,13 @@ export type BuildDialogInfo = {
      */
     appTags: ProjectAppTag[];
     baseIdentity: AppTagBaseIdentity;
+    /**
+     * The project's DLC, so the Output page can offer to build the selected variant's alongside it.
+     *
+     * The whole list rather than the selected variant's: which ones apply follows a selection this
+     * dialog owns, so the filtering happens on each render rather than at the round trip.
+     */
+    dlcs: ProjectDlc[];
     /**
      * Every installed plugin, for the build values its manifest declares.
      *
@@ -1393,8 +1402,14 @@ export function OutputSection({
     findings: BuildPreflightFinding[];
     onChange: (next: BuildDialogState) => void;
 }) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const request = useMemo(() => stateToRequest(state), [state]);
+    // A DLC states which variant it loads into, so which ones this build could produce follows the
+    // variant selected on the Identity page.
+    const variantDlcs = useMemo(
+        () => info.dlcs.filter(dlc => dlc.attachTo === variant.id),
+        [info.dlcs, variant.id],
+    );
     // The same call the pipeline makes, on the same two names, so a predicted name and the file the
     // build writes cannot differ. A variant that overrides nothing still writes its own files, which
     // is why the prediction changes when the selection does even though nothing else on this page has.
@@ -1448,6 +1463,24 @@ export function OutputSection({
                     </div>
                 )}
             </div>
+
+            {/* Only where this variant has DLC. A row offering to build none of them would be a
+                setting whose two positions do the same thing. */}
+            {variantDlcs.length > 0 && (
+                <div className="flex items-center justify-between gap-3">
+                    <div className="grid min-w-0 gap-0.5">
+                        <span className="text-xs text-fg">{t("build.output.includeDlc")}</span>
+                        <span className="text-2xs text-fg-subtle">
+                            {tn("build.output.includeDlcHint", variantDlcs.length)}
+                        </span>
+                    </div>
+                    <Switch
+                        size="sm"
+                        checked={state.includeDlc}
+                        onCheckedChange={value => onChange({ ...state, includeDlc: value })}
+                    />
+                </div>
+            )}
 
             <div className="flex items-center justify-between gap-3">
                 <span className="text-xs text-fg">{t("build.output.openWhenDone")}</span>
@@ -1508,6 +1541,14 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
     } catch (error) {
         console.warn("[build] app tag service unavailable", error);
     }
+    // Same guard, same reason: a workspace without the service still gets the dialog, with no row
+    // offering to build DLC - which is what a project with none gets anyway.
+    let dlcService: DlcService | null = null;
+    try {
+        dlcService = services.get<DlcService>(Services.Dlc);
+    } catch (error) {
+        console.warn("[build] dlc service unavailable", error);
+    }
     // Same guard, and for the same reason: a workspace without the story library still gets the
     // dialog, with the variant page saying nothing about where the story ends.
     let storyService: StoryService | null = null;
@@ -1534,6 +1575,7 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
         // A workspace whose variants could not be read still offers the release one, which is the
         // only variant the pipeline can be certain of anyway.
         appTags: appTagService?.listTags() ?? [RELEASE_APP_TAG],
+        dlcs: dlcService?.list() ?? [],
         baseIdentity: {
             displayName: productName,
             identifier: projectConfig.identifier?.trim() ?? "",

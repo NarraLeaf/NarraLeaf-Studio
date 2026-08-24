@@ -701,6 +701,29 @@ export const documentDiff = {
         unavailable: "Version control is not available in this project.",
     },
     /**
+     * One document at two versions, in a tab of its own.
+     *
+     * The words the split arrangement itself adds, and nothing more: what a change SAYS is under the
+     * tier keys above and is the same wherever the change is drawn. Each half is named for the
+     * version it shows, so nothing here names a version - `revisionLabel` does that, from a number.
+     */
+    split: {
+        open: "Open side by side",
+        /** The newer half of a working-tree comparison: the files as they are now. */
+        thisProject: "This project",
+        /** On a gap one version holds where the other has content. */
+        notInVersion: "Not in this version",
+        resize: "Resize the two halves",
+        previous: "Previous change",
+        next: "Next change",
+        /**
+         * Which change of how many. Drawn rather than worded, for the reason a value pair is: it is
+         * read at a glance beside two buttons, and a sentence there would be read as a sentence.
+         */
+        position: "{index} / {total}",
+        gone: "This file is not in this comparison.",
+    },
+    /**
      * Finishing a merge by taking one side of each file.
      *
      * The vocabulary is "keep mine / keep theirs" rather than the backend's `mine`/`theirs`, and

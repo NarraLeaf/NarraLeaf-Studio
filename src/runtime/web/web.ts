@@ -1,5 +1,7 @@
 import {
     GAME_RUNTIME_BRIDGE_KEY,
+    WEB_SHELL_MOBILE_VARIANT,
+    WEB_SHELL_VARIANT_META,
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
     type GameSessionClaim,
@@ -185,6 +187,8 @@ const bridge: GameRuntimePreloadBridge = {
     // player a row that does nothing.
     getWindowScale: async () => 1,
     setWindowScale: async () => undefined,
+    getWindowSize: async () => ({ width: window.innerWidth, height: window.innerHeight }),
+    setWindowSize: async () => undefined,
     getFullscreen: async () => document.fullscreenElement != null,
     setFullscreen: async (fullscreen: boolean) => {
         // Browsers gate requestFullscreen behind a user gesture; a rejected
@@ -357,8 +361,8 @@ window[GAME_RUNTIME_BRIDGE_KEY] = bridge;
 
 /*
  * The player's Back, which on a page leaves the game and takes every line since the last save with
- * it - a browser's back button, a swipe from the edge of a phone screen, and Android's own back
- * gesture, which the mobile shells route through this same history. See `historyGuard`.
+ * it - a browser's back button, a swipe from the edge of a phone screen, a mouse's fourth button.
+ * See `historyGuard`, and the note there about which host this reaches.
  */
 installHistoryGuard({
     readState: () => window.history.state,
@@ -377,7 +381,20 @@ const prevent = (event: DragEvent) => {
 window.addEventListener("dragover", prevent);
 window.addEventListener("drop", prevent);
 
-// Same idea, for the gestures a browser owns rather than the drops: a pinch that
-// leaves the stage zoomed, or a long press that puts "Reload" over a running game.
-// The other half of that policy is CSS in the entry document; see `browserGestures.ts`.
-installBrowserGestureGuards(window);
+/*
+ * Which shell is serving this document.
+ *
+ * The entry document stamps the meta only for the phone shells (`buildWebIndexHtml`); the renderer
+ * bundle reads the very same one for the stage crop (`isMobileShellDocument`). Read here rather
+ * than imported from there because that module belongs to the renderer, which is built for the
+ * desktop shell too and must not depend on this host.
+ */
+const isMobileShell = document
+    .querySelector(`meta[name="${WEB_SHELL_VARIANT_META}"]`)
+    ?.getAttribute("content") === WEB_SHELL_MOBILE_VARIANT;
+
+// Same idea, for the gestures a browser owns rather than the drops: a long press that puts
+// "Reload" over a running game, and - in the shells only, where there is no chrome to undo it
+// with - a pinch that leaves the stage zoomed. The other half of that policy is CSS in the entry
+// document; see `browserGestures.ts`.
+installBrowserGestureGuards(window, { blockPinch: isMobileShell });

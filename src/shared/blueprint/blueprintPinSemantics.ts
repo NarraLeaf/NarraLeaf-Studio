@@ -179,7 +179,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.game.getTotalPlaytime",
     "blueprint.game.isInGame", "blueprint.game.isNvlMode", "blueprint.game.isOptionPicked",
     "blueprint.game.isSceneVisited", "blueprint.game.isTextRead", "blueprint.game.isTextReadById",
-    "blueprint.game.getEndings", "blueprint.game.isEndingReached",
+    "blueprint.game.getEndings", "blueprint.game.isEndingReached", "blueprint.game.isDlcInstalled",
     "blueprint.image.assetLiteral", "blueprint.image.getCropRect", "blueprint.image.getEnabled",
     "blueprint.image.getFitMode", "blueprint.image.getFlipX", "blueprint.image.getFlipY",
     "blueprint.image.getImageAsset", "blueprint.image.getVisible", "blueprint.layer.isMounted",
@@ -234,8 +234,9 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
  */
 const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.app.getFullscreen", "blueprint.app.getWindowScale",
-    "blueprint.app.getWindowScaleOptions", "blueprint.app.setFullscreen",
-    "blueprint.app.setWindowScale", "blueprint.broadcast.send",
+    "blueprint.app.getWindowScaleOptions", "blueprint.app.getWindowSize",
+    "blueprint.app.setFullscreen", "blueprint.app.setWindowScale",
+    "blueprint.app.setWindowSize", "blueprint.broadcast.send",
     "blueprint.button.setEnabled", "blueprint.button.setLabel", "blueprint.button.setPointer",
     "blueprint.button.setVariant", "blueprint.button.setVisible", "blueprint.container.setClipContent",
     "blueprint.container.setEnabled", "blueprint.container.setVariant", "blueprint.container.setVisible",

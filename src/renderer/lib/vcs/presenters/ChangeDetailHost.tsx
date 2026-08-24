@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { DocumentChange, DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
 import { cn } from "@/lib/utils/cn";
 import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "../documentChangeView";
@@ -9,13 +10,14 @@ import { presenterFor } from "./registry";
 //
 // The order is the tie-break: a presenter imported later wins over an earlier one that also
 // claims a document (see `registry.ts`). Nothing here overlaps - three read a content class the
-// comparison settled (sound, stills, type) and three read a document kind (the palette, the
-// interface, its blueprints) - so the order below is alphabetical rather than meaningful, and
-// `registry.test.ts` holds the rule that decides.
+// comparison settled (sound, stills, type) and four read a document kind (the palette, the
+// interface, its blueprints, and the six documents that are settings) - so the order below is
+// alphabetical rather than meaningful, and `registry.test.ts` holds the rule that decides.
 import "./AudioChangeDetail";
 import "./BitmapChangeDetail";
 import "./BrandChangeDetail";
 import "./FontChangeDetail";
+import "./SettingsChangeDetail";
 import "./UIDocumentChangeDetail";
 import "./UIGraphsChangeDetail";
 
@@ -51,6 +53,14 @@ export interface ChangeDetailHostProps {
     readonly kind?: DocumentChangeKind;
     /** Which two versions this is a comparison of, for a presenter that reads the file itself. */
     readonly sides?: ComparisonSides;
+    /**
+     * Controls on the identity line, at the end of it.
+     *
+     * A slot rather than a fixed button, because what is offered here depends on the document and
+     * only the surface above knows: the comparison offers a split tab for the three kinds that have
+     * an editor behind them, and the merge panel offers nothing at all.
+     */
+    readonly actions?: ReactNode;
     readonly className?: string;
 }
 
@@ -61,6 +71,7 @@ export function ChangeDetailHost({
     name: named,
     kind: happened,
     sides,
+    actions,
     className,
 }: ChangeDetailHostProps) {
     const presenter = presenterFor(member ?? entry);
@@ -82,6 +93,7 @@ export function ChangeDetailHost({
                         {directory}
                     </span>
                 )}
+                {actions && <div className="ml-auto flex shrink-0 items-center gap-1">{actions}</div>}
             </div>
             <div
                 // The one handle a test has on "how many presenters are mounted". Also what tells

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import type { BlueprintDocument, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
@@ -10,7 +11,9 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
+    BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
@@ -294,6 +297,49 @@ describe("blueprint/reference-missing", () => {
         expect(present).toEqual([]);
     });
 
+    it("reports a DLC the project no longer has, and says nothing about one it does", async () => {
+        // Deleting a DLC leaves every node that named it answering false forever, so the entrance
+        // behind it is never drawn again and nothing on screen says why.
+        const graph = (dlcId: string): BlueprintGraphIr => ({
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                installed: {
+                    id: "installed",
+                    type: BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
+                    params: { dlcId },
+                },
+                log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                { from: { nodeId: "installed", port: "isInstalled" }, to: { nodeId: "log", port: "message" } },
+            ],
+        });
+        const dlcs = [{ id: "summer", name: "Summer Route", attachTo: APP_TAG_ID_RELEASE }];
+
+        const missing = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("winter") } }),
+                dlcs,
+            }),
+        );
+        expect(missing).toHaveLength(1);
+        expect(missing[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintReferenceMissing.messageDlc",
+            location: { kind: "blueprint", nodeId: "installed" },
+        });
+
+        const present = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("summer") } }),
+                dlcs,
+            }),
+        );
+        expect(present).toEqual([]);
+    });
+
     it("accounts for every project-entity option source the node catalogue declares", () => {
         // The test that keeps this rule honest. A node added later with a new `dynamicOptionsSource`
         // is either resolved or explicitly waived here - it cannot be quietly skipped, which is the
@@ -321,6 +367,108 @@ describe("blueprint/reference-missing", () => {
                 "neither resolves nor waives. Add a resolver in REFERENCE_KIND_BY_OPTIONS_SOURCE, or list the\n" +
                 "source in UNCHECKED_OPTIONS_SOURCES with the reason it cannot be checked.\n",
         ).toEqual([]);
+    });
+});
+
+/**
+ * The one fault in the DLC seam an author cannot see from the inside: Dev Mode carries every story
+ * the project has, so the entrance they are testing always works there. The base build does not
+ * carry the DLC's story, and the button fails for the player who has not bought it.
+ */
+describe("blueprint/dlc-entrance-unguarded", () => {
+    const entrance = (extra?: BlueprintGraphIr["nodes"]): BlueprintGraphIr => ({
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+            start: {
+                id: "start",
+                type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                params: { storyId: "story-dlc", sceneId: "scene-1" },
+            },
+            ...extra,
+        },
+        edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "start", port: "in" } }],
+    });
+
+    const stories = [
+        { id: "story-dlc", name: "Summer", document: storyWithEnding("e1"), dlcId: "summer" },
+        { id: "story-base", name: "Main", document: storyWithEnding("e2") },
+    ];
+
+    it("is a warning by default", () => {
+        expect(rule("blueprint/dlc-entrance-unguarded").defaultSeverity).toBe("warning");
+    });
+
+    it("reports a Start Story into a DLC's story that nothing in the graph guards", async () => {
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: entrance() } }),
+                stories,
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintDlcEntranceUnguarded.message",
+            location: { kind: "blueprint", nodeId: "start" },
+        });
+    });
+
+    it("says nothing when the graph asks about that DLC", async () => {
+        const guard: BlueprintGraphIr["nodes"] = {
+            guard: {
+                id: "guard",
+                type: BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
+                params: { dlcId: "summer" },
+            },
+        };
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: entrance(guard) } }),
+                stories,
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("is not satisfied by a guard on a different DLC", async () => {
+        const guard: BlueprintGraphIr["nodes"] = {
+            guard: {
+                id: "guard",
+                type: BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
+                params: { dlcId: "winter" },
+            },
+        };
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: entrance(guard) } }),
+                stories,
+            }),
+        );
+        expect(findings).toHaveLength(1);
+    });
+
+    it("says nothing about a story the game itself carries", async () => {
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                start: {
+                    id: "start",
+                    type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                    params: { storyId: "story-base", sceneId: "scene-1" },
+                },
+            },
+            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "start", port: "in" } }],
+        };
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }),
+                stories,
+            }),
+        );
+        expect(findings).toEqual([]);
     });
 });
 

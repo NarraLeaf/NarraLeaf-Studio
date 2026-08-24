@@ -1,4 +1,5 @@
 import type { ProjectAppTag } from "@shared/types/appTag";
+import type { ProjectDlc } from "@shared/types/dlc";
 import type { StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -33,7 +34,18 @@ import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist
  *    else off a service is a rule whose data belongs on this context.
  */
 
-export type LintStoryEntry = { id: string; name: string; document: StoryDocument };
+export type LintStoryEntry = {
+    id: string;
+    name: string;
+    document: StoryDocument;
+    /**
+     * The DLC that ships this story, absent on one the game itself carries.
+     *
+     * From the library index rather than the document, because that is where it is stored - a build
+     * reads it to decide whether to load the document at all.
+     */
+    dlcId?: string;
+};
 
 export type LintAssetEntry = {
     id: string;
@@ -190,6 +202,14 @@ export type LintContext = {
      * folds against are the same string.
      */
     appTags: readonly ProjectAppTag[];
+    /**
+     * The DLC this project ships, as the registry holds them.
+     *
+     * Ids as stored, because an id is what a node points at and what the file a player installs is
+     * named after - a rule that matched on names would pass a graph naming a DLC that was renamed
+     * out from under it.
+     */
+    dlcs: readonly ProjectDlc[];
     /**
      * The project variable registry, BOTH scopes, exactly as the service holds it.
      *

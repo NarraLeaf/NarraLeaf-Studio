@@ -35,6 +35,7 @@ import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../..
 import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
 import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { useStableVisibleRows } from "./storyRowIdentity";
+import { useStoryRowReveal } from "./useStoryRowReveal";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
@@ -1009,20 +1010,37 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     });
 
     /**
-     * Put a row on screen by index, whether or not it is currently mounted.
-     *
-     * Everything that used to reach for a row's DOM node — deep links, the Dev Mode play head,
-     * keyboard navigation — could assume the node existed. Under windowing it may not, and the fix
-     * cannot be "scroll the node into view" because there is no node until it is scrolled to.
+     * Where a block sits among the rows the author is currently being shown, or -1 when it is not one
+     * of them — filtered out, or inside a fold. Index rather than element, because the list is
+     * windowed: everything that used to reach for a row's DOM node could assume the node existed, and
+     * under windowing it may not. The one honest answer to "is this row on the page" is this.
      */
-    const scrollRowIntoView = useCallback((blockId: StoryBlockId, align: "center" | "auto" = "auto") => {
-        const index = editor.visibleRows.findIndex(row => row.block.id === blockId);
-        if (index < 0) {
-            return false;
-        }
-        rowVirtualizer.scrollToIndex(index, { align });
-        return true;
-    }, [editor.visibleRows, rowVirtualizer]);
+    const rowIndexOf = useCallback(
+        (blockId: StoryBlockId) => editor.visibleRows.findIndex(row => row.block.id === blockId),
+        [editor.visibleRows],
+    );
+
+    // The "add a row" line past the last row. Held up here because it is one of the three things a
+    // reveal can be asked to show, alongside a row and an open insert slot.
+    const addRowButtonRef = useRef<HTMLButtonElement | null>(null);
+
+    /**
+     * The editor's one way of moving its own viewport.
+     *
+     * Every request arrives through the controller's channel carrying an intent, and the intent is the
+     * whole model (see `storyRowReveal`): a click promises not to move the page at all, a cursor step
+     * moves it the minimum, and only an arrival from elsewhere repositions it. Nothing here decides
+     * anything — the deciding was done at the gesture, which is the only place that knows.
+     */
+    useStoryRowReveal({
+        scrollContainerRef: editor.scrollContainerRef,
+        addRowRef: addRowButtonRef,
+        rowVirtualizer,
+        resolveRowIndex: rowIndexOf,
+        slotHostBlockId: insertSlotHostId,
+        rowHeight: estimatedRowHeight,
+        subscribe: editor.subscribeRowReveal,
+    });
 
     /**
      * A filter change is a different page, so the scroll position from the old one does not survive it.
@@ -1035,57 +1053,25 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      *
      * The anchor is the active row when it survived the filter, and the top when it did not: there is
      * nothing left holding the author's place, and the top of the new page is where reading it starts.
+     * A jump rather than a step, because the page underneath genuinely is a different one — the rows
+     * that used to surround the active row may all be gone, so it is placed for reading rather than
+     * nudged to whichever edge it is nearest.
      *
-     * Deliberately keyed on the filter alone. `scrollRowIntoView` and `visibleRows` change identity on
-     * every keystroke, and listing them would turn this into "yank the scroll on every edit"; the
-     * effect body reads them from the closure of the render the filter change produced, which is the
-     * one set of values it wants.
+     * Deliberately keyed on the filter alone. `visibleRows` changes identity on every keystroke, and
+     * listing it would turn this into "yank the scroll on every edit"; the effect body reads it from
+     * the closure of the render the filter change produced, which is the one set of values it wants.
      */
     useEffect(() => {
         if (!active) {
             return;
         }
-        if (editor.activeBlockId && scrollRowIntoView(editor.activeBlockId, "center")) {
+        if (editor.activeBlockId && rowIndexOf(editor.activeBlockId) >= 0) {
+            editor.revealRow({ kind: "row", blockId: editor.activeBlockId }, "jump");
             return;
         }
         editor.scrollContainerRef.current?.scrollTo({ top: 0 });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [active, editor.rowFilter]);
-
-    /**
-     * Keep the active row on screen. Arrow-navigating a long scene used to walk the selection off the
-     * viewport and leave it there — survivable while every row was in the DOM, fatal once they are
-     * not, because Enter would open an editor on a row that does not exist.
-     *
-     * A row being REWRITTEN has no row element: the slot renders in its place (see `insertSlotHostId`),
-     * so the row's own id is not in the DOM while the author is typing into it. Read as "the row is not
-     * mounted", that sent every opened blank line and every re-opened draft row to the middle of the
-     * viewport — the list jumping under a caret that had just been placed by a click. The slot IS the
-     * row here, so it is what gets measured, and it moves by the same minimum as anything else.
-     */
-    const insertSlotCoversActiveRow = editor.editorMode.kind === "insert"
-        && editor.editorMode.slot.replaceBlockId === editor.activeBlockId;
-    useEffect(() => {
-        if (!active || !editor.activeBlockId || editor.editorMode.kind === "text") {
-            return;
-        }
-        const scroller = editor.scrollContainerRef.current;
-        const row = scroller?.querySelector<HTMLElement>(insertSlotCoversActiveRow
-            ? "[data-story-insert-slot]"
-            : `[data-story-row-block-id="${CSS.escape(editor.activeBlockId)}"]`);
-        if (!scroller) {
-            return;
-        }
-        if (!row) {
-            scrollRowIntoView(editor.activeBlockId, "center");
-            return;
-        }
-        const rowRect = row.getBoundingClientRect();
-        const viewRect = scroller.getBoundingClientRect();
-        if (rowRect.top < viewRect.top || rowRect.bottom > viewRect.bottom) {
-            row.scrollIntoView({ block: "nearest" });
-        }
-    }, [active, editor.activeBlockId, editor.editorMode.kind, editor.scrollContainerRef, insertSlotCoversActiveRow, scrollRowIntoView]);
 
     /**
      * The right rail follows the selected row.
@@ -1277,15 +1263,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const lastFocusedRef = useRef<HTMLElement | null>(null);
     const prevActiveRef = useRef(active);
     const handledDeepLinkRef = useRef<string | null>(null);
-    const addRowButtonRef = useRef<HTMLButtonElement | null>(null);
-
-    // Keep the "add a row" line in view when the keyboard cursor lands on it (Down past the last row),
-    // the same courtesy the deep-link effect does for a targeted block.
-    useEffect(() => {
-        if (editor.addRowFocused) {
-            addRowButtonRef.current?.scrollIntoView({ block: "nearest" });
-        }
-    }, [editor.addRowFocused]);
 
     useLayoutEffect(() => {
         const el = scrollContainerRef.current;
@@ -1421,20 +1398,23 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         if (!el) {
             return;
         }
-        // The row may not be in the DOM — the list is windowed — so this asks the virtualiser to put
-        // it there rather than looking for a node. A `false` means the row is not in the visible set
-        // at all: the scene has not loaded yet, or the row is hidden behind the author's filter or a
-        // fold. Loading resolves itself and the effect re-runs on the rows changing; hiding does not,
-        // so `revealBlock` is asked to take the cover off, which changes the rows and brings us back
-        // here. Without it a navigation to a hidden row was a click that did nothing, for good.
-        if (!scrollRowIntoView(deepLinkBlockId, "center")) {
+        // Not "is the row in the DOM" — the list is windowed and it very often is not — but "is the
+        // author being shown this row at all". Out of the visible set means the scene has not loaded
+        // yet, or the row is hidden behind a filter or a fold. Loading resolves itself and the effect
+        // re-runs on the rows changing; hiding does not, so `revealBlock` is asked to take the cover
+        // off, which changes the rows and brings us back here. Without it a navigation to a hidden row
+        // was a click that did nothing, for good.
+        //
+        // `revealBlock` also declares the move of the page, as a jump: whoever sent us here — a search
+        // hit, a lint entry, the timeline — was not reading this row a moment ago.
+        if (rowIndexOf(deepLinkBlockId) < 0) {
             editor.revealBlock(deepLinkBlockId);
             return;
         }
         handledDeepLinkRef.current = deepLinkKey;
         editor.revealBlock(deepLinkBlockId);
         editor.focusRoot();
-    }, [active, deepLinkBlockId, deepLinkKey, rowCount, scrollContainerRef, scrollRowIntoView, editor.revealBlock, editor.focusRoot]);
+    }, [active, deepLinkBlockId, deepLinkKey, rowCount, scrollContainerRef, rowIndexOf, editor.revealBlock, editor.focusRoot]);
 
     // The scene flow map's connect gesture: open a slot with the `/jump` typed into it and the caret
     // on the end, and leave the committing to the author's Enter (see `StorySceneEditorDraftJump`).
@@ -1450,18 +1430,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return;
         }
         handledDraftJumpRef.current = draftJump.token;
-        if (!editor.startJumpDraft(draftJump)) {
-            return;
-        }
         // The slot lands at the end of the scene (or inside an arm), and the author may well be
         // reading the top of a long chapter — a caret they cannot see is indistinguishable from the
-        // map having done nothing. Waits a frame for the slot to mount before looking for it.
-        window.requestAnimationFrame(() => {
-            scrollContainerRef.current
-                ?.querySelector<HTMLElement>("[data-story-insert-slot]")
-                ?.scrollIntoView({ block: "center" });
-        });
-    }, [active, draftJump, rowCount, scrollContainerRef, editor.scene, editor.startJumpDraft]);
+        // map having done nothing. `startJumpDraft` declares that move itself, as a jump, and the
+        // reveal driver waits for the slot rather than looking for it exactly one frame later: the
+        // list is windowed, so on a long chapter that single look found nothing and the page stayed
+        // where it was.
+        editor.startJumpDraft(draftJump);
+    }, [active, draftJump, rowCount, editor.scene, editor.startJumpDraft]);
 
     // Dev Mode play head: follow the running row in place when this editor owns the scene.
     // Uses the plain row-select visual — never `revealBlock` (which would flip the author's
@@ -1469,8 +1445,8 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // author's view nor pulls keyboard focus. Only rows the author is currently showing react: a row
     // hidden by the filter or a collapsed parent is not in the DOM, so it is silently skipped.
     const lastPlayHeadBlockRef = useRef<StoryBlockId | null>(null);
-    const scrollRowIntoViewRef = useRef(scrollRowIntoView);
-    scrollRowIntoViewRef.current = scrollRowIntoView;
+    const rowIndexOfRef = useRef(rowIndexOf);
+    rowIndexOfRef.current = rowIndexOf;
     useEffect(() => {
         lastPlayHeadBlockRef.current = null;
         return subscribeStoryRowHighlight(highlight => {
@@ -1480,13 +1456,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             if (lastPlayHeadBlockRef.current === highlight.blockId) {
                 return;
             }
-            // Windowed list: ask for the row by index rather than by node, and skip when the author
-            // is not showing it at all (filtered out, or inside a collapsed parent) — same silence as
-            // before, for the same reason.
-            if (!scrollRowIntoViewRef.current(highlight.blockId, "auto")) {
+            // Skip a row the author is not showing at all (filtered out, or inside a collapsed
+            // parent) — same silence as before, for the same reason.
+            if (rowIndexOfRef.current(highlight.blockId) < 0) {
                 return;
             }
             lastPlayHeadBlockRef.current = highlight.blockId;
+            // No mouse event, so this selection is a step: the play head follows the game line by
+            // line, and a game that runs for a minute must not spend that minute recentring the page.
             editorRef.current.selectRow(highlight.blockId);
         });
     }, [active, payload?.storyId, payload?.sceneId, scrollContainerRef]);
@@ -1683,7 +1660,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     const [menuTargetId, setMenuTargetId] = useState<StoryBlockId | null>(null);
     const openRowContextMenu = useCallback((event: ReactMouseEvent, blockId: StoryBlockId) => {
         if (!editor.selectedBlockIds.has(blockId)) {
-            editor.selectRow(blockId);
+            // A right-click is a press like any other: the row is under the pointer, and the menu is
+            // about to open at that pointer. Moving the page would open it somewhere else.
+            editor.selectRow(blockId, undefined, "none");
         }
         setMenuTargetId(blockId);
         rowMenu.showMenu(event);
@@ -1744,9 +1723,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             return;
         }
         setFindCursor(index);
-        editor.selectRow(match.blockId);
-        scrollRowIntoView(match.blockId, "center");
-    }, [editor, findMatches, scrollRowIntoView]);
+        // A find result is an arrival even though the author never left: Next can throw the cursor
+        // twenty screens down a chapter, and a hit placed for reading is the difference between
+        // finding a line and finding a line you then have to work out the surroundings of.
+        editor.selectRow(match.blockId, undefined, "jump");
+    }, [editor, findMatches]);
 
     const stepMatch = useCallback((delta: number) => {
         if (findMatches.length === 0) {

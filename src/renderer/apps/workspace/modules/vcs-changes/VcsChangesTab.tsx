@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RotateCcw } from "lucide-react";
+import { Columns2, Loader2, RotateCcw } from "lucide-react";
 import type { Translator } from "@shared/i18n";
 import type { RevisionId } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
@@ -13,6 +13,7 @@ import type { ChangeCategory } from "@/lib/vcs/changeCategory";
 import { buildChangeIndex, type ChangeIndexGroup } from "@/lib/vcs/changeIndex";
 import { changeIndexRowName, ChangeIndexPane } from "@/lib/vcs/ChangeIndexPane";
 import { IndexDivider, INDEX_DEFAULT_WIDTH } from "@/lib/vcs/IndexDivider";
+import { opensAsSplitComparison } from "@/lib/vcs/compare/splitDocuments";
 import { ChangeDetailHost } from "@/lib/vcs/presenters/ChangeDetailHost";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import {
@@ -24,6 +25,7 @@ import { VersionControlService } from "@/lib/workspace/services/core/VersionCont
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "@/apps/workspace/context";
 import { revisionLabel } from "../../components/layout/versionRailModel";
+import { openVcsCompareTab } from "./openVcsCompareTab";
 import { VcsResolvePanel } from "./VcsResolvePanel";
 import type { VcsChangesPayload } from "./vcsChangesIds";
 
@@ -83,6 +85,7 @@ export function VcsChangesTab({ payload }: { payload?: VcsChangesPayload }) {
 
 function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode: "resolve" }> }) {
     const { t } = useTranslation();
+    const { context } = useWorkspace();
     const request = useMemo<DocumentDiffRequest>(
         () => (mode.mode === "between" ? { mode: "between", from: mode.from, to: mode.to } : { mode: "working-tree" }),
         [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null],
@@ -248,6 +251,26 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
                                     name={changeIndexRowName(selected, t)}
                                     kind={selected.kind}
                                     sides={comparison}
+                                    // Offered only for the documents an editor tab exists for. For
+                                    // everything else this column IS the whole answer, and a button
+                                    // to see the same six lines wider would be a control with
+                                    // nothing behind it.
+                                    actions={context && opensAsSplitComparison(selected.entry) && (
+                                        <ToolbarButton
+                                            size="xs"
+                                            onClick={() => openVcsCompareTab(context, {
+                                                comparison: mode.mode === "between"
+                                                    ? mode
+                                                    : { mode: "working-tree", headNumber: headNumber ?? undefined },
+                                                path: selected.entry.path,
+                                                name: changeIndexRowName(selected, t),
+                                            })}
+                                            data-tip={t("documentDiff.split.open")}
+                                            aria-label={t("documentDiff.split.open")}
+                                        >
+                                            <Columns2 className="h-3.5 w-3.5" />
+                                        </ToolbarButton>
+                                    )}
                                 />
                             )
                             : <EmptyState size="sm" description={t("documentDiff.shell.selectPrompt")} />}
