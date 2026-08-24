@@ -33,7 +33,6 @@ import { useTranslation } from "@/lib/i18n";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
-    isStoryMotionKeyframeSelectionData,
     type StoryMotionEditorPayload,
 } from "./storyMotionTypes";
 import {
@@ -204,7 +203,6 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
                 const selection = uiService?.getStore().getSelection();
                 if (
                     selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
-                    && isStoryMotionKeyframeSelectionData(selection.data)
                     && selection.data.animationId === payload.animationId
                 ) {
                     uiService?.getStore().setSelection({ type: null, data: null });
@@ -691,7 +689,6 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         const selection = uiService?.getStore().getSelection();
         if (
             selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
-            && isStoryMotionKeyframeSelectionData(selection.data)
             && selection.data.keyframeId === keyframeId
         ) {
             uiService?.getStore().setSelection({ type: null, data: null });
@@ -842,7 +839,6 @@ export function StoryMotionEditorTab({ tabId, payload, active }: EditorTabCompon
         const selection = uiService?.getStore().getSelection();
         if (
             selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
-            && isStoryMotionKeyframeSelectionData(selection.data)
             && selection.data.animationId === payload?.animationId
             && selection.data.trackId === track.id
         ) {

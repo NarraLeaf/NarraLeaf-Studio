@@ -7,7 +7,11 @@ import { makeFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { StorySceneOverviewBlock } from "./StorySceneEditorTab";
 
 /**
- * The card above the rows, while a live session owns the story.
+ * The card above the rows, while it may not be written.
+ *
+ * One guard covers both refusals - see `storyEditGuard`. These cases pass the session's, because
+ * that is the harder of the two to get right: a session leaves the rest of the editor working, so
+ * this card is the one control that has to switch itself off.
  *
  * Its controls all commit through `updateSceneMetadata`, which is `StoryService.updateScene` - not
  * one of the operations a session hands to its sink, and every field it writes is part of what the
@@ -66,7 +70,7 @@ function renderCard(owned: boolean) {
             backgroundAsset={null}
             onUpdateScene={onUpdateScene}
             panelStateService={null}
-            liveSession={makeFreezeGuard(owned, IN_A_SESSION)}
+            writes={makeFreezeGuard(owned, IN_A_SESSION)}
         />,
     );
     const buttons = [...container.querySelectorAll("button")];

@@ -42,7 +42,7 @@ export const documentDiff = {
     summary: {
         title: "名称",
         count: "{name}",
-        other: "已改动，但概要无法说明具体改动",
+        other: "总数之外有改动",
     },
     structural: {
         property: "{name}",
@@ -337,13 +337,13 @@ export const documentDiff = {
     },
     tier: {
         summary: "仅概要",
-        summaryHint: "没有比较内容本身，这些是两个版本各自报告的数字",
+        summaryHint: "只比较了总数，没有比较内容本身",
         structural: "结构级",
-        structuralHint: "仅按 JSON 结构比较，所以生成的 id 和重排过的数组都会被算成改动",
+        structuralHint: "这份列表里可能有并非改动的差异",
         content: "仅格式信息",
         contentHint: "比较的是文件自述的信息，没有比较内容本身",
         opaque: "未读取",
-        opaqueHint: "文件过大、非文本或无法读取，只能报告体积",
+        opaqueHint: "只比较了文件体积",
     },
     rows: {
         loading: "正在读取差异…",
@@ -351,7 +351,7 @@ export const documentDiff = {
         // 三种「空」。「已修改」配上「没有差异」读起来是自相矛盾，而每一档能给出的
         // 说法强度不一样，理由见 documentDiffEmptyKey。
         emptyFormatting: "只有格式变了",
-        emptyUntracked: "编辑器记录的内容没有变化",
+        emptyUntracked: "编辑器中没有可见的变化",
         emptyCounts: "总数没有变化",
         moreInGroup: "另有 {count} 处",
         showing: "已显示 {shown} / {total}",
@@ -427,7 +427,7 @@ export const documentDiff = {
     shell: {
         fileList: "变更文件",
         resize: "调整文件列表宽度",
-        selectPrompt: "展开一个分组并选中文件，即可查看其中的改动",
+        selectPrompt: "展开一个分组并选中文件，查看其中的改动",
         changes: {
             one: "{count} 处改动",
             other: "{count} 处改动",
@@ -442,8 +442,8 @@ export const documentDiff = {
         },
         /** 每组只说一次，不逐行重复；具体是哪一种，写在该文件自己的详情里。 */
         partial: {
-            one: "本组有 {count} 个文件未被完整比较",
-            other: "本组有 {count} 个文件未被完整比较",
+            one: "本组有 {count} 个文件可能存在未列出的改动",
+            other: "本组有 {count} 个文件可能存在未列出的改动",
         },
     },
     tab: {
@@ -455,8 +455,8 @@ export const documentDiff = {
         refresh: "重新读取",
         empty: "两个版本之间没有差异",
         emptyWorkingTree: "自上一个版本以来没有改动",
-        readFailure: "无法读取本次对比所需的数据：{error}",
-        incomplete: "{total} 份变更文档里比较了 {shown} 份，其余被略过",
+        readFailure: "无法读取本次对比：{error}",
+        incomplete: "{total} 份变更文档中比较了 {shown} 份",
         documentsOmitted: "另有 {count} 份文档没有列出",
         unavailable: "该工程没有可用的版本控制",
     },
@@ -553,7 +553,7 @@ export const documentDiff = {
         markLabel: "查看这条改动",
         /** 与蓝图编辑器同一个词：同一张图、同一个结果，换个说法会被读成另一种行为。 */
         fitView: "适应视图",
-        oneChange: "当前只看一条改动",
+        oneChange: "只显示一条改动",
         showAll: "显示全部改动",
         /** 画布没有标出来的那些改动，一行说清；标了九条却不说另外三条，读起来就像一共只有九条。 */
         notMarked: {
@@ -562,9 +562,9 @@ export const documentDiff = {
         },
         onOtherPages: "{count} 条在其他页面",
         onOtherGraphs: "{count} 条在其他蓝图",
-        offCanvas: "{count} 条无法画在页面上",
+        offCanvas: "{count} 条在所有页面之外",
         /** 组件内部的元素本来就不带 id：同一个组件的每个实例共用内部 id，带上就分不清是哪一处放置。 */
-        unplaced: "{count} 条在画面上定位不到",
+        unplaced: "{count} 条在页面上没有位置",
         notDrawn: "该版本的页面无法绘制",
         emptyGraph: "这张图里没有节点",
         tooLarge: "该文件过大，无法在此绘制",

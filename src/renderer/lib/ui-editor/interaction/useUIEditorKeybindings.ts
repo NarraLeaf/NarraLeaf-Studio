@@ -38,7 +38,7 @@ function getUiSelection(stateService: UIEditorStateService, surfaceId: string): 
     if (!isUIElementSelection(sel)) {
         return null;
     }
-    const data = sel.data as UIElementSelection;
+    const data = sel.data;
     return data.surfaceId === surfaceId ? data : null;
 }
 

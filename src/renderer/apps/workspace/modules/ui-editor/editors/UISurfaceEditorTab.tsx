@@ -19,7 +19,6 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
-import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
@@ -214,11 +213,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             return;
         }
         if (current.type === "scene") {
-            const currentSceneId = typeof current.data === "string" ? current.data : current.data?.id ?? null;
-            if (currentSceneId === surface.id) {
-                selectSurfaceForProperties(stateService, surface.id, uiService);
-                return;
-            }
             selectSurfaceForProperties(stateService, surface.id, uiService);
             return;
         }
@@ -276,7 +270,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return null;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== activeBindingSession.surfaceId || data.elementIds.length !== 1) {
             return null;
         }
@@ -296,7 +290,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== activeBindingSession.surfaceId || data.elementIds.length !== 1) {
             return;
         }
@@ -404,7 +398,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== surface.id || data.elementIds.length !== 1) {
             return;
         }
