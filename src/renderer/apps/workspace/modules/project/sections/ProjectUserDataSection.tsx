@@ -177,8 +177,8 @@ async function copy(
     uiService: ProjectSectionProps["uiService"],
 ): Promise<void> {
     return copyTextToClipboard(summarize(locations, gameFolder, t)).then(
-        () => uiService?.showNotification(t("project.userData.copied"), "success"),
-        () => uiService?.showNotification(t("project.userData.copyFailed"), "error"),
+        () => { uiService?.showNotification(t("project.userData.copied"), "success"); },
+        () => { uiService?.showNotification(t("project.userData.copyFailed"), "error"); },
     );
 }
 

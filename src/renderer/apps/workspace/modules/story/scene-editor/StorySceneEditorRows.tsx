@@ -686,7 +686,13 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
             {/* Last, so it draws over the background strip on a `/bg` row, and absolute, so a claim
                 taken and dropped while somebody types never re-wraps the words on this line. */}
             {claimedBy !== null ? (
-                <StoryRowClaimMark account={claimedBy} onArtwork={controlsOverArtwork} />
+                <StoryRowClaimMark
+                    account={claimedBy}
+                    onArtwork={controlsOverArtwork}
+                    // The corner belongs to the row's own actions while the pointer is on it, so the
+                    // name stands down and leaves the monogram.
+                    quiet={showRowActions}
+                />
             ) : null}
         </div>
     );

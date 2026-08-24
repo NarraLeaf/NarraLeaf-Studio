@@ -29,8 +29,10 @@ import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
 import { notificationsPanelModule } from "./notifications";
+import { collaborationPanelModule } from "./collaboration";
 import { pluginsPanelModule } from "./plugins";
 import { testReportModule } from "./testing";
+import { buildReportModule } from "./build-report";
 
 /**
  * Built-in panel modules
@@ -51,6 +53,7 @@ export const builtInPanels: PanelModule[] = [
     propertiesModule,
     storyVariablesPanelModule,
     dictionaryPanelModule,
+    collaborationPanelModule,
     notificationsPanelModule,
     pluginsPanelModule,
     consoleModule,
@@ -70,6 +73,7 @@ export const builtInEditors: EditorModule[] = [
     fontPreviewModule,
     jsonPreviewModule,
     testReportModule,
+    buildReportModule,
 ];
 
 /**
@@ -106,4 +110,5 @@ export { voicePanelModule } from "./voice";
 export { dashboardPanelModule } from "./dashboard";
 export { pluginsPanelModule, openPluginsPanel, PLUGINS_PANEL_ID } from "./plugins";
 export { testReportModule, openTestDialog, openTestReportTab } from "./testing";
+export { buildReportModule, openBuildReportTab } from "./build-report";
 export { builtInStatusBarEntries } from "./status-bar";

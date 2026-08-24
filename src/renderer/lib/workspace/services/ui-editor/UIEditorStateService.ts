@@ -627,7 +627,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
      */
     private ensureEnteredStateValid(selection: SelectionState): void {
         const entered = this.enteredState;
-        if (!entered || selection.type !== "element" || !selection.data) {
+        if (!entered || selection.type !== "element") {
             return;
         }
         if (selection.data.surfaceId !== entered.surfaceId) {
@@ -639,7 +639,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         if (!this.interactionOverride) {
             return;
         }
-        if (selection.type !== "element" || !selection.data) {
+        if (selection.type !== "element") {
             this.setInteractionOverride(null);
             return;
         }

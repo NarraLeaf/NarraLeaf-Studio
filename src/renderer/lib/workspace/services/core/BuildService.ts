@@ -73,6 +73,31 @@ type BuildServiceEvents = {
     stateChanged: GameBuildStateSnapshot;
 };
 
+/** What the pipeline was asked to produce. Both run in the same session and report the same states. */
+export type GameBuildRunKind = "build" | "patch";
+
+/**
+ * One finished run of the pipeline, as the build report reads it.
+ *
+ * The snapshot alone does not say what the run was: it carries no variant and does not distinguish a
+ * production build from a patch export, both of which the main process reports through the same
+ * session. Those two facts are known only where the run was requested, so they are recorded here
+ * when it starts and kept with the terminal snapshot.
+ *
+ * Kept beyond the run because {@link BuildService.getState} moves on as soon as the next build
+ * starts, while the report describes the one that finished.
+ */
+export type FinishedGameBuildRun = {
+    /** Increments once per finished run, so a reader can tell a new one from a re-render. */
+    id: number;
+    kind: GameBuildRunKind;
+    /** The variant the run was requested under. Absent means the project's own values. */
+    appTagId?: string;
+    /** True when the author stopped the run, which the pipeline reports as a failure. */
+    cancelled: boolean;
+    state: GameBuildStateSnapshot;
+};
+
 /**
  * A build dialog session the user has not committed yet. Lives on the service
  * (see getDraft) so closing the dialog mid-configuration does not discard it.
@@ -159,6 +184,12 @@ const LINT_CONSOLE_LEVELS: Record<LintSeverity, ConsoleLogLevel> = {
  * the toolbar/dialog react to status changes. The heavy lifting (compile +
  * electron-builder) lives in the main-process GameBuildManager.
  */
+/**
+ * Which reading of the project a coverage refusal protects: the asset sweep every package runs, or
+ * the scene answer that a narrowing edition depends on as well.
+ */
+type TrimCoverageScope = "assets" | "content";
+
 export class BuildService extends Service<BuildService> {
     private state: GameBuildStateSnapshot = IDLE_STATE;
     private timer: ReturnType<typeof setInterval> | null = null;
@@ -166,6 +197,11 @@ export class BuildService extends Service<BuildService> {
     private refreshInFlight = false;
     private draft: BuildDialogDraft | null = null;
     private readonly events = new EventEmitter<BuildServiceEvents>();
+    /** What the run now in flight was asked for; read when it reaches a terminal state. */
+    private pendingRun: { kind: GameBuildRunKind; appTagId?: string } | null = null;
+    private cancelRequested = false;
+    private lastFinishedRun: FinishedGameBuildRun | null = null;
+    private finishedRunCount = 0;
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
         return;
@@ -212,6 +248,17 @@ export class BuildService extends Service<BuildService> {
     }
 
     /**
+     * The last run that reached a terminal state in this session, or null before any has.
+     *
+     * The build report reads this rather than {@link getState}, which describes whatever is running
+     * now. A run the author stopped is recorded like any other and marked `cancelled`, so a reader
+     * can tell a stopped run from a failure.
+     */
+    public getLastFinishedRun(): FinishedGameBuildRun | null {
+        return this.lastFinishedRun;
+    }
+
+    /**
      * Ask the main process what this selection would complain about. Advisory:
      * the pipeline re-runs every check, so a preflight that misses something
      * (or fails outright) can only cost a late error, never a bad build.
@@ -254,6 +301,9 @@ export class BuildService extends Service<BuildService> {
         // a run rejected by one of them still reports when it began. The dashboard's build history
         // archives each run's console output from this instant, and those checks log to it.
         const startedAt = Date.now();
+        // Recorded before the checks for the same reason `startedAt` is: a run refused by one of
+        // them is still a finished run, and the report names the variant it would have carried.
+        this.beginRun("build", request.appTagId);
         // The checks below fail without ever reaching the main process, so nothing else will name
         // the platforms for them - and a build that died in preflight is exactly the one an author
         // comes back to in the dashboard's history wanting to know what it was building.
@@ -482,6 +532,9 @@ export class BuildService extends Service<BuildService> {
      */
     public async exportPatch(request: GamePatchExportRequest): Promise<GameBuildStateSnapshot> {
         const startedAt = Date.now();
+        // The content's variant, matching the gate below: a patch is reported as the edition whose
+        // material it carries, not as the one it attaches to.
+        this.beginRun("patch", request.contentAppTagId ?? request.appTagId);
         const platforms = this.storedDesktopPlatforms();
         // Gated on the content's variant, not the one the patch attaches to: what a gate refuses is
         // a payload, and the payload is that variant's. A patch must not carry what a build of the
@@ -516,6 +569,9 @@ export class BuildService extends Service<BuildService> {
     }
 
     public async cancel(): Promise<GameBuildStateSnapshot> {
+        // Recorded before the request, because the pipeline reports a stopped run as a failure with
+        // a message of its own making. This flag is what tells the two apart on the way back.
+        this.cancelRequested = true;
         const result = await getInterface().gameBuild.cancel(this.projectPath());
         if (result.success) {
             this.updateState(result.data.state);
@@ -625,6 +681,15 @@ export class BuildService extends Service<BuildService> {
         const appTags = services.get<AppTagService>(Services.AppTags);
         const appTag = appTags.resolveTag(appTagId);
 
+        // Ahead of everything below, and not conditional on this variant removing anything: every
+        // package narrows the asset library to the ids written in the bytes it ships, so the one
+        // shape that reading is blind to has to be refused for every package rather than only for
+        // the editions that also drop scenes.
+        const pinRefusal = await this.refuseOnTrimCoverageGaps(startedAt, platforms, appTag.name, "assets");
+        if (pinRefusal) {
+            return pinRefusal;
+        }
+
         let answer: ReleaseContentAnswer;
         try {
             answer = solveReleaseContent({
@@ -679,7 +744,12 @@ export class BuildService extends Service<BuildService> {
         }
 
         if (answer.removedScenes.length > 0) {
-            const coverageRefusal = await this.refuseOnTrimCoverageGaps(startedAt, platforms, answer.appTagName);
+            const coverageRefusal = await this.refuseOnTrimCoverageGaps(
+                startedAt,
+                platforms,
+                answer.appTagName,
+                "content",
+            );
             if (coverageRefusal) {
                 return coverageRefusal;
             }
@@ -725,6 +795,20 @@ export class BuildService extends Service<BuildService> {
      * missing with nothing anywhere having said so. The remedy is to name the asset in the pin
      * instead of wiring a value into it.
      *
+     * ## The two scopes, which are two different questions
+     *
+     * `assets` is asked of every package. What it refuses is the one construct the id sweep cannot
+     * see - an asset arriving on a pin from a computed value - and nothing else, because that
+     * question has nothing to do with which scenes a build keeps. The remedy is to select the asset
+     * on the pin.
+     *
+     * `content` is asked only where the build also drops scenes. It adds the gaps that make the
+     * scene answer itself incomplete: a story document that would not load, and an index that never
+     * built. A gap in a widget, a voice table or a character says nothing about which scenes a story
+     * can reach, which is why the wider question is not asked of every build - one `app://fs` URL
+     * pasted into a widget prop leaves a gap that can never be resolved, and asking it everywhere
+     * would hand this feature a permanent off switch.
+     *
      * ## Why it is a gate and not a preflight finding
      *
      * The criterion is stated at the `AppTag` gate above, and this one fails it for a reason of its
@@ -737,6 +821,7 @@ export class BuildService extends Service<BuildService> {
         startedAt: number,
         platforms: GameBuildPlatform[],
         variant: string,
+        scope: TrimCoverageScope,
     ): Promise<GameBuildStateSnapshot | null> {
         let gaps: readonly ReferenceIndexGap[];
         try {
@@ -754,27 +839,31 @@ export class BuildService extends Service<BuildService> {
             console.error("[Build] the reference index could not be consulted for the content check", error);
             return null;
         }
-        const touching = gaps.filter(gap => !gap.slice
-            || gap.slice === "story"
-            || gap.slice === "storyAnimation"
-            || gap.reason === "computedAssetPin");
+        const touching = scope === "assets"
+            ? gaps.filter(gap => gap.reason === "computedAssetPin")
+            : gaps.filter(gap => !gap.slice
+                || gap.slice === "story"
+                || gap.slice === "storyAnimation"
+                || gap.reason === "computedAssetPin");
         if (touching.length === 0) {
             return null;
         }
 
         const consoleService = this.tryGetConsole();
+        const gapKey = scope === "assets" ? "build.contentComputedPinGap" : "build.contentCoverageGap";
         for (const gap of touching) {
-            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.contentCoverageGap", {
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate(gapKey, {
                 // A gap with no site is the index itself; it has no location to name, and the
                 // sentence has to read as one either way.
                 location: gap.location ?? translate("build.contentCoverageWholeProject"),
                 variant,
             }), { source: BUILD_CONSOLE_SOURCE });
         }
-        const refusal = translateN("build.contentCoverageSummary", touching.length, {
-            count: touching.length,
-            variant,
-        });
+        const refusal = translateN(
+            scope === "assets" ? "build.contentComputedPinSummary" : "build.contentCoverageSummary",
+            touching.length,
+            { count: touching.length, variant },
+        );
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
         this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: refusal });
         return this.state;
@@ -1381,9 +1470,31 @@ export class BuildService extends Service<BuildService> {
         return this.getContext().project.getConfig().projectPath;
     }
 
+    /** Stamp what a run was asked for, and clear the previous run's cancel flag. */
+    private beginRun(kind: GameBuildRunKind, appTagId: string | undefined): void {
+        this.pendingRun = appTagId ? { kind, appTagId } : { kind };
+        this.cancelRequested = false;
+    }
+
     private updateState(next: GameBuildStateSnapshot): void {
         this.syncPolling(next.status);
         const previous = this.state;
+        // Terminal on the transition only, and only for a run this workspace asked for. The poll
+        // returns the same finished snapshot until it stops, so a run must be recorded once; and
+        // the first poll of a session can pick up a run that ended before the project was reopened,
+        // which this workspace has nothing to report about.
+        const pending = this.pendingRun;
+        if (pending && (next.status === "done" || next.status === "error") && previous.status !== next.status) {
+            this.finishedRunCount += 1;
+            this.lastFinishedRun = {
+                id: this.finishedRunCount,
+                kind: pending.kind,
+                ...(pending.appTagId ? { appTagId: pending.appTagId } : {}),
+                cancelled: this.cancelRequested,
+                state: next,
+            };
+            this.pendingRun = null;
+        }
         this.state = next;
         // Phase transitions (not every poll tick) drive the console progress bar.
         if (previous.status !== next.status) {

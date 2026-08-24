@@ -49,7 +49,7 @@ export const documentDiff = {
         title: "名前",
         /** `{name}` 自体がキー。下の `count` を参照。このテンプレートに届く前に解決される。 */
         count: "{name}",
-        other: "変更あり。要約には現れない部分",
+        other: "合計に出ない変更",
     },
     /** 第 3 段階。JSON のパス。作りからして一般的で、一覧の上の見出しがそう断っている。 */
     structural: {
@@ -396,13 +396,13 @@ export const documentDiff = {
      */
     tier: {
         summary: "要約のみ",
-        summaryHint: "中身は比べていない。ここに出るのは、それぞれの版が自分について報告している数",
+        summaryHint: "比べたのは合計だけで、中身そのものは比べていない",
         structural: "構造",
-        structuralHint: "JSON の構造だけで比べているので、生成された id や並べ替えた一覧も変更として出る",
+        structuralHint: "この一覧には、変更ではない差分も混じることがある",
         content: "形式の情報のみ",
         contentHint: "比べたのはファイルが自分について言っている情報で、中身そのものは比べていない",
         opaque: "未読",
-        opaqueHint: "大きすぎるか、テキストでないか、読めない。分かるのは大きさだけ",
+        opaqueHint: "比べたのはファイルの大きさだけ",
     },
     rows: {
         loading: "比較結果を読んでいる…",
@@ -410,7 +410,7 @@ export const documentDiff = {
         // 「何も無い」に 3 通りある。「変更あり」と「違いはない」が並ぶと矛盾に読め、
         // 段階ごとに言えることも違う。documentDiffEmptyKey を参照。
         emptyFormatting: "書式だけが変わった",
-        emptyUntracked: "エディタが見ている範囲に変化はない",
+        emptyUntracked: "エディタ上に見える変化はない",
         emptyCounts: "合計は変わっていない",
         moreInGroup: "この中にあと {count} 件",
         showing: "{total} 件中 {shown} 件を表示",
@@ -500,7 +500,7 @@ export const documentDiff = {
         },
         /** 見出しの下で一度だけ言い、行ごとには繰り返さない。どれに当たったかは、そのファイルの詳細が言う。 */
         partial: {
-            other: "この中に、最後まで比べられなかったファイルが {count} 件ある",
+            other: "変更が載りきっていない可能性のあるファイルが {count} 件ある",
         },
     },
     tab: {
@@ -512,8 +512,8 @@ export const documentDiff = {
         refresh: "読み直す",
         empty: "この 2 つのバージョンに違いはない",
         emptyWorkingTree: "直前のバージョンから変わっていない",
-        readFailure: "この比較に必要なバイト列を読めなかった：{error}",
-        incomplete: "変化した {total} 件のドキュメントのうち {shown} 件を比べた。残りは対象から外した",
+        readFailure: "この比較を読めなかった：{error}",
+        incomplete: "変化した {total} 件のドキュメントのうち {shown} 件を比べた",
         documentsOmitted: "ここに載っていないドキュメントがあと {count} 件ある",
         unavailable: "このプロジェクトではバージョン管理を使えない",
     },
@@ -615,7 +615,7 @@ export const documentDiff = {
         markLabel: "この変更を見る",
         /** ブループリントエディタと同じ語。同じ図で同じ結果になるので、言い換えると別のふるまいに読まれる。 */
         fitView: "全体を表示",
-        oneChange: "今は 1 件だけを見ている",
+        oneChange: "1 件だけ表示",
         showAll: "すべての変更を表示",
         /** キャンバスに印が付いていない変更を 1 行で言う。9 件に印を付けて残り 3 件を黙るのは、全部で 9 件だと言うのと同じ。 */
         notMarked: {
@@ -623,9 +623,9 @@ export const documentDiff = {
         },
         onOtherPages: "他のページに {count} 件",
         onOtherGraphs: "他のブループリントに {count} 件",
-        offCanvas: "ページの上に描けないものが {count} 件",
+        offCanvas: "どのページにもないものが {count} 件",
         /** コンポーネントの中の要素はもともと id を持たない。同じコンポーネントのどの実体も内側の id を共有するので、付ければどの配置か分からなくなる。 */
-        unplaced: "画面上で位置を決められないものが {count} 件",
+        unplaced: "ページ上に位置を持たないものが {count} 件",
         notDrawn: "このバージョンのページは描けない",
         emptyGraph: "このグラフにノードがない",
         tooLarge: "このファイルは大きすぎて、ここには描けない",

@@ -177,13 +177,9 @@ const bridge: GameRuntimePreloadBridge = {
     // Says out loud what the no-op above implies, so callers gate on it instead of registering a
     // handler that can never run (runtime plugins surface it as events.available("closeRequested")).
     capabilities: { closeRequested: false, windowScale: false },
-    // A page has no channel that arrives before its own scripts, so this build cannot answer until
-    // the pack has been fetched. `null` says exactly that, and the renderer keeps its default
-    // until `readPack` resolves rather than treating unknown as an answer.
-    crashPolicy: null,
-    // No log file at all here: this shell prints to the browser console, so there is no path a
-    // crash screen could send anyone to.
-    logPath: null,
+    // Nothing here states a crash policy or a log path. This page is a static file nobody
+    // navigates to with a query, so the crash screen keeps its default until `readPack` resolves,
+    // and there is no log file to send anyone to - this shell prints to the browser console.
     save: {
         write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
             (await getStorage()).writeSave(id, savedGame, capture, metadata, compatibility, playtimeSeconds),
