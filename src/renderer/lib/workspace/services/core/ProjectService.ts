@@ -41,6 +41,8 @@ import {
     normalizeSigningConfiguration,
     normalizeVfxConfiguration,
     normalizeVoiceConfiguration,
+    normalizeWindowConfiguration,
+    type WindowConfiguration,
     readAssetOptimizationConfiguration,
     normalizeDistributionConfiguration,
     type DistributionConfiguration,
@@ -639,6 +641,38 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 dialogue,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read what the shipped game's window may do, falling back to the defaults for projects that
+     * predate `app.window` - which is a resizable window that remembers where it was.
+     */
+    public getWindowConfiguration(): WindowConfiguration {
+        return normalizeWindowConfiguration(this.getProjectConfig().app?.window);
+    }
+
+    /**
+     * Merge a partial patch into the window settings.
+     *
+     * Written by the project App page and baked into the bundle, where the shell reads it to open
+     * its window and the game's own configuration screen reads it to know what sizes to offer.
+     */
+    public async updateWindowConfiguration(patch: Partial<WindowConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const window = normalizeWindowConfiguration({
+                ...normalizeWindowConfiguration(config.app?.window),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                window,
             };
             return {
                 ...config,

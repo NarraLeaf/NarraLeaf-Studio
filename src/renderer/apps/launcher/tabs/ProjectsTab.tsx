@@ -8,7 +8,7 @@ import { useTranslation } from "@/lib/i18n";
 import { AlertTriangle, FolderOpen, MoreVertical, Plus, Search, X } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProject";
-import { isMacPlatform, isWindowsPlatform } from "@/lib/app/platform";
+import { revealInFileManagerKey } from "@/lib/app/platform";
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
 import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject, useRevealRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
@@ -476,18 +476,6 @@ function WelcomeAction({
             <span className="text-sm">{label}</span>
         </button>
     );
-}
-
-/**
- * What this system calls the thing that is about to open.
- *
- * Read at call time rather than through a hook: the platform cannot change while the window is up,
- * and `getPlatformInfo` is a synchronous read of what the preload already handed over.
- */
-function revealInFileManagerKey() {
-    if (isMacPlatform()) return "launcher.projects.revealInFinder" as const;
-    if (isWindowsPlatform()) return "launcher.projects.revealInExplorer" as const;
-    return "launcher.projects.revealInFileManager" as const;
 }
 
 function missingReasonKey(reason: RecentProjectMissingReason) {

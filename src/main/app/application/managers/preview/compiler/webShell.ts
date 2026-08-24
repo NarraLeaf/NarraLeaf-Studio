@@ -93,8 +93,14 @@ export function buildWebIndexHtml(
     // viewport-fit=cover lets the game paint under a notch/home indicator
     // instead of being letterboxed by the browser's default safe-area inset;
     // the shells run full-screen, so the inset would show as bars.
+    //
+    // user-scalable=no is mobile-only because it is honoured nowhere else: Safari has ignored it
+    // since iOS 10, while the WebViews both shells embed still obey it. The CSS below removes the
+    // same gestures everywhere and does not need it; this is the belt for a WebKit older than
+    // `touch-action`, and the shells are the one host where a zoomed-in player has no browser
+    // chrome to zoom back out with.
     const viewport = options.variant === "mobile"
-        ? "width=device-width, initial-scale=1.0, viewport-fit=cover"
+        ? "width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
         : "width=device-width, initial-scale=1.0";
     // The pack is built once and the mobile repack serves this same site, so the pack cannot say
     // which shell is running it — the entry document can, and it is already the one file that
@@ -123,7 +129,8 @@ ${shellMeta}${cspMeta}
     }
     </script>
 ${iconLinks}    <link rel="stylesheet" href="./renderer.css" />
-    <style>html, body { margin: 0; background: ${background}; }</style>
+    <style>
+${documentStyle(background)}    </style>
 </head>
 <body>
     <div id="root"></div>
@@ -153,6 +160,53 @@ ${iconLinks}    <link rel="stylesheet" href="./renderer.css" />
 function resolveDocumentLanguage(pack: GameRuntimePackV1): string {
     const source = pack.bundle?.localization?.sourceLocale?.trim() ?? "";
     return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(source) ? source : "";
+}
+
+/**
+ * The document's own style: the pre-boot background, and the browser behaviours a game window has
+ * no use for.
+ *
+ * Everything below is about the *document*, which is why it lives here rather than in the shared
+ * stylesheet the interface is drawn with. A page and an app window differ in what a stray finger
+ * does to them, and a game shipped to a phone is expected to be the second one:
+ *
+ *  - **Zoom.** `touch-action` without `pinch-zoom` removes both the two-finger zoom and the
+ *    double-tap one. It is set on the root, so every element inherits the ban by intersection - a
+ *    gesture is only allowed what its whole ancestor chain allows. `pan-x pan-y` and not `none`,
+ *    because the game's own scrollers (a saves list, the history log) must still take a finger.
+ *    A stage is scaled to the viewport by construction: zooming it reveals nothing and leaves a
+ *    player with a misaligned view they may not know how to undo.
+ *  - **Pull-to-refresh.** `overscroll-behavior: none` also stops the overscroll glow and the
+ *    rubber band. On Chrome for Android a downward drag on a page that does not scroll reloads it,
+ *    which for a running game means dropping everything since the last save.
+ *  - **The long press.** `-webkit-touch-callout` is what puts the iOS magnifier and share sheet
+ *    over held text; selection itself is already off globally in the shared stylesheet. Editable
+ *    fields keep the callout, or a name-entry box would have no Paste.
+ *  - **Font boosting.** `-webkit-text-size-adjust` stops a WebView inflating the text of a wide
+ *    block, which on a design-sized stage is not an accessibility win but a broken layout.
+ *  - **The tap flash.** A grey rectangle over a menu button is browser feedback, and the game
+ *    already draws its own.
+ *
+ * The scroll rules are equally about the shells: both run full-screen with no browser chrome, so a
+ * document that scrolled by a pixel would show the player nothing but a shifted stage.
+ *
+ * The JavaScript half - Safari's pinch events and the context menu - is in `browserGestures.ts`,
+ * which the same web.js installs.
+ */
+function documentStyle(background: string): string {
+    return `        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            overscroll-behavior: none;
+            touch-action: pan-x pan-y;
+            -webkit-text-size-adjust: 100%;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            background: ${background};
+        }
+        input, textarea, select, [contenteditable] { -webkit-touch-callout: default; }
+`;
 }
 
 /**

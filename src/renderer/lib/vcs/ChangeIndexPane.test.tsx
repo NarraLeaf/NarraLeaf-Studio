@@ -39,13 +39,13 @@ function entry(path: string, changes: number, tier: DocumentDiffTier = "semantic
 }
 
 function pane(entries: readonly DocumentDiffEntry[], open: (group: ChangeIndexGroup) => boolean) {
-    const index = buildChangeIndex(entries, { rowBudget: 1000 });
+    const index = buildChangeIndex(entries, { rowBudget: 1000, complete: true });
     return render(
         <ChangeIndexPane
             index={index}
             isOpen={open}
             onToggle={() => undefined}
-            selectedPath={null}
+            selectedKey={null}
             onSelect={() => undefined}
         />,
     );
@@ -98,6 +98,79 @@ describe("ChangeIndexPane", () => {
         const { container } = pane([entry("editor/brand.json", 2)], () => true);
 
         expect(container.querySelectorAll("[data-testid='group-caveat']")).toHaveLength(0);
+    });
+
+    it("names a content file nothing claims, rather than drawing its hash", () => {
+        // The one row whose file name says nothing at all. Its path is still in the tooltip, so
+        // naming it hides nothing - and leaving it out would hide the state entirely.
+        const orphan: DocumentDiffEntry = {
+            path: "assets/content/99/55/3d15abb54213bad7203798a1adc4",
+            kind: "changed",
+            contentClass: "bitmap",
+            diff: { changes: [], complete: true, total: 1, tier: "content" },
+        };
+        // A shard that WAS read record by record, so the absence of a record for these bytes is a
+        // fact about the project rather than about how far the comparison got.
+        const shard: DocumentDiffEntry = {
+            path: "assets/assets.metadata.image.json",
+            kind: "changed",
+            documentKind: "assets-metadata",
+            diff: {
+                changes: [{
+                    path: ["assets", "11111111-1111-4111-8111-111111111111"],
+                    kind: "changed",
+                    label: { key: "documentDiff.assets.changed" },
+                    subject: "Another picture",
+                }],
+                complete: true,
+                total: 1,
+                tier: "semantic",
+            },
+        };
+
+        const { container } = pane([shard, orphan], () => true);
+
+        expect(rows(container)).toHaveLength(2);
+        expect(rows(container)[1].textContent).toContain("documentDiff.assets.orphanContent");
+        expect(rows(container)[1].getAttribute("data-tip"))
+            .toBe("assets/content/99/55/3d15abb54213bad7203798a1adc4");
+    });
+
+    it("draws one line for an asset stored as a record and a file", () => {
+        const id = "99553d15-abb5-4213-bad7-203798a1adc4";
+        const entries: DocumentDiffEntry[] = [
+            {
+                path: "assets/assets.metadata.image.json",
+                kind: "changed",
+                documentKind: "assets-metadata",
+                diff: {
+                    changes: [{
+                        path: ["assets", id],
+                        kind: "changed",
+                        label: { key: "documentDiff.assets.changed" },
+                        subject: "Hero portrait",
+                    }],
+                    complete: true,
+                    total: 1,
+                    tier: "semantic",
+                },
+            },
+            {
+                path: "assets/content/99/55/3d15abb54213bad7203798a1adc4",
+                kind: "changed",
+                contentClass: "bitmap",
+                diff: { changes: [], complete: true, total: 1, tier: "content" },
+            },
+        ];
+
+        const { container } = pane(entries, () => true);
+
+        expect(rows(container)).toHaveLength(1);
+        expect(rows(container)[0].textContent).toContain("Hero portrait");
+        // The second file is in the tooltip, on the discipline every multi-file row follows: a row
+        // that grew a line for what it stands for would be the report this pane replaced.
+        expect(rows(container)[0].getAttribute("data-tip"))
+            .toContain("documentDiff.shell.setFiles(1)");
     });
 
     it("draws a heading per category, in the model's order", () => {

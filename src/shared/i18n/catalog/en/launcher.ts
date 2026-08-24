@@ -41,9 +41,6 @@ export const launcher = {
         // those two systems call themselves, and a menu that invents its own word for them reads
         // like it opens something else. The generic wording is only the fallback for the systems
         // with no one name.
-        revealInFinder: "Show in Finder",
-        revealInExplorer: "Show in File Explorer",
-        revealInFileManager: "Show in File Manager",
         errorReveal: "Failed to open the project folder.",
         // "From the recent list", not "from recent": the sentence has to be readable next to a
         // project the author may believe this deletes. The dialog behind it says outright that it

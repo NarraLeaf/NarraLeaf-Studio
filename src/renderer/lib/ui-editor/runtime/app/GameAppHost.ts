@@ -247,6 +247,18 @@ export type GameAppHost = {
      * watching, and a preview left running with auto on must not hold the machine's display.
      */
     setDisplayAwake?: (awake: boolean) => void;
+    /**
+     * The window sizes this build offers a player, as multiples of the game's design size.
+     *
+     * The author's own list, from `app.window` - EXCEPT where the shell has no window it can size,
+     * which answers with an empty list. A configuration screen builds its size row out of this
+     * (see the `Get Window Scale Options` node), so on the web export, in Dev Mode and in the story
+     * preview the row has nothing to draw rather than drawing a control that does nothing.
+     */
+    windowScaleOptions?: number[];
+    /** Read and set the window's size as a multiple of the design size. See {@link windowScaleOptions}. */
+    getWindowScale?: () => Promise<number>;
+    setWindowScale?: (scale: number) => Promise<void>;
     /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
     getFullscreen?: () => Promise<boolean>;
     setFullscreen?: (fullscreen: boolean) => Promise<void>;

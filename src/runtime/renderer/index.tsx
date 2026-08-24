@@ -1,21 +1,26 @@
 import { createRoot } from "react-dom/client";
 import "@/styles/styles.css";
-import { GAME_RUNTIME_CRASH_QUERY_PARAM } from "@shared/types/gameRuntime";
-import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import {
+    readGameRuntimeIndexUrl,
+    withoutGameRuntimeCrashDetails,
+} from "@shared/utils/gameRuntimeIndexUrl";
 import { GameRuntimeApp } from "./GameRuntimeApp";
 import { RuntimeCrashBoundary } from "./RuntimeCrashBoundary";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
-import { setRuntimeCrashPolicy } from "./crashPolicy";
+import { setRuntimeCrashPolicy, setRuntimeShellLogPath } from "./crashPolicy";
 import { installRuntimeErrorHooks } from "./runtimeErrorHooks";
 import { installScrollbarAutoHide } from "@/styles/scrollbarAutoHide";
 import { getActiveProjectLocale, subscribeActiveProjectFonts } from "@shared/typography/projectFonts";
 import { installDocumentLanguage } from "./documentLanguage";
 
 // Before anything else, including the missing-root check below: what this build does about a crash
-// has to be settled before there is any chance of one. On the desktop shell the answer arrives as
-// a process argument, so it is right even when reading the pack is what fails; the web export has
-// no such channel and answers null, leaving the default until the pack lands.
-setRuntimeCrashPolicy(getGameRuntimeBridge()?.crashPolicy ?? undefined);
+// has to be settled before there is any chance of one, and read from the page's own address rather
+// than from the bridge. The address is there whether or not the preload ran - and a preload that
+// never ran is precisely a case the crash screen has to be right in. The web export states
+// nothing, which leaves the default until the pack lands.
+const shell = readGameRuntimeIndexUrl(window.location.search);
+setRuntimeCrashPolicy(shell.policy);
+setRuntimeShellLogPath(shell.logPath);
 
 // Ahead of React, so a throw during boot is observed too - that is the window in which a broken
 // pack most often dies.
@@ -50,7 +55,7 @@ if (!root) {
  * the player was in went with the process, and pretending otherwise would mean starting a session
  * that quietly lost its place.
  */
-const crashDetails = new URLSearchParams(window.location.search).get(GAME_RUNTIME_CRASH_QUERY_PARAM);
+const crashDetails = shell.crashDetails;
 
 createRoot(root).render(
     crashDetails === null
@@ -63,5 +68,12 @@ createRoot(root).render(
             </RuntimeCrashBoundary>
         )
         // Restarting has to drop the marker, or the reload lands right back on this screen.
-        : <RuntimeCrashScreen details={crashDetails} onRestart={() => { window.location.search = ""; }} />,
+        // Only the failure is dropped. Clearing the whole query would take the policy and the log
+        // path with it, leaving a restarted game knowing less about itself than the crashed one.
+        : (
+            <RuntimeCrashScreen
+                details={crashDetails}
+                onRestart={() => { window.location.search = withoutGameRuntimeCrashDetails(window.location.search); }}
+            />
+        ),
 );
