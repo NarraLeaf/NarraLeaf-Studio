@@ -317,7 +317,6 @@ export const settings = {
         menuBarMode: {
             label: "メインメニュー",
             description: "タイトルバーでファイル・ヘルプ・各パネルのメニューを置く場所",
-            unsupportedPlatform: "macOS ではこれらのメニューはシステムメニューバーにあります",
         },
         titleBarSearchVisible: {
             label: "タイトルバーの検索欄を表示",
