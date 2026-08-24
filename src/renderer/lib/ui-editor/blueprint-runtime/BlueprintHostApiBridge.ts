@@ -60,7 +60,7 @@ import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { makeDefaultStructItem, type UIStructDef } from "@shared/types/ui-editor/struct";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
@@ -188,6 +188,14 @@ export type BlueprintListProperties = {
      * list no longer declares would sort by nothing and report success.
      */
     struct: UIStructDef | null;
+    /**
+     * Where the list has got to along its axis, as it last measured itself.
+     *
+     * A list that has not been rendered - or has been rendered somewhere with no runtime store, like
+     * a Surface thumbnail - reports at-rest rather than nothing, so a graph asking gets the answer
+     * for a list that cannot scroll instead of an undefined it has no way to branch on.
+     */
+    scroll: UIListScrollMetrics;
 };
 
 export type BlueprintDisplayableProperties = {
@@ -1313,6 +1321,7 @@ function readListProperties(
     return {
         items,
         selectedIndex,
+        scroll: widgetRuntimeStore.getListScrollMetrics(scopedKey),
         struct: resolveUIStruct(
             document,
             getListProps(requireDocumentElement(document, elementId, "list")).itemStructId,
