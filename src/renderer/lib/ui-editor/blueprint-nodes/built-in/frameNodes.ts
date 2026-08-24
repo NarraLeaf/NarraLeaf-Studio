@@ -277,7 +277,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["window", "size", "scale", "options", "resolution", "app", "display", "config"],
         graphKinds: ["event", "macro"],
         isPure: false,
-        isLatent: false,
+        isLatent: true,
         pins: [
             execIn,
             execNext,
@@ -289,8 +289,8 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 label: "Scales",
             },
         ],
-        execute(ctx) {
-            const scales = requireHostApi(ctx).navigation.getWindowScaleOptions();
+        async execute(ctx) {
+            const scales = await requireHostApi(ctx).navigation.getWindowScaleOptions();
             return { nextPort: "next", outputValues: { scales } };
         },
     },

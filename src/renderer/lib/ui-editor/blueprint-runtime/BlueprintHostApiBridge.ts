@@ -335,8 +335,8 @@ export type BlueprintHostApiRuntime = {
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
-        /** The sizes this build offers, ascending. Empty where the shell has no window to size. */
-        getWindowScaleOptions: () => number[];
+        /** The sizes worth offering, ascending. Empty where the shell has no window to size. */
+        getWindowScaleOptions: () => Promise<number[]>;
         getWindowScale: () => Promise<number>;
         setWindowScale: (scale: number) => Promise<void>;
         getWindowSize: () => Promise<{ width: number; height: number }>;
@@ -920,11 +920,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetFullscreen?: () => boolean | Promise<boolean>;
     onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
     /**
-     * The window sizes this build offers, or none where the shell has no window to size. See
-     * `GameAppHost.windowScaleOptions`; the empty list is what a configuration screen draws nothing
-     * from, rather than drawing a control that cannot work.
+     * The window sizes worth offering, measured by the shell. See
+     * `GameAppHost.getWindowScaleOptions`; the empty list is what a configuration screen draws
+     * nothing from, rather than drawing a control that cannot work.
      */
-    windowScaleOptions?: number[];
+    onGetWindowScaleOptions?: () => number[] | Promise<number[]>;
     onGetWindowScale?: () => number | Promise<number>;
     onSetWindowScale?: (scale: number) => void | Promise<void>;
     onGetWindowSize?: () => { width: number; height: number } | Promise<{ width: number; height: number }>;
@@ -2247,7 +2247,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onQuitApplication,
         onGetFullscreen,
         onSetFullscreen,
-        windowScaleOptions,
+        onGetWindowScaleOptions,
         onGetWindowScale,
         onSetWindowScale,
         onGetWindowSize,
@@ -2520,13 +2520,14 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
-            getWindowScaleOptions: () => {
+            getWindowScaleOptions: async () => {
                 const cap = "navigation.getWindowScaleOptions";
                 emitHostCall(emit, cap, "call");
                 try {
-                    // Ascending, and a copy: the list is the author's answer, and a graph that
-                    // sorted or spliced the array in place would be editing it for everyone.
-                    return [...(windowScaleOptions ?? [])].sort((a, b) => a - b);
+                    const offered = onGetWindowScaleOptions ? await onGetWindowScaleOptions() : [];
+                    // Ascending, and a copy: a graph that sorted or spliced the array in place
+                    // would be editing what the shell handed out.
+                    return [...offered].sort((a, b) => a - b);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

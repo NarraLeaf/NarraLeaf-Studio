@@ -74,6 +74,7 @@ const SHELL_HAS_NOTHING_TO_OFFER: Readonly<Record<string, Readonly<Record<string
         // the game gets. The shell leaves `windowScaleOptions` unset instead, which is an empty
         // list to the nodes - so a configuration screen draws no size row here rather than one
         // that reports a size the stage does not have.
+        getWindowScaleOptions: "the window is Studio's, not the game's",
         getWindowScale: "the window is Studio's, not the game's",
         setWindowScale: "the window is Studio's, not the game's",
         getWindowSize: "the window is Studio's, not the game's",

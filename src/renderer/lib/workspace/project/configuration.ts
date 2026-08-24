@@ -59,13 +59,8 @@ export {
     VFX_FRAME_RATES,
 } from "@shared/types/vfx";
 export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
-export {
-    DEFAULT_WINDOW_CONFIGURATION,
-    normalizeWindowConfiguration,
-    normalizeWindowScaleSteps,
-    WINDOW_SCALE_STEPS,
-} from "@shared/types/appWindow";
-export type { WindowConfiguration, WindowScaleStep } from "@shared/types/appWindow";
+export { DEFAULT_WINDOW_CONFIGURATION, normalizeWindowConfiguration } from "@shared/types/appWindow";
+export type { WindowConfiguration } from "@shared/types/appWindow";
 export {
     ASSET_LOSSY_QUALITY_MAX,
     ASSET_LOSSY_QUALITY_MIN,
