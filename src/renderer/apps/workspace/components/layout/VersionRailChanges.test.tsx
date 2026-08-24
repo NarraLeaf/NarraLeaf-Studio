@@ -92,10 +92,14 @@ describe("the rail's change section", () => {
         ]);
 
         expect(rows(container)).toHaveLength(3);
-        // Every string a change list draws is under `documentDiff.`, so one of them appearing as
-        // text is the whole of the regression this section was rebuilt to prevent. The comparison
-        // entry names itself with the same namespace and does it in an attribute, not in text.
-        expect(container.textContent).not.toContain("documentDiff.");
+        // The rail names each change the way the author does, which is the one thing it shares with
+        // the comparison: `documentDiff.name.*`. Nothing else from that namespace belongs in this
+        // text - a change's own labels, tiers and captions are the comparison's to draw, and one of
+        // them appearing here is the regression this section was rebuilt to prevent.
+        const drawn = container.textContent ?? "";
+        expect(drawn.replace(/documentDiff\.name\.[A-Za-z]+/g, "")).not.toContain("documentDiff.");
+        // And a name really is drawn, so the assertion above cannot pass by drawing nothing.
+        expect(drawn).toContain("documentDiff.name.");
     });
 
     it("draws no row that can be opened, because nothing in the rail opens", () => {

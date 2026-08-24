@@ -14,6 +14,7 @@ import { buildChangeIndex, type ChangeIndexGroup } from "@/lib/vcs/changeIndex";
 import { changeIndexRowName, ChangeIndexPane } from "@/lib/vcs/ChangeIndexPane";
 import { IndexDivider, INDEX_DEFAULT_WIDTH } from "@/lib/vcs/IndexDivider";
 import { opensAsSplitComparison } from "@/lib/vcs/compare/splitDocuments";
+import { useDocumentNames } from "@/lib/vcs/storyTitles";
 import { ChangeDetailHost } from "@/lib/vcs/presenters/ChangeDetailHost";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import {
@@ -93,14 +94,42 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     const diff = useDocumentDiff(request, { enabled: true });
     const result = diff.result;
 
+    /**
+     * The two versions this tab is between, for a presenter that shows the file itself.
+     *
+     * Named here because this is the only place that knows: the change model says what differs and
+     * deliberately not where it came from. The working tree's older side is the revision it was
+     * compared against, which a repository with nothing recorded yet does not have - and then
+     * there is no older side at all rather than one to guess at.
+     */
+    const comparison = useMemo<ComparisonSides>(
+        () => (mode.mode === "between"
+            ? { before: { at: "revision", revision: mode.from }, after: { at: "revision", revision: mode.to } }
+            : {
+                before: result?.head ? { at: "revision", revision: result.head } : null,
+                after: { at: "working-tree" },
+            }),
+        [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null, result?.head],
+    );
+
+    /**
+     * What the rows are called, which for a story is a title in a document beside it.
+     *
+     * Read against the same two sides the presenters draw, so the index and the file it opens agree
+     * about what a scene is called. A story whose title cannot be read is named for what it is plus
+     * the id in its path, never after the file - see `lib/vcs/documentName.ts`.
+     */
+    const names = useDocumentNames(comparison);
+
     const index = useMemo(
         () => buildChangeIndex(result?.documents ?? [], {
             rowBudget: TAB_ROW_BUDGET,
             // What the read itself says it managed. A comparison that stopped at the unit limit may
             // have left out the very shard that names an asset whose bytes it did list.
             complete: result?.complete ?? false,
+            names,
         }),
-        [result],
+        [result, names],
     );
 
     /**
@@ -131,24 +160,6 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const firstVisible = index.groups.find(isOpen)?.rows[0] ?? null;
     const selected = index.rows.find(row => row.key === selectedKey) ?? firstVisible;
-
-    /**
-     * The two versions this tab is between, for a presenter that shows the file itself.
-     *
-     * Named here because this is the only place that knows: the change model says what differs and
-     * deliberately not where it came from. The working tree's older side is the revision it was
-     * compared against, which a repository with nothing recorded yet does not have - and then
-     * there is no older side at all rather than one to guess at.
-     */
-    const comparison = useMemo<ComparisonSides>(
-        () => (mode.mode === "between"
-            ? { before: { at: "revision", revision: mode.from }, after: { at: "revision", revision: mode.to } }
-            : {
-                before: result?.head ? { at: "revision", revision: result.head } : null,
-                after: { at: "working-tree" },
-            }),
-        [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null, result?.head],
-    );
 
     const headNumber = useHeadRevisionNumber(mode, result);
 
