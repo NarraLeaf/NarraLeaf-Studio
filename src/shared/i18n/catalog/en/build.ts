@@ -358,6 +358,51 @@ export const build = {
         submitted: "Build started. Progress is in the console.",
         done: "Build finished.",
         failed: "Build failed.",
+        patchDone: "Patch exported.",
+        patchFailed: "Patch export failed.",
+        // Buttons on the notification. The message above each one stands without it: the
+        // notifications panel keeps the message and drops the button.
+        openReport: "Open report",
+    },
+    /**
+     * The build report: one finished run, what it produced, and what it carried out of the asset
+     * library. Opened from the notification that run posts.
+     *
+     * Two words are used precisely and mean different things: an artifact is a file the build wrote,
+     * an asset is an entry of the project's library. The report states both.
+     */
+    report: {
+        title: "Build report",
+        empty: "No finished build to report.",
+        outcome: {
+            done: "Succeeded",
+            error: "Failed",
+            cancelled: "Stopped",
+        },
+        kind: {
+            build: "Production build",
+            patch: "Patch export",
+        },
+        summary: "Summary",
+        variant: "Variant",
+        platforms: "Platforms",
+        duration: "Duration",
+        artifacts: "Artifacts",
+        artifactsEmpty: "This run wrote no artifacts.",
+        outputDir: "Output folder",
+        durationSeconds: "{seconds}s",
+        durationMinutes: "{minutes}m {seconds}s",
+        includedTitle: "Assets carried",
+        includedEmpty: "This run carried no assets.",
+        excludedTitle: "Assets left out",
+        excludedEmpty: "This run left no assets out.",
+        charactersTitle: "Characters left out",
+        // Shown in place of both asset lists for a run that packaged the library as it stands.
+        wholeLibrary: "This run carried the asset library whole.",
+        search: "Search assets",
+        noMatches: "No asset matches this search.",
+        showAll: "Show all {count}",
+        failure: "Reason",
     },
     invalidCommand: "Invalid command in {story} / {scene}: {source}",
     invalidCommandSummary: {

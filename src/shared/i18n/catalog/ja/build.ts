@@ -338,6 +338,50 @@ export const build = {
         submitted: "ビルドを開始した。進み具合はコンソールに出る",
         done: "ビルドが完了した",
         failed: "ビルドに失敗した",
+        patchDone: "パッチを書き出した",
+        patchFailed: "パッチの書き出しに失敗した",
+        // 通知の上のボタン。本文はボタンがなくても成り立つ。通知パネルは本文だけを残す。
+        openReport: "レポートを開く",
+    },
+    /**
+     * ビルドレポート。終わった実行が何を作り、アセットライブラリから何を収録したか。
+     * その実行が出す通知から開く。
+     *
+     * 二つの語を区別して使う。成果物はビルドが書いたファイル、アセットはプロジェクトの
+     * ライブラリの項目。レポートはその両方を出す。
+     */
+    report: {
+        title: "ビルドレポート",
+        empty: "報告できるビルドはない",
+        outcome: {
+            done: "成功",
+            error: "失敗",
+            cancelled: "中止",
+        },
+        kind: {
+            build: "製品ビルド",
+            patch: "パッチの書き出し",
+        },
+        summary: "概要",
+        variant: "バリアント",
+        platforms: "プラットフォーム",
+        duration: "所要時間",
+        artifacts: "成果物",
+        artifactsEmpty: "この実行に成果物はない",
+        outputDir: "出力フォルダ",
+        durationSeconds: "{seconds} 秒",
+        durationMinutes: "{minutes} 分 {seconds} 秒",
+        includedTitle: "収録したアセット",
+        includedEmpty: "この実行が収録したアセットはない",
+        excludedTitle: "収録しなかったアセット",
+        excludedEmpty: "この実行が外したアセットはない",
+        charactersTitle: "収録しなかったキャラクター",
+        // ライブラリを丸ごと収録した実行では、二つの一覧の代わりにこれを出す
+        wholeLibrary: "この実行はアセットライブラリを丸ごと収録した",
+        search: "アセットを検索",
+        noMatches: "この検索に一致するアセットはない",
+        showAll: "{count} 件すべてを表示",
+        failure: "失敗の理由",
     },
     invalidCommand: "{story} / {scene} に無効なコマンド：{source}",
     invalidCommandSummary: {
