@@ -230,6 +230,11 @@ export const lint = {
             description: "A node no entry point in its graph can reach",
             message: "Nothing reaches this node, so it never runs",
         },
+        blueprintDlcEntranceUnguarded: {
+            title: "Unguarded DLC entrance",
+            description: "A Start Story into a DLC's story, with nothing asking whether the DLC is here",
+            message: "Nothing in this graph asks whether the DLC is installed",
+        },
         blueprintEmptyEvent: {
             title: "Empty event",
             description: "An event layer with nothing wired to run",

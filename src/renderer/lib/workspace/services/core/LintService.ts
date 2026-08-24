@@ -321,7 +321,12 @@ export class LintService extends Service<LintService> implements ILintService {
         let complete = true;
         for (const entry of index.stories) {
             try {
-                stories.push({ id: entry.id, name: entry.name, document: await storyService.loadStory(entry.id) });
+                stories.push({
+                    id: entry.id,
+                    name: entry.name,
+                    document: await storyService.loadStory(entry.id),
+                    ...(entry.dlcId ? { dlcId: entry.dlcId } : {}),
+                });
             } catch (error) {
                 complete = false;
                 console.warn(`[LintService] story ${entry.id} failed to load`, error);
