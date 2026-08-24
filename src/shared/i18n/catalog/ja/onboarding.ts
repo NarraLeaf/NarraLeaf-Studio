@@ -53,7 +53,7 @@ export const onboarding = {
         expectation: "共有プロジェクトの置き場所。サーバーは必須ではない",
         connect: "サーバーに接続",
         connected: "サインイン済み",
-        none: "サーバー未接続。プロジェクトはこの端末に保存される",
+        none: "プロジェクトはこの端末に保存される",
     },
     story: {
         title: "ストーリーエディター",
