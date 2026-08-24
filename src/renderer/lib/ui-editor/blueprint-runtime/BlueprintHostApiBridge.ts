@@ -339,6 +339,8 @@ export type BlueprintHostApiRuntime = {
         getWindowScaleOptions: () => number[];
         getWindowScale: () => Promise<number>;
         setWindowScale: (scale: number) => Promise<void>;
+        getWindowSize: () => Promise<{ width: number; height: number }>;
+        setWindowSize: (width: number, height: number) => Promise<void>;
         /**
          * Open one web address in the player's browser.
          *
@@ -925,6 +927,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     windowScaleOptions?: number[];
     onGetWindowScale?: () => number | Promise<number>;
     onSetWindowScale?: (scale: number) => void | Promise<void>;
+    onGetWindowSize?: () => { width: number; height: number } | Promise<{ width: number; height: number }>;
+    onSetWindowSize?: (width: number, height: number) => void | Promise<void>;
     /**
      * The layer stack composited over the page lane.
      *
@@ -2246,6 +2250,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         windowScaleOptions,
         onGetWindowScale,
         onSetWindowScale,
+        onGetWindowSize,
+        onSetWindowSize,
         onShowLayer,
         onHideLayer,
         onHideLayerGroup,
@@ -2541,6 +2547,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     await onSetWindowScale?.(Number(scale));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowSize: async () => {
+                const cap = "navigation.getWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Zero from a shell with no window of its own, which is what a stage that is
+                    // not a window in the first place honestly measures.
+                    const size = onGetWindowSize ? await onGetWindowSize() : null;
+                    return {
+                        width: Number(size?.width ?? 0),
+                        height: Number(size?.height ?? 0),
+                    };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setWindowSize: async (width: number, height: number) => {
+                const cap = "navigation.setWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSetWindowSize?.(Number(width), Number(height));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
