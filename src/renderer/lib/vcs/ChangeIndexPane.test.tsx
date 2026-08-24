@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentChange, DocumentDiffEntry, DocumentDiffTier } from "@shared/documents/diff";
 import { ChangeIndexPane } from "./ChangeIndexPane";
 import { buildChangeIndex, type ChangeIndexGroup } from "./changeIndex";
+import { NO_DOCUMENT_NAMES } from "./documentName";
 
 /**
  * What the model promises, on screen.
@@ -39,7 +40,7 @@ function entry(path: string, changes: number, tier: DocumentDiffTier = "semantic
 }
 
 function pane(entries: readonly DocumentDiffEntry[], open: (group: ChangeIndexGroup) => boolean) {
-    const index = buildChangeIndex(entries, { rowBudget: 1000, complete: true });
+    const index = buildChangeIndex(entries, { rowBudget: 1000, complete: true, names: NO_DOCUMENT_NAMES });
     return render(
         <ChangeIndexPane
             index={index}
