@@ -41,6 +41,7 @@ import {
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_GAME_STORAGE_DURABILITY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
@@ -410,6 +411,13 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // machine - and it leads to "start a new game", not to an apology. Folding it into `failed`
     // would put an error message in front of every first-time player.
     [BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS]: { in: ["in"], out: ["found", "missing", "failed"] },
+    // `Check Storage Durability` has three for the same reason: `evictable` is "this browser may
+    // remove saved games" and `unknown` is a browser that will not say, and an author telling a
+    // player the first when the truth is the second has made a promise nobody gave them.
+    [BLUEPRINT_NODE_TYPE_GAME_STORAGE_DURABILITY]: {
+        in: ["in"],
+        out: ["durable", "evictable", "unknown"],
+    },
     // `Load Save` leaves by `failed` and by nothing else. A load that lands has replaced the whole
     // running game, so there is nothing a `next` could run against - the graph that asked for it is
     // not the game any more. A refusal moved nothing, and the save screen that asked is still

@@ -40,6 +40,16 @@ let activeLocale = "";
 let activeIds: readonly string[] = [];
 let activeRevision = 0;
 const listeners = new Set<() => void>();
+/**
+ * Readers of the language itself, told about every publish.
+ *
+ * Separate from {@link listeners} because the two questions have different answers: a language
+ * change that resolves to the same faces must not repaint a canvas, and `republish` is right to
+ * stay quiet about it - but it is still a language change, and a project whose rungs carry no
+ * restrictions at all is the case where every one of them looks like that. The shipped game's
+ * `<html lang>` is the reader that must hear them, and it hears nothing through the other set.
+ */
+const localeListeners = new Set<() => void>();
 
 /**
  * Publish a stack.
@@ -77,6 +87,25 @@ export function setActiveProjectLocale(locale: string | undefined | null): void 
     }
     activeLocale = next;
     republish(false);
+    // After the fonts, so a listener that reads both sees them agree. Copied for the reason
+    // `republish` copies: a listener may unsubscribe from inside its own callback.
+    for (const listener of [...localeListeners]) {
+        listener();
+    }
+}
+
+/**
+ * Follow the language the stack is read in, whatever it resolves that stack to.
+ *
+ * For a reader whose subject is the language rather than the faces - the shipped game puts it on
+ * the document, where the browser reads it to pick Han forms and break lines. Returns the
+ * unsubscribe.
+ */
+export function subscribeActiveProjectLocale(listener: () => void): () => void {
+    localeListeners.add(listener);
+    return () => {
+        localeListeners.delete(listener);
+    };
 }
 
 /**

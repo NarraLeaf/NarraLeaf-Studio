@@ -56,6 +56,7 @@ import {
     type AudioMixPreferences,
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
+import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
@@ -671,6 +672,16 @@ export type BlueprintHostApiRuntime = {
         export: () => Promise<{ outcome: "written" | "failed"; error: string }>;
         import: () => Promise<GameProgressImportOutcome>;
     };
+    /**
+     * What the shell can promise about the data it writes, for the `Check Storage Durability` node.
+     *
+     * A fact about where the game is running, not about the playthrough: a packaged desktop game
+     * keeps files nothing reclaims, a web export holds whatever grant the browser gave it. Stated,
+     * never acted on - what a player is told about it belongs to the title.
+     */
+    storage: {
+        durability: () => Promise<GameStorageDurability>;
+    };
     devtools: {
         log: (level: string, message: string) => void;
     };
@@ -955,6 +966,14 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onExportProgress?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
     /** Reads it back, and applies what it holds to the running game. Absent for the same reasons. */
     onImportProgress?: () => Promise<GameProgressImportOutcome>;
+    /**
+     * What the shell running this graph can promise about the data it writes.
+     *
+     * Absent in every environment that writes nowhere real - the editor preview and the story
+     * preview - where the node leaves by `Unknown`, which is what "this cannot be answered here"
+     * already means.
+     */
+    onStorageDurability?: () => Promise<GameStorageDurability>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -2187,6 +2206,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onOpenExternal,
         onExportProgress,
         onImportProgress,
+        onStorageDurability,
         audioTracks,
         onSubscribeGamePreferences,
         onLocaleChanged,
@@ -4339,6 +4359,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onImportProgress();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        storage: {
+            durability: async () => {
+                const cap = "storage.durability";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No backend = nowhere real is being written (editor preview, story preview),
+                    // and "this cannot be answered here" is exactly what `unknown` says.
+                    return await (onStorageDurability?.() ?? Promise.resolve("unknown" as const));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
