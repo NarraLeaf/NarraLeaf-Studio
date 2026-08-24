@@ -60,7 +60,7 @@ export type GameUiSlotHostOptions = {
     /** Hosts without a real application window (story preview) leave these unset. */
     getFullscreen?: () => Promise<boolean>;
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
-    windowScaleOptions?: number[];
+    getWindowScaleOptions?: () => Promise<number[]>;
     getWindowScale?: () => Promise<number>;
     setWindowScale?: (scale: number) => Promise<void>;
     getWindowSize?: () => Promise<{ width: number; height: number }>;
@@ -236,7 +236,7 @@ export function useStageSlotSurfaceRuntime(input: {
             onQuitApplication: options.quitApplication,
             onGetFullscreen: options.getFullscreen,
             onSetFullscreen: options.setFullscreen,
-            windowScaleOptions: options.windowScaleOptions,
+            onGetWindowScaleOptions: options.getWindowScaleOptions,
             onGetWindowScale: options.getWindowScale,
             onSetWindowScale: options.setWindowScale,
             onGetWindowSize: options.getWindowSize,

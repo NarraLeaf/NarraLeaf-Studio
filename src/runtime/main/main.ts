@@ -85,6 +85,7 @@ import { claimSingleInstance } from "./singleInstance";
 import {
     currentWindowScale,
     fitInside,
+    fittingWindowScales,
     NO_WINDOW_CHROME,
     readWindowGeometry,
     resolveWindowGeometry,
@@ -1175,14 +1176,28 @@ function applyWindowContentSize(width: number, height: number): void {
     }
 }
 
-/** Which offered step the window is at now, for a configuration screen reading its own state. */
+/** Which step the window is at now, for a configuration screen reading its own state. */
 function readWindowScale(): WindowScaleStep {
     const win = mainWindow;
     if (!win || win.isDestroyed()) {
         return WINDOW_SCALE_DESIGN;
     }
     const [width, height] = win.getContentSize();
-    return currentWindowScale(windowDesign, { width, height }, windowConfig.scaleSteps);
+    return currentWindowScale(windowDesign, { width, height });
+}
+
+/**
+ * The sizes worth offering this player, measured against the display their window is on.
+ *
+ * Asked of the shell rather than declared by the project: 200% is the right offer on a 4K monitor
+ * and nonsense on a laptop, and only the running game can see which one it is looking at.
+ */
+function readWindowScaleOptions(): number[] {
+    const win = mainWindow;
+    const workArea = win && !win.isDestroyed()
+        ? screen.getDisplayMatching(win.getBounds()).workArea
+        : screen.getPrimaryDisplay().workArea;
+    return fittingWindowScales(windowDesign, roomForStage(workArea, windowChrome));
 }
 
 function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; height: number } {
@@ -1495,6 +1510,7 @@ function registerRuntimeIpc(): void {
     ipcMain.on("runtime:displayAwake:set", (_event, awake: boolean) => {
         displaySleep?.setRequested(awake === true);
     });
+    ipcMain.handle("runtime:window:getScaleOptions", () => readWindowScaleOptions());
     ipcMain.handle("runtime:window:getScale", () => readWindowScale());
     ipcMain.handle("runtime:window:setScale", (_event, scale: number) => {
         // Any multiple the graph asks for, not only the ones the project offers: the offered list
