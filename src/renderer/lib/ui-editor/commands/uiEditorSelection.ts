@@ -37,12 +37,7 @@ export function selectSurfaceForProperties(
     _uiService?: UIService | null,
 ): void {
     const current = stateService.getSelection();
-    const currentSceneId =
-        current.type === "scene"
-            ? typeof current.data === "string"
-                ? current.data
-                : current.data?.id ?? null
-            : null;
+    const currentSceneId = current.type === "scene" ? current.data : null;
     if (currentSceneId === surfaceId) {
         return;
     }

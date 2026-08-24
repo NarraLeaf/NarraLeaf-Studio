@@ -30,18 +30,6 @@ export type StoryBlockSelection = {
     blockId: StoryBlockId | null;
 };
 
-export function isStoryBlockSelectionData(value: unknown): value is StoryBlockSelection {
-    if (!value || typeof value !== "object") {
-        return false;
-    }
-    const record = value as Record<string, unknown>;
-    return record.editor === "story"
-        && typeof record.tabId === "string"
-        && typeof record.storyId === "string"
-        && typeof record.sceneId === "string"
-        && (record.blockId === null || typeof record.blockId === "string");
-}
-
 /** Whether two published selections address the same thing (used to avoid redundant store writes). */
 export function isSameStoryBlockSelection(a: StoryBlockSelection, b: StoryBlockSelection): boolean {
     return a.tabId === b.tabId && a.storyId === b.storyId && a.sceneId === b.sceneId && a.blockId === b.blockId;

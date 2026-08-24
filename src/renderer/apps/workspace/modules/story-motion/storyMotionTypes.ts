@@ -24,15 +24,3 @@ export type StoryMotionKeyframeSelection = {
     trackId: string;
     keyframeId: string;
 };
-
-export function isStoryMotionKeyframeSelectionData(value: unknown): value is StoryMotionKeyframeSelection {
-    if (!value || typeof value !== "object") {
-        return false;
-    }
-    const record = value as Record<string, unknown>;
-    return record.editor === "story-motion"
-        && typeof record.tabId === "string"
-        && typeof record.animationId === "string"
-        && typeof record.trackId === "string"
-        && typeof record.keyframeId === "string";
-}

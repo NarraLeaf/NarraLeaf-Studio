@@ -39,7 +39,6 @@ import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/componen
 import { publishStoryInspectorState } from "./storyInspectorBridge";
 import {
     isSameStoryBlockSelection,
-    isStoryBlockSelectionData,
     STORY_BLOCK_SELECTION_TYPE,
     type StoryBlockSelection,
 } from "./storySelection";
@@ -1186,7 +1185,6 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
         const current = store.getSelection();
         const isOurs = current.type === STORY_BLOCK_SELECTION_TYPE
-            && isStoryBlockSelectionData(current.data)
             && isSameStoryBlockSelection(current.data, selection);
         if (!isOurs) {
             store.setSelection({ type: STORY_BLOCK_SELECTION_TYPE, data: selection });
@@ -1216,7 +1214,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             lastInspectorSigRef.current = null;
             publishStoryInspectorState(tabId, null);
             const current = store.getSelection();
-            if (current.type === STORY_BLOCK_SELECTION_TYPE && isStoryBlockSelectionData(current.data) && current.data.tabId === tabId) {
+            if (current.type === STORY_BLOCK_SELECTION_TYPE && current.data.tabId === tabId) {
                 store.setSelection({ type: null, data: null });
             }
         };
