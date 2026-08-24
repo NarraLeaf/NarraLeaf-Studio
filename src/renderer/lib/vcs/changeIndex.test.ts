@@ -5,6 +5,7 @@ import type {
     DocumentDiffTier,
 } from "@shared/documents/diff";
 import { buildChangeIndex, GROUP_COLLAPSE_THRESHOLD, splitDocumentPath } from "./changeIndex";
+import { NO_DOCUMENT_NAMES } from "./documentName";
 
 /**
  * The index's job is to stay an index.
@@ -49,7 +50,7 @@ function entry(init: {
     };
 }
 
-const budget = { rowBudget: 1000 };
+const budget = { rowBudget: 1000, names: NO_DOCUMENT_NAMES };
 
 describe("a document stored as several files", () => {
     it("is one row, and says how many files it stands for", () => {
@@ -118,8 +119,10 @@ describe("buildChangeIndex", () => {
 
         const row = index.rows[0];
         expect(row.changeCount).toBe(7);
-        expect(row.name).toBe("brand.json");
-        expect(row.directory).toBe("editor");
+        // Named by what it is, not by the file it is stored in; the path stays on the row for
+        // the surfaces that need to locate it.
+        expect(row.name).toMatchObject({ source: "kind" });
+        expect(row.path).toBe("editor/brand.json");
         // Nothing on the row is a list of anything. The entry is carried whole for the detail pane
         // to read; the row itself has no per-change field for a renderer to loop over.
         expect(Object.entries(row).filter(([, value]) => Array.isArray(value))).toEqual([]);
@@ -264,7 +267,7 @@ describe("buildChangeIndex", () => {
             (_, index) => entry({ path: `assets/content/ab/cd/file${index}` }),
         );
 
-        const index = buildChangeIndex(entries, { rowBudget: 10 });
+        const index = buildChangeIndex(entries, { rowBudget: 10, names: NO_DOCUMENT_NAMES });
 
         expect(index.rows).toHaveLength(10);
         expect(index.omitted).toBe(20);
