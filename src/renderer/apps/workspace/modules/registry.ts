@@ -29,7 +29,6 @@ import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
 import { searchPanelModule } from "./search";
 import { notificationsPanelModule } from "./notifications";
-import { collaborationPanelModule } from "./collaboration";
 import { pluginsPanelModule } from "./plugins";
 import { testReportModule } from "./testing";
 import { buildReportModule } from "./build-report";
@@ -53,7 +52,6 @@ export const builtInPanels: PanelModule[] = [
     propertiesModule,
     storyVariablesPanelModule,
     dictionaryPanelModule,
-    collaborationPanelModule,
     notificationsPanelModule,
     pluginsPanelModule,
     consoleModule,
