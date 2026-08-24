@@ -916,7 +916,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             y: normalWindowBounds?.y ?? null,
             maximized: win.isMaximized(),
             fullscreen: win.isFullScreen(),
-        });
+        }, message => logRuntime("warning", `[Window] ${message}`));
     });
     // Chromium raises the loaded document's <title> to the window, and the shell's index.html
     // carries a generic one, so the name set above lasted until the first paint and every game

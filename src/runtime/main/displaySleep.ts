@@ -55,6 +55,11 @@ export function installDisplaySleepInhibitor(win: BrowserWindow, host: DisplaySl
             }
             try {
                 held = host.hold();
+                // The only trace this leaves. A shipped game holding a machine's display awake is
+                // a thing the player may have to account for, and a packaged build offers no other
+                // way to find out whether it is happening - the inspector fuse is off, and the
+                // platform's own report needs an administrator.
+                host.log("info", "[Power] Keeping the display awake while the story advances on its own.");
             } catch (error) {
                 unavailable = true;
                 host.log("warning", `[Power] The display cannot be kept awake on this system: ${describe(error)}`);
@@ -68,6 +73,7 @@ export function installDisplaySleepInhibitor(win: BrowserWindow, host: DisplaySl
         held = null;
         try {
             host.release(id);
+            host.log("info", "[Power] The display may sleep again.");
         } catch (error) {
             host.log("warning", `[Power] Could not release the display block: ${describe(error)}`);
         }
