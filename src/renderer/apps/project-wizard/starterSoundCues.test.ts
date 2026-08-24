@@ -88,13 +88,21 @@ function oneOn(surfaceName: string, elementName: string, elementType = "nl.butto
     return found[0]!;
 }
 
-function graphFor(elementId: string): Graph {
+/**
+ * The one graph on the blueprint that answers for an element, or - when the blueprint carries more
+ * than one layer - the one holding `headType`. Layers are how an author separates two unrelated
+ * things a widget answers, so a helper that insisted on a single layer would fail the moment one
+ * gained a second, without anything about the wiring under test having changed.
+ */
+function graphFor(elementId: string, headType?: string): Graph {
     const blueprint = blueprints.find(
         candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === elementId,
     );
     expect(blueprint, `no blueprint answers for element ${elementId}`).toBeDefined();
-    const graphs = Object.values(blueprint!.program.graphs.events);
-    expect(graphs).toHaveLength(1);
+    const graphs = Object.values(blueprint!.program.graphs.events).filter(
+        candidate => !headType || Object.values(candidate.graph.nodes).some(node => node.type === headType),
+    );
+    expect(graphs, `${elementId} has ${graphs.length} graphs answering ${headType ?? "anything"}`).toHaveLength(1);
     return graphs[0]!.graph;
 }
 
@@ -207,7 +215,8 @@ describe("the sounds the starter template makes", () => {
         { page: "Log", list: "Entries" },
         { page: "Load", list: "Auto saves" },
     ])("a row of $page ▸ $list answers being picked", ({ page, list }) => {
-        assertClickCue(graphFor(oneOn(page, list, "nl.list").id), BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK, "ui-confirm");
+        const graph = graphFor(oneOn(page, list, "nl.list").id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        assertClickCue(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK, "ui-confirm");
     });
 
     it("a scene card answers only when it has a scene to open", () => {
