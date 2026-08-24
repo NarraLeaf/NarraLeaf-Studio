@@ -36,7 +36,7 @@ import {
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { getUIComponentLink, isLinkedUIComponentElement, type UIElement } from "@shared/types/ui-editor/document";
-import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
+import { assertSelectionHandled } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
 import { createListItemFieldBindingField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
@@ -92,14 +92,12 @@ import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
-    isStoryMotionKeyframeSelectionData,
     type StoryMotionKeyframeSelection,
 } from "../story-motion/storyMotionTypes";
 import { ActionInspector } from "../story/scene-editor/StorySceneActionInspector";
 import { useStoryInspectorState } from "../story/scene-editor/storyInspectorBridge";
 import {
     STORY_BLOCK_SELECTION_TYPE,
-    isStoryBlockSelectionData,
     type StoryBlockSelection,
 } from "../story/scene-editor/storySelection";
 import { storyScenePropertySchema, type StorySceneEditorContext } from "./schemas";
@@ -932,36 +930,62 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!uiService) return;
         const store = uiService.getStore();
 
+        /**
+         * Turn the app-wide selection into this panel's subject.
+         *
+         * The one place that has to answer for every kind of selection there is, so it dispatches on
+         * the discriminant and ends in `assertSelectionHandled`: a new member of `SelectionState`
+         * fails to compile here until someone decides what the inspector shows for it. Exactly one
+         * of these subjects survives a call - they are alternatives, not layers.
+         */
         const setSelectionState = (selection: SelectionState) => {
-            const motionSelection =
-                selection.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE && isStoryMotionKeyframeSelectionData(selection.data)
-                    ? selection.data
-                    : null;
+            let motionSelection: StoryMotionKeyframeSelection | null = null;
             // A story scene editor owns the rail: the row it has focused, or the scene itself when it
             // has none. The subject travels as an address; its content arrives through the per-tab
             // bridge read below, which republishes as the document changes.
-            const story =
-                selection.type === STORY_BLOCK_SELECTION_TYPE && isStoryBlockSelectionData(selection.data)
-                    ? selection.data
-                    : null;
+            let story: StoryBlockSelection | null = null;
+            let asset: Asset | null = null;
+            // Only the id: the record itself is read back off the service, see `activeSet`.
+            let setId: string | null = null;
+            let character: Character | null = null;
+            let uiSelection: UIElementSelection | null = null;
+            let sceneId: string | null = null;
+
+            switch (selection.type) {
+                case null:
+                    break;
+                case STORY_MOTION_KEYFRAME_SELECTION_TYPE:
+                    motionSelection = selection.data;
+                    break;
+                case STORY_BLOCK_SELECTION_TYPE:
+                    story = selection.data;
+                    break;
+                case "asset":
+                    asset = selection.data;
+                    break;
+                case "assetSet":
+                    setId = selection.data.id;
+                    break;
+                case "character":
+                    character = selection.data;
+                    break;
+                case "element":
+                    uiSelection = selection.data;
+                    break;
+                case "scene":
+                    sceneId = selection.data;
+                    break;
+                default:
+                    assertSelectionHandled(selection);
+            }
+
             setStoryMotionSelection(motionSelection);
             setStorySelection(story);
-            setActiveAsset(!motionSelection && !story && selection.type === "asset" ? (selection.data as Asset) : null);
-            // Only the id: the record itself is read back off the service, see `activeSet`.
-            setActiveSetId(
-                !motionSelection && !story && selection.type === "assetSet"
-                    ? (selection.data as AssetSet).id
-                    : null,
-            );
-            setActiveCharacter(!motionSelection && !story && selection.type === "character" ? (selection.data as Character) : null);
+            setActiveAsset(asset);
+            setActiveSetId(setId);
+            setActiveCharacter(character);
             setAssetMetadata(null);
-            setUISelection(!motionSelection && !story && isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
-            const sceneId =
-                !motionSelection && !story && selection.type === "scene"
-                    ? typeof selection.data === "string"
-                        ? selection.data
-                        : selection.data?.id ?? null
-                    : null;
+            setUISelection(uiSelection);
             setActiveSceneId(sceneId);
         };
 

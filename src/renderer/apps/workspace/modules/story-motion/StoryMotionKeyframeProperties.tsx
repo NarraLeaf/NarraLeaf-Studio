@@ -33,7 +33,6 @@ import {
 const CUSTOM_EASING_OPTION = "__custom";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
-    isStoryMotionKeyframeSelectionData,
     type StoryMotionKeyframeSelection,
 } from "./storyMotionTypes";
 
@@ -369,7 +368,6 @@ function clearStoryMotionKeyframeSelection(uiService: UIService, selection: Stor
     const current = uiService.getStore().getSelection();
     if (
         current.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
-        && isStoryMotionKeyframeSelectionData(current.data)
         && current.data.animationId === selection.animationId
         && current.data.keyframeId === selection.keyframeId
     ) {
