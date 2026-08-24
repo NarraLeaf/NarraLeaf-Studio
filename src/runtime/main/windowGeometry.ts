@@ -278,24 +278,39 @@ export function readWindowGeometry(userDataDir: string): WindowGeometryRecord | 
  * Write the geometry, synchronously.
  *
  * The moment worth recording is the window closing, which is also the last moment this process has:
- * an asynchronous write issued there is one the quit does not wait for. Written through a temporary
- * file so a quit interrupted mid-write leaves the previous answer rather than a truncated one.
+ * an asynchronous write issued there is one the quit does not wait for.
+ *
+ * ## Why this does not write through a temporary file
+ *
+ * It did, and on an ordinary Windows profile it never worked: MEASURED on a packaged game, the
+ * rename of `window.json.tmp` onto `window.json` - two names in the same directory - failed with
+ * `EXDEV: cross-device link not permitted`, because `%APPDATA%` there is a redirected folder and
+ * the filter driver behind it refuses the operation. The file simply never appeared, and every
+ * launch opened as if it were the first.
+ *
+ * Writing straight to the file costs the atomicity the rename was for, and that costs nothing
+ * here: the payload is under a hundred bytes, and a torn one is refused by
+ * {@link normalizeWindowGeometryRecord} - which reads as "nothing remembered", the same state a
+ * first launch is in. A guarantee that does not survive contact with the platform is worth less
+ * than a write that lands.
  */
-export function writeWindowGeometry(userDataDir: string, record: WindowGeometryRecord): void {
+export function writeWindowGeometry(
+    userDataDir: string,
+    record: WindowGeometryRecord,
+    log?: (message: string) => void,
+): void {
     const target = windowGeometryPath(userDataDir);
-    const temporary = `${target}.tmp`;
     try {
         fsSync.mkdirSync(path.dirname(target), { recursive: true });
-        fsSync.writeFileSync(temporary, JSON.stringify(record), "utf-8");
-        fsSync.renameSync(temporary, target);
-    } catch {
+        fsSync.writeFileSync(target, JSON.stringify(record), "utf-8");
+    } catch (error) {
         // Where the window was is worth nothing against failing to close, so this degrades to
         // "next launch opens like a first one" rather than throwing on the way out.
-        try {
-            fsSync.rmSync(temporary, { force: true });
-        } catch {
-            // Nothing left to do about a temporary file on a disk that is refusing writes.
-        }
+        //
+        // It says so, though. Swallowing the reason is what made the EXDEV above take a packaged
+        // run to find: a window that quietly stops being remembered looks exactly like a feature
+        // that was never built.
+        log?.(`could not remember the window: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
