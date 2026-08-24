@@ -69,6 +69,9 @@ export interface OnboardingPreferences {
     storyTextStyle: CSSProperties;
 }
 
+/** `STORY_DENSITY_METRICS.compact.lineHeight` - the leading the scene editor sets story text with. */
+const PREVIEW_LINE_HEIGHT = 1.5;
+
 function clampFontSize(stored: unknown): number {
     const numeric = typeof stored === "number" ? stored : Number(stored);
     if (!Number.isFinite(numeric)) {
@@ -163,7 +166,14 @@ export function OnboardingPreferencesProvider({ children }: { children: ReactNod
             setStory: (key, next) => (writers[key] as (value: typeof next) => void)(next),
             // The scene editor's own composition (`storyEditorTextStyle`), at the compact density
             // every editor opens at - so the number the author picks is the number they read.
-            storyTextStyle: { fontSize, fontFamily: editorFontCssFamily(fontFamily) },
+            //
+            // `lineHeight` is `STORY_DENSITY_METRICS.compact.lineHeight` restated (the preview
+            // restates the editor's metrics rather than importing the workspace bundle for them; see
+            // `StoryScenePreview`). It has to be a multiple of the size rather than a length: the
+            // rows it lands on wear `text-sm`, whose leading is a fixed `1.25rem`, and a directive
+            // row truncates - so at a large size the picked type was clipped above and below in the
+            // one pane whose whole job is to show what that size looks like.
+            storyTextStyle: { fontSize, fontFamily: editorFontCssFamily(fontFamily), lineHeight: PREVIEW_LINE_HEIGHT },
         };
     }, [
         themeMode, setThemeMode, accentColor, setAccentColor, zoomPercent, setZoomPercent,
