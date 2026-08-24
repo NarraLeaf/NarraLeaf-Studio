@@ -73,6 +73,31 @@ type BuildServiceEvents = {
     stateChanged: GameBuildStateSnapshot;
 };
 
+/** What the pipeline was asked to produce. Both run in the same session and report the same states. */
+export type GameBuildRunKind = "build" | "patch";
+
+/**
+ * One finished run of the pipeline, as the build report reads it.
+ *
+ * The snapshot alone does not say what the run was: it carries no variant and does not distinguish a
+ * production build from a patch export, both of which the main process reports through the same
+ * session. Those two facts are known only where the run was requested, so they are recorded here
+ * when it starts and kept with the terminal snapshot.
+ *
+ * Kept beyond the run because {@link BuildService.getState} moves on as soon as the next build
+ * starts, while the report describes the one that finished.
+ */
+export type FinishedGameBuildRun = {
+    /** Increments once per finished run, so a reader can tell a new one from a re-render. */
+    id: number;
+    kind: GameBuildRunKind;
+    /** The variant the run was requested under. Absent means the project's own values. */
+    appTagId?: string;
+    /** True when the author stopped the run, which the pipeline reports as a failure. */
+    cancelled: boolean;
+    state: GameBuildStateSnapshot;
+};
+
 /**
  * A build dialog session the user has not committed yet. Lives on the service
  * (see getDraft) so closing the dialog mid-configuration does not discard it.
@@ -166,6 +191,11 @@ export class BuildService extends Service<BuildService> {
     private refreshInFlight = false;
     private draft: BuildDialogDraft | null = null;
     private readonly events = new EventEmitter<BuildServiceEvents>();
+    /** What the run now in flight was asked for; read when it reaches a terminal state. */
+    private pendingRun: { kind: GameBuildRunKind; appTagId?: string } | null = null;
+    private cancelRequested = false;
+    private lastFinishedRun: FinishedGameBuildRun | null = null;
+    private finishedRunCount = 0;
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
         return;
@@ -212,6 +242,17 @@ export class BuildService extends Service<BuildService> {
     }
 
     /**
+     * The last run that reached a terminal state in this session, or null before any has.
+     *
+     * The build report reads this rather than {@link getState}, which describes whatever is running
+     * now. A run the author stopped is recorded like any other and marked `cancelled`, so a reader
+     * can tell a stopped run from a failure.
+     */
+    public getLastFinishedRun(): FinishedGameBuildRun | null {
+        return this.lastFinishedRun;
+    }
+
+    /**
      * Ask the main process what this selection would complain about. Advisory:
      * the pipeline re-runs every check, so a preflight that misses something
      * (or fails outright) can only cost a late error, never a bad build.
@@ -254,6 +295,9 @@ export class BuildService extends Service<BuildService> {
         // a run rejected by one of them still reports when it began. The dashboard's build history
         // archives each run's console output from this instant, and those checks log to it.
         const startedAt = Date.now();
+        // Recorded before the checks for the same reason `startedAt` is: a run refused by one of
+        // them is still a finished run, and the report names the variant it would have carried.
+        this.beginRun("build", request.appTagId);
         // The checks below fail without ever reaching the main process, so nothing else will name
         // the platforms for them - and a build that died in preflight is exactly the one an author
         // comes back to in the dashboard's history wanting to know what it was building.
@@ -482,6 +526,9 @@ export class BuildService extends Service<BuildService> {
      */
     public async exportPatch(request: GamePatchExportRequest): Promise<GameBuildStateSnapshot> {
         const startedAt = Date.now();
+        // The content's variant, matching the gate below: a patch is reported as the edition whose
+        // material it carries, not as the one it attaches to.
+        this.beginRun("patch", request.contentAppTagId ?? request.appTagId);
         const platforms = this.storedDesktopPlatforms();
         // Gated on the content's variant, not the one the patch attaches to: what a gate refuses is
         // a payload, and the payload is that variant's. A patch must not carry what a build of the
@@ -516,6 +563,9 @@ export class BuildService extends Service<BuildService> {
     }
 
     public async cancel(): Promise<GameBuildStateSnapshot> {
+        // Recorded before the request, because the pipeline reports a stopped run as a failure with
+        // a message of its own making. This flag is what tells the two apart on the way back.
+        this.cancelRequested = true;
         const result = await getInterface().gameBuild.cancel(this.projectPath());
         if (result.success) {
             this.updateState(result.data.state);
@@ -1381,9 +1431,31 @@ export class BuildService extends Service<BuildService> {
         return this.getContext().project.getConfig().projectPath;
     }
 
+    /** Stamp what a run was asked for, and clear the previous run's cancel flag. */
+    private beginRun(kind: GameBuildRunKind, appTagId: string | undefined): void {
+        this.pendingRun = appTagId ? { kind, appTagId } : { kind };
+        this.cancelRequested = false;
+    }
+
     private updateState(next: GameBuildStateSnapshot): void {
         this.syncPolling(next.status);
         const previous = this.state;
+        // Terminal on the transition only, and only for a run this workspace asked for. The poll
+        // returns the same finished snapshot until it stops, so a run must be recorded once; and
+        // the first poll of a session can pick up a run that ended before the project was reopened,
+        // which this workspace has nothing to report about.
+        const pending = this.pendingRun;
+        if (pending && (next.status === "done" || next.status === "error") && previous.status !== next.status) {
+            this.finishedRunCount += 1;
+            this.lastFinishedRun = {
+                id: this.finishedRunCount,
+                kind: pending.kind,
+                ...(pending.appTagId ? { appTagId: pending.appTagId } : {}),
+                cancelled: this.cancelRequested,
+                state: next,
+            };
+            this.pendingRun = null;
+        }
         this.state = next;
         // Phase transitions (not every poll tick) drive the console progress bar.
         if (previous.status !== next.status) {
