@@ -1,9 +1,6 @@
 import type { BrowserWindow } from "electron";
-import {
-    GAME_RUNTIME_CRASH_QUERY_PARAM,
-    GAME_RUNTIME_PROTOCOL,
-    type GameCrashPolicy,
-} from "@shared/types/gameRuntime";
+import type { GameCrashPolicy } from "@shared/types/gameRuntime";
+import { buildGameRuntimeIndexUrl } from "@shared/utils/gameRuntimeIndexUrl";
 import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
 import type { RuntimeLogSink } from "./runtimeLog";
 import type { ShellText } from "./shellText";
@@ -78,10 +75,16 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
             return;
         }
 
-        const base = `${GAME_RUNTIME_PROTOCOL}://runtime/index.html`;
-        const target = host.policy() === "restart"
-            ? base
-            : `${base}?${GAME_RUNTIME_CRASH_QUERY_PARAM}=${encodeURIComponent(describeProcessDeath(host.text, reason, exitCode))}`;
+        // The policy and the log path go back on the address under both policies, including the
+        // one that carries no failure: the page that comes back has to know them as well as the
+        // one that died, and a bare address would leave it guessing at the next crash.
+        const target = buildGameRuntimeIndexUrl({
+            policy: host.policy(),
+            logPath: host.logPath,
+            crashDetails: host.policy() === "restart"
+                ? null
+                : describeProcessDeath(host.text, reason, exitCode),
+        });
         host.log("info", `[Crash] Reloading the game window (policy: ${host.policy()})`);
         expectedProcessSwap = true;
         await win.loadURL(target).catch((error: unknown) => {

@@ -449,7 +449,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
             });
 
             const selection = store.getSelection();
-            if (selection.type === "character" && (selection.data as Character)?.profile?.getId?.() === item.id) {
+            if (selection.type === "character" && selection.data.profile.getId() === item.id) {
                 store.setSelection({ type: null, data: null });
             }
             loadCharacters();

@@ -10,10 +10,7 @@ export function resolveCanvasContextSelection(
     hitElementId: string | null,
     current: SelectionState,
 ): UIElementSelection | null {
-    const ui =
-        current.type === "element" && current.data && (current.data as UIElementSelection).editor === "ui"
-            ? (current.data as UIElementSelection)
-            : null;
+    const ui = current.type === "element" ? current.data : null;
 
     if (!hitElementId) {
         return ui && ui.surfaceId === surfaceId ? ui : null;
@@ -43,10 +40,7 @@ export function shouldApplyCanvasContextRetarget(
     if (!next) {
         return false;
     }
-    const ui =
-        current.type === "element" && current.data && (current.data as UIElementSelection).editor === "ui"
-            ? (current.data as UIElementSelection)
-            : null;
+    const ui = current.type === "element" ? current.data : null;
     if (!ui || ui.surfaceId !== surfaceId) {
         return true;
     }

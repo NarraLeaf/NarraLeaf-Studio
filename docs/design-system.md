@@ -192,3 +192,21 @@ Phase 2 新增(用来替换各处手写模式):
 | `arbitrary-hex` | 长尾近黑舞台色（判断密集,[scripts/style-codemod.mjs](../scripts/style-codemod.mjs) 有意不自动化） |
 
 ⚠️ 每加一个模态背板,`raw-white-black-alpha` 就会 +1 并让 ratchet 变红。这是**设计如此**：它逼你确认这一笔真的属于 §0 豁免,而不是顺手写的裸 `bg-black/40`。确认了就带理由 `--save`。
+
+## 9. 文案
+
+**像素看这份文件,字看 [help-system.md](help-system.md)。** 那份是界面文案的**唯一事实来源**,地位与本文件对等;
+写任何标签、提示、确认或帮助条目前先读它。尤其是 §3(什么话一律不得出现)、§3a(语域)、§3b(形状)、
+§3c(三种语言)。
+
+一句话的规矩：**界面只说当前状态、作者该做什么、做完会得到什么。不说机制,不说路线图,不跟人聊天。**
+
+两条可以直接跑的检查,与 §8 的门禁一样是机械的：
+
+```sh
+grep -nE '"[^"]*(—|——)[^"]*"' src/shared/i18n/catalog/*/*.ts
+grep -nE '"[^"]*(the engine|internally|because |which means)' src/shared/i18n/catalog/*/*.ts
+```
+
+第一条命中的破折号**只在格式示例里合法**,别处一律拆成两句;第二条命中即是这条字符串在描述自己的
+实现,删掉那半句,不要改写。

@@ -3,6 +3,12 @@ import { EventEmitter } from "./EventEmitter";
 import { KeybindingService } from "./KeybindingService";
 import { Keybinding } from "./types";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
+import type { UISurfaceId } from "@shared/types/ui-editor/document";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { Asset } from "../assets/types";
+import type { Character } from "../character/Character";
+import type { StoryBlockSelection } from "@/apps/workspace/modules/story/scene-editor/storySelection";
+import type { StoryMotionKeyframeSelection } from "@/apps/workspace/modules/story-motion/storyMotionTypes";
 import {
     Notification,
     ActionBarItem,
@@ -39,18 +45,50 @@ export const EDITOR_SPLIT_RATIO_EPSILON = 0.02;
 /**
  * What the app considers "the thing the inspector is about".
  *
- * Members are literals rather than a shared enum because each one is owned by the editor that
- * publishes it (see `storyMotionKeyframe` / `storyBlock`), and the store only has to name them. Note
- * that nothing in the app switches on this union: every consumer tests it with `if`, so ADDING a
- * member compiles everywhere and changes nothing — the dispatch sites have to be found by hand.
+ * One member per kind, discriminated by `type`: testing it narrows `data` to exactly what the editor
+ * that published the selection put there, so no consumer has to cast and none can read a payload
+ * belonging to a different kind. Members are literals rather than a shared enum because each one is
+ * owned by that editor (see `storyMotionKeyframe` / `storyBlock`) - the store names the kinds and
+ * imports the shapes, type-only, from wherever they are authored.
+ *
+ * Anything that has to handle every kind must `switch` on `type` and end in
+ * {@link assertSelectionHandled}, so ADDING a member here fails the build at every such site instead
+ * of compiling into silence.
  */
-export interface SelectionState {
-    type: "asset" | "assetSet" | "character" | "element" | "scene" | "storyMotionKeyframe" | "storyBlock" | null;
-    data: any | UIElementSelection | null;
+export type SelectionState =
+    | { type: null; data: null }
+    | { type: "asset"; data: Asset }
+    | { type: "assetSet"; data: AssetSet }
+    | { type: "character"; data: Character }
+    | { type: "element"; data: UIElementSelection }
+    /** A surface id, or a component editor's pseudo-surface id (`component-editor:<id>`). */
+    | { type: "scene"; data: UISurfaceId }
+    | { type: "storyMotionKeyframe"; data: StoryMotionKeyframeSelection }
+    | { type: "storyBlock"; data: StoryBlockSelection };
+
+/** The one member of {@link SelectionState} a given `type` picks out. */
+export type SelectionOfType<TType extends SelectionState["type"]> = Extract<SelectionState, { type: TType }>;
+
+/**
+ * The `default:` arm of a switch over a selection's `type`.
+ *
+ * Unreachable while every member is handled - which is the point: the moment one is not, its member
+ * type reaches here and fails to be a `never`, naming the site that forgot it.
+ */
+export function assertSelectionHandled(selection: never): never {
+    throw new Error(`Unhandled selection: ${JSON.stringify(selection)}`);
 }
 
-export function isUIElementSelection(selection: SelectionState): selection is { type: "element"; data: UIElementSelection } {
-    return selection.type === "element" && Boolean(selection.data) && (selection.data as UIElementSelection).editor === "ui";
+/**
+ * Whether a UI surface element is the subject.
+ *
+ * Nothing more than the discriminant now - the shape check it used to carry is what the union
+ * guarantees. It stays a function because the game runtime swaps this module for a shim that answers
+ * a constant `false`: there is no editor selection out there, and the runtime's state service hands
+ * back `null` rather than a `SelectionState` at all.
+ */
+export function isUIElementSelection(selection: SelectionState): selection is SelectionOfType<"element"> {
+    return selection.type === "element";
 }
 
 /**

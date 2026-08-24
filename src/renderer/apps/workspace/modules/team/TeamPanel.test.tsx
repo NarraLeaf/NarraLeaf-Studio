@@ -326,7 +326,7 @@ describe("what the server answered", () => {
         expect(seam("collaboration")).toBeNull();
     });
 
-    it("counts the machines on this project, and says when it is alone", () => {
+    it("counts the machines on this project once there is more than this one", () => {
         panel({}, team({
             canSeeClients: true,
             clients: [
@@ -337,26 +337,26 @@ describe("what the server answered", () => {
         expect(seam("clients")?.textContent).toContain("workspace.shell.team.hereMany");
 
         cleanup();
+        // Alone with nothing attached, the section has nothing to report and is not drawn. It used
+        // to say "only this machine" every working day, under a heading, beside a room row.
         panel({}, team({ canSeeClients: true, clients: [{ id: "a", account: "ada", label: "Nomen", agent: "", since: 1 }] }));
-        expect(seam("clients")?.textContent).toContain("workspace.shell.team.hereAlone");
-    });
-
-    it("offers a room where the server has them, and says nothing about one where it has not", () => {
-        panel({}, team({ canLive: true, head: "rev-9" }));
-        expect(seam("live-open")?.textContent).toBe("workspace.shell.team.liveOpen");
-
-        cleanup();
-        panel({}, team({ canLive: false }));
-        expect(seam("live")).toBeNull();
+        expect(seam("collaboration")).toBeNull();
     });
 
     /*
-     * What pressing that control does is `TeamCollaboration.test.tsx`'s subject, not this file's.
-     * The room row drives `Services.Live` now rather than calling the server: opening a room is one
-     * step of entering a session - the tree is checkpointed and pushed first, the workspace freezes
-     * behind it - and everything the row then says (who is in it, whether it is catching up, why it
-     * could not be entered, how it ended) comes from the session rather than from the server list.
+     * ⚠ **The live session is not in this dialog and must not come back to it.**
+     *
+     * It was one row here, with the only deliberate act in the panel drawn smaller than the address
+     * above it, behind two clicks, in a dialog that is shut for the whole of a working day. A
+     * session is a mode the window is in and it outlives every tab, so it belongs to the title bar
+     * and to a surface of its own - `LiveSessionPresence` and `LiveSessionDialog`, whose own file
+     * holds everything that used to be pinned here.
      */
+    it("says nothing about live sessions", () => {
+        panel({}, team({ canLive: true, head: "rev-9" }));
+        expect(seam("live")).toBeNull();
+        expect(seam("live-open")).toBeNull();
+    });
 
     it("counts what is attached, and how much of it is about an older version", () => {
         const attached = (revision: string, id: string) => ({

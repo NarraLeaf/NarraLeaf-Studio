@@ -2,8 +2,7 @@ import { useState, type ReactNode } from "react";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { useTranslation } from "@/lib/i18n";
 import { getShellLocale } from "./shellLocale";
-import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
-import { getRuntimeCrashPolicy } from "./crashPolicy";
+import { getRuntimeCrashPolicy, getRuntimeShellLogPath } from "./crashPolicy";
 
 interface RuntimeCrashScreenProps {
     /** The failure, already flattened. Carries a stack when there was one. */
@@ -38,10 +37,13 @@ export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenPro
     /**
      * Shown under every policy, including the one that keeps the error off the screen - especially
      * that one. A player who is not being shown what went wrong is exactly the player who needs to
-     * be able to hand the file to somebody who can read it. Absent on the web export, which has no
-     * log file to name.
+     * be able to hand the file to somebody who can read it.
+     *
+     * Read from the page's address rather than from the bridge, because the screen that most needs
+     * to name the log is the one drawn when the preload never ran - and that is exactly when there
+     * is no bridge to ask. Absent on the web export, which has no log file to name.
      */
-    const logPath = getGameRuntimeBridge()?.logPath ?? null;
+    const logPath = getRuntimeShellLogPath();
 
     const handleCopy = async () => {
         try {

@@ -33,11 +33,8 @@ import {
     normalizeSaveLocationConfiguration,
     type SaveLocationConfiguration,
 } from "@shared/utils/userDataLocation";
-import {
-    buildGameRuntimeAssetVersionArg,
-    buildGameRuntimeCrashPolicyArg,
-    buildGameRuntimeLogPathArg,
-} from "@shared/utils/gameRuntimeAssetUrl";
+import { buildGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import { buildGameRuntimeIndexUrl } from "@shared/utils/gameRuntimeIndexUrl";
 import {
     resolveGameRuntimeEntrySurface,
     resolveGameRuntimeInitialBackgroundColor,
@@ -492,7 +489,10 @@ void app.whenReady().then(async () => {
     // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
     // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
     // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
-    await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`).catch(error => {
+    await mainWindow.loadURL(buildGameRuntimeIndexUrl({
+        policy: normalizeGameCrashPolicy(pack.crash?.policy),
+        logPath: runtimeLogPath(userDataDir),
+    })).catch(error => {
         if (isQuitting) {
             return;
         }
@@ -825,16 +825,12 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             // The preload derives versioned asset URLs from this marker; a
             // process argument is the only synchronous channel it can read
             // before the document loads.
+            // The crash policy and the log path used to travel here too, and no longer do: the
+            // preload republishes them, so they went down with it in the one failure - a preload
+            // that never ran - where the crash screen has to be right on its own. They are on the
+            // page's own address now (see `buildGameRuntimeIndexUrl`).
             additionalArguments: [
                 buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack)),
-                // So the crash screen is right from the first frame. The failure it is most likely
-                // to draw happens while the pack is still being read, and asking the pack for the
-                // policy then would mean falling back to "show the error" in exactly the build
-                // whose author asked for the opposite.
-                buildGameRuntimeCrashPolicyArg(normalizeGameCrashPolicy(pack.crash?.policy)),
-                // So the crash screen can say where the report is. The one thing a player can do
-                // about a crash is hand the file over, which needs them to be told where it is.
-                buildGameRuntimeLogPathArg(runtimeLogPath(userDataDir)),
             ],
         },
     });

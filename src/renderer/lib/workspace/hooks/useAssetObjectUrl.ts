@@ -14,6 +14,10 @@ import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeB
 import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import {
+    useAssetBytesSource,
+    type AssetBytesResult,
+} from "@/lib/ui-editor/assets/assetBytesSource";
 
 interface AssetObjectUrlState {
     url: string | null;
@@ -39,6 +43,13 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
     const workspaceValue = useOptionalWorkspace();
     const context: WorkspaceContext | null = workspaceValue?.context ?? null;
     const assetsService = context ? context.services.get<AssetsService>(Services.Assets) : null;
+    /**
+     * The version these bytes belong to, when the caller has named one.
+     *
+     * `null` everywhere in Studio today - nothing mounts a provider - and `null` means the live
+     * ladder below runs exactly as it always has.
+     */
+    const assetBytesSource = useAssetBytesSource();
     const [state, setState] = useState<AssetObjectUrlState>({
         url: null,
         metadata: null,
@@ -104,6 +115,85 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
     }, [assetsService, requestedAssetId]);
 
     useEffect(() => {
+        /**
+         * The versioned arm, and it is deliberately the FIRST thing in this effect.
+         *
+         * Every arm below resolves against the project as it is right now: the set resolution reads
+         * today's tags, the avatar table holds URLs the currently mounted compile minted, the Dev
+         * Mode and game-runtime arms answer off the running session, and the ladder at the bottom
+         * fetches today's bytes. A seam placed after any of them would leave that arm rendering the
+         * present inside a picture of the past - most visibly for dialogue avatars, which are not a
+         * rare case on the surfaces a comparison shows.
+         *
+         * So a mounted source answers for the id the caller asked for, whole: sets included, avatars
+         * included. That is a duty as much as a privilege, and the contract says so.
+         */
+        if (assetBytesSource && requestedAssetId) {
+            let cancelled = false;
+            setState(prev => ({
+                ...prev,
+                loading: true,
+                error: null,
+            }));
+
+            (async () => {
+                let result: AssetBytesResult;
+                try {
+                    result = await assetBytesSource.read(requestedAssetId, assetType);
+                } catch (err) {
+                    result = {
+                        kind: "failed",
+                        reason: err instanceof Error ? err.message : String(err),
+                    };
+                }
+                if (cancelled) {
+                    return;
+                }
+
+                if (result.kind !== "bytes") {
+                    if (urlRef.current) {
+                        URL.revokeObjectURL(urlRef.current);
+                        urlRef.current = null;
+                    }
+                    setState({
+                        url: null,
+                        metadata: null,
+                        loading: false,
+                        // "Absent at that version" and "the read broke" are different facts, and the
+                        // source keeps them apart; what this hook can carry is one string, so each
+                        // takes the wording the live ladder already uses for its own version of it.
+                        error: result.kind === "absent"
+                            ? `Asset not found: ${requestedAssetId}`
+                            : result.reason || `Failed to load asset: ${requestedAssetId}`,
+                    });
+                    return;
+                }
+
+                const blob = new Blob(
+                    [new Uint8Array(result.bytes) as BlobPart],
+                    result.mediaType ? { type: result.mediaType } : undefined,
+                );
+                const nextUrl = URL.createObjectURL(blob);
+                if (urlRef.current) {
+                    URL.revokeObjectURL(urlRef.current);
+                }
+                urlRef.current = nextUrl;
+                setState({
+                    url: nextUrl,
+                    // No width/height: a source hands over bytes and a media type, and decoding them
+                    // to fill in image metadata is work no caller has asked for. Same caveat as the
+                    // game runtime's shim - a consumer that reads `metadata` finds nothing here.
+                    metadata: null,
+                    loading: false,
+                    error: null,
+                });
+            })();
+
+            return () => {
+                cancelled = true;
+            };
+        }
+
         /**
          * The file this call is really about.
          *
@@ -320,7 +410,17 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
         return () => {
             cancelled = true;
         };
-    }, [context, requestedAssetId, assetType, assetsService, contentGeneration, setRevision]);
+        // The source's identity, not the object: a provider that rebuilds its value every render
+        // would otherwise restart every fetch on the surface.
+    }, [
+        context,
+        requestedAssetId,
+        assetType,
+        assetsService,
+        contentGeneration,
+        setRevision,
+        assetBytesSource?.id ?? null,
+    ]);
 
     useEffect(() => {
         return () => {

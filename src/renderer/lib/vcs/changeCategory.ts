@@ -86,11 +86,16 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
     variables: "story",
     "audio-tracks": "audio",
     /**
-     * What one save slot carries besides the engine's own record. Interface rather than story or
-     * settings: the fields exist to be pins on the save nodes, and the only place they are edited
-     * is the popover on a node card in the blueprint editor.
+     * What one save slot carries besides the engine's own record. Settings rather than interface,
+     * which is where it used to be filed - the fields become pins on the blueprint save nodes, so
+     * they sat next to the blueprints. That proximity is no longer what decides it: the interface
+     * documents and the blueprints are compared on a surface of their own, and a heading called
+     * "Interface" standing over a lone save-slot file would name a panel the author never edits it
+     * in. What is left is what the file is - a project-wide declaration written once, stored at
+     * `editor/save-schema.json` beside the variant list, the DLC record and the brand palette,
+     * which are settings for the same reason.
      */
-    "save-schema": "interface",
+    "save-schema": "settings",
     /**
      * The build variants the project ships as. Settings rather than assets: a variant names how the
      * project is built, and nothing in it is content the author writes.
@@ -139,7 +144,7 @@ const CATEGORY_BY_CONVENTION_PATH: readonly (readonly [readonly string[], Change
     [ProjectNameConvention.EditorBrand, "settings"],
     [ProjectNameConvention.Assets, "assets"],
     [ProjectNameConvention.ProjectResources, "assets"],
-    [ProjectNameConvention.ProjectConfig, "settings"],
+    [ProjectNameConvention.ProjectConfigLegacy, "settings"],
     [ProjectNameConvention.Scripts, "other"],
     [ProjectNameConvention.PuppetRuntimes, "other"],
     [ProjectNameConvention.NLCache, "other"],
@@ -165,6 +170,21 @@ function conventionPath(segments: readonly string[]): string {
 }
 
 /**
+ * A root file the convention names by its extension, and the heading it belongs under.
+ *
+ * A second, smaller mechanism because a suffix is not a prefix, and the table above can only
+ * express a prefix. The project's own config file is called after the project - `My Game` is stored
+ * as `My-Game.nlproj` - so no path written down here can name it; what it ends in is the only thing
+ * about it that is fixed.
+ *
+ * Root files only. An author is free to keep `archive/old.nlproj` next to their notes, and that is
+ * not this project's settings.
+ */
+const CATEGORY_BY_ROOT_EXTENSION: readonly (readonly [string, ChangeCategory])[] = [
+    [ProjectNameConvention.ProjectConfigExtension, "settings"],
+];
+
+/**
  * Which heading a changed document belongs under.
  *
  * Total by construction: an unrecognised path is `other` rather than absent, because a comparison
@@ -185,6 +205,15 @@ function categoryForPath(rawPath: string): ChangeCategory {
     for (const [prefix, category] of CATEGORY_PREFIXES) {
         if (path === prefix || path.startsWith(`${prefix}/`)) {
             return category;
+        }
+    }
+    if (!path.includes("/")) {
+        for (const [extension, category] of CATEGORY_BY_ROOT_EXTENSION) {
+            // Longer than the extension, so a file named nothing but `.nlproj` is not read as a
+            // project config: a sanitized project name is never empty.
+            if (path.length > extension.length && path.endsWith(extension)) {
+                return category;
+            }
         }
     }
     return "other";

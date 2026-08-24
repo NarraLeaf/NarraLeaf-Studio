@@ -7,6 +7,7 @@ import type {
 } from "@/lib/workspace/services/live/liveSessionView";
 import type { TranslationKey } from "@shared/i18n";
 import type { LiveRefusalReason } from "@shared/live/ops";
+import type { TeamProjectState } from "../../hooks/useTeamProject";
 
 /**
  * What a live session's facts are called, in the catalog.
@@ -63,6 +64,19 @@ export function liveEntryFailureSentence(failure: LiveEntryFailure): LiveSentenc
         return { key: ENTRY_FAILURES[failure.kind], params: { project: failure.project } };
     }
     return { key: ENTRY_FAILURES[failure.kind] };
+}
+
+/**
+ * What to do about a refusal that pressing the control again cannot get past, or null.
+ *
+ * One of the fourteen has one. A session cannot be re-based on a newer version, so a tree that has
+ * moved past the room's revision can never join it however many times the control is pressed - the
+ * two copies have to meet on the server first, and nothing on screen said so.
+ */
+export function liveEntryFailureRemedy(failure: LiveEntryFailure): TranslationKey | null {
+    return failure.kind === "revision-mismatch"
+        ? "workspace.shell.team.liveVersionMismatchNext"
+        : null;
 }
 
 /**
@@ -163,4 +177,46 @@ export function liveOtherMembers(view: LiveSessionView): string[] {
     return (view.session?.members ?? [])
         .filter(member => member.instance !== view.self)
         .map(member => member.account);
+}
+
+/**
+ * Why the collaboration control cannot act, or null when it can.
+ *
+ * **The control is drawn for every project pointed at a Team server**, including the ones that
+ * cannot open a room at this moment - a control that appears only once everything is in place
+ * cannot be used to find out what is missing. So it goes inert and names the answer it is waiting
+ * for, which is a different sentence for each of the five states the project can be in.
+ *
+ * A `Record` over the whole union rather than a chain of comparisons, for the same reason as every
+ * other table in this file: a state added to `TeamProjectState` does not compile until somebody has
+ * decided what it says.
+ */
+const PRESENCE_REFUSALS: Record<TeamProjectState["kind"], TranslationKey | null> = {
+    // Nothing is drawn for a project on no server at all, so this is never read.
+    none: "workspace.shell.team.liveNoServer",
+    "no-account": "workspace.shell.team.noAccountHere",
+    connecting: "workspace.shell.team.liveConnecting",
+    unreachable: "workspace.shell.team.unreachable",
+    "not-there": "workspace.shell.team.notThere",
+    verified: null,
+};
+
+export function livePresenceRefusal(state: TeamProjectState, canLive: boolean): TranslationKey | null {
+    const refusal = PRESENCE_REFUSALS[state.kind];
+    if (refusal !== null) {
+        return refusal;
+    }
+    // Answering, holds the project, and still offers no rooms. Only a deployment older than the
+    // feature, which is why it is the last question asked rather than the first.
+    return canLive ? null : "workspace.shell.team.liveUnsupported";
+}
+
+/**
+ * The word for a member's standing in a room, given who opened it.
+ *
+ * The same two words the session's own standing uses, so a member row and the room row cannot
+ * disagree about what somebody is called.
+ */
+export function liveMemberRoleKey(account: string, host: string | null | undefined): TranslationKey {
+    return account === host ? "workspace.shell.team.liveHost" : "workspace.shell.team.liveGuest";
 }
