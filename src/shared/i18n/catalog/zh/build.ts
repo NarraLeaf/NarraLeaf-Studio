@@ -317,6 +317,49 @@ export const build = {
         submitted: "构建已开始，进度显示在控制台",
         done: "构建完成",
         failed: "构建失败",
+        patchDone: "补丁已导出",
+        patchFailed: "补丁导出失败",
+        // 通知上的按钮。上面那句话离开按钮仍然成立：通知面板保留正文，不保留按钮
+        openReport: "打开报告",
+    },
+    /**
+     * 构建报告：一次已结束的运行产出了什么，以及它从资产库中带走了什么。
+     * 由该次运行发出的通知打开。
+     *
+     * 两个词分工明确：产物是构建写出的文件，资产是工程资产库中的条目。报告两者都给出。
+     */
+    report: {
+        title: "构建报告",
+        empty: "没有可报告的构建",
+        outcome: {
+            done: "已完成",
+            error: "已失败",
+            cancelled: "已中止",
+        },
+        kind: {
+            build: "正式构建",
+            patch: "补丁导出",
+        },
+        summary: "概览",
+        variant: "变体",
+        platforms: "平台",
+        duration: "耗时",
+        artifacts: "产物",
+        artifactsEmpty: "本次运行没有产物",
+        outputDir: "输出目录",
+        durationSeconds: "{seconds} 秒",
+        durationMinutes: "{minutes} 分 {seconds} 秒",
+        includedTitle: "已打包的资产",
+        includedEmpty: "本次运行没有打包任何资产",
+        excludedTitle: "未打包的资产",
+        excludedEmpty: "本次运行没有遗漏任何资产",
+        charactersTitle: "未打包的角色",
+        // 对完整打包资产库的运行，用它替代两份资产清单
+        wholeLibrary: "本次运行完整打包了资产库",
+        search: "搜索资产",
+        noMatches: "没有资产匹配该搜索",
+        showAll: "显示全部 {count} 项",
+        failure: "失败原因",
     },
     invalidCommand: "{story} / {scene} 中有无效指令：{source}",
     invalidCommandSummary: {
