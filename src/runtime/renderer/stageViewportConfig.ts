@@ -1,5 +1,6 @@
 import {
     DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG,
+    WEB_SHELL_MOBILE_VARIANT,
     WEB_SHELL_VARIANT_META,
     type GameRuntimePackV1,
     type GameRuntimeViewportConfig,
@@ -19,7 +20,7 @@ export function isMobileShellDocument(): boolean {
         return false;
     }
     const meta = document.querySelector(`meta[name="${WEB_SHELL_VARIANT_META}"]`);
-    return meta?.getAttribute("content") === "mobile";
+    return meta?.getAttribute("content") === WEB_SHELL_MOBILE_VARIANT;
 }
 
 export type ResolvedStageViewport = {

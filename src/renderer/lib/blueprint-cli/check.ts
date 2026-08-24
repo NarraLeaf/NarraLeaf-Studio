@@ -29,6 +29,8 @@ export type CheckOptions = {
     newId?: () => string;
     /** See `BpCompileOptions.resolveWidgetElementType`. */
     resolveWidgetElementType?: (owner: BlueprintOwnerRef) => string | undefined;
+    /** See `BpCompileOptions.resolveElementType`. */
+    resolveElementType?: (elementId: string) => string | undefined;
     /**
      * The element a `widgetMain` blueprint belongs to.
      *
@@ -53,6 +55,7 @@ export function checkBlueprintSource(source: string, options: CheckOptions = {})
         existing: options.existing,
         newId: options.newId,
         resolveWidgetElementType: options.resolveWidgetElementType,
+        resolveElementType: options.resolveElementType,
     });
     diagnostics.push(...compiled.diagnostics);
 
