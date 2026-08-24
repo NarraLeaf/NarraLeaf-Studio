@@ -4,7 +4,9 @@ import {
     claimAutomaticRestart,
     clearAutomaticRestarts,
     getRuntimeCrashPolicy,
+    getRuntimeShellLogPath,
     setRuntimeCrashPolicy,
+    setRuntimeShellLogPath,
 } from "./crashPolicy";
 
 describe("setRuntimeCrashPolicy", () => {
@@ -28,6 +30,26 @@ describe("setRuntimeCrashPolicy", () => {
         // An older pack, or a marker from a build that knew a policy this one does not.
         setRuntimeCrashPolicy("shout");
         expect(getRuntimeCrashPolicy()).toBe("details");
+    });
+});
+
+describe("setRuntimeShellLogPath", () => {
+    it("has no path to name until the shell states one", () => {
+        setRuntimeShellLogPath(null);
+        expect(getRuntimeShellLogPath()).toBeNull();
+    });
+
+    it("treats an empty statement as no statement", () => {
+        // A shell that names its log with an empty string has not named it, and the screen must
+        // not offer the player a blank path to look in.
+        setRuntimeShellLogPath("");
+        expect(getRuntimeShellLogPath()).toBeNull();
+    });
+
+    it("keeps the path the shell stated", () => {
+        const path = ["C:", "logs", "game.log"].join(String.fromCharCode(92));
+        setRuntimeShellLogPath(path);
+        expect(getRuntimeShellLogPath()).toBe(path);
     });
 });
 
