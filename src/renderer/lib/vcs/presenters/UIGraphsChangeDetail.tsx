@@ -31,6 +31,7 @@ import {
 import { CHANGE_MASK_CLASS, CHANGE_MASK_STROKE } from "./changeMask";
 import { registerChangePresenter, type ChangePresenter, type ChangePresenterProps } from "./registry";
 import { useSideDocument } from "./sideDocument";
+import { RefusedAssetsNote, useVersionedAssets, VersionedAssetsProvider } from "./useVersionedAssets";
 import {
     buildGraphDiffPlan,
     graphNodeBox,
@@ -87,6 +88,12 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
     const requested = useMemo(() => sidesOfEntry(entry, sides), [entry, sides]);
     const base = useSideDocument<UIGraphDocument>(requested.before, entry.path, uiGraphsSpec);
     const head = useSideDocument<UIGraphDocument>(requested.after, entry.path, uiGraphsSpec);
+    // One per column, for the reason the interface canvas next door gives. A graph card carries no
+    // picture of its own today, but a node's title comes out of the catalogue and a node that names
+    // an asset is one step away - and mounting the source per column is what makes it that step
+    // rather than a second version of this decision.
+    const baseAssets = useVersionedAssets(requested.before);
+    const headAssets = useVersionedAssets(requested.after);
 
     const changes = entry.diff.changes;
     const plan = useMemo(
@@ -184,6 +191,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                         offCanvas={plan.offCanvas.length}
                         unplaced={unplaced}
                     />
+                    <RefusedAssetsNote sides={[baseAssets.refusals, headAssets.refusals]} />
                 </>
             }
         >
@@ -191,28 +199,32 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                 {frame > 0 && option && (
                     <>
                         {baseGraph && (
-                            <GraphColumn
-                                caption="documentDiff.canvas.before"
-                                graph={baseGraph}
-                                viewport={viewport}
-                                nav={nav}
-                                onNav={setNav}
-                                masks={masks.filter(mask => mask.onBase)}
-                                selected={selected}
-                                onSelect={setSelected}
-                            />
+                            <VersionedAssetsProvider source={baseAssets.source}>
+                                <GraphColumn
+                                    caption="documentDiff.canvas.before"
+                                    graph={baseGraph}
+                                    viewport={viewport}
+                                    nav={nav}
+                                    onNav={setNav}
+                                    masks={masks.filter(mask => mask.onBase)}
+                                    selected={selected}
+                                    onSelect={setSelected}
+                                />
+                            </VersionedAssetsProvider>
                         )}
                         {headGraph && (
-                            <GraphColumn
-                                caption="documentDiff.canvas.after"
-                                graph={headGraph}
-                                viewport={viewport}
-                                nav={nav}
-                                onNav={setNav}
-                                masks={masks.filter(mask => mask.onHead)}
-                                selected={selected}
-                                onSelect={setSelected}
-                            />
+                            <VersionedAssetsProvider source={headAssets.source}>
+                                <GraphColumn
+                                    caption="documentDiff.canvas.after"
+                                    graph={headGraph}
+                                    viewport={viewport}
+                                    nav={nav}
+                                    onNav={setNav}
+                                    masks={masks.filter(mask => mask.onHead)}
+                                    selected={selected}
+                                    onSelect={setSelected}
+                                />
+                            </VersionedAssetsProvider>
                         )}
                     </>
                 )}

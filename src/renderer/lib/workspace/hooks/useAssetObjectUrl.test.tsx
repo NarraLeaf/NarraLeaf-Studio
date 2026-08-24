@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { render, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "../services/ui/EventEmitter";
 import { Services } from "../services/services";
@@ -143,6 +143,20 @@ describe("useAssetObjectUrl with no source mounted", () => {
         await waitFor(() => expect(result.current.url).toBe("app://avatar/live.png"));
         // The live ladder was never reached, so no blob was minted.
         expect(mintedUrls).toBe(0);
+    });
+
+    it("still re-reads when the live library replaces the asset's bytes", async () => {
+        imageAsset("picture");
+        fetchResult = { success: true, data: { data: new Uint8Array([1, 2, 3]) } };
+
+        const { result } = renderHook(() => useAssetObjectUrl("picture"));
+        await waitFor(() => expect(result.current.url).toBe("blob:test/1"));
+
+        await act(async () => {
+            assetEvents.emit("updated", { id: "picture" });
+        });
+
+        await waitFor(() => expect(result.current.url).toBe("blob:test/2"));
     });
 });
 

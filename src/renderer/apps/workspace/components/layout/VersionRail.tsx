@@ -33,6 +33,7 @@ import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
+import { NO_DOCUMENT_NAMES, documentNameOf, renderDocumentName } from "@/lib/vcs/documentName";
 import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
@@ -66,7 +67,6 @@ import {
     revisionMessageLine,
     serverFace,
     shortRevision,
-    splitChangePath,
     versionFace,
     type FlatHistoryEntry,
     type VersionRailPresence,
@@ -716,7 +716,10 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
  */
 function ChangeRow({ file }: { file: VcsFileChange }) {
     const { t } = useTranslation();
-    const { directory, name } = splitChangePath(file.path);
+    // What the author calls this thing, not the file it is stored in. The rail has no comparison
+    // to read a story's title out of, so a document that has a name of its own is qualified by its
+    // id rather than given a title this surface cannot see - the whole path is in the tooltip.
+    const name = renderDocumentName(documentNameOf(file.path, NO_DOCUMENT_NAMES), t);
     const Icon = CHANGE_ICONS[file.kind];
     // Not cast to `TranslationKey`: the template resolves to a union of the five literal keys, so a
     // renamed or missing one is a type error here rather than a string that renders as itself.
@@ -740,16 +743,6 @@ function ChangeRow({ file }: { file: VcsFileChange }) {
                 className={cn("h-3 w-3 shrink-0", CHANGE_TINTS[file.kind])}
                 aria-label={kindLabel}
             />
-            {/* Shrinks first and by a wide margin, so the file name only starts to give way once the
-                directory has nothing left to give. */}
-            {directory !== null && (
-                <span
-                    className="overflow-hidden whitespace-nowrap text-2xs text-fg-subtle"
-                    style={{ direction: "rtl", textOverflow: "ellipsis", flexShrink: 999, minWidth: 0 }}
-                >
-                    <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{directory}/</span>
-                </span>
-            )}
             <span className="min-w-0 truncate text-2xs text-fg-muted">{name}</span>
             {file.conflictUnresolved && (
                 <TriangleAlert
