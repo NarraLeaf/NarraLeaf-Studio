@@ -377,6 +377,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getWindowScaleOptions: () => [],
                     getWindowScale: async () => 1,
                     setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
                 },
                 layers: SILENT_LAYER_HOST,
@@ -516,6 +518,8 @@ function createPageNavigationHostAdapter(
                     getWindowScaleOptions: () => [],
                     getWindowScale: async () => 1,
                     setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     getFullscreen: async () => fullscreen?.current === true,
                     setFullscreen: async (next: boolean) => {
                         if (fullscreen) {
@@ -709,6 +713,8 @@ function createGameSaveHostAdapter(options: {
                     getWindowScaleOptions: () => [],
                     getWindowScale: async () => 1,
                     setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
                 },
                 layers: SILENT_LAYER_HOST,
