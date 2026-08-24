@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button, ConfirmModal, ProgressCircle } from "@/lib/components/elements";
@@ -41,6 +41,25 @@ const PROGRESS_TOTAL = STEPS.length - 1;
  */
 const SCREEN_SHIFT_PX = 16;
 const SCREEN_DURATION_S = 0.18;
+
+/**
+ * Where a screen comes from and where it goes, as a function of which way the run moved.
+ *
+ * Variants rather than literal `initial` / `exit` objects, and that is the whole point:
+ * `AnimatePresence` re-resolves an exiting child's variants against ITS OWN `custom` at the moment
+ * the child leaves, while a literal `exit={{ x: ... }}` is frozen into the element when it was last
+ * rendered - which is one move out of date. The screen being replaced was therefore leaving in the
+ * direction of the PREVIOUS press, so the two halves of every change of direction slid the same way
+ * and crossed over each other.
+ *
+ * `+1` is forward. A screen arrives from the side the run is heading towards and the one it
+ * replaces leaves the opposite way, so the pair reads as one movement rather than two.
+ */
+const SCREEN_VARIANTS = {
+    enter: (direction: number) => ({ opacity: 0, x: direction * SCREEN_SHIFT_PX }),
+    settled: { opacity: 1, x: 0 },
+    leave: (direction: number) => ({ opacity: 0, x: direction * -SCREEN_SHIFT_PX }),
+};
 
 type OnboardingStep = (typeof STEPS)[number];
 
@@ -151,12 +170,15 @@ export interface OnboardingFlowProps {
  */
 export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
     const { t } = useTranslation();
-    const [index, setIndex] = useState(0);
     /**
-     * Which way the last move went, so a screen arrives from the side it was reached from. A ref
-     * rather than state: it is read while rendering the move it describes and never on its own.
+     * Which screen is up and which way the run moved to reach it, as one value.
+     *
+     * Together rather than in two `useState`s: the direction is only ever meaningful for the move
+     * that produced the index beside it, and two separate updates leave one render in which the
+     * screen is new and the direction is the previous one - which is exactly the frame
+     * `AnimatePresence` reads to start the movement.
      */
-    const direction = useRef(1);
+    const [{ index, direction }, setScreen] = useState({ index: 0, direction: 1 });
     /**
      * Which surface the sample shows while the zoom screen is up.
      *
@@ -180,13 +202,13 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
     const isLast = index === STEPS.length - 1;
 
     const goTo = useCallback((target: number) => {
-        const clamped = Math.min(STEPS.length - 1, Math.max(0, target));
-        if (clamped === index) {
-            return;
-        }
-        direction.current = clamped > index ? 1 : -1;
-        setIndex(clamped);
-    }, [index]);
+        setScreen(current => {
+            const clamped = Math.min(STEPS.length - 1, Math.max(0, target));
+            return clamped === current.index
+                ? current
+                : { index: clamped, direction: clamped > current.index ? 1 : -1 };
+        });
+    }, []);
     const back = useCallback(() => goTo(index - 1), [goTo, index]);
     const next = useCallback(() => goTo(index + 1), [goTo, index]);
 
@@ -217,14 +239,28 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                                     type="button"
                                                     onClick={() => goTo(entryIndex)}
                                                     aria-current={active ? "step" : undefined}
+                                                    // No focus ring: `.nl-focus-ring` fires on plain
+                                                    // `:focus`, so a mouse press left an outline
+                                                    // sitting on the row until something else took
+                                                    // the focus. The row answers a press by filling
+                                                    // instead, which is what the panel rail does,
+                                                    // and `focus-visible` fills it the same way for
+                                                    // a keyboard - the fill is a background, so the
+                                                    // app's blanket `button:focus { outline: none }`
+                                                    // cannot silently eat it the way it eats a ring.
                                                     className={cn(
-                                                        "nl-focus-ring flex w-full items-center gap-1.5 border-l-2 py-1.5 pl-3 pr-2 text-left text-xs transition-colors cursor-default",
-                                                        active ? "border-primary text-fg" : "border-transparent hover:bg-fill hover:text-fg",
+                                                        "flex w-full items-center gap-1.5 border-l-2 py-1.5 pl-3 pr-2 text-left text-xs transition-colors cursor-default",
+                                                        active ? "border-primary text-fg" : "border-transparent hover:bg-fill hover:text-fg focus-visible:bg-fill focus-visible:text-fg",
                                                         !active && (done ? "text-fg-muted" : "text-fg-subtle"),
                                                     )}
                                                 >
+                                                    {/* The tick trails the name it belongs to. Ahead
+                                                        of it, every screen that had been answered
+                                                        pushed its own name sideways, so walking the
+                                                        run re-laid the whole list one line at a
+                                                        time. */}
+                                                    <span className="min-w-0 flex-1 truncate">{t(SCREENS[entry].rail)}</span>
                                                     {done ? <Check className="h-3 w-3 shrink-0" /> : null}
-                                                    <span className="truncate">{t(SCREENS[entry].rail)}</span>
                                                 </button>
                                             </li>
                                         );
@@ -259,12 +295,14 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                     leaving one: the two are the same shape in the same place, and
                                     overlapping them reads as a double exposure rather than as a
                                     move. */}
-                                <AnimatePresence mode="wait" initial={false}>
+                                <AnimatePresence mode="wait" initial={false} custom={direction}>
                                     <motion.div
                                         key={step}
-                                        initial={{ opacity: 0, x: direction.current * SCREEN_SHIFT_PX }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: direction.current * -SCREEN_SHIFT_PX }}
+                                        custom={direction}
+                                        variants={SCREEN_VARIANTS}
+                                        initial="enter"
+                                        animate="settled"
+                                        exit="leave"
                                         transition={{ duration: SCREEN_DURATION_S, ease: "easeOut" }}
                                     >
                                         <h1 className="text-2xl font-semibold text-fg">{t(screen.title)}</h1>
@@ -308,7 +346,7 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 element - so putting the caret in the sample's insert slot slid the
                                 whole window sideways and took the rail off the screen. A clipped box
                                 has nothing to scroll. */}
-                            <div className="hidden w-[444px] shrink-0 overflow-clip bg-surface-canvas pl-6 pt-6 min-[780px]:flex">
+                            <div className="hidden w-[444px] shrink-0 overflow-clip pl-6 pt-6 min-[780px]:flex">
                                 <div className="relative min-h-0 flex-1">
                                     {/* Taller than the space it is given, always, so the bottom edge
                                         is never the thing that ends it. */}
