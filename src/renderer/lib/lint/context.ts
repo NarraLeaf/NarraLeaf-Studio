@@ -34,7 +34,18 @@ import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist
  *    else off a service is a rule whose data belongs on this context.
  */
 
-export type LintStoryEntry = { id: string; name: string; document: StoryDocument };
+export type LintStoryEntry = {
+    id: string;
+    name: string;
+    document: StoryDocument;
+    /**
+     * The DLC that ships this story, absent on one the game itself carries.
+     *
+     * From the library index rather than the document, because that is where it is stored - a build
+     * reads it to decide whether to load the document at all.
+     */
+    dlcId?: string;
+};
 
 export type LintAssetEntry = {
     id: string;

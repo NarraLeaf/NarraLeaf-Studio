@@ -317,7 +317,6 @@ export enum IPCEventType {
 
     serverTrustPrompt = "serverTrust.prompt",
 
-    onboardingPreviewOpen = "onboarding.previewOpen",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -1069,7 +1068,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents & IPCOnboardingEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -3179,24 +3178,6 @@ export type IPCServerTrustEvents = {
             props: WindowProps[WindowAppType.ServerTrustPrompt];
         },
         response: { trusted: boolean };
-    };
-};
-
-/**
- * First-run setup asking for its own preview at full size, in a window of its own.
- *
- * Answers nothing: the window draws the same sample the setup screen does, from preferences it
- * reads for itself, and all it is told is which surface to open on. Raised rather than returned,
- * because it is something to look at rather than a question waiting for an answer.
- */
-export type IPCOnboardingEvents = {
-    [IPCEventType.onboardingPreviewOpen]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            props: WindowProps[WindowAppType.OnboardingPreview];
-        },
-        response: void;
     };
 };
 

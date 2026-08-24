@@ -1350,6 +1350,9 @@ export class GameBuildManager {
             declaredScenes: resolveAppTagReachableScenes(appTag, options.appTagDocument?.reachableScenes),
             assetAxes: resolveAppTagAssetAxes(appTag, options.appTagDocument?.assetAxes),
             packaging: true,
+            // Read back entry by entry, then left for the next export to overwrite. Nothing here is
+            // delivered, which is what lets the audit be skipped - see `forComparison`.
+            forComparison: true,
             // No DLC, whatever this export is. The game a player has before installing this file is
             // the game without it, and that is the only thing worth comparing against.
             includedDlc: [],

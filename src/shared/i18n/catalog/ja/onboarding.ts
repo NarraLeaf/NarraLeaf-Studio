@@ -5,7 +5,10 @@ import type { LocaleNamespace } from "../types";
  *
  * 訊いているのはどれも設定にある項目なので、ラベルと選択肢の名前は `settings` 名前空間から読む。
  * 同じ設定に二通りの訳を置くと、セットアップ画面と設定ウィンドウで「システムに合わせる」の
- * 言い方が食い違う。プレビュー内の入力欄の文言も同じ理由で `story.rows.*` から取る。
+ * 言い方が食い違う。サンプル内の文言も同じ理由で、ストーリー行は `story.rows.*`、
+ * バージョン列の見出しは `workspace.shell` から取る。
+ *
+ * 文体は常体。`title` は文ではなく名詞句にする。
  */
 export const onboarding = {
     windowTitle: "{name} へようこそ",
@@ -22,52 +25,48 @@ export const onboarding = {
     },
     welcome: {
         title: "ようこそ",
-        expectation: "Studio の見た目と書き心地について、いくつか質問します。どれも後から設定で変更できます。",
-        haveSettings: "ほかのコンピューターで Studio を使っていますか？",
+        expectation: "インターフェースとストーリーエディターの設定、全 6 画面。選んだ時点で反映され、あとから設定でも変更できる",
+        haveSettings: "ほかのインストールの設定",
     },
     language: {
         title: "言語",
-        expectation: "Studio の画面表示に使う言語。設定でいつでも変更できる",
+        expectation: "Studio の画面表示に使う言語",
         matchedToDevice: "この端末の言語と一致",
     },
     appearance: {
         title: "外観",
-        expectation: "テーマとアクセント。選んだ瞬間に反映される",
+        expectation: "インターフェースのテーマとアクセント",
     },
     zoom: {
         title: "画面の拡大率",
-        expectation: "Studio の画面を描く大きさ。このウィンドウそのものが見本になる",
+        expectation: "Studio の画面を描く大きさ。このウィンドウもこの設定に従う",
         custom: "カスタム",
-        surface: "プレビューに出す画面",
+        surface: "プレビューの画面",
     },
     identity: {
-        title: "書いている人",
-        expectation: "改訂に記録される名前と、新しいプロジェクトに最初から入る作者名",
-        unsigned: "空のままなら、改訂は {name} として記録される",
+        title: "署名",
+        expectation: "各バージョンに記録される名前と、新規プロジェクトの既定の作者",
+        unsigned: "空のままなら、バージョンは {name} として記録される",
     },
     team: {
         title: "チームサーバー",
-        expectation: "共有プロジェクトの置き場所。サーバーがなくても Studio の機能は欠けない",
+        expectation: "共有プロジェクトの置き場所。サーバーは必須ではない",
         connect: "サーバーに接続",
         connected: "サインイン済み",
-        none: "サーバーは未接続。プロジェクトはこの端末に置かれ、あとから設定で追加できる",
+        none: "プロジェクトはこの端末に保存される",
     },
     story: {
         title: "ストーリーエディター",
-        expectation: "シーンエディターの読み方と入力の受け方。どれも設定にある",
+        expectation: "シーンエディターの表示と入力の方式",
     },
     import: {
         action: "設定ファイルを読み込む…",
-        leaves: "適用するとそのまま Studio が開く。残りのセットアップはこのファイルが答える",
+        leaves: "適用するとセットアップを終了して Studio が開く",
     },
     done: {
         title: "セットアップ完了",
-        expectation: "ここで訊いたことも、その先の細かい調整も設定にある。どの画面でも F1 を押すと、カーソルの下にあるもののヘルプが開く",
-        docs: "ドキュメントを読む",
-    },
-    previewWindow: {
-        open: "ウィンドウ全体を見る",
-        notice: "画面のプレビュー。入力できる行のほかは、どれも動かない",
+        expectation: "ここで設定した項目はすべて設定にある。F1 でカーソル位置のヘルプが開く",
+        docs: "ドキュメントを開く",
     },
     skipConfirm: {
         title: "セットアップをスキップしますか？",
@@ -78,25 +77,20 @@ export const onboarding = {
         finish: "Studio を開く",
     },
     sample: {
-        projectName: "Welcome to Studio",
+        projectName: "Afterlight",
         storyName: "第 1 章",
-        scene: "こんにちは！",
+        scene: "屋上、夕方",
         speaker: "Narra",
-        line: "NarraLeaf Studio へようこそ！",
-        lineContinued: "ここで好みの見た目を選んでください。",
-        narration: "ほかにも設定で変更できます。",
+        line: "チャイムが鳴ったのは十分前。",
+        lineContinued: "屋上にはほかに誰もいない。",
+        narration: "背後の階段室の扉は開いたままだった。",
         background: "屋上",
         placement: "中央",
         transition: "フェード",
-        rail: {
-            story: "ストーリー",
-            versions: "バージョン管理",
-            team: "チーム",
-        },
         versions: {
             latest: "屋上のシーン、初稿",
-            earlier: "章の始まり",
             checkpoint: "チェックポイント",
+            earlier: "章の始まり",
         },
         dashboard: {
             lastActive: "たった今",
@@ -108,6 +102,5 @@ export const onboarding = {
             warning: "シーン「屋上、夕方」に立ち絵のないキャラクターがいる",
             done: "プレビュー完了、3.4 秒",
         },
-        teamAlone: "この端末で作業中",
     },
 } satisfies LocaleNamespace<"onboarding">;
