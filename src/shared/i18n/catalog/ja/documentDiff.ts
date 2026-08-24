@@ -77,6 +77,8 @@ export const documentDiff = {
         characters: "キャラクター",
         dictionaryTerms: "辞書の項目",
         localizationKeys: "ローカライズのキー",
+        projectLanguages: "言語",
+        projectPlugins: "プラグイン",
         saveFields: "セーブ項目",
         storyBlocks: "ストーリーの行",
         storyChapters: "チャプター",
@@ -266,6 +268,8 @@ export const documentDiff = {
         /** 内容のハッシュが動いた。記録の先にあるファイルのバイト列が別物になった。 */
         content: "ファイルの中身を差し替え",
         field: "{field} を変更",
+        /** アセットの中身のファイルだが、この比較のどの記録もこれを指していない。名前は id の断片。 */
+        orphanContent: "アセットの記録がないファイル",
     },
     /**
      * 第 1 段階のプロジェクトのパレット。
@@ -389,6 +393,101 @@ export const documentDiff = {
         readingsOff: "読みを提案しない",
         variantsOn: "別表記を検査する",
         variantsOff: "別表記を検査しない",
+    },
+    /**
+     * 第 1 段階、プロジェクト自身の設定。ゲームの名前と、ビルド・セーブ・プレイヤーの初回起動が
+     * ここから読み取るもの全部。
+     *
+     * プロジェクトの領域ごとに 1 行、その中の設定ごとに子の行を 1 つ。作者がそう辿るから。これらの値は
+     * 14 のパネルに分かれていて、作者が覚えているのはパネルの言い方であって、ファイルの中のフィールド名
+     * ではない。値の組は行の横に並ぶので、方針やモードはファイルの言葉のまま引かれる。
+     *
+     * `field` は最後の手段で、5 つの領域はこれだけで成り立つ。署名の資格情報、配布キー、そして
+     * ビルド・パッチ・検査の 3 つのダイアログが覚えている前回の選択。4 つはダイアログの記憶、1 つは
+     * 誰も手で打たないキーで、そのフィールドに作者向けの言葉を当てると、無いパネルがあることになる。
+     */
+    project: {
+        name: "アプリケーション名",
+        identifier: "識別子",
+        /** このビルドに言い方が無い設定。ファイルの中の名前のまま出す。 */
+        field: "{field} を変更",
+        metadata: "詳細",
+        metaVersion: "プロジェクトのバージョン",
+        metaDescription: "説明",
+        metaAuthor: "作者",
+        metaEmail: "連絡先のメールアドレス",
+        metaWebsite: "ウェブサイト",
+        /** 1 行だけ。書き出した実行ファイルのプロパティに入る。 */
+        metaCopyright: "著作権表示",
+        /** 全文。ゲームと一緒に配られる。 */
+        metaCopyrightText: "著作権表記",
+        metaResolution: "ウィンドウサイズ",
+        metaIcons: "アイコン",
+        network: "ネットワークアクセス",
+        networkPolicy: "ネットワークの方針",
+        networkAllowlist: "ネットワーク要求の許可一覧",
+        networkHttp: "平文 HTTP の通信",
+        networkRemoteResource: "リモートのリソース",
+        networkRemoteScript: "リモートのスクリプト",
+        localization: "言語",
+        sourceLocale: "元の言語",
+        locales: "言語の一覧",
+        voice: "ボイス",
+        voicedLocales: "ボイスのある言語",
+        voiceNaming: "ボイスファイルの命名",
+        voiceCast: "ボイスの割り当て",
+        voiceChoices: "選択肢のボイス",
+        dialogue: "ダイアログ",
+        dialogueAutoForwardPause: "自動送り中の間の長さ",
+        preferences: "プレイヤー設定の初期値",
+        prefTextSpeed: "文字表示の速さ",
+        prefGameSpeed: "ゲームの速さ",
+        prefAutoForward: "自動送り",
+        prefAutoForwardDelay: "自動送りの待ち時間",
+        prefShowDialog: "ダイアログボックスを表示",
+        prefSkip: "スキップを許可",
+        prefSkipReadText: "既読のみスキップ",
+        prefSkipDelay: "スキップ開始までの時間",
+        prefSkipInterval: "スキップの間隔",
+        prefGlobalVolume: "全体の音量",
+        prefBgmVolume: "音楽の音量",
+        prefSoundVolume: "効果音の音量",
+        prefVoiceVolume: "ボイスの音量",
+        prefVoiceEndMode: "ボイス付きの行が終わったとき",
+        prefVoiceFadeDuration: "ボイスのフェード",
+        autoSave: "セーブ",
+        autoSaveEnabled: "自動セーブ",
+        autoSaveInterval: "保存の間隔",
+        autoSaveSlots: "残す自動セーブの数",
+        saveCompatibility: "以前のセーブ",
+        saveCompatible: "他のプロジェクトバージョンのセーブ",
+        saveIncompatible: "ストーリー変更前のセーブ",
+        saveLocation: "プレイヤーのファイル",
+        saveLocationWindowsLinux: "Windows と Linux",
+        saveLocationMacos: "macOS",
+        languageChange: "言語の切り替え",
+        languageChangeInGame: "ゲーム中の言語切り替え",
+        security: "セキュリティ",
+        encryptAssets: "アセットを暗号化",
+        crash: "クラッシュ",
+        crashPolicy: "ゲームが停止したとき",
+        assetOptimization: "最適化",
+        lossyImages: "画像を再圧縮",
+        lossyQuality: "画像の品質",
+        vfx: "画面エフェクト",
+        vfxFrameRate: "天候のフレームレート",
+        mobile: "モバイル",
+        mobileOrientation: "画面の向き",
+        mobileFit: "画面への合わせ方",
+        mobileCropX: "横に残す位置",
+        mobileCropY: "縦に残す位置",
+        distribution: "配布キー",
+        signing: "署名",
+        build: "ビルドの設定",
+        patch: "パッチ書き出しの設定",
+        linting: "プロジェクトチェック",
+        dependencies: "依存関係",
+        dependencyPlugins: "プラグインの一覧",
     },
     /**
      * 4 つの段階のどれが答えたか。構造の一覧が意味的な一覧に見えてしまうのを止める見出し。

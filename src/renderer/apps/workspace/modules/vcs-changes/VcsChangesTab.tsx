@@ -11,7 +11,7 @@ import { PanelHeader } from "@/lib/components/elements/PanelHeader";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import type { ChangeCategory } from "@/lib/vcs/changeCategory";
 import { buildChangeIndex, type ChangeIndexGroup } from "@/lib/vcs/changeIndex";
-import { ChangeIndexPane } from "@/lib/vcs/ChangeIndexPane";
+import { changeIndexRowName, ChangeIndexPane } from "@/lib/vcs/ChangeIndexPane";
 import { IndexDivider, INDEX_DEFAULT_WIDTH } from "@/lib/vcs/IndexDivider";
 import { ChangeDetailHost } from "@/lib/vcs/presenters/ChangeDetailHost";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
@@ -91,7 +91,12 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     const result = diff.result;
 
     const index = useMemo(
-        () => buildChangeIndex(result?.documents ?? [], { rowBudget: TAB_ROW_BUDGET }),
+        () => buildChangeIndex(result?.documents ?? [], {
+            rowBudget: TAB_ROW_BUDGET,
+            // What the read itself says it managed. A comparison that stopped at the unit limit may
+            // have left out the very shard that names an asset whose bytes it did list.
+            complete: result?.complete ?? false,
+        }),
         [result],
     );
 
@@ -109,17 +114,20 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     );
 
     /**
-     * The selected file, resolved against the current index rather than stored as truth.
+     * The selected row, resolved against the current index rather than stored as truth.
      *
      * A re-read can drop the file that was selected, and a selection kept in state would then point
      * at a document the comparison no longer carries. The fallback is the first file of the first
      * OPEN heading, so the pane is never blank on arrival and the fallback is never a file with
      * nothing on screen pointing at it. A file the author picked and then closed the heading over
      * stays selected, because closing a heading is not a decision about what to look at.
+     *
+     * By the row's key rather than by its path: an asset is one row and two files, so a comparison
+     * holds several rows reported at one metadata shard (`lib/vcs/assetRows.ts`).
      */
-    const [selectedPath, setSelectedPath] = useState<string | null>(null);
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const firstVisible = index.groups.find(isOpen)?.rows[0] ?? null;
-    const selected = index.rows.find(row => row.path === selectedPath) ?? firstVisible;
+    const selected = index.rows.find(row => row.key === selectedKey) ?? firstVisible;
 
     /**
      * The two versions this tab is between, for a presenter that shows the file itself.
@@ -221,8 +229,8 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
                             ...current,
                             [group.category]: !isOpen(group),
                         }))}
-                        selectedPath={selected?.path ?? null}
-                        onSelect={setSelectedPath}
+                        selectedKey={selected?.key ?? null}
+                        onSelect={setSelectedKey}
                         style={{ width: `${indexWidth}px` }}
                         className="shrink-0 border-r border-edge"
                     />
@@ -231,7 +239,17 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
 
                     <div className="min-h-0 min-w-0 flex-1">
                         {selected
-                            ? <ChangeDetailHost key={selected.path} entry={selected.entry} sides={comparison} />
+                            ? (
+                                <ChangeDetailHost
+                                    key={selected.key}
+                                    entry={selected.entry}
+                                    change={selected.change}
+                                    member={selected.member}
+                                    name={changeIndexRowName(selected, t)}
+                                    kind={selected.kind}
+                                    sides={comparison}
+                                />
+                            )
                             : <EmptyState size="sm" description={t("documentDiff.shell.selectPrompt")} />}
                     </div>
                 </div>

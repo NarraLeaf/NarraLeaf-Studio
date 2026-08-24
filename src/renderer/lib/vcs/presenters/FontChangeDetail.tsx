@@ -32,11 +32,16 @@ import {
  * look correct. The two scripts side by side make that visible.
  */
 
-export function FontChangeDetail({ entry, change, sides }: ChangePresenterProps) {
+export function FontChangeDetail({ entry, change, member, sides }: ChangePresenterProps) {
     const { t } = useTranslation();
-    const requested = useMemo(() => sidesOfEntry(entry, sides), [entry, sides]);
-    const before = useFontSide(requested.before, entry.path);
-    const after = useFontSide(requested.after, entry.path);
+    // The bytes on screen are the row's, and a row is not always one file: an asset's contents live
+    // under its id rather than beside its record, so a joined row hands over the content file as its
+    // member. Its path AND its change kind - a replaced file is `changed` on a row whose record is
+    // `added`, and reading the record's kind would ask for a side that does not hold the file.
+    const source = member ?? entry;
+    const requested = useMemo(() => sidesOfEntry(source, sides), [source, sides]);
+    const before = useFontSide(requested.before, source.path);
+    const after = useFontSide(requested.after, source.path);
     const [size, setSize] = useState(DEFAULT_FONT_SAMPLE_SIZE);
 
     const settled = isSettled(before) && isSettled(after);
@@ -76,11 +81,11 @@ export function FontChangeDetail({ entry, change, sides }: ChangePresenterProps)
             </div>
 
             {requested.before !== null && (
-                <Specimen side={before} size={size} caption={sideCaption(entry.kind, "before")} />
+                <Specimen side={before} size={size} caption={sideCaption(source.kind, "before")} />
             )}
             {/* One side, and no empty box beside it pretending there is something to compare. */}
             {requested.after !== null && (
-                <Specimen side={after} size={size} caption={sideCaption(entry.kind, "after")} />
+                <Specimen side={after} size={size} caption={sideCaption(source.kind, "after")} />
             )}
         </div>
     );

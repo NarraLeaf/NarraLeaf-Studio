@@ -89,6 +89,8 @@ export const documentDiff = {
         characters: "Characters",
         dictionaryTerms: "Dictionary terms",
         localizationKeys: "Localization keys",
+        projectLanguages: "Languages",
+        projectPlugins: "Plugins",
         saveFields: "Save fields",
         storyBlocks: "Story rows",
         storyChapters: "Chapters",
@@ -280,6 +282,14 @@ export const documentDiff = {
         /** The content hash moved: the file behind the record is different bytes now. */
         content: "File contents replaced",
         field: "{field} changed",
+        /**
+         * A file of asset contents that no record in the comparison names.
+         *
+         * Its own name is a shard of an id, so there is nothing in the path to call it. It is left
+         * on the list rather than folded away, because a merge that dropped a metadata record while
+         * keeping the bytes is exactly the state this row is the only evidence of.
+         */
+        orphanContent: "File with no asset record",
     },
     /**
      * Tier 1, the project's palette.
@@ -405,6 +415,103 @@ export const documentDiff = {
         readingsOff: "Readings are not suggested",
         variantsOn: "Variant spellings are checked",
         variantsOff: "Variant spellings are not checked",
+    },
+    /**
+     * Tier 1, the project's own settings - what the game is called, and everything a build, a save
+     * and a player's first launch reads out of it.
+     *
+     * One row per area of the project and one child per setting inside it, because that is how the
+     * author reaches them: these values are spread over fourteen panels and are known by the words
+     * those panels use, not by the names the file keeps them under. The value pair rides beside the
+     * row, so a policy or a mode is quoted in the file's own word rather than reworded here.
+     *
+     * `field` is the last resort, and five areas rest on it entirely - the signing credentials, the
+     * distribution key, and the remembered state of the build, patch and check dialogs. Four of
+     * those are a dialog's memory and one is a key nobody types; author copy for their fields would
+     * claim a panel that does not exist.
+     */
+    project: {
+        name: "Application name",
+        identifier: "Identifier",
+        /** A setting this build has no word for, named as the file keeps it. */
+        field: "{field} changed",
+        metadata: "Details",
+        metaVersion: "Project version",
+        metaDescription: "Description",
+        metaAuthor: "Author",
+        metaEmail: "Contact email",
+        metaWebsite: "Website",
+        /** One line, in the packaged binaries' file properties. */
+        metaCopyright: "Copyright",
+        /** The full notice, shipped beside the game. */
+        metaCopyrightText: "Copyright notice",
+        metaResolution: "Window size",
+        metaIcons: "Icons",
+        network: "Network access",
+        networkPolicy: "Network policy",
+        networkAllowlist: "Network request allowlist",
+        networkHttp: "Plain HTTP requests",
+        networkRemoteResource: "Remote resources",
+        networkRemoteScript: "Remote scripts",
+        localization: "Languages",
+        sourceLocale: "Source language",
+        locales: "Language list",
+        voice: "Voice-over",
+        voicedLocales: "Voiced languages",
+        voiceNaming: "Voice file naming",
+        voiceCast: "Voice cast",
+        voiceChoices: "Voiced choices",
+        dialogue: "Dialogue",
+        dialogueAutoForwardPause: "Pause length under auto forward",
+        preferences: "Player defaults",
+        prefTextSpeed: "Text speed",
+        prefGameSpeed: "Game speed",
+        prefAutoForward: "Auto forward",
+        prefAutoForwardDelay: "Auto forward wait",
+        prefShowDialog: "Show the dialogue box",
+        prefSkip: "Allow skipping",
+        prefSkipReadText: "Skip read text only",
+        prefSkipDelay: "Skip delay",
+        prefSkipInterval: "Skip interval",
+        prefGlobalVolume: "Master volume",
+        prefBgmVolume: "Music volume",
+        prefSoundVolume: "SFX volume",
+        prefVoiceVolume: "Voice volume",
+        prefVoiceEndMode: "When a voiced line ends",
+        prefVoiceFadeDuration: "Voice fade",
+        autoSave: "Saving",
+        autoSaveEnabled: "Automatic saving",
+        autoSaveInterval: "Save every",
+        autoSaveSlots: "Autosaves kept",
+        saveCompatibility: "Older saves",
+        saveCompatible: "Saves from another project version",
+        saveIncompatible: "Saves from before a story change",
+        saveLocation: "Player files",
+        saveLocationWindowsLinux: "Windows and Linux",
+        saveLocationMacos: "macOS",
+        languageChange: "Language switching",
+        languageChangeInGame: "Changing language during a game",
+        security: "Security",
+        encryptAssets: "Encrypt assets",
+        crash: "Crashes",
+        crashPolicy: "When the game stops working",
+        assetOptimization: "Optimization",
+        lossyImages: "Recompress images",
+        lossyQuality: "Image quality",
+        vfx: "Screen effects",
+        vfxFrameRate: "Weather frame rate",
+        mobile: "Mobile",
+        mobileOrientation: "Orientation",
+        mobileFit: "Screen fit",
+        mobileCropX: "Keep horizontally",
+        mobileCropY: "Keep vertically",
+        distribution: "Distribution key",
+        signing: "Signing",
+        build: "Build settings",
+        patch: "Patch export settings",
+        linting: "Project check",
+        dependencies: "Dependencies",
+        dependencyPlugins: "Plugin list",
     },
     /**
      * Which of the four tiers answered - the caption that stops a structural list from reading as a
