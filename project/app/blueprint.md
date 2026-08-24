@@ -145,6 +145,16 @@ Three findings are warnings rather than refusals, deliberately:
   the shipped skeleton contains one.
 - **`compile.graph_dropped`** - see below.
 
+One finding is a note rather than silence, and one thing is filled in rather than demanded:
+
+- **`compile.element_type_unknown`** - an `Element` node names an id the project does not hold.
+  Every node that follows an element reference checks its type before doing anything, so a
+  reference that cannot be resolved reads as nothing at all and whatever consumed it quietly does
+  not fire.
+- An `Element` node written with `surfaceId` and `elementId` gets `elementType` **filled in** from
+  the project, so a hand-written reference does not have to carry a line no author would think to
+  write. Without `--project` there is nothing to look it up in, so write the type yourself.
+
 Two limits worth knowing:
 
 - A `Get Persistent` / `Get Saved` node is checked against the project's variable
