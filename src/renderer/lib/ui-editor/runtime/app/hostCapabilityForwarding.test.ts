@@ -61,6 +61,24 @@ const FORWARDED_ELSEWHERE: Readonly<Record<string, string>> = {
     onImportProgress: "wrapped as importProgressInGame, which resumes the story",
 };
 
+/**
+ * Capabilities a game shell answers for by having none of the thing, rather than by implementing
+ * them. Each needs a reason, and each is checked for staleness below.
+ *
+ * Not the same exemption as {@link FORWARDED_ELSEWHERE}: that one is about how `GameApp` wires an
+ * option, this one is about a shell for which the capability has no honest implementation.
+ */
+const SHELL_HAS_NOTHING_TO_OFFER: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+    "Dev Mode": {
+        // A Studio window with Studio's own chrome in it, so a size set here would not be the size
+        // the game gets. The shell leaves `windowScaleOptions` unset instead, which is an empty
+        // list to the nodes - so a configuration screen draws no size row here rather than one
+        // that reports a size the stage does not have.
+        getWindowScale: "the window is Studio's, not the game's",
+        setWindowScale: "the window is Studio's, not the game's",
+    },
+};
+
 function occurrences(source: string, needle: string): number {
     return source.split(needle).length - 1;
 }
@@ -138,6 +156,9 @@ describe("host capability forwarding", () => {
         for (const [shellName, file] of Object.entries(GAME_SHELL_FILES)) {
             const source = await fs.readFile(file, "utf-8");
             for (const { field } of forwarded) {
+                if (SHELL_HAS_NOTHING_TO_OFFER[shellName]?.[field]) {
+                    continue;
+                }
                 // The shells build their host object as `const <field> = useCallback<…>` and then
                 // name it in the object literal; either spelling counts as implementing it.
                 if (!new RegExp(`\\b(const|function)\\s+${field}\\b`).test(source) && !source.includes(`${field}:`)) {
@@ -181,6 +202,19 @@ describe("host capability forwarding", () => {
             }
         }
         expect(missing, `these shells cannot restart: ${missing.join(", ")}`).toEqual([]);
+    });
+
+    it("keeps the nothing-to-offer allowlist honest", async () => {
+        // Same reasoning as the allowlist below: an exemption for a capability that no longer
+        // exists silently widens to whatever later takes the name.
+        const { hostSource, bridgeSource } = await readAll();
+        const known = new Set(hostBackedOptions(bridgeSource, hostSource).map(pair => pair.field));
+        const stale = Object.entries(SHELL_HAS_NOTHING_TO_OFFER)
+            .flatMap(([shellName, fields]) => Object.keys(fields)
+                .filter(field => !known.has(field) || !GAME_SHELL_FILES[shellName])
+                .map(field => `${shellName}: ${field}`));
+        expect(stale, `these entries no longer name a shell and a host-backed capability:\n${stale.join("\n")}`)
+            .toEqual([]);
     });
 
     it("keeps the wired-elsewhere allowlist honest", async () => {
