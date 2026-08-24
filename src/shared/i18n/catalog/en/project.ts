@@ -496,8 +496,9 @@ export const project = {
     // topic, reached by the `?` on this heading.
     window: {
         sizesTitle: "Window sizes",
-        sizesDescription: "Sizes the player may choose from, as multiples of the design size. The design size is always offered.",
+        sizesDescription: "The sizes the game offers the player, as multiples of the design size. It opens at the largest one that fits their screen.",
         sizeOption: "{percent}%",
+        sizeDimensions: "{width} × {height}",
         resizableTitle: "Resizable window",
         resizableDescription: "The player may drag the window to a size of their own. The stage keeps its shape inside it.",
         rememberTitle: "Remember the window",
