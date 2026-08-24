@@ -281,6 +281,10 @@ export const settings = {
             label: "启动时打开上次的项目",
             description: "打开上次所在的项目，而不是停在启动器",
         },
+        maximizeOnOpen: {
+            label: "最大化打开工作区",
+            description: "工作区窗口打开时铺满屏幕；在窗口内切换项目仍沿用原窗口的位置和大小",
+        },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",
             description: "对尚未单独设置过的项目生效，各项目可自行覆盖",

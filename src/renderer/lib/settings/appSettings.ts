@@ -865,6 +865,24 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: false,
     },
     {
+        // Applied by the main process in `App.launchWorkspace`, as the window is built rather than
+        // once its page has rendered, so a maximized workspace comes up maximized instead of
+        // appearing small and jumping.
+        //
+        // Switching project inside a window does not consult this: the replacement adopts the frame
+        // of the window it takes over from, which is what makes the switch read as one window
+        // rather than two.
+        key: "workspace.maximizeOnOpen",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Open workspaces maximized",
+        labelKey: "settings.items.maximizeOnOpen.label",
+        description: "Fill the screen when a workspace window opens. Switching project keeps the frame of the window it replaces.",
+        descriptionKey: "settings.items.maximizeOnOpen.description",
+        defaultValue: true,
+    },
+    {
         // Read by the main process (`RecentlyOpened.limit`) every time the history is written, so
         // shortening it takes effect on the next project opened rather than retroactively. Has
         // been honored since the history existed and simply had no control anywhere.
