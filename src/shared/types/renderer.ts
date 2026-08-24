@@ -26,7 +26,13 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type {
+    BuildPreflightFinding,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GamePatchExportRequest,
+    LastGameBuildRun,
+} from "./gameBuild";
 import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type {
     MacSigningIdentity,
@@ -1083,6 +1089,16 @@ export interface RendererPreloadedInterface {
         selectPatchFile(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
         /** The build a patch is measured against - a package file, not a folder. */
         selectPatchBaseline(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
+        /**
+         * What this project's last run of the build pipeline came to. Null for a project that has
+         * never been built.
+         */
+        readLastRun(projectPath: string): Promise<RequestStatus<{ run: LastGameBuildRun | null }>>;
+        /**
+         * Show the last run's output folder in the desktop's file manager. The folder is the one
+         * the pipeline recorded; this names only the project.
+         */
+        revealOutput(projectPath: string): Promise<RequestStatus<{ revealed: boolean }>>;
         /**
          * What a build folder says about itself: the variant it was compiled as, the application
          * name and version it carries, and when it was built. Fails, with the reason, on a path

@@ -9,7 +9,13 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type {
+    BuildPreflightFinding,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GamePatchExportRequest,
+    LastGameBuildRun,
+} from "./gameBuild";
 import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
@@ -283,6 +289,8 @@ export enum IPCEventType {
     gameBuildSelectPatchFile = "gameBuild.selectPatchFile",
     gameBuildSelectPatchBaseline = "gameBuild.selectPatchBaseline",
     gameBuildReadPatchBaseline = "gameBuild.readPatchBaseline",
+    gameBuildReadLastRun = "gameBuild.readLastRun",
+    gameBuildRevealOutput = "gameBuild.revealOutput",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -2775,6 +2783,38 @@ export type IPCGameBuildEvents = {
             version: string | null;
             /** When the build was compiled, ISO-8601. */
             builtAt: string | null;
+        };
+    };
+    /**
+     * What this project's last run of the build pipeline came to, read off disk.
+     *
+     * Answers null for a project that has never been built, and for one whose record cannot be
+     * read - a report has nothing useful to say about either, and neither is an error.
+     */
+    [IPCEventType.gameBuildReadLastRun]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            run: LastGameBuildRun | null;
+        };
+    };
+    /**
+     * Show the last run's output folder in the desktop's file manager.
+     *
+     * The caller names the project, never a folder: the path opened is the one the pipeline
+     * recorded for itself. `revealed` is false where there is no run or it wrote nowhere.
+     */
+    [IPCEventType.gameBuildRevealOutput]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            revealed: boolean;
         };
     };
     /** Where to write a patch. Answers null when the author closes the dialog. */
