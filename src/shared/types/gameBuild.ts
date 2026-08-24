@@ -343,6 +343,52 @@ export function totalGameBuildArtifactBytes(sizes: GameBuildArtifactSize[]): num
     return sizes.reduce((total, size) => total + (size.bytes ?? 0), 0);
 }
 
+/** One library asset, as this build treated it. */
+export type ShippedAssetReportEntry = {
+    id: string;
+    /** The name the asset carries in the project, so a report names something an author can find. */
+    name: string;
+    /** The asset library shard it belongs to - image, audio, video, font, model and so on. */
+    type: string;
+    /**
+     * Bytes: what the package carries for an included asset, what the project holds for an excluded
+     * one. Absent where the size could not be read, which is a different fact from zero - an asset
+     * shown as "0 B" reads as an empty file.
+     */
+    bytes?: number;
+};
+
+/**
+ * What a packaging build carried out of the project's asset library, and what it left behind.
+ *
+ * Produced by the build that narrowed the library, so it describes one artifact rather than the
+ * project: the same project built as another variant leaves out a different set. Absent from every
+ * compile that carries the library whole - previews, tests, and the Dev Mode bundle.
+ *
+ * The excluded list is the half worth reading. An asset is excluded because its id occurs nowhere
+ * in the bytes this build ships, which is usually an asset the project no longer uses and
+ * occasionally one the game reaches by a route the build cannot see.
+ */
+export type ShippedAssetReport = {
+    included: ShippedAssetReportEntry[];
+    excluded: ShippedAssetReportEntry[];
+    /**
+     * Characters this build does not carry, by id and name.
+     *
+     * Listed beside the assets rather than folded into them because dropping a character is what
+     * takes that character's whole wardrobe out of the package - reading the asset list alone would
+     * leave an author counting portraits and wondering.
+     */
+    excludedCharacters: { id: string; name: string }[];
+    includedBytes: number;
+    excludedBytes: number;
+};
+
+/** Bytes over the entries whose size could be read; entries without one contribute nothing. */
+export function totalShippedAssetBytes(entries: ShippedAssetReportEntry[]): number {
+    return entries.reduce((total, entry) => total + (entry.bytes ?? 0), 0);
+}
+
 /** Snapshot returned by build.getStatus; the renderer polls this. */
 export type GameBuildStateSnapshot = {
     status: GameBuildStatus;
@@ -371,6 +417,15 @@ export type GameBuildStateSnapshot = {
     artifactSizes?: GameBuildArtifactSize[];
     /** Absolute output directory of the finished build. */
     outputDir?: string;
+    /**
+     * What this build carried out of the asset library, and what it left behind.
+     *
+     * Absent until a build has narrowed one, which is every packaging build and no preview. Where a
+     * run compiles more than once - the desktop targets and the web export are two compiles of one
+     * request - this is the last compile's answer; both narrow from the same bundle under the same
+     * variant, so the two agree about the library.
+     */
+    assetReport?: ShippedAssetReport;
     error?: string;
 };
 
