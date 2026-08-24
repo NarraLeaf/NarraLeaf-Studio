@@ -327,6 +327,19 @@ export type GameRuntimePackV1 = {
         appTagId?: string;
     };
     /**
+     * The DLC installed beside this build, in the order they applied.
+     *
+     * Written by the reader that composed this pack, never by the compiler: it is a fact about the
+     * copy in front of the player, not about what was built. A build with no DLC beside it - which
+     * is every build as it leaves the author - carries nothing here, and the game reads that as
+     * "none installed".
+     *
+     * Only what is actually installed, never the project's whole list. A player who owns one DLC
+     * learns nothing from this about the ones they do not, and a base build cannot be read for what
+     * else exists to buy.
+     */
+    installedDlc?: readonly string[];
+    /**
      * The one string every edition of this title shares, naming the file progress is carried in.
      *
      * Resolved from the identity the RELEASE tag carries whatever variant this pack is - see
@@ -387,6 +400,12 @@ export type GameRuntimeCropAnchorY = typeof GAME_RUNTIME_CROP_ANCHORS_Y[number];
  * crop off on every phone, with nothing to fail.
  */
 export const WEB_SHELL_VARIANT_META = "nl-shell";
+
+/**
+ * The one content value that meta ever carries. The web target omits the meta entirely, so a
+ * reader asks "is this a phone shell", never "which shell is this".
+ */
+export const WEB_SHELL_MOBILE_VARIANT = "mobile";
 
 export const DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG: GameRuntimeViewportConfig = {
     fit: "contain",
@@ -704,12 +723,12 @@ export type GameRuntimePreloadBridge = {
     getFullscreen(): Promise<boolean>;
     setFullscreen(fullscreen: boolean): Promise<void>;
     /**
-     * The window's size as a multiple of the game's design size, for a configuration screen that
-     * offers the player a choice of window sizes.
+     * The stage's size, as a multiple of the size the game was drawn at.
      *
-     * A request for a size this build does not offer is answered with the nearest one it does - the
-     * offered ladder is the author's, and a shell that honoured anything else would be a second
-     * answer to a question the project already settled (`app.window`).
+     * Any multiple, not only the ones `app.window` offers: that list is what a configuration screen
+     * is built from, not a limit on what a game may ask for. The screen and the window minimum are
+     * the only bounds, and neither is policy - a window larger than the desktop is one the player
+     * cannot use.
      *
      * Inert on a shell with no window of its own to size, which says so through
      * {@link capabilities}.`windowScale` rather than by refusing: what an author must not build is a
@@ -717,6 +736,16 @@ export type GameRuntimePreloadBridge = {
      */
     getWindowScale(): Promise<number>;
     setWindowScale(scale: number): Promise<void>;
+    /**
+     * The same size, in pixels.
+     *
+     * Beside the multiple rather than instead of it: a multiple is what keeps the stage on whole
+     * pixels of the art it was drawn at, and pixels are what an author reaches for when the size
+     * comes from somewhere else - a remembered value, a display the game measured, a number a
+     * player typed. Both land in the same place.
+     */
+    getWindowSize(): Promise<{ width: number; height: number }>;
+    setWindowSize(width: number, height: number): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     /**

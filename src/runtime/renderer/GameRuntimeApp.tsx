@@ -741,6 +741,14 @@ function GameRuntimeSession() {
         await bridge?.setWindowScale?.(scale);
     }, [bridge]);
 
+    const getWindowSize = useCallback(async (): Promise<{ width: number; height: number }> => {
+        return (await bridge?.getWindowSize?.()) ?? { width: 0, height: 0 };
+    }, [bridge]);
+
+    const setWindowSize = useCallback(async (width: number, height: number): Promise<void> => {
+        await bridge?.setWindowSize?.(width, height);
+    }, [bridge]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         return (await bridge?.getFullscreen()) === true;
     }, [bridge]);
@@ -784,6 +792,10 @@ function GameRuntimeSession() {
             // a build that shows nothing when its story ends, which is what every pack made before
             // this field carries and what every pack whose project picked no page carries.
             endingSurfaceId: pack.endingSurfaceId,
+            // What the layer stack found beside this game, plus whatever the payload itself
+            // carried. The pack is the one place both are already stated, because composing it is
+            // where the two meet.
+            installedDlcIds: pack.installedDlc,
             ready: runtimeReady,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }
@@ -801,6 +813,8 @@ function GameRuntimeSession() {
             windowScaleOptions,
             getWindowScale,
             setWindowScale,
+            getWindowSize,
+            setWindowSize,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -836,6 +850,8 @@ function GameRuntimeSession() {
         windowScaleOptions,
         getWindowScale,
         setWindowScale,
+        getWindowSize,
+        setWindowSize,
         setFullscreen,
         subscribeFullscreenChanged,
         subscribeCloseRequested,

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Radio } from "lucide-react";
+import { Share2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { Button } from "@/lib/components/elements/Button";
@@ -211,7 +211,7 @@ function Empty({ children }: { children: React.ReactNode }) {
     return (
         <div className={cn("flex h-full flex-col items-center justify-center p-6 text-center")}>
             <EmptyState
-                icon={<Radio className="h-5 w-5" />}
+                icon={<Share2 className="h-5 w-5" />}
                 title={t("workspace.shell.team.livePresence")}
             />
             {children}

@@ -205,6 +205,7 @@ export const lint = {
             messageEnding: "指しているエンディングが存在しない",
             messageCharacter: "指しているキャラクターが存在しない",
             messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
+            messageDlc: "指している DLC はプロジェクトに存在しない",
         },
         blueprintElementRefMissing: {
             title: "ウィジェットの欠落",
@@ -223,6 +224,11 @@ export const lint = {
             title: "到達できないノード",
             description: "グラフのどの入口からも到達できないノード",
             message: "このノードへ到達する経路がなく、実行されない",
+        },
+        blueprintDlcEntranceUnguarded: {
+            title: "ガードのない DLC 入口",
+            description: "DLC のストーリーを開始しているが、その DLC があるかどうかをどこも確かめていない",
+            message: "このグラフには DLC がインストール済みか確かめるノードがない",
         },
         blueprintEmptyEvent: {
             title: "空のイベント",

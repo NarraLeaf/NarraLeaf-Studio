@@ -339,6 +339,8 @@ export type BlueprintHostApiRuntime = {
         getWindowScaleOptions: () => number[];
         getWindowScale: () => Promise<number>;
         setWindowScale: (scale: number) => Promise<void>;
+        getWindowSize: () => Promise<{ width: number; height: number }>;
+        setWindowSize: (width: number, height: number) => Promise<void>;
         /**
          * Open one web address in the player's browser.
          *
@@ -556,6 +558,16 @@ export type BlueprintHostApiRuntime = {
          * anything. Needs no running story - a title screen asks it before the first game exists.
          */
         isEndingReached: (endingId: string) => boolean;
+        /**
+         * Is this DLC installed beside the running build, by the id the author gave it.
+         *
+         * The whole of what a game may ask about its DLC, and deliberately not "does the player own
+         * it". Ownership is a storefront's fact and a plugin's to answer; what decides whether the
+         * content is here is whether its file is, which is the question this asks. A build with no
+         * DLC beside it answers false to everything, which is what a title screen wants before the
+         * player has bought anything.
+         */
+        isDlcInstalled: (dlcId: string) => boolean;
         /**
          * Every ending one story declares, in document order, each row already carrying whether it
          * was reached. Empty for an unknown or unnamed story rather than an error.
@@ -837,6 +849,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * wipes are no-ops - which is what lets an endings screen lay out in the preview.
      */
     onIsEndingReached?: (endingId: string) => boolean;
+    /**
+     * Which DLC are installed beside this build. Absent where nothing can say - the editor preview,
+     * a host that carries no layers - and every DLC then reads as not installed.
+     */
+    onIsDlcInstalled?: (dlcId: string) => boolean;
     onListEndings?: (storyId: string) => BlueprintStoryEnding[];
     onClearEndingState?: (endingId: string) => Promise<void> | void;
     onClearEndings?: () => Promise<void> | void;
@@ -910,6 +927,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     windowScaleOptions?: number[];
     onGetWindowScale?: () => number | Promise<number>;
     onSetWindowScale?: (scale: number) => void | Promise<void>;
+    onGetWindowSize?: () => { width: number; height: number } | Promise<{ width: number; height: number }>;
+    onSetWindowSize?: (width: number, height: number) => void | Promise<void>;
     /**
      * The layer stack composited over the page lane.
      *
@@ -2189,6 +2208,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsOptionPicked,
         onClearVisited,
         onIsEndingReached,
+        onIsDlcInstalled,
         onListEndings,
         onClearEndingState,
         onClearEndings,
@@ -2230,6 +2250,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         windowScaleOptions,
         onGetWindowScale,
         onSetWindowScale,
+        onGetWindowSize,
+        onSetWindowSize,
         onShowLayer,
         onHideLayer,
         onHideLayerGroup,
@@ -2525,6 +2547,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     await onSetWindowScale?.(Number(scale));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowSize: async () => {
+                const cap = "navigation.getWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Zero from a shell with no window of its own, which is what a stage that is
+                    // not a window in the first place honestly measures.
+                    const size = onGetWindowSize ? await onGetWindowSize() : null;
+                    return {
+                        width: Number(size?.width ?? 0),
+                        height: Number(size?.height ?? 0),
+                    };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setWindowSize: async (width: number, height: number) => {
+                const cap = "navigation.setWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSetWindowSize?.(Number(width), Number(height));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -4013,6 +4059,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // No record reachable is "not reached", not an error: an endings screen opened
                     // in the editor preview must still lay out, and locked is the honest answer.
                     return onIsEndingReached ? onIsEndingReached(endingId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isDlcInstalled: (dlcId: string) => {
+                const cap = "game.isDlcInstalled";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Nothing to ask is "not installed", not an error: a menu previewed in the
+                    // editor still has to lay out, and hiding the entrance is the honest answer.
+                    return onIsDlcInstalled ? onIsDlcInstalled(dlcId) : false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

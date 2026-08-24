@@ -63,6 +63,8 @@ export type GameUiSlotHostOptions = {
     windowScaleOptions?: number[];
     getWindowScale?: () => Promise<number>;
     setWindowScale?: (scale: number) => Promise<void>;
+    getWindowSize?: () => Promise<{ width: number; height: number }>;
+    setWindowSize?: (width: number, height: number) => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
     writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
     /** Resolves false when the save was not applied; `Load Save` routes that to its `Failed` pin. */
@@ -237,6 +239,8 @@ export function useStageSlotSurfaceRuntime(input: {
             windowScaleOptions: options.windowScaleOptions,
             onGetWindowScale: options.getWindowScale,
             onSetWindowScale: options.setWindowScale,
+            onGetWindowSize: options.getWindowSize,
+            onSetWindowSize: options.setWindowSize,
             onStartStory: options.startStoryInGame,
             onWriteSave: options.writeSaveInGame,
             onLoadSave: options.loadSaveInGame,

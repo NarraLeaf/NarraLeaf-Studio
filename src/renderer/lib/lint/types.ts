@@ -112,6 +112,7 @@ export type LintRuleId =
     | "blueprint/fn-target-missing"
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"
+    | "blueprint/dlc-entrance-unguarded"
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"

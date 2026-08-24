@@ -76,6 +76,8 @@ const SHELL_HAS_NOTHING_TO_OFFER: Readonly<Record<string, Readonly<Record<string
         // that reports a size the stage does not have.
         getWindowScale: "the window is Studio's, not the game's",
         setWindowScale: "the window is Studio's, not the game's",
+        getWindowSize: "the window is Studio's, not the game's",
+        setWindowSize: "the window is Studio's, not the game's",
     },
 };
 

@@ -958,6 +958,9 @@ export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscre
 export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS = "blueprint.app.getWindowScaleOptions" as const;
 export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE = "blueprint.app.getWindowScale" as const;
 export const BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SCALE = "blueprint.app.setWindowScale" as const;
+/** The same size in pixels, for a game whose number does not come from the offered list. */
+export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE = "blueprint.app.getWindowSize" as const;
+export const BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SIZE = "blueprint.app.setWindowSize" as const;
 /**
  * Hand one web address to the player's browser.
  *
@@ -1060,6 +1063,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisit
  * needs a running story: a title screen asks both before any game exists.
  */
 export const BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED = "blueprint.game.isEndingReached" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED = "blueprint.game.isDlcInstalled" as const;
 /**
  * Every ending a story declares, each row already carrying whether it was reached.
  *

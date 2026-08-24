@@ -616,6 +616,17 @@ export const documentDiff = {
         documentsOmitted: "ここに載っていないドキュメントがあと {count} 件ある",
         unavailable: "このプロジェクトではバージョン管理を使えない",
     },
+    /** 1 つのファイルの 2 つのバージョンを、専用のタブで並べて見る。ここには並べ方そのものの語だけを置く。 */
+    split: {
+        open: "並べて開く",
+        thisProject: "このプロジェクト",
+        notInVersion: "このバージョンには無い",
+        resize: "左右の幅を変える",
+        previous: "前の変更",
+        next: "次の変更",
+        position: "{index} / {total}",
+        gone: "このファイルは今回の比較に含まれていない",
+    },
     /**
      * ファイルごとにどちらかの側を採ってマージを終える画面。
      *

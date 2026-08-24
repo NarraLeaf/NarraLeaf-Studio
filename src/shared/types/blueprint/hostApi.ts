@@ -241,6 +241,23 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { scale: 1 },
             output: null,
         },
+        /** The same size in pixels, for a game whose number comes from somewhere else. */
+        getWindowSize: {
+            capabilityId: "navigation.getWindowSize",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: { width: 0, height: 0 },
+        },
+        setWindowSize: {
+            capabilityId: "navigation.setWindowSize",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { width: 0, height: 0 },
+            output: null,
+        },
         /**
          * Hand one web address to the player's own browser - a store page, a patch note, a support
          * form.

@@ -90,6 +90,15 @@ describe("ChangeDetailHost", () => {
             { ...entry("assets/content/99/55/1a2b3c4d5e6f7a8b9c0d1e2f3a4b"), contentClass: "audio" },
             { ...entry("assets/content/99/55/2b3c4d5e6f7a8b9c0d1e2f3a4b5c"), contentClass: "font" },
             { ...entry("editor/brand.json"), documentKind: "brand" },
+            // The six settings documents. The palette above is the neighbour that proves they are
+            // separate claims: `brand` reads as settings in every way except the one that matters,
+            // so it keeps the presenter that can draw a colour and is not on this list twice.
+            { ...entry("Chronicle.nlproj"), documentKind: "project" },
+            { ...entry("editor/app-tags.json"), documentKind: "app-tags" },
+            { ...entry("editor/audio-tracks.json"), documentKind: "audio-tracks" },
+            { ...entry("editor/variables.json"), documentKind: "variables" },
+            { ...entry("editor/save-schema.json"), documentKind: "save-schema" },
+            { ...entry("editor/dictionary.json"), documentKind: "dictionary" },
         ];
 
         for (const document of documents) {
@@ -98,6 +107,20 @@ describe("ChangeDetailHost", () => {
             // format fails this as loudly as one that claims two.
             expect(claiming.map(candidate => candidate.id)).toHaveLength(1);
         }
+    });
+
+    it("draws a document no presenter claims through the generic list", () => {
+        // The floor, from the pane's side rather than the registry's. Every presenter installed above
+        // claims a document kind or a content class, and most of what changes in a real project is
+        // neither - so the case that must never be a blank half-screen is this one, not the ones with
+        // a presenter written for them.
+        const unclaimed: DocumentDiffEntry = { ...entry("editor/localization/ja.json"), documentKind: "localization" };
+
+        const { container } = render(<ChangeDetailHost entry={unclaimed} />);
+
+        expect(presenters(container)[0].getAttribute("data-change-presenter")).toBe("generic");
+        // Non-vacuous: the rows are really drawn, so an empty pane cannot pass this.
+        expect(container.textContent).toContain("field0");
     });
 
     it("states the tier once for the whole detail, not once per change", () => {
