@@ -7,6 +7,7 @@ import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { GameRuntimePackV1, GameRuntimePreloadBridge } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import { translate } from "@/lib/i18n";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
@@ -59,7 +60,10 @@ function useRuntimePack(): {
         let disposed = false;
         const bridge = getGameRuntimeBridge();
         if (!bridge) {
-            setError("Runtime bridge is not available");
+            // The preload never ran, so there is no way through to the pack, the saves or
+            // anything else. Localized like the screen that will show it: this is one of the two
+            // failures a player is most likely to meet, and it reads as a black window otherwise.
+            setError(translate("game.crash.bridgeUnavailable"));
             return;
         }
         void bridge.readPack()
@@ -631,6 +635,15 @@ export function GameRuntimeApp() {
         await bridge?.restart();
     }, [bridge]);
 
+    /**
+     * Hold the display for a story moving on its own. Fire-and-forget, and optional-chained because
+     * a build packaged before the bridge carried this has no such method - the shell is loaded from
+     * the game's own files, so a patched game can still be running an older one.
+     */
+    const setDisplayAwake = useCallback((awake: boolean): void => {
+        bridge?.setDisplayAwake?.(awake);
+    }, [bridge]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         return (await bridge?.getFullscreen()) === true;
     }, [bridge]);
@@ -687,6 +700,7 @@ export function GameRuntimeApp() {
             saveStore,
             quitApplication,
             restartApplication,
+            setDisplayAwake,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -716,6 +730,7 @@ export function GameRuntimeApp() {
         resolveStoryAssetUrl,
         resolveWeatherClip,
         runtimeReady,
+        setDisplayAwake,
         setFullscreen,
         subscribeFullscreenChanged,
         subscribeCloseRequested,

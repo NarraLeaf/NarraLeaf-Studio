@@ -166,6 +166,9 @@ export const ProjectNameConvention = {
     // The build variants the project can be shipped as, and what each one says differently from the
     // project itself. Cross-cutting like the three above, so it sits at editor root too.
     EditorAppTags: ["editor", "app-tags.json"],
+    // The DLC the project ships beside its builds. A sibling of the variants rather than a kind
+    // of one: a player has exactly one variant and any number of DLC at once.
+    EditorDlc: ["editor", "dlc.json"],
     // The asset sets the project declares - the library entries that stand for a family of files
     // indexed by axes. Cross-cutting like the four above, so it sits at editor root too.
     EditorAssetSets: ["editor", "asset-sets.json"],

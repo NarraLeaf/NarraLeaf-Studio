@@ -160,6 +160,7 @@ import {
     promotePendingLocale,
     resumeAfterLocaleRestart,
 } from "./localeRestart";
+import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
@@ -4228,6 +4229,40 @@ export function GameApp(props: GameAppProps): ReactNode {
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
             window.removeEventListener("blur", onBlur);
+        };
+    }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
+
+    /**
+     * Keep the display awake while the story advances on its own.
+     *
+     * Auto mode is an hour of playback with no input, which the system reads as an idle machine and
+     * answers by blanking the screen mid-scene; the shell holds a display block for as long as this
+     * says to. What decides it is in `displayAwake`, including why auto-forward alone is not the
+     * answer and why the second question has to be re-asked on a timer.
+     *
+     * The shell is read through the ref rather than the host object so a re-rendered host does not
+     * rebuild the controller - which would release the display and take it again for nothing.
+     */
+    useEffect(() => {
+        const game = nlrSession?.game;
+        if (!game) {
+            return;
+        }
+        const preference = (game as {
+            preference?: { getPreference?: (key: string) => unknown };
+        }).preference;
+        const controller = createDisplayAwakeController({
+            isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
+            isStoryOnScreen,
+            setAwake: awake => hostRef.current.setDisplayAwake?.(awake),
+        });
+        const unsubscribePreferences = subscribeGamePreferences(() => controller.sync());
+        const recheck = setInterval(() => controller.sync(), DISPLAY_AWAKE_RECHECK_MS);
+        controller.sync();
+        return () => {
+            clearInterval(recheck);
+            unsubscribePreferences();
+            controller.stop();
         };
     }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
 

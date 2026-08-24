@@ -326,8 +326,8 @@ export function collectSidecarRequirements(
  * an error rather than a warning; the way through is to build that target on
  * that platform.
  *
- * `kind: "node"` sidecars are exempt: they run under the game's own Electron as
- * Node, which needs no executable bit on the .js file.
+ * `kind: "node"` sidecars are exempt: Electron runs the .js as a utility process, and a file it
+ * reads rather than executes needs no executable bit.
  */
 export function sidecarLosesExecBit(
     requirement: SidecarRequirement,

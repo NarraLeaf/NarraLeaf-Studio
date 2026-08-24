@@ -96,6 +96,7 @@ import type {
     ProjectAppTag,
     ProjectAppTagDocument,
 } from "@shared/types/appTag";
+import type { ProjectDlc, ProjectDlcDocument } from "@shared/types/dlc";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
 import type {
@@ -237,6 +238,8 @@ enum Services {
     AudioTracks = "audioTracks",
     /** The build variants the project ships as, and what each one says differently from the project */
     AppTags = "appTags",
+    /** The DLC the project ships beside its builds: extra content a player installs into one */
+    Dlc = "dlc",
     /** The asset sets the project declares: library entries standing for a family of files, by axis */
     AssetSets = "assetSets",
     /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
@@ -562,6 +565,45 @@ interface IAudioTrackService extends IService {
     /** Refuses the three seeded buses; promotes the children of whatever it does delete. */
     deleteTrack(id: string): boolean;
     moveTrack(id: string, beforeId: string | null): void;
+}
+
+/**
+ * The project's DLC - the content it ships beside a build rather than inside one. See
+ * `@shared/types/dlc` for the model.
+ *
+ * A sibling of the variants, not a kind of one: a build is exactly one variant, and has any number
+ * of DLC installed beside it. Nothing is prepended and nothing resolves by fallback - a project
+ * ships no DLC until an author says it does.
+ */
+interface IDlcService extends IService {
+    load(): Promise<ProjectDlc[]>;
+    save(document: ProjectDlcDocument): Promise<void>;
+    getDocument(): ProjectDlcDocument;
+    /** In author order. */
+    list(): ProjectDlc[];
+    /** Only the ones that load into builds of this variant. */
+    listForAppTag(appTagId: string | null | undefined): ProjectDlc[];
+    /** Null for an unknown id: there is no DLC to fall back to. */
+    resolve(id: string | null | undefined): ProjectDlc | null;
+    has(id: string | null | undefined): boolean;
+    onDlcChanged(handler: (dlcs: ProjectDlc[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyMutation(mutator: (dlcs: ProjectDlc[]) => ProjectDlc[], label?: HistoryLabel): void;
+    create(input?: { id?: string; name?: string; attachTo?: string }): ProjectDlc;
+    /** Refuses a blank name. Stored references hold the id, so they follow. */
+    rename(id: string, name: string): boolean;
+    /**
+     * Change the filename this DLC ships as. Answers the id in force, which may be numbered.
+     *
+     * Not a rename: copies already in players' hands keep the old name, and a story marked for the
+     * old id stops naming anything.
+     */
+    changeId(id: string, nextId: string): string;
+    setAttachTo(id: string, appTagId: string): boolean;
+    delete(id: string): boolean;
+    flushPendingChanges(): Promise<void>;
 }
 
 /**
@@ -1575,6 +1617,7 @@ export {
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IAppTagService,
+    IDlcService,
     IBrandService,
     IDictionaryService,
     ISaveSchemaService,

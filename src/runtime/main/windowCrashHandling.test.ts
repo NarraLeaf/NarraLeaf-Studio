@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserWindow } from "electron";
 import { CRASH_LOOP_LIMIT, CRASH_LOOP_WINDOW_MS } from "@shared/utils/crashLoop";
+import { resolveShellText } from "./shellText";
 import { describeProcessDeath, installWindowCrashHandling, type WindowCrashHost } from "./windowCrashHandling";
 
 /**
@@ -39,6 +40,9 @@ function fakeHost(overrides: Partial<WindowCrashHost> = {}) {
         log: (level, message) => { logged.push({ level, message }); },
         logPath: "C:\\profile\\logs\\game.log",
         displayName: () => "Fixture Game",
+        // No tags, so the English table: the wording under test is the English one, and a fixture
+        // that followed the machine would say something different on a Japanese build agent.
+        text: resolveShellText([]),
         policy: () => "details",
         isQuitting: () => false,
         quit: () => { quits += 1; },
@@ -85,7 +89,7 @@ describe("a renderer that dies outright", () => {
 
         const url = new URL(win.loaded[0]);
         expect(url.pathname).toBe("/index.html");
-        expect(url.searchParams.get("nlcrash")).toBe(describeProcessDeath("crashed", 2));
+        expect(url.searchParams.get("nlcrash")).toBe(describeProcessDeath(resolveShellText([]), "crashed", 2));
     });
 
     it("goes straight back to the game when the project asked it to", async () => {

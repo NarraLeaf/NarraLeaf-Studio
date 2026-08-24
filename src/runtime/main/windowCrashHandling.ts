@@ -6,6 +6,7 @@ import {
 } from "@shared/types/gameRuntime";
 import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
 import type { RuntimeLogSink } from "./runtimeLog";
+import type { ShellText } from "./shellText";
 
 /**
  * The three ways a game window can stop working without anything throwing in JavaScript: its page
@@ -25,6 +26,8 @@ export interface WindowCrashHost {
     logPath: string;
     /** The game's own name, for dialog titles. */
     displayName(): string;
+    /** Everything said to the player here, in the machine's language. */
+    text: ShellText;
     /** What this build does about crashes, read fresh: the pack settles it after the first window. */
     policy(): GameCrashPolicy;
     /** True once the app is on its way out; nothing here may interrupt that. */
@@ -36,16 +39,6 @@ export interface WindowCrashHost {
     ask(request: { title: string; message: string; detail: string; buttons: string[] }): Promise<number>;
     now(): number;
 }
-
-/**
- * The wording is duplicated from `game.crash.*` rather than read from it. Everything player-facing
- * in this process is a literal for the same reason: the catalog carries every locale of every
- * Studio string, and pulling it in here would put all of it in the main bundle of every shipped
- * game to say four sentences. The renderer's copy is the one that has to be kept in step.
- */
-const HANG_MESSAGE = "The game is not responding.";
-const HANG_DETAIL = "Restarting reopens the game at its title screen. Progress since the last save is lost.";
-const HANG_BUTTONS = ["Keep waiting", "Restart"];
 
 export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrashHost): void {
     /** When this window's page process died, newest last. Only the last minute is kept. */
@@ -77,7 +70,7 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
         crashHistory = recordCrash(crashHistory, host.now());
         if (isCrashLooping(crashHistory)) {
             host.log("error", "[Crash] The game window has stopped working repeatedly; not reloading it again.");
-            host.reportFatal(`The game window stopped working (${reason}).`);
+            host.reportFatal(host.text.windowStopped(reason));
             // Before the quit, always: the window's close guard holds the close open while it asks
             // the renderer for a decision, and the renderer is the thing that just died. Without
             // this the quit waits out that timeout in front of a player already told it is over.
@@ -88,12 +81,12 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
         const base = `${GAME_RUNTIME_PROTOCOL}://runtime/index.html`;
         const target = host.policy() === "restart"
             ? base
-            : `${base}?${GAME_RUNTIME_CRASH_QUERY_PARAM}=${encodeURIComponent(describeProcessDeath(reason, exitCode))}`;
+            : `${base}?${GAME_RUNTIME_CRASH_QUERY_PARAM}=${encodeURIComponent(describeProcessDeath(host.text, reason, exitCode))}`;
         host.log("info", `[Crash] Reloading the game window (policy: ${host.policy()})`);
         expectedProcessSwap = true;
         await win.loadURL(target).catch((error: unknown) => {
             host.log("error", `[Crash] Could not reload the game window: ${describe(error)}`);
-            host.reportFatal(`The game window stopped working (${reason}).`);
+            host.reportFatal(host.text.windowStopped(reason));
             host.quit();
         });
     };
@@ -118,9 +111,9 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
             }
             const answer = await host.ask({
                 title: host.displayName(),
-                message: HANG_MESSAGE,
-                detail: HANG_DETAIL,
-                buttons: HANG_BUTTONS,
+                message: host.text.hangMessage,
+                detail: host.text.hangDetail,
+                buttons: [host.text.hangKeepWaiting, host.text.hangRestart],
             });
             if (answer === 1 && !win.isDestroyed()) {
                 // Navigation is decided in this process rather than in the page, so it lands even
@@ -170,9 +163,16 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
     });
 }
 
-/** What the crash page is told about a death no JavaScript witnessed. */
-export function describeProcessDeath(reason: string, exitCode: number): string {
-    return `The game's display process exited: ${reason} (exit code ${exitCode})`;
+/**
+ * What the crash page is told about a death no JavaScript witnessed.
+ *
+ * In the machine's language, because it is the one line of that screen this process writes: the
+ * page localizes its own chrome and takes this verbatim. Chromium's `reason` and the exit code
+ * stay as they are - they are identifiers, and translating them would only make the report harder
+ * to act on for whoever the player sends it to.
+ */
+export function describeProcessDeath(text: ShellText, reason: string, exitCode: number): string {
+    return text.displayProcessExited(reason, exitCode);
 }
 
 function describe(error: unknown): string {

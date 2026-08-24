@@ -8,6 +8,11 @@ export const story = {
         emptyStories: "No stories in this project.",
         storyActions: "Story actions",
         setDefault: "Set Default",
+            dlc: {
+                title: "Belongs to",
+                // The answer for a story the game itself carries, which is most of them.
+                base: "The game itself",
+            },
         outline: "Outline",
         newChapter: "New Chapter",
         newSceneInChapter: "New Scene in Chapter",

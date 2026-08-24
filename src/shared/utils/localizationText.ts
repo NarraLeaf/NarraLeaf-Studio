@@ -19,9 +19,8 @@
  * Comments in English per project convention.
  */
 
-import type { StoryRichRun, StoryTextMarks, StoryTextSegment } from "../types/story/document";
+import type { StoryRichRun, StoryTextSegment } from "../types/story/document";
 import { fnv1aHex } from "./contentHash";
-import { encodeStableJson } from "./stableJson";
 
 const SOURCE_HASH_PREFIX = "fnv1a:";
 
@@ -167,119 +166,6 @@ export function parseTranslatedRuns(target: string, sourceRuns: readonly StoryRi
         open = isTaggableRun(run) ? token.index : undefined;
     }
     return parts;
-}
-
-/**
- * A translation as editable runs: the same shape a story line is written in, so the translation
- * editor can render a tagged translation with the very code that renders the line.
- *
- * Each run is *the source's own run*, borrowed. A tagged span becomes text wearing that run's marks;
- * a standalone token becomes the pause or the event itself; `{n}` becomes the source's nth
- * interpolation. Nothing here can express styling the source does not have, which is the format's
- * rule restated as a data structure: a translation places the line's tags, it does not invent tags.
- */
-export function translationRunsFromTarget(target: string, sourceRuns: readonly StoryRichRun[]): StoryRichRun[] {
-    const interpolations = sourceRuns.filter(run => "interpolation" in run);
-    const runs: StoryRichRun[] = [];
-    for (const part of parseTranslatedRuns(target, sourceRuns)) {
-        if (part.kind === "placeholder") {
-            const run = interpolations[part.index];
-            if (run) {
-                runs.push(run);
-            }
-            continue;
-        }
-        if (part.kind === "run") {
-            const run = sourceRuns[part.runIndex];
-            if (run) {
-                runs.push(run);
-            }
-            continue;
-        }
-        const marks = part.runIndex === undefined
-            ? undefined
-            : (sourceRuns[part.runIndex] as { marks?: StoryTextMarks } | undefined)?.marks;
-        runs.push(marks ? { text: part.text, marks } : { text: part.text });
-    }
-    return runs;
-}
-
-/**
- * Editable runs back into a target string.
- *
- * A run is matched to the source run it came from **by value, not by identity** - the runs make a
- * round trip through the DOM of a contentEditable, which rebuilds them from data attributes and
- * loses every object reference. Two source runs that compare equal are interchangeable by
- * construction: equal marks produce the same word, equal pauses the same wait, so landing on the
- * first of them changes nothing about what the player sees.
- *
- * A run matching no source run at all loses its tag and keeps its characters. That is unreachable
- * through the editor, which only offers the line's own tags, and it is the right answer for a
- * document that arrived some other way.
- */
-export function targetFromTranslationRuns(runs: readonly StoryRichRun[], sourceRuns: readonly StoryRichRun[]): string {
-    const indexByRun = new Map<string, number>();
-    let interpolationOrdinal = 0;
-    const ordinalByInterpolation = new Map<string, number>();
-    for (let index = 0; index < sourceRuns.length; index += 1) {
-        const run = sourceRuns[index];
-        const key = encodeStableJson(run);
-        if (!indexByRun.has(key)) {
-            indexByRun.set(key, index);
-        }
-        if ("interpolation" in run) {
-            const interpolationKey = encodeStableJson(run.interpolation);
-            if (!ordinalByInterpolation.has(interpolationKey)) {
-                ordinalByInterpolation.set(interpolationKey, interpolationOrdinal);
-            }
-            interpolationOrdinal += 1;
-        }
-    }
-
-    let out = "";
-    for (const run of runs) {
-        if ("interpolation" in run) {
-            const ordinal = ordinalByInterpolation.get(encodeStableJson(run.interpolation));
-            if (ordinal !== undefined) {
-                out += printTranslationToken({ kind: "value", index: ordinal });
-            }
-            continue;
-        }
-        if ("pause" in run || "event" in run) {
-            const index = indexByRun.get(encodeStableJson(run));
-            if (index !== undefined) {
-                out += printTranslationToken({ kind: "standalone", index });
-            }
-            continue;
-        }
-        if (!run.text) {
-            continue;
-        }
-        const index = run.marks ? indexByRun.get(encodeStableJson({ text: run.text, marks: run.marks })) : undefined;
-        // The text differs (it is a translation), so the run itself never matches; what has to match
-        // is the marks, which is what the tag actually names.
-        const byMarks = index ?? (run.marks ? marksIndex(sourceRuns, run.marks) : undefined);
-        if (byMarks === undefined) {
-            out += run.text;
-            continue;
-        }
-        out += printTranslationToken({ kind: "open", index: byMarks })
-            + run.text
-            + printTranslationToken({ kind: "close", index: byMarks });
-    }
-    return out;
-}
-
-/** The first source text run whose marks equal these, or undefined. */
-function marksIndex(sourceRuns: readonly StoryRichRun[], marks: StoryTextMarks): number | undefined {
-    const key = encodeStableJson(marks);
-    for (let index = 0; index < sourceRuns.length; index += 1) {
-        const run = sourceRuns[index];
-        if ("text" in run && run.marks && encodeStableJson(run.marks) === key) {
-            return index;
-        }
-    }
-    return undefined;
 }
 
 export type MarkupParityIssue =

@@ -41,6 +41,18 @@ export type DevModeBundleLoadContext = {
      */
     packaging?: boolean;
     /**
+     * The DLC whose stories this package carries, on top of the game's own.
+     *
+     * Read only while {@link packaging}, and for the reason the scene drop is: leaving a story out
+     * decides what a player never receives, and a host that ships nothing to a player has nobody to
+     * keep anything from. Dev Mode and the preview therefore carry every story the project has,
+     * which is also what an author wants while writing one.
+     *
+     * Empty is the ordinary base build - the package a player buys first, holding none of the extra
+     * content. A DLC build names the one it is for, and gets the base plus that.
+     */
+    includedDlc?: readonly string[];
+    /**
      * The third-party runtime code this pack ships, and what each piece of it declared it may do.
      *
      * Only the declarations are read, and only to ask whether a plugin can start a story. This was

@@ -96,6 +96,12 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
      * project is built, and nothing in it is content the author writes.
      */
     "app-tags": "settings",
+    /**
+     * The DLC the project ships beside its builds. Settings for the reason `app-tags` is: the
+     * record names how the project is shipped, and the content each one carries is written in the
+     * story it belongs to, which is where a change to that content shows up.
+     */
+    dlc: "settings",
     brand: "settings",
     /**
      * The words the project spells on purpose. Settings rather than story: nothing in it is a line

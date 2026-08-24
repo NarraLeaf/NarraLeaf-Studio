@@ -123,11 +123,40 @@ export type GamePatchExportRequest = {
      */
     contentAppTagId?: string;
     /**
+     * The DLC this export is, or absent for an ordinary patch.
+     *
+     * Present turns three things at once, which is why it is one field rather than
+     * three: the payload gains that DLC's stories (and only that one's), the file is
+     * sealed for and named after the edition the DLC record attaches to rather than
+     * anything the dialog says, and it is written under the DLC folder as
+     * `<id>_DLC.pak`.
+     *
+     * Absent is the safe direction on purpose. An ordinary patch carries the base
+     * game's content and no DLC's, so a patch cannot hand a player content they did
+     * not buy by an author forgetting a field.
+     */
+    dlcId?: string;
+    /**
      * The app directory of the build this patch is for, so the export can carry
      * only what changed. Absent means carry the whole payload: always correct,
      * and the answer when the author no longer has that build to point at.
      */
     baselineAppDir?: string;
+    /**
+     * Build the game this patch updates as part of the export, instead of naming one on disk.
+     *
+     * What gets built is the edition this patch installs into - {@link appTagId}, or the one a DLC
+     * attaches to - with no DLC in it. It is compared against and then discarded, so the difference
+     * between that edition and the content named in {@link contentAppTagId} is exactly what the
+     * patch carries. That is what makes an edition upgrade, or a DLC, one action.
+     *
+     * The comparison is therefore against the project as it stands now. A patch for a build made
+     * from an earlier state of the project names that build in {@link baselineAppDir} instead.
+     *
+     * Ignored where {@link baselineAppDir} is set: a build that exists answers the question better
+     * than one derived from a project that has moved on since.
+     */
+    baselineFromBuild?: boolean;
     /** Absolute path of the file to write, chosen through the save dialog. */
     outputFile: string;
     /** The author's name for it, carried inside and shown in the game's log. */

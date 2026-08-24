@@ -120,7 +120,11 @@ export type GameRuntimePackSidecarEntry = {
      * the app dir - e.g. `sidecars/{pluginId}/{sidecarId}/bin/tool.exe`.
      */
     entry: string;
-    /** `executable` spawns the binary directly; `node` runs it under the game's own Electron as Node. */
+    /**
+     * `executable` spawns the binary directly and talks to it over stdin/stdout; `node` runs the
+     * .js as an Electron utility process and talks to it over `process.parentPort`, which is the
+     * one channel a utility process has - it has no stdin.
+     */
     kind: "executable" | "node";
     /** `onGameStart` spawns with the window; `onRequest` waits for the first call. */
     autostart: "onGameStart" | "onRequest";
@@ -309,6 +313,18 @@ export type GameRuntimePackV1 = {
          * patches installed together both take effect.
          */
         packDeltaVersion?: number;
+        /**
+         * The build variant this pack was compiled as, as an app tag id.
+         *
+         * Here rather than beside the project's name because it is not a fact about the title, it
+         * is a fact about which add-ons this build accepts: a DLC states the variant it belongs to,
+         * and a build that cannot say which variant it is could not refuse one meant for another.
+         *
+         * Absent on packs produced before this field existed, which reads as the release variant -
+         * the variant every such pack was compiled as unless its author had made a second one, and
+         * the only reading that leaves an ordinary patch unaffected.
+         */
+        appTagId?: string;
     };
     /**
      * The one string every edition of this title shares, naming the file progress is carried in.
@@ -630,6 +646,19 @@ export type GameRuntimePreloadBridge = {
      * reloads its page, which for a shell that IS a page is the same act.
      */
     restart(): Promise<void>;
+    /**
+     * Keep the display awake, or let it sleep again.
+     *
+     * Asked for while the story advances on its own: auto mode plays for an hour without a single
+     * input, and neither the animation nor the audio a page draws resets the system's idle timer,
+     * so the screen blanks mid-scene. Every shell can do this honestly - the desktop shell takes a
+     * platform display block, the web export borrows the browser's screen wake lock - which is why
+     * it sits here rather than behind {@link capabilities}.
+     *
+     * Nothing waits on it: the display is not something a game can fail at, and a shell that could
+     * not take the block plays exactly as before.
+     */
+    setDisplayAwake(awake: boolean): void;
     getFullscreen(): Promise<boolean>;
     setFullscreen(fullscreen: boolean): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
