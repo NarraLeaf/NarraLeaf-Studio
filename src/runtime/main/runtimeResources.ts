@@ -19,6 +19,8 @@ import {
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
 import { applyPackDelta, type PackDelta } from "@shared/utils/packDelta";
+import { dlcAttachesToBuild } from "@shared/types/dlc";
+import { dlcDirectoryCandidates, isDlcFileName } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
 import { computeStoryContentHash } from "@shared/utils/storyContentHash";
 import { resolveRuntimeAssetPath } from "./runtimeProtocol";
@@ -77,6 +79,15 @@ export interface RuntimeResources {
      * loose and return null here.
      */
     readRuntimeFile(pathname: string): Promise<Buffer | null>;
+    /**
+     * The DLC this build is reading, in the order they apply.
+     *
+     * On the backend rather than beside it because installing a DLC is the same act
+     * as installing a patch - a sealed layer found in a folder - and a second source
+     * of truth for "which ones are here" could disagree with the one that decides
+     * what the game actually reads.
+     */
+    installedDlcIds(): readonly string[];
     /** Release any held handles. */
     dispose(): Promise<void>;
 }
@@ -102,8 +113,8 @@ export async function createRuntimeResources(
         ))
         : new LooseRuntimeResources(appDir);
 
-    const patches = await openPatches(appDir, await readVerificationKey(base), options);
-    return patches.length > 0 ? new PatchedRuntimeResources(base, patches, options.log) : base;
+    const layers = await openLayers(appDir, await readPackAddOns(base), options);
+    return layers.length > 0 ? new PatchedRuntimeResources(base, layers, options.log) : base;
 }
 
 /**
@@ -183,6 +194,11 @@ class LooseRuntimeResources implements RuntimeResources {
         return null;
     }
 
+    installedDlcIds(): readonly string[] {
+        // A DLC arrives as a layer, so a payload with none has none.
+        return [];
+    }
+
     async dispose(): Promise<void> {
         // Nothing to release.
     }
@@ -255,6 +271,11 @@ class SealedRuntimeResources implements RuntimeResources {
         return this.readEntry(name);
     }
 
+    installedDlcIds(): readonly string[] {
+        // See LooseRuntimeResources: a store is the base, and a DLC is never one.
+        return [];
+    }
+
     dispose(): Promise<void> {
         this.readCache.clear();
         this.pendingReads.clear();
@@ -297,6 +318,18 @@ export interface RuntimeResourcesOptions {
     userDataDir?: string;
     /** Where discovery notes go. Silent when omitted. */
     log?: (level: "info" | "warning", message: string) => void;
+    /**
+     * Say why a patch file was not applied, rather than only that it was not.
+     *
+     * Off for a shipped game. The reason comes from the layer reader, and its wording describes how
+     * a patch is bound to the build it belongs to - which is a description of the protection, sitting
+     * in a file the player can open. What a player needs is the name of the file that did nothing.
+     *
+     * On for a build made to be inspected, where the author is the reader and the reason is the
+     * whole point: a patch built for another project and a patch with a byte flipped are the same
+     * line without it.
+     */
+    explainRefusedPatches?: boolean;
 }
 
 /**
@@ -315,6 +348,14 @@ type OpenPatch = {
      * difference between "the author shipped this" and "somebody made this".
      */
     proven: boolean;
+    /**
+     * The DLC this file delivers, or absent on an ordinary patch.
+     *
+     * What the game answers "is this DLC installed" by. It comes from inside the
+     * file rather than from its name so that renaming the file cannot change the
+     * answer, and it is only ever set on a file whose edition matched this build.
+     */
+    dlcId?: string;
 };
 
 /**
@@ -520,6 +561,12 @@ class PatchedRuntimeResources implements RuntimeResources {
         return this.base.readRuntimeFile(pathname);
     }
 
+    installedDlcIds(): readonly string[] {
+        // In apply order, and only the ones that got as far as being applied - a file
+        // whose edition did not match this build was never opened into this list.
+        return this.patches.map(patch => patch.dlcId).filter((id): id is string => Boolean(id));
+    }
+
     async dispose(): Promise<void> {
         this.readCache.clear();
         this.composedPack = null;
@@ -531,18 +578,37 @@ class PatchedRuntimeResources implements RuntimeResources {
 }
 
 /**
- * What a patch says about itself: a name for logs, and where it belongs among its
- * siblings. Everything here is advisory - a patch that carries no descriptor, or
- * a malformed one, still applies. The file is already proven or not by the time
- * this is read, and refusing one over a missing label would fail a player's
- * install for a reason they cannot act on.
+ * What a layer says about itself: a name for logs, where it belongs among its
+ * siblings, and - on a DLC - which DLC it is and which edition it belongs to.
+ *
+ * The first two are advisory. A patch that carries no descriptor, or a malformed
+ * one, still applies: the file is already proven or not by the time this is read,
+ * and refusing one over a missing label would fail a player's install for a reason
+ * they cannot act on.
+ *
+ * The DLC block is the exception, because it is the only thing here with a wrong
+ * answer available. A DLC built for one variant opens perfectly in another whenever
+ * the two override no identity - they are sealed under the same material - and the
+ * player would get content their edition was never meant to have.
  */
-type PatchDescriptor = {
+type LayerDescriptor = {
     name?: string;
     order?: number;
+    /**
+     * Present on a DLC file, absent on an ordinary patch.
+     *
+     * `id` is what a running game answers "is this DLC installed" by. Stated inside
+     * the file rather than read off its name, because the name is the player's to
+     * edit and the answer must not be.
+     */
+    dlc?: {
+        id: string;
+        /** The variant this DLC belongs to. A build that is a different one refuses it. */
+        attachTo: string;
+    };
 };
 
-async function readPatchDescriptor(reader: SealedLayerReader): Promise<PatchDescriptor> {
+async function readLayerDescriptor(reader: SealedLayerReader): Promise<LayerDescriptor> {
     if (!reader.has(LAYER_DESCRIPTOR_ENTRY)) {
         return {};
     }
@@ -552,17 +618,75 @@ async function readPatchDescriptor(reader: SealedLayerReader): Promise<PatchDesc
             return {};
         }
         const record = parsed as Record<string, unknown>;
+        const dlc = record.dlc && typeof record.dlc === "object" && !Array.isArray(record.dlc)
+            ? record.dlc as Record<string, unknown>
+            : null;
+        // Only a block that names a DLC counts as one. A half-written block would
+        // otherwise become a DLC with no id, which nothing could report as installed.
+        const dlcId = dlc && typeof dlc.id === "string" ? dlc.id.trim() : "";
         return {
             ...(typeof record.name === "string" ? { name: record.name } : {}),
             ...(typeof record.order === "number" && Number.isFinite(record.order) ? { order: record.order } : {}),
+            ...(dlcId
+                ? {
+                    dlc: {
+                        id: dlcId,
+                        attachTo: typeof dlc?.attachTo === "string" ? dlc.attachTo.trim() : "",
+                    },
+                }
+                : {}),
         };
     } catch {
         return {};
     }
 }
 
-/** The patch files in one directory, in filename order. Missing directory = none. */
-async function listPatchFiles(directory: string): Promise<string[]> {
+/**
+ * Where layers are found, and what a file from each place is.
+ *
+ * Two places rather than one because they are two things to a player: a `patch`
+ * folder holds fixes the author published, and a `DLC` folder holds content the
+ * player acquired. The game reads both through the same code - a DLC file is a
+ * sealed layer exactly like a patch - so the only differences are the ones below.
+ */
+type LayerKind = {
+    /**
+     * Sorts before the other kind whatever each file says about its own order.
+     *
+     * DLC ranks under patches because a patch fixes the game a player is running,
+     * and that game includes whatever DLC they have. A patch that had to sort under
+     * the DLC could not correct anything a DLC touched.
+     */
+    rank: number;
+    /** Directory names probed under each root, preferred spelling first. */
+    directories: string[];
+    matches: (fileName: string) => boolean;
+    /** What a file from here is called in the log. */
+    noun: string;
+};
+
+function layerKinds(): LayerKind[] {
+    return [
+        {
+            rank: 0,
+            directories: dlcDirectoryCandidates(process.platform),
+            matches: isDlcFileName,
+            noun: "DLC",
+        },
+        {
+            rank: 1,
+            directories: [PATCH_DIRECTORY_NAME],
+            matches: name => name.endsWith(LAYER_FILE_EXTENSION),
+            noun: "patch",
+        },
+    ];
+}
+
+/** The layer files in one directory, in filename order. Missing directory = none. */
+async function listLayerFiles(
+    directory: string,
+    matches: (fileName: string) => boolean,
+): Promise<string[]> {
     let entries: string[];
     try {
         entries = await fs.readdir(directory);
@@ -570,97 +694,150 @@ async function listPatchFiles(directory: string): Promise<string[]> {
         return [];
     }
     return entries
-        .filter(entry => entry.endsWith(LAYER_FILE_EXTENSION))
+        .filter(matches)
         .sort((a, b) => a.localeCompare(b))
         .map(entry => path.join(directory, entry));
 }
 
 /**
- * Open every patch this build can see, lowest priority first.
+ * Open every layer this build can see, lowest priority first.
  *
- * A patch beside the executable comes before one in the player's data directory,
- * so the one that survives a reinstall wins. Both are the player's to remove,
- * which is what makes a patch undoable at all.
+ * A file beside the executable comes before one in the player's data directory, so
+ * the one that survives a reinstall wins. Both are the player's to remove, which is
+ * what makes a patch undoable and a DLC uninstallable at all.
  *
- * A patch that will not open is skipped with a line in the log, never fatal. The
- * usual causes are a file for another game, a file for another edition, and a
- * file whose proof does not match - and none of them is a reason a player's game
- * should refuse to start.
+ * A file that will not open is skipped with a line in the log, never fatal. The
+ * usual causes are a file for another game, a file for another edition, and a file
+ * whose proof does not match - and none of them is a reason a player's game should
+ * refuse to start.
  */
-async function openPatches(
+async function openLayers(
     appDir: string,
-    verificationKey: string | undefined,
+    build: PackAddOns,
     options: RuntimeResourcesOptions,
 ): Promise<OpenPatch[]> {
-    // The game's own folder first, the player's data directory second, so a patch
-    // a player keeps across reinstalls wins over one that shipped beside the
+    // The game's own folder first, the player's data directory second, so a file a
+    // player keeps across reinstalls wins over one that shipped beside the
     // executable. Both are theirs to add to; neither is written by the game.
     const roots: string[] = [];
     if (options.gameRootDir) {
-        roots.push(path.join(options.gameRootDir, PATCH_DIRECTORY_NAME));
+        roots.push(options.gameRootDir);
     }
     if (options.userDataDir) {
-        roots.push(path.join(options.userDataDir, PATCH_DIRECTORY_NAME));
+        roots.push(options.userDataDir);
     }
-    const files: string[] = [];
-    for (const root of roots) {
-        files.push(...await listPatchFiles(root));
+
+    const found: { file: string; kind: LayerKind }[] = [];
+    // Windows resolves `DLC` and `dlc` to one directory, so probing both spellings
+    // there finds every file twice. The same layer would then be applied twice, and
+    // the second application would look like a change nobody shipped.
+    const seen = new Set<string>();
+    for (const kind of layerKinds()) {
+        for (const root of roots) {
+            for (const directory of kind.directories) {
+                for (const file of await listLayerFiles(path.join(root, directory), kind.matches)) {
+                    const key = file.toLowerCase();
+                    if (seen.has(key)) {
+                        continue;
+                    }
+                    seen.add(key);
+                    found.push({ file, kind });
+                }
+            }
+        }
     }
-    if (files.length === 0) {
+    if (found.length === 0) {
         return [];
     }
 
     const binaryPath = path.join(appDir, RUNTIME_SUPPORT_FILENAME);
     if (!await fileExists(binaryPath)) {
-        // The build was made without a distribution key, so it has nothing to read
-        // a patch through. Worth one line: the files are sitting there and the
-        // player would otherwise see no effect and no reason.
-        options.log?.("warning", `${files.length} patch file(s) present, but this build cannot read patches`);
+        // The build was made without a distribution key, so it has nothing to read a
+        // layer through. Worth one line: the files are sitting there and the player
+        // would otherwise see no effect and no reason.
+        options.log?.("warning", `${found.length} patch or DLC file(s) present; this build applies neither`);
         return [];
     }
 
-    const opened: { patch: OpenPatch; order: number; at: number }[] = [];
-    for (const [at, file] of files.entries()) {
-        const label = path.basename(file);
+    const opened: { patch: OpenPatch; rank: number; order: number; at: number }[] = [];
+    for (const [at, entry] of found.entries()) {
+        const label = path.basename(entry.file);
         try {
-            const reader = await openSealedLayer(binaryPath, file, {
-                ...(verificationKey ? { verificationKey } : {}),
+            const reader = await openSealedLayer(binaryPath, entry.file, {
+                ...(build.verificationKey ? { verificationKey: build.verificationKey } : {}),
             });
-            const descriptor = await readPatchDescriptor(reader);
+            const descriptor = await readLayerDescriptor(reader);
+            if (descriptor.dlc && !dlcAttachesToBuild(descriptor.dlc.attachTo, build.appTagId)) {
+                // Identity alone cannot catch this: two variants that override no
+                // identifier are sealed under the same material, so the file opened.
+                options.log?.(
+                    "warning",
+                    `${entry.kind.noun} not applied: ${label} - it belongs to a different edition of this game`,
+                );
+                await reader.close().catch(() => undefined);
+                continue;
+            }
             opened.push({
-                patch: { label: descriptor.name ? `${label} (${descriptor.name})` : label, reader, proven: reader.proven },
+                patch: {
+                    label: descriptor.name ? `${label} (${descriptor.name})` : label,
+                    reader,
+                    proven: reader.proven,
+                    ...(descriptor.dlc ? { dlcId: descriptor.dlc.id } : {}),
+                },
+                rank: entry.kind.rank,
                 order: descriptor.order ?? 0,
                 at,
             });
         } catch (error) {
-            options.log?.("warning", `patch not applied: ${label} - ${error instanceof Error ? error.message : String(error)}`);
+            // The reason is the reader's own wording about how a layer is bound to its build, so a
+            // shipped game states the file and stops there.
+            const reason = options.explainRefusedPatches
+                ? ` - ${error instanceof Error ? error.message : String(error)}`
+                : "";
+            options.log?.("warning", `${entry.kind.noun} not applied: ${label}${reason}`);
         }
     }
 
-    // Declared order first, discovery order to break ties - so two patches that
-    // both say nothing stay in the order the directories were read, which is the
-    // only order a player can influence.
-    opened.sort((a, b) => (a.order - b.order) || (a.at - b.at));
+    // Kind first, then declared order, then discovery order to break ties - so two
+    // files that both say nothing stay in the order the directories were read, which
+    // is the only order a player can influence.
+    opened.sort((a, b) => (a.rank - b.rank) || (a.order - b.order) || (a.at - b.at));
     for (const entry of opened) {
+        // What the patch does, not what let it do it. "files only" is the effect an author and a
+        // player can both act on; how a layer earns more than that is not a fact a game log states.
         options.log?.(
             "info",
-            `patch applied: ${entry.patch.label} (${entry.patch.proven ? "proven" : "unproven, assets only"})`,
+            `${entry.patch.dlcId ? "DLC" : "patch"} applied: ${entry.patch.label}`
+            + `${entry.patch.proven ? "" : " (files only)"}`,
         );
     }
     return opened.map(entry => entry.patch);
 }
 
+/** What the base pack says about the add-ons it accepts. */
+type PackAddOns = {
+    /**
+     * The public value this build checks a layer's proof against, or undefined when
+     * the build carries none.
+     */
+    verificationKey?: string;
+    /** The variant this build was compiled as, or undefined on packs made before builds said. */
+    appTagId?: string;
+};
+
 /**
- * The public value this build checks a patch's proof against, or undefined when
- * the build carries none. Read from the base pack rather than passed in: it is a
+ * What this build accepts, read from the base pack rather than passed in: it is a
  * fact about the artifact, and the artifact is what is in front of us.
  */
-async function readVerificationKey(base: RuntimeResources): Promise<string | undefined> {
+async function readPackAddOns(base: RuntimeResources): Promise<PackAddOns> {
     try {
         const pack = JSON.parse((await base.readPack()).toString("utf-8")) as GameRuntimePackV1;
-        return pack.addOns?.verificationKey;
+        return {
+            ...(pack.addOns?.verificationKey ? { verificationKey: pack.addOns.verificationKey } : {}),
+            ...(pack.addOns?.appTagId ? { appTagId: pack.addOns.appTagId } : {}),
+        };
     } catch {
-        return undefined;
+        return {};
     }
 }
 

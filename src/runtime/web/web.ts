@@ -9,6 +9,7 @@ import {
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { packNetworkAllowlist } from "@shared/types/networkAllowlist";
+import { installScreenWakeLock } from "./screenWakeLock";
 import { WebGameStorage } from "./webStorage";
 import { webProgressBridge } from "./webProgress";
 
@@ -107,6 +108,18 @@ const consoleSinks = {
     error: console.error.bind(console),
 } as const;
 
+// Auto mode plays for an hour without a single input, and nothing this page draws resets the
+// system's idle timer, so the screen is held awake while the story moves on its own. The desktop
+// shell does the same with a platform display block.
+const screenWakeLock = installScreenWakeLock({
+    request: navigator.wakeLock ? () => navigator.wakeLock.request("screen") : null,
+    isVisible: () => document.visibilityState === "visible",
+    onVisibilityChange: listener => document.addEventListener("visibilitychange", listener),
+    warn: message => {
+        console.warn(message);
+    },
+});
+
 const bridge: GameRuntimePreloadBridge = {
     readPack,
     assetUrl,
@@ -126,6 +139,9 @@ const bridge: GameRuntimePreloadBridge = {
         // for a page: scripts, module state and every decoded asset go, while the stores this
         // shell keeps its saves and persistence in (see `webStorage`) are the browser's and stay.
         window.location.reload();
+    },
+    setDisplayAwake: awake => {
+        screenWakeLock.setRequested(awake);
     },
     getFullscreen: async () => document.fullscreenElement != null,
     setFullscreen: async (fullscreen: boolean) => {

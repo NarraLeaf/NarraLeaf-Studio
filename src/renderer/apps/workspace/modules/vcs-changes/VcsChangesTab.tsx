@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import type { Translator } from "@shared/i18n";
+import type { RevisionId } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
@@ -14,8 +15,15 @@ import { ChangeIndexPane } from "@/lib/vcs/ChangeIndexPane";
 import { IndexDivider, INDEX_DEFAULT_WIDTH } from "@/lib/vcs/IndexDivider";
 import { ChangeDetailHost } from "@/lib/vcs/presenters/ChangeDetailHost";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
-import { useDocumentDiff, type DocumentDiffRequest } from "@/lib/vcs/useDocumentDiff";
-import { shortRevision } from "../../components/layout/versionRailModel";
+import {
+    useDocumentDiff,
+    type DocumentDiffRequest,
+    type DocumentDiffResult,
+} from "@/lib/vcs/useDocumentDiff";
+import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
+import { Services } from "@/lib/workspace/services/services";
+import { useWorkspace } from "@/apps/workspace/context";
+import { revisionLabel } from "../../components/layout/versionRailModel";
 import { VcsResolvePanel } from "./VcsResolvePanel";
 import type { VcsChangesPayload } from "./vcsChangesIds";
 
@@ -63,8 +71,9 @@ import type { VcsChangesPayload } from "./vcsChangesIds";
 const TAB_ROW_BUDGET = 1000;
 
 export function VcsChangesTab({ payload }: { payload?: VcsChangesPayload }) {
-    // A tab restored from a persisted layout can arrive without one; the working tree is the answer
-    // that is always meaningful, where a revision pair invented here would name versions at random.
+    // A tab can arrive without one; the working tree is the answer that is always meaningful, where
+    // a revision pair invented here would name versions at random. It needs nothing else to be
+    // useful - the head it compares against is read rather than carried.
     const mode: VcsChangesPayload = payload ?? { mode: "working-tree" };
     // Dispatched here rather than branched inside one body, because the two halves must not share
     // hooks: a comparison SCANS (docs §4.17), and a resolve view that mounted the comparison hook
@@ -130,8 +139,10 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
         [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null, result?.head],
     );
 
+    const headNumber = useHeadRevisionNumber(mode, result);
+
     const [indexWidth, setIndexWidth] = useState(INDEX_DEFAULT_WIDTH);
-    const heading = comparisonHeading(mode, result?.head, t);
+    const heading = comparisonHeading(mode, headNumber, t);
     const hasRows = index.rows.length > 0;
 
     return (
@@ -229,29 +240,92 @@ function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode:
     );
 }
 
-/** What the header says this tab is comparing. Both sides are always named, or the tab is a mystery. */
-function comparisonHeading(
+/**
+ * What the header says this tab is comparing. Both sides are always named, or the tab is a mystery.
+ *
+ * Named by NUMBER, through `revisionLabel`, and never by hash. A version is `#36` on the rail, in
+ * the status bar and in the switcher menu; this header used to be the one place in the feature that
+ * fell back to `a91f3c8` whenever the opener had not pre-rendered a name, and one version wearing
+ * two names reads as two versions.
+ *
+ * The working tree with no number to show says "the last version" rather than guessing: that covers
+ * both a repository with nothing recorded yet and a head whose number has not come back, and either
+ * way the sentence is true.
+ */
+export function comparisonHeading(
     payload: Exclude<VcsChangesPayload, { mode: "resolve" }>,
-    head: string | undefined,
+    headNumber: number | null,
     t: Translator["t"],
 ): string {
     switch (payload.mode) {
         case "working-tree":
-            return head
-                // `#36` when the opener knew it, which is every path an author can actually take to
-                // this tab; the hash only for a tab restored from a persisted layout, where nobody
-                // is left to ask. Naming it the way the rail, the status cell and the switcher menu
-                // all name it is the whole point - one version with two names reads as two versions.
-                ? t("documentDiff.tab.comparingWorkingTree", {
-                    version: payload.headLabel ?? shortRevision(head),
-                })
-                // A repository with no revisions: there is no version to have changed since, and
-                // saying so beats naming one that does not exist.
+            return headNumber !== null
+                ? t("documentDiff.tab.comparingWorkingTree", { version: revisionLabel(headNumber) })
                 : t("documentDiff.tab.comparingWorkingTreeUnknown");
         case "between":
             return t("documentDiff.tab.comparingRevisions", {
-                from: payload.fromLabel ?? shortRevision(payload.from),
-                to: payload.toLabel ?? shortRevision(payload.to),
+                from: revisionLabel(payload.fromNumber),
+                to: revisionLabel(payload.toNumber),
             });
     }
+}
+
+/**
+ * The number of the version the working tree is being compared against.
+ *
+ * **Read here rather than trusted from the payload.** What the opener passed is what the rail was
+ * showing when the author pressed the button, and this tab outlives that: commit while it is open
+ * and the comparison is against a new head, which a heading still saying `#36` would be naming
+ * wrongly. The payload's number is therefore only what the first frame shows, so the heading does
+ * not flicker through "the last version" on the way to the answer.
+ *
+ * `getInfo` is safe to ask from a view: it is `readBranchIdentity`, which is
+ * `scan: false, revisionOnly: true` and so a pure read (`VcsManager.getInfo`) - the same one the
+ * status-bar cell makes on every project open. A working-tree SCAN is the thing that must not
+ * happen on its own here (docs §4.17), and this is not one.
+ *
+ * Asked once the comparison has answered, and again whenever it answers with a different head - so
+ * the header follows the refresh button rather than needing its own. A head the read does not agree
+ * with goes unnamed instead of borrowing the number of whatever is at the tip now.
+ */
+function useHeadRevisionNumber(
+    payload: Exclude<VcsChangesPayload, { mode: "resolve" }>,
+    result: DocumentDiffResult | null,
+): number | null {
+    const { context } = useWorkspace();
+    const carried = payload.mode === "working-tree" ? payload.headNumber ?? null : null;
+    const headRevision = payload.mode === "working-tree" ? result?.head ?? null : null;
+    const [read, setRead] = useState<{ revision: RevisionId; number: number | null } | null>(null);
+
+    useEffect(() => {
+        if (!context || headRevision === null) {
+            return;
+        }
+        let alive = true;
+        const service = context.services.get<VersionControlService>(Services.VersionControl);
+        void service.getInfo().then(info => {
+            if (!alive) return;
+            const number = info && info.head === headRevision && info.headNumber > 0
+                ? info.headNumber
+                : null;
+            setRead({ revision: headRevision, number });
+        }).catch(() => {
+            // A failed identity read is not this surface's story to tell: the comparison itself
+            // reports its own failures, and all this costs is the version's name.
+            if (alive) setRead({ revision: headRevision, number: null });
+        });
+        return () => {
+            alive = false;
+        };
+    }, [context, headRevision]);
+
+    if (payload.mode !== "working-tree") {
+        return null;
+    }
+    if (headRevision === null) {
+        // Before the comparison answers, the opener's number is all there is. After it answers with
+        // no head, there is no version to name at all - a repository with nothing recorded yet.
+        return result === null ? carried : null;
+    }
+    return read?.revision === headRevision ? read.number : carried;
 }

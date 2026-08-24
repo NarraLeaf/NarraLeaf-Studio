@@ -220,6 +220,13 @@ export type GameRuntimeArtifactCompileInput = {
      */
     packaging?: boolean;
     /**
+     * The DLC whose stories go into this artifact, on top of the game's own.
+     *
+     * Only the production build and the DLC export set it, and only one of them sets it to
+     * anything: see `DevModeBundleLoadContext.includedDlc`.
+     */
+    includedDlc?: readonly string[];
+    /**
      * Studio's own userData directory, used only as the root of the build
      * dependency cache that `dep:` sidecar includes resolve through. Passed in
      * rather than read from Electron because this module also runs off the main
@@ -450,6 +457,7 @@ export async function compileGameRuntimeArtifact(
         blueprintScriptsCompileErrors: blueprintScripts.errors,
         ...(input.appTag ? { appTag: input.appTag } : {}),
         ...(input.packaging ? { packaging: true } : {}),
+        ...(input.includedDlc ? { includedDlc: input.includedDlc } : {}),
         // The declarations, not the count. A pack that merely carries a plugin can still drop a
         // scene; one that carries a plugin able to start a story cannot.
         runtimePlugins: (input.runtimePlugins ?? []).map(plugin => ({
@@ -640,6 +648,11 @@ export async function compileGameRuntimeArtifact(
                             input.distribution.titleId,
                         ),
                         packDeltaVersion: PACK_DELTA_VERSION,
+                        // Which variant this build is, so that it can refuse a DLC belonging to
+                        // another one. Two variants that override no identity are sealed under
+                        // the same material, so without this a demo would happily open the full
+                        // game's extra chapter.
+                        appTagId: input.appTag?.id ?? APP_TAG_ID_RELEASE,
                     },
                 }
                 : {}),

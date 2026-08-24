@@ -12,6 +12,7 @@
  * catalog to translate every English key, so step 3 is not optional in practice.
  */
 
+import { pickPreferredLocale } from "./preferredLocale";
 import { getOverlayMeta, listOverlayLocales } from "./registry";
 
 export const SUPPORTED_LOCALES = ["en", "zh", "ja"] as const;
@@ -130,22 +131,11 @@ export function normalizeLocale(value: unknown): LocaleCode {
  * Shared because both processes need the same answer from different sources — the renderer reads
  * `navigator.languages`, the main process reads `app.getPreferredSystemLanguages()` — and two
  * implementations of "which language is this machine in" is two answers waiting to disagree.
+ *
+ * The walk itself is {@link pickPreferredLocale}, which carries no imports. A shipped game's main
+ * process calls that one directly against its own three-language table: it needs the same answer
+ * and must not pull the catalog in to get it.
  */
 export function resolvePreferredLocale(tags: readonly string[]): LocaleCode {
-    for (const tag of tags) {
-        const normalized = String(tag ?? "").toLowerCase().replace(/_/g, "-");
-        if (!normalized) {
-            continue;
-        }
-        // Read off before the guard below: `LocaleCode` is `string`, so a failed narrowing leaves
-        // `normalized` as `never` and nothing can be done with it afterwards.
-        const primary = normalized.split("-")[0];
-        if (isRegisteredLocale(normalized)) {
-            return normalized;
-        }
-        if (isRegisteredLocale(primary)) {
-            return primary;
-        }
-    }
-    return DEFAULT_LOCALE;
+    return pickPreferredLocale(tags, getRegisteredLocales(), DEFAULT_LOCALE);
 }

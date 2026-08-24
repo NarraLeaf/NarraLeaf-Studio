@@ -623,10 +623,13 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
                             type="button"
                             onClick={() => openVcsChangesTab(context, {
                                 mode: "working-tree",
-                                // What this panel is calling the head right now, so the tab's
-                                // heading says the same `#36` the block above it does.
-                                headLabel: surface.state.kind === "current" && surface.state.number !== null
-                                    ? revisionLabel(surface.state.number)
+                                // The head this panel is showing right now, so the tab's heading
+                                // opens on the same `#36` the block above it does. The tab reads
+                                // the head for itself afterwards, so this is a head start rather
+                                // than the answer - and nothing is passed when there is none, which
+                                // the tab reads as "ask", not as "name it by hash".
+                                headNumber: surface.state.kind === "current" && surface.state.number !== null
+                                    ? surface.state.number
                                     : undefined,
                             })}
                             data-tip={t("documentDiff.rail.compareWithPrevious")}
@@ -1867,8 +1870,11 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                                             // deletion.
                                             from: against.number < row.number ? against.revision : row.revision,
                                             to: against.number < row.number ? row.revision : against.revision,
-                                            fromLabel: against.number < row.number ? against.label : revisionLabel(row.number),
-                                            toLabel: against.number < row.number ? revisionLabel(row.number) : against.label,
+                                            // The same order, as numbers: the tab renders `#12 → #17`
+                                            // from these, so what it calls the two versions cannot
+                                            // drift from what this row calls them.
+                                            fromNumber: against.number < row.number ? against.number : row.number,
+                                            toNumber: against.number < row.number ? row.number : against.number,
                                         })}
                                         data-tip={against.title}
                                         aria-label={against.title}

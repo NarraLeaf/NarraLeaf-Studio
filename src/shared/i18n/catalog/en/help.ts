@@ -720,17 +720,26 @@ export const help = {
                 + "\n"
                 + "- A patch opens only in builds of the variant it was exported for, and only in builds "
                 + "produced after the project has a distribution key.\n"
-                + "- Naming an earlier build limits the patch to the files that differ from it, and to the "
-                + "changes it makes to the game's content. An empty field includes the whole game and "
-                + "replaces the content of any patch installed below it.\n"
+                + "- The build a patch updates is either built as part of the export, or named as a build "
+                + "folder an earlier build produced. Building it compares two variants of the project as it "
+                + "stands now; an edition upgrade and a DLC are made this way. Naming a folder compares "
+                + "against that build; a fix to something already released is made this way.\n"
+                + "- The content comes from the variant selected below the build, and it need not be the "
+                + "same variant. A patch that installs into the demo and carries the full game's content "
+                + "turns that demo into the full game.\n"
+                + "- The patch is limited to the files that differ from the build it updates, and to the "
+                + "changes it makes to that build\u2019s content. Where no build is named and none is "
+                + "built, the patch includes the whole game and replaces the content of any patch "
+                + "installed below it.\n"
                 + "- Several patches installed together each apply. Where two of them change the same scene, "
                 + "page, entry or file, the higher layer applies over the lower one.\n"
                 + "- The export produces a folder named patch. Placing that folder in the game's folder "
-                + "installs the patch, and deleting it restores the installed build.\n"
+                + "installs the patch, and deleting it restores the installed build. A DLC is written to a "
+                + "folder named DLC instead, under the name its own record states.\n"
                 + "- The checks that precede a build also precede an export, and both report in the build "
                 + "console.\n"
-                + "- When an earlier build is named, the export also reports which saves made against it "
-                + "will no longer load. That report is a warning and does not stop the export.",
+                + "- Where there is a build to compare against, the export also reports which saves made "
+                + "against it will no longer load. That report is a warning and does not stop the export.",
         },
         // `main` is the release variant's name, and it is the same word in every language: a story
         // expression compares it as a string inside the shipped game, where no catalog is reached.

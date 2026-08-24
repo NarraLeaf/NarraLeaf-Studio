@@ -131,7 +131,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         ...Object.values(localBlueprints.blueprints ?? {}),
         ...sharedBlueprints.map(asset => asset.blueprint),
     ]);
-    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop);
+    // Only a package leaves a DLC's stories out; see `DevModeBundleLoadContext.includedDlc`.
+    const carriedDlc = context.packaging ? new Set(context.includedDlc ?? []) : null;
+    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop, carriedDlc);
     // Translations and voice lines are keyed by a row's `textId`, not by a scene, so dropping a scene
     // leaves both behind: the prose is gone from the story document and still legible, in full, in
     // every translation table the package carries. They are narrowed against the documents as this
@@ -554,10 +556,14 @@ export function planSceneDrop(
  * absent from the package rather than merely unreachable in it, and what makes the story after a cut
  * point absent rather than merely unplayed.
  */
+/**
+ * @param carriedDlc the DLC ids this package holds, or null to carry every story the project has.
+ */
 async function loadStoryLibrary(
     projectPath: string,
     variant: { id: string; name: string },
     sceneDrop: SceneDropPlan,
+    carriedDlc: ReadonlySet<string> | null,
 ): Promise<DevModeStoryLibrary | undefined> {
     const indexPath = path.join(projectPath, "editor", "story", "index.json");
     const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
@@ -572,6 +578,12 @@ async function loadStoryLibrary(
             continue;
         }
         seen.add(entry.id);
+        // Before the document is read, not after: a story this package does not carry must not be
+        // loaded at all, so that no later pass can find its prose and copy it somewhere - a
+        // translation table, a voice index, an asset sweep - that does ship.
+        if (entry.dlcId && carriedDlc && !carriedDlc.has(entry.dlcId)) {
+            continue;
+        }
         const documentPath = resolveStoryDocumentPathForIndexEntry(projectPath, entry);
         if (!documentPath) {
             continue;

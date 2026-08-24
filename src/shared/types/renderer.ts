@@ -1083,6 +1083,17 @@ export interface RendererPreloadedInterface {
         selectPatchFile(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
         /** The build a patch is measured against - a package file, not a folder. */
         selectPatchBaseline(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
+        /**
+         * What a build folder says about itself: the variant it was compiled as, the application
+         * name and version it carries, and when it was built. Fails, with the reason, on a path
+         * that holds no game.
+         */
+        readPatchBaseline(path: string): Promise<RequestStatus<{
+            appTagId: string | null;
+            productName: string | null;
+            version: string | null;
+            builtAt: string | null;
+        }>>;
     };
 
     /**

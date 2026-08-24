@@ -2,6 +2,7 @@ import { LAYER_FILE_EXTENSION } from "@narraleaf/encryption";
 import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { openPayload } from "../../build/patchPayload";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -154,6 +155,36 @@ export class GameBuildSelectPatchBaselineHandler extends IPCHandler<IPCEventType
                 return { path: null };
             }
             return { path: result.filePaths[0] };
+        });
+    }
+}
+/**
+ * What a build folder says about itself, read through the same reader the export reads it with.
+ *
+ * The same reader on purpose: a folder this answers for is a folder the export can measure against,
+ * and a folder it refuses is one the export would refuse later with the author already committed.
+ */
+export class GameBuildReadPatchBaselineHandler extends IPCHandler<IPCEventType.gameBuildReadPatchBaseline> {
+    readonly name = IPCEventType.gameBuildReadPatchBaseline;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        _window: AppWindow,
+        { path }: IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["response"]>> {
+        return this.tryUse(async () => {
+            const payload = await openPayload(path);
+            try {
+                const pack = payload.pack;
+                return {
+                    appTagId: pack.addOns?.appTagId?.trim() || null,
+                    productName: pack.project?.name?.trim() || null,
+                    version: pack.project?.version?.trim() || null,
+                    builtAt: pack.generatedAt || null,
+                };
+            } finally {
+                await payload.close().catch(() => undefined);
+            }
         });
     }
 }

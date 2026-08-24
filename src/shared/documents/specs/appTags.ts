@@ -3,7 +3,9 @@ import {
     migrateProjectAppTagDocument,
     type ProjectAppTagDocument,
 } from "../../types/appTag";
+import {buildDocumentDiff, DocumentChange, DocumentDiff} from "../diff";
 import {defineDocumentSpec} from "../registry";
+import {authoredName, byId, change, diffKeyed, fromToParams, sameJsonValue} from "./diffHelpers";
 import {rejectNewerSchema, requireDocumentObject} from "./parseHelpers";
 
 /**
@@ -62,4 +64,106 @@ export const appTagsSpec = defineDocumentSpec<ProjectAppTagDocument>({
         title: "",
         counts: [{key: "appTags", value: document.tags.length}],
     }),
+    diff: diffAppTags,
 });
+
+const LABEL = {
+    added: "documentDiff.appTags.added",
+    removed: "documentDiff.appTags.removed",
+    renamed: "documentDiff.appTags.renamed",
+    displayName: "documentDiff.appTags.displayName",
+    identifier: "documentDiff.appTags.identifier",
+    version: "documentDiff.appTags.version",
+    plugins: "documentDiff.appTags.plugins",
+    assetAxes: "documentDiff.appTags.assetAxes",
+    scenes: "documentDiff.appTags.scenes",
+    ending: "documentDiff.appTags.ending",
+    order: "documentDiff.appTags.order",
+} as const;
+
+/** The three identity fields a variant may state differently, and the label each one is read under. */
+const OVERRIDE_LABELS = [
+    ["displayName", LABEL.displayName],
+    ["identifier", LABEL.identifier],
+    ["version", LABEL.version],
+] as const;
+
+/**
+ * One row per variant, plus the values every variant inherits.
+ *
+ * The three root records are compared as well as the tags, because they are what an unstated key on
+ * a variant resolves to: an edit there changes what every edition of the project builds as, and a
+ * comparison that only walked the tags would report nothing at all for it. They carry no `subject` -
+ * they belong to the project rather than to anything the author named.
+ */
+export function diffAppTags(base: ProjectAppTagDocument, head: ProjectAppTagDocument, options: {limit: number}): DocumentDiff {
+    const rows: DocumentChange[] = [];
+
+    for (const entry of diffKeyed(byId(base.tags), byId(head.tags))) {
+        const path = ["tags", entry.key];
+        const subject = authoredName(entry.head?.name) ?? authoredName(entry.base?.name);
+        if (!entry.base || !entry.head) {
+            rows.push(change(path, entry.kind, entry.head ? LABEL.added : LABEL.removed, {subject}));
+            continue;
+        }
+        if (!sameJsonValue(entry.base.name, entry.head.name)) {
+            rows.push(change([...path, "name"], "changed", LABEL.renamed, {
+                params: fromToParams(entry.base.name, entry.head.name),
+                subject,
+            }));
+        }
+        for (const [key, label] of OVERRIDE_LABELS) {
+            if (!sameJsonValue(entry.base.overrides?.[key], entry.head.overrides?.[key])) {
+                // An absent key is this variant inheriting the project's value, so one side of the
+                // pair is simply missing - which is what the surface draws for a value that was
+                // gained or given up.
+                rows.push(change([...path, key], presence(entry.base.overrides?.[key], entry.head.overrides?.[key]), label, {
+                    params: fromToParams(entry.base.overrides?.[key], entry.head.overrides?.[key]),
+                    subject,
+                }));
+            }
+        }
+        for (const [key, label] of [
+            ["pluginConfig", LABEL.plugins],
+            ["assetAxes", LABEL.assetAxes],
+            ["reachableScenes", LABEL.scenes],
+            ["endingSurfaceId", LABEL.ending],
+        ] as const) {
+            if (!sameJsonValue(entry.base[key], entry.head[key])) {
+                rows.push(change([...path, key], presence(entry.base[key], entry.head[key]), label, {subject}));
+            }
+        }
+    }
+
+    for (const [key, label] of [
+        ["pluginConfig", LABEL.plugins],
+        ["assetAxes", LABEL.assetAxes],
+        ["reachableScenes", LABEL.scenes],
+    ] as const) {
+        if (!sameJsonValue(base[key], head[key])) {
+            rows.push(change([key], presence(base[key], head[key]), label));
+        }
+    }
+
+    // The list is the order the variants are drawn in, which the author arranged. Reported only
+    // when the same variants came out in a different order - a variant that arrived or left has
+    // already been reported as itself.
+    if (!sameJsonValue(sharedOrder(base, head), sharedOrder(head, base))) {
+        rows.push(change(["tags"], "moved", LABEL.order));
+    }
+
+    return buildDocumentDiff(rows, {tier: "semantic", limit: options.limit});
+}
+
+/** The ids of `source`'s tags that `other` also has, in `source`'s order. */
+function sharedOrder(source: ProjectAppTagDocument, other: ProjectAppTagDocument): string[] {
+    const known = new Set(other.tags.map(tag => tag.id));
+    return source.tags.map(tag => tag.id).filter(id => known.has(id));
+}
+
+function presence(base: unknown, head: unknown): "added" | "removed" | "changed" {
+    if (base === undefined) {
+        return "added";
+    }
+    return head === undefined ? "removed" : "changed";
+}
