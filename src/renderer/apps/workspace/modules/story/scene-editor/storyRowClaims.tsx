@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { PenLine } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { Services } from "@/lib/workspace/services/services";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
@@ -143,16 +143,26 @@ function selfAccount(view: LiveSessionView): string | null {
  * that moves while somebody is reading it is the worst thing an editing surface can do - the row
  * has already had that bug twice (see the hover cluster, which is mounted on every row for exactly
  * this reason). So the mark is absolutely positioned into the row's own trailing padding, where
- * nothing else is drawn: appearing and disappearing as people move between lines costs the words
- * beside it nothing at all.
+ * nothing else is drawn: appearing and going as people move between lines costs the words beside it
+ * nothing at all.
  *
- * The account is on hover rather than beside the glyph, because there is no width for a name and a
- * truncated one names nobody.
+ * **A monogram, not a glyph.** It was a 12px pen in the muted foreground, one lane to the right of
+ * the row's hover actions and the same size and colour as them, so on the row the pointer was over
+ * it read as a sixth button. The monogram is the same one the member wears in the title bar and in
+ * the collaboration panel - `nameInitials` and `nameMonogramColor` derive both halves from the
+ * account name - so it says *a person* rather than *an action*, and says which person.
+ *
+ * **The name is drawn beside it while the row is at rest.** There is room for it: the row's actions
+ * are only mounted under the pointer, and everything else in that corner is empty on most rows. It
+ * goes when the pointer arrives, because that is when the corner is needed and when the tooltip is
+ * one moment away.
  */
-export function StoryRowClaimMark({ account, onArtwork }: {
+export function StoryRowClaimMark({ account, onArtwork, quiet }: {
     account: string;
     /** The row's trailing edge is a background strip rather than the page. See `.nl-on-media`. */
     onArtwork?: boolean;
+    /** The pointer is on this row, so the name stands down and leaves the corner to the actions. */
+    quiet?: boolean;
 }) {
     const { t } = useTranslation();
     return (
@@ -160,11 +170,22 @@ export function StoryRowClaimMark({ account, onArtwork }: {
             data-story-row-claim={account}
             data-tip={t("story.live.rowClaimed", { name: account })}
             className={[
-                "absolute right-0 top-1 flex h-[var(--nl-story-row-box)] w-3 items-center justify-center text-fg-subtle",
+                // No `pointer-events-none`: the tooltip is resolved by hit-testing the pointer,
+                // so a mark the pointer passes through is a mark with no name on it.
+                "absolute right-0 top-1 flex h-[var(--nl-story-row-box)] items-center gap-1",
                 onArtwork ? "nl-on-media" : "",
             ].join(" ")}
         >
-            <PenLine className="h-3 w-3" />
+            {!quiet && (
+                <span className="max-w-[10ch] truncate text-2xs text-fg-subtle">{account}</span>
+            )}
+            <span
+                aria-hidden
+                className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-2xs font-medium leading-none text-white"
+                style={{ backgroundColor: nameMonogramColor(account) }}
+            >
+                {nameInitials(account).slice(0, 1)}
+            </span>
         </span>
     );
 }

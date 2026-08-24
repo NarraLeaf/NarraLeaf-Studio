@@ -192,6 +192,10 @@ const SCENE_TEXT_FIELD_CLASS = "w-full rounded-md border border-edge bg-surface-
  * *is* part of what every machine in a room fingerprints. So the card is switched off, with the
  * reason on it, while a session owns this story; the story panel's Rename still works, because a
  * rename travels.
+ *
+ * The same call is refused by an ordinary freeze at the write boundary, so the card is switched off
+ * for that too. It was not, and the fields went on accepting input whose writes were then dropped -
+ * a scene that looked renamed until its tab was reopened.
  */
 export function StorySceneOverviewBlock(props: {
     document: StoryDocument;
@@ -199,11 +203,15 @@ export function StorySceneOverviewBlock(props: {
     backgroundAsset: Asset<AssetType.Image> | null;
     onUpdateScene: (patch: StorySceneUpdate) => boolean;
     panelStateService: PanelStateService | null;
-    /** A live session on this story, as a guard. See {@link useStoryLiveSessionGuard}. */
-    liveSession: FreezeGuard;
+    /**
+     * Whichever refusal applies to this card: the workspace's freeze, or a live session on this
+     * story. See `storyEditGuard` - the two are one question here, because every field commits
+     * through the same call.
+     */
+    writes: FreezeGuard;
 }) {
     const { t } = useTranslation();
-    const { document, scene, backgroundAsset, onUpdateScene, panelStateService, liveSession } = props;
+    const { document, scene, backgroundAsset, onUpdateScene, panelStateService, writes } = props;
     const [nameValue, setNameValue] = useState(scene.name);
     const [descriptionValue, setDescriptionValue] = useState(scene.description ?? "");
     const [selectorOpen, setSelectorOpen] = useState(false);
@@ -338,7 +346,7 @@ export function StorySceneOverviewBlock(props: {
                     type="button"
                     className="group relative aspect-[16/9] min-h-40 overflow-hidden rounded-md border border-edge bg-surface text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70 disabled:cursor-not-allowed"
                     onClick={() => setSelectorOpen(true)}
-                    {...liveSession.writes(false, backgroundAssetId ? t("story.sceneEditor.changeBackgroundTitle") : t("story.sceneEditor.selectBackgroundTitle"))}
+                    {...writes.writes(false, backgroundAssetId ? t("story.sceneEditor.changeBackgroundTitle") : t("story.sceneEditor.selectBackgroundTitle"))}
                 >
                     {url ? (
                         <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
@@ -371,8 +379,8 @@ export function StorySceneOverviewBlock(props: {
                             // `readOnly` rather than `disabled`, here and on the description: a
                             // greyed-out field cannot be selected, and the text in these two is
                             // worth reading during a session even when it cannot be changed.
-                            readOnly={liveSession.frozen}
-                            data-tip={liveSession.frozen ? liveSession.reason : undefined}
+                            readOnly={writes.frozen}
+                            data-tip={writes.frozen ? writes.reason : undefined}
                             onChange={event => setNameValue(event.target.value)}
                             onBlur={commitName}
                             onKeyDown={event => {
@@ -398,8 +406,8 @@ export function StorySceneOverviewBlock(props: {
                             rows={3}
                             maxLength={600}
                             placeholder={t("story.sceneEditor.noDescription")}
-                            readOnly={liveSession.frozen}
-                            data-tip={liveSession.frozen ? liveSession.reason : undefined}
+                            readOnly={writes.frozen}
+                            data-tip={writes.frozen ? writes.reason : undefined}
                             onChange={event => setDescriptionValue(event.target.value)}
                             onBlur={commitDescription}
                             onKeyDown={event => {
@@ -424,7 +432,7 @@ export function StorySceneOverviewBlock(props: {
                                 type="button"
                                 className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-surface-raised px-3 text-left text-sm text-fg-muted hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={() => setSelectorOpen(true)}
-                                {...liveSession.writes()}
+                                {...writes.writes()}
                             >
                                 <ImageIcon className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
                                 <span className={["truncate", backgroundAsset ? "" : "italic text-fg-subtle"].join(" ")}>
@@ -434,7 +442,7 @@ export function StorySceneOverviewBlock(props: {
                             <button
                                 type="button"
                                 className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
-                                {...liveSession.writes(!backgroundAssetId, t("story.sceneEditor.clearBackground"))}
+                                {...writes.writes(!backgroundAssetId, t("story.sceneEditor.clearBackground"))}
                                 aria-label={t("story.sceneEditor.clearBackground")}
                                 onClick={clearBackground}
                             >
@@ -2248,13 +2256,18 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 onMouseDown={editor.focusRoot}
                 onScroll={handleScroll}
             >
+                {/* Both refusals, not one. The card used to be held back by the session alone, so
+                    an ordinary freeze - a version on screen, a merge, recovery - left its three
+                    fields taking input that the write boundary then discarded: the scene appeared
+                    to be renamed until the tab was reopened. `storyEditGuard` picks whichever of
+                    the two applies and hands over its sentence. */}
                 <StorySceneOverviewBlock
                     document={document}
                     scene={scene}
                     backgroundAsset={backgroundAsset}
                     onUpdateScene={editor.updateSceneMetadata}
                     panelStateService={panelStateService}
-                    liveSession={liveSession}
+                    writes={storyEditGuard(freeze, liveSession)}
                 />
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
                     {/* `items` stays the WHOLE list, not the window. dnd-kit tolerates a rect it has
