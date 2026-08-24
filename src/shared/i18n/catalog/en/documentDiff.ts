@@ -634,6 +634,39 @@ export const documentDiff = {
      * the grouping exists so a comparison reads as "the story changed" rather than as a path list.
      * The classification is in `renderer/lib/vcs/changeCategory.ts`.
      */
+    /**
+     * What the author calls each kind of document.
+     *
+     * The fallback for a thing with no name of its own. Never a file name: the author did not
+     * make a file, they made a project, a story, a set of pages.
+     */
+    name: {
+        project: "Project settings",
+        storyIndex: "Story list",
+        story: "Story",
+        animationIndex: "Motion list",
+        animation: "Motion",
+        uiDocument: "Interface pages",
+        uiGraphs: "Interface blueprints",
+        blueprint: "Blueprint",
+        variables: "Variables",
+        audioTracks: "Audio tracks",
+        brand: "Brand palette",
+        appTags: "Build variants",
+        dlc: "Additional content",
+        dictionary: "Dictionary",
+        saveSchema: "Save fields",
+        assetSets: "Asset sets",
+        localization: "Translations",
+        localizationKeys: "Translation keys",
+        voice: "Voice lines",
+        assetsMetadata: "Asset library",
+        assetsGroups: "Asset folders",
+        assetsOrder: "Asset order",
+        characters: "Cast",
+        assetContent: "Asset file",
+        qualified: "{name} ({qualifier})",
+    },
     category: {
         story: "Story",
         characters: "Characters",
@@ -881,6 +914,20 @@ export const documentDiff = {
          * placements would otherwise be indistinguishable.
          */
         unplaced: "{count} with no place on a page",
+        /**
+         * The pictures on screen that are not this version's, in the same line as the marks.
+         *
+         * A mark drawn in a widget's place has no room for words at the size a page is drawn
+         * here, so this is where the reason is. The two reasons stay apart because the author's
+         * next move differs: an asset imported after this version is nothing to look into, and a
+         * file that would not read is.
+         */
+        assetsNotShown: {
+            one: "{count} asset is not shown here:",
+            other: "{count} assets are not shown here:",
+        },
+        assetsAbsent: "{count} not in this version",
+        assetsFailed: "{count} could not be read",
         /** Four reasons a column has no picture in it, and they stay four. */
         notDrawn: "This version of the page could not be drawn.",
         emptyGraph: "This graph has no nodes.",

@@ -403,6 +403,21 @@ export function useStoryCommandLine(
 }
 
 /**
+ * Let a truncating line clip at its ends without clipping its own glyphs.
+ *
+ * Truncation needs `overflow: hidden`, and that hides the line VERTICALLY too: whatever a glyph draws
+ * outside its line box is cut off, top and bottom. The leading normally covers it (see
+ * `STORY_DENSITY_METRICS` — every density states it as a multiple of the size, so it grows with the
+ * type), but the face is the author's to pick and a family whose ascent and descent together exceed
+ * its leading would still be shaved.
+ *
+ * Padding grows the clip rectangle — `overflow` clips at the padding edge — and an equal negative
+ * margin gives the space straight back to the layout, so the line box, the row height and the glyphs'
+ * y are all exactly where they were. Stated in `em` so it scales with whatever size is set.
+ */
+const LINE_CLIP_BLEED: CSSProperties = { paddingBlock: "0.25em", marginBlock: "-0.25em" };
+
+/**
  * Shared line box: one line, truncating, in the editor's own text metrics.
  *
  * The pieces sit in an INLINE child rather than directly in the flex box. A flex container blockifies
@@ -416,7 +431,7 @@ export function StoryCommandLineBox(props: { style?: CSSProperties; className?: 
             className={["flex min-h-[var(--nl-story-row-box)] min-w-0 flex-1 items-center text-sm", props.className].filter(Boolean).join(" ")}
             style={props.style}
         >
-            <span className="min-w-0 truncate">{props.children}</span>
+            <span className="min-w-0 truncate" style={LINE_CLIP_BLEED}>{props.children}</span>
         </span>
     );
 }

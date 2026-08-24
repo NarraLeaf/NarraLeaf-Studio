@@ -132,8 +132,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         ...Object.values(localBlueprints.blueprints ?? {}),
         ...sharedBlueprints.map(asset => asset.blueprint),
     ]);
-    // Only a package leaves a DLC's stories out; see `DevModeBundleLoadContext.includedDlc`.
-    const carriedDlc = context.packaging ? new Set(context.includedDlc ?? []) : null;
+    // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
+    // project has. See `DevModeBundleLoadContext.includedDlc`.
+    const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;
     const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop, carriedDlc);
     // Translations and voice lines are keyed by a row's `textId`, not by a scene, so dropping a scene
     // leaves both behind: the prose is gone from the story document and still legible, in full, in
@@ -184,6 +185,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         bundleId: context.bundleId,
         revision: context.revision,
         timestamp: new Date().toISOString(),
+        // Only when a selection was named. Absent has a meaning of its own - every DLC - and an
+        // empty list would be a different claim.
+        ...(carriedDlc ? { installedDlc: [...carriedDlc] } : {}),
         ui: {
             uidoc,
             uigraphs,

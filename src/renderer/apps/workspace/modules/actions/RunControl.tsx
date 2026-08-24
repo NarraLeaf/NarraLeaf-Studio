@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackagePlus, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
@@ -16,6 +16,8 @@ import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
+import type { ProjectDlc } from "@shared/types/dlc";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
@@ -64,6 +66,14 @@ const RUN_MODE_SETTINGS_KEY = "ui.runMode";
  * two sides mean the same setting: a value written here decides what the next Dev Mode run *is*.
  */
 const RUN_VARIANT_SETTINGS_KEY = "ui.runVariantByProject";
+/**
+ * Which of this project's DLC this machine runs it WITHOUT, bucketed by project.
+ *
+ * The off set rather than the on set, and `runDlc.ts` on the main process side - which reads this
+ * very key - has the reasoning: storing what is on would make a DLC created after the choice
+ * arrive switched off, and the only sign would be content missing from a run nobody configured.
+ */
+const RUN_DLC_OFF_SETTINGS_KEY = "ui.runDlcOffByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
 /**
  * The catalog id the stop chord lives under, shared by the three commands that can be the thing it
@@ -149,6 +159,10 @@ export function RunControl() {
     const [variantOpen, setVariantOpen] = useState(false);
     const [variants, setVariants] = useState<ProjectAppTag[]>([]);
     const [variantId, setVariantId] = useState<string | null>(null);
+    const [dlcOpen, setDlcOpen] = useState(false);
+    const [dlcs, setDlcs] = useState<ProjectDlc[]>([]);
+    /** The ids switched off, as the setting stores them. Unknown ids are harmless and left alone. */
+    const [dlcOff, setDlcOff] = useState<readonly string[]>([]);
 
     // The variant list folds away with the menu that holds it. It has to be tied to the menu closing
     // rather than to the gestures that close it: the bar puts this menu away too - when a sibling
@@ -157,6 +171,7 @@ export function RunControl() {
     useEffect(() => {
         if (!menuOpen) {
             setVariantOpen(false);
+            setDlcOpen(false);
         }
     }, [menuOpen]);
 
@@ -186,6 +201,41 @@ export function RunControl() {
         const read = () => setVariants(tags.listAuthoredTags());
         read();
         return tags.onTagsChanged(read);
+    }, [context]);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const dlc = context.services.get<DlcService>(Services.Dlc);
+        setDlcs(dlc.list());
+        return dlc.onDlcChanged(setDlcs);
+    }, [context]);
+
+    // Which ones are switched off, from the same store the main process reads.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const read = (value: unknown) => {
+            const record = value && typeof value === "object" && !Array.isArray(value)
+                ? value as Record<string, unknown>
+                : {};
+            const stored = record[projectKey];
+            setDlcOff(
+                (Array.isArray(stored) ? stored : [])
+                    .filter((id): id is string => typeof id === "string" && Boolean(id.trim())),
+            );
+        };
+        read(settings.getSync(RUN_DLC_OFF_SETTINGS_KEY));
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === RUN_DLC_OFF_SETTINGS_KEY) {
+                read(change.value);
+            }
+        });
+        return () => token?.cancel();
     }, [context]);
 
     // Which one is selected, from the same store the main process reads.
@@ -691,17 +741,72 @@ export function RunControl() {
         setVariantOpen(false);
     }, [context]);
 
+    /**
+     * How many of this project's DLC a run has, and how many it could.
+     *
+     * Counted against the project's own list rather than against the stored set, so an id left over
+     * from a deleted DLC does not make the row claim something is missing.
+     */
+    const activeDlcCount = useMemo(
+        () => dlcs.filter(dlc => !dlcOff.includes(dlc.id)).length,
+        [dlcOff, dlcs],
+    );
+
+    const toggleDlc = useCallback((id: string): void => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const current = settings.getSync(RUN_DLC_OFF_SETTINGS_KEY);
+        const record: Record<string, unknown> = current && typeof current === "object" && !Array.isArray(current)
+            ? { ...current as Record<string, unknown> }
+            : {};
+        const next = dlcOff.includes(id) ? dlcOff.filter(entry => entry !== id) : [...dlcOff, id];
+        if (next.length > 0) {
+            record[projectKey] = next;
+        } else {
+            // Deleted rather than stored as an empty list, so "runs with all of them" and "never
+            // chose" are one state - the same rule the variant choice follows.
+            delete record[projectKey];
+        }
+        void settings.set(RUN_DLC_OFF_SETTINGS_KEY, record);
+        setDlcOff(next);
+        // The menu stays open, unlike the variant rows: switching several off is one decision made in
+        // several clicks, and closing after each would make the author reopen it every time.
+    }, [context, dlcOff]);
+
     // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
     // thing to stop.
     const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
     // The variant rides on the face whenever it is not the whole game. "Dev Mode is the preview you
     // can trust at any moment" only holds while it cannot quietly have become something else, and a
     // setting one click deep in a menu is quiet.
+    /**
+     * What rides on the face, after the mode's own name.
+     *
+     * The variant whenever it is not the whole game, and the DLC count whenever some are switched
+     * off. Both for one reason: "Dev Mode is the preview you can trust at any moment" only holds
+     * while it cannot quietly have become something else, and a setting one click deep in a menu
+     * is quiet. Content missing because a DLC is off looks exactly like content that was never
+     * written, and this is the only place that says otherwise.
+     *
+     * Nothing when every DLC is on, which is the default and needs no announcing.
+     */
+    const runSuffix = useMemo(() => {
+        const parts: string[] = [];
+        if (selectedVariant) {
+            parts.push(selectedVariant.name);
+        }
+        if (dlcs.length > 0 && activeDlcCount < dlcs.length) {
+            parts.push(t("actions.run.dlcCount", { active: activeDlcCount, total: dlcs.length }));
+        }
+        return parts;
+    }, [activeDlcCount, dlcs.length, selectedVariant, t]);
+
     const runLabel = testActive
         ? t("test.statusBar.label")
-        : selectedVariant
-            ? `${t(meta.labelKey)} · ${selectedVariant.name}`
-            : t(meta.labelKey);
+        : [t(meta.labelKey), ...runSuffix].join(" · ");
 
     return (
         <div className="relative flex items-center" ref={menuRef}>
@@ -838,6 +943,61 @@ export function RunControl() {
                                         >
                                             <span className="flex-1 text-left">{variant?.name ?? RELEASE_APP_TAG.name}</span>
                                             <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
+                                        </button>
+                                    );
+                                })}
+                            </>
+                        )}
+
+                        {/* Which DLC the run has installed. Alongside the edition above because they
+                            are the same kind of choice - what this run IS - and separate because they
+                            are not the same question: a build is one variant, and has any number of
+                            DLC beside it. Only where the project ships some.
+
+                            Multi-select, so the row states a count rather than a name: "2 of 3" is
+                            the only summary of a set that does not grow with it. */}
+                        {dlcs.length > 0 && (
+                            <>
+                                <div className="my-1 mx-2 h-px bg-fill-strong" />
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    aria-expanded={dlcOpen}
+                                    aria-label={t("actions.run.runWithDlc")}
+                                    onClick={() => setDlcOpen(open => !open)}
+                                    className={cn(
+                                        "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                        "text-fg-muted hover:bg-fill hover:text-fg",
+                                    )}
+                                >
+                                    <span className="flex h-4 w-4 items-center justify-center">
+                                        <PackagePlus className="h-4 w-4" />
+                                    </span>
+                                    <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.runWithDlc")}</span>
+                                    <span className="text-fg-subtle">
+                                        {t("actions.run.dlcCount", { active: activeDlcCount, total: dlcs.length })}
+                                    </span>
+                                    <span className="w-3">
+                                        <ChevronRight className={cn("h-3 w-3 transition-transform", dlcOpen && "rotate-90")} />
+                                    </span>
+                                </button>
+                                {dlcOpen && dlcs.map(dlc => {
+                                    const active = !dlcOff.includes(dlc.id);
+                                    return (
+                                        <button
+                                            key={dlc.id}
+                                            type="button"
+                                            role="menuitemcheckbox"
+                                            aria-checked={active}
+                                            data-run-dlc={dlc.id}
+                                            onClick={() => toggleDlc(dlc.id)}
+                                            className={cn(
+                                                "flex w-full cursor-default items-center gap-2 py-1.5 pl-9 pr-3 text-sm transition-colors",
+                                                active ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                            )}
+                                        >
+                                            <span className="flex-1 truncate text-left">{dlc.name}</span>
+                                            <span className="w-3">{active && <Check className="h-3 w-3" />}</span>
                                         </button>
                                     );
                                 })}
