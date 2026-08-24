@@ -384,6 +384,10 @@ export const workspace = {
         liveNoRevision: "Record a version to start a live session.",
         liveCloneRequired: "That session is on {project}. Open that project to join it.",
         liveVersionMismatch: "That session opened on an older version than this project holds.",
+        // The remedy, because there is no way round it from here: a session cannot be re-based on
+        // a newer version, so the two copies have to meet on the server first. Said as a second
+        // line, like the divergence has, rather than as a longer first one.
+        liveVersionMismatchNext: "Send this copy to the server, then ask the host to start the session again.",
         liveRoomGone: "That session is no longer open.",
         // The room is there and this window still cannot follow it: the first because the
         // host is old enough not to say which story it opened on, the second because the
@@ -399,6 +403,50 @@ export const workspace = {
         // AND what is on this disk is not what the others are looking at.
         liveEndedDiverged: "This copy stopped matching the session and left it.",
         liveEndedDivergedNext: "Get from the server before joining again.",
+        // The collaboration control in the title bar, and the dialog behind it. The control is
+        // drawn for every project pointed at a Team server, including the ones that cannot open a
+        // room right now: a control that appears only once everything is in place cannot be used
+        // to find out what is missing, so it goes inert and says which answer it is waiting for.
+        livePresence: "Live session",
+        liveConnecting: "Connecting to that server.",
+        liveUnsupported: "That server does not offer live sessions.",
+        liveNobody: "No live session on this project.",
+        liveRoomOpen: "{name} has a live session open.",
+        // What the two irreversible acts do, said before they are taken rather than discovered
+        // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
+        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the story it is about.",
+        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the story it is about.",
+        // Which document a session is about. The picker on the way in, and the value afterwards.
+        liveStory: "Story",
+        liveHostedBy: "Hosted by {name}",
+        // Who is in the room, by account. The host is marked because leaving means something
+        // different for that window: it ends the room for everybody.
+        liveMembersLabel: "In the session",
+        liveThisMachine: "This machine",
+        // Where the work that was uncommitted on the way in went. A checkpoint nobody can name is
+        // a checkpoint nobody can go back to, which is why this is stated rather than left to the
+        // version panel to be found in.
+        liveCheckpoint: "Checkpoint",
+        liveCheckpointAt: "Uncommitted work was recorded at {version} on the way in.",
+        liveCheckpointNone: "There was nothing uncommitted to record.",
+        // The guest's own traffic. Drawn only while it is not zero: a document does not move under
+        // a guest's hands until the host answers, and without this that is indistinguishable from
+        // an editor that has stopped working.
+        livePendingOne: "1 change is waiting for the host.",
+        livePendingMany: "{count} changes are waiting for the host.",
+        // What the session takes, said once rather than discovered one control at a time.
+        liveFrozenWhat: "Only the session's story is saved. Everything else in this project is current and read-only until the session ends.",
+        liveUnavailableHere: "Unavailable in a live session.",
+        // Rows somebody else is writing, gathered where they can be read without hunting for the
+        // mark on each one.
+        liveClaimsLabel: "Lines being written",
+        liveClaimOne: "{name} is writing 1 line.",
+        liveClaimMany: "{name} is writing {count} lines.",
+        // The way out of the session, in the version rail's frozen strip. Named after the mode it
+        // leaves, and after what leaving does for this window in particular.
+        liveFrozenTitle: "A live session is open.",
+        liveLeaveSession: "Leave the live session",
+        liveEndSession: "End the live session",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",

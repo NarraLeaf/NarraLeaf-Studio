@@ -351,6 +351,9 @@ export const workspace = {
         liveNoRevision: "先记录一个版本才能开始实时会话",
         liveCloneRequired: "该会话属于 {project}，打开那个项目才能加入",
         liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
+        // 补救办法。会话无法重新基于更新的版本，两份副本只能先在服务器上会合，所以这里必须说出来。
+        // 与分叉那条一样写成第二行，而不是把第一行拉长。
+        liveVersionMismatchNext: "先把本机的改动上传到服务器，再请主持方重新开始会话",
         liveRoomGone: "该会话已经关闭",
         liveRoomStoryUnknown: "该会话没有说它在改哪个故事，请主持方更新 Studio",
         liveStoryNotHere: "该会话所改的故事不在此项目中",
@@ -362,6 +365,43 @@ export const workspace = {
         // 已经不是其他人正在看的那一份。
         liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
         liveEndedDivergedNext: "重新加入前先从服务器获取",
+        // 标题栏上的协作控件，以及它背后的对话框。凡是指向 Team 服务器的工程都画这个控件，
+        // 包括当前开不了房间的那些：一个要等条件齐备才出现的控件，没法用来查出还缺什么，
+        // 所以它改为置灰并说明自己在等哪一个答复。
+        livePresence: "实时会话",
+        liveConnecting: "正在连接该服务器",
+        liveUnsupported: "该服务器不提供实时会话",
+        liveNobody: "此项目没有进行中的实时会话",
+        liveRoomOpen: "{name} 开着一场实时会话",
+        // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结工程。
+        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除该故事以外的一切",
+        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除该故事以外的一切",
+        // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
+        liveStory: "故事",
+        liveHostedBy: "主持方 {name}",
+        // 房间里有谁，按账号。主持方要标出来：那扇窗口离开的含义不同，它会替所有人结束房间。
+        liveMembersLabel: "会话成员",
+        liveThisMachine: "本机",
+        // 进入会话时未提交的内容去了哪里。一个说不出名字的检查点等于回不去，
+        // 所以这里直接陈述，而不是留给作者去版本面板里找。
+        liveCheckpoint: "检查点",
+        liveCheckpointAt: "进入会话前未提交的内容已记录在 {version}",
+        liveCheckpointNone: "进入会话时没有未提交的内容",
+        // 参与方自己的往返。只在不为零时画出来：主持方答复之前文档不会在参与方手下变化，
+        // 不写出来的话，这与编辑器停止工作在屏幕上是同一件事。
+        livePendingOne: "1 项修改正在等待主持方",
+        livePendingMany: "{count} 项修改正在等待主持方",
+        // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
+        liveFrozenWhat: "会话期间只保存该会话的故事，此项目中其余内容是当前的，且为只读",
+        liveUnavailableHere: "实时会话期间不可用",
+        // 别人正在写的行，集中在一处读，不必逐行去找标记。
+        liveClaimsLabel: "正在被编辑的行",
+        liveClaimOne: "{name} 正在写 1 行",
+        liveClaimMany: "{name} 正在写 {count} 行",
+        // 版本轨道冻结条上离开会话的出口。按它离开的模式命名，也按离开对本窗口的含义命名。
+        liveFrozenTitle: "实时会话进行中",
+        liveLeaveSession: "离开实时会话",
+        liveEndSession: "结束实时会话",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",

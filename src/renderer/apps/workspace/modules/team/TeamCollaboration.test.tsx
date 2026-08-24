@@ -1,27 +1,17 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Services } from "@/lib/workspace/services/services";
-import { IDLE_LIVE_SESSION, type LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
-import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
-import type { StoryId, StorySceneId } from "@shared/types/story";
-import type { TeamLiveSession } from "@shared/types/team";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TeamCollaboration } from "./TeamCollaboration";
 import type { TeamProjectSurface } from "../../hooks/useTeamProject";
 
 /**
- * The room row: what it says about the session this window is in, and what it does when pressed.
+ * What the Team dialog still says about collaboration once the live session has left it.
  *
- * **It drives `Services.Live`, and that is the point of this file.** The row used to call the
- * server directly - `live.open`, `live.join`, `live.leave` - which put a room on the server that
- * this window was not in: no checkpoint, no push, no freeze, and the story editor still writing
- * into a document nobody else could see. So what is pinned here is that each control reaches the
- * session, and that everything the row says is read back out of it.
- *
- * The other half is the sentences. A session refuses things - a workspace frozen for a merge, a
- * room opened on a version this tree has moved past, a copy that stopped matching the room's - and
- * every one of those states has to reach the author as words rather than as a control that does
- * nothing when pressed.
+ * Two facts, both the server's, both drawn only when they have something to report: how many
+ * windows have this project open, and how much is attached to it that is not in it. A section that
+ * says "1 machine, 0 attached" every working day is a section nobody reads, so the whole thing goes
+ * when neither has anything - which is what these cases pin, along with the one count that is easy
+ * to get wrong: a record is out of date only against a head the server has actually read.
  */
 
 vi.mock("@/lib/i18n", async importOriginal => ({
@@ -35,93 +25,9 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     }),
 }));
 
-const world = vi.hoisted(() => ({
-    view: {} as LiveSessionView,
-    listeners: new Set<(view: LiveSessionView) => void>(),
-    open: vi.fn(() => Promise.resolve(null)),
-    join: vi.fn(() => Promise.resolve(null)),
-    leave: vi.fn(() => Promise.resolve()),
-    freeze: null as WorkspaceFreezeReason | null,
-    stories: [] as { id: string; name: string }[],
-    defaultStory: undefined as string | undefined,
-}));
-
-// One workspace object for the whole file, because the real one is a React context value and is
-// stable for the life of the window. A mock that built a fresh one per call would hand every hook
-// below new dependencies on every render.
-vi.mock("@/apps/workspace/context", () => {
-    const services = {
-        get: (id: unknown) => {
-            if (id === Services.Live) {
-                return {
-                    getView: () => world.view,
-                    onChanged: (handler: (view: LiveSessionView) => void) => {
-                        world.listeners.add(handler);
-                        return () => world.listeners.delete(handler);
-                    },
-                    open: world.open,
-                    join: world.join,
-                    leave: world.leave,
-                };
-            }
-            if (id === Services.WorkspaceFreeze) {
-                return { getReason: () => world.freeze, onChanged: () => () => undefined };
-            }
-            if (id === Services.Story) {
-                return { listStories: () => world.stories, getDefaultStoryId: () => world.defaultStory };
-            }
-            return null;
-        },
-    };
-    const workspace = { isInitialized: true, context: { services } };
-    return { useWorkspace: () => workspace };
-});
-
-// Seeded before rather than after, so the first test in the file starts from the same project as
-// every other one: one story, no freeze, and no session.
-beforeEach(() => {
-    world.view = IDLE_LIVE_SESSION;
-    world.listeners.clear();
-    world.open.mockClear();
-    world.join.mockClear();
-    world.leave.mockClear();
-    world.freeze = null;
-    world.stories = [{ id: "story-1", name: "Act one" }];
-    world.defaultStory = "story-1";
-});
-
 afterEach(cleanup);
 
 const ONE = "lore://one.example.lan:41337";
-
-function room(overrides: Partial<TeamLiveSession> = {}): TeamLiveSession {
-    return {
-        id: "room-1",
-        project: "abc",
-        title: "Act one",
-        openedBy: "bob",
-        openedByInstance: "bob-1",
-        openedAt: 1,
-        members: [
-            { instance: "mine", account: "ada", label: "Nomen", joinedAt: 1 },
-            { instance: "bob-1", account: "bob", label: "iMac", joinedAt: 1 },
-        ],
-        ...overrides,
-    };
-}
-
-/** A window inside the room above, at whatever phase the test is about. */
-function inRoom(overrides: Partial<LiveSessionView> = {}): LiveSessionView {
-    return {
-        ...IDLE_LIVE_SESSION,
-        phase: "active",
-        role: "guest",
-        session: room(),
-        storyId: "story-1" as StoryId,
-        self: "mine",
-        ...overrides,
-    };
-}
 
 function team(overrides: Partial<TeamProjectSurface> = {}): TeamProjectSurface {
     return {
@@ -149,244 +55,55 @@ function seam(name: string): HTMLElement | null {
     return document.querySelector<HTMLElement>(`[data-team-seam='${name}']`);
 }
 
-describe("what the room row does when pressed", () => {
-    it("starts a session on the project's story, rather than opening a room on the server", () => {
-        world.view = IDLE_LIVE_SESSION;
-        draw();
+function client(id: string) {
+    return { id, account: "ada", label: "Nomen", agent: "", since: 0 };
+}
 
-        fireEvent.click(seam("live-open") as HTMLElement);
-
-        // The story travels with it because a room carries none: every window in the project has
-        // to work out the same document, and the title is what the room is then called.
-        expect(world.open).toHaveBeenCalledWith({ storyId: "story-1", title: "Act one" });
+describe("what the server says about this project", () => {
+    it("draws nothing at all where there is nothing to report", () => {
+        // One window, nothing attached. The section is not a heading over an empty list; it is
+        // absent.
+        draw({ canSeeClients: true, clients: [client("a")] });
+        expect(seam("collaboration")).toBeNull();
     });
 
-    it("joins the room the server is offering, and names no story of its own", () => {
-        world.view = IDLE_LIVE_SESSION;
-        draw({ live: [room()] });
-
-        expect(seam("live")?.textContent).toContain("Act one");
-        fireEvent.click(seam("live-join") as HTMLElement);
-
-        // Which document the room is about is the room's answer. A story named here could only
-        // ever be one this project already has - the wrong one whenever the copies differ about
-        // which story comes first, and none at all for somebody joining in order to get one.
-        expect(world.join).toHaveBeenCalledWith({ session: room() });
+    it("counts the windows once there is more than this one", () => {
+        draw({ canSeeClients: true, clients: [client("a"), client("b")] });
+        expect(seam("clients")?.textContent).toBe("workspace.shell.team.hereMany(2)");
     });
 
-    it("offers to join even when this project has no story of its own", () => {
-        // ⚠ The regression. A machine that has not got the story yet is the most ordinary new
-        // collaborator there is, and it used to be the one machine this control was disabled for -
-        // told to add a story before joining the session that would have brought it one.
-        world.stories = [];
-        world.defaultStory = undefined;
-        world.view = IDLE_LIVE_SESSION;
-        draw({ live: [room()] });
-
-        expect(seam("live-join")?.matches(":disabled")).toBe(false);
-        // And the line telling them to add a story is not said beside an offer to join one.
-        expect(seam("live-no-story")).toBeNull();
-
-        fireEvent.click(seam("live-join") as HTMLElement);
-        expect(world.join).toHaveBeenCalledWith({ session: room() });
+    it("says nothing about a server that does not answer for this project", () => {
+        // Nothing here is true of a project the server has not confirmed it holds, so the section
+        // waits rather than showing the last answer under a heading that implies a live reading.
+        draw({ state: { kind: "connecting" }, canSeeClients: true, clients: [client("a"), client("b")] });
+        expect(seam("collaboration")).toBeNull();
     });
 
-    it("offers one way out, named for what leaving actually does", () => {
-        world.view = inRoom({ role: "guest" });
-        draw();
-        expect(seam("live-leave")).not.toBeNull();
-        expect(seam("live-end")).toBeNull();
-
-        cleanup();
-        // A host holds the only copy that counts, so its window walking away ends the room for
-        // everybody. Offering it "Leave" would name an act the others would not experience.
-        world.view = inRoom({ role: "host" });
-        draw();
-        expect(seam("live-leave")).toBeNull();
-        fireEvent.click(seam("live-end") as HTMLElement);
-        expect(world.leave).toHaveBeenCalledTimes(1);
-    });
-});
-
-describe("what the room row says about the session", () => {
-    it("says which half of the room this window is", () => {
-        world.view = inRoom({ role: "host" });
-        draw();
-        expect(seam("live-standing")?.textContent).toBe("workspace.shell.team.liveHost");
-
-        cleanup();
-        world.view = inRoom({ role: "guest" });
-        draw();
-        expect(seam("live-standing")?.textContent).toBe("workspace.shell.team.liveGuest");
-    });
-
-    it("says it is catching up rather than following", () => {
-        world.view = inRoom({ phase: "catching-up" });
-        draw();
-
-        // The one stretch in which this machine's document is knowingly behind the room's.
-        expect(seam("live-catching-up")?.textContent).toBe("workspace.shell.team.liveCatchingUp");
-    });
-
-    it("says so while entering and while leaving", () => {
-        world.view = { ...IDLE_LIVE_SESSION, phase: "entering" };
-        draw();
-        expect(seam("live-standing")?.textContent).toBe("workspace.shell.team.liveEntering");
-
-        cleanup();
-        world.view = inRoom({ phase: "leaving" });
-        draw();
-        expect(seam("live-standing")?.textContent).toBe("workspace.shell.team.liveLeaving");
-        // Nothing to press twice: the act is already running.
-        expect(seam("live-leave")?.matches(":disabled")).toBe(true);
-    });
-
-    it("names who else is in the room, and says nothing in a room of one", () => {
-        world.view = inRoom();
-        draw();
-        expect(seam("live-members")?.textContent).toBe("bob");
-
-        cleanup();
-        world.view = inRoom({
-            session: room({ members: [{ instance: "mine", account: "ada", label: "Nomen", joinedAt: 1 }] }),
-        });
-        draw();
-        // A line saying nobody else is here is the same fact as the row above it.
-        expect(seam("live-members")).toBeNull();
-    });
-});
-
-describe("what the room row says about not entering", () => {
-    it("names the freeze standing in the way, and does not offer the act", () => {
-        world.freeze = { kind: "merge" };
-        draw();
-
-        expect(seam("live-blocked")?.textContent).toBe("workspace.shell.team.liveBlockedMerge");
-        expect(seam("live-open")?.matches(":disabled")).toBe(true);
-    });
-
-    it("does not read a session's own freeze as a refusal to enter one", () => {
-        // Inside a session the freeze in place is always this session's, and saying "this
-        // workspace is already in a live session" beside the room it is in reads as the room
-        // refusing to let anybody in.
-        world.freeze = { kind: "live-session", session: "room-1", writable: ["story/act-one.json"] };
-        world.view = inRoom();
-        draw();
-
-        expect(seam("live-blocked")).toBeNull();
-    });
-
-    it("says an attempt that failed, rather than leaving the control silent", () => {
-        world.view = {
-            ...IDLE_LIVE_SESSION,
-            entryFailure: { kind: "revision-mismatch", expected: "rev-9", actual: "rev-11" },
-        };
-        draw();
-
-        expect(seam("live-failure")?.textContent).toBe("workspace.shell.team.liveVersionMismatch");
-    });
-
-    it("names the project a session belongs to when it is not this one", () => {
-        world.view = {
-            ...IDLE_LIVE_SESSION,
-            entryFailure: { kind: "clone-required", project: "other-game" },
-        };
-        draw();
-
-        expect(seam("live-failure")?.textContent)
-            .toBe("workspace.shell.team.liveCloneRequired(other-game)");
-    });
-
-    it("says a project with no story cannot have a session, on the control and beside it", () => {
-        world.stories = [];
-        world.defaultStory = undefined;
-        draw();
-
-        expect(seam("live-no-story")?.textContent).toBe("workspace.shell.team.liveNoStory");
-        expect(seam("live-open")?.matches(":disabled")).toBe(true);
-    });
-});
-
-describe("how a session that ended reads", () => {
-    it("says nothing about the author leaving one themselves", () => {
-        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: false } };
-        draw();
-
-        expect(seam("live-ended")).toBeNull();
-    });
-
-    it("says the host left, in the ordinary tone", () => {
-        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "host-left", sessionId: "room-1", closed: true } };
-        draw();
-
-        expect(seam("live-ended")?.textContent).toBe("workspace.shell.team.liveEndedHostLeft");
-        expect(seam("live-ended")?.className).not.toContain("text-danger");
-    });
-
-    it("does not let a divergence read as an ordinary goodbye", () => {
-        world.view = {
-            ...IDLE_LIVE_SESSION,
-            ended: {
-                cause: "diverged",
-                sessionId: "room-1",
-                closed: false,
-                divergence: { seq: 4, sceneId: "scene-1" as StorySceneId, expected: "aaa", computed: "bbb" },
+    it("counts attached records against the head the server read, and only where it read one", () => {
+        const record = { id: "r1", anchor: { revision: "rev-1" }, kind: "comment", updatedAt: 0 };
+        draw({
+            canOverlay: true,
+            overlay: {
+                total: 2,
+                head: "rev-2",
+                records: [record, { ...record, id: "r2", anchor: { revision: "rev-2" } }],
             },
-        };
-        draw();
+        } as unknown as Partial<TeamProjectSurface>);
 
-        // A different sentence AND a different tone: this copy is neither in the room nor holding
-        // what the room holds, which is not what leaving one means.
-        expect(seam("live-ended")?.textContent).toBe("workspace.shell.team.liveEndedDiverged");
-        expect(seam("live-ended")?.className).toContain("text-danger");
-    });
-});
-
-describe("a room this window has just closed", () => {
-    /**
-     * ⚠ The regression these two pin, and the reason `closed` exists rather than being read off
-     * `cause`.
-     *
-     * The room list comes from the server and the session's own state does not, so between a host
-     * pressing End and the server's news of the closure coming back round there is a stretch in
-     * which this window is in no session and the room it just closed is still in the list. Matching
-     * only against the session this window is in drew that stretch as somebody else's room with two
-     * people in it and a control to join - which is what a host saw on a real machine.
-     */
-    it("is not offered as one to join", () => {
-        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: true } };
-        draw({ live: [room()] });
-
-        expect(seam("live-join")).toBeNull();
-        // And the only thing on offer is the one that is actually true: open a new one.
-        expect(seam("live-open")).not.toBeNull();
+        expect(seam("attached")?.textContent).toContain("workspace.shell.team.attached(2)");
+        expect(seam("attached-outdated")?.textContent).toBe("workspace.shell.team.attachedOutdated(1)");
     });
 
-    it("is offered again when this window merely left a room that carried on", () => {
-        // A guest walking out is the opposite answer to the same `cause`. The room is still there,
-        // still has people in it, and going back into it is an ordinary thing to want.
-        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: false } };
-        draw({ live: [room()] });
+    it("calls nothing out of date while the server has read no head", () => {
+        // An absent head is a repository this server has not reached. Treating it as "everything is
+        // out of date" would say so for a minute after every restart.
+        const record = { id: "r1", anchor: { revision: "rev-1" }, kind: "comment", updatedAt: 0 };
+        draw({
+            canOverlay: true,
+            overlay: { total: 1, records: [record] },
+        } as unknown as Partial<TeamProjectSurface>);
 
-        expect(seam("live-join")).not.toBeNull();
-    });
-
-    it("makes the panel read the room list again", () => {
-        // The server says so on a topic this project is subscribed to, but a collection only ever
-        // corrected by somebody else's news stays wrong whenever that news is missed - and this
-        // window knows for certain that the list moved, because it moved it.
-        const refresh = vi.fn();
-        world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: true } };
-        draw({ live: [room()], refresh });
-
-        expect(refresh).toHaveBeenCalled();
-    });
-
-    it("asks for nothing when no session has ended here", () => {
-        const refresh = vi.fn();
-        world.view = IDLE_LIVE_SESSION;
-        draw({ live: [], refresh });
-
-        expect(refresh).not.toHaveBeenCalled();
+        expect(seam("attached")).not.toBeNull();
+        expect(seam("attached-outdated")).toBeNull();
     });
 });

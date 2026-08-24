@@ -72,46 +72,105 @@ export function useLiveSession(): LiveSessionSurface {
     };
 }
 
+/** One document a session could be opened on. */
+export type LiveSessionStory = { id: StoryId; name: string };
+
+/** What this project offers a session, and which of them is offered first. */
+export type LiveSessionStories = {
+    all: readonly LiveSessionStory[];
+    /** The project's default story, or the first one, or null for a project with none. */
+    suggested: StoryId | null;
+};
+
+const NO_STORIES: LiveSessionStories = { all: [], suggested: null };
+
 /**
- * The story a session **opened from this window** would be about, or null for a project with none.
+ * The documents a session **opened from this window** could be about.
  *
  * **Opening only.** A room carries the story it is about, so joining one reads that rather than
  * asking here - which is the whole point: a joiner that worked the document out for itself could
  * only ever arrive at one it already holds.
  *
- * The project's default story, and there is still no picker: choosing which document to open a
- * room on is a decision worth having, but it is a decision about this window's own session and
- * belongs beside the control that starts one.
+ * The whole library rather than one document, because which one a room is opened on is a decision
+ * the author makes and everybody else in the room lives with. `suggested` is where the picker
+ * starts, and it is the same answer the panel used to take without asking.
  *
  * Read once when the surface showing it mounts. The library is a project-lifetime fact and the
- * panel is opened, read and closed.
+ * dialog is opened, read and closed.
  */
-export function useLiveSessionStory(): { id: StoryId; name: string } | null {
+export function useLiveSessionStories(): LiveSessionStories {
     const { context, isInitialized } = useWorkspace();
-    const [story, setStory] = useState<{ id: StoryId; name: string } | null>(null);
+    const [library, setLibrary] = useState<LiveSessionStories>(NO_STORIES);
 
     useEffect(() => {
         if (!context || !isInitialized) {
-            setStory(null);
+            setLibrary(NO_STORIES);
             return;
         }
         try {
             const stories = context.services.get<StoryService>(Services.Story);
-            const library = stories.listStories();
+            const all = stories.listStories().map(one => ({ id: one.id, name: one.name }));
             const preferred = stories.getDefaultStoryId();
-            const entry = library.find(one => one.id === preferred) ?? library[0];
-            // Kept only where it would answer differently. The library is read from a value that
-            // is rebuilt rather than mutated, so writing a fresh object back on every read would
-            // re-render the panel for a story that had not changed.
-            setStory(previous => (previous?.id === entry?.id && previous?.name === entry?.name
+            const suggested = all.find(one => one.id === preferred)?.id ?? all[0]?.id ?? null;
+            // Kept only where it would answer differently. The library is read from a value that is
+            // rebuilt rather than mutated, so writing a fresh object back on every read would
+            // re-render every surface holding this for a library that had not changed.
+            setLibrary(previous => (sameLibrary(previous, all) && previous.suggested === suggested
                 ? previous
-                : entry ? { id: entry.id, name: entry.name } : null));
+                : { all, suggested }));
         } catch {
             // A library this window has not read is a project no session can be opened on, which
             // the control renders as the same refusal an empty one does.
-            setStory(null);
+            setLibrary(NO_STORIES);
         }
     }, [context, isInitialized]);
 
-    return story;
+    return library;
+}
+
+/** Whether two readings of the library name the same documents, in the same order. */
+function sameLibrary(previous: LiveSessionStories, next: readonly LiveSessionStory[]): boolean {
+    return previous.all.length === next.length
+        && previous.all.every((one, index) => one.id === next[index].id && one.name === next[index].name);
+}
+
+/**
+ * The room on this project that this window could join, or null.
+ *
+ * ⚠ **A room this window has just closed is not one of them, and it has to be excluded by name.**
+ * The list comes from the server and the session's own state does not, so between ending a room and
+ * the server's news of it coming back round there is a stretch in which this window is in no
+ * session and the closed room is still in `team.live`. Matching only against the session this
+ * window is in reads that stretch as "somebody else's room, two people in it, press to join" -
+ * which is what a host saw on a real machine the instant they pressed End.
+ *
+ * ⚠ **`ended.closed` answers that and `ended.cause` does not.** `left` is true of a guest walking
+ * out of a room that carries on and of a host closing one, and those are opposite answers to the
+ * only question asked here.
+ *
+ * Reads the server again when a session ends in this window. The room list changed because of
+ * something this window did, and the server says so on a topic this project is subscribed to - but
+ * a collection that is only ever corrected by somebody else's news is a collection that stays wrong
+ * whenever that news is missed.
+ */
+export function useJoinableRoom(team: {
+    live: readonly TeamLiveSession[];
+    refresh: () => void;
+}, view: LiveSessionView): TeamLiveSession | null {
+    const endedRoom = view.ended?.sessionId ?? null;
+    const refresh = team.refresh;
+    useEffect(() => {
+        if (endedRoom === null) {
+            return;
+        }
+        refresh();
+    }, [endedRoom, refresh]);
+
+    const rooms = team.live;
+    const mine = view.session?.id ?? null;
+    const gone = view.ended?.closed === true ? view.ended.sessionId : null;
+    return useMemo(
+        () => rooms.find(session => session.id !== mine && session.id !== gone) ?? null,
+        [rooms, mine, gone],
+    );
 }
