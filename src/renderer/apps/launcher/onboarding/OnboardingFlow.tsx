@@ -341,12 +341,19 @@ export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
                                 raised off what is behind it needs somewhere for the shadow to fall,
                                 and the two cropped edges have nowhere.
 
+                                **The inset has to be at least as deep as the blur.** This box clips,
+                                and it clips the shadow along with the frame - so an inset shallower
+                                than the shadow's reach cuts the falloff off partway down and leaves
+                                a hard vertical seam against the questions, which is the opposite of
+                                what a shadow is for. 40px against a 32px blur puts the clip past the
+                                point where there is anything left to cut.
+
                                 `overflow-clip`, not `overflow-hidden`: a hidden box is still a
                                 scroll container, and the browser scrolls one to reveal a focused
                                 element - so putting the caret in the sample's insert slot slid the
                                 whole window sideways and took the rail off the screen. A clipped box
                                 has nothing to scroll. */}
-                            <div className="hidden w-[444px] shrink-0 overflow-clip pl-6 pt-6 min-[780px]:flex">
+                            <div className="hidden w-[460px] shrink-0 overflow-clip pl-10 pt-10 min-[780px]:flex">
                                 <div className="relative min-h-0 flex-1">
                                     {/* Taller than the space it is given, always, so the bottom edge
                                         is never the thing that ends it. */}
