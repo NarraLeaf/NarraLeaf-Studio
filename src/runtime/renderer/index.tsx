@@ -10,7 +10,7 @@ import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { setRuntimeCrashPolicy, setRuntimeShellLogPath } from "./crashPolicy";
 import { installRuntimeErrorHooks } from "./runtimeErrorHooks";
 import { installScrollbarAutoHide } from "@/styles/scrollbarAutoHide";
-import { getActiveProjectLocale, subscribeActiveProjectFonts } from "@shared/typography/projectFonts";
+import { getActiveProjectLocale, subscribeActiveProjectLocale } from "@shared/typography/projectFonts";
 import { installDocumentLanguage } from "./documentLanguage";
 
 // Before anything else, including the missing-root check below: what this build does about a crash
@@ -35,7 +35,7 @@ installScrollbarAutoHide();
 // line breaking from it. See `documentLanguage`.
 installDocumentLanguage({
     getLanguage: getActiveProjectLocale,
-    subscribe: subscribeActiveProjectFonts,
+    subscribe: subscribeActiveProjectLocale,
     apply: language => {
         document.documentElement.lang = language;
     },
