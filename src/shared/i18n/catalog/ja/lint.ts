@@ -225,6 +225,11 @@ export const lint = {
             description: "グラフのどの入口からも到達できないノード",
             message: "このノードへ到達する経路がなく、実行されない",
         },
+        blueprintDlcEntranceUnguarded: {
+            title: "ガードのない DLC 入口",
+            description: "DLC のストーリーを開始しているが、その DLC があるかどうかをどこも確かめていない",
+            message: "このグラフには DLC がインストール済みか確かめるノードがない",
+        },
         blueprintEmptyEvent: {
             title: "空のイベント",
             description: "実行する内容が接続されていないイベントレイヤー",

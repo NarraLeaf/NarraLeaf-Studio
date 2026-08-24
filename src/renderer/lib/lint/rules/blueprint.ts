@@ -3,7 +3,9 @@ import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/bluepri
 import {
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+    BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     isBlueprintEventDispatchHeadType,
     isStoryActionCallHeadType,
 } from "@shared/types/blueprint/graph";
@@ -507,6 +509,74 @@ function runEmptyEvent(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// blueprint/dlc-entrance-unguarded
+// ---------------------------------------------------------------------------
+
+/**
+ * A `Start Story` into a DLC's story, in a graph that never asks whether the DLC is here.
+ *
+ * The base build does not carry a DLC's story, so the entrance is a button that fails when a player
+ * who has not bought it presses it - and the author cannot see that on their own machine, because
+ * Dev Mode carries every story the project has. This is the one fault in the DLC seam that is
+ * invisible from the inside.
+ *
+ * **Per graph, and a warning.** Guarding it somewhere else is legitimate - a menu can hide the whole
+ * row before this graph ever runs - so a rule that could only see one graph must not refuse a build
+ * over what it cannot see. What it can say is that nothing in reach asks the question.
+ *
+ * The guard is `Is DLC Installed` and deliberately not the Steam plugin's `Owns DLC`: ownership can
+ * only be asked of a storefront that is running, and content gated on it disappears for an offline
+ * player. See the node's own comment.
+ */
+function runDlcEntranceUnguarded(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    const dlcByStory = new Map<string, string>();
+    for (const story of ctx.stories) {
+        if (story.dlcId) {
+            dlcByStory.set(story.id, story.dlcId);
+        }
+    }
+    if (dlcByStory.size === 0) {
+        return [];
+    }
+
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const nodes = Object.values(site.ir.nodes ?? {});
+        const guarded = new Set(
+            nodes
+                .filter(node => node.type === BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED)
+                .map(node => String(node.params?.dlcId ?? "").trim()),
+        );
+        for (const node of nodes) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_GAME_START_STORY) {
+                continue;
+            }
+            // The picked value only. A wired Story Id pin is a story this rule cannot name, and
+            // guessing would report a graph that is fine - the same reading `planSceneDrop` takes.
+            const storyId = String(node.params?.storyId ?? "").trim();
+            const dlcId = storyId ? dlcByStory.get(storyId) : undefined;
+            if (!dlcId || guarded.has(dlcId)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "blueprint/dlc-entrance-unguarded",
+                messageKey: "lint.rule.blueprintDlcEntranceUnguarded.message" as TranslationKey,
+                location: {
+                    kind: "blueprint",
+                    blueprintId: site.blueprintId,
+                    blueprintName: site.blueprintName,
+                    graphId: site.graphId,
+                    nodeId: node.id,
+                },
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
+        }
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // blueprint/save-field-empty
 // ---------------------------------------------------------------------------
 
@@ -621,6 +691,14 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "info",
         slug: "blueprintEmptyEvent",
         run: ctx => runEmptyEvent(ctx),
+    },
+    {
+        id: "blueprint/dlc-entrance-unguarded",
+        category: "blueprint",
+        // A warning, not an error: the guard may legitimately be somewhere this rule cannot see.
+        defaultSeverity: "warning",
+        slug: "blueprintDlcEntranceUnguarded",
+        run: ctx => runDlcEntranceUnguarded(ctx),
     },
     {
         id: "blueprint/save-field-empty",
