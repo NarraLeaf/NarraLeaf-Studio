@@ -53,7 +53,7 @@ export const onboarding = {
         expectation: "共享工程的存放位置。服务器不是必需的",
         connect: "连接服务器",
         connected: "已登录",
-        none: "未连接服务器。工程保存在本机",
+        none: "工程保存在本机",
     },
     story: {
         title: "故事编辑器",

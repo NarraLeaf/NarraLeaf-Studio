@@ -95,8 +95,14 @@ export const onboarding = {
         connect: "Connect to a server",
         /** Above the list, once there is one. */
         connected: "Signed in",
-        /** Nothing connected, which is the ordinary case and not a problem. */
-        none: "No server connected. Projects are kept on this computer.",
+        /**
+         * Nothing connected, which is the ordinary case and not a problem.
+         *
+         * Says only what the sample beside it does not: the column already prints the version
+         * rail's own "not connected to a server", and a screen restating that in its own words is
+         * how one fact comes to be spelled two ways forty pixels apart.
+         */
+        none: "Projects are kept on this computer.",
     },
     story: {
         title: "Story editor",
