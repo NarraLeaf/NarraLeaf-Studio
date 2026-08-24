@@ -172,6 +172,15 @@ export const build = {
             layerLabel: "Layer",
             layerHint: "Where two patches change the same thing, the higher layer applies over the lower one.",
             browse: "Browse…",
+            // Why the export cannot start, shown beside the button rather than on it - a disabled
+            // control takes no pointer events, so a tooltip there reaches nobody.
+            blocked: {
+                output: "Choose where to write the file.",
+                reading: "Reading the build folder.",
+                artifact: "That folder holds no build of this game.",
+                dlcBaseline: "Select the build this DLC adds to.",
+                dlcVariant: "That build is not the variant this DLC attaches to.",
+            },
             exportAction: "Export",
             busy: "A build is already running.",
             noKey: "This project has no distribution key. Create one on the Project page, then build the game again. Only builds produced after the key exists accept patches.",
