@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildUIListItemInstanceKey } from "@shared/types/ui-editor/list";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
@@ -217,7 +218,7 @@ describe("createDevModeBlueprintHostAdapter", () => {
      * A child with no listener at all - no blueprint, no owner record - which is the shape of every
      * decorative element an author drops onto a clickable panel.
      */
-    function createUnlistenedChildFixture(childType: string) {
+    function createUnlistenedChildFixture(childType: string, middleType?: string) {
         const parentBlueprintId = "bp-parent-auto";
         releaseBlueprintWidgetLocals("surface", "parent", parentBlueprintId);
 
@@ -305,13 +306,24 @@ describe("createDevModeBlueprintHostAdapter", () => {
                     id: "parent",
                     type: "nl.container",
                     parentId: "root",
-                    childrenIds: ["child"],
+                    childrenIds: [middleType ? "middle" : "child"],
                     layout: { x: 0, y: 0, width: 120, height: 80 },
                 },
+                ...(middleType
+                    ? {
+                          middle: {
+                              id: "middle",
+                              type: middleType,
+                              parentId: "parent",
+                              childrenIds: ["child"],
+                              layout: { x: 0, y: 0, width: 120, height: 80 },
+                          },
+                      }
+                    : {}),
                 child: {
                     id: "child",
                     type: childType,
-                    parentId: "parent",
+                    parentId: middleType ? "middle" : "parent",
                     childrenIds: [],
                     layout: { x: 8, y: 8, width: 80, height: 32 },
                 },
@@ -383,6 +395,22 @@ describe("createDevModeBlueprintHostAdapter", () => {
         await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("child", "mouseEnter", {});
 
         expect(readParentLocal()).toBe("no");
+        cleanup();
+    });
+
+    it("sheds the row context when the event leaves the list that made it", async () => {
+        // A wheel or a click inside a row carries that row's instance key, and the blueprint
+        // variable record is keyed by it. Carrying the key past the list would hand the container
+        // around it a private, freshly defaulted copy of its own variables for as long as the
+        // pointer sat over a row - so the parent would run, and remember nothing.
+        const { adapter, readParentLocal, cleanup } = createUnlistenedChildFixture("nl.text", "nl.list");
+
+        await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("child", "mouseClick", { x: 4, y: 5, button: 0 }, {
+            instanceKey: buildUIListItemInstanceKey("middle", "row-1"),
+            listItemScope: { item: {}, index: 0, count: 1, key: "row-1" },
+        });
+
+        expect(readParentLocal()).toBe("yes");
         cleanup();
     });
 });
