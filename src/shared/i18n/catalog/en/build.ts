@@ -247,6 +247,11 @@ export const build = {
     output: {
         artifacts: "Artifacts",
         artifactsEmpty: "Select a target to list the files it produces.",
+            includeDlc: "Build this variant's DLC too",
+            includeDlcHint: {
+                one: "{count} DLC, into its own folder beside the installers.",
+                other: "{count} DLC, each into its own folder beside the installers.",
+            },
         openWhenDone: "Open the output folder when done",
     },
     /**

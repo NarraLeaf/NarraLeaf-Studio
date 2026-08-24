@@ -205,6 +205,7 @@ export const lint = {
             messageEnding: "指しているエンディングが存在しない",
             messageCharacter: "指しているキャラクターが存在しない",
             messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
+            messageDlc: "指している DLC はプロジェクトに存在しない",
         },
         blueprintElementRefMissing: {
             title: "ウィジェットの欠落",

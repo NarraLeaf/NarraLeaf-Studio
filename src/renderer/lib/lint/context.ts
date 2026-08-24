@@ -1,4 +1,5 @@
 import type { ProjectAppTag } from "@shared/types/appTag";
+import type { ProjectDlc } from "@shared/types/dlc";
 import type { StoryDocument } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -190,6 +191,14 @@ export type LintContext = {
      * folds against are the same string.
      */
     appTags: readonly ProjectAppTag[];
+    /**
+     * The DLC this project ships, as the registry holds them.
+     *
+     * Ids as stored, because an id is what a node points at and what the file a player installs is
+     * named after - a rule that matched on names would pass a graph naming a DLC that was renamed
+     * out from under it.
+     */
+    dlcs: readonly ProjectDlc[];
     /**
      * The project variable registry, BOTH scopes, exactly as the service holds it.
      *
