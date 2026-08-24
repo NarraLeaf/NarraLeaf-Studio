@@ -10,8 +10,10 @@ import {
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
+    BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SCALE,
+    BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SIZE,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_PAGE_BACK,
@@ -337,6 +339,59 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             const raw = Number(readPin(ctx, "scale") ?? 1);
             const scale = Number.isFinite(raw) && raw > 0 ? raw : 1;
             await requireHostApi(ctx).navigation.setWindowScale(scale);
+            return { nextPort: "next" };
+        },
+    },
+    {
+        /** The stage's size in pixels, whatever the window is at. */
+        type: BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
+        displayName: "Get Window Size",
+        category: "App",
+        keywords: ["window", "size", "width", "height", "pixels", "resolution", "app", "display"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "width", kind: "output", semantic: "data", valueType: "float", label: "Width" },
+            { id: "height", kind: "output", semantic: "data", valueType: "float", label: "Height" },
+        ],
+        async execute(ctx) {
+            const size = await requireHostApi(ctx).navigation.getWindowSize();
+            return { nextPort: "next", outputValues: { width: size.width, height: size.height } };
+        },
+    },
+    {
+        /**
+         * Resize the stage to a size in pixels.
+         *
+         * The offered list in Project -> App is what a configuration screen is built from, not a
+         * limit on what a graph may ask for: a game whose size comes from somewhere else - a value
+         * it remembered, a display it measured, a number a player typed - says it here. What it
+         * cannot do is leave the screen: the size is fitted to the display's work area and to the
+         * window's own minimum, because a window bigger than the desktop is one nobody can use.
+         *
+         * Full screen and maximised are left first, for the reason `Set Window Scale` leaves them:
+         * both are answers to the same question.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SIZE,
+        displayName: "Set Window Size",
+        category: "App",
+        keywords: ["window", "size", "width", "height", "pixels", "resize", "app", "display"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "width", kind: "input", semantic: "data", valueType: "float", label: "Width" },
+            { id: "height", kind: "input", semantic: "data", valueType: "float", label: "Height" },
+        ],
+        async execute(ctx) {
+            const width = Number(readPin(ctx, "width") ?? 0);
+            const height = Number(readPin(ctx, "height") ?? 0);
+            await requireHostApi(ctx).navigation.setWindowSize(width, height);
             return { nextPort: "next" };
         },
     },

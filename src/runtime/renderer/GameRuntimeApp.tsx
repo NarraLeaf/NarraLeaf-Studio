@@ -741,6 +741,14 @@ function GameRuntimeSession() {
         await bridge?.setWindowScale?.(scale);
     }, [bridge]);
 
+    const getWindowSize = useCallback(async (): Promise<{ width: number; height: number }> => {
+        return (await bridge?.getWindowSize?.()) ?? { width: 0, height: 0 };
+    }, [bridge]);
+
+    const setWindowSize = useCallback(async (width: number, height: number): Promise<void> => {
+        await bridge?.setWindowSize?.(width, height);
+    }, [bridge]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         return (await bridge?.getFullscreen()) === true;
     }, [bridge]);
@@ -801,6 +809,8 @@ function GameRuntimeSession() {
             windowScaleOptions,
             getWindowScale,
             setWindowScale,
+            getWindowSize,
+            setWindowSize,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -836,6 +846,8 @@ function GameRuntimeSession() {
         windowScaleOptions,
         getWindowScale,
         setWindowScale,
+        getWindowSize,
+        setWindowSize,
         setFullscreen,
         subscribeFullscreenChanged,
         subscribeCloseRequested,

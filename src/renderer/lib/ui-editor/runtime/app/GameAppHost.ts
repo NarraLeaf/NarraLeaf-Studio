@@ -256,9 +256,16 @@ export type GameAppHost = {
      * preview the row has nothing to draw rather than drawing a control that does nothing.
      */
     windowScaleOptions?: number[];
-    /** Read and set the window's size as a multiple of the design size. See {@link windowScaleOptions}. */
+    /**
+     * Read and set the stage's size, as a multiple of the design size or in pixels.
+     *
+     * Any size, not only one from {@link windowScaleOptions}: that list is what a configuration
+     * screen is built from, not a limit on what a game may ask for.
+     */
     getWindowScale?: () => Promise<number>;
     setWindowScale?: (scale: number) => Promise<void>;
+    getWindowSize?: () => Promise<{ width: number; height: number }>;
+    setWindowSize?: (width: number, height: number) => Promise<void>;
     /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
     getFullscreen?: () => Promise<boolean>;
     setFullscreen?: (fullscreen: boolean) => Promise<void>;

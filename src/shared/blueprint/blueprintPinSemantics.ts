@@ -234,8 +234,9 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
  */
 const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.app.getFullscreen", "blueprint.app.getWindowScale",
-    "blueprint.app.getWindowScaleOptions", "blueprint.app.setFullscreen",
-    "blueprint.app.setWindowScale", "blueprint.broadcast.send",
+    "blueprint.app.getWindowScaleOptions", "blueprint.app.getWindowSize",
+    "blueprint.app.setFullscreen", "blueprint.app.setWindowScale",
+    "blueprint.app.setWindowSize", "blueprint.broadcast.send",
     "blueprint.button.setEnabled", "blueprint.button.setLabel", "blueprint.button.setPointer",
     "blueprint.button.setVariant", "blueprint.button.setVisible", "blueprint.container.setClipContent",
     "blueprint.container.setEnabled", "blueprint.container.setVariant", "blueprint.container.setVisible",

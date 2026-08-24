@@ -123,6 +123,7 @@ import {
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
+    BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
@@ -3225,6 +3226,7 @@ function resolveSelfOutput(
             // The window's size and the sizes it may be set to, onto `scale` and `scales`.
             selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE ||
             selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE ||
             // Sound transport: Play Sound publishes `handle`, Is Sound Playing
             // publishes `isPlaying`.
             selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY ||
@@ -3250,6 +3252,8 @@ function resolveSelfOutput(
             portId === "isFullscreen" ||
             portId === "scale" ||
             portId === "scales" ||
+            portId === "width" ||
+            portId === "height" ||
             portId === "handle" ||
             portId === "isPlaying" ||
             portId === "count")
