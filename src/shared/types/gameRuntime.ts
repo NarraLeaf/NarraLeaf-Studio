@@ -427,9 +427,30 @@ export function normalizeGameRuntimeViewportConfig(value: unknown): GameRuntimeV
  *
  * A query parameter because nothing else survives: there is no renderer left to send a message to,
  * and the window is about to be thrown away and rebuilt. The value is the description to show; the
- * page decides whether to show it, having learned the policy from its own process argument.
+ * page decides whether to show it.
  */
 export const GAME_RUNTIME_CRASH_QUERY_PARAM = "nlcrash";
+
+/**
+ * What this build does when it stops working, and where it writes its report - carried on the
+ * game's own address.
+ *
+ * These used to travel as process arguments the preload read and republished on the bridge. That
+ * channel dies with the preload, and a preload that never ran is one of the two failures the crash
+ * screen exists for: the page came up, nothing else did, and the screen it drew fell back to the
+ * default policy and could not name the log. A build whose author asked for the error to stay off
+ * the screen showed it, in exactly the case the process argument had been introduced to cover.
+ *
+ * The address is the only thing a page can read before it has read anything, with or without a
+ * preload, so it is now the only channel. The `nlgame://` handler resolves on the path alone and
+ * is transparent to the query.
+ *
+ * Absent on the web export, whose page is a static file nobody navigates to with a query; the
+ * renderer treats that as "not known yet" and waits for the pack, exactly as it did before.
+ */
+export const GAME_RUNTIME_CRASH_POLICY_QUERY_PARAM = "nlpolicy";
+
+export const GAME_RUNTIME_LOG_PATH_QUERY_PARAM = "nllog";
 
 export const GAME_CRASH_POLICIES = ["details", "log", "restart"] as const;
 
@@ -661,6 +682,20 @@ export type GameRuntimePreloadBridge = {
     setDisplayAwake(awake: boolean): void;
     getFullscreen(): Promise<boolean>;
     setFullscreen(fullscreen: boolean): Promise<void>;
+    /**
+     * The window's size as a multiple of the game's design size, for a configuration screen that
+     * offers the player a choice of window sizes.
+     *
+     * A request for a size this build does not offer is answered with the nearest one it does - the
+     * offered ladder is the author's, and a shell that honoured anything else would be a second
+     * answer to a question the project already settled (`app.window`).
+     *
+     * Inert on a shell with no window of its own to size, which says so through
+     * {@link capabilities}.`windowScale` rather than by refusing: what an author must not build is a
+     * size row that appears and does nothing, and the list they build it from is empty there.
+     */
+    getWindowScale(): Promise<number>;
+    setWindowScale(scale: number): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     /**
@@ -680,25 +715,12 @@ export type GameRuntimePreloadBridge = {
     capabilities: {
         /** Whether {@link onCloseRequested} can ever fire. False on the web export. */
         closeRequested: boolean;
+        /**
+         * Whether this shell has a window whose size it can set. False on the web export, where the
+         * page is the window and no script may resize it.
+         */
+        windowScale: boolean;
     };
-    /**
-     * What this build does when it stops working, if the shell knows before the pack is read.
-     *
-     * The desktop shell does: main reads the pack and passes the policy as a process argument, so
-     * the crash screen is correct from the first frame - which matters, because the crash it is
-     * most likely to draw is one that happened while the pack was still being read. The web export
-     * has no such channel and answers `null` until {@link readPack} lands, which the renderer
-     * treats as "not known yet" rather than as a policy.
-     */
-    crashPolicy: GameCrashPolicy | null;
-    /**
-     * Where this shell writes its log, so the crash screen can say where the report is.
-     *
-     * The one thing a player can do about a crash is hand the file to whoever can read it, and
-     * they cannot do that without being told where it is. `null` on the web export, which has no
-     * log file at all - its shell prints to the browser console, and there is no path to name.
-     */
-    logPath: string | null;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
     /**

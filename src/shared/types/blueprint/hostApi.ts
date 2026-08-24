@@ -210,6 +210,38 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             output: null,
         },
         /**
+         * The window's size, as a multiple of the size the game is drawn at.
+         *
+         * The list comes first and the pair below act on it: the sizes a build offers are the
+         * author's answer in `app.window`, and a shell with no window of its own to size answers
+         * with an empty list - so a configuration screen built from it draws no size row there,
+         * rather than a row that cannot work.
+         */
+        getWindowScaleOptions: {
+            capabilityId: "navigation.getWindowScaleOptions",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: false,
+            input: {},
+            output: [] as number[],
+        },
+        getWindowScale: {
+            capabilityId: "navigation.getWindowScale",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: 1,
+        },
+        setWindowScale: {
+            capabilityId: "navigation.setWindowScale",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { scale: 1 },
+            output: null,
+        },
+        /**
          * Hand one web address to the player's own browser - a store page, a patch note, a support
          * form.
          *

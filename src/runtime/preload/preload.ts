@@ -6,17 +6,12 @@ import {
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
-    normalizeGameCrashPolicy,
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
     type GameRuntimeSidecarBridge,
     type GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
-import {
-    readGameRuntimeAssetVersionArg,
-    readGameRuntimeCrashPolicyArg,
-    readGameRuntimeLogPathArg,
-} from "@shared/utils/gameRuntimeAssetUrl";
+import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
 import {
     GAME_RUNTIME_TEST_COMMAND_CHANNEL,
     GAME_RUNTIME_TEST_COMMAND_READY_CHANNEL,
@@ -32,11 +27,6 @@ import type { GameTestCommand } from "@shared/types/gameTest";
 // session-unique: a missing marker can only under-cache, never serve bytes
 // from an older pack.
 const assetVersion = readGameRuntimeAssetVersionArg(process.argv) ?? String(Date.now());
-
-// Same channel, same reason: the renderer has to know what to do about a crash before it has read
-// anything. Passed through unvalidated - the renderer normalizes, and a marker this process did
-// not write cannot reach here anyway.
-const crashPolicy = normalizeGameCrashPolicy(readGameRuntimeCrashPolicyArg(process.argv));
 
 // The main process asks before honouring a user-initiated window close so blueprints can intercept
 // it. Registered once here; until the game installs a handler (still loading), the close is allowed
@@ -202,6 +192,9 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
     },
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
     restart: () => ipcRenderer.invoke("runtime:restart") as Promise<void>,
+    getWindowScale: () => ipcRenderer.invoke("runtime:window:getScale") as Promise<number>,
+    setWindowScale: (scale: number) =>
+        ipcRenderer.invoke("runtime:window:setScale", scale) as Promise<void>,
     setDisplayAwake: (awake: boolean) => {
         ipcRenderer.send("runtime:displayAwake:set", awake);
     },
@@ -223,9 +216,7 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
             closeRequestedListeners.delete(listener);
         };
     },
-    capabilities: { closeRequested: true },
-    crashPolicy,
-    logPath: readGameRuntimeLogPathArg(process.argv),
+    capabilities: { closeRequested: true, windowScale: true },
     save: {
         write: (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
             ipcRenderer.invoke("runtime:save:write", {

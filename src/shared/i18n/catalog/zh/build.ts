@@ -317,6 +317,49 @@ export const build = {
         submitted: "构建已开始，进度显示在控制台",
         done: "构建完成",
         failed: "构建失败",
+        patchDone: "补丁已导出",
+        patchFailed: "补丁导出失败",
+        // 通知上的按钮。上面那句话离开按钮仍然成立：通知面板保留正文，不保留按钮
+        openReport: "打开报告",
+    },
+    /**
+     * 构建报告：一次已结束的运行产出了什么，以及它从资产库中带走了什么。
+     * 由该次运行发出的通知打开。
+     *
+     * 两个词分工明确：产物是构建写出的文件，资产是工程资产库中的条目。报告两者都给出。
+     */
+    report: {
+        title: "构建报告",
+        empty: "没有可报告的构建",
+        outcome: {
+            done: "成功",
+            error: "失败",
+            cancelled: "中止",
+        },
+        kind: {
+            build: "正式构建",
+            patch: "补丁导出",
+        },
+        summary: "概览",
+        variant: "变体",
+        platforms: "平台",
+        duration: "耗时",
+        artifacts: "产物",
+        artifactsEmpty: "本次运行没有产物",
+        outputDir: "输出目录",
+        durationSeconds: "{seconds} 秒",
+        durationMinutes: "{minutes} 分 {seconds} 秒",
+        includedTitle: "已打包的资产",
+        includedEmpty: "本次运行没有打包任何资产",
+        excludedTitle: "未打包的资产",
+        excludedEmpty: "本次运行没有排除任何资产",
+        charactersTitle: "未打包的角色",
+        // 对完整打包资产库的运行，用它替代两份资产清单
+        wholeLibrary: "本次运行完整打包了资产库",
+        search: "搜索资产",
+        noMatches: "没有资产匹配该搜索",
+        showAll: "显示全部 {count} 项",
+        failure: "失败原因",
     },
     invalidCommand: "{story} / {scene} 中有无效指令：{source}",
     invalidCommandSummary: {
@@ -356,6 +399,11 @@ export const build = {
     // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
     // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有变体的构建。
     contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
+    contentComputedPinGap: "{location} 的资产来自计算结果，因此本次构建无法判断它需要哪个资产",
+    contentComputedPinSummary: {
+        one: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在引脚上选定资产，详见控制台",
+        other: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在每个引脚上选定资产，详见控制台",
+    },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本工程",
     contentCoverageSummary: {
