@@ -80,6 +80,18 @@ export type GameBuildRequest = {
      * folder picker). When absent, defaults to "<project>/dist".
      */
     outputDir?: string;
+    /**
+     * Build this variant's DLC too, each into its own folder beside the installers.
+     *
+     * Here rather than in a command of its own because the build IS the baseline: a DLC file carries
+     * the difference from the game a player installs, and that game is what this build just made. An
+     * author who exports one later has to point at a build or have it compiled again; asked for
+     * here, the comparison is against the exact bytes going out with it.
+     *
+     * Desktop only, and skipped with a line in the console when the project has no distribution key
+     * or the variant has no DLC - none of those is a reason to fail a build that otherwise worked.
+     */
+    includeDlc?: boolean;
     /** Reveal the output folder when the build finishes. Defaults to true. */
     openWhenDone?: boolean;
 };
@@ -388,6 +400,35 @@ export type ShippedAssetReport = {
 export function totalShippedAssetBytes(entries: ShippedAssetReportEntry[]): number {
     return entries.reduce((total, entry) => total + (entry.bytes ?? 0), 0);
 }
+
+/** Which pipeline produced a run: the production build, or a patch/DLC export. */
+export type GameBuildRunKind = "build" | "patch";
+
+/**
+ * What the last run of this project's pipeline came to, kept on disk beside the build's own staging
+ * directory.
+ *
+ * Written by the pipeline rather than assembled by whichever window happened to be watching, and
+ * for two reasons. A report an author opens the morning after describes a run no session is holding
+ * any more, so something has to have written it down. And the output directory in it is the one the
+ * "show in the file manager" action reveals - a path the pipeline recorded, never one a window
+ * handed over.
+ */
+export type LastGameBuildRun = {
+    kind: GameBuildRunKind;
+    /** The variant it ran as. Absent means the release variant. */
+    appTagId?: string;
+    /**
+     * The variant's name at the time of the run.
+     *
+     * Recorded rather than resolved from the id when the report is read: a variant can be renamed
+     * or deleted afterwards, and what this run was is not a thing that changes later.
+     */
+    appTagName: string;
+    /** True when the author stopped the run, which the pipeline reports as a failure. */
+    cancelled: boolean;
+    state: GameBuildStateSnapshot;
+};
 
 /** Snapshot returned by build.getStatus; the renderer polls this. */
 export type GameBuildStateSnapshot = {

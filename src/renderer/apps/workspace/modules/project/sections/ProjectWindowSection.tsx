@@ -13,12 +13,17 @@
  * which rungs to offer; the design size itself is always on, because a game with no way back to it
  * is a game whose art can never be seen as it was made.
  *
+ * One rung per line, each carrying the pixels it comes to for THIS project. A multiplier alone is
+ * a number an author has to do arithmetic on to picture, and picturing it is the whole decision -
+ * whether 150% still fits the screens their players have. The vertical list is also how the rest of
+ * Studio asks about membership of a set (see the font locale panel in `ProjectDesignSection`).
+ *
  * Dragging is the free half, and deliberately separate: the ticks are what a configuration screen
  * offers, the switch is what the window frame allows. A window dragged off the design ratio
  * letterboxes the stage, the same way a screen of another shape does.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Checkbox, Switch } from "@/lib/components/elements";
@@ -47,6 +52,16 @@ export function ProjectWindowSection({
         () => normalizeWindowConfiguration(config.app?.window),
     );
     const [saving, setSaving] = useState(false);
+
+    /**
+     * The size the game is drawn at, so each rung can say what it comes to in pixels. Absent on a
+     * project whose resolution has not been settled, where the multiplier stands on its own rather
+     * than beside a made-up number.
+     */
+    const design = useMemo(() => {
+        const resolution = config.metadata?.resolution;
+        return resolution && resolution.width > 0 && resolution.height > 0 ? resolution : null;
+    }, [config.metadata?.resolution]);
 
     const commit = useCallback(async (patch: Partial<WindowConfiguration>) => {
         if (saving) {
@@ -81,17 +96,30 @@ export function ProjectWindowSection({
                 description={t("project.window.sizesDescription")}
                 tooltip={freeze.writes(saving)["data-tip"]}
             >
-                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                <div className="grid gap-1.5">
                     {WINDOW_SCALE_STEPS.map(step => (
                         <Checkbox
                             key={step}
+                            className="w-full text-xs"
                             checked={windowConfig.scaleSteps.includes(step)}
                             // The design size is not a choice, so its box states the fact rather
                             // than offering to remove it.
                             disabled={step === DESIGN_STEP || freeze.writes(saving).disabled}
                             onCheckedChange={offered => toggleStep(step, offered)}
                         >
-                            {t("project.window.sizeOption", { percent: String(Math.round(step * 100)) })}
+                            <span className="flex w-full items-center justify-between gap-3">
+                                <span className="text-fg">
+                                    {t("project.window.sizeOption", { percent: String(Math.round(step * 100)) })}
+                                </span>
+                                {design ? (
+                                    <span className="tabular-nums text-2xs text-fg-subtle">
+                                        {t("project.window.sizeDimensions", {
+                                            width: String(Math.round(design.width * step)),
+                                            height: String(Math.round(design.height * step)),
+                                        })}
+                                    </span>
+                                ) : null}
+                            </span>
                         </Checkbox>
                     ))}
                 </div>

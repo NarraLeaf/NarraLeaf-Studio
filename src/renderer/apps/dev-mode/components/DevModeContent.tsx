@@ -1174,6 +1174,16 @@ export function DevModeContent(props: DevModeContentProps) {
         return result.data.result;
     }, [projectPath]);
 
+    /**
+     * Dev Mode writes through the main process into the project's own directory, which is a
+     * filesystem: nothing reclaims it, and a graph testing the web export's answer here would be
+     * testing the wrong shell. Constant, so it takes no dependencies.
+     */
+    const storageDurability = useCallback<NonNullable<GameAppHost["storageDurability"]>>(
+        async () => "durable",
+        [],
+    );
+
     const saveStore = useMemo<GameAppSaveStore>(() => ({
         write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) => {
             const ref = requireProjectRef("Save Game");
@@ -1458,6 +1468,15 @@ export function DevModeContent(props: DevModeContentProps) {
             bundle,
             sessionKey: `${bundle.bundleId}:${bundle.revision}:${surface.id}`,
             entrySurfaceId: surface.id,
+            // Dev Mode carries every story the project has, DLC ones included, so every DLC that
+            // has content is here. Derived from the bundle rather than from the DLC registry: what
+            // an author can reach is what is loaded, and a DLC with nothing in it yet has no
+            // entrance to draw.
+            installedDlcIds: [...new Set(
+                (bundle.storyLibrary?.index.stories ?? [])
+                    .map(story => story.dlcId?.trim())
+                    .filter((id): id is string => Boolean(id)),
+            )],
             ready: runtimePlugins.ready,
             bootAction,
             persistenceAdapter,
@@ -1481,6 +1500,7 @@ export function DevModeContent(props: DevModeContentProps) {
             openExternal,
             exportProgress,
             importProgress,
+            storageDurability,
         };
     }, [
         bootAction,
@@ -1490,6 +1510,7 @@ export function DevModeContent(props: DevModeContentProps) {
         networkFetch,
         movePointer,
         openExternal,
+        storageDurability,
         exportProgress,
         importProgress,
         onDebugEvent,

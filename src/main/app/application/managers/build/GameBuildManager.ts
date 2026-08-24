@@ -33,6 +33,8 @@ import {
     type GameBuildStateSnapshot,
     type GameBuildTarget,
     type GamePatchExportRequest,
+    type GameBuildRunKind,
+    type LastGameBuildRun,
     type ShippedAssetReport,
 } from "@shared/types/gameBuild";
 import {
@@ -75,6 +77,7 @@ import {
     signingReachesNetwork,
 } from "./preflight";
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
+import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
 import { optimizeProjectImages, type AssetImageOptimizationResult } from "./optimizeAssetImages";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
@@ -102,7 +105,7 @@ import { readDistributionKey } from "@shared/utils/distributionKey";
 import { diffPack, PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { dlcArtifactFileName, dlcDirectoryName, resolveDlcDeliveryPath } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
-import { findDlc, type ProjectDlc } from "@shared/types/dlc";
+import { dlcForAppTag, findDlc, type ProjectDlc } from "@shared/types/dlc";
 import { readProjectDlcFromDir } from "../../utils/dlcFile";
 import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
@@ -164,6 +167,14 @@ type BuildSession = {
      */
     abandonWeatherBake: (() => void) | null;
     cancelled: boolean;
+    /** Which pipeline this session is running, so the record it leaves says which. */
+    kind: GameBuildRunKind;
+    /**
+     * The variant this run resolved to, filled in once it has. Blank until then, which is what a
+     * run that failed before reading the project has to say - it never got as far as an edition.
+     */
+    appTagId?: string;
+    appTagName: string;
     /**
      * What the compile carried out of the asset library, held until the run finishes so the
      * published snapshot can carry it.
@@ -842,6 +853,8 @@ export class GameBuildManager {
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
+            kind: "build",
+            appTagName: "",
             assetReport: null,
         };
         this.sessions.set(key, session);
@@ -917,6 +930,8 @@ export class GameBuildManager {
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
+            kind: "patch",
+            appTagName: "",
             assetReport: null,
         };
         this.sessions.set(key, session);
@@ -958,6 +973,9 @@ export class GameBuildManager {
             projectPath,
             dlc ? { appTagId: dlc.attachTo } : request,
         );
+        // The edition the file installs into, not the one whose content it carries: what a reader of
+        // the record wants to know is which builds this run produced something for.
+        this.noteRunVariant(session, appTag);
         // What the patch carries, which is not always the edition it attaches to. The identity below
         // stays with `appTag` - it is what decides whether the player's build can open the file at
         // all - while everything about the payload is read from this one.
@@ -1131,7 +1149,7 @@ export class GameBuildManager {
         // first thing an author checks about one, and a finished run that could not say would be
         // the only one of the two that cannot.
         const artifactSizes = await measureBuildArtifacts([outputFile]);
-        session.snapshot = {
+        await this.finishSession(session, {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
@@ -1140,7 +1158,7 @@ export class GameBuildManager {
             artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
-        };
+        });
         const folder = dlc ? dlcDirectoryName(process.platform) : PATCH_DIRECTORY_NAME;
         this.emit(session, {
             level: "success",
@@ -1172,6 +1190,131 @@ export class GameBuildManager {
      * being made, and comparing a compile against itself produces a patch that installs and changes
      * nothing.
      */
+    /**
+     * Every DLC of the variant this build is, sealed against the payload the build just made.
+     *
+     * One folder per DLC rather than one folder holding all of them, because a storefront uploads a
+     * folder as one download: a shared folder would put every DLC into whichever one the author
+     * uploaded first, and the player would receive content they did not buy. The folder inside it is
+     * the delivery folder, so the ContentRoot an author points at is `dlc/<id>` and what lands in
+     * the game's own folder is `DLC/<id>_DLC.pak`.
+     *
+     * Nothing here fails the build. A project with no distribution key, a variant with no DLC, one
+     * DLC that will not compile - each is reported and the others carry on, because the installers
+     * are already written and refusing them now would throw away a build that worked.
+     */
+    private async buildVariantDlc(
+        session: BuildSession,
+        options: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            appTag: ProjectAppTag;
+            appTagDocument: ProjectAppTagDocument | null;
+            runtimePlugins: RuntimePluginPackSelection["selected"];
+            debuggable: boolean;
+            identity: { appId: string; productName: string; identifier?: string };
+            projectConfig: ProjectConfigData | null;
+            assetImages: AssetImageOptimizationResult["images"];
+            encryptionKey?: string;
+            /** The payload this build produced - what a player has before installing any of these. */
+            baselineAppDir: string;
+            outputDir: string;
+        },
+    ): Promise<string[]> {
+        const { appTag, identity, projectPath } = options;
+        const dlcs = dlcForAppTag(await readProjectDlcFromDir(projectPath).catch(() => []), appTag.id);
+        if (dlcs.length === 0) {
+            return [];
+        }
+        const distributionKey = readDistributionKey(options.projectConfig?.app);
+        if (!distributionKey) {
+            // The same sentence the patch export refuses with, said as a thing to go and do - but a
+            // note here rather than a refusal: the game itself built fine.
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${dlcs.length} DLC not built: this project has no distribution key. `
+                    + "Create one in Project > Project, then build again.",
+            });
+            return [];
+        }
+        const distribution = { key: distributionKey, titleId: identity.appId };
+        const declaredScenes = resolveAppTagReachableScenes(appTag, options.appTagDocument?.reachableScenes);
+        const assetAxes = resolveAppTagAssetAxes(appTag, options.appTagDocument?.assetAxes);
+
+        const written: string[] = [];
+        for (const dlc of dlcs) {
+            this.ensureNotCancelled(session);
+            this.emit(session, { level: "info", source: "Build", message: `building DLC "${dlc.name}"` });
+            const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
+                projectPath,
+                entry: options.entry,
+                runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+                runtimeVersion: this.readRuntimeVersion(),
+                // Per DLC, so one compile cannot be handed the previous one's leftovers.
+                outputRoot: path.join(projectPath, ".nlstudio", "build", "dlc", dlc.id),
+                runtimePlugins: options.runtimePlugins,
+                mode: "production",
+                ...(options.debuggable ? { debuggable: true } : {}),
+                appTag: { id: appTag.id, name: appTag.name },
+                declaredScenes,
+                assetAxes,
+                packaging: true,
+                // The base game plus this one DLC, so the difference from the build above is exactly
+                // what this DLC adds.
+                includedDlc: [dlc.id],
+                locale: getMainLocale(this.app),
+                ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+                appId: identity.appId,
+                productName: identity.productName,
+                ...(identity.identifier ? { identifier: identity.identifier } : {}),
+                distribution,
+                ...(patchPlatforms(options.projectConfig).length > 0
+                    ? { platforms: patchPlatforms(options.projectConfig) }
+                    : {}),
+                hostUserDataDir: this.app.getUserDataDir(),
+                downloadRewrites: currentDownloadRewrites(),
+                assetImages: options.assetImages,
+            }, {
+                onStart: worker => { session.worker = worker; },
+                onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
+                cancelled: () => session.cancelled,
+            });
+            session.worker = null;
+            this.ensureNotCancelled(session);
+
+            const outputFile = resolveDlcDeliveryPath(
+                path.join(options.outputDir, "dlc", dlc.id, dlcArtifactFileName(dlc.id)),
+                process.platform,
+                path.join,
+                path.dirname,
+                path.basename,
+            );
+            const summary = await this.sealPatch(
+                session,
+                artifact.appDir,
+                { outputFile, name: dlc.name },
+                options.baselineAppDir,
+                outputFile,
+                distribution,
+                dlc,
+                appTag.id,
+            );
+            written.push(outputFile);
+            this.emit(session, {
+                level: "success",
+                source: "Build",
+                message: `DLC written: ${path.relative(options.outputDir, outputFile)} (${summary})`,
+            });
+        }
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: "each DLC folder is one download: upload dlc/<id> as that DLC's content",
+        });
+        return written;
+    }
+
     private async compilePatchBaseline(
         session: BuildSession,
         options: {
@@ -1547,6 +1690,7 @@ export class GameBuildManager {
             );
         }
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        this.noteRunVariant(session, appTag);
         // What the author says each mechanism the build cannot read can start. Read here rather than
         // inside the compile because both compiles below are the same game under one variant, and two
         // reads of the same file could straddle a write.
@@ -1848,11 +1992,30 @@ export class GameBuildManager {
         const artifacts = await this.runWorker(session, workerConfig);
         // A cancel that raced the worker's completion must win over "done".
         this.ensureNotCancelled(session);
+        // After the installers, not before: the DLC files are compared against the payload this
+        // build just made, so they cannot be produced until there is one.
+        if (request.includeDlc && desktopArtifact) {
+            artifacts.push(...await this.buildVariantDlc(session, {
+                projectPath,
+                entry,
+                appTag,
+                appTagDocument,
+                runtimePlugins: pluginSelection.selected,
+                debuggable,
+                identity,
+                projectConfig,
+                assetImages,
+                ...(encryptionKey ? { encryptionKey } : {}),
+                baselineAppDir: desktopArtifact.appDir,
+                outputDir,
+            }));
+            this.ensureNotCancelled(session);
+        }
         // Measured before the snapshot is published so the console line below and anything else
         // reading the finished build report the same numbers off one walk of the output. Sizing is
         // best-effort and cannot reject, so a build that packaged successfully still finishes here.
         const artifactSizes = await measureBuildArtifacts(artifacts);
-        session.snapshot = {
+        await this.finishSession(session, {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
@@ -1861,7 +2024,7 @@ export class GameBuildManager {
             artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
-        };
+        });
         this.emit(session, {
             level: "success",
             source: "Build",
@@ -1875,6 +2038,37 @@ export class GameBuildManager {
         if (request.openWhenDone !== false) {
             this.revealOutput(outputDir);
         }
+    }
+
+    /**
+     * What this project's last run came to, read off disk rather than out of a session.
+     *
+     * The session is gone by the time an author opens yesterday's report, and the record is what
+     * outlives it.
+     */
+    public readLastRun(projectPath: string): Promise<LastGameBuildRun | null> {
+        return readLastGameBuildRun(path.resolve(projectPath));
+    }
+
+    /**
+     * Show the last run's output folder in the desktop's file manager.
+     *
+     * The folder comes from the record this pipeline wrote, and the caller names only the project.
+     * A window therefore cannot ask for an arbitrary directory to be opened - the only paths that
+     * reach the shell here are ones a build of this project chose for itself, which is the same
+     * folder the build already reveals when it finishes.
+     *
+     * False when there is no run, or the run wrote nowhere: a report with no folder to show is a
+     * button that does nothing rather than an error to report.
+     */
+    public async revealLastOutput(projectPath: string): Promise<boolean> {
+        const run = await this.readLastRun(projectPath);
+        const outputDir = run?.state.outputDir?.trim();
+        if (!outputDir) {
+            return false;
+        }
+        this.revealOutput(outputDir);
+        return true;
     }
 
     private revealOutput(outputDir: string): void {
@@ -3077,6 +3271,36 @@ export class GameBuildManager {
         });
     }
 
+    /**
+     * Write down what this run came to, and only then publish the finished snapshot.
+     *
+     * That order is the whole point: a window watching the status sees `done` and opens the report,
+     * so the record has to be on disk before the status says so. Publishing first would leave a
+     * window in which the finished run reads as "there is no report".
+     */
+    private async finishSession(session: BuildSession, snapshot: GameBuildStateSnapshot): Promise<void> {
+        await writeLastGameBuildRun(session.projectPath, this.runRecord(session, snapshot));
+        session.snapshot = snapshot;
+    }
+
+    private runRecord(session: BuildSession, snapshot: GameBuildStateSnapshot): LastGameBuildRun {
+        return {
+            kind: session.kind,
+            ...(session.appTagId ? { appTagId: session.appTagId } : {}),
+            appTagName: session.appTagName,
+            cancelled: session.cancelled,
+            state: snapshot,
+        };
+    }
+
+    /** The variant this run resolved to, kept for the record it will leave behind. */
+    private noteRunVariant(session: BuildSession, variant: ProjectAppTag): void {
+        session.appTagName = variant.name;
+        if (!isBuiltinAppTagId(variant.id)) {
+            session.appTagId = variant.id;
+        }
+    }
+
     private ensureNotCancelled(session: BuildSession): void {
         if (session.cancelled) {
             throw new Error("Build cancelled");
@@ -3098,6 +3322,10 @@ export class GameBuildManager {
             this.app.logger.error("[Build] failed", message);
             this.emit(session, { level: "error", source: "Build", message: `build failed: ${message}` });
         }
+        // Not awaited, unlike the finished path: this is reached from synchronous callers - the
+        // cancel handler answers with the snapshot it just set - and a failed run is not one anybody
+        // is about to open a report for in the same instant.
+        void writeLastGameBuildRun(session.projectPath, this.runRecord(session, session.snapshot));
     }
 
     private emitProcessOutput(session: BuildSession, level: DevModeConsoleLogPayload["level"], chunk: Buffer): void {

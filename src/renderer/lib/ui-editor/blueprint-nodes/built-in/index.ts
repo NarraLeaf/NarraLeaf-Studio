@@ -28,6 +28,7 @@ import { mathBlueprintNodes } from "./mathNodes";
 import { networkBlueprintNodes } from "./networkNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { progressBlueprintNodes } from "./progressNodes";
+import { storageBlueprintNodes } from "./storageNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { soundBlueprintNodes } from "./soundNodes";
 import { structuralBlueprintNodes } from "./structuralNodes";
@@ -35,6 +36,7 @@ import { switchBlueprintNodes } from "./switchNodes";
 import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { visitedBlueprintNodes } from "./visitedNodes";
+import { dlcBlueprintNodes } from "./dlcNodes";
 import { endingBlueprintNodes } from "./endingNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
@@ -65,8 +67,10 @@ export { mathBlueprintNodes } from "./mathNodes";
 export { networkBlueprintNodes } from "./networkNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { progressBlueprintNodes } from "./progressNodes";
+export { storageBlueprintNodes } from "./storageNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { visitedBlueprintNodes } from "./visitedNodes";
+export { dlcBlueprintNodes } from "./dlcNodes";
 export { endingBlueprintNodes } from "./endingNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
 export { soundBlueprintNodes } from "./soundNodes";
@@ -90,9 +94,11 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...componentBlueprintNodes,
     ...gameBlueprintNodes,
     ...visitedBlueprintNodes,
+    ...dlcBlueprintNodes,
     ...endingBlueprintNodes,
     ...appTagBlueprintNodes,
     ...progressBlueprintNodes,
+    ...storageBlueprintNodes,
     ...backlogBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,

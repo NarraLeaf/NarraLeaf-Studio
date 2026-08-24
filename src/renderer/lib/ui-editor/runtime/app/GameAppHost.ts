@@ -12,6 +12,7 @@ import type {
 } from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
+import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -158,6 +159,18 @@ export type GameAppHost = {
      * ending may legitimately want the stage left alone.
      */
     endingSurfaceId?: string | null;
+    /**
+     * The DLC installed beside this build, by the ids the author gave them.
+     *
+     * A host supplies it from what it was given. The packaged game reads it off the pack the layer
+     * stack composed - a DLC is a file beside the game, so what is installed is what was found. Dev
+     * Mode passes every DLC the project has, because it carries every story the project has: an
+     * author testing there is looking at the whole game, not at one edition of it.
+     *
+     * Absent is "none", which is what a build with nothing beside it means and what the editor
+     * preview means.
+     */
+    installedDlcIds?: readonly string[];
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
@@ -255,9 +268,16 @@ export type GameAppHost = {
      * preview the row has nothing to draw rather than drawing a control that does nothing.
      */
     windowScaleOptions?: number[];
-    /** Read and set the window's size as a multiple of the design size. See {@link windowScaleOptions}. */
+    /**
+     * Read and set the stage's size, as a multiple of the design size or in pixels.
+     *
+     * Any size, not only one from {@link windowScaleOptions}: that list is what a configuration
+     * screen is built from, not a limit on what a game may ask for.
+     */
     getWindowScale?: () => Promise<number>;
     setWindowScale?: (scale: number) => Promise<void>;
+    getWindowSize?: () => Promise<{ width: number; height: number }>;
+    setWindowSize?: (width: number, height: number) => Promise<void>;
     /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
     getFullscreen?: () => Promise<boolean>;
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
@@ -321,6 +341,15 @@ export type GameAppHost = {
     exportProgress?: (request: GameProgressExportRequest) => Promise<GameProgressExportResult>;
     /** Read it back, for the Import Progress node. Omitted for the reason above. */
     importProgress?: () => Promise<GameProgressImportResult>;
+    /**
+     * Whether what this shell writes stays written, for the Check Storage Durability node.
+     *
+     * The packaged desktop game and Dev Mode answer `durable` - files in a directory nobody
+     * reclaims - and the web export answers whatever grant the browser gave the page. Omitted by
+     * hosts that write nowhere real (the workspace story preview), where the node leaves by
+     * `Unknown`, which is what an environment that cannot answer means.
+     */
+    storageDurability?: () => Promise<GameStorageDurability>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */

@@ -13,8 +13,10 @@ import type {
     GameBuildPlatform,
     GameBuildRequest,
     GameBuildStateSnapshot,
+    GameBuildRunKind,
     GameBuildStatus,
     GamePatchExportRequest,
+    LastGameBuildRun,
 } from "@shared/types/gameBuild";
 import { isDesktopBuildPlatform } from "@shared/types/gameBuild";
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
@@ -73,8 +75,13 @@ type BuildServiceEvents = {
     stateChanged: GameBuildStateSnapshot;
 };
 
-/** What the pipeline was asked to produce. Both run in the same session and report the same states. */
-export type GameBuildRunKind = "build" | "patch";
+/**
+ * What the pipeline was asked to produce. Both run in the same session and report the same states.
+ *
+ * Re-exported from the shared type the pipeline records runs under, so the word this window uses and
+ * the word written into the record are the same word.
+ */
+export type { GameBuildRunKind } from "@shared/types/gameBuild";
 
 /**
  * One finished run of the pipeline, as the build report reads it.
@@ -256,6 +263,29 @@ export class BuildService extends Service<BuildService> {
      */
     public getLastFinishedRun(): FinishedGameBuildRun | null {
         return this.lastFinishedRun;
+    }
+
+    /**
+     * What this project's last run came to, read from the record the pipeline wrote.
+     *
+     * The session-scoped record above answers "did a run just finish here", which is what a
+     * notification needs. This answers "what did the last run come to", which is what a report
+     * needs - and it keeps answering after the window that made it has gone.
+     */
+    public async loadLastRun(): Promise<LastGameBuildRun | null> {
+        const result = await getInterface().gameBuild.readLastRun(this.projectPath());
+        return result.success ? result.data.run : null;
+    }
+
+    /**
+     * Show the last run's output folder in the desktop's file manager.
+     *
+     * The folder is named by the record rather than by this window; false where the run wrote
+     * nowhere, or there is no run.
+     */
+    public async revealLastOutput(): Promise<boolean> {
+        const result = await getInterface().gameBuild.revealOutput(this.projectPath());
+        return result.success && result.data.revealed;
     }
 
     /**

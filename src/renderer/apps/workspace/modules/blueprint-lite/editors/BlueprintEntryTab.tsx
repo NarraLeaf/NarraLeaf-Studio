@@ -29,6 +29,8 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
+import { DLC_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/dlcNodes";
 import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
@@ -548,6 +550,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const variableRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry);
     const audioTrackService = context.services.get<AudioTrackService>(Services.AudioTracks);
     const appTagService = context.services.get<AppTagService>(Services.AppTags);
+    const dlcService = context.services.get<DlcService>(Services.Dlc);
+    // DLC live in a project document of their own, so adding or renaming one has to reach the
+    // `Is DLC Installed` picker without anything touching the blueprint.
+    const [dlcRevision, setDlcRevision] = useState(0);
+    useEffect(
+        () => dlcService.onDlcChanged(() => setDlcRevision(r => r + 1)),
+        [dlcService],
+    );
     // The declared addresses live in the variants document, so adding one has to reach the
     // `Open Link` picker without anything touching the blueprint.
     const [appTagRevision, setAppTagRevision] = useState(0);
@@ -1842,6 +1852,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             storyScenes: storySceneOptions,
             storyChoiceOptions,
             storyEndings,
+            // The `Is DLC Installed` picker. Author order, and the label is the DLC's name while the
+            // stored value is its id - the id is the filename a player already has, so renaming a
+            // DLC must not unpoint a graph.
+            [DLC_OPTIONS_SOURCE]: dlcService.list().map(dlc => ({ value: dlc.id, label: dlc.name })),
             characters: characterOptions,
             localizationKeys: localizationKeyOptions,
             // The `Play Sound` Track picker. Author order, built-ins first - the same order the
@@ -1901,6 +1915,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         characterLibraryRevision,
         audioTrackService,
         audioTrackRevision,
+        dlcRevision,
+        dlcService,
         appTagService,
         appTagRevision,
         nodeCatalog,

@@ -106,3 +106,75 @@ export function isUIListScrollbarSlot(slot: UIListChildSlot | null): boolean {
     return slot === "scrollbarTrack" || slot === "scrollbarThumb";
 }
 
+/**
+ * What keys one rendered row apart from its siblings.
+ *
+ * Row state - hover, focus, the runtime variant, a blueprint variable record - is keyed by this, so
+ * the format is not private to the renderer: whoever carries a row event onwards has to be able to
+ * tell whose row it names, and a key that only the list could parse would silently hand one row's
+ * state to whatever the event reached next.
+ */
+export function buildUIListItemInstanceKey(listElementId: string, itemKey: string): string {
+    return `${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-${itemKey}`;
+}
+
+/** Whether an instance key names a row of this list, so an event leaving the list can shed it. */
+export function isUIListItemInstanceKeyOf(instanceKey: string | undefined | null, listElementId: string): boolean {
+    return Boolean(instanceKey) && String(instanceKey).startsWith(`${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-`);
+}
+
+const UI_LIST_ITEM_INSTANCE_PREFIX = "list-";
+
+/** What a `Scroll` or `Scroll End` head reads off the list viewport. */
+export type UIListScrollMetrics = {
+    offset: number;
+    maxOffset: number;
+    progress: number;
+};
+
+/**
+ * Where the list has got to along its scroll axis.
+ *
+ * `progress` is how far the end of the content has come, not how far the viewport has travelled.
+ * Two consequences, both of which an author asking "are we at the bottom?" depends on:
+ *
+ * - Content that fits without scrolling has its last row already at or past the end of the list, so
+ *   it reads 1. Reading 0 there described a list that is at the top and at the bottom at once as
+ *   only the former - and that is exactly the list where the question has no other way to be
+ *   answered, since a viewport that cannot scroll never fires a scroll event either.
+ * - The last pixel of a scroll can land a hair short. `offset` is fractional while the sizes it is
+ *   measured against are rounded, so a viewport that has gone as far as it can go reports, say,
+ *   73.6 out of 74. That hair is still the end, so it reads 1 rather than 0.995. On a short list
+ *   the shortfall is a whole percent of the range, which is enough to make a plain `progress >= x`
+ *   test say no at the bottom of a list and yes at the bottom of a longer one.
+ */
+export function resolveUIListScrollMetrics(viewportSize: number, contentSize: number, offset: number): UIListScrollMetrics {
+    const maxOffset = Math.max(0, contentSize - viewportSize);
+    return {
+        offset,
+        maxOffset,
+        progress: isAtUIListScrollEnd(offset, maxOffset) ? 1 : offset / maxOffset,
+    };
+}
+
+/** Whether those metrics sit at the far end, within the rounding a fractional layout leaves behind. */
+export function isUIListScrolledToEnd(metrics: UIListScrollMetrics): boolean {
+    return isAtUIListScrollEnd(metrics.offset, metrics.maxOffset);
+}
+
+/** The one definition of "as far as this axis goes", so progress and Scroll End cannot disagree. */
+function isAtUIListScrollEnd(offset: number, maxOffset: number): boolean {
+    return maxOffset <= 0 || offset >= maxOffset - 1;
+}
+/** Whether those metrics sit at the near end. The mirror of {@link isUIListScrolledToEnd}. */
+export function isUIListScrolledToStart(metrics: UIListScrollMetrics): boolean {
+    return metrics.maxOffset <= 0 || metrics.offset <= 1;
+}
+
+/**
+ * What a list reports before it has measured itself, and what one that never scrolls keeps reporting.
+ *
+ * At the start and at the end at once, which is what a viewport with nothing to scroll is.
+ */
+export const UI_LIST_SCROLL_METRICS_AT_REST: UIListScrollMetrics = Object.freeze({ offset: 0, maxOffset: 0, progress: 1 });
+

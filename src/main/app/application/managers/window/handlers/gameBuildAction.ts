@@ -188,3 +188,37 @@ export class GameBuildReadPatchBaselineHandler extends IPCHandler<IPCEventType.g
         });
     }
 }
+
+/**
+ * What this project's last run came to, and the folder it wrote into.
+ *
+ * Both answered by the pipeline rather than by whichever window is asking: the record outlives the
+ * session that made it, and the folder the reveal opens is one a build of this project chose.
+ */
+export class GameBuildReadLastRunHandler extends IPCHandler<IPCEventType.gameBuildReadLastRun> {
+    readonly name = IPCEventType.gameBuildReadLastRun;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.gameBuildReadLastRun]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildReadLastRun]["response"]>> {
+        return this.tryUse(async () => ({
+            run: await window.getApp().getGameBuildManager().readLastRun(projectPath),
+        }));
+    }
+}
+
+export class GameBuildRevealOutputHandler extends IPCHandler<IPCEventType.gameBuildRevealOutput> {
+    readonly name = IPCEventType.gameBuildRevealOutput;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.gameBuildRevealOutput]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildRevealOutput]["response"]>> {
+        return this.tryUse(async () => ({
+            revealed: await window.getApp().getGameBuildManager().revealLastOutput(projectPath),
+        }));
+    }
+}

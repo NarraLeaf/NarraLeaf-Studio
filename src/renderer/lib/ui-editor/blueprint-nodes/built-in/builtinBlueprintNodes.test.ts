@@ -340,6 +340,11 @@ const NO_POINTER_HOST: BlueprintHostApiRuntime["pointer"] = {
     moveToElementCenter: async () => ({ outcome: "unsupported", error: "no window" }),
 };
 
+/** Nor can any of them say what becomes of what a shell writes, which is what `unknown` is for. */
+const NO_STORAGE_HOST: BlueprintHostApiRuntime["storage"] = {
+    durability: async () => "unknown",
+};
+
 /** No host in these tests owns a filesystem, so neither progress node can do anything here. */
 const NO_PROGRESS_HOST: BlueprintHostApiRuntime["progress"] = {
     export: async () => ({ outcome: "failed", error: "no progress store" }),
@@ -372,6 +377,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getWindowScaleOptions: () => [],
                     getWindowScale: async () => 1,
                     setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
                 },
                 layers: SILENT_LAYER_HOST,
@@ -444,6 +451,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
+                    isDlcInstalled: () => false,
                     listEndings: () => [],
                     clearEndingState: async () => undefined,
                     clearEndings: async () => undefined,
@@ -461,6 +469,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 network: OFFLINE_NETWORK_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
+                storage: NO_STORAGE_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -510,6 +519,8 @@ function createPageNavigationHostAdapter(
                     getWindowScaleOptions: () => [],
                     getWindowScale: async () => 1,
                     setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     getFullscreen: async () => fullscreen?.current === true,
                     setFullscreen: async (next: boolean) => {
                         if (fullscreen) {
@@ -609,6 +620,7 @@ function createPageNavigationHostAdapter(
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
+                    isDlcInstalled: () => false,
                     listEndings: () => [],
                     clearEndingState: async () => undefined,
                     clearEndings: async () => undefined,
@@ -626,6 +638,7 @@ function createPageNavigationHostAdapter(
                 network: OFFLINE_NETWORK_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
+                storage: NO_STORAGE_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -702,6 +715,8 @@ function createGameSaveHostAdapter(options: {
                     getWindowScaleOptions: () => [],
                     getWindowScale: async () => 1,
                     setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
                 },
                 layers: SILENT_LAYER_HOST,
@@ -789,6 +804,7 @@ function createGameSaveHostAdapter(options: {
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
+                    isDlcInstalled: () => false,
                     listEndings: () => [],
                     clearEndingState: async () => undefined,
                     clearEndings: async () => undefined,
@@ -822,6 +838,7 @@ function createGameSaveHostAdapter(options: {
                 network: OFFLINE_NETWORK_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
+                storage: NO_STORAGE_HOST,
                 devtools: {
                     log: () => undefined,
                 },
