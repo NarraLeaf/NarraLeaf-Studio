@@ -5,7 +5,7 @@ import type {
     UIListScrollbarPartStyle,
 } from "@shared/types/ui-editor/list";
 import { AnimatePresence, motion } from "motion/react";
-import { getUIListChildSlot } from "@shared/types/ui-editor/list";
+import { buildUIListItemInstanceKey, getUIListChildSlot } from "@shared/types/ui-editor/list";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
@@ -25,7 +25,13 @@ import {
     verticalTypographyCss,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
-import { getListProps, resolveListItemContentAlignmentStyle, resolveListItemsBindingArray } from "./helpers";
+import {
+    getListProps,
+    isListScrolledToEnd,
+    resolveListItemContentAlignmentStyle,
+    resolveListItemsBindingArray,
+    resolveListScrollMetrics,
+} from "./helpers";
 
 type ScrollMetrics = {
     viewport: number;
@@ -317,17 +323,11 @@ export function ListRenderer(props: WidgetRendererProps) {
             const viewportSize = horizontalScrollbar ? viewport.clientWidth : viewport.clientHeight;
             const contentSize = horizontalScrollbar ? viewport.scrollWidth : viewport.scrollHeight;
             const offset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
-            const maxOffset = Math.max(0, contentSize - viewportSize);
-            const progress = maxOffset > 0 ? offset / maxOffset : 0;
-            const payload = {
-                offset,
-                maxOffset,
-                progress,
-            };
+            const payload = resolveListScrollMetrics(viewportSize, contentSize, offset);
             void runtime.dispatchElementBlueprintEvent(element.id, "scroll", {
                 ...payload,
             });
-            const isAtEnd = maxOffset > 0 && offset >= maxOffset - 1;
+            const isAtEnd = isListScrolledToEnd(payload);
             if (isAtEnd && !reachedScrollEndRef.current) {
                 void runtime.dispatchElementBlueprintEvent(element.id, "scrollEnd", payload);
             }
@@ -515,7 +515,7 @@ export function ListRenderer(props: WidgetRendererProps) {
     const rowStaggerMs = Math.max(0, (p.itemAnimation?.childStaggerSeconds ?? 0) * 1000);
     const listBody = items.slice(0, count).map((item, i) => {
         const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
-        const instanceKey = `list-${element.id}-${key}`;
+        const instanceKey = buildUIListItemInstanceKey(element.id, key);
         // On the canvas nothing is selected: `selectedIndex` defaults to a row, and drawing the
         // template in its selected state would show the author a row most rows will never look like.
         const selected = isRuntime && i === selectedIndex;
