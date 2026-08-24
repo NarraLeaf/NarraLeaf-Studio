@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { DocumentDiff } from "@shared/documents/diff";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
+import { changePathAttribute } from "./compare/splitNavigation";
 import {
     buildDocumentChangeRows,
     CHANGE_KIND_GLYPH,
@@ -96,7 +97,7 @@ export function DocumentChangeList({ diff, limit, dense = false, footer, wholeDo
             )}
 
             {rows.map(row => (
-                <ChangeLine key={row.key} row={row} dense={dense} />
+                <DocumentChangeLine key={row.key} row={row} dense={dense} />
             ))}
 
             {hidden > 0 && (
@@ -120,8 +121,29 @@ export function DocumentChangeList({ diff, limit, dense = false, footer, wholeDo
  * is why the two swap places rather than both being drawn: `resolveDocumentChangeLabel` owns that
  * decision, and it exists because the same word arrives as a subject on one tier and as a label
  * parameter on another.
+ *
+ * Exported so that the split comparison can draw the same row in each of its two halves rather than
+ * writing a second one that would drift. It is the row itself and nothing around it: the tier
+ * caption, the empty line and the count of what was left out belong to whoever is assembling a list
+ * out of these, because each of them is said once per list and never once per row.
+ *
+ * **The change's path is on the element, not only in its tooltip.** `DocumentChange.path` is the one
+ * stable name a change has - the same handle a merge decision is taken on - and a surface that has
+ * to scroll to a change, or say which change two halves are showing, needs to address it rather than
+ * read it. It used to reach the DOM as `data-tip` text alone, which nothing can look a row up by.
  */
-function ChangeLine({ row, dense }: { row: DocumentChangeRow; dense: boolean }) {
+export function DocumentChangeLine({
+    row,
+    dense,
+    active = false,
+    className,
+}: {
+    row: DocumentChangeRow;
+    dense: boolean;
+    /** The row navigation has stopped on. Drawn as a fill, never as a second colour. */
+    active?: boolean;
+    className?: string;
+}) {
     const translator = useTranslation();
     const { t } = translator;
     const label = resolveDocumentChangeLabel(row.change, translator);
@@ -134,10 +156,14 @@ function ChangeLine({ row, dense }: { row: DocumentChangeRow; dense: boolean }) 
                 "flex items-baseline gap-1.5 overflow-hidden",
                 dense ? "py-px" : "py-0.5",
                 row.depth === 1 && (dense ? "pl-3" : "pl-4"),
+                active && "bg-fill",
+                className,
             )}
             // The full path, because a row shows the change and not where in the document it sits.
             // Absent for a change at the document root, where there is no path to give.
             data-tip={path || undefined}
+            data-change-path={changePathAttribute(row.change.path)}
+            data-change-row={row.key}
         >
             <span
                 aria-hidden

@@ -557,6 +557,17 @@ export const documentDiff = {
         documentsOmitted: "另有 {count} 份文档没有列出",
         unavailable: "该工程没有可用的版本控制",
     },
+    /** 把一份文件的两个版本放进各自的标签页并排看。这里只放并排排布本身用到的词。 */
+    split: {
+        open: "并排打开",
+        thisProject: "本工程",
+        notInVersion: "该版本没有这一处",
+        resize: "调整两侧宽度",
+        previous: "上一处改动",
+        next: "下一处改动",
+        position: "{index} / {total}",
+        gone: "该文件不在本次比较中",
+    },
     /**
      * 整份取一边地收尾一次合并。
      *
