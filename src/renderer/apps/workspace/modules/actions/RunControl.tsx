@@ -9,7 +9,8 @@ import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
-import { BuildService } from "@/lib/workspace/services/core/BuildService";
+import { BUILD_CONSOLE_CHANNEL, BuildService } from "@/lib/workspace/services/core/BuildService";
+import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
@@ -21,6 +22,7 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
 import { openPatchDialog } from "./PatchDialog";
+import { openBuildReportTab } from "../build-report";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import {
     getTestRunService,
@@ -69,6 +71,8 @@ const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
  * not a running app - can check that an entry for it exists.
  */
 const RUN_STOP_CATALOG_ID = "run:stop";
+/** Where a failed run's output is; the panel the failure notification sends the author to. */
+const CONSOLE_PANEL_ID = "narraleaf-studio:console";
 
 const RUN_MODE_META: Record<RunMode, {
     icon: React.ReactNode;
@@ -225,28 +229,79 @@ export function RunControl() {
         return preview.onStatusChanged(setPreviewStatus);
     }, [context]);
 
-    // The build's status, and the toasts that report its end. Moved here from the Build icon because
-    // this control is mounted for the whole session while an icon is mounted once per surface that
-    // draws it - and the icon was drawn in the command palette too, so a build finishing with the
-    // palette open announced itself twice.
+    /**
+     * The build's status, and the notification that reports its end.
+     *
+     * Moved here from the Build icon because this control is mounted for the whole session while an
+     * icon is mounted once per surface that draws it - and the icon was drawn in the command palette
+     * too, so a build finishing with the palette open announced itself twice.
+     *
+     * Three things the announcement has to get right:
+     *
+     *  - **A patch export announces itself too.** It runs in the same session and reports the same
+     *    states, it takes as long as a build, and it is watched no more closely; only the wording
+     *    differs, because a patch produces no installer.
+     *  - **A run the author stopped announces nothing.** The pipeline reports it as a failure, and
+     *    `cancelled` on the finished run is what tells the two apart.
+     *  - **The notification stays up.** A build runs for minutes with nobody watching, so an outcome
+     *    that cleared itself after five seconds was an outcome the author never saw - and the button
+     *    on it has to still be there when they come back.
+     */
     useEffect(() => {
         if (!context) {
             return;
         }
         const build = context.services.get<BuildService>(Services.Build);
         const uiService = context.services.get<UIService>(Services.UI);
-        let previous = build.getStatus();
-        setBuildStatus(previous);
+        // Seeded with whatever had already ended before this subscription existed, so remounting the
+        // top bar does not re-announce a run the author read about ten minutes ago.
+        let announced = build.getLastFinishedRun()?.id ?? 0;
+        setBuildStatus(build.getStatus());
         return build.onStateChanged(state => {
             setBuildStatus(state.status);
-            if (state.status !== previous) {
-                if (state.status === "done") {
-                    uiService.showNotification(translate("build.toast.done"), "success");
-                } else if (state.status === "error") {
-                    uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
-                }
+            const run = build.getLastFinishedRun();
+            if (!run || run.id === announced) {
+                return;
             }
-            previous = state.status;
+            announced = run.id;
+            if (run.cancelled) {
+                return;
+            }
+            const patch = run.kind === "patch";
+            if (run.state.status === "done") {
+                uiService.showNotification(
+                    translate(patch ? "build.toast.patchDone" : "build.toast.done"),
+                    "success",
+                    {
+                        sticky: true,
+                        actions: [{
+                            label: translate("build.toast.openReport"),
+                            primary: true,
+                            onClick: () => openBuildReportTab(context),
+                        }],
+                    },
+                );
+            } else {
+                uiService.showNotification(
+                    run.state.error ?? translate(patch ? "build.toast.patchFailed" : "build.toast.failed"),
+                    "error",
+                    {
+                        sticky: true,
+                        actions: [{
+                            label: translate("build.dialog.viewConsole"),
+                            primary: true,
+                            onClick: () => {
+                                uiService.panels.show(CONSOLE_PANEL_ID);
+                                // Showing the panel restores whichever channel was last active, so
+                                // without this the author can land on a tab the build never wrote to.
+                                context.services
+                                    .get<ConsoleService>(Services.Console)
+                                    .requestFocus(BUILD_CONSOLE_CHANNEL);
+                            },
+                        }],
+                    },
+                );
+            }
         });
     }, [context]);
 
