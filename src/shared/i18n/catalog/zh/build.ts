@@ -332,9 +332,9 @@ export const build = {
         title: "构建报告",
         empty: "没有可报告的构建",
         outcome: {
-            done: "已完成",
-            error: "已失败",
-            cancelled: "已中止",
+            done: "成功",
+            error: "失败",
+            cancelled: "中止",
         },
         kind: {
             build: "正式构建",
@@ -352,7 +352,7 @@ export const build = {
         includedTitle: "已打包的资产",
         includedEmpty: "本次运行没有打包任何资产",
         excludedTitle: "未打包的资产",
-        excludedEmpty: "本次运行没有遗漏任何资产",
+        excludedEmpty: "本次运行没有排除任何资产",
         charactersTitle: "未打包的角色",
         // 对完整打包资产库的运行，用它替代两份资产清单
         wholeLibrary: "本次运行完整打包了资产库",
