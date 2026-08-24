@@ -192,6 +192,9 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
     },
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
     restart: () => ipcRenderer.invoke("runtime:restart") as Promise<void>,
+    getWindowScale: () => ipcRenderer.invoke("runtime:window:getScale") as Promise<number>,
+    setWindowScale: (scale: number) =>
+        ipcRenderer.invoke("runtime:window:setScale", scale) as Promise<void>,
     setDisplayAwake: (awake: boolean) => {
         ipcRenderer.send("runtime:displayAwake:set", awake);
     },
@@ -213,7 +216,7 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
             closeRequestedListeners.delete(listener);
         };
     },
-    capabilities: { closeRequested: true },
+    capabilities: { closeRequested: true, windowScale: true },
     save: {
         write: (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
             ipcRenderer.invoke("runtime:save:write", {

@@ -144,6 +144,12 @@ const bridge: GameRuntimePreloadBridge = {
     setDisplayAwake: awake => {
         screenWakeLock.setRequested(awake);
     },
+    // A page is the window, and no script may resize the one the browser gave it: `resizeTo` is
+    // ignored for anything the player opened themselves. Reported through `capabilities` below, so
+    // a configuration screen builds its size row from an empty list here rather than showing the
+    // player a row that does nothing.
+    getWindowScale: async () => 1,
+    setWindowScale: async () => undefined,
     getFullscreen: async () => document.fullscreenElement != null,
     setFullscreen: async (fullscreen: boolean) => {
         // Browsers gate requestFullscreen behind a user gesture; a rejected
@@ -171,7 +177,7 @@ const bridge: GameRuntimePreloadBridge = {
     onCloseRequested: () => () => undefined,
     // Says out loud what the no-op above implies, so callers gate on it instead of registering a
     // handler that can never run (runtime plugins surface it as events.available("closeRequested")).
-    capabilities: { closeRequested: false },
+    capabilities: { closeRequested: false, windowScale: false },
     // Nothing here states a crash policy or a log path. This page is a static file nobody
     // navigates to with a query, so the crash screen keeps its default until `readPack` resolves,
     // and there is no log file to send anyone to - this shell prints to the browser console.

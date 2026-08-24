@@ -326,6 +326,10 @@ export type BlueprintHostApiRuntime = {
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
+        /** The sizes this build offers, ascending. Empty where the shell has no window to size. */
+        getWindowScaleOptions: () => number[];
+        getWindowScale: () => Promise<number>;
+        setWindowScale: (scale: number) => Promise<void>;
         /**
          * Open one web address in the player's browser.
          *
@@ -879,6 +883,14 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     /** Hosts without a real application window (story preview) leave these unset. */
     onGetFullscreen?: () => boolean | Promise<boolean>;
     onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
+    /**
+     * The window sizes this build offers, or none where the shell has no window to size. See
+     * `GameAppHost.windowScaleOptions`; the empty list is what a configuration screen draws nothing
+     * from, rather than drawing a control that cannot work.
+     */
+    windowScaleOptions?: number[];
+    onGetWindowScale?: () => number | Promise<number>;
+    onSetWindowScale?: (scale: number) => void | Promise<void>;
     /**
      * The layer stack composited over the page lane.
      *
@@ -2186,6 +2198,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onQuitApplication,
         onGetFullscreen,
         onSetFullscreen,
+        windowScaleOptions,
+        onGetWindowScale,
+        onSetWindowScale,
         onShowLayer,
         onHideLayer,
         onHideLayerGroup,
@@ -2450,6 +2465,37 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("setFullscreen: application window is not available");
                     }
                     await onSetFullscreen(fullscreen === true);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowScaleOptions: () => {
+                const cap = "navigation.getWindowScaleOptions";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Ascending, and a copy: the list is the author's answer, and a graph that
+                    // sorted or spliced the array in place would be editing it for everyone.
+                    return [...(windowScaleOptions ?? [])].sort((a, b) => a - b);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowScale: async () => {
+                const cap = "navigation.getWindowScale";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // A shell with no window to size answers with the design size rather than
+                    // throwing: nothing about the game is wrong, there is simply one size.
+                    return onGetWindowScale ? Number(await onGetWindowScale()) : 1;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setWindowScale: async (scale: number) => {
+                const cap = "navigation.setWindowScale";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSetWindowScale?.(Number(scale));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

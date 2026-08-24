@@ -682,6 +682,20 @@ export type GameRuntimePreloadBridge = {
     setDisplayAwake(awake: boolean): void;
     getFullscreen(): Promise<boolean>;
     setFullscreen(fullscreen: boolean): Promise<void>;
+    /**
+     * The window's size as a multiple of the game's design size, for a configuration screen that
+     * offers the player a choice of window sizes.
+     *
+     * A request for a size this build does not offer is answered with the nearest one it does - the
+     * offered ladder is the author's, and a shell that honoured anything else would be a second
+     * answer to a question the project already settled (`app.window`).
+     *
+     * Inert on a shell with no window of its own to size, which says so through
+     * {@link capabilities}.`windowScale` rather than by refusing: what an author must not build is a
+     * size row that appears and does nothing, and the list they build it from is empty there.
+     */
+    getWindowScale(): Promise<number>;
+    setWindowScale(scale: number): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     /**
@@ -701,6 +715,11 @@ export type GameRuntimePreloadBridge = {
     capabilities: {
         /** Whether {@link onCloseRequested} can ever fire. False on the web export. */
         closeRequested: boolean;
+        /**
+         * Whether this shell has a window whose size it can set. False on the web export, where the
+         * page is the window and no script may resize it.
+         */
+        windowScale: boolean;
     };
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
