@@ -59,7 +59,7 @@ export const documentDiff = {
         title: "Name",
         /** `{name}` is itself a key - see `count` below - resolved before it reaches this template. */
         count: "{name}",
-        other: "Changed, in a way the summary does not show",
+        other: "Changed outside the totals",
     },
     /** Tier 3: JSON paths. Generic by construction; the caption above the list says so. */
     structural: {
@@ -412,13 +412,13 @@ export const documentDiff = {
      */
     tier: {
         summary: "Summary only",
-        summaryHint: "The contents were not compared. These are the numbers each version reports about itself.",
+        summaryHint: "Only the totals were compared, not the contents.",
         structural: "Structural",
-        structuralHint: "Compared by JSON structure alone, so generated ids and reordered lists read as changes.",
+        structuralHint: "This list may include differences that are not edits.",
         content: "Format only",
         contentHint: "What the file reports about itself was compared. Its contents were not.",
         opaque: "Not read",
-        opaqueHint: "Too large, not text, or unreadable. Only its size is reported.",
+        opaqueHint: "Only the size of this file was compared.",
     },
     rows: {
         loading: "Reading the comparison…",
@@ -426,7 +426,7 @@ export const documentDiff = {
         // Three ways of being empty, because "modified" plus "nothing differs" reads as a
         // contradiction and each tier can support a different claim. See documentDiffEmptyKey.
         emptyFormatting: "Only formatting changed",
-        emptyUntracked: "Nothing the editor tracks changed",
+        emptyUntracked: "No change visible in the editor",
         emptyCounts: "The totals are unchanged",
         moreInGroup: "{count} more inside",
         showing: "Showing {shown} of {total}",
@@ -547,7 +547,7 @@ export const documentDiff = {
         fileList: "Changed files",
         resize: "Resize the file list",
         /** Only reachable by closing every heading, which is a thing an author can do. */
-        selectPrompt: "Open a heading and pick a file to see what changed in it.",
+        selectPrompt: "Open a heading and select a file to see its changes.",
         /** What one file's row says when the file was modified rather than added or removed. */
         changes: {
             one: "{count} change",
@@ -575,8 +575,8 @@ export const documentDiff = {
          * files whose detail has the specific caveat on it.
          */
         partial: {
-            one: "{count} file here was not compared in full",
-            other: "{count} files here were not compared in full",
+            one: "{count} file here may have changes not listed",
+            other: "{count} files here may have changes not listed",
         },
     },
     tab: {
@@ -588,8 +588,8 @@ export const documentDiff = {
         refresh: "Read again",
         empty: "Nothing differs between these two versions",
         emptyWorkingTree: "Nothing has changed since the last version",
-        readFailure: "The bytes for this comparison could not be read: {error}",
-        incomplete: "{shown} of {total} changed documents were compared. The rest were left out.",
+        readFailure: "This comparison could not be read: {error}",
+        incomplete: "{shown} of {total} changed documents were compared.",
         documentsOmitted: "{count} more documents are not listed here.",
         unavailable: "Version control is not available in this project.",
     },
@@ -726,7 +726,7 @@ export const documentDiff = {
          * the same result; a second phrase for it would read as a second behaviour.
          */
         fitView: "Fit view",
-        oneChange: "Showing one change.",
+        oneChange: "Showing one change",
         showAll: "Show every change",
         /**
          * The changes this canvas is not marking, said in one line and never in silence.
@@ -742,7 +742,7 @@ export const documentDiff = {
         onOtherPages: "{count} on other pages",
         onOtherGraphs: "{count} in other graphs",
         /** Inside a component definition, outside every page, or about the file itself. */
-        offCanvas: "{count} cannot be drawn on a page",
+        offCanvas: "{count} outside every page",
         /**
          * Marked nowhere because the drawn page has no handle on the element.
          *
@@ -750,7 +750,7 @@ export const documentDiff = {
          * definition shares the element ids inside it, so that content carries no id at all and six
          * placements would otherwise be indistinguishable.
          */
-        unplaced: "{count} could not be located",
+        unplaced: "{count} with no place on a page",
         /** Four reasons a column has no picture in it, and they stay four. */
         notDrawn: "This version of the page could not be drawn.",
         emptyGraph: "This graph has no nodes.",
