@@ -13,6 +13,7 @@ import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
 import { compileAllBlueprintScriptsForProject } from "./compiler/blueprint/compileProjectBlueprintScripts";
 import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
+import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
@@ -400,6 +401,7 @@ export class DevModeManager {
             started = Date.now();
             this.emitVerbose(session, `bundle assembly started: revision ${session.revision}`);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
+            const runDlc = await resolveRunDlc(this.app.getGlobalState(), session.projectPath);
             const bundle = await this.bundleSource.load({
                 projectPath: session.sourcePath,
                 bundleId: session.id,
@@ -408,6 +410,10 @@ export class DevModeManager {
                 // expects the next reload to be the other one, not to have to stop and start.
                 // `packaging` stays off, so this folds the variant and plans no scene drop.
                 ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
+                // Read per rebuild like the variant, and for the same reason: an author switching a
+                // DLC off expects the next reload to be without it. Absent when nothing is switched
+                // off, which carries every story the project has - what Dev Mode always did.
+                ...(runDlc ? { includedDlc: runDlc } : {}),
                 onNotice: message => this.emitWorkspaceConsoleLog(session, {
                     level: "info",
                     source: "Dev Mode",

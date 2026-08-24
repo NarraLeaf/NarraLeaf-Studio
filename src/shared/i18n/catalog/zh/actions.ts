@@ -25,6 +25,8 @@ export const actions = {
         // 和「正式构建」并列，因为它们是同一类事：产出一个文件而不是把什么跑起来。
         exportPatch: "导出补丁…",
         runAs: "运行为",
+            runWithDlc: "带 DLC 运行",
+            dlcCount: "{active} / {total}",
     },
     file: {
         label: "文件",

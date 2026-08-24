@@ -1800,6 +1800,11 @@ export class GameBuildManager {
                 // The one compile that produces something a player receives, so the one that plans a
                 // scene drop and refuses a graph it cannot fold.
                 packaging: true,
+                // None of them: this is the package a player buys first. Stated rather than left
+                // out, because absent means "every DLC the project has" - which for a base build
+                // would be the author's whole extra content shipped inside the thing they sell
+                // separately.
+                includedDlc: [],
                 // The compile can refuse this build (a blueprint whose variant test does not come out
                 // a constant), and that sentence is the author's to read.
                 locale: getMainLocale(this.app),
@@ -1856,6 +1861,11 @@ export class GameBuildManager {
                 declaredScenes,
                 assetAxes,
                 packaging: true,
+                // None of them: this is the package a player buys first. Stated rather than left
+                // out, because absent means "every DLC the project has" - which for a base build
+                // would be the author's whole extra content shipped inside the thing they sell
+                // separately.
+                includedDlc: [],
                 locale: getMainLocale(this.app),
                 // The browser export and both mobile repacks read this one compile, so all three are
                 // what a platform-scoped plugin field has to agree across.
