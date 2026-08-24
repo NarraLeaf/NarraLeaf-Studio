@@ -20,6 +20,13 @@ import {
     type GameCrashPolicy,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
+import {
+    nearestWindowScaleStep,
+    normalizeWindowConfiguration,
+    WINDOW_SCALE_DESIGN,
+    type WindowConfiguration,
+    type WindowScaleStep,
+} from "@shared/types/appWindow";
 import { getMimeType } from "@shared/utils/fs";
 import {
     DEFAULT_SAVE_LOCATION_CONFIGURATION,
@@ -76,6 +83,17 @@ import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
 import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
 import { resolveShellText, type ShellText } from "./shellText";
 import { claimSingleInstance } from "./singleInstance";
+import {
+    currentWindowScale,
+    fitInside,
+    NO_WINDOW_CHROME,
+    readWindowGeometry,
+    resolveWindowGeometry,
+    roomForStage,
+    scaledDesign,
+    writeWindowGeometry,
+    type WindowChrome,
+} from "./windowGeometry";
 import { installWindowCrashHandling } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
@@ -250,6 +268,20 @@ let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
 /** The window's display block, driven by the renderer over `runtime:displayAwake:set`. */
 let displaySleep: DisplaySleepInhibitor | null = null;
+/** What the project says its window may do; settled from the pack as the window is built. */
+let windowConfig: WindowConfiguration = normalizeWindowConfiguration(undefined);
+/** The stage's own size, which every offered scale step is a multiple of. */
+let windowDesign = { width: 1280, height: 720 };
+/**
+ * The window's content bounds while it is neither maximised nor full-screen.
+ *
+ * Kept because that is the size worth restoring: `getContentBounds` on a maximised window answers
+ * with the screen, and a player who closed the game maximised should get a maximised window back -
+ * not a window whose restored size is also the screen.
+ */
+let normalWindowBounds: { width: number; height: number; x: number | null; y: number | null } | null = null;
+/** What this platform's window frame adds to the stage, measured from the window itself. */
+let windowChrome: WindowChrome = NO_WINDOW_CHROME;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
@@ -725,7 +757,29 @@ async function readPack(): Promise<GameRuntimePackV1> {
 }
 
 function createWindow(pack: GameRuntimePackV1): BrowserWindow {
-    const size = resolveInitialWindowSize(pack);
+    const design = resolveInitialWindowSize(pack);
+    windowConfig = normalizeWindowConfiguration(pack.bundle?.window);
+    // Measured rather than assumed: a 1080-tall window plus its title bar does not fit a 1080p
+    // desktop once the taskbar has its strip, and the display the player left the game on may not
+    // be the primary one. `getDisplayMatching` answers both - it falls back to the nearest display
+    // for a rectangle that lands on none, which is the case a remembered position has to survive.
+    const remembered = readWindowGeometry(userDataDir);
+    const displays = screen.getAllDisplays().map(display => display.workArea);
+    const workArea = remembered && remembered.x !== null && remembered.y !== null
+        ? screen.getDisplayMatching({
+            x: remembered.x,
+            y: remembered.y,
+            width: remembered.width,
+            height: remembered.height,
+        }).workArea
+        : screen.getPrimaryDisplay().workArea;
+    const geometry = resolveWindowGeometry({
+        design,
+        config: windowConfig,
+        remembered,
+        workArea,
+        displays,
+    });
     const icon = createProjectIcon(pack);
     // Production disables DevTools outright: with devTools:false Electron ignores
     // any openDevTools call and the menu/keyboard toggles become no-ops, so there
@@ -738,11 +792,21 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         || (pack.debuggable === true && hasDebuggingSwitch(startupArguments(), process.platform));
     const win = new BrowserWindow({
         title: pack.project.name,
-        width: size.width,
-        height: size.height,
+        // The design size is the STAGE, not the window: Electron's width/height are the outer size,
+        // so without this a 1920x1080 project was drawn into a client area a title bar shorter than
+        // it asked for and scaled to about 0.97 on the display it was made for.
+        useContentSize: true,
+        width: geometry.width,
+        height: geometry.height,
+        ...(geometry.x !== undefined && geometry.y !== undefined
+            ? { x: geometry.x, y: geometry.y }
+            : { center: true }),
+        fullscreen: geometry.fullscreen,
+        // The steps a configuration screen offers are one thing and the window frame is another;
+        // an author who wants only the offered sizes turns dragging off.
+        resizable: windowConfig.resizable,
         minWidth: 480,
         minHeight: 320,
-        center: true,
         frame: true,
         // Windows and Linux lay the menu bar out inside the window, so it has to
         // be gone before the first frame or the game's viewport is measured with
@@ -771,6 +835,89 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         },
     });
     win.setTitle(pack.project.name);
+    windowDesign = design;
+    /*
+     * The frame, and then the geometry again.
+     *
+     * Only a window can say what its own frame costs - it depends on the platform, the theme and
+     * the display's scaling - and the size that has to fit the screen is the window rather than the
+     * stage inside it. MEASURED on Windows 11 at 125%: 15x64, which is why a 1080-tall stage does
+     * not fit a desktop with 1104 rows under its taskbar. Asking once with zero and again with the
+     * real number costs nothing visible, because the window is still hidden until first paint.
+     */
+    const outerBounds = win.getBounds();
+    const [openedWidth, openedHeight] = win.getContentSize();
+    windowChrome = {
+        width: Math.max(0, outerBounds.width - openedWidth),
+        height: Math.max(0, outerBounds.height - openedHeight),
+    };
+    const fitted = resolveWindowGeometry({
+        design,
+        config: windowConfig,
+        remembered,
+        workArea,
+        displays,
+        chrome: windowChrome,
+    });
+    if (fitted.width !== openedWidth || fitted.height !== openedHeight) {
+        win.setContentSize(fitted.width, fitted.height);
+        if (fitted.x === undefined || fitted.y === undefined) {
+            win.center();
+        }
+    }
+    normalWindowBounds = {
+        width: fitted.width,
+        height: fitted.height,
+        x: fitted.x ?? null,
+        y: fitted.y ?? null,
+    };
+    /*
+     * No `setAspectRatio`. It looks like the right answer - a window held at the design ratio can
+     * never letterbox its own art - and on Windows it is not: MEASURED on Electron 38, the ratio is
+     * maintained for the WHOLE window including the frame, with or without the frame passed as the
+     * extra size, so asking for 16:9 gave a 16:9 window with a 1.90 stage inside it. The stage is
+     * fitted by the renderer either way; a window dragged off the ratio letterboxes, which is what
+     * every build has always done and is at least the shape the author drew.
+     */
+    if (fitted.maximized) {
+        win.maximize();
+    }
+    // Only while the window is in its ordinary state - see `normalWindowBounds`.
+    const rememberNormalBounds = (): void => {
+        if (win.isDestroyed() || win.isMaximized() || win.isMinimized() || win.isFullScreen()) {
+            return;
+        }
+        // Size from the content, position from the window. Mixing them is a real drift: the
+        // content origin sits a title bar below the window's, so a window reopened at its content
+        // position walks down the screen by the height of its own frame on every launch. MEASURED
+        // at 56 rows per relaunch before this was split.
+        const content = win.getContentSize();
+        const bounds = win.getBounds();
+        normalWindowBounds = {
+            width: content[0],
+            height: content[1],
+            x: bounds.x,
+            y: bounds.y,
+        };
+    };
+    win.on("resize", rememberNormalBounds);
+    win.on("move", rememberNormalBounds);
+    // On the way out rather than after: `closed` fires on a window there is nothing left to read.
+    // A close the game cancels writes too, which costs one file write and keeps the answer correct
+    // for the quit that does not go through a close at all.
+    win.on("close", () => {
+        if (!windowConfig.rememberGeometry || win.isDestroyed()) {
+            return;
+        }
+        writeWindowGeometry(userDataDir, {
+            width: normalWindowBounds?.width ?? geometry.width,
+            height: normalWindowBounds?.height ?? geometry.height,
+            x: normalWindowBounds?.x ?? null,
+            y: normalWindowBounds?.y ?? null,
+            maximized: win.isMaximized(),
+            fullscreen: win.isFullScreen(),
+        });
+    });
     // Chromium raises the loaded document's <title> to the window, and the shell's index.html
     // carries a generic one, so the name set above lasted until the first paint and every game
     // was called NarraLeaf Game in the taskbar. The window is the project's, and a variant's is
@@ -973,6 +1120,50 @@ function createProjectIcon(pack: GameRuntimePackV1): Electron.NativeImage | unde
         console.warn("[GameRuntime] Failed to load project icon", error);
         return undefined;
     }
+}
+
+/**
+ * Put the window at one of the sizes the project offers.
+ *
+ * Full screen and maximised are left first: both are answers to "how big", and a game asked for a
+ * size while in either of them would come back to the old one the moment the player left it.
+ *
+ * The window keeps its place unless the new size would hang off the screen, in which case it is
+ * centred - a player who put the window where they wanted it has said something worth keeping, and
+ * a window half off the desktop has not.
+ */
+function applyWindowScale(scale: WindowScaleStep): void {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+    if (win.isFullScreen()) {
+        win.setFullScreen(false);
+    }
+    if (win.isMaximized()) {
+        win.unmaximize();
+    }
+    const workArea = screen.getDisplayMatching(win.getBounds()).workArea;
+    const size = fitInside(scaledDesign(windowDesign, scale), roomForStage(workArea, windowChrome));
+    win.setContentSize(size.width, size.height);
+    const bounds = win.getBounds();
+    const fits = bounds.x >= workArea.x
+        && bounds.y >= workArea.y
+        && bounds.x + bounds.width <= workArea.x + workArea.width
+        && bounds.y + bounds.height <= workArea.y + workArea.height;
+    if (!fits) {
+        win.center();
+    }
+}
+
+/** Which offered step the window is at now, for a configuration screen reading its own state. */
+function readWindowScale(): WindowScaleStep {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+        return WINDOW_SCALE_DESIGN;
+    }
+    const [width, height] = win.getContentSize();
+    return currentWindowScale(windowDesign, { width, height }, windowConfig.scaleSteps);
 }
 
 function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; height: number } {
@@ -1284,6 +1475,12 @@ function registerRuntimeIpc(): void {
     // window has gone is about a window with no display left to hold.
     ipcMain.on("runtime:displayAwake:set", (_event, awake: boolean) => {
         displaySleep?.setRequested(awake === true);
+    });
+    ipcMain.handle("runtime:window:getScale", () => readWindowScale());
+    ipcMain.handle("runtime:window:setScale", (_event, scale: number) => {
+        // Through the project's own ladder: a graph may ask for anything, and the sizes this build
+        // offers are the sizes its author picked. See `nearestWindowScaleStep`.
+        applyWindowScale(nearestWindowScaleStep(Number(scale), windowConfig.scaleSteps));
     });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {
