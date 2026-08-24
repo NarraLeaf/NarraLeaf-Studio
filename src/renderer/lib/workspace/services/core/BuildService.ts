@@ -159,6 +159,12 @@ const LINT_CONSOLE_LEVELS: Record<LintSeverity, ConsoleLogLevel> = {
  * the toolbar/dialog react to status changes. The heavy lifting (compile +
  * electron-builder) lives in the main-process GameBuildManager.
  */
+/**
+ * Which reading of the project a coverage refusal protects: the asset sweep every package runs, or
+ * the scene answer that a narrowing edition depends on as well.
+ */
+type TrimCoverageScope = "assets" | "content";
+
 export class BuildService extends Service<BuildService> {
     private state: GameBuildStateSnapshot = IDLE_STATE;
     private timer: ReturnType<typeof setInterval> | null = null;
@@ -625,6 +631,15 @@ export class BuildService extends Service<BuildService> {
         const appTags = services.get<AppTagService>(Services.AppTags);
         const appTag = appTags.resolveTag(appTagId);
 
+        // Ahead of everything below, and not conditional on this variant removing anything: every
+        // package narrows the asset library to the ids written in the bytes it ships, so the one
+        // shape that reading is blind to has to be refused for every package rather than only for
+        // the editions that also drop scenes.
+        const pinRefusal = await this.refuseOnTrimCoverageGaps(startedAt, platforms, appTag.name, "assets");
+        if (pinRefusal) {
+            return pinRefusal;
+        }
+
         let answer: ReleaseContentAnswer;
         try {
             answer = solveReleaseContent({
@@ -679,7 +694,12 @@ export class BuildService extends Service<BuildService> {
         }
 
         if (answer.removedScenes.length > 0) {
-            const coverageRefusal = await this.refuseOnTrimCoverageGaps(startedAt, platforms, answer.appTagName);
+            const coverageRefusal = await this.refuseOnTrimCoverageGaps(
+                startedAt,
+                platforms,
+                answer.appTagName,
+                "content",
+            );
             if (coverageRefusal) {
                 return coverageRefusal;
             }
@@ -725,6 +745,20 @@ export class BuildService extends Service<BuildService> {
      * missing with nothing anywhere having said so. The remedy is to name the asset in the pin
      * instead of wiring a value into it.
      *
+     * ## The two scopes, which are two different questions
+     *
+     * `assets` is asked of every package. What it refuses is the one construct the id sweep cannot
+     * see - an asset arriving on a pin from a computed value - and nothing else, because that
+     * question has nothing to do with which scenes a build keeps. The remedy is to select the asset
+     * on the pin.
+     *
+     * `content` is asked only where the build also drops scenes. It adds the gaps that make the
+     * scene answer itself incomplete: a story document that would not load, and an index that never
+     * built. A gap in a widget, a voice table or a character says nothing about which scenes a story
+     * can reach, which is why the wider question is not asked of every build - one `app://fs` URL
+     * pasted into a widget prop leaves a gap that can never be resolved, and asking it everywhere
+     * would hand this feature a permanent off switch.
+     *
      * ## Why it is a gate and not a preflight finding
      *
      * The criterion is stated at the `AppTag` gate above, and this one fails it for a reason of its
@@ -737,6 +771,7 @@ export class BuildService extends Service<BuildService> {
         startedAt: number,
         platforms: GameBuildPlatform[],
         variant: string,
+        scope: TrimCoverageScope,
     ): Promise<GameBuildStateSnapshot | null> {
         let gaps: readonly ReferenceIndexGap[];
         try {
@@ -754,27 +789,31 @@ export class BuildService extends Service<BuildService> {
             console.error("[Build] the reference index could not be consulted for the content check", error);
             return null;
         }
-        const touching = gaps.filter(gap => !gap.slice
-            || gap.slice === "story"
-            || gap.slice === "storyAnimation"
-            || gap.reason === "computedAssetPin");
+        const touching = scope === "assets"
+            ? gaps.filter(gap => gap.reason === "computedAssetPin")
+            : gaps.filter(gap => !gap.slice
+                || gap.slice === "story"
+                || gap.slice === "storyAnimation"
+                || gap.reason === "computedAssetPin");
         if (touching.length === 0) {
             return null;
         }
 
         const consoleService = this.tryGetConsole();
+        const gapKey = scope === "assets" ? "build.contentComputedPinGap" : "build.contentCoverageGap";
         for (const gap of touching) {
-            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate("build.contentCoverageGap", {
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate(gapKey, {
                 // A gap with no site is the index itself; it has no location to name, and the
                 // sentence has to read as one either way.
                 location: gap.location ?? translate("build.contentCoverageWholeProject"),
                 variant,
             }), { source: BUILD_CONSOLE_SOURCE });
         }
-        const refusal = translateN("build.contentCoverageSummary", touching.length, {
-            count: touching.length,
-            variant,
-        });
+        const refusal = translateN(
+            scope === "assets" ? "build.contentComputedPinSummary" : "build.contentCoverageSummary",
+            touching.length,
+            { count: touching.length, variant },
+        );
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
         this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: refusal });
         return this.state;
