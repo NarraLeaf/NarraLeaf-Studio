@@ -28,6 +28,7 @@ import { mathBlueprintNodes } from "./mathNodes";
 import { networkBlueprintNodes } from "./networkNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { progressBlueprintNodes } from "./progressNodes";
+import { storageBlueprintNodes } from "./storageNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { soundBlueprintNodes } from "./soundNodes";
 import { structuralBlueprintNodes } from "./structuralNodes";
@@ -65,6 +66,7 @@ export { mathBlueprintNodes } from "./mathNodes";
 export { networkBlueprintNodes } from "./networkNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { progressBlueprintNodes } from "./progressNodes";
+export { storageBlueprintNodes } from "./storageNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { visitedBlueprintNodes } from "./visitedNodes";
 export { endingBlueprintNodes } from "./endingNodes";
@@ -93,6 +95,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...endingBlueprintNodes,
     ...appTagBlueprintNodes,
     ...progressBlueprintNodes,
+    ...storageBlueprintNodes,
     ...backlogBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,

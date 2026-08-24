@@ -12,6 +12,7 @@ import type {
 } from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
+import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -309,6 +310,15 @@ export type GameAppHost = {
     exportProgress?: (request: GameProgressExportRequest) => Promise<GameProgressExportResult>;
     /** Read it back, for the Import Progress node. Omitted for the reason above. */
     importProgress?: () => Promise<GameProgressImportResult>;
+    /**
+     * Whether what this shell writes stays written, for the Check Storage Durability node.
+     *
+     * The packaged desktop game and Dev Mode answer `durable` - files in a directory nobody
+     * reclaims - and the web export answers whatever grant the browser gave the page. Omitted by
+     * hosts that write nowhere real (the workspace story preview), where the node leaves by
+     * `Unknown`, which is what an environment that cannot answer means.
+     */
+    storageDurability?: () => Promise<GameStorageDurability>;
 };
 
 /** A read-only view of the current execution stacks (root + in-flight async branches). */

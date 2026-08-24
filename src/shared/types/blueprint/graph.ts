@@ -1088,6 +1088,20 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG = "blueprint.game.getAppTag" a
  */
 export const BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS = "blueprint.game.progress.export" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS = "blueprint.game.progress.import" as const;
+/**
+ * Whether what this build writes stays written.
+ *
+ * A packaged desktop game owns files in a user-data directory and answers `Durable` always. A web
+ * export is a guest of the browser: a site whose storage has not been granted persistence may be
+ * evicted whole under storage pressure, saves included, and a browser that will not answer the
+ * question at all is neither a yes nor a no.
+ *
+ * Three branches rather than a flag, because the three lead an author to different words - and the
+ * node states the fact without acting on it. Whether a player is told anything, and in what terms,
+ * is the author's to decide: a page whose storage may be reclaimed is still a page a game can be
+ * finished on.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_STORAGE_DURABILITY = "blueprint.game.storageDurability" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;

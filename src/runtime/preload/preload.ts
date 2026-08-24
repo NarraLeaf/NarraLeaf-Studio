@@ -224,6 +224,13 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
         };
     },
     capabilities: { closeRequested: true },
+    /*
+     * Saves here are files in this game's user-data directory. Nothing reclaims them: no quota, no
+     * eviction, no seven-day rule - which is the difference the web export has to report and this
+     * one does not. `claimSession` is deliberately absent for the neighbouring reason: the main
+     * process has already refused to start a second copy by the time this preload runs.
+     */
+    storageDurability: () => Promise.resolve("durable" as const),
     crashPolicy,
     logPath: readGameRuntimeLogPathArg(process.argv),
     save: {
