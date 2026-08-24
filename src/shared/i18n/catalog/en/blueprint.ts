@@ -1077,6 +1077,8 @@ export const blueprint = {
         getValue: "Get Value",
         getFullscreen: "Get Fullscreen",
         getWindowScale: "Get Window Scale",
+        getWindowSize: "Get Window Size",
+        setWindowSize: "Set Window Size",
         getWindowScaleOptions: "Get Window Scale Options",
         setWindowScale: "Set Window Scale",
         getVar: "Get Var",

@@ -1069,6 +1069,8 @@ export const blueprint = {
         getValue: "获取值",
         getFullscreen: "获取全屏状态",
         getWindowScale: "获取窗口倍数",
+        getWindowSize: "获取窗口尺寸",
+        setWindowSize: "设置窗口尺寸",
         getWindowScaleOptions: "获取可选窗口倍数",
         setWindowScale: "设置窗口倍数",
         getVar: "获取变量",
