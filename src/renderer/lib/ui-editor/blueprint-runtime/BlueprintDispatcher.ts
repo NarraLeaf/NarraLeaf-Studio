@@ -245,6 +245,15 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "navigation.setWindowScale" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.setWindowScale" });
                 },
+                getWindowSize: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.getWindowSize" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.getWindowSize" });
+                    return { width: 0, height: 0 };
+                },
+                setWindowSize: async (_width: number, _height: number) => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.setWindowSize" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.setWindowSize" });
+                },
             },
             game: {
                 startStory: async (_request: { storyId: string; sceneId: string }) => {

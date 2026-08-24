@@ -1071,6 +1071,8 @@ export const blueprint = {
         getValue: "値を取得",
         getFullscreen: "全画面かどうかを取得",
         getWindowScale: "ウィンドウ倍率を取得",
+        getWindowSize: "ウィンドウサイズを取得",
+        setWindowSize: "ウィンドウサイズを設定",
         getWindowScaleOptions: "選択できるウィンドウ倍率を取得",
         setWindowScale: "ウィンドウ倍率を設定",
         getVar: "変数を取得",

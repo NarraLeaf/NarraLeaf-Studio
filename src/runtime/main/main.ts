@@ -21,7 +21,6 @@ import {
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import {
-    nearestWindowScaleStep,
     normalizeWindowConfiguration,
     WINDOW_SCALE_DESIGN,
     type WindowConfiguration,
@@ -1123,18 +1122,38 @@ function createProjectIcon(pack: GameRuntimePackV1): Electron.NativeImage | unde
 }
 
 /**
- * Put the window at one of the sizes the project offers.
+ * Put the stage at a multiple of the size the game was drawn at.
  *
- * Full screen and maximised are left first: both are answers to "how big", and a game asked for a
- * size while in either of them would come back to the old one the moment the player left it.
+ * Any multiple, not only the ones the project offers: see the IPC handler for why the offered list
+ * is a list rather than a limit.
+ */
+function applyWindowScale(scale: number): void {
+    if (!Number.isFinite(scale) || scale <= 0) {
+        return;
+    }
+    const size = scaledDesign(windowDesign, scale);
+    applyWindowContentSize(size.width, size.height);
+}
+
+/**
+ * Put the stage at a size in pixels.
+ *
+ * The one place a window is resized while the game runs, so the two ways of asking - a multiple of
+ * the design size, or the pixels themselves - cannot drift apart.
+ *
+ * Full screen and maximised are left first: both are answers to "how big", and a window sized
+ * underneath either would come back to the old size the moment the player left it.
  *
  * The window keeps its place unless the new size would hang off the screen, in which case it is
  * centred - a player who put the window where they wanted it has said something worth keeping, and
  * a window half off the desktop has not.
  */
-function applyWindowScale(scale: WindowScaleStep): void {
+function applyWindowContentSize(width: number, height: number): void {
     const win = mainWindow;
     if (!win || win.isDestroyed()) {
+        return;
+    }
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
         return;
     }
     if (win.isFullScreen()) {
@@ -1144,7 +1163,7 @@ function applyWindowScale(scale: WindowScaleStep): void {
         win.unmaximize();
     }
     const workArea = screen.getDisplayMatching(win.getBounds()).workArea;
-    const size = fitInside(scaledDesign(windowDesign, scale), roomForStage(workArea, windowChrome));
+    const size = fitInside({ width, height }, roomForStage(workArea, windowChrome));
     win.setContentSize(size.width, size.height);
     const bounds = win.getBounds();
     const fits = bounds.x >= workArea.x
@@ -1478,9 +1497,22 @@ function registerRuntimeIpc(): void {
     });
     ipcMain.handle("runtime:window:getScale", () => readWindowScale());
     ipcMain.handle("runtime:window:setScale", (_event, scale: number) => {
-        // Through the project's own ladder: a graph may ask for anything, and the sizes this build
-        // offers are the sizes its author picked. See `nearestWindowScaleStep`.
-        applyWindowScale(nearestWindowScaleStep(Number(scale), windowConfig.scaleSteps));
+        // Any multiple the graph asks for, not only the ones the project offers: the offered list
+        // is what a configuration screen is built from, and a game that computed a size of its own
+        // has a reason the list cannot know. The screen and the window minimum are the only limits,
+        // and those are not policy - a window larger than the desktop is one the player cannot use.
+        applyWindowScale(Number(scale));
+    });
+    ipcMain.handle("runtime:window:getSize", () => {
+        const win = mainWindow;
+        if (!win || win.isDestroyed()) {
+            return { width: windowDesign.width, height: windowDesign.height };
+        }
+        const [width, height] = win.getContentSize();
+        return { width, height };
+    });
+    ipcMain.handle("runtime:window:setSize", (_event, size: { width?: number; height?: number }) => {
+        applyWindowContentSize(Number(size?.width), Number(size?.height));
     });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {
