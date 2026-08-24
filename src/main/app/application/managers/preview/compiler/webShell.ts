@@ -1,6 +1,10 @@
 import fs from "fs/promises";
 import path from "path";
-import { WEB_SHELL_VARIANT_META, type GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import {
+    WEB_SHELL_MOBILE_VARIANT,
+    WEB_SHELL_VARIANT_META,
+    type GameRuntimePackV1,
+} from "@shared/types/gameRuntime";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { networkAllowlistCspSources, packNetworkAllowlist } from "@shared/types/networkAllowlist";
 import {
@@ -94,11 +98,10 @@ export function buildWebIndexHtml(
     // instead of being letterboxed by the browser's default safe-area inset;
     // the shells run full-screen, so the inset would show as bars.
     //
-    // user-scalable=no is mobile-only because it is honoured nowhere else: Safari has ignored it
-    // since iOS 10, while the WebViews both shells embed still obey it. The CSS below removes the
-    // same gestures everywhere and does not need it; this is the belt for a WebKit older than
-    // `touch-action`, and the shells are the one host where a zoomed-in player has no browser
-    // chrome to zoom back out with.
+    // user-scalable=no is mobile-only, and so is the ban on zoom it belongs to: a shell has no
+    // browser chrome for a zoomed-in player to zoom back out with, while a page in a browser does.
+    // It is the belt for a WebKit older than `touch-action` - Safari has ignored the flag since
+    // iOS 10, but the WebViews both shells embed still obey it.
     const viewport = options.variant === "mobile"
         ? "width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
         : "width=device-width, initial-scale=1.0";
@@ -106,7 +109,7 @@ export function buildWebIndexHtml(
     // which shell is running it — the entry document can, and it is already the one file that
     // differs. The stage crop is mobile-only, and this is what it reads.
     const shellMeta = options.variant === "mobile"
-        ? `    <meta name="${WEB_SHELL_VARIANT_META}" content="mobile" />\n`
+        ? `    <meta name="${WEB_SHELL_VARIANT_META}" content="${WEB_SHELL_MOBILE_VARIANT}" />\n`
         : "";
     const cspMeta = buildWebCspMeta(pack);
     const language = resolveDocumentLanguage(pack);
@@ -130,7 +133,7 @@ ${shellMeta}${cspMeta}
     </script>
 ${iconLinks}    <link rel="stylesheet" href="./renderer.css" />
     <style>
-${documentStyle(background)}    </style>
+${documentStyle(background, options.variant)}    </style>
 </head>
 <body>
     <div id="root"></div>
@@ -170,12 +173,20 @@ function resolveDocumentLanguage(pack: GameRuntimePackV1): string {
  * stylesheet the interface is drawn with. A page and an app window differ in what a stray finger
  * does to them, and a game shipped to a phone is expected to be the second one:
  *
- *  - **Zoom.** `touch-action` without `pinch-zoom` removes both the two-finger zoom and the
- *    double-tap one. It is set on the root, so every element inherits the ban by intersection - a
- *    gesture is only allowed what its whole ancestor chain allows. `pan-x pan-y` and not `none`,
- *    because the game's own scrollers (a saves list, the history log) must still take a finger.
- *    A stage is scaled to the viewport by construction: zooming it reveals nothing and leaves a
- *    player with a misaligned view they may not know how to undo.
+ *  - **Zoom, and how much of it.** `touch-action` is set on the root, so every element inherits
+ *    what it allows by intersection - a gesture only gets what its whole ancestor chain grants.
+ *    Neither value is `none`: the game's own scrollers (a saves list, the history log) must still
+ *    take a finger.
+ *
+ *    A shell gets `pan-x pan-y`, which leaves no zoom at all. A stage is scaled to the viewport by
+ *    construction, so zooming it reveals nothing, and a full-screen shell has no browser chrome for
+ *    the player to zoom back out with - the gesture can only end somewhere they cannot leave.
+ *
+ *    The web target gets `manipulation`, which drops the double tap and keeps the pinch. A browser
+ *    window still has its own chrome and its own zoom controls, and a pinch there is visual zoom:
+ *    it magnifies what is drawn without re-laying anything out, which is a reader holding a page
+ *    closer rather than a gesture the game has to survive. The double tap goes either way, because
+ *    tapping is how this game is played and a mistimed pair of taps is not a request to zoom.
  *  - **Pull-to-refresh.** `overscroll-behavior: none` also stops the overscroll glow and the
  *    rubber band. On Chrome for Android a downward drag on a page that does not scroll reloads it,
  *    which for a running game means dropping everything since the last save.
@@ -191,15 +202,16 @@ function resolveDocumentLanguage(pack: GameRuntimePackV1): string {
  * document that scrolled by a pixel would show the player nothing but a shifted stage.
  *
  * The JavaScript half - Safari's pinch events and the context menu - is in `browserGestures.ts`,
- * which the same web.js installs.
+ * which the same web.js installs, and it draws the same line between the two hosts.
  */
-function documentStyle(background: string): string {
+function documentStyle(background: string, variant: GameWebShellVariant | undefined): string {
+    const zoom = variant === "mobile" ? "pan-x pan-y" : "manipulation";
     return `        html, body {
             margin: 0;
             height: 100%;
             overflow: hidden;
             overscroll-behavior: none;
-            touch-action: pan-x pan-y;
+            touch-action: ${zoom};
             -webkit-text-size-adjust: 100%;
             -webkit-tap-highlight-color: transparent;
             -webkit-touch-callout: none;
