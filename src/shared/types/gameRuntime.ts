@@ -327,6 +327,19 @@ export type GameRuntimePackV1 = {
         appTagId?: string;
     };
     /**
+     * The DLC installed beside this build, in the order they applied.
+     *
+     * Written by the reader that composed this pack, never by the compiler: it is a fact about the
+     * copy in front of the player, not about what was built. A build with no DLC beside it - which
+     * is every build as it leaves the author - carries nothing here, and the game reads that as
+     * "none installed".
+     *
+     * Only what is actually installed, never the project's whole list. A player who owns one DLC
+     * learns nothing from this about the ones they do not, and a base build cannot be read for what
+     * else exists to buy.
+     */
+    installedDlc?: readonly string[];
+    /**
      * The one string every edition of this title shares, naming the file progress is carried in.
      *
      * Resolved from the identity the RELEASE tag carries whatever variant this pack is - see

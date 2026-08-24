@@ -36,6 +36,7 @@ import { switchBlueprintNodes } from "./switchNodes";
 import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { visitedBlueprintNodes } from "./visitedNodes";
+import { dlcBlueprintNodes } from "./dlcNodes";
 import { endingBlueprintNodes } from "./endingNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
@@ -69,6 +70,7 @@ export { progressBlueprintNodes } from "./progressNodes";
 export { storageBlueprintNodes } from "./storageNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { visitedBlueprintNodes } from "./visitedNodes";
+export { dlcBlueprintNodes } from "./dlcNodes";
 export { endingBlueprintNodes } from "./endingNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
 export { soundBlueprintNodes } from "./soundNodes";
@@ -92,6 +94,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...componentBlueprintNodes,
     ...gameBlueprintNodes,
     ...visitedBlueprintNodes,
+    ...dlcBlueprintNodes,
     ...endingBlueprintNodes,
     ...appTagBlueprintNodes,
     ...progressBlueprintNodes,

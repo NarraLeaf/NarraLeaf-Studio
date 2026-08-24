@@ -80,6 +80,18 @@ export type GameBuildRequest = {
      * folder picker). When absent, defaults to "<project>/dist".
      */
     outputDir?: string;
+    /**
+     * Build this variant's DLC too, each into its own folder beside the installers.
+     *
+     * Here rather than in a command of its own because the build IS the baseline: a DLC file carries
+     * the difference from the game a player installs, and that game is what this build just made. An
+     * author who exports one later has to point at a build or have it compiled again; asked for
+     * here, the comparison is against the exact bytes going out with it.
+     *
+     * Desktop only, and skipped with a line in the console when the project has no distribution key
+     * or the variant has no DLC - none of those is a reason to fail a build that otherwise worked.
+     */
+    includeDlc?: boolean;
     /** Reveal the output folder when the build finishes. Defaults to true. */
     openWhenDone?: boolean;
 };

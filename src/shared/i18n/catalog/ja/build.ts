@@ -160,6 +160,13 @@ export const build = {
             layerLabel: "レイヤー",
             layerHint: "同じ箇所を変更するパッチが複数ある場合、レイヤーの高い方が有効になる",
             browse: "参照…",
+            blocked: {
+                output: "書き出し先を選択する",
+                reading: "ビルドフォルダーを読み取り中",
+                artifact: "このフォルダーにこのゲームのビルドはない",
+                dlcBaseline: "この DLC を追加するビルドを選択する",
+                dlcVariant: "このビルドは、この DLC の依存先バリアントではない",
+            },
             exportAction: "書き出す",
             busy: "ビルドがすでに実行中",
             noKey: "このプロジェクトには配布キーがない。「プロジェクト」ページで作成し、ゲームをビルドし直す。パッチを受け入れるのは、キーの作成後に生成されたビルドだけ。",
@@ -235,6 +242,11 @@ export const build = {
     output: {
         artifacts: "成果物",
         artifactsEmpty: "作られるファイルを見るには対象を選ぶ",
+            includeDlc: "このバリアントの DLC も書き出す",
+            includeDlcHint: {
+                one: "{count} 件の DLC を、インストーラーの隣にある専用のフォルダーへ書き出します。",
+                other: "{count} 件の DLC を、インストーラーの隣にそれぞれ専用のフォルダーで書き出します。",
+            },
         openWhenDone: "終わったら出力フォルダを開く",
     },
     /**

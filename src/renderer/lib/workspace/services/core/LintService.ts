@@ -27,6 +27,7 @@ import { Service } from "../Service";
 import { Services, type ILintService, type WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { AppTagService } from "../appTag/AppTagService";
+import { DlcService } from "../dlc/DlcService";
 import { AssetSetService } from "../assets/AssetSetService";
 import { AssetsService } from "./AssetsService";
 import { CharacterService } from "./CharacterService";
@@ -207,6 +208,7 @@ export class LintService extends Service<LintService> implements ILintService {
             // `listTags()`, which synthesizes the release variant, so the list is never empty and
             // `AppTag == "main"` resolves in a project that has authored no variants at all.
             appTags: services.get<AppTagService>(Services.AppTags).listTags(),
+            dlcs: services.get<DlcService>(Services.Dlc).list(),
             // The union across the project and its variants: which of them opens which address is
             // decided when a build is compiled, and a graph belongs to all of them.
             variableRegistry,

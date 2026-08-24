@@ -276,6 +276,8 @@ export type BuildConfiguration = {
     archs: Partial<Record<GameBuildDesktopPlatform, GameBuildArch>>;
     /** Absolute output directory chosen last time; empty means the default. */
     outputDir: string;
+    /** Whether the last build also produced this variant DLC. Absent on selections made before it. */
+    includeDlc?: boolean;
     /** Reveal the output folder when a build finishes. */
     openWhenDone: boolean;
 };
