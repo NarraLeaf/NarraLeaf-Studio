@@ -1,14 +1,16 @@
 /**
- * What this build does when it stops working, as the renderer knows it.
+ * What the shell has told this page about itself: what to do when it stops working, and where it
+ * writes its report.
  *
- * Module state rather than React state or a prop, for the same reason the crash reporting is:
- * it is read at the moment a tree is being torn down, and by code that runs before React exists.
+ * Module state rather than React state or props, for the same reason the crash reporting is: it is
+ * read at the moment a tree is being torn down, and by code that runs before React exists.
  *
- * It is deliberately answerable *before* the pack has been read. The crash most likely to be shown
- * is one that happened while the pack was still loading, and a screen that fell back to "show the
- * error" in that window would put a stack trace in front of the players of a game whose author
- * asked for the opposite. The desktop shell therefore hands the policy over as a process argument
- * (see the preload), and the pack only confirms it later.
+ * Both are deliberately answerable *before* the pack has been read. The crash most likely to be
+ * shown is one that happened while the pack was still loading, and a screen that fell back to
+ * "show the error" in that window would put a stack trace in front of the players of a game whose
+ * author asked for the opposite. The desktop shell states them on the page's own address (see
+ * `@shared/utils/gameRuntimeIndexUrl`), which is readable with or without a preload; the pack only
+ * confirms the policy later.
  */
 
 import {
@@ -25,6 +27,23 @@ export function setRuntimeCrashPolicy(next: unknown): void {
 
 export function getRuntimeCrashPolicy(): GameCrashPolicy {
     return policy;
+}
+
+/**
+ * Where this shell writes its log, so the crash screen can say where the report is.
+ *
+ * The one thing a player can do about a crash is hand the file to whoever can read it, and they
+ * cannot do that without being told where it is. `null` where there is no log file to name - the
+ * web export, whose shell prints to the browser console.
+ */
+let shellLogPath: string | null = null;
+
+export function setRuntimeShellLogPath(next: string | null): void {
+    shellLogPath = next && next.length > 0 ? next : null;
+}
+
+export function getRuntimeShellLogPath(): string | null {
+    return shellLogPath;
 }
 
 /**
