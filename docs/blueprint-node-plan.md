@@ -428,6 +428,14 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Find Item By Field | `blueprint.list.findItemByField` / `blueprint.element.list.findItemByField` | **已实现**。按字段查第一条，输出下标、条目与是否找到。 |
 | Set Item Field At | `blueprint.list.setItemFieldAt` / `blueprint.element.list.setItemFieldAt` | **已实现**。改写指定下标条目的某个字段；下标不存在或字段未声明时静默跳过。 |
 | Sort List By Field | `blueprint.list.sortByField` / `blueprint.element.list.sortByField` | **已实现**。按字段升/降序重排运行时内容。 |
+| Get Scroll Progress | `blueprint.list.getScrollProgress` / `blueprint.element.list.getScrollProgress` | **已实现**。列表沿滚动轴走到了哪，0 到 1。内容装得下时读 1（既在开头也在末尾）。 |
+| Get Scroll Offset | `blueprint.list.getScrollOffset` / `blueprint.element.list.getScrollOffset` | **已实现**。当前偏移与最大偏移，单位像素。 |
+| Is Scrolled To End | `blueprint.list.isScrolledToEnd` / `blueprint.element.list.isScrolledToEnd` | **已实现**。是否已经滚到末尾，带 1px 容差——小数偏移配上取整的尺寸，滚到头也可能差那么一点。 |
+| Is Scrolled To Start | `blueprint.list.isScrolledToStart` / `blueprint.element.list.isScrolledToStart` | **已实现**。是否还在开头。 |
+
+**Scroll 事件头说的是「列表动了」，这四个读节点说的是「列表现在在哪」。**
+区别对不是由列表本身触发的图很重要：页面上的滚轮处理没人会通知它，它只能自己问。
+把事件头给的答案抄进一个变量，是那种会悄悄过期的写法。
 
 字段下拉的选项来自节点所指列表声明的条目结构：接了 Element 引脚就跟着那根线走，
 挂在列表自己的私有蓝图上就是那个列表，放在条目模板里就是画它的那个列表。
