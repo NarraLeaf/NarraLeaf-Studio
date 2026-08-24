@@ -106,3 +106,21 @@ export function isUIListScrollbarSlot(slot: UIListChildSlot | null): boolean {
     return slot === "scrollbarTrack" || slot === "scrollbarThumb";
 }
 
+/**
+ * What keys one rendered row apart from its siblings.
+ *
+ * Row state - hover, focus, the runtime variant, a blueprint variable record - is keyed by this, so
+ * the format is not private to the renderer: whoever carries a row event onwards has to be able to
+ * tell whose row it names, and a key that only the list could parse would silently hand one row's
+ * state to whatever the event reached next.
+ */
+export function buildUIListItemInstanceKey(listElementId: string, itemKey: string): string {
+    return `${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-${itemKey}`;
+}
+
+/** Whether an instance key names a row of this list, so an event leaving the list can shed it. */
+export function isUIListItemInstanceKeyOf(instanceKey: string | undefined | null, listElementId: string): boolean {
+    return Boolean(instanceKey) && String(instanceKey).startsWith(`${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-`);
+}
+
+const UI_LIST_ITEM_INSTANCE_PREFIX = "list-";
