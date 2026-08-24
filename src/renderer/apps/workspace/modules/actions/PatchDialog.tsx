@@ -36,6 +36,7 @@ import { Button, Input, Select, type SelectOption } from "@/lib/components/eleme
 import { FieldLabel } from "@/lib/components/elements/FieldLabel";
 import { getInterface } from "@/lib/app/bridge";
 import { translate, useTranslation } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 import { cn } from "@/lib/utils/cn";
 import { basename, join } from "@shared/utils/path";
 import type { Workspace } from "@/lib/workspace/workspace";
@@ -50,6 +51,16 @@ import type { ProjectDlc } from "@shared/types/dlc";
 import { dlcArtifactFileName } from "@shared/utils/dlcDelivery";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
+import { patchExportBlocker, type PatchExportBlocker } from "./patchExportReadiness";
+
+/** What the footer says while each blocker stands. */
+const BLOCKER_MESSAGE_KEYS: Record<PatchExportBlocker, TranslationKey> = {
+    output: "build.patch.blocked.output",
+    reading: "build.patch.blocked.reading",
+    artifact: "build.patch.blocked.artifact",
+    dlcBaseline: "build.patch.blocked.dlcBaseline",
+    dlcVariant: "build.patch.blocked.dlcVariant",
+};
 
 type PatchDialogInfo = {
     appTags: ProjectAppTag[];
@@ -221,6 +232,23 @@ function PatchDialogContent({
     const carriesNothing = baselineMode === "variant"
         && !dlc
         && (effectiveContentId || RELEASE_APP_TAG.id) === (effectiveTargetId || RELEASE_APP_TAG.id);
+
+    /**
+     * What is standing in the way of exporting, or null when nothing is.
+     *
+     * Computed from what the fields say rather than checked when the button is pressed: an export
+     * compiles the project twice, and a selection that was never going to work should stop being
+     * pressable while the author is still looking at the field it is wrong in.
+     */
+    const blocker = useMemo<PatchExportBlocker | null>(() => patchExportBlocker({
+        outputFile: outputFile.trim(),
+        baselineMode,
+        baselineAppDir: baselineMode === "artifact" ? baselineAppDir.trim() : "",
+        readingBaseline: readingBusy,
+        baselineUnreadable: Boolean(readingError),
+        baselineAppTagId: reading?.appTagId ?? null,
+        dlcAttachTo: dlc?.attachTo ?? null,
+    }), [baselineAppDir, baselineMode, dlc, outputFile, reading, readingBusy, readingError]);
 
     const pickBaseline = useCallback(async () => {
         const result = await getInterface().gameBuild.selectPatchBaseline(baselineAppDir || undefined);
@@ -429,13 +457,19 @@ function PatchDialogContent({
                 </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-edge bg-surface-overlay px-6 py-3">
+            {/* The reason sits beside the button rather than on it: a disabled control takes no
+                pointer events, so a tooltip there is a sentence nobody can reach. */}
+            <div className="flex items-center justify-between gap-3 border-t border-edge bg-surface-overlay px-6 py-3">
+                <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
+                    {blocker ? t(BLOCKER_MESSAGE_KEYS[blocker]) : ""}
+                </span>
+                <div className="flex shrink-0 items-center gap-2">
                 <Button variant="secondary" onClick={onCancel}>
                     {t("common.cancel")}
                 </Button>
                 <Button
                     variant="primary"
-                    disabled={!outputFile.trim()}
+                    disabled={Boolean(blocker)}
                     onClick={() => onExport({
                         dlcId,
                         baselineMode,
@@ -452,6 +486,7 @@ function PatchDialogContent({
                 >
                     {t("build.patch.exportAction")}
                 </Button>
+                </div>
             </div>
         </div>
     );
