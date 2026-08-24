@@ -122,7 +122,6 @@ describe("buildWebIndexHtml", () => {
         // stage misaligned with no chrome to undo it in, a downward drag on Chrome for Android
         // reloads the running game, and a long press puts the iOS magnifier over the dialogue.
         const html = buildWebIndexHtml(packWith({}), { hasFavicon: false });
-        expect(html).toContain("touch-action: pan-x pan-y;");
         expect(html).toContain("overscroll-behavior: none;");
         expect(html).toContain("-webkit-touch-callout: none;");
         expect(html).toContain("-webkit-text-size-adjust: 100%;");
@@ -135,6 +134,19 @@ describe("buildWebIndexHtml", () => {
         // press was.
         const html = buildWebIndexHtml(packWith({}), { hasFavicon: false });
         expect(html).toContain("input, textarea, select, [contenteditable] { -webkit-touch-callout: default; }");
+    });
+
+    it("keeps the pinch on the web and takes it off the shells", () => {
+        // A browser window has chrome and zoom controls of its own, and a pinch there is visual
+        // zoom - it magnifies what is drawn without re-laying anything out. A full-screen shell has
+        // neither, so a player who zooms in there has no way back out. The double tap goes on both:
+        // tapping is how the game is played.
+        const mobile = buildWebIndexHtml(packWith({}), { hasFavicon: false, variant: "mobile" });
+        expect(mobile).toContain("touch-action: pan-x pan-y;");
+
+        for (const options of [{ hasFavicon: false }, { hasFavicon: false, variant: "web" as const }]) {
+            expect(buildWebIndexHtml(packWith({}), options)).toContain("touch-action: manipulation;");
+        }
     });
 
     it("asks the mobile WebViews not to scale, and asks nobody else", () => {
