@@ -62,7 +62,14 @@ parentPort.on("message", event => {
             //
             // A compile that carries the library whole is every preview and every test; there is
             // nothing there for the audit to find and nothing was taken away.
-            const audit = result.assetReport ? await auditShippedContent(result.appDir) : undefined;
+            //
+            // Except for a package produced only to be compared against and deleted. The audit
+            // protects what a player receives, and that one nobody receives; a defect it would find
+            // there belongs to a build of that variant, which is what reports it. It is the caller
+            // that knows this, because it is the caller that throws the package away.
+            const audit = result.assetReport && !message.input.forComparison
+                ? await auditShippedContent(result.appDir)
+                : undefined;
             send({ type: "done", result, ...(audit ? { audit } : {}) });
         })
         .catch((error: unknown) => {
