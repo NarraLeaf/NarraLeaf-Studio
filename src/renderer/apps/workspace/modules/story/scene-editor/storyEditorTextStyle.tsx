@@ -40,8 +40,15 @@ function clampFontSize(value: unknown): number {
  * Publishing the box height as a CSS variable instead lets every column size the same box and centre
  * inside it, so single-line rows are exactly centred and wrapped rows still align on their first line.
  *
- * `lineHeight` is deliberately absent for `compact`: that档 inherits the Tailwind `text-sm` leading it
- * has always had, and pinning a number here would silently change the status quo.
+ * `lineHeight` is a MULTIPLE of the font size in every density, `compact` included, and it may never
+ * be a length again. The size is a preference and the leading has to follow it: a leading pinned in
+ * `rem` holds the line box still while the glyphs grow, and a line box shorter than the glyphs in it
+ * is clipped top and bottom by any ancestor that hides its overflow — which is every action row,
+ * because a command line truncates. Compact used to have no entry here and inherited the fixed
+ * `1.25rem` that Tailwind's `text-sm` puts on those boxes, so at a large `editor.fontSize` the
+ * directive rows were shaved off above and below while the dialogue beside them — inheriting the
+ * page's unitless 1.5 instead — grew correctly. 1.5 IS that inherited number, written down: the
+ * leading compact has always drawn its prose at, now stated so the boxes that clip get it as well.
  *
  * There is no per-density mark size. The gutter's marks are fixed at {@link STORY_MARK_PX} (gutter
  * 规范 §6): density decides how much room the WORDS get, and the identity column beside them is
@@ -50,12 +57,12 @@ function clampFontSize(value: unknown): number {
  * identity token, not a picture to be looked at, and a 40px one only made the machine rows beside it
  * look like they were missing something.
  */
-export const STORY_DENSITY_METRICS: Record<StoryEditorDensity, { rowBox: number; fontScale: number; lineHeight?: number }> = {
+export const STORY_DENSITY_METRICS: Record<StoryEditorDensity, { rowBox: number; fontScale: number; lineHeight: number }> = {
     // 28, not the historical 27: a dialogue row's speaker nametag is `min-h-[28px]` and was already
     // driving those rows one pixel taller than narration rows. Matching it here makes every compact row
     // the same height (the rhythm the 27 was meant to give) and lands the three columns on the same
     // centre line, instead of half a pixel apart.
-    compact: { rowBox: 28, fontScale: 1 },
+    compact: { rowBox: 28, fontScale: 1, lineHeight: 1.5 },
     standard: { rowBox: 32, fontScale: 1.08, lineHeight: 1.55 },
     comfortable: { rowBox: 38, fontScale: 1.15, lineHeight: 1.7 },
 };
@@ -125,15 +132,19 @@ export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: numb
     } as CSSProperties;
 }
 
-function toStyle(fontSize: number, fontFamily: string, density: StoryEditorDensity | undefined): CSSProperties {
+/**
+ * The composition story text is set in at one size, family and density — exported so the density
+ * table can be tested through the style it actually produces, rather than field by field.
+ */
+export function storyEditorTextStyleFor(fontSize: number, fontFamily: string, density: StoryEditorDensity | undefined): CSSProperties {
     const metrics = STORY_DENSITY_METRICS[density ?? "compact"] ?? STORY_DENSITY_METRICS.compact;
     const scaled = metrics.fontScale === 1 ? fontSize : Math.round(fontSize * metrics.fontScale);
-    return metrics.lineHeight === undefined
-        ? { fontSize: scaled, fontFamily }
-        : { fontSize: scaled, fontFamily, lineHeight: metrics.lineHeight };
+    // The leading travels with the size, always: it is what outranks the `text-sm` a row's line box
+    // wears, and a box that truncates clips whatever its leading does not cover. See the table above.
+    return { fontSize: scaled, fontFamily, lineHeight: metrics.lineHeight };
 }
 
-const DEFAULT_STYLE = toStyle(EDITOR_FONT_SIZE_DEFAULT, editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT), undefined);
+const DEFAULT_STYLE = storyEditorTextStyleFor(EDITOR_FONT_SIZE_DEFAULT, editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT), undefined);
 
 const StoryEditorTextStyleContext = createContext<CSSProperties>(DEFAULT_STYLE);
 
@@ -156,7 +167,7 @@ export function StoryEditorTextStyleProvider({ children, density }: { children: 
     const fontSize = useGlobalSetting("editor.fontSize", clampFontSize);
     const fontFamily = useGlobalSetting("editor.fontFamily", editorFontCssFamily);
 
-    const style = useMemo(() => toStyle(fontSize, fontFamily, density), [fontSize, fontFamily, density]);
+    const style = useMemo(() => storyEditorTextStyleFor(fontSize, fontFamily, density), [fontSize, fontFamily, density]);
     return (
         <StoryEditorTextStyleContext.Provider value={style}>
             {children}

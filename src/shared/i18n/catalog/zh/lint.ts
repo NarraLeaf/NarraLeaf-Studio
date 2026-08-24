@@ -221,6 +221,11 @@ export const lint = {
             description: "图中没有任何入口可以到达该节点",
             message: "没有任何路径可以到达该节点，它不会被执行",
         },
+        blueprintDlcEntranceUnguarded: {
+            title: "没有守卫的 DLC 入口",
+            description: "开始了属于 DLC 的故事，却没有任何地方问过这个 DLC 在不在",
+            message: "这张图里没有任何节点问过这个 DLC 是否已安装",
+        },
         blueprintEmptyEvent: {
             title: "空事件",
             description: "事件层中没有连接任何可执行内容",

@@ -442,11 +442,6 @@ export interface RendererPreloadedInterface {
          * once the window is gone; a window closed without an answer resolves `false`.
          */
         promptServerTrust(props: ServerTrustPromptProps): Promise<RequestStatus<{ trusted: boolean }>>;
-        /**
-         * Raise first-run setup's preview at full size, in a window of its own. The surface is the
-         * only thing it is told; the preferences the sample is drawn from it reads for itself.
-         */
-        openOnboardingPreview(props: WindowProps[WindowAppType.OnboardingPreview]): Promise<RequestStatus<void>>;
         state: {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
