@@ -441,6 +441,36 @@ html.nl-studio {
     display: none;
 }
 
+/*
+ * The two halves of a split comparison, and the gaps one of them holds.
+ *
+ * `scrollbar-gutter` is reserved on both halves whether or not either one is
+ * long enough to need it: the halves are kept level line for line, and a
+ * scrollbar appearing in one of them would take eight pixels of text width from
+ * that half alone, re-wrap its rows and put the two out of step.
+ */
+.nl-split-half {
+    scrollbar-gutter: stable;
+}
+
+/*
+ * A region one version does not have, where the other one has content.
+ *
+ * Hatched rather than blank, because a blank region of the same height reads as
+ * content that has not arrived yet. The stripes are the edge token at its
+ * faintest, so the gap stays the quietest thing on a surface whose whole job is
+ * to make the changes the loudest.
+ */
+.nl-diff-spacer {
+    background-image: repeating-linear-gradient(
+        135deg,
+        var(--nl-edge-strong) 0,
+        var(--nl-edge-strong) 1px,
+        transparent 1px,
+        transparent 6px
+    );
+}
+
 /* Global focus styles - remove default browser focus outlines */
 *:focus,
 *:focus-visible {
