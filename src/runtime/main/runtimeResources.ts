@@ -472,12 +472,21 @@ class PatchedRuntimeResources implements RuntimeResources {
                 restateStoryHash = false;
             }
         }
-        if (composed === 0) {
+        // Stated even when nothing composed, because a DLC is installed whether or not it changed
+        // the pack: a voice pack replaces asset bytes and touches no content at all, and a game that
+        // read "none installed" for it could not draw the entrance to what the player just bought.
+        const installedDlc = this.installedDlcIds();
+        if (composed === 0 && installedDlc.length === 0) {
             return original;
         }
-        // Worth a line of its own: a patch that installs and changes nothing about the story looks
-        // exactly like one that was never read, and this is the difference.
-        this.log?.("info", `game content composed from ${composed} patch(es)`);
+        if (installedDlc.length > 0) {
+            (pack as { installedDlc?: readonly string[] }).installedDlc = installedDlc;
+        }
+        if (composed > 0) {
+            // Worth a line of its own: a patch that installs and changes nothing about the story
+            // looks exactly like one that was never read, and this is the difference.
+            this.log?.("info", `game content composed from ${composed} patch(es)`);
+        }
         if (restateStoryHash) {
             // The stories in hand are no longer the stories any single build shipped, and the
             // fingerprint decides which of a player's saves this game offers to load. Left alone it

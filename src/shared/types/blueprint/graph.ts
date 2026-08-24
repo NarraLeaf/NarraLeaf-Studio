@@ -1063,6 +1063,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisit
  * needs a running story: a title screen asks both before any game exists.
  */
 export const BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED = "blueprint.game.isEndingReached" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED = "blueprint.game.isDlcInstalled" as const;
 /**
  * Every ending a story declares, each row already carrying whether it was reached.
  *

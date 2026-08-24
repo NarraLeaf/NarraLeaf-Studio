@@ -158,6 +158,13 @@ export const build = {
             layerLabel: "层级",
             layerHint: "两个补丁改动同一处时，层级更高的一方生效",
             browse: "浏览…",
+            blocked: {
+                output: "请选择文件的保存位置",
+                reading: "正在读取构建目录",
+                artifact: "该目录中没有本游戏的构建",
+                dlcBaseline: "请选择此 DLC 所附加到的构建",
+                dlcVariant: "该构建不是此 DLC 依附的变体",
+            },
             exportAction: "导出",
             busy: "已有构建正在运行",
             noKey: "本工程尚未创建分发密钥。请先在「工程」页创建，然后重新构建游戏。只有在密钥创建之后产出的构建才接受补丁",
@@ -233,6 +240,11 @@ export const build = {
     output: {
         artifacts: "产物",
         artifactsEmpty: "选择一个目标后这里会列出产物",
+            includeDlc: "同时构建这个变体的 DLC",
+            includeDlcHint: {
+                one: "{count} 个 DLC，输出到安装包旁边它自己的文件夹里。",
+                other: "{count} 个 DLC，各自输出到安装包旁边自己的文件夹里。",
+            },
         openWhenDone: "构建完成后打开输出目录",
     },
     // 构建完成后打印在产物清单下方的体积读数。数字本身不翻译：共用的字节格式化在所有语言里

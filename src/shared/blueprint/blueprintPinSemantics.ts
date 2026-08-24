@@ -179,7 +179,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.game.getTotalPlaytime",
     "blueprint.game.isInGame", "blueprint.game.isNvlMode", "blueprint.game.isOptionPicked",
     "blueprint.game.isSceneVisited", "blueprint.game.isTextRead", "blueprint.game.isTextReadById",
-    "blueprint.game.getEndings", "blueprint.game.isEndingReached",
+    "blueprint.game.getEndings", "blueprint.game.isEndingReached", "blueprint.game.isDlcInstalled",
     "blueprint.image.assetLiteral", "blueprint.image.getCropRect", "blueprint.image.getEnabled",
     "blueprint.image.getFitMode", "blueprint.image.getFlipX", "blueprint.image.getFlipY",
     "blueprint.image.getImageAsset", "blueprint.image.getVisible", "blueprint.layer.isMounted",

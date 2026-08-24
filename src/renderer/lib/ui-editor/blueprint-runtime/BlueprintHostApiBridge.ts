@@ -559,6 +559,16 @@ export type BlueprintHostApiRuntime = {
          */
         isEndingReached: (endingId: string) => boolean;
         /**
+         * Is this DLC installed beside the running build, by the id the author gave it.
+         *
+         * The whole of what a game may ask about its DLC, and deliberately not "does the player own
+         * it". Ownership is a storefront's fact and a plugin's to answer; what decides whether the
+         * content is here is whether its file is, which is the question this asks. A build with no
+         * DLC beside it answers false to everything, which is what a title screen wants before the
+         * player has bought anything.
+         */
+        isDlcInstalled: (dlcId: string) => boolean;
+        /**
          * Every ending one story declares, in document order, each row already carrying whether it
          * was reached. Empty for an unknown or unnamed story rather than an error.
          *
@@ -839,6 +849,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * wipes are no-ops - which is what lets an endings screen lay out in the preview.
      */
     onIsEndingReached?: (endingId: string) => boolean;
+    /**
+     * Which DLC are installed beside this build. Absent where nothing can say - the editor preview,
+     * a host that carries no layers - and every DLC then reads as not installed.
+     */
+    onIsDlcInstalled?: (dlcId: string) => boolean;
     onListEndings?: (storyId: string) => BlueprintStoryEnding[];
     onClearEndingState?: (endingId: string) => Promise<void> | void;
     onClearEndings?: () => Promise<void> | void;
@@ -2193,6 +2208,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsOptionPicked,
         onClearVisited,
         onIsEndingReached,
+        onIsDlcInstalled,
         onListEndings,
         onClearEndingState,
         onClearEndings,
@@ -4043,6 +4059,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // No record reachable is "not reached", not an error: an endings screen opened
                     // in the editor preview must still lay out, and locked is the honest answer.
                     return onIsEndingReached ? onIsEndingReached(endingId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isDlcInstalled: (dlcId: string) => {
+                const cap = "game.isDlcInstalled";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Nothing to ask is "not installed", not an error: a menu previewed in the
+                    // editor still has to lay out, and hiding the entrance is the honest answer.
+                    return onIsDlcInstalled ? onIsDlcInstalled(dlcId) : false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
