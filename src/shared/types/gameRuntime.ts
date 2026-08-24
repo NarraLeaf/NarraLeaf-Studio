@@ -642,6 +642,27 @@ export type GameRuntimeProgressBridge = {
     read(): Promise<GameProgressImportResult>;
 };
 
+/**
+ * Whether this page is the one running the game.
+ *
+ * A shell that can be opened twice has to settle which copy runs, and on the web the question
+ * cannot be avoided: two tabs of one export share a single IndexedDB, so persistent variables, read
+ * text and every save become whichever tab wrote last. The desktop shells settle it in their main
+ * process - a single-instance lock raises the window that is already open - and have nothing to say
+ * here; the web export asks the browser for a lock and answers `taken` while another tab holds it.
+ */
+export type GameSessionClaim = "granted" | "taken";
+
+/**
+ * Whether what this shell writes stays written.
+ *
+ * A desktop game owns files in its user-data directory and nothing takes them away. A page is a
+ * guest: a browser under storage pressure may evict a site's data whole, saves included, unless the
+ * site has been granted persistence. `unknown` is a browser that will not answer the question,
+ * which is not the same as a refusal.
+ */
+export type GameStorageDurability = "durable" | "evictable" | "unknown";
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -721,6 +742,29 @@ export type GameRuntimePreloadBridge = {
          */
         windowScale: boolean;
     };
+    /**
+     * Claim this shell's one game session, before the game reads or writes anything.
+     *
+     * Absent on the desktop shells, where the main process has already refused to start a second
+     * copy by the time a renderer exists - and an absent method is granted, which is also what a
+     * game packaged before this existed gets. The web export answers `taken` while another tab of
+     * the same export holds the session, and the renderer then draws the screen saying so instead
+     * of booting a second game onto the first one's saves.
+     */
+    claimSession?(): Promise<GameSessionClaim>;
+    /**
+     * Whether saves written by this shell stay written.
+     *
+     * The one answer the shell has and the game cannot work out for itself, and the author is who
+     * decides what to do with it - a page whose storage the browser may reclaim is still a page the
+     * player can finish a game on, so this states the fact rather than acting on it. Read by the
+     * `Check Storage Durability` node.
+     *
+     * The desktop shells answer `durable`: their saves are files in a user-data directory that
+     * nothing else reclaims. The web export answers what the browser told it when the page asked
+     * for persistent storage.
+     */
+    storageDurability(): Promise<GameStorageDurability>;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
     /**

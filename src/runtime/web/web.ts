@@ -2,6 +2,8 @@ import {
     GAME_RUNTIME_BRIDGE_KEY,
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
+    type GameSessionClaim,
+    type GameStorageDurability,
 } from "@shared/types/gameRuntime";
 import {
     resolveCoreExternalLink,
@@ -13,6 +15,9 @@ import { installBrowserGestureGuards } from "./browserGestures";
 import { installScreenWakeLock } from "./screenWakeLock";
 import { WebGameStorage } from "./webStorage";
 import { webProgressBridge } from "./webProgress";
+import { installHistoryGuard } from "./historyGuard";
+import { claimGameSession } from "./sessionLock";
+import { requestStorageDurability } from "./storageDurability";
 
 /**
  * Web runtime shell. Loaded by the exported index.html BEFORE renderer.js, it
@@ -27,6 +32,31 @@ import { webProgressBridge } from "./webProgress";
 let loadedPack: GameRuntimePackV1 | null = null;
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 let storagePromise: Promise<WebGameStorage> | null = null;
+
+/**
+ * Asked as this script loads, so the grant is in hand before the game has anything to save, and
+ * held as a promise so every reader gets the one answer rather than a second request.
+ */
+const storageDurabilityPromise: Promise<GameStorageDurability> = requestStorageDurability({
+    persisted: navigator.storage?.persisted ? () => navigator.storage.persisted() : null,
+    persist: navigator.storage?.persist ? () => navigator.storage.persist() : null,
+});
+
+/**
+ * Asked at the same moment and for the same reason: the renderer has to know before it boots a
+ * game, because booting one is what would write over the other tab's playthrough. The lock is named
+ * after the store it protects, so two games on one host claim separately.
+ */
+const sessionClaimPromise: Promise<GameSessionClaim> = readPack()
+    .then(pack => claimGameSession({
+        locks: navigator.locks ?? null,
+        name: `narraleaf-game-session:${storeIdentity(pack)}`,
+        // Long enough for a page being replaced by its own reload to finish going away, short
+        // enough that a player who really does have two tabs open is told promptly.
+        waitMs: 1500,
+        timeoutSignal: ms => AbortSignal.timeout(ms),
+    }))
+    .catch(() => "granted" as const);
 
 function readPack(): Promise<GameRuntimePackV1> {
     packPromise ??= (async () => {
@@ -92,14 +122,19 @@ function pluginEntryUrl(entryRelativePath: string): string {
     return `./${encodeRelativePath(entryRelativePath)}?v=${encodeURIComponent(assetVersion())}`;
 }
 
+/**
+ * What this game's stored data is filed under.
+ *
+ * IndexedDB database names are arbitrary strings; keying by project identity isolates games that
+ * share an origin (e.g. one itch.io or GitHub Pages account hosting several exports). The session
+ * lock is named from the same answer, because what it protects is this store.
+ */
+function storeIdentity(pack: GameRuntimePackV1): string {
+    return pack.project.identifier?.trim() || pack.project.name?.trim() || "game";
+}
+
 function getStorage(): Promise<WebGameStorage> {
-    storagePromise ??= readPack().then(pack => {
-        // IndexedDB database names are arbitrary strings; keying by project
-        // identity isolates games that share an origin (e.g. one itch.io or
-        // GitHub Pages account hosting several exports).
-        const identity = pack.project.identifier?.trim() || pack.project.name?.trim() || "game";
-        return new WebGameStorage(`narraleaf-game:${identity}`);
-    });
+    storagePromise ??= readPack().then(pack => new WebGameStorage(`narraleaf-game:${storeIdentity(pack)}`));
     return storagePromise;
 }
 
@@ -178,6 +213,10 @@ const bridge: GameRuntimePreloadBridge = {
     // Says out loud what the no-op above implies, so callers gate on it instead of registering a
     // handler that can never run (runtime plugins surface it as events.available("closeRequested")).
     capabilities: { closeRequested: false, windowScale: false },
+    // Two tabs of one export share one IndexedDB. See `sessionLock`.
+    claimSession: () => sessionClaimPromise,
+    // What the browser said when this page asked to keep the player's data. See `storageDurability`.
+    storageDurability: () => storageDurabilityPromise,
     // Nothing here states a crash policy or a log path. This page is a static file nobody
     // navigates to with a query, so the crash screen keeps its default until `readPack` resolves,
     // and there is no log file to send anyone to - this shell prints to the browser console.
@@ -316,9 +355,19 @@ const bridge: GameRuntimePreloadBridge = {
 
 window[GAME_RUNTIME_BRIDGE_KEY] = bridge;
 
-// Ask the browser not to evict saves under storage pressure; a denial is fine
-// (the data is still there, just not guaranteed durable).
-void navigator.storage?.persist?.().catch(() => undefined);
+/*
+ * The player's Back, which on a page leaves the game and takes every line since the last save with
+ * it - a browser's back button, a swipe from the edge of a phone screen, and Android's own back
+ * gesture, which the mobile shells route through this same history. See `historyGuard`.
+ */
+installHistoryGuard({
+    readState: () => window.history.state,
+    pushState: state => window.history.pushState(state, ""),
+    onPopState: listener => window.addEventListener("popstate", listener),
+    log: message => {
+        console.info(`[GameRuntime] ${message}`);
+    },
+});
 
 // Same policy as the desktop preload: a stray file drop must not navigate the
 // page away from the running game.

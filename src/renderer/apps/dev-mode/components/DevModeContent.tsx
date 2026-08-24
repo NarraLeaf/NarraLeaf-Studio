@@ -1174,6 +1174,16 @@ export function DevModeContent(props: DevModeContentProps) {
         return result.data.result;
     }, [projectPath]);
 
+    /**
+     * Dev Mode writes through the main process into the project's own directory, which is a
+     * filesystem: nothing reclaims it, and a graph testing the web export's answer here would be
+     * testing the wrong shell. Constant, so it takes no dependencies.
+     */
+    const storageDurability = useCallback<NonNullable<GameAppHost["storageDurability"]>>(
+        async () => "durable",
+        [],
+    );
+
     const saveStore = useMemo<GameAppSaveStore>(() => ({
         write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) => {
             const ref = requireProjectRef("Save Game");
@@ -1481,6 +1491,7 @@ export function DevModeContent(props: DevModeContentProps) {
             openExternal,
             exportProgress,
             importProgress,
+            storageDurability,
         };
     }, [
         bootAction,
@@ -1490,6 +1501,7 @@ export function DevModeContent(props: DevModeContentProps) {
         networkFetch,
         movePointer,
         openExternal,
+        storageDurability,
         exportProgress,
         importProgress,
         onDebugEvent,
