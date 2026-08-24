@@ -48,12 +48,17 @@ const WAVEFORM_ROWS = 128;
 
 type Which = "before" | "after";
 
-export function AudioChangeDetail({ entry, change, sides }: ChangePresenterProps) {
+export function AudioChangeDetail({ entry, change, member, sides }: ChangePresenterProps) {
     const { t } = useTranslation();
-    const requested = useMemo(() => sidesOfEntry(entry, sides), [entry, sides]);
+    // The bytes on screen are the row's, and a row is not always one file: an asset's contents live
+    // under its id rather than beside its record, so a joined row hands over the content file as its
+    // member. Its path AND its change kind - a replaced file is `changed` on a row whose record is
+    // `added`, and reading the record's kind would ask for a side that does not hold the file.
+    const source = member ?? entry;
+    const requested = useMemo(() => sidesOfEntry(source, sides), [source, sides]);
     const host = useAudioHost();
-    const before = useAudioSide(requested.before, entry.path, host);
-    const after = useAudioSide(requested.after, entry.path, host);
+    const before = useAudioSide(requested.before, source.path, host);
+    const after = useAudioSide(requested.after, source.path, host);
     const playback = usePlayback(host);
 
     const shares = timelineShares(before.durationMs, after.durationMs);
@@ -79,7 +84,7 @@ export function AudioChangeDetail({ entry, change, sides }: ChangePresenterProps
                         which="before"
                         side={before}
                         share={shares.before}
-                        caption={sideCaption(entry.kind, "before")}
+                        caption={sideCaption(source.kind, "before")}
                         playback={playback}
                     />
                 )}
@@ -89,7 +94,7 @@ export function AudioChangeDetail({ entry, change, sides }: ChangePresenterProps
                         which="after"
                         side={after}
                         share={shares.after}
-                        caption={sideCaption(entry.kind, "after")}
+                        caption={sideCaption(source.kind, "after")}
                         playback={playback}
                     />
                 )}

@@ -33,5 +33,12 @@
         "typeRoots": ["../../node_modules/@types"],
         "types": ["node", "react", "react-dom"]
     },
-    "include": ["./**/*"]
+    "include": [
+        "./**/*",
+        // The `*.css` ambient module declaration lives here; this project pulls in
+        // renderer files that import stylesheets but does not include the tree it
+        // sits in. Without it every such import is TS2882 against a plugin that has
+        // nothing to do with stylesheets. Same reason as `src/runtime/tsconfig.json`.
+        "../renderer/global.d.ts"
+    ]
 }

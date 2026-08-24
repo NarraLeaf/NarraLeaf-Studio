@@ -316,6 +316,31 @@ describe("defineDocumentSpec", () => {
         });
         expect(custom.serialize("raw")).toBe("raw");
     });
+
+    /**
+     * The fallback, pinned. `decode` was added so the project configuration - which is msgpack -
+     * could be read at all, and the danger in adding it was that every OTHER format quietly
+     * started going through a different reader. A spec that declares nothing still gets UTF-8
+     * text read as JSON, and still throws on bytes that are not.
+     */
+    it("decodes JSON unless the spec says otherwise", () => {
+        const json = fixtureSpec("story", ["editor/story/index.json"]);
+        const utf8 = (text: string): Uint8Array => new TextEncoder().encode(text);
+
+        expect(json.decode(utf8("{\"b\": 1, \"a\": [2, null]}"), "editor/story/index.json"))
+            .toEqual({b: 1, a: [2, null]});
+        expect(() => json.decode(utf8("not json at all"), "editor/story/index.json")).toThrow();
+
+        const custom = defineDocumentSpec<string>({
+            kind: "project",
+            version: 1,
+            paths: ["project.json"],
+            decode: (bytes, path) => `${path}:${bytes.length}`,
+            parse: raw => String(raw),
+            summarize: () => ({title: "", counts: []}),
+        });
+        expect(custom.decode(new Uint8Array(3), "project.json")).toBe("project.json:3");
+    });
 });
 
 describe("the process-wide registry", () => {

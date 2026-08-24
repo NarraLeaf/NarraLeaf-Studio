@@ -54,11 +54,16 @@ const SPLIT_STEP = 5;
  */
 const PENDING_BOX: PixelSize = { width: 4, height: 3 };
 
-export function BitmapChangeDetail({ entry, change, sides }: ChangePresenterProps) {
+export function BitmapChangeDetail({ entry, change, member, sides }: ChangePresenterProps) {
     const { t } = useTranslation();
-    const requested = useMemo(() => sidesOfEntry(entry, sides), [entry, sides]);
-    const before = useBitmapSide(requested.before, entry.path);
-    const after = useBitmapSide(requested.after, entry.path);
+    // The bytes on screen are the row's, and a row is not always one file: an asset's contents live
+    // under its id rather than beside its record, so a joined row hands over the content file as its
+    // member. Its path AND its change kind - a replaced file is `changed` on a row whose record is
+    // `added`, and reading the record's kind would ask for a side that does not hold the file.
+    const source = member ?? entry;
+    const requested = useMemo(() => sidesOfEntry(source, sides), [source, sides]);
+    const before = useBitmapSide(requested.before, source.path);
+    const after = useBitmapSide(requested.after, source.path);
 
     const modes = comparableModes(before.pixels, after.pixels);
     const [chosen, setChosen] = useState<CompareMode>("side-by-side");
@@ -127,8 +132,8 @@ export function BitmapChangeDetail({ entry, change, sides }: ChangePresenterProp
 
             {pair && mode === "side-by-side" && (
                 <div className="grid grid-cols-2 gap-2">
-                    <Frame side={before} box={box} caption={sideCaption(entry.kind, "before")} />
-                    <Frame side={after} box={box} caption={sideCaption(entry.kind, "after")} />
+                    <Frame side={before} box={box} caption={sideCaption(source.kind, "before")} />
+                    <Frame side={after} box={box} caption={sideCaption(source.kind, "after")} />
                 </div>
             )}
             {pair && mode === "swipe" && <Swipe before={before} after={after} box={box} />}
@@ -138,7 +143,7 @@ export function BitmapChangeDetail({ entry, change, sides }: ChangePresenterProp
                 <Frame
                     side={requested.before ? before : after}
                     box={box}
-                    caption={sideCaption(entry.kind, requested.before ? "before" : "after")}
+                    caption={sideCaption(source.kind, requested.before ? "before" : "after")}
                 />
             )}
         </div>
