@@ -28,6 +28,7 @@ import {
     blueprintNodeRegistry,
     isBlueprintNodeAllowedInGraphContext,
 } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import { isValidBlueprintPinConnection } from "@/lib/ui-editor/blueprint-nodes/connectionPolicy";
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
@@ -52,6 +53,15 @@ export type BpCompileOptions = {
      * container does not), so without it that check is skipped rather than guessed at.
      */
     resolveWidgetElementType?: (owner: BlueprintOwnerRef) => string | undefined;
+    /**
+     * The type of any element in the project, by id.
+     *
+     * An `Element` node stores the type beside the id, and every reader of that reference checks it
+     * before doing anything - so a reference written without one resolves to nothing at all, silently.
+     * Given this, a file that names an element by id gets the type filled in rather than having to
+     * carry a line no author would think to write.
+     */
+    resolveElementType?: (elementId: string) => string | undefined;
 };
 
 export type BpCompileResult = {
@@ -423,7 +433,43 @@ function compileParams(
     if (inlineLiteralPins.length > 0) {
         raw[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY] = inlineLiteralPins;
     }
+    fillElementReferenceType(nodeAst, definition, raw, options, diagnostics);
     return raw;
+}
+
+/**
+ * Give an element reference the type its readers check for.
+ *
+ * Every node that follows an element reference asks what type it points at before it does anything -
+ * a list node wants `nl.list`, a text node wants `nl.text` - so a reference carrying an id and no
+ * type resolves to nothing. Nothing is reported when that happens: the graph runs, the node returns
+ * undefined, and whatever read it just quietly does not fire. The editor writes the type as a matter
+ * of course because it always knows it; a file written by hand has no reason to.
+ */
+function fillElementReferenceType(
+    nodeAst: BpNodeAst,
+    definition: BlueprintNodeDef,
+    raw: Record<string, unknown>,
+    options: BpCompileOptions,
+    diagnostics: BpDiagnostic[],
+): void {
+    const elementId = raw.elementId;
+    if (definition.role !== "elementLiteral" || typeof elementId !== "string" || !elementId || raw.elementType) {
+        return;
+    }
+    const resolved = options.resolveElementType?.(elementId);
+    if (resolved) {
+        raw.elementType = resolved;
+        return;
+    }
+    diagnostics.push({
+        severity: "warning",
+        code: "compile.element_type_unknown",
+        line: nodeAst.line,
+        message: `"${definition.displayName}" points at ${elementId}, which this project does not hold.`,
+        hint: "Every node that follows an element reference checks its type first, so one that cannot "
+            + "be resolved reads as nothing at all. Run `blueprint targets --project <dir>` for the ids.",
+    });
 }
 
 type ResolvedEndpoint = { nodeId: string; port: string };
