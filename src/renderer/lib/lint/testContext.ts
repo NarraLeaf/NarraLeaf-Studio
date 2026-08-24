@@ -40,6 +40,7 @@ export function createTestLintContext(
         // The release variant, because every project has it and a rule that saw an empty list would
         // be reading a state no project can be in.
         appTags: [RELEASE_APP_TAG],
+        dlcs: [],
         variableRegistry: [],
         persistentNameCollisions: [],
         savedNameCollisions: [],

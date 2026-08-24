@@ -105,7 +105,7 @@ import { readDistributionKey } from "@shared/utils/distributionKey";
 import { diffPack, PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { dlcArtifactFileName, dlcDirectoryName, resolveDlcDeliveryPath } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
-import { findDlc, type ProjectDlc } from "@shared/types/dlc";
+import { dlcForAppTag, findDlc, type ProjectDlc } from "@shared/types/dlc";
 import { readProjectDlcFromDir } from "../../utils/dlcFile";
 import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
@@ -1190,6 +1190,131 @@ export class GameBuildManager {
      * being made, and comparing a compile against itself produces a patch that installs and changes
      * nothing.
      */
+    /**
+     * Every DLC of the variant this build is, sealed against the payload the build just made.
+     *
+     * One folder per DLC rather than one folder holding all of them, because a storefront uploads a
+     * folder as one download: a shared folder would put every DLC into whichever one the author
+     * uploaded first, and the player would receive content they did not buy. The folder inside it is
+     * the delivery folder, so the ContentRoot an author points at is `dlc/<id>` and what lands in
+     * the game's own folder is `DLC/<id>_DLC.pak`.
+     *
+     * Nothing here fails the build. A project with no distribution key, a variant with no DLC, one
+     * DLC that will not compile - each is reported and the others carry on, because the installers
+     * are already written and refusing them now would throw away a build that worked.
+     */
+    private async buildVariantDlc(
+        session: BuildSession,
+        options: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            appTag: ProjectAppTag;
+            appTagDocument: ProjectAppTagDocument | null;
+            runtimePlugins: RuntimePluginPackSelection["selected"];
+            debuggable: boolean;
+            identity: { appId: string; productName: string; identifier?: string };
+            projectConfig: ProjectConfigData | null;
+            assetImages: AssetImageOptimizationResult["images"];
+            encryptionKey?: string;
+            /** The payload this build produced - what a player has before installing any of these. */
+            baselineAppDir: string;
+            outputDir: string;
+        },
+    ): Promise<string[]> {
+        const { appTag, identity, projectPath } = options;
+        const dlcs = dlcForAppTag(await readProjectDlcFromDir(projectPath).catch(() => []), appTag.id);
+        if (dlcs.length === 0) {
+            return [];
+        }
+        const distributionKey = readDistributionKey(options.projectConfig?.app);
+        if (!distributionKey) {
+            // The same sentence the patch export refuses with, said as a thing to go and do - but a
+            // note here rather than a refusal: the game itself built fine.
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${dlcs.length} DLC not built: this project has no distribution key. `
+                    + "Create one in Project > Project, then build again.",
+            });
+            return [];
+        }
+        const distribution = { key: distributionKey, titleId: identity.appId };
+        const declaredScenes = resolveAppTagReachableScenes(appTag, options.appTagDocument?.reachableScenes);
+        const assetAxes = resolveAppTagAssetAxes(appTag, options.appTagDocument?.assetAxes);
+
+        const written: string[] = [];
+        for (const dlc of dlcs) {
+            this.ensureNotCancelled(session);
+            this.emit(session, { level: "info", source: "Build", message: `building DLC "${dlc.name}"` });
+            const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
+                projectPath,
+                entry: options.entry,
+                runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+                runtimeVersion: this.readRuntimeVersion(),
+                // Per DLC, so one compile cannot be handed the previous one's leftovers.
+                outputRoot: path.join(projectPath, ".nlstudio", "build", "dlc", dlc.id),
+                runtimePlugins: options.runtimePlugins,
+                mode: "production",
+                ...(options.debuggable ? { debuggable: true } : {}),
+                appTag: { id: appTag.id, name: appTag.name },
+                declaredScenes,
+                assetAxes,
+                packaging: true,
+                // The base game plus this one DLC, so the difference from the build above is exactly
+                // what this DLC adds.
+                includedDlc: [dlc.id],
+                locale: getMainLocale(this.app),
+                ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+                appId: identity.appId,
+                productName: identity.productName,
+                ...(identity.identifier ? { identifier: identity.identifier } : {}),
+                distribution,
+                ...(patchPlatforms(options.projectConfig).length > 0
+                    ? { platforms: patchPlatforms(options.projectConfig) }
+                    : {}),
+                hostUserDataDir: this.app.getUserDataDir(),
+                downloadRewrites: currentDownloadRewrites(),
+                assetImages: options.assetImages,
+            }, {
+                onStart: worker => { session.worker = worker; },
+                onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
+                cancelled: () => session.cancelled,
+            });
+            session.worker = null;
+            this.ensureNotCancelled(session);
+
+            const outputFile = resolveDlcDeliveryPath(
+                path.join(options.outputDir, "dlc", dlc.id, dlcArtifactFileName(dlc.id)),
+                process.platform,
+                path.join,
+                path.dirname,
+                path.basename,
+            );
+            const summary = await this.sealPatch(
+                session,
+                artifact.appDir,
+                { outputFile, name: dlc.name },
+                options.baselineAppDir,
+                outputFile,
+                distribution,
+                dlc,
+                appTag.id,
+            );
+            written.push(outputFile);
+            this.emit(session, {
+                level: "success",
+                source: "Build",
+                message: `DLC written: ${path.relative(options.outputDir, outputFile)} (${summary})`,
+            });
+        }
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: "each DLC folder is one download: upload dlc/<id> as that DLC's content",
+        });
+        return written;
+    }
+
     private async compilePatchBaseline(
         session: BuildSession,
         options: {
@@ -1867,6 +1992,25 @@ export class GameBuildManager {
         const artifacts = await this.runWorker(session, workerConfig);
         // A cancel that raced the worker's completion must win over "done".
         this.ensureNotCancelled(session);
+        // After the installers, not before: the DLC files are compared against the payload this
+        // build just made, so they cannot be produced until there is one.
+        if (request.includeDlc && desktopArtifact) {
+            artifacts.push(...await this.buildVariantDlc(session, {
+                projectPath,
+                entry,
+                appTag,
+                appTagDocument,
+                runtimePlugins: pluginSelection.selected,
+                debuggable,
+                identity,
+                projectConfig,
+                assetImages,
+                ...(encryptionKey ? { encryptionKey } : {}),
+                baselineAppDir: desktopArtifact.appDir,
+                outputDir,
+            }));
+            this.ensureNotCancelled(session);
+        }
         // Measured before the snapshot is published so the console line below and anything else
         // reading the finished build report the same numbers off one walk of the output. Sizing is
         // best-effort and cannot reject, so a build that packaged successfully still finishes here.

@@ -22,7 +22,7 @@ import {
     Pin,
     PinOff,
     Plus,
-    Radio,
+    Share2,
     RefreshCw,
     TriangleAlert,
     X,
@@ -46,6 +46,7 @@ import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
 import { openLiveSessionDialog } from "../../modules/team/liveSessionController";
 import { useLiveSession } from "../../modules/team/useLiveSession";
+import { LiveMemberAvatars } from "../../modules/team/LiveMemberAvatars";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
@@ -200,7 +201,10 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                         aria-label={t("workspace.shell.team.livePresence")}
                         className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
                     >
-                        <Radio className="h-4 w-4" />
+                        {/* Not the history clock the other freezes wear. The strip is the same
+                            column in both cases and the tint is the same, so the glyph is the only
+                            thing saying which mode this is. */}
+                        <Share2 className="h-4 w-4" />
                     </button>
                 ) : (
                     <button
@@ -265,6 +269,19 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                             the most expensive thing to get wrong. */}
                         <X className="h-4 w-4" />
                     </button>
+                )}
+
+                {/* **Who is in the room, down the strip.** The stack was in the title bar, which is
+                    the scarcest row in the window on a small screen; this column is the session's
+                    own, is drawn for the whole of one, and has height to spend. The title bar keeps
+                    it only for a room this window has been offered, where there is no strip. */}
+                {inSession && live.view.session !== null && live.view.session.members.length > 0 && (
+                    <LiveMemberAvatars
+                        vertical
+                        className="mt-1"
+                        members={live.view.session.members}
+                        host={live.view.session.openedBy}
+                    />
                 )}
 
                 {onRevision && (

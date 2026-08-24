@@ -5,7 +5,12 @@ import type {
     UIListScrollbarPartStyle,
 } from "@shared/types/ui-editor/list";
 import { AnimatePresence, motion } from "motion/react";
-import { buildUIListItemInstanceKey, getUIListChildSlot } from "@shared/types/ui-editor/list";
+import {
+    buildUIListItemInstanceKey,
+    getUIListChildSlot,
+    isUIListScrolledToEnd,
+    resolveUIListScrollMetrics,
+} from "@shared/types/ui-editor/list";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
@@ -27,10 +32,8 @@ import {
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import {
     getListProps,
-    isListScrolledToEnd,
     resolveListItemContentAlignmentStyle,
     resolveListItemsBindingArray,
-    resolveListScrollMetrics,
 } from "./helpers";
 
 type ScrollMetrics = {
@@ -222,8 +225,22 @@ function collectElementDescendants(document: WidgetRendererProps["document"], ro
     return out;
 }
 
-function useScrollMetrics(ref: React.RefObject<HTMLDivElement | null>, horizontal: boolean): ScrollMetrics {
+/**
+ * The viewport measurements, watched for the scrollbar and reported to whoever else asked.
+ *
+ * `onMeasure` gets the raw numbers rather than the clamped ones this hook returns: the scrollbar
+ * needs a non-zero divisor to draw a thumb, while a caller asking where the list is needs the truth,
+ * including the zero-length range of a list with nothing to scroll.
+ */
+function useScrollMetrics(
+    ref: React.RefObject<HTMLDivElement | null>,
+    horizontal: boolean,
+    onMeasure?: (viewportSize: number, contentSize: number, offset: number) => void,
+): ScrollMetrics {
     const [metrics, setMetrics] = useState<ScrollMetrics>({ viewport: 1, content: 1, offset: 0 });
+    // Through a ref so a caller can pass an inline function without re-subscribing the observer.
+    const onMeasureRef = useRef(onMeasure);
+    onMeasureRef.current = onMeasure;
     const update = useCallback(() => {
         const el = ref.current;
         if (!el) {
@@ -232,6 +249,7 @@ function useScrollMetrics(ref: React.RefObject<HTMLDivElement | null>, horizonta
         const viewport = horizontal ? el.clientWidth : el.clientHeight;
         const content = horizontal ? el.scrollWidth : el.scrollHeight;
         const offset = horizontal ? el.scrollLeft : el.scrollTop;
+        onMeasureRef.current?.(viewport, content, offset);
         setMetrics({
             viewport: Math.max(1, viewport),
             content: Math.max(1, content),
@@ -301,7 +319,16 @@ export function ListRenderer(props: WidgetRendererProps) {
     const selectedIndex = runtimeSelectedIndex ?? p.selectedIndex;
     const selectedIndexRef = useRef(selectedIndex);
     const horizontalScrollbar = p.scrollbar.side === "top" || p.scrollbar.side === "bottom";
-    const metrics = useScrollMetrics(viewportRef, horizontalScrollbar);
+    // Published on every measurement rather than only on scroll: a list that never moves still has
+    // to be able to answer where it is, and "never moved" is exactly the list no scroll event will
+    // ever describe.
+    const publishScrollMetrics = useCallback(
+        (viewportSize: number, contentSize: number, offset: number) => {
+            widgetRuntimeStore?.setListScrollMetrics(runtimeElementKey, resolveUIListScrollMetrics(viewportSize, contentSize, offset));
+        },
+        [runtimeElementKey, widgetRuntimeStore],
+    );
+    const metrics = useScrollMetrics(viewportRef, horizontalScrollbar, publishScrollMetrics);
     useEffect(() => {
         selectedIndexRef.current = selectedIndex;
     }, [selectedIndex]);
@@ -323,11 +350,11 @@ export function ListRenderer(props: WidgetRendererProps) {
             const viewportSize = horizontalScrollbar ? viewport.clientWidth : viewport.clientHeight;
             const contentSize = horizontalScrollbar ? viewport.scrollWidth : viewport.scrollHeight;
             const offset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
-            const payload = resolveListScrollMetrics(viewportSize, contentSize, offset);
+            const payload = resolveUIListScrollMetrics(viewportSize, contentSize, offset);
             void runtime.dispatchElementBlueprintEvent(element.id, "scroll", {
                 ...payload,
             });
-            const isAtEnd = isListScrolledToEnd(payload);
+            const isAtEnd = isUIListScrolledToEnd(payload);
             if (isAtEnd && !reachedScrollEndRef.current) {
                 void runtime.dispatchElementBlueprintEvent(element.id, "scrollEnd", payload);
             }

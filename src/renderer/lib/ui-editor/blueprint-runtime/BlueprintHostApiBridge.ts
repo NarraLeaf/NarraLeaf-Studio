@@ -60,7 +60,7 @@ import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { makeDefaultStructItem, type UIStructDef } from "@shared/types/ui-editor/struct";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
@@ -188,6 +188,14 @@ export type BlueprintListProperties = {
      * list no longer declares would sort by nothing and report success.
      */
     struct: UIStructDef | null;
+    /**
+     * Where the list has got to along its axis, as it last measured itself.
+     *
+     * A list that has not been rendered - or has been rendered somewhere with no runtime store, like
+     * a Surface thumbnail - reports at-rest rather than nothing, so a graph asking gets the answer
+     * for a list that cannot scroll instead of an undefined it has no way to branch on.
+     */
+    scroll: UIListScrollMetrics;
 };
 
 export type BlueprintDisplayableProperties = {
@@ -549,6 +557,16 @@ export type BlueprintHostApiRuntime = {
          */
         isEndingReached: (endingId: string) => boolean;
         /**
+         * Is this DLC installed beside the running build, by the id the author gave it.
+         *
+         * The whole of what a game may ask about its DLC, and deliberately not "does the player own
+         * it". Ownership is a storefront's fact and a plugin's to answer; what decides whether the
+         * content is here is whether its file is, which is the question this asks. A build with no
+         * DLC beside it answers false to everything, which is what a title screen wants before the
+         * player has bought anything.
+         */
+        isDlcInstalled: (dlcId: string) => boolean;
+        /**
          * Every ending one story declares, in document order, each row already carrying whether it
          * was reached. Empty for an unknown or unnamed story rather than an error.
          *
@@ -829,6 +847,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * wipes are no-ops - which is what lets an endings screen lay out in the preview.
      */
     onIsEndingReached?: (endingId: string) => boolean;
+    /**
+     * Which DLC are installed beside this build. Absent where nothing can say - the editor preview,
+     * a host that carries no layers - and every DLC then reads as not installed.
+     */
+    onIsDlcInstalled?: (dlcId: string) => boolean;
     onListEndings?: (storyId: string) => BlueprintStoryEnding[];
     onClearEndingState?: (endingId: string) => Promise<void> | void;
     onClearEndings?: () => Promise<void> | void;
@@ -1313,6 +1336,7 @@ function readListProperties(
     return {
         items,
         selectedIndex,
+        scroll: widgetRuntimeStore.getListScrollMetrics(scopedKey),
         struct: resolveUIStruct(
             document,
             getListProps(requireDocumentElement(document, elementId, "list")).itemStructId,
@@ -2180,6 +2204,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsOptionPicked,
         onClearVisited,
         onIsEndingReached,
+        onIsDlcInstalled,
         onListEndings,
         onClearEndingState,
         onClearEndings,
@@ -4004,6 +4029,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // No record reachable is "not reached", not an error: an endings screen opened
                     // in the editor preview must still lay out, and locked is the honest answer.
                     return onIsEndingReached ? onIsEndingReached(endingId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isDlcInstalled: (dlcId: string) => {
+                const cap = "game.isDlcInstalled";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Nothing to ask is "not installed", not an error: a menu previewed in the
+                    // editor still has to lay out, and hiding the entrance is the honest answer.
+                    return onIsDlcInstalled ? onIsDlcInstalled(dlcId) : false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

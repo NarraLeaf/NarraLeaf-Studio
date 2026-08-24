@@ -1385,6 +1385,23 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [endingsPersistence]);
 
     /**
+     * Which DLC are installed, as a set, so a menu that asks about several draws in one pass.
+     *
+     * Read off the host rather than looked up anywhere: a DLC is a file beside the game, and the
+     * host is the only half of this that can see the filesystem. Nothing supplied is "none", which
+     * is what a build with nothing beside it and an editor preview both mean.
+     */
+    const installedDlcIds = useMemo(
+        () => new Set(host.installedDlcIds ?? []),
+        [host.installedDlcIds],
+    );
+
+    const isDlcInstalledInGame = useCallback(
+        (dlcId: string): boolean => installedDlcIds.has(dlcId.trim()),
+        [installedDlcIds],
+    );
+
+    /**
      * One story's endings, joined against the record.
      *
      * The list comes from the story document this build ships (`bundle.storyLibrary.documents`),
@@ -3161,6 +3178,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isEndingReachedInGame,
+        isDlcInstalledInGame,
         listEndingsInGame,
         clearEndingStateInGame,
         clearEndingsInGame,
@@ -3374,6 +3392,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsOptionPicked: isOptionPickedInGame,
             onClearVisited: clearVisitedInGame,
             onIsEndingReached: isEndingReachedInGame,
+            onIsDlcInstalled: isDlcInstalledInGame,
             onListEndings: listEndingsInGame,
             onClearEndingState: clearEndingStateInGame,
             onClearEndings: clearEndingsInGame,
@@ -3487,6 +3506,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isEndingReachedInGame,
+        isDlcInstalledInGame,
         listEndingsInGame,
         clearEndingStateInGame,
         clearEndingsInGame,
@@ -3795,6 +3815,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onIsOptionPicked: isOptionPickedInGame,
                     onClearVisited: clearVisitedInGame,
                     onIsEndingReached: isEndingReachedInGame,
+                    onIsDlcInstalled: isDlcInstalledInGame,
                     onListEndings: listEndingsInGame,
                     onClearEndingState: clearEndingStateInGame,
                     onClearEndings: clearEndingsInGame,
@@ -3939,6 +3960,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         isCurrentTextReadInGame,
         clearTextReadInGame,
         isEndingReachedInGame,
+        isDlcInstalledInGame,
         listEndingsInGame,
         clearEndingStateInGame,
         clearEndingsInGame,
