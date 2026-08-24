@@ -4,6 +4,7 @@
  */
 
 import type { AssetVariantMap } from "@shared/types/assetSet";
+import { isUIListScrolledToEnd, isUIListScrolledToStart } from "@shared/types/ui-editor/list";
 import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
 import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
@@ -169,6 +170,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
     BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
@@ -214,6 +216,14 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_LENGTH,
     BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_PROGRESS,
+    BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_OFFSET,
+    BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_END,
+    BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_START,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
@@ -1742,6 +1752,10 @@ function resolveEndingNodeOutput(
         const storyId = String(params.storyId ?? "").trim();
         return storyId ? game?.listEndings(storyId) ?? [] : [];
     }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED && portId === "isInstalled") {
+        const dlcId = String(params.dlcId ?? "").trim();
+        return dlcId ? game?.isDlcInstalled(dlcId) === true : false;
+    }
     return undefined;
 }
 
@@ -2410,6 +2424,10 @@ function resolveListNodeOutput(
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_LENGTH ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD;
     const elementId = resolveListElementIdInput(
         graph,
@@ -2433,6 +2451,23 @@ function resolveListNodeOutput(
 
     if ((type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS) && portId === "items") {
         return props.items;
+    }
+    if ((type === BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_PROGRESS || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS) && portId === "progress") {
+        return props.scroll.progress;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_OFFSET || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET) {
+        if (portId === "offset") {
+            return props.scroll.offset;
+        }
+        if (portId === "maxOffset") {
+            return props.scroll.maxOffset;
+        }
+    }
+    if ((type === BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_END || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END) && portId === "atEnd") {
+        return isUIListScrolledToEnd(props.scroll);
+    }
+    if ((type === BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_START || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START) && portId === "atStart") {
+        return isUIListScrolledToStart(props.scroll);
     }
     if (
         (type === BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_INDEX ||

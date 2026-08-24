@@ -624,6 +624,41 @@ describe("DLC layers", () => {
      * A patch fixes the game a player is running, and that game includes their DLC. So a patch
      * applies over one whatever the two say about their own order.
      */
+    /**
+     * The one case the stamp exists for. A voice pack replaces asset bytes and changes nothing about
+     * the pack, so nothing composes - and a game that read "none installed" for it could not draw
+     * the entrance to what the player just bought.
+     */
+    it("says a DLC is installed even when it changed nothing about the content", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir, pack } = await makeApp(material);
+        await fs.mkdir(path.join(appDir, "assets"), { recursive: true });
+        await fs.writeFile(path.join(appDir, "assets", "one"), "original");
+        await writeDlc(gameRootDir, material, { id: "voices" }, { "assets/one": "voiced" });
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            expect((await readPackOf(resources)).installedDlc).toEqual(["voices"]);
+            // Still the base content: the layer carried bytes and no pack of its own.
+            expect((await readPackOf(resources)).marker).toBe("base");
+            expect(resources.installedDlcIds()).toEqual(["voices"]);
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    it("states nothing about DLC on a build that has none beside it", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir } = await makeApp(material);
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            // Absent rather than empty: a base build must not be readable for what else exists.
+            expect((await readPackOf(resources)).installedDlc).toBeUndefined();
+        } finally {
+            await resources.dispose();
+        }
+    });
+
     it("applies a patch over a DLC even when the DLC asks to sort later", async () => {
         const material = createProjectMaterial();
         const { appDir, gameRootDir, pack } = await makeApp(material);

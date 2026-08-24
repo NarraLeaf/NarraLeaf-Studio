@@ -68,7 +68,8 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
 // ---------------------------------------------------------------------------
 
 /** What kind of thing a dangling id was supposed to name; picks the sentence. */
-type BlueprintReferenceKind = "surface" | "story" | "scene" | "choice" | "ending" | "character" | "textKey";
+type BlueprintReferenceKind =
+    | "surface" | "story" | "scene" | "choice" | "ending" | "character" | "textKey" | "dlc";
 
 /**
  * Select params whose options are project entities, keyed by the `dynamicOptionsSource` the node
@@ -87,6 +88,9 @@ export const REFERENCE_KIND_BY_OPTIONS_SOURCE: Readonly<Record<string, Blueprint
     storyEndings: "ending",
     characters: "character",
     localizationKeys: "textKey",
+    // A DLC an author deleted leaves every `Is DLC Installed` that named it answering false
+    // forever, so the entrance behind it is never drawn again and nothing else says why.
+    dlc: "dlc",
 };
 
 /**
@@ -128,6 +132,7 @@ const REFERENCE_MESSAGE_KEY: Readonly<Record<BlueprintReferenceKind, Translation
     ending: "lint.rule.blueprintReferenceMissing.messageEnding" as TranslationKey,
     character: "lint.rule.blueprintReferenceMissing.messageCharacter" as TranslationKey,
     textKey: "lint.rule.blueprintReferenceMissing.messageTextKey" as TranslationKey,
+    dlc: "lint.rule.blueprintReferenceMissing.messageDlc" as TranslationKey,
 };
 
 /**
@@ -143,6 +148,10 @@ type BlueprintReferenceUniverse = Partial<Record<BlueprintReferenceKind, Readonl
 function buildReferenceUniverse(ctx: LintContext): BlueprintReferenceUniverse {
     const universe: BlueprintReferenceUniverse = {
         character: new Set(ctx.characters.map(character => character.id)),
+        // Always present, unlike the documents below: the registry is absent-is-empty by
+        // construction, so "this project ships no DLC" and "the list could not be read" are not two
+        // states this can be in.
+        dlc: new Set(ctx.dlcs.map(dlc => dlc.id)),
     };
     if (ctx.uiDocument) {
         universe.surface = new Set(
