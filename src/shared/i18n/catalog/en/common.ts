@@ -18,6 +18,11 @@ export const common = {
     edit: "Edit",
     duplicate: "Duplicate",
     copy: "Copy",
+    // What this system calls the thing a folder opens in. Three spellings of one label, chosen
+    // by platform, so nothing has to say "file manager" to a Mac.
+    revealInFinder: "Show in Finder",
+    revealInExplorer: "Show in File Explorer",
+    revealInFileManager: "Show in File Manager",
     paste: "Paste",
     cut: "Cut",
     create: "Create",

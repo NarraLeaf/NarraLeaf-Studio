@@ -27,6 +27,7 @@ import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibi
 import type { SaveLocationConfiguration } from "@shared/utils/userDataLocation";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
+import type { WindowConfiguration } from "@shared/types/appWindow";
 import type { VfxConfiguration } from "@shared/types/vfx";
 import type { VoiceConfiguration } from "@shared/types/voice";
 import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
@@ -58,6 +59,13 @@ export {
     VFX_FRAME_RATES,
 } from "@shared/types/vfx";
 export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
+export {
+    DEFAULT_WINDOW_CONFIGURATION,
+    normalizeWindowConfiguration,
+    normalizeWindowScaleSteps,
+    WINDOW_SCALE_STEPS,
+} from "@shared/types/appWindow";
+export type { WindowConfiguration, WindowScaleStep } from "@shared/types/appWindow";
 export {
     ASSET_LOSSY_QUALITY_MAX,
     ASSET_LOSSY_QUALITY_MIN,
@@ -422,6 +430,8 @@ export type ProjectAppConfiguration = {
     assetOptimization?: AssetOptimizationConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
     mobile?: MobileConfiguration;
+    /** What the shipped game's window does; absent until configured (see the defaults). */
+    window?: WindowConfiguration;
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */
     autoSave?: AutoSaveConfiguration;
     /**

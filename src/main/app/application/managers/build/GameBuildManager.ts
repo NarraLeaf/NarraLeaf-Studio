@@ -33,6 +33,8 @@ import {
     type GameBuildStateSnapshot,
     type GameBuildTarget,
     type GamePatchExportRequest,
+    type GameBuildRunKind,
+    type LastGameBuildRun,
     type ShippedAssetReport,
 } from "@shared/types/gameBuild";
 import {
@@ -75,6 +77,7 @@ import {
     signingReachesNetwork,
 } from "./preflight";
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
+import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
 import { optimizeProjectImages, type AssetImageOptimizationResult } from "./optimizeAssetImages";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
@@ -164,6 +167,14 @@ type BuildSession = {
      */
     abandonWeatherBake: (() => void) | null;
     cancelled: boolean;
+    /** Which pipeline this session is running, so the record it leaves says which. */
+    kind: GameBuildRunKind;
+    /**
+     * The variant this run resolved to, filled in once it has. Blank until then, which is what a
+     * run that failed before reading the project has to say - it never got as far as an edition.
+     */
+    appTagId?: string;
+    appTagName: string;
     /**
      * What the compile carried out of the asset library, held until the run finishes so the
      * published snapshot can carry it.
@@ -842,6 +853,8 @@ export class GameBuildManager {
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
+            kind: "build",
+            appTagName: "",
             assetReport: null,
         };
         this.sessions.set(key, session);
@@ -917,6 +930,8 @@ export class GameBuildManager {
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
+            kind: "patch",
+            appTagName: "",
             assetReport: null,
         };
         this.sessions.set(key, session);
@@ -958,6 +973,9 @@ export class GameBuildManager {
             projectPath,
             dlc ? { appTagId: dlc.attachTo } : request,
         );
+        // The edition the file installs into, not the one whose content it carries: what a reader of
+        // the record wants to know is which builds this run produced something for.
+        this.noteRunVariant(session, appTag);
         // What the patch carries, which is not always the edition it attaches to. The identity below
         // stays with `appTag` - it is what decides whether the player's build can open the file at
         // all - while everything about the payload is read from this one.
@@ -1131,7 +1149,7 @@ export class GameBuildManager {
         // first thing an author checks about one, and a finished run that could not say would be
         // the only one of the two that cannot.
         const artifactSizes = await measureBuildArtifacts([outputFile]);
-        session.snapshot = {
+        await this.finishSession(session, {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
@@ -1140,7 +1158,7 @@ export class GameBuildManager {
             artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
-        };
+        });
         const folder = dlc ? dlcDirectoryName(process.platform) : PATCH_DIRECTORY_NAME;
         this.emit(session, {
             level: "success",
@@ -1547,6 +1565,7 @@ export class GameBuildManager {
             );
         }
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        this.noteRunVariant(session, appTag);
         // What the author says each mechanism the build cannot read can start. Read here rather than
         // inside the compile because both compiles below are the same game under one variant, and two
         // reads of the same file could straddle a write.
@@ -1852,7 +1871,7 @@ export class GameBuildManager {
         // reading the finished build report the same numbers off one walk of the output. Sizing is
         // best-effort and cannot reject, so a build that packaged successfully still finishes here.
         const artifactSizes = await measureBuildArtifacts(artifacts);
-        session.snapshot = {
+        await this.finishSession(session, {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
@@ -1861,7 +1880,7 @@ export class GameBuildManager {
             artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
-        };
+        });
         this.emit(session, {
             level: "success",
             source: "Build",
@@ -1875,6 +1894,37 @@ export class GameBuildManager {
         if (request.openWhenDone !== false) {
             this.revealOutput(outputDir);
         }
+    }
+
+    /**
+     * What this project's last run came to, read off disk rather than out of a session.
+     *
+     * The session is gone by the time an author opens yesterday's report, and the record is what
+     * outlives it.
+     */
+    public readLastRun(projectPath: string): Promise<LastGameBuildRun | null> {
+        return readLastGameBuildRun(path.resolve(projectPath));
+    }
+
+    /**
+     * Show the last run's output folder in the desktop's file manager.
+     *
+     * The folder comes from the record this pipeline wrote, and the caller names only the project.
+     * A window therefore cannot ask for an arbitrary directory to be opened - the only paths that
+     * reach the shell here are ones a build of this project chose for itself, which is the same
+     * folder the build already reveals when it finishes.
+     *
+     * False when there is no run, or the run wrote nowhere: a report with no folder to show is a
+     * button that does nothing rather than an error to report.
+     */
+    public async revealLastOutput(projectPath: string): Promise<boolean> {
+        const run = await this.readLastRun(projectPath);
+        const outputDir = run?.state.outputDir?.trim();
+        if (!outputDir) {
+            return false;
+        }
+        this.revealOutput(outputDir);
+        return true;
     }
 
     private revealOutput(outputDir: string): void {
@@ -3077,6 +3127,36 @@ export class GameBuildManager {
         });
     }
 
+    /**
+     * Write down what this run came to, and only then publish the finished snapshot.
+     *
+     * That order is the whole point: a window watching the status sees `done` and opens the report,
+     * so the record has to be on disk before the status says so. Publishing first would leave a
+     * window in which the finished run reads as "there is no report".
+     */
+    private async finishSession(session: BuildSession, snapshot: GameBuildStateSnapshot): Promise<void> {
+        await writeLastGameBuildRun(session.projectPath, this.runRecord(session, snapshot));
+        session.snapshot = snapshot;
+    }
+
+    private runRecord(session: BuildSession, snapshot: GameBuildStateSnapshot): LastGameBuildRun {
+        return {
+            kind: session.kind,
+            ...(session.appTagId ? { appTagId: session.appTagId } : {}),
+            appTagName: session.appTagName,
+            cancelled: session.cancelled,
+            state: snapshot,
+        };
+    }
+
+    /** The variant this run resolved to, kept for the record it will leave behind. */
+    private noteRunVariant(session: BuildSession, variant: ProjectAppTag): void {
+        session.appTagName = variant.name;
+        if (!isBuiltinAppTagId(variant.id)) {
+            session.appTagId = variant.id;
+        }
+    }
+
     private ensureNotCancelled(session: BuildSession): void {
         if (session.cancelled) {
             throw new Error("Build cancelled");
@@ -3098,6 +3178,10 @@ export class GameBuildManager {
             this.app.logger.error("[Build] failed", message);
             this.emit(session, { level: "error", source: "Build", message: `build failed: ${message}` });
         }
+        // Not awaited, unlike the finished path: this is reached from synchronous callers - the
+        // cancel handler answers with the snapshot it just set - and a failed run is not one anybody
+        // is about to open a report for in the same instant.
+        void writeLastGameBuildRun(session.projectPath, this.runRecord(session, session.snapshot));
     }
 
     private emitProcessOutput(session: BuildSession, level: DevModeConsoleLogPayload["level"], chunk: Buffer): void {

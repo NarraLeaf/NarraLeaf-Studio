@@ -948,6 +948,17 @@ export const BLUEPRINT_NODE_TYPE_LAYER_CONFIRM = "blueprint.layer.confirm" as co
 export const BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN = "blueprint.app.getFullscreen" as const;
 export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscreen" as const;
 /**
+ * The window's size, as a multiple of the size the game is drawn at.
+ *
+ * `Get Window Scale Options` comes first in practice: it answers with the sizes this project offers
+ * (`app.window`), and with nothing at all where the shell has no window it can size - a web export,
+ * Dev Mode, the story preview. A configuration screen built from that list therefore has no size
+ * row to draw in those places, rather than a row that does nothing.
+ */
+export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS = "blueprint.app.getWindowScaleOptions" as const;
+export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE = "blueprint.app.getWindowScale" as const;
+export const BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SCALE = "blueprint.app.setWindowScale" as const;
+/**
  * Hand one web address to the player's browser.
  *
  * Only the addresses the build's variant declares are opened, and the shell that opens the page is

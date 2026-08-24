@@ -97,9 +97,10 @@ describe("diffing two revisions", () => {
         const result = await diffRevisions(source, { from: "r1", to: "r2" });
 
         expect(result.documents[0].documentKind).toBe("audio-tracks");
-        // Registered spec, no `diff` of its own yet: tier 2 is what that gets, and it is the
-        // whole reason registering a spec is worth doing.
-        expect(result.documents[0].diff.tier).toBe("summary");
+        // The spec carries a diff of its own, so the pair is compared entry by entry rather
+        // than by the counts it reports about itself. That is the whole reason registering
+        // a spec is worth doing.
+        expect(result.documents[0].diff.tier).toBe("semantic");
     });
 
     it("skips a path neither revision holds bytes for", async () => {

@@ -138,6 +138,20 @@ export interface DocumentSpec<T> {
      */
     pathFor(parameters?: Readonly<Record<string, string>>): string;
 
+    /**
+     * The bytes of one of these documents, as the `raw` value {@link parse} is handed.
+     *
+     * The counterpart of {@link serialize}, and it exists for the same reason: a format that is
+     * not JSON at all has to be able to say so. Every reader used to spell `JSON.parse` itself
+     * before it reached a spec, so the project configuration - which is msgpack - could not be
+     * read even with a spec registered for it, and reported as a number of bytes.
+     *
+     * `path` is the document's own path, because one spec may own two names that are two eras of
+     * the same document and are not the same format. Throwing is how this says the bytes are not
+     * of this format; the caller reports that and compares the file some other way.
+     */
+    decode(bytes: Uint8Array, path: string): unknown;
+
     parse(raw: unknown, context: DocumentParseContext): T;
 
     /** Canonical bytes, including the trailing newline. */

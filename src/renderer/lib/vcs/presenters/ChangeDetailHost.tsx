@@ -1,4 +1,4 @@
-import type { DocumentChange, DocumentDiffEntry } from "@shared/documents/diff";
+import type { DocumentChange, DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
 import { cn } from "@/lib/utils/cn";
 import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "../documentChangeView";
 import { splitDocumentPath } from "../changeIndex";
@@ -35,25 +35,48 @@ export interface ChangeDetailHostProps {
     readonly entry: DocumentDiffEntry;
     /** The selected change, when the selection is finer than the file. */
     readonly change?: DocumentChange;
+    /**
+     * The file holding the bytes, when the row was folded out of two files. See
+     * {@link ChangePresenterProps.member}.
+     *
+     * It decides WHICH presenter is mounted as well as what that presenter reads, and it has to:
+     * the class of a thing is settled from its contents, so an asset's record - a fragment of
+     * JSON - says nothing about whether the asset is a picture or a typeface. Asking about the
+     * record would put the generic list of rows in front of every asset in the project.
+     */
+    readonly member?: DocumentDiffEntry;
+    /** What to call this file, when the row is named by something other than its path. */
+    readonly name?: string;
+    /** What happened, when the row stands for a record inside the file rather than the file. */
+    readonly kind?: DocumentChangeKind;
     /** Which two versions this is a comparison of, for a presenter that reads the file itself. */
     readonly sides?: ComparisonSides;
     readonly className?: string;
 }
 
-export function ChangeDetailHost({ entry, change, sides, className }: ChangeDetailHostProps) {
-    const presenter = presenterFor(entry);
+export function ChangeDetailHost({
+    entry,
+    change,
+    member,
+    name: named,
+    kind: happened,
+    sides,
+    className,
+}: ChangeDetailHostProps) {
+    const presenter = presenterFor(member ?? entry);
     const { directory, name } = splitDocumentPath(entry.path);
+    const kind = happened ?? entry.kind;
 
     return (
         <div className={cn("flex h-full min-h-0 flex-col", className)}>
             <div className="flex shrink-0 items-baseline gap-1.5 overflow-hidden px-3 py-2">
                 <span
                     aria-hidden
-                    className={cn("w-2 shrink-0 text-center font-mono text-2xs", CHANGE_KIND_TINT[entry.kind])}
+                    className={cn("w-2 shrink-0 text-center font-mono text-2xs", CHANGE_KIND_TINT[kind])}
                 >
-                    {CHANGE_KIND_GLYPH[entry.kind]}
+                    {CHANGE_KIND_GLYPH[kind]}
                 </span>
-                <span className="min-w-0 truncate text-xs font-medium text-fg">{name}</span>
+                <span className="min-w-0 truncate text-xs font-medium text-fg">{named ?? name}</span>
                 {directory !== null && (
                     <span className="min-w-0 shrink truncate text-2xs text-fg-subtle" data-tip={directory}>
                         {directory}
@@ -66,7 +89,7 @@ export function ChangeDetailHost({ entry, change, sides, className }: ChangeDeta
                 data-change-presenter={presenter.id}
                 className="min-h-0 flex-1 overflow-y-auto px-3 pb-3"
             >
-                <presenter.Detail entry={entry} change={change} sides={sides} />
+                <presenter.Detail entry={entry} change={change} member={member} sides={sides} />
             </div>
         </div>
     );

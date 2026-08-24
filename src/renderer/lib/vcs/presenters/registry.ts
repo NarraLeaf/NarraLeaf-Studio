@@ -22,6 +22,18 @@ export interface ChangePresenterProps {
     /** The selected change; absent means the selection is the whole document. */
     readonly change?: DocumentChange;
     /**
+     * The file this row's bytes are really in, when it is not {@link entry}.
+     *
+     * An asset is drawn as one row and stored as two files: its authored record inside a metadata
+     * shard, and its contents under its id at `assets/content/<shard>/<shard>/<id>`. The row is
+     * named and addressed by the record, so a presenter that shows the file rather than describing
+     * it must read the OTHER one - its path for the bytes, and its change kind for which sides
+     * hold them, since a replaced file is `changed` on a row whose record was `added`.
+     *
+     * Absent is the ordinary answer, and then the bytes are the entry's own.
+     */
+    readonly member?: DocumentDiffEntry;
+    /**
      * Which two versions this comparison is between, for a presenter that shows the file rather
      * than describing it. See `comparisonSide.ts`.
      *

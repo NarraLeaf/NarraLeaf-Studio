@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { normalizeWindowScaleSteps, WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
@@ -719,6 +720,27 @@ function GameRuntimeSession() {
         bridge?.setDisplayAwake?.(awake);
     }, [bridge]);
 
+    /**
+     * The sizes this build offers, or none at all where the shell cannot size its own window.
+     *
+     * Read from the pack rather than asked of the shell: the list is the author's answer in
+     * `app.window`, and the shell only decides whether a window exists to apply it to.
+     */
+    const windowScaleOptions = useMemo<number[]>(
+        () => (bridge?.capabilities?.windowScale
+            ? normalizeWindowScaleSteps(pack?.bundle?.window?.scaleSteps)
+            : []),
+        [bridge, pack],
+    );
+
+    const getWindowScale = useCallback(async (): Promise<number> => {
+        return (await bridge?.getWindowScale?.()) ?? WINDOW_SCALE_DESIGN;
+    }, [bridge]);
+
+    const setWindowScale = useCallback(async (scale: number): Promise<void> => {
+        await bridge?.setWindowScale?.(scale);
+    }, [bridge]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         return (await bridge?.getFullscreen()) === true;
     }, [bridge]);
@@ -776,6 +798,9 @@ function GameRuntimeSession() {
             quitApplication,
             restartApplication,
             setDisplayAwake,
+            windowScaleOptions,
+            getWindowScale,
+            setWindowScale,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -808,6 +833,9 @@ function GameRuntimeSession() {
         resolveWeatherClip,
         runtimeReady,
         setDisplayAwake,
+        windowScaleOptions,
+        getWindowScale,
+        setWindowScale,
         setFullscreen,
         subscribeFullscreenChanged,
         subscribeCloseRequested,

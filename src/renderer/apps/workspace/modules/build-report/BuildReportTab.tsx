@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, Copy } from "lucide-react";
+import { ChevronDown, FolderOpen } from "lucide-react";
 import { Badge, EmptyState, SearchInput, type BadgeTone } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
-import type { GameBuildPlatform, ShippedAssetReportEntry } from "@shared/types/gameBuild";
-import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG } from "@shared/types/appTag";
-import { copyTextToClipboard } from "@shared/utils/copyText";
-import { BuildService, type FinishedGameBuildRun } from "@/lib/workspace/services/core/BuildService";
-import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import type { GameBuildPlatform, LastGameBuildRun, ShippedAssetReportEntry } from "@shared/types/gameBuild";
+import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import { revealInFileManagerKey } from "@/lib/app/platform";
+import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useWorkspace } from "../../context";
@@ -76,29 +75,45 @@ export function BuildReportTab() {
         [context, isInitialized],
     );
 
-    const [run, setRun] = useState<FinishedGameBuildRun | null>(null);
+    const [run, setRun] = useState<LastGameBuildRun | null>(null);
 
+    /**
+     * The recorded run, re-read whenever one finishes.
+     *
+     * From the record rather than from this session, so the page has something to show the morning
+     * after: a build made yesterday is still the last one this project produced.
+     */
     useEffect(() => {
         if (!buildService) {
             setRun(null);
             return;
         }
-        setRun(buildService.getLastFinishedRun());
-        return buildService.onStateChanged(() => setRun(buildService.getLastFinishedRun()));
+        let current = true;
+        const load = () => {
+            void buildService.loadLastRun().then(next => {
+                if (current) {
+                    setRun(next);
+                }
+            });
+        };
+        load();
+        const stop = buildService.onStateChanged(state => {
+            if (state.status === "done" || state.status === "error") {
+                load();
+            }
+        });
+        return () => {
+            current = false;
+            stop();
+        };
     }, [buildService]);
 
-    /** The variant's own name. Untranslated by design - a build compares `AppTag` against it. */
-    const variantName = useMemo(() => {
-        const id = run?.appTagId;
-        if (!context || !isInitialized || !id || id === APP_TAG_ID_RELEASE) {
-            return RELEASE_APP_TAG.name;
-        }
-        try {
-            return context.services.get<AppTagService>(Services.AppTags).resolveTag(id).name;
-        } catch {
-            return RELEASE_APP_TAG.name;
-        }
-    }, [context, isInitialized, run]);
+    /**
+     * The variant's own name, as it was when the run happened. Untranslated by design - a build
+     * compares `AppTag` against it - and read off the record rather than resolved again, because a
+     * variant renamed since does not change what this run was.
+     */
+    const variantName = run?.appTagName?.trim() || RELEASE_APP_TAG.name;
 
     if (!run) {
         return (
@@ -143,7 +158,9 @@ export function BuildReportTab() {
                             />
                         </div>
 
-                        {state.outputDir ? <OutputFolderRow path={state.outputDir} /> : null}
+                        {state.outputDir ? (
+                            <OutputFolderRow path={state.outputDir} onReveal={() => buildService?.revealLastOutput()} />
+                        ) : null}
 
                         {artifacts.length === 0 ? (
                             <p className="text-2xs text-fg-subtle">{t("build.report.artifactsEmpty")}</p>
@@ -225,7 +242,7 @@ export function BuildReportTab() {
  * one the renderer can reach reveals the project rather than an arbitrary directory. A build that
  * was asked to open its output folder when done has already done so.
  */
-function OutputFolderRow({ path }: { path: string }) {
+function OutputFolderRow({ path, onReveal }: { path: string; onReveal: () => void }) {
     const { t } = useTranslation();
     return (
         <div className="flex items-baseline gap-2 rounded-md border border-edge bg-fill-subtle px-3 py-2">
@@ -235,12 +252,12 @@ function OutputFolderRow({ path }: { path: string }) {
             </span>
             <button
                 type="button"
-                data-tip={t("common.copy")}
-                aria-label={t("common.copy")}
-                onClick={() => void copyTextToClipboard(path).catch(() => undefined)}
+                data-tip={t(revealInFileManagerKey())}
+                aria-label={t(revealInFileManagerKey())}
+                onClick={onReveal}
                 className="shrink-0 rounded-md p-0.5 text-fg-subtle hover:bg-fill hover:text-fg-muted"
             >
-                <Copy className="h-3 w-3" />
+                <FolderOpen className="h-3 w-3" />
             </button>
         </div>
     );

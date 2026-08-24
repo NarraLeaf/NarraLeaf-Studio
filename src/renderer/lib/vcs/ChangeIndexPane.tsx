@@ -27,8 +27,15 @@ export interface ChangeIndexPaneProps {
     /** Whether this heading is open. The tab layers the author's clicks over the model's default. */
     isOpen(group: ChangeIndexGroup): boolean;
     onToggle(group: ChangeIndexGroup): void;
-    readonly selectedPath: string | null;
-    onSelect(path: string): void;
+    /**
+     * The selected row's {@link ChangeIndexRow.key}, not its path.
+     *
+     * A path stopped identifying a row when an asset became one line: several rows of a comparison
+     * are records inside one metadata shard and are reported at that shard's path, so selecting by
+     * path would select all of them at once.
+     */
+    readonly selectedKey: string | null;
+    onSelect(key: string): void;
     readonly className?: string;
     readonly style?: CSSProperties;
 }
@@ -37,7 +44,7 @@ export function ChangeIndexPane({
     index,
     isOpen,
     onToggle,
-    selectedPath,
+    selectedKey,
     onSelect,
     className,
     style,
@@ -59,7 +66,7 @@ export function ChangeIndexPane({
                     group={group}
                     open={isOpen(group)}
                     onToggle={() => onToggle(group)}
-                    selectedPath={selectedPath}
+                    selectedKey={selectedKey}
                     onSelect={onSelect}
                 />
             ))}
@@ -85,14 +92,14 @@ export function ChangeIndexGroupView({
     group,
     open,
     onToggle,
-    selectedPath,
+    selectedKey,
     onSelect,
 }: {
     group: ChangeIndexGroup;
     open: boolean;
     onToggle: () => void;
-    selectedPath: string | null;
-    onSelect: (path: string) => void;
+    selectedKey: string | null;
+    onSelect: (key: string) => void;
 }) {
     const { t, tn } = useTranslation();
 
@@ -125,10 +132,10 @@ export function ChangeIndexGroupView({
 
             {open && group.rows.map(row => (
                 <ChangeIndexRowView
-                    key={row.path}
+                    key={row.key}
                     row={row}
-                    selected={row.path === selectedPath}
-                    onSelect={() => onSelect(row.path)}
+                    selected={row.key === selectedKey}
+                    onSelect={() => onSelect(row.key)}
                 />
             ))}
         </section>
@@ -163,7 +170,7 @@ function ChangeIndexRowView({
             data-tip={row.memberCount > 0
                 ? `${row.path} · ${translator.tn("documentDiff.shell.setFiles", row.memberCount)}`
                 : row.path}
-            data-change-index-row={row.path}
+            data-change-index-row={row.key}
             className={cn(
                 "flex w-full items-baseline gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-2 py-1 pl-6 text-left",
                 "nl-focus-ring transition-colors cursor-default",
@@ -176,7 +183,7 @@ function ChangeIndexRowView({
             >
                 {CHANGE_KIND_GLYPH[row.kind]}
             </span>
-            <span className="min-w-0 truncate text-xs text-fg">{row.name}</span>
+            <span className="min-w-0 truncate text-xs text-fg">{changeIndexRowName(row, translator.t)}</span>
             {row.directory !== null && (
                 <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">{row.directory}</span>
             )}
@@ -185,6 +192,17 @@ function ChangeIndexRowView({
             </span>
         </button>
     );
+}
+
+/**
+ * What this row is called.
+ *
+ * The file name for most rows, the author's own name for an asset, and a translated label for the
+ * one row whose file name says nothing at all - a content file no asset record claims, stored under
+ * a shard of its id. The path is still in the tooltip, so nothing is being hidden by naming it.
+ */
+export function changeIndexRowName(row: ChangeIndexRow, t: Translator["t"]): string {
+    return row.nameKey ? t(row.nameKey) : row.name;
 }
 
 /** What one file's row says it stands for. A count, except where a count would be misleading. */

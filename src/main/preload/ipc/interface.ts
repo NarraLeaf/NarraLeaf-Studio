@@ -18,7 +18,13 @@ import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, W
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "@shared/types/gameBuild";
+import type {
+    BuildPreflightFinding,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GamePatchExportRequest,
+    LastGameBuildRun,
+} from "@shared/types/gameBuild";
 import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type { StudioTaskOverview } from "@shared/types/studioTask";
@@ -700,6 +706,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildSelectPatchFile, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
         selectPatchBaseline: (defaultPath?: string) =>
             ipcClient.invoke(IPCEventType.gameBuildSelectPatchBaseline, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
+        readLastRun: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildReadLastRun, { projectPath }) as Promise<RequestStatus<{ run: LastGameBuildRun | null }>>,
+        revealOutput: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildRevealOutput, { projectPath }) as Promise<RequestStatus<{ revealed: boolean }>>,
         readPatchBaseline: (path: string) =>
             ipcClient.invoke(IPCEventType.gameBuildReadPatchBaseline, { path }) as Promise<RequestStatus<{
                 appTagId: string | null;
