@@ -113,12 +113,21 @@ export function StudioPreview({ surface }: StudioPreviewProps) {
         <div
             aria-hidden
             // Raised off the screen behind it, the way every window in front of another one is.
-            // Cast up and to the LEFT rather than down and to the right, which is where `shadow-2xl`
-            // and every other preset puts it: the crop takes the bottom and right edges, so a
-            // shadow that falls that way falls entirely outside the screen and the frame reads as a
-            // flat region of it. Same reason and same shape as the panel overlays that slide in from
-            // the right (`ProjectPanel`, `PluginsPanel`).
-            className="flex h-full flex-col overflow-hidden rounded-tl-md border-l border-t border-edge-strong bg-surface shadow-[-12px_-2px_36px_rgba(0,0,0,0.35)]"
+            //
+            // A large blur and a small downward offset, which is the shape an operating system
+            // gives a window: light from above, so the shadow sits under the frame while the blur
+            // still reaches past its top and left edges - the two the crop leaves visible. The
+            // preset scale is no use here (`shadow-2xl` offsets 25px down against a 50px blur, so
+            // none of it clears the top edge), and offsetting it up and to the left instead puts
+            // the light source below the screen and reads as a glow rather than as depth.
+            //
+            // The pane behind it is left at the window's own background ON PURPOSE. Darkening it
+            // first - which is the obvious way to make the frame stand out - lands the shadow on
+            // pixels that are already almost black and the falloff disappears entirely: measured
+            // flat at luminance 5 across the whole gap, against 17 -> 14 here. In a dark theme the
+            // raised edge does most of the work and the shadow is what carries a light one, which
+            // is why the top and left edges are drawn at `edge-strong` rather than `edge`.
+            className="flex h-full flex-col overflow-hidden rounded-tl-md border-l border-t border-edge-strong bg-surface shadow-[0_6px_32px_rgba(0,0,0,0.4)]"
             style={{ width: FRAME_WIDTH_PX }}
         >
             <div className="flex h-10 min-h-10 shrink-0 items-center border-b border-edge bg-surface-sunken">
