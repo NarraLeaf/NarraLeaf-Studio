@@ -846,9 +846,13 @@ type ParseResult =
 function tryParse(spec: AnyDocumentSpec, path: string, bytes: Buffer): ParseResult {
     let raw: unknown;
     try {
-        raw = JSON.parse(bytes.toString("utf-8"));
+        // The spec's own decode, not `JSON.parse` here. This line used to be `JSON.parse`, which
+        // made every non-JSON format unreachable however it was registered: the project
+        // configuration is msgpack, and it fell through to the byte tier as "Changed (12488 →
+        // 12502)". A spec that declares no decode still gets JSON, so nothing else moves.
+        raw = spec.decode(bytes, path);
     } catch (error) {
-        return { ok: false, reason: `not valid JSON: ${messageOf(error)}` };
+        return { ok: false, reason: `the bytes could not be decoded: ${messageOf(error)}` };
     }
     try {
         return { ok: true, document: spec.parse(raw, parseContextFor(spec, path, bytes)) };
