@@ -28,6 +28,10 @@ export const actions = {
         // Which build variant Dev Mode, Preview and Test assemble as. The row is only there when
         // the project has a variant to pick, so most projects never see it.
         runAs: "Run as",
+            // The DLC a run has installed. "with" rather than "as": an edition is what the build
+            // is, and DLC are what is beside it.
+            runWithDlc: "Run with DLC",
+            dlcCount: "{active} of {total}",
     },
     file: {
         label: "File",
