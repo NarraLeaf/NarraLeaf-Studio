@@ -71,7 +71,8 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
-import { clickSelectsRow, isPlainRowPress, nextRowSelection, pressSelectsRow } from "./storyRowSelectionGesture";
+import { clickSelectsRow, isPlainRowPress, nextRowSelection, pressSelectsRow, rowDragEngaged } from "./storyRowSelectionGesture";
+import type { StoryRevealIntent, StoryRevealTarget, StoryRowRevealRequest } from "./storyRowReveal";
 import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
 import {
     EMPTY_STORY_ROW_FILTER,
@@ -222,6 +223,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // native text selection, and the mouseup (or the drag leaving this row) settles what it meant.
     const textSelectRef = useRef<{ blockId: StoryBlockId; textEl: HTMLElement } | null>(null);
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
+    /**
+     * Where a row press landed, held only for as long as the gesture might still be a click.
+     *
+     * A press is not a drag, and the difference is what the edge auto-scroll below turns on. Armed on
+     * the way down and dropped by the first move past the deadzone: while it is set, the gesture has
+     * not moved and nothing may scroll on its behalf.
+     */
+    const dragSelectOriginRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
     /**
      * The rows a drag in progress is carrying, settled at pick-up rather than at drop: a drag can be
@@ -266,6 +275,98 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<StoryBlockId>>(() => new Set());
     /** Counts explicit select gestures — see {@link selectRow}. Read by the tab to re-claim the right rail. */
     const [selectionRevision, setSelectionRevision] = useState(0);
+
+    /**
+     * The channel that moves the page, and the reason it is a channel rather than a piece of state.
+     *
+     * A reveal has to reach the tab *after* the commit that caused it, which is what an effect gives
+     * you — but publishing it as state would mean a second render pass for every arrow key and every
+     * Enter, on the one surface where render passes are the whole cost of typing (see
+     * `storyRowIdentity`). Listeners are called directly instead: the request is delivered from the
+     * effect below, so the DOM is already the new one, and nothing re-renders to deliver it.
+     */
+    const revealListenersRef = useRef(new Set<(request: StoryRowRevealRequest) => void>());
+    const revealTokenRef = useRef(0);
+    /**
+     * The intent attached to the active-row change now in flight, waiting for that change to land.
+     *
+     * A gesture knows what it means at the moment it fires, and that is before the state it sets has
+     * been committed — so it leaves the answer here and the effect below posts it once the row it
+     * describes is actually the active one. Unset means the change said nothing, which is read as
+     * {@link revealWith}'s gentlest answer rather than as no answer at all.
+     */
+    const pendingRevealRef = useRef<{ target: StoryRevealTarget; intent: StoryRevealIntent } | null>(null);
+    const lastRevealedActiveRef = useRef<StoryBlockId | null | undefined>(undefined);
+    // The committed active row, for gestures that have to know whether they are about to change it.
+    const activeBlockIdRef = useRef<StoryBlockId | null>(activeBlockId);
+    activeBlockIdRef.current = activeBlockId;
+
+    /**
+     * Post a reveal now. Only for requests that ride no active-row change of their own — a filter that
+     * redrew the page under a cursor that never moved, a slot opened past the last row. Everything
+     * else goes through {@link revealWith}, which waits for the cursor to arrive first.
+     */
+    const revealRow = useCallback((target: StoryRevealTarget, intent: StoryRevealIntent) => {
+        revealTokenRef.current += 1;
+        const request: StoryRowRevealRequest = { target, intent, token: revealTokenRef.current };
+        for (const listener of revealListenersRef.current) {
+            listener(request);
+        }
+    }, []);
+
+    /**
+     * Say what the page should do about the active-row change this gesture is making.
+     *
+     * `nextActiveId` is the row the gesture is about to focus, and it is asked for rather than
+     * inferred for one reason: when the cursor is already on that row there is no change coming, so
+     * there is nothing for the effect below to hang the request on and it has to go out now. Getting
+     * that wrong is not a missed scroll, it is a *stored* one — the intent would sit here until some
+     * later, unrelated keystroke moved the cursor and spent it.
+     */
+    const revealWith = useCallback((nextActiveId: StoryBlockId | null, target: StoryRevealTarget, intent: StoryRevealIntent) => {
+        if (nextActiveId === activeBlockIdRef.current) {
+            pendingRevealRef.current = null;
+            revealRow(target, intent);
+            return;
+        }
+        pendingRevealRef.current = { target, intent };
+    }, [revealRow]);
+
+    const subscribeRowReveal = useCallback((listener: (request: StoryRowRevealRequest) => void) => {
+        const listeners = revealListenersRef.current;
+        listeners.add(listener);
+        return () => {
+            listeners.delete(listener);
+        };
+    }, []);
+
+    /**
+     * The one place an active-row change becomes a request to move the page.
+     *
+     * Unannotated changes are a step — the smallest move that keeps the cursor reachable. That is the
+     * safety net (under a windowed list a selection walked off screen is a row Enter would open with
+     * no element behind it) and it is deliberately the *gentlest* answer, so a path nobody annotated
+     * degrades to a nudge rather than to the old "throw it at the middle of the screen".
+     *
+     * The first observation is the tab opening, not a move: the author's saved viewport is restored by
+     * the tab and outranks whichever row happened to be selected when they left.
+     */
+    useEffect(() => {
+        const pending = pendingRevealRef.current;
+        pendingRevealRef.current = null;
+        const previous = lastRevealedActiveRef.current;
+        lastRevealedActiveRef.current = activeBlockId;
+        if (previous === undefined || previous === activeBlockId) {
+            return;
+        }
+        const target = pending?.target ?? (activeBlockId ? { kind: "row", blockId: activeBlockId } as const : null);
+        if (!target) {
+            // The cursor left the rows without landing anywhere (the last row deleted, the selection
+            // cleared). Nothing to show, and the page stays where the author left it.
+            return;
+        }
+        revealRow(target, pending?.intent ?? "step");
+    }, [activeBlockId, revealRow]);
     // Editor-wide view preferences. PanelStateService loads from disk before the editor renders,
     // so the synchronous read below sees the persisted value; the setters write it back.
     const [rowFilter, setRowFilterState] = useState<StoryRowFilter>(() => {
@@ -752,10 +853,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             ?.closest<HTMLElement>("[data-story-row-block-id]");
         const blockId = target?.dataset.storyRowBlockId;
         if (blockId && scene?.blocks[blockId]) {
+            // The head of a drag is by definition the row under the pointer, and the drag has its own
+            // auto-scroll for reaching past the edges. Nothing else may move the page while it runs.
+            revealWith(blockId, { kind: "row", blockId }, "none");
             setSelectedBlockIds(selectRange(visibleRows, startBlockId, blockId));
             setActiveBlockId(blockId);
         }
-    }, [scene, visibleRows]);
+    }, [revealWith, scene, visibleRows]);
 
     const stopDragSelection = useCallback(() => {
         if (dragSelectAutoScrollRef.current !== null) {
@@ -763,6 +867,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             dragSelectAutoScrollRef.current = null;
         }
         dragSelectPointerRef.current = null;
+        dragSelectOriginRef.current = null;
         setDragSelectActive(false);
         dragSelectionStartRef.current = null;
     }, []);
@@ -972,6 +1077,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (!dragSelectionStartRef.current) {
                 return;
             }
+            // Still inside the deadzone: this is a press that has not decided to be a drag, so it
+            // neither extends the selection nor lets the edge auto-scroll run. Once it is out, it is
+            // out for the rest of the gesture — a drag that came back over its origin is still a drag.
+            const origin = dragSelectOriginRef.current;
+            if (origin) {
+                if (!rowDragEngaged(origin, event.clientX, event.clientY)) {
+                    return;
+                }
+                dragSelectOriginRef.current = null;
+            }
             dragSelectPointerRef.current = { x: event.clientX, y: event.clientY };
             extendDragSelectionAtPoint(event.clientX, event.clientY);
             startDragSelectAutoScroll();
@@ -1037,13 +1152,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         rootRef.current?.focus();
     }, [focusWorkspace, uiService]);
 
-    // Make a block the active/selected row (used by deep-link navigation). Scrolling the row into
-    // view and moving DOM focus is handled by the tab, which owns the rendered row elements.
+    // Make a block the active/selected row (used by deep-link navigation). Moving DOM focus is the
+    // tab's, which owns the rendered row elements; the move of the page is declared here, as a jump —
+    // whoever asked for this row was not reading it a moment ago (see `storyRowReveal`).
     const revealBlock = useCallback((blockId: StoryBlockId): boolean => {
         const block = scene?.blocks[blockId];
         if (!block) {
             return false;
         }
+        revealWith(blockId, { kind: "row", blockId }, "jump");
         // Jump wins over the filter: navigating (reveal / search) to a row the filter would hide
         // switches the ticks holding it back on, so the target is actually visible and selected rather
         // than an invisible selection on a hidden row.
@@ -1073,7 +1190,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setSelectedBlockIds(new Set([blockId]));
         selectionAnchorRef.current = blockId;
         return true;
-    }, [revealRowInFilter, scene]);
+    }, [revealRowInFilter, revealWith, scene]);
 
     const captureHistoryState = useCallback((): StorySceneHistoryState | null => {
         if (!scene) {
@@ -1102,11 +1219,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         storyService.replaceScene(storyId, sceneId, state.scene);
         syncEditorTabTitle(uiService, tabId, state.scene.name);
+        // An undo is an arrival, not a step: the edit being taken back may be twenty screens from
+        // where the author has since scrolled to, and landing on it with no context around it is how
+        // Ctrl+Z becomes "something changed, somewhere".
+        if (state.activeBlockId) {
+            revealWith(state.activeBlockId, { kind: "row", blockId: state.activeBlockId }, "jump");
+        }
         setActiveBlockId(state.activeBlockId);
         setSelectedBlockIds(new Set(state.selectedBlockIds));
         setCollapsedBlockIds(new Set(state.collapsedBlockIds));
         setEditorMode({ kind: "idle" });
-    }, [sceneId, storyId, storyService, tabId, uiService]);
+    }, [revealWith, sceneId, storyId, storyService, tabId, uiService]);
 
     /**
      * This scene's undo stack, held by `HistoryService` rather than by this hook.
@@ -1320,6 +1443,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true, confirmation?: string) => {
         slotDiscardedRef.current = false;
         insertDraftRef.current = "";
+        // The slot, not the row it hangs off: the caret is going into the slot, and the row above it is
+        // already where the author was looking. This is also why a line committed at the bottom of the
+        // page nudges rather than recentring — the anchor being revealed is one row tall, not the whole
+        // screen's worth the old "put the new row in the middle" answer moved.
+        //
+        // A null anchor is the trailing slot the "add a row" line opens, and it moves no cursor — so
+        // the row it leaves active is the one already active, which is what makes the request go out
+        // now rather than waiting for a change that is not coming.
+        revealWith(afterBlockId ?? activeBlockIdRef.current, { kind: "slot" }, "step");
         setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, initialValue: "", confirmation });
         if (afterBlockId) {
             setActiveBlockId(afterBlockId);
@@ -1327,7 +1459,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (focus) {
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
-    }, []);
+    }, [revealWith]);
 
     /**
      * Open an insert slot directly *above* a row, at that row's own depth. Modelled on `startLineEdit`'s
@@ -1342,6 +1474,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         slotDiscardedRef.current = false;
         insertDraftRef.current = "";
+        revealWith(blockId, { kind: "slot" }, "step");
         setEditorMode({
             kind: "insert",
             slot: { afterBlockId: null, focusToken: Date.now(), target: { parentId: block.parentId, beforeBlockId: blockId } },
@@ -1351,7 +1484,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (focus) {
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
-    }, [scene]);
+    }, [revealWith, scene]);
 
     /**
      * The action trigger typed into an empty dialogue row - the author asking for this speaker's own
@@ -1476,6 +1609,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // silently swallowing this slot's blur-commit.
         slotDiscardedRef.current = false;
         insertDraftRef.current = "";
+        revealWith(parentId, { kind: "slot" }, "step");
         setEditorMode({
             kind: "insert",
             slot: { afterBlockId: lastChildId ?? parentId, focusToken: Date.now(), target: { parentId, beforeBlockId: null } },
@@ -1483,7 +1617,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
         setActiveBlockId(parentId);
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
-    }, [ensureExpanded, scene]);
+    }, [ensureExpanded, revealWith, scene]);
 
     /**
      * Open a slot with a `/jump` already typed into it — the scene flow map's connect gesture landing
@@ -1542,6 +1676,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         slotDiscardedRef.current = false;
         insertDraftRef.current = line;
+        // A jump, not a step: the author is not here, they are on the flow map, and the slot this
+        // opens is at the end of an arm or the end of the chapter. A caret they cannot see is
+        // indistinguishable from the map having done nothing — which is exactly what this looked like
+        // while the reveal was a single frame's `querySelector` for a slot the windowed list had not
+        // rendered yet. See `useStoryRowReveal`, which now waits for it and mounts its host row.
+        revealWith(container ? container.id : activeBlockIdRef.current, { kind: "slot" }, "jump");
         setEditorMode({ kind: "insert", slot, initialValue: line, chooserDismissed: true });
         if (container) {
             setActiveBlockId(container.id);
@@ -1557,7 +1697,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             input.setSelectionRange(line.length, line.length);
         });
         return true;
-    }, [document, ensureExpanded, frozen, revealRowInFilter, scene, slashAtAlias]);
+    }, [document, ensureExpanded, frozen, revealRowInFilter, revealWith, scene, slashAtAlias]);
 
     // Append a menu option to a choice container and open it for text entry.
     const addMenuOption = useCallback((choiceId: StoryBlockId) => {
@@ -2495,7 +2635,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return anchorId && rowIndexById.has(anchorId) ? anchorId : activeBlockId;
     }, [activeBlockId, rowIndexById]);
 
-    const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent) => {
+    /**
+     * `intent` says what the page should do about landing here; its default is the whole of why a
+     * click no longer scrolls. A press carries an event, and a press is the author pointing at a row
+     * they can already see — moving the page for it takes the row out from under a gesture that is
+     * still in flight, which is how clicking the last visible line used to end in a range selection
+     * across whatever slid up to meet the cursor. Without an event this is the editor moving its own
+     * cursor (the play head following the running game), which is a step like any other.
+     */
+    const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent, intent?: StoryRevealIntent) => {
+        revealWith(blockId, { kind: "row", blockId }, intent ?? (event ? "none" : "step"));
         // Bumped on every select gesture, including one that lands on the row already active. The right
         // rail follows the selection, and something else in the app (clicking an asset) may have taken
         // the rail since the last time this row was picked — without a revision, re-clicking it would
@@ -2510,7 +2659,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setActiveBlockId(blockId);
         setSelectedBlockIds(previous => nextRowSelection({ previous, rows: visibleRows, anchorBlockId, blockId, event }));
-    }, [resolveSelectionAnchor, visibleRows]);
+    }, [resolveSelectionAnchor, revealWith, visibleRows]);
 
     /**
      * The `mousedown` half of a row's press. See {@link pressSelectsRow} for why the row needs two
@@ -2540,10 +2689,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         dragSelectPointerRef.current = { x: event.clientX, y: event.clientY };
+        dragSelectOriginRef.current = { x: event.clientX, y: event.clientY };
         dragSelectionStartRef.current = blockId;
         setDragSelectActive(true);
-        startDragSelectAutoScroll();
-    }, [selectRow, startDragSelectAutoScroll]);
+        // Deliberately NOT starting the edge auto-scroll here. It used to start on the press, which
+        // made the bottom-most visible row very nearly unclickable: a press within 64px of the bottom
+        // edge began scrolling at up to 18px a frame before the pointer had moved at all, and the rows
+        // sliding up past a stationary cursor were taken as a drag across them. Measured: pressing one
+        // line and releasing it ~100ms later moved the page 106px and left four rows selected — which
+        // is what "clicking the last visible line scrolls and selects something else" was.
+        //
+        // The auto-scroll belongs to the drag, and there is no drag until the pointer has left
+        // `dragSelectOriginRef` by the deadzone. The mousemove handler starts it then.
+    }, [selectRow]);
 
     /**
      * The `click` half of the same press, and the only one that runs when {@link beginDragSelection}
@@ -2566,10 +2724,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     const extendDragSelection = useCallback((blockId: StoryBlockId) => {
         if (dragSelectActive && dragSelectionStartRef.current) {
+            // Under the pointer, and the drag owns the page while it lasts. See `extendDragSelectionAtPoint`.
+            revealWith(blockId, { kind: "row", blockId }, "none");
             setSelectedBlockIds(selectRange(visibleRows, dragSelectionStartRef.current, blockId));
             setActiveBlockId(blockId);
         }
-    }, [dragSelectActive, visibleRows]);
+    }, [dragSelectActive, revealWith, visibleRows]);
 
     const toggleCollapsed = useCallback((blockId: StoryBlockId) => {
         setCollapsedBlockIds(previous => {
@@ -2912,12 +3072,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * matching a click on the affordance.
      */
     const focusAddRow = useCallback(() => {
+        // The one cursor position that is not a row, so it names itself as the thing to show: with no
+        // active row to hang a request on, an unannotated move here would reveal nothing at all.
+        revealWith(null, { kind: "addRow" }, "step");
         setActiveBlockId(null);
         setSelectedBlockIds(new Set());
         selectionAnchorRef.current = null;
         goalColumnRef.current = null;
         setAddRowFocused(true);
-    }, []);
+    }, [revealWith]);
 
     const moveActiveRowSelection = useCallback((direction: "up" | "down") => {
         // The add-row line sits one step past the last row in the keyboard order: Down off the bottom
@@ -3159,12 +3322,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         try {
             recordHistory();
             storyService.moveBlocks(storyId, sceneId, [plan]);
+            // The author dropped it here; they are looking at where they dropped it. dnd-kit has its
+            // own auto-scroll for a drag that reaches an edge, and that one is the author's too.
+            revealWith(draggedBlockId, { kind: "row", blockId: draggedBlockId }, "none");
             setActiveBlockId(draggedBlockId);
             setSelectedBlockIds(new Set(plan.blockIds));
         } catch {
             /* move failed; nothing to surface */
         }
-    }, [recordHistory, scene, sceneId, storyId, storyService]);
+    }, [recordHistory, revealWith, scene, sceneId, storyId, storyService]);
 
     return {
         context, isInitialized, document, documentForRows, scene, loading,
@@ -3175,6 +3341,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // editor apart from an entirely filtered-out one, which read identically before.
         unfilteredRowCount: unfilteredRows.length,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
+        // The viewport channel. `revealRow` is for the tab's own reasons to move the page (a filter
+        // that redrew it, a find result); everything driven by the cursor declares its intent at the
+        // gesture and arrives here on its own. See `storyRowReveal`.
+        revealRow, subscribeRowReveal,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
