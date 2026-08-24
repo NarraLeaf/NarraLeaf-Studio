@@ -6,6 +6,7 @@ import {
     STORY_MARK_VAR,
     STORY_ROW_BOX_VAR,
     storyEditorRootStyle,
+    storyEditorTextStyleFor,
     storyGutterWidth,
 } from "./storyEditorTextStyle";
 import { STORY_MARK_PX } from "./StoryRowGutterMark";
@@ -29,10 +30,35 @@ describe("story editor density metrics", () => {
     });
 
     it("keeps compact as the untouched baseline", () => {
-        // No line-height: compact inherits the Tailwind `text-sm` leading it has always had, and
-        // pinning one here would quietly reflow every existing project.
+        // 1.5 is what compact already drew its prose at — the unitless leading of the page, inherited.
+        // Writing it down is what makes it reach the row boxes that pin `text-sm` over it.
         expect(STORY_DENSITY_METRICS.compact.fontScale).toBe(1);
-        expect(STORY_DENSITY_METRICS.compact.lineHeight).toBeUndefined();
+        expect(STORY_DENSITY_METRICS.compact.lineHeight).toBe(1.5);
+    });
+
+    /**
+     * The leading has to be a MULTIPLE of the font size, never a length.
+     *
+     * `editor.fontSize` is a preference and runs to 48px; a leading pinned in `px`/`rem` holds the
+     * line box still while the glyphs grow, and every action row truncates its command line — an
+     * ancestor with `overflow: hidden` — so the row was shaved off above and below. A unitless number
+     * is the whole fix, and a length slipping back into this table is the whole regression.
+     */
+    it("states every leading as a multiple of the font size", () => {
+        for (const density of STORY_EDITOR_DENSITIES) {
+            const lineHeight = STORY_DENSITY_METRICS[density].lineHeight;
+            expect(typeof lineHeight, density).toBe("number");
+            // A ratio, not a pixel count: anything this large could only be a length.
+            expect(lineHeight, density).toBeLessThan(4);
+            expect(lineHeight, density).toBeGreaterThan(1);
+        }
+    });
+
+    it("carries the leading into the style story text is set with", () => {
+        for (const density of STORY_EDITOR_DENSITIES) {
+            expect(storyEditorTextStyleFor(20, "inherit", density).lineHeight, density)
+                .toBe(STORY_DENSITY_METRICS[density].lineHeight);
+        }
     });
 
     it("orders the densities by how much room they give", () => {
