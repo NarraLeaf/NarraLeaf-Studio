@@ -1127,12 +1127,17 @@ export class GameBuildManager {
         this.ensureNotCancelled(session);
 
         const outputDir = path.dirname(outputFile);
+        // Measured like a build's artifacts and for the same reason: what a patch came to is the
+        // first thing an author checks about one, and a finished run that could not say would be
+        // the only one of the two that cannot.
+        const artifactSizes = await measureBuildArtifacts([outputFile]);
         session.snapshot = {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: [],
             artifacts: [outputFile],
+            artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
         };
