@@ -169,6 +169,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
     BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
@@ -1741,6 +1742,10 @@ function resolveEndingNodeOutput(
     if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS && portId === "endings") {
         const storyId = String(params.storyId ?? "").trim();
         return storyId ? game?.listEndings(storyId) ?? [] : [];
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED && portId === "isInstalled") {
+        const dlcId = String(params.dlcId ?? "").trim();
+        return dlcId ? game?.isDlcInstalled(dlcId) === true : false;
     }
     return undefined;
 }

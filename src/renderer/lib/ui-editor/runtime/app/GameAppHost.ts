@@ -159,6 +159,18 @@ export type GameAppHost = {
      * ending may legitimately want the stage left alone.
      */
     endingSurfaceId?: string | null;
+    /**
+     * The DLC installed beside this build, by the ids the author gave them.
+     *
+     * A host supplies it from what it was given. The packaged game reads it off the pack the layer
+     * stack composed - a DLC is a file beside the game, so what is installed is what was found. Dev
+     * Mode passes every DLC the project has, because it carries every story the project has: an
+     * author testing there is looking at the whole game, not at one edition of it.
+     *
+     * Absent is "none", which is what a build with nothing beside it means and what the editor
+     * preview means.
+     */
+    installedDlcIds?: readonly string[];
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
