@@ -33,9 +33,6 @@ export const launcher = {
         },
         // 応答する OS の呼び名で書く。作者がこの先で見るのはその画面そのものなので、
         // 独自の言い方をすると別のものが開くように読める。
-        revealInFinder: "Finder で表示",
-        revealInExplorer: "エクスプローラーで表示",
-        revealInFileManager: "ファイルマネージャーで表示",
         errorReveal: "プロジェクトフォルダを開けなかった",
         removeFromRecent: "最近の一覧から取り除く",
         removeConfirm: {

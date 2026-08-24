@@ -10,6 +10,8 @@ import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { setRuntimeCrashPolicy, setRuntimeShellLogPath } from "./crashPolicy";
 import { installRuntimeErrorHooks } from "./runtimeErrorHooks";
 import { installScrollbarAutoHide } from "@/styles/scrollbarAutoHide";
+import { getActiveProjectLocale, subscribeActiveProjectLocale } from "@shared/typography/projectFonts";
+import { installDocumentLanguage } from "./documentLanguage";
 
 // Before anything else, including the missing-root check below: what this build does about a crash
 // has to be settled before there is any chance of one, and read from the page's own address rather
@@ -27,6 +29,17 @@ installRuntimeErrorHooks();
 // The JS half of the scrollbar rules in styles.css, which this runtime shares with Studio: without
 // it no scroller the game draws - a saves list, a long log - ever shows a thumb.
 installScrollbarAutoHide();
+
+// `<html lang>` follows the language the game is being read in, which the entry document can only
+// state as the language it was written in. The browser picks the fallback font's Han forms and its
+// line breaking from it. See `documentLanguage`.
+installDocumentLanguage({
+    getLanguage: getActiveProjectLocale,
+    subscribe: subscribeActiveProjectLocale,
+    apply: language => {
+        document.documentElement.lang = language;
+    },
+});
 
 const root = document.getElementById("root");
 

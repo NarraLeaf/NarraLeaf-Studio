@@ -56,10 +56,11 @@ import {
     type AudioMixPreferences,
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
+import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { makeDefaultStructItem, type UIStructDef } from "@shared/types/ui-editor/struct";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
@@ -187,6 +188,14 @@ export type BlueprintListProperties = {
      * list no longer declares would sort by nothing and report success.
      */
     struct: UIStructDef | null;
+    /**
+     * Where the list has got to along its axis, as it last measured itself.
+     *
+     * A list that has not been rendered - or has been rendered somewhere with no runtime store, like
+     * a Surface thumbnail - reports at-rest rather than nothing, so a graph asking gets the answer
+     * for a list that cannot scroll instead of an undefined it has no way to branch on.
+     */
+    scroll: UIListScrollMetrics;
 };
 
 export type BlueprintDisplayableProperties = {
@@ -330,6 +339,8 @@ export type BlueprintHostApiRuntime = {
         getWindowScaleOptions: () => number[];
         getWindowScale: () => Promise<number>;
         setWindowScale: (scale: number) => Promise<void>;
+        getWindowSize: () => Promise<{ width: number; height: number }>;
+        setWindowSize: (width: number, height: number) => Promise<void>;
         /**
          * Open one web address in the player's browser.
          *
@@ -548,6 +559,16 @@ export type BlueprintHostApiRuntime = {
          */
         isEndingReached: (endingId: string) => boolean;
         /**
+         * Is this DLC installed beside the running build, by the id the author gave it.
+         *
+         * The whole of what a game may ask about its DLC, and deliberately not "does the player own
+         * it". Ownership is a storefront's fact and a plugin's to answer; what decides whether the
+         * content is here is whether its file is, which is the question this asks. A build with no
+         * DLC beside it answers false to everything, which is what a title screen wants before the
+         * player has bought anything.
+         */
+        isDlcInstalled: (dlcId: string) => boolean;
+        /**
          * Every ending one story declares, in document order, each row already carrying whether it
          * was reached. Empty for an unknown or unnamed story rather than an error.
          *
@@ -670,6 +691,16 @@ export type BlueprintHostApiRuntime = {
     progress: {
         export: () => Promise<{ outcome: "written" | "failed"; error: string }>;
         import: () => Promise<GameProgressImportOutcome>;
+    };
+    /**
+     * What the shell can promise about the data it writes, for the `Check Storage Durability` node.
+     *
+     * A fact about where the game is running, not about the playthrough: a packaged desktop game
+     * keeps files nothing reclaims, a web export holds whatever grant the browser gave it. Stated,
+     * never acted on - what a player is told about it belongs to the title.
+     */
+    storage: {
+        durability: () => Promise<GameStorageDurability>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -818,6 +849,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * wipes are no-ops - which is what lets an endings screen lay out in the preview.
      */
     onIsEndingReached?: (endingId: string) => boolean;
+    /**
+     * Which DLC are installed beside this build. Absent where nothing can say - the editor preview,
+     * a host that carries no layers - and every DLC then reads as not installed.
+     */
+    onIsDlcInstalled?: (dlcId: string) => boolean;
     onListEndings?: (storyId: string) => BlueprintStoryEnding[];
     onClearEndingState?: (endingId: string) => Promise<void> | void;
     onClearEndings?: () => Promise<void> | void;
@@ -891,6 +927,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     windowScaleOptions?: number[];
     onGetWindowScale?: () => number | Promise<number>;
     onSetWindowScale?: (scale: number) => void | Promise<void>;
+    onGetWindowSize?: () => { width: number; height: number } | Promise<{ width: number; height: number }>;
+    onSetWindowSize?: (width: number, height: number) => void | Promise<void>;
     /**
      * The layer stack composited over the page lane.
      *
@@ -955,6 +993,14 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onExportProgress?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
     /** Reads it back, and applies what it holds to the running game. Absent for the same reasons. */
     onImportProgress?: () => Promise<GameProgressImportOutcome>;
+    /**
+     * What the shell running this graph can promise about the data it writes.
+     *
+     * Absent in every environment that writes nowhere real - the editor preview and the story
+     * preview - where the node leaves by `Unknown`, which is what "this cannot be answered here"
+     * already means.
+     */
+    onStorageDurability?: () => Promise<GameStorageDurability>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -1294,6 +1340,7 @@ function readListProperties(
     return {
         items,
         selectedIndex,
+        scroll: widgetRuntimeStore.getListScrollMetrics(scopedKey),
         struct: resolveUIStruct(
             document,
             getListProps(requireDocumentElement(document, elementId, "list")).itemStructId,
@@ -2161,6 +2208,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsOptionPicked,
         onClearVisited,
         onIsEndingReached,
+        onIsDlcInstalled,
         onListEndings,
         onClearEndingState,
         onClearEndings,
@@ -2187,6 +2235,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onOpenExternal,
         onExportProgress,
         onImportProgress,
+        onStorageDurability,
         audioTracks,
         onSubscribeGamePreferences,
         onLocaleChanged,
@@ -2201,6 +2250,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         windowScaleOptions,
         onGetWindowScale,
         onSetWindowScale,
+        onGetWindowSize,
+        onSetWindowSize,
         onShowLayer,
         onHideLayer,
         onHideLayerGroup,
@@ -2496,6 +2547,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     await onSetWindowScale?.(Number(scale));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowSize: async () => {
+                const cap = "navigation.getWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Zero from a shell with no window of its own, which is what a stage that is
+                    // not a window in the first place honestly measures.
+                    const size = onGetWindowSize ? await onGetWindowSize() : null;
+                    return {
+                        width: Number(size?.width ?? 0),
+                        height: Number(size?.height ?? 0),
+                    };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setWindowSize: async (width: number, height: number) => {
+                const cap = "navigation.setWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSetWindowSize?.(Number(width), Number(height));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3988,6 +4063,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            isDlcInstalled: (dlcId: string) => {
+                const cap = "game.isDlcInstalled";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Nothing to ask is "not installed", not an error: a menu previewed in the
+                    // editor still has to lay out, and hiding the entrance is the honest answer.
+                    return onIsDlcInstalled ? onIsDlcInstalled(dlcId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             listEndings: (storyId: string) => {
                 const cap = "game.listEndings";
                 emitHostCall(emit, cap, "call");
@@ -4339,6 +4425,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onImportProgress();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        storage: {
+            durability: async () => {
+                const cap = "storage.durability";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No backend = nowhere real is being written (editor preview, story preview),
+                    // and "this cannot be answered here" is exactly what `unknown` says.
+                    return await (onStorageDurability?.() ?? Promise.resolve("unknown" as const));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

@@ -1,8 +1,9 @@
 import type { UIComponentId, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
+import { isUIListItemInstanceKeyOf } from "@shared/types/ui-editor/list";
 import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
-import type { UIHostAdapter, UIHostAdapterBlueprintRuntime } from "../types";
+import type { UIHostAdapter, UIHostAdapterBlueprintRuntime, UIHostAdapterElementEventOptions } from "../types";
 import {
     countBlueprintBroadcastListeners,
     dispatchBlueprintElementClickEvent,
@@ -173,9 +174,27 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         ) {
             const parentId = readRuntimeElement(elementId, eventOptions?.componentId)?.parentId;
             if (parentId) {
-                await dispatchElementBlueprintEventNow(parentId, eventName, eventPayload, eventOptions);
+                await dispatchElementBlueprintEventNow(parentId, eventName, eventPayload, leavingListRow(parentId, eventOptions));
             }
         }
+    };
+
+    /**
+     * The row context an event leaves behind when it is handed past the list that made it.
+     *
+     * A row event carries the scope and the instance key of the row it started in, and everything
+     * keyed by that key - runtime element state, and the blueprint variable record - belongs to that
+     * row. Once the event reaches the list itself it is no longer inside any row, so carrying the key
+     * further would hand an ancestor a private copy of its own variables, freshly defaulted, for as
+     * long as the pointer happened to be over a row. That reads as an ancestor whose variables never
+     * remember anything, which is not a failure any author could see the cause of.
+     */
+    const leavingListRow = (parentId: string, options: UIHostAdapterElementEventOptions | undefined): UIHostAdapterElementEventOptions | undefined => {
+        if (!options || !isUIListItemInstanceKeyOf(options.instanceKey, parentId)) {
+            return options;
+        }
+        const { listItemScope: _scope, instanceKey: _key, ...rest } = options;
+        return rest;
     };
 
     const resolvePendingFlushes = (items: PendingFlush[]) => {

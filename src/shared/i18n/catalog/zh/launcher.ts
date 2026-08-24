@@ -36,9 +36,6 @@ export const launcher = {
         // 按将要响应的系统命名：作者接下来看到的就是那个窗口。
         // 分成三条而不是一条「在文件管理器中打开」：访达和资源管理器是这两个系统自己的叫法，
         // 菜单另造一个词会让人以为打开的是别的东西。通用说法只留给没有统一名字的系统。
-        revealInFinder: "在访达中打开",
-        revealInExplorer: "在资源管理器中打开",
-        revealInFileManager: "在文件管理器中打开",
         errorReveal: "打开项目文件夹失败",
         removeFromRecent: "从最近列表中移除",
         removeConfirm: {

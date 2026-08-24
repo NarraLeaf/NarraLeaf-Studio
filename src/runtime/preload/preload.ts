@@ -195,6 +195,10 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
     getWindowScale: () => ipcRenderer.invoke("runtime:window:getScale") as Promise<number>,
     setWindowScale: (scale: number) =>
         ipcRenderer.invoke("runtime:window:setScale", scale) as Promise<void>,
+    getWindowSize: () =>
+        ipcRenderer.invoke("runtime:window:getSize") as Promise<{ width: number; height: number }>,
+    setWindowSize: (width: number, height: number) =>
+        ipcRenderer.invoke("runtime:window:setSize", { width, height }) as Promise<void>,
     setDisplayAwake: (awake: boolean) => {
         ipcRenderer.send("runtime:displayAwake:set", awake);
     },
@@ -217,6 +221,13 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
         };
     },
     capabilities: { closeRequested: true, windowScale: true },
+    /*
+     * Saves here are files in this game's user-data directory. Nothing reclaims them: no quota, no
+     * eviction, no seven-day rule - which is the difference the web export has to report and this
+     * one does not. `claimSession` is deliberately absent for the neighbouring reason: the main
+     * process has already refused to start a second copy by the time this preload runs.
+     */
+    storageDurability: () => Promise.resolve("durable" as const),
     save: {
         write: (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
             ipcRenderer.invoke("runtime:save:write", {

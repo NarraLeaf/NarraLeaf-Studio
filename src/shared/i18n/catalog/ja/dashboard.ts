@@ -87,6 +87,11 @@ export const dashboard = {
         },
     },
 
+    lastBuild: {
+        title: "直近のビルド",
+        openReport: "レポートを開く",
+    },
+
     builds: {
         title: "ビルドの履歴",
         ok: "成功",

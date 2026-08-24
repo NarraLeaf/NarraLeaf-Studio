@@ -327,6 +327,19 @@ export type GameRuntimePackV1 = {
         appTagId?: string;
     };
     /**
+     * The DLC installed beside this build, in the order they applied.
+     *
+     * Written by the reader that composed this pack, never by the compiler: it is a fact about the
+     * copy in front of the player, not about what was built. A build with no DLC beside it - which
+     * is every build as it leaves the author - carries nothing here, and the game reads that as
+     * "none installed".
+     *
+     * Only what is actually installed, never the project's whole list. A player who owns one DLC
+     * learns nothing from this about the ones they do not, and a base build cannot be read for what
+     * else exists to buy.
+     */
+    installedDlc?: readonly string[];
+    /**
      * The one string every edition of this title shares, naming the file progress is carried in.
      *
      * Resolved from the identity the RELEASE tag carries whatever variant this pack is - see
@@ -387,6 +400,12 @@ export type GameRuntimeCropAnchorY = typeof GAME_RUNTIME_CROP_ANCHORS_Y[number];
  * crop off on every phone, with nothing to fail.
  */
 export const WEB_SHELL_VARIANT_META = "nl-shell";
+
+/**
+ * The one content value that meta ever carries. The web target omits the meta entirely, so a
+ * reader asks "is this a phone shell", never "which shell is this".
+ */
+export const WEB_SHELL_MOBILE_VARIANT = "mobile";
 
 export const DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG: GameRuntimeViewportConfig = {
     fit: "contain",
@@ -642,6 +661,27 @@ export type GameRuntimeProgressBridge = {
     read(): Promise<GameProgressImportResult>;
 };
 
+/**
+ * Whether this page is the one running the game.
+ *
+ * A shell that can be opened twice has to settle which copy runs, and on the web the question
+ * cannot be avoided: two tabs of one export share a single IndexedDB, so persistent variables, read
+ * text and every save become whichever tab wrote last. The desktop shells settle it in their main
+ * process - a single-instance lock raises the window that is already open - and have nothing to say
+ * here; the web export asks the browser for a lock and answers `taken` while another tab holds it.
+ */
+export type GameSessionClaim = "granted" | "taken";
+
+/**
+ * Whether what this shell writes stays written.
+ *
+ * A desktop game owns files in its user-data directory and nothing takes them away. A page is a
+ * guest: a browser under storage pressure may evict a site's data whole, saves included, unless the
+ * site has been granted persistence. `unknown` is a browser that will not answer the question,
+ * which is not the same as a refusal.
+ */
+export type GameStorageDurability = "durable" | "evictable" | "unknown";
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -683,12 +723,12 @@ export type GameRuntimePreloadBridge = {
     getFullscreen(): Promise<boolean>;
     setFullscreen(fullscreen: boolean): Promise<void>;
     /**
-     * The window's size as a multiple of the game's design size, for a configuration screen that
-     * offers the player a choice of window sizes.
+     * The stage's size, as a multiple of the size the game was drawn at.
      *
-     * A request for a size this build does not offer is answered with the nearest one it does - the
-     * offered ladder is the author's, and a shell that honoured anything else would be a second
-     * answer to a question the project already settled (`app.window`).
+     * Any multiple, not only the ones `app.window` offers: that list is what a configuration screen
+     * is built from, not a limit on what a game may ask for. The screen and the window minimum are
+     * the only bounds, and neither is policy - a window larger than the desktop is one the player
+     * cannot use.
      *
      * Inert on a shell with no window of its own to size, which says so through
      * {@link capabilities}.`windowScale` rather than by refusing: what an author must not build is a
@@ -696,6 +736,16 @@ export type GameRuntimePreloadBridge = {
      */
     getWindowScale(): Promise<number>;
     setWindowScale(scale: number): Promise<void>;
+    /**
+     * The same size, in pixels.
+     *
+     * Beside the multiple rather than instead of it: a multiple is what keeps the stage on whole
+     * pixels of the art it was drawn at, and pixels are what an author reaches for when the size
+     * comes from somewhere else - a remembered value, a display the game measured, a number a
+     * player typed. Both land in the same place.
+     */
+    getWindowSize(): Promise<{ width: number; height: number }>;
+    setWindowSize(width: number, height: number): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     /**
@@ -721,6 +771,29 @@ export type GameRuntimePreloadBridge = {
          */
         windowScale: boolean;
     };
+    /**
+     * Claim this shell's one game session, before the game reads or writes anything.
+     *
+     * Absent on the desktop shells, where the main process has already refused to start a second
+     * copy by the time a renderer exists - and an absent method is granted, which is also what a
+     * game packaged before this existed gets. The web export answers `taken` while another tab of
+     * the same export holds the session, and the renderer then draws the screen saying so instead
+     * of booting a second game onto the first one's saves.
+     */
+    claimSession?(): Promise<GameSessionClaim>;
+    /**
+     * Whether saves written by this shell stay written.
+     *
+     * The one answer the shell has and the game cannot work out for itself, and the author is who
+     * decides what to do with it - a page whose storage the browser may reclaim is still a page the
+     * player can finish a game on, so this states the fact rather than acting on it. Read by the
+     * `Check Storage Durability` node.
+     *
+     * The desktop shells answer `durable`: their saves are files in a user-data directory that
+     * nothing else reclaims. The web export answers what the browser told it when the page asked
+     * for persistent storage.
+     */
+    storageDurability(): Promise<GameStorageDurability>;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
     /**

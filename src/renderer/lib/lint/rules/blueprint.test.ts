@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import type { BlueprintDocument, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
@@ -10,6 +11,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
@@ -289,6 +291,49 @@ describe("blueprint/reference-missing", () => {
             createTestLintContext({
                 blueprintDocument: documentWithGraphs({ events: { onBoot: graph("ending-good") } }),
                 stories,
+            }),
+        );
+        expect(present).toEqual([]);
+    });
+
+    it("reports a DLC the project no longer has, and says nothing about one it does", async () => {
+        // Deleting a DLC leaves every node that named it answering false forever, so the entrance
+        // behind it is never drawn again and nothing on screen says why.
+        const graph = (dlcId: string): BlueprintGraphIr => ({
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                installed: {
+                    id: "installed",
+                    type: BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
+                    params: { dlcId },
+                },
+                log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                { from: { nodeId: "installed", port: "isInstalled" }, to: { nodeId: "log", port: "message" } },
+            ],
+        });
+        const dlcs = [{ id: "summer", name: "Summer Route", attachTo: APP_TAG_ID_RELEASE }];
+
+        const missing = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("winter") } }),
+                dlcs,
+            }),
+        );
+        expect(missing).toHaveLength(1);
+        expect(missing[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintReferenceMissing.messageDlc",
+            location: { kind: "blueprint", nodeId: "installed" },
+        });
+
+        const present = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("summer") } }),
+                dlcs,
             }),
         );
         expect(present).toEqual([]);

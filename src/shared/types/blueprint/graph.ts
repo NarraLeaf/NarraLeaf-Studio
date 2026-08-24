@@ -958,6 +958,9 @@ export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscre
 export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS = "blueprint.app.getWindowScaleOptions" as const;
 export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE = "blueprint.app.getWindowScale" as const;
 export const BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SCALE = "blueprint.app.setWindowScale" as const;
+/** The same size in pixels, for a game whose number does not come from the offered list. */
+export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE = "blueprint.app.getWindowSize" as const;
+export const BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SIZE = "blueprint.app.setWindowSize" as const;
 /**
  * Hand one web address to the player's browser.
  *
@@ -1060,6 +1063,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisit
  * needs a running story: a title screen asks both before any game exists.
  */
 export const BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED = "blueprint.game.isEndingReached" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED = "blueprint.game.isDlcInstalled" as const;
 /**
  * Every ending a story declares, each row already carrying whether it was reached.
  *
@@ -1099,6 +1103,20 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG = "blueprint.game.getAppTag" a
  */
 export const BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS = "blueprint.game.progress.export" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS = "blueprint.game.progress.import" as const;
+/**
+ * Whether what this build writes stays written.
+ *
+ * A packaged desktop game owns files in a user-data directory and answers `Durable` always. A web
+ * export is a guest of the browser: a site whose storage has not been granted persistence may be
+ * evicted whole under storage pressure, saves included, and a browser that will not answer the
+ * question at all is neither a yes nor a no.
+ *
+ * Three branches rather than a flag, because the three lead an author to different words - and the
+ * node states the fact without acting on it. Whether a player is told anything, and in what terms,
+ * is the author's to decide: a page whose storage may be reclaimed is still a page a game can be
+ * finished on.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_STORAGE_DURABILITY = "blueprint.game.storageDurability" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
@@ -1380,6 +1398,10 @@ export const BLUEPRINT_NODE_TYPE_LIST_REFRESH_ITEMS = "blueprint.list.refreshIte
 export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_INDEX = "blueprint.list.scrollToIndex" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_TOP = "blueprint.list.scrollToTop" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_BOTTOM = "blueprint.list.scrollToBottom" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_PROGRESS = "blueprint.list.getScrollProgress" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_OFFSET = "blueprint.list.getScrollOffset" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_END = "blueprint.list.isScrolledToEnd" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_START = "blueprint.list.isScrolledToStart" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS = "blueprint.list.getItemProps" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX = "blueprint.list.getItemIndex" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT = "blueprint.list.getItemCount" as const;
@@ -1410,6 +1432,10 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_REFRESH_ITEMS = "blueprint.element
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_INDEX = "blueprint.element.list.scrollToIndex" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_TOP = "blueprint.element.list.scrollToTop" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_BOTTOM = "blueprint.element.list.scrollToBottom" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS = "blueprint.element.list.getScrollProgress" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET = "blueprint.element.list.getScrollOffset" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END = "blueprint.element.list.isScrolledToEnd" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START = "blueprint.element.list.isScrolledToStart" as const;
 
 export const BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET = "blueprint.image.getImageAsset" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET = "blueprint.image.setImageAsset" as const;

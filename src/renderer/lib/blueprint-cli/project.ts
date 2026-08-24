@@ -259,6 +259,12 @@ export function widgetElementTypeResolver(
  * judge a widget blueprint: which event heads that widget carries, and which of its UI slots point
  * at the layer being validated.
  */
+/** The type of any element in the document, by id, for filling in element references. */
+export function elementTypeResolver(targets: UiDocumentTargets): (elementId: string) => string | undefined {
+    const byId = new Map(targets.elements.map(element => [element.id, element.type]));
+    return elementId => byId.get(elementId);
+}
+
 export function widgetElementResolver(
     targets: UiDocumentTargets,
 ): (owner: { kind: string; surfaceId?: string; elementId?: string }) =>
