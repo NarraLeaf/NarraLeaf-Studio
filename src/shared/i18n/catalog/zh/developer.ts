@@ -7,7 +7,7 @@ import type { LocaleNamespace } from "../types";
  */
 export const developer = {
     copyId: {
-        surface: "复制{label} ID",
+        surface: "复制 {label} ID",
         element: "复制元素 ID",
         asset: "复制资产 ID",
         assetGroup: "复制分组 ID",

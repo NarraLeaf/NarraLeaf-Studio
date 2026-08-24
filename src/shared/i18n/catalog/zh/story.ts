@@ -29,14 +29,14 @@ export const story = {
         newChapterPlaceholder: "输入章节名称",
         newSceneTitle: "新建场景",
         newScenePlaceholder: "输入场景名称",
-        deleteStoryConfirm: "删除故事“{name}”？",
+        deleteStoryConfirm: "删除故事“{name}”",
         deleteStoryDetail: "此操作将从工程中移除该故事文档",
-        deleteChapterConfirm: "删除章节“{name}”？",
+        deleteChapterConfirm: "删除章节“{name}”",
         deleteChapterDetail: {
             one: "章节里的 {count} 个场景会一并删除",
             other: "章节里的 {count} 个场景会一并删除",
         },
-        deleteSceneConfirm: "删除场景“{name}”？",
+        deleteSceneConfirm: "删除场景“{name}”",
         deleteSceneDetail: "该场景及其全部区块会被移除，跳转到它的行将失去目标",
     },
     script: {
@@ -62,7 +62,7 @@ export const story = {
         storyMismatch: "此文件导出自另一个故事",
         stale: "导出之后该场景已被修改，导入会覆盖这些改动",
         sceneMissing: "该场景已不在此故事中，将被跳过",
-        noUndo: "从这里导入无法撤销",
+        noUndo: "此次导入无法撤销",
         noUndoSome: {
             other: "导入后其中 {count} 个场景无法撤销",
         },
@@ -92,7 +92,7 @@ export const story = {
             duplicateAnchor: "某一行被复制过；副本已获得新的身份",
             unknownRun: "某个格式标记指向此脚本中不存在的格式",
             unplaceableLine: "此处无法放置新的一行",
-            speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
+            speakerUnresolved: "该行未绑定角色，说话人名称保持原样，正文的修改仍然生效",
         },
     },
     // 因为实时会话而无法动作的控件所显示的话。会话能带走的故事操作只有固定的一组，这一组之外的
@@ -131,7 +131,7 @@ export const story = {
         reportSummary: {
             other: "有 {count} 行没有对应的脚本写法，文件中不含它们的完整内容",
         },
-        unresolvedRefNamed: "该行指向的{what}已不存在",
+        unresolvedRefNamed: "该行指向的 {what} 已不存在",
         detail: {
             asset: "资产",
             character: "角色",
@@ -159,10 +159,10 @@ export const story = {
         },
         parse: {
             unknownStatement: "该行以关键词开头，但不符合该语句的写法",
-            unknownName: "该行提到的名字在工程中不存在",
-            unknownNameNamed: "该行提到的{what}在工程中不存在",
-            ambiguousName: "有多个对象使用该名称，无法判断指的是哪一个",
-            ambiguousNameNamed: "有多个{what}使用该名称，无法判断指的是哪一个",
+            unknownName: "该行提到的名称在项目中不存在",
+            unknownNameNamed: "该行提到的 {what} 在项目中不存在",
+            ambiguousName: "有多个对象使用该名称，无法判断所指",
+            ambiguousNameNamed: "有多个 {what} 使用该名称，无法判断所指",
             ambiguousStatement: "有多条语句都符合该行，无法区分",
             badWord: "该语句在此位置不接受该词",
             missingValue: "该语句缺少必需的内容",
@@ -175,14 +175,14 @@ export const story = {
         view: {
             open: "以脚本形式阅读",
             close: "回到行视图",
-            readOnly: "此场景含有没有脚本形式的行，不能在这里写回",
+            readOnly: "此场景包含无脚本形式的行，无法在此处写回",
             gate: {
-                other: "有 {count} 行没有对应的脚本写法，此场景今后也无法在这里编辑",
+                other: "有 {count} 行没有对应的脚本写法，此场景今后无法在此处编辑",
             },
             unread: {
                 other: "有 {count} 行无法解析，场景未改动",
             },
-            renameElsewhere: "场景名未改动，重命名请在大纲里进行",
+            renameElsewhere: "场景名未改动，重命名在大纲中进行",
         },
     },
     paste: {
@@ -223,10 +223,10 @@ export const story = {
             existing: "已有角色",
         },
         bulkConfirm: {
-            other: "粘贴 {count} 行？",
+            other: "粘贴 {count} 行",
         },
-        bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
-        scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+        bulkConfirmDetail: "这些行将插入到当前行下方，计为一次撤销操作",
+        scriptFile: "该文件为故事脚本，使用「导入脚本」导入",
         // 实时会话期间从其他工程粘贴的行。每场会话只提示一次。
         sessionRowsOnly: "实时会话期间，从其他工程粘贴的行只带来行本身；离开会话后重新粘贴，才能带上译文、配音与资产",
         translationsCarried: {
@@ -298,7 +298,7 @@ export const story = {
             // 尚未命名的结局行。行本身与通向它的路线都真实存在，列表总得有个称呼。
             endingUnnamed: "未命名结局",
             stopsHere: "在此中断",
-            stopsHereTitle: "路径在此终止，但没有到达任何结局：它回到了已经过的场景，或者某个分支没有后续内容，又或者这个场景既没有出口也没有 /ending 行",
+            stopsHereTitle: "路径在此终止，未到达任何结局：回到已经过的场景、某个分支没有后续内容，或者该场景既没有出口也没有 /ending 行",
             diagnostics: {
                 unreachableEndings: {
                     other: "{count} 个结局没有路线到达",
@@ -341,7 +341,7 @@ export const story = {
             // 中文没有单复数形式，所以措辞要在 1 条和多条时都读得通：「全部 1 条」很别扭，
             // 而「这条连接对应的」既涵盖两种情况，也说清了删除的范围是整条线。
             confirmRemove: {
-                other: "删除《{source}》→《{target}》的 {count} 条跳转？",
+                other: "删除《{source}》→《{target}》的 {count} 条跳转",
             },
             confirmRemoveDetail: {
                 other: "这条连接对应的 {count} 条跳转会从《{source}》中删除，可在剧情编辑器里撤销",
@@ -363,7 +363,7 @@ export const story = {
     },
     targetField: {
         label: "目标",
-        notOnStageTitle: "未在此场景中提前创建。请选择一个已有的可显示对象",
+        notOnStageTitle: "未在此场景中提前创建。选择已有的可显示对象",
         placeholder: "选择可显示对象…",
         search: "搜索舞台可显示对象",
         noMatch: "无匹配项",
@@ -377,7 +377,7 @@ export const story = {
     layerField: {
         label: "图层",
         defaultName: "可显示图层",
-        notOnStageTitle: "未在此场景中提前声明同名图层。请选择一个已有图层",
+        notOnStageTitle: "未在此场景中提前声明同名图层。选择已有图层",
         hint: "图层",
         createNew: "新建图层",
     },
@@ -442,7 +442,7 @@ export const story = {
         title: "插入值",
         kindVariable: "变量",
         kindBlueprint: "蓝图",
-        selectVariable: "选择一个变量…",
+        selectVariable: "选择变量…",
         noVariables: "未声明任何变量",
         storyValueTitle: "故事值",
     },
@@ -459,7 +459,7 @@ export const story = {
         ruby: "注音",
         rubyHint: "注音（先选中要注音的文字）",
         type: "文字",
-        typeHint: "文字（先选中要设置的文字）",
+        typeHint: "文本（先选中要设置的文本）",
         tools: "富文本工具",
         pauseClick: "暂停（等待点击）",
         pauseSeconds: "暂停 {seconds} 秒",
@@ -739,7 +739,7 @@ export const story = {
         },
     },
     diagnostics: {
-        missingAsset: "这一行指向的资产已经不在项目里了",
+        missingAsset: "该行指向的资产已不在项目中",
         unknownPuppetName: "该角色的模型中没有此名称",
     },
     find: {
@@ -749,7 +749,7 @@ export const story = {
         wholeWord: "全词匹配",
         regex: "使用正则表达式",
         invalidPattern: "表达式无效",
-        noMatches: "没有结果",
+        noMatches: "未找到匹配结果",
         previous: "上一个",
         next: "下一个",
         replace: "替换",
@@ -767,7 +767,7 @@ export const story = {
         title: "指令",
         searchPlaceholder: "搜索指令",
         empty: "没有匹配的指令",
-        pick: "选一条指令，看它做什么",
+        pick: "选择一个指令以查看其说明",
         back: "全部指令",
         insert: "插入到场景",
         aliases: "也可以写作",
@@ -776,7 +776,7 @@ export const story = {
         examples: "示例",
         required: "必填",
         optional: "可选",
-        greedy: "吃掉本行剩余内容",
+        greedy: "消耗本行剩余内容",
         appliesTo: "同时归入",
         star: "收藏",
         unstar: "取消收藏",
@@ -788,9 +788,9 @@ export const story = {
             characterOrName: "角色，或任意名字",
             characterForm: "该角色的某个表情",
             puppet: {
-                motion: "运行时提供的动作名（留空则恢复静止）",
-                expression: "运行时提供的表情名（留空则清除）",
-                skin: "运行时提供的皮肤名（留空则恢复默认）",
+                motion: "运行时提供的动作名（为空时恢复静止）",
+                expression: "运行时提供的表情名（为空时清除）",
+                skin: "运行时提供的皮肤名（为空时恢复默认）",
                 param: "模型中的数值参数 id",
             },
             scene: "场景",
@@ -846,7 +846,7 @@ export const story = {
         playBranch: "试玩该分支",
         insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
         insertPlaceholderCharacter: "为 {name} 选择一个动作…",
-        noCategoryActionFound: "未找到{category}动作",
+        noCategoryActionFound: "未找到 {category} 动作",
         actionTypes: "动作类型",
         noCharacterFound: "未找到角色",
         noCandidates: "无匹配项",
@@ -856,7 +856,7 @@ export const story = {
         // 出现在截断点这一行上，紧挨着写明它截断哪个变体的那句命令。行上只显示短的一半，
         // 完整的一句放在悬停提示里。
         cutPoint: "其他变体没有此行",
-        cutPointTitle: "{name}的剧情在此行结束；其他任何变体都不含这一行",
+        cutPointTitle: "{name} 的剧情在此行结束；其他变体均不含此行",
         cutPointInactive: "变体已删除",
         cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
         tempSpeaker: "仅名字",
@@ -898,7 +898,7 @@ export const story = {
         emptyHint: "该场景为空；在新行中输入 {trigger} 选择一条指令，或者输入一段旁白",
         emptyExampleBg: "设置背景",
         emptyExampleShow: "让角色登场",
-        emptyExampleSay: "给他一句台词",
+        emptyExampleSay: "添加一句对白",
         emptyOpenManual: "打开指令手册",
         /** 场景里有行、但筛选把它们全挡住了——和「场景是空的」是两回事，不能共用一句提示。 */
         filteredEmpty: "没有匹配当前筛选条件的行",
@@ -912,7 +912,7 @@ export const story = {
         title: "实时预览",
         dock: "停靠到侧边栏",
         pip: "画中画",
-        selectRow: "选择一个故事行以预览舞台状态",
+        selectRow: "选择故事行以预览舞台状态",
         failed: "预览失败",
         playFromHere: "从这里播放",
         restart: "重新播放",
@@ -923,27 +923,27 @@ export const story = {
         ended: "已播放到场景结尾",
         endedAtJump: "在场景跳转处停止",
         diagnostics: {
-            targetNotFound: "找不到预览目标行，改为预览场景开头",
+            targetNotFound: "未找到预览目标行，改为预览场景开头",
             targetUnreachable: "预览目标从场景开头走不到，改为预览场景结尾",
             repeatedGroupOnce: "预览把重复组只执行一次",
             sceneJumpIgnored: "预览会忽略场景跳转",
             choiceNotTaken: "预览假定此前该选项的分支均未被选中",
-            conditionUnresolved: "条件 `{expression}` 无法求值，在预览里按 false 处理",
-            blueprintConditionFalse: "蓝图条件在预览里按 false 处理",
-            persistentConditionDefaults: "持久化变量的条件在预览里按默认值求值",
+            conditionUnresolved: "条件 `{expression}` 无法求值，预览中按 false 处理",
+            blueprintConditionFalse: "蓝图条件在预览中按 false 处理",
+            persistentConditionDefaults: "持久化变量的条件在预览中按默认值求值",
             videoSkipped: "预览不播放视频",
             ambienceSkipped: "预览不播放氛围效果",
             storyActionSkipped: "预览不模拟故事动作蓝图的效果",
-            displayableNotFound: "找不到显示对象：{target}",
+            displayableNotFound: "未找到显示对象：{target}",
             displayableUnnamed: "（未命名）",
             persistentAssignmentSkipped: "预览不会写入持久化变量",
-            assignmentUnresolved: "表达式 `{expression}` 无法求值，预览里跳过了这次赋值",
-            blueprintCallEmpty: "蓝图 `{name}()` 不在预览里运行，读到的是空值",
-            persistentReadEmpty: "持久化变量在预览里读到的是空值",
-            sceneVisitUntracked: "预览不记录场景到访情况，`visited({name})` 按 false 处理",
-            choicePickUntracked: "预览不记录选项选择情况，`picked({name})` 按 false 处理",
+            assignmentUnresolved: "表达式 `{expression}` 无法求值，预览中跳过此次赋值",
+            blueprintCallEmpty: "蓝图 `{name}()` 不在预览中运行，读到空值",
+            persistentReadEmpty: "持久化变量在预览中读到空值",
+            sceneVisitUntracked: "预览不记录场景访问状态，`visited({name})` 按 false 处理",
+            choicePickUntracked: "预览不记录选项选择状态，`picked({name})` 按 false 处理",
             presetNotFoldable: "{preset} 变换暂时无法折叠进角色出场",
-            animationNotFound: "找不到故事动画：{animationId}",
+            animationNotFound: "未找到故事动画：{animationId}",
             animationIdMissing: "动画变换缺少 animationId",
         },
     },
@@ -987,7 +987,7 @@ export const story = {
         until: "直到",
     },
     bulkDelete: {
-        confirm: "删除选中的 {count} 行？",
+        confirm: "删除选中的 {count} 行",
         detail: "此操作将移除选中的脚本行及其子项",
     },
     actionCategory: {
@@ -1019,7 +1019,7 @@ export const story = {
         param: { label: "参数", detail: "设置由运行时绘制的角色模型上的一个数值参数" },
         skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
         rename: { label: "改名", detail: "改变角色说话时显示的名字" },
-        say: { label: "对白", detail: "一句台词" },
+        say: { label: "对白", detail: "一句对白" },
         image: { label: "图片", detail: "在舞台上声明图片，由 /show 显示" },
         text: { label: "文本", detail: "在舞台上声明文本，由 /show 显示" },
         video: { label: "视频", detail: "在舞台上声明视频，由 /show 显示" },
@@ -1043,7 +1043,7 @@ export const story = {
         inc: { label: "增加", detail: "为数值变量加值" },
         dec: { label: "减少", detail: "为数值变量减值" },
         toggle: { label: "翻转", detail: "翻转真/假变量" },
-        reset: { label: "重置", detail: "把东西恢复原样：变量回到默认值，舞台对象回到中性外观" },
+        reset: { label: "重置", detail: "将对象恢复原样：变量返回默认值，舞台对象恢复中性外观" },
         declareLocal: { label: "场景变量", detail: "声明仅本场景有效的变量" },
         if: { label: "条件", detail: "按条件分支" },
         // 「菜单」而不是「选项」：选项是它的子行的名字（containerHeader.option），两者同名时
@@ -1065,7 +1065,7 @@ export const story = {
         // 画廊界面与通关测试读的都是这份记录。
         ending: { label: "结局", detail: "在此行结束剧情，并记录玩家到达的结局" },
         blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
-        transform: { label: "变换", detail: "移动、缩放、旋转、遮罩、滤镜或淡入淡出舞台上的任何东西，镜头也在内" },
+        transform: { label: "变换", detail: "移动、缩放、旋转、遮罩、添加滤镜或淡入淡出舞台上的任何对象，包括镜头" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
     },
     containerHeader: {
