@@ -59,6 +59,7 @@ import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
 import type { PuppetDescription } from "narraleaf-react";
 import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
 import type { MediaAssetSupportRecord } from "./media/mediaAssetSupport";
+import type { NotificationAction } from "./ui/types";
 import type { MediaSupportScan } from "./media/MediaSupportService";
 import type {
     UIDocument,
@@ -367,7 +368,11 @@ interface ILoggerService extends IService { }
 interface IUIService extends IService {
     showConfirm(message: string, detail?: string): Promise<boolean>;
     showAlert(message: string, detail?: string): Promise<void>;
-    showNotification(message: string, type?: "info" | "success" | "warning" | "error"): void;
+    showNotification(
+        message: string,
+        type?: "info" | "success" | "warning" | "error",
+        options?: { detail?: string; actions?: NotificationAction[]; sticky?: boolean },
+    ): string;
     showError(error: Error | string): void;
 }
 

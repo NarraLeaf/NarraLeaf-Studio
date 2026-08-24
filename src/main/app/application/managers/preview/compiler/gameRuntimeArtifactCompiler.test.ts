@@ -42,6 +42,8 @@ import {
 } from "./gameRuntimeArtifactCompiler";
 
 const ASSET_ID = "00000000-0000-4000-8000-000000000123";
+/** A second library asset the fixture project never mentions anywhere. */
+const UNUSED_ASSET_ID = "00000000-0000-4000-8000-000000000124";
 const REMOTE_ASSET_ID = "00000000-0000-4000-8000-000000000456";
 const SIDECAR_PLUGIN_ID = "acme.sidecar-plugin";
 const SIDECAR_ID = `${SIDECAR_PLUGIN_ID}.bridge`;
@@ -1397,6 +1399,20 @@ async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     );
 }
 
+/**
+ * Put an asset id where a page stores one, so the sweep that decides what ships can see it.
+ *
+ * `assetId` rather than an arbitrary key: the property names a document stores a library id under
+ * are one list (`UI_ASSET_ID_PROPERTY_NAMES`), and a fixture that referenced an asset by a name no
+ * reader knows would pass for a reason the product does not have.
+ */
+async function referenceAssetFromRootSurface(projectPath: string, assetId: string): Promise<void> {
+    const uidocPath = path.join(projectPath, "editor", "ui", "uidoc.json");
+    const uidoc = JSON.parse(await fs.readFile(uidocPath, "utf-8"));
+    uidoc.elements.root.props = { ...uidoc.elements.root.props, assetId };
+    await fs.writeFile(uidocPath, JSON.stringify(uidoc), "utf-8");
+}
+
 async function createMinimalProject(
     projectPath: string,
     options: {
@@ -1681,6 +1697,76 @@ describe("weather clips in the pack", () => {
         const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
         expect(pack.assets.items[atSixty]).toMatchObject({ id: atSixty, type: "video" });
         expect(pack.assets.items[atThirty]).toBeUndefined();
+    });
+
+
+    it("leaves an asset nothing references out of a package, whatever edition it is", async () => {
+        // The release edition included. A build that removes no scene still carries a library sized
+        // for everything the author ever imported, and a package is public the moment someone opens
+        // it - so what ships is what the bytes name, in every edition.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, {
+            assets: {
+                [ASSET_ID]: { id: ASSET_ID, name: "hero.png", ext: ".png", source: "local" },
+                [UNUSED_ASSET_ID]: { id: UNUSED_ASSET_ID, name: "spare.png", ext: ".png", source: "local" },
+            },
+        });
+        await writeAsset(projectPath, ASSET_ID, "referenced bytes");
+        await writeAsset(projectPath, UNUSED_ASSET_ID, "unreferenced bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await referenceAssetFromRootSurface(projectPath, ASSET_ID);
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+        });
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[ASSET_ID]).toBeDefined();
+        expect(pack.assets.items[UNUSED_ASSET_ID]).toBeUndefined();
+        // The bytes, not just the manifest: an entry can be dropped from the listing while the file
+        // is still sitting in the package, which is the failure this whole pass exists to prevent.
+        await expect(
+            fs.readFile(path.join(result.appDir, "assets", `${UNUSED_ASSET_ID}.png`), "utf-8"),
+        ).rejects.toThrow();
+
+        const report = result.assetReport;
+        expect(report?.included.map(entry => entry.id)).toEqual([ASSET_ID]);
+        expect(report?.excluded.map(entry => entry.name)).toEqual(["spare.png"]);
+        expect(report?.excluded[0].bytes).toBe("unreferenced bytes".length);
+        expect(report?.excludedBytes).toBe("unreferenced bytes".length);
+    });
+
+    it("carries the library whole for a preview, and reports nothing about it", async () => {
+        // The audit that proves a narrowed package still reaches every asset it needs runs exactly
+        // where a report is present, so a compile that narrows nothing must produce none.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, {
+            assets: {
+                [ASSET_ID]: { id: ASSET_ID, name: "hero.png", ext: ".png", source: "local" },
+                [UNUSED_ASSET_ID]: { id: UNUSED_ASSET_ID, name: "spare.png", ext: ".png", source: "local" },
+            },
+        });
+        await writeAsset(projectPath, ASSET_ID, "referenced bytes");
+        await writeAsset(projectPath, UNUSED_ASSET_ID, "unreferenced bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(
+            previewCompileInput(projectPath, runtimeDistDir, 47331),
+        );
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[UNUSED_ASSET_ID]).toBeDefined();
+        expect(result.assetReport).toBeUndefined();
     });
 
     it("keeps the clip's manifest entry through a production build, where most fields are dropped", async () => {

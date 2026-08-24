@@ -1,6 +1,5 @@
 import path from "path";
 import { compileGameRuntimeArtifact } from "@/app/application/managers/preview/compiler/gameRuntimeArtifactCompiler";
-import { isBuiltinAppTagId } from "@shared/types/appTag";
 import type {
     CompileWorkerInboundMessage,
     CompileWorkerOutboundMessage,
@@ -55,18 +54,15 @@ parentPort.on("message", event => {
     }
     compileGameRuntimeArtifact(message.input)
         .then(async result => {
-            // Only an edition that removes content can be missing any: a build that carries the
-            // library whole has nothing to have got wrong, and paying for the check there would tax
-            // every release build for a question with one possible answer.
+            // Audited exactly when the compile narrowed the library, and asked of the compile
+            // rather than re-derived from the request. Trimming without the audit is the dangerous
+            // half - it removes assets with nothing checking that the shipped game still reaches
+            // every one it asks for - and the two conditions were previously the same premise
+            // written out twice, which is a shape that agrees until the day it does not.
             //
-            // A collapsed build axis is the case where the release edition removes content too, so
-            // it is audited like any other narrowed edition. This condition and the one that decides
-            // trimming are the same premise read twice and must not drift apart: trimming without
-            // the audit removes assets with nothing checking that the shipped game still reaches
-            // every one it needs.
-            const tagId = message.input.appTag?.id;
-            const narrowed = (tagId && !isBuiltinAppTagId(tagId)) || result.collapsedBuildAxis;
-            const audit = narrowed ? await auditShippedContent(result.appDir) : undefined;
+            // A compile that carries the library whole is every preview and every test; there is
+            // nothing there for the audit to find and nothing was taken away.
+            const audit = result.assetReport ? await auditShippedContent(result.appDir) : undefined;
             send({ type: "done", result, ...(audit ? { audit } : {}) });
         })
         .catch((error: unknown) => {
