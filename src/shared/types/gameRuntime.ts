@@ -401,6 +401,12 @@ export type GameRuntimeCropAnchorY = typeof GAME_RUNTIME_CROP_ANCHORS_Y[number];
  */
 export const WEB_SHELL_VARIANT_META = "nl-shell";
 
+/**
+ * The one content value that meta ever carries. The web target omits the meta entirely, so a
+ * reader asks "is this a phone shell", never "which shell is this".
+ */
+export const WEB_SHELL_MOBILE_VARIANT = "mobile";
+
 export const DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG: GameRuntimeViewportConfig = {
     fit: "contain",
     cropAnchorX: "center",

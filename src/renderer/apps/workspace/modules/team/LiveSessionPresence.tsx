@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Radio } from "lucide-react";
+import { Share2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { LiveMemberAvatars } from "./LiveMemberAvatars";
@@ -53,10 +53,17 @@ export function LiveSessionPresence() {
 
     const refusal = livePresenceRefusal(team.state, team.canLive);
     const inRoom = live.view.phase !== "idle";
-    // The room whose faces are on the control: the one this window is in, or the one it is being
-    // offered. A window in a session never shows somebody else's room - it can only be in one.
-    const shown = inRoom ? live.view.session : room;
     const standing = liveStandingKey(live.view);
+    /*
+     * The faces, and only where this is the surface carrying them.
+     *
+     * **Inside a session they belong to the frozen strip instead.** The strip is the session's own
+     * column, it is drawn for the whole of one, and it has a height to spend where the title bar has
+     * only a width - which on a small screen is the scarcest row in the window. So this control
+     * keeps the stack for exactly the case the strip cannot cover: a room this window has been
+     * offered and is not in, where there is no strip at all.
+     */
+    const offered = inRoom ? null : room;
 
     /*
      * What the control says on hover, in one sentence.
@@ -68,7 +75,7 @@ export function LiveSessionPresence() {
     const tip = refusal !== null
         ? t(refusal)
         : inRoom && standing !== null
-            ? `${shown?.title ?? t("workspace.shell.team.liveUntitled")} - ${t(standing)}`
+            ? `${live.view.session?.title ?? t("workspace.shell.team.liveUntitled")} - ${t(standing)}`
             : room !== null
                 ? t("workspace.shell.team.liveRoomOpen", { name: room.openedBy })
                 : t("workspace.shell.team.liveNobody");
@@ -84,18 +91,22 @@ export function LiveSessionPresence() {
                 aria-label={t("workspace.shell.team.livePresence")}
                 className={cn(
                     // The height of the control cluster's buttons, so the title bar stays one row of
-                    // one size; the width follows the faces rather than being square.
-                    "flex h-8 items-center gap-1.5 rounded-md px-2 transition-colors cursor-default",
+                    // one size; the width follows the faces rather than being square. `mr-2` because
+                    // this is a group of its own rather than a fourth window control - the cluster's
+                    // own buttons sit a `gap-1` apart, and one step more is what reads as a seam.
+                    "mr-2 flex h-8 items-center gap-1.5 rounded-md px-2 transition-colors cursor-default",
                     "disabled:opacity-50",
                     inRoom
                         ? "bg-primary/15 text-fg"
                         : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
             >
-                <Radio className="h-4 w-4 shrink-0" />
-                {shown !== null && shown.members.length > 0 && (
-                    <LiveMemberAvatars members={shown.members} host={shown.openedBy} />
+                {/* The faces lead and the glyph anchors the right-hand end, so the control's own
+                    edge stays where it is however many people arrive. */}
+                {offered !== null && offered.members.length > 0 && (
+                    <LiveMemberAvatars members={offered.members} host={offered.openedBy} />
                 )}
+                <Share2 className="h-4 w-4 shrink-0" />
             </button>
             <LiveSessionDialog team={team} isOpen={open} onClose={() => setOpen(false)} />
         </>

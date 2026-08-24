@@ -235,8 +235,6 @@
           "graphs": {
             "eventIds": [
               "820eda09-364c-4f70-a897-340eb4eca1b1",
-              "d312d7c6-20f0-4d28-92fe-0d81e0b25d48",
-              "95eca829-28be-4a2d-ab57-30f26826f148",
               "539527a5-84fc-4114-8b85-403709c4441b"
             ],
             "events": {
@@ -336,150 +334,6 @@
                   }
                 }
               },
-              "d312d7c6-20f0-4d28-92fe-0d81e0b25d48": {
-                "id": "d312d7c6-20f0-4d28-92fe-0d81e0b25d48",
-                "name": "最下部に到達",
-                "graph": {
-                  "nodes": {
-                    "heard": {
-                      "id": "heard",
-                      "type": "blueprint.event.head.onBroadcast",
-                      "params": {
-                        "event": "log.atBottom"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "yes": {
-                      "id": "yes",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": true
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 180
-                        }
-                      }
-                    },
-                    "set": {
-                      "id": "set",
-                      "type": "blueprint.local.set",
-                      "params": {
-                        "variableId": "1f7c8a20-3b64-4d1e-9a05-2c6e4f8b7d11"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "heard",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "set",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "yes",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "set",
-                        "port": "value"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              },
-              "95eca829-28be-4a2d-ab57-30f26826f148": {
-                "id": "95eca829-28be-4a2d-ab57-30f26826f148",
-                "name": "最下部から離脱",
-                "graph": {
-                  "nodes": {
-                    "heard": {
-                      "id": "heard",
-                      "type": "blueprint.event.head.onBroadcast",
-                      "params": {
-                        "event": "log.offBottom"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "no": {
-                      "id": "no",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": false
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 180
-                        }
-                      }
-                    },
-                    "set": {
-                      "id": "set",
-                      "type": "blueprint.local.set",
-                      "params": {
-                        "variableId": "1f7c8a20-3b64-4d1e-9a05-2c6e4f8b7d11"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "heard",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "set",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "no",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "set",
-                        "port": "value"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              },
               "539527a5-84fc-4114-8b85-403709c4441b": {
                 "id": "539527a5-84fc-4114-8b85-403709c4441b",
                 "name": "下スクロールでログを閉じる",
@@ -512,12 +366,25 @@
                         }
                       }
                     },
+                    "entries": {
+                      "id": "entries",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
+                        "elementId": "5aab5352-98e9-4d9e-af03-1938fa5b5032",
+                        "elementType": "nl.list"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 400
+                        }
+                      }
+                    },
                     "atBottom": {
                       "id": "atBottom",
-                      "type": "blueprint.local.get",
-                      "params": {
-                        "variableId": "1f7c8a20-3b64-4d1e-9a05-2c6e4f8b7d11"
-                      },
+                      "type": "blueprint.element.list.isScrolledToEnd",
+                      "params": {},
                       "meta": {
                         "editorLayout": {
                           "x": 280,
@@ -607,6 +474,16 @@
                     },
                     {
                       "from": {
+                        "nodeId": "entries",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "atBottom",
+                        "port": "list"
+                      }
+                    },
+                    {
+                      "from": {
                         "nodeId": "down",
                         "port": "result"
                       },
@@ -618,7 +495,7 @@
                     {
                       "from": {
                         "nodeId": "atBottom",
-                        "port": "value"
+                        "port": "atEnd"
                       },
                       "to": {
                         "nodeId": "and1",
@@ -698,12 +575,6 @@
         },
         "members": {
           "variables": {
-            "1f7c8a20-3b64-4d1e-9a05-2c6e4f8b7d11": {
-              "id": "1f7c8a20-3b64-4d1e-9a05-2c6e4f8b7d11",
-              "name": "atBottom",
-              "valueType": "boolean",
-              "defaultValue": true
-            },
             "3c5e7a92-1d4b-42f6-9e08-5b1a7c3d6f44": {
               "id": "3c5e7a92-1d4b-42f6-9e08-5b1a7c3d6f44",
               "name": "settled",
@@ -1714,8 +1585,7 @@
           "kind": "graph",
           "graphs": {
             "eventIds": [
-              "8b66c10b-a56a-4df5-a452-c4b960463ac2",
-              "bcf23235-fe89-41a9-8db9-a171f36a1411"
+              "8b66c10b-a56a-4df5-a452-c4b960463ac2"
             ],
             "events": {
               "8b66c10b-a56a-4df5-a452-c4b960463ac2": {
@@ -2056,139 +1926,6 @@
                       },
                       "to": {
                         "nodeId": "nAsk",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              },
-              "bcf23235-fe89-41a9-8db9-a171f36a1411": {
-                "id": "bcf23235-fe89-41a9-8db9-a171f36a1411",
-                "name": "最下部を通知",
-                "graph": {
-                  "nodes": {
-                    "sc": {
-                      "id": "sc",
-                      "type": "blueprint.event.head.scroll",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "atEnd": {
-                      "id": "atEnd",
-                      "type": "blueprint.math.greaterOrEqual",
-                      "params": {
-                        "b": 0.999,
-                        "__inlineLiteralPins": [
-                          "b"
-                        ]
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 180
-                        }
-                      }
-                    },
-                    "brBottom": {
-                      "id": "brBottom",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "sendAtBottom": {
-                      "id": "sendAtBottom",
-                      "type": "blueprint.broadcast.send",
-                      "params": {
-                        "event": "log.atBottom",
-                        "__inlineLiteralPins": [
-                          "event"
-                        ]
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 840,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "sendOffBottom": {
-                      "id": "sendOffBottom",
-                      "type": "blueprint.broadcast.send",
-                      "params": {
-                        "event": "log.offBottom",
-                        "__inlineLiteralPins": [
-                          "event"
-                        ]
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 840,
-                          "y": 180
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "sc",
-                        "port": "progress"
-                      },
-                      "to": {
-                        "nodeId": "atEnd",
-                        "port": "a"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "atEnd",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "brBottom",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sc",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "brBottom",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "brBottom",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "sendAtBottom",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "brBottom",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "sendOffBottom",
                         "port": "in"
                       }
                     }
@@ -50387,6 +50124,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-24T01:38:59.409Z"
+    "updatedAt": "2026-08-24T03:07:22.899Z"
   }
 }

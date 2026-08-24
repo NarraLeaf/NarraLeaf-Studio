@@ -21,6 +21,7 @@ import {
     assertWritableSchema,
     loadSaveSchema,
     ProjectIoError,
+    elementTypeResolver,
     readUiDocumentTargets,
     readUiGraphs,
     readVariableRegistry,
@@ -276,6 +277,7 @@ function commandCheck(args: Args, io: CliIo): number {
         resolveWidgetElementType: projectDir
             ? widgetElementTypeResolver(readUiDocumentTargets(projectDir))
             : undefined,
+        resolveElementType: projectDir ? elementTypeResolver(readUiDocumentTargets(projectDir)) : undefined,
         resolveWidgetElement: projectDir
             ? widgetElementResolver(readUiDocumentTargets(projectDir))
             : undefined,
@@ -305,6 +307,7 @@ function commandApply(args: Args, io: CliIo): number {
         persistentVariables: variables.persistent,
         savedVariables: variables.saved,
         resolveWidgetElementType: widgetElementTypeResolver(readUiDocumentTargets(projectDir)),
+        resolveElementType: elementTypeResolver(readUiDocumentTargets(projectDir)),
         resolveWidgetElement: widgetElementResolver(readUiDocumentTargets(projectDir)),
     });
     const report = formatDiagnostics(result.diagnostics, {
