@@ -153,6 +153,8 @@ export interface DocumentSpecDefinition<T> {
     kind: DocumentKind;
     version: number;
     paths: readonly string[];
+    /** Defaults to JSON text. Override only for a format that is not JSON at all. */
+    decode?(bytes: Uint8Array, path: string): unknown;
     parse(raw: unknown, context: DocumentParseContext): T;
     /** Defaults to canonical JSON. Override only for a format that is not JSON at all. */
     serialize?(document: T): string;
@@ -187,10 +189,11 @@ export interface DocumentSpecDefinition<T> {
  *
  * The default `serialize` is the canonical encoder, which is the whole point of the
  * milestone: a spec that wants different bytes has to say so explicitly, rather than
- * getting them by forgetting.
+ * getting them by forgetting. `decode` is the same bargain read from the other end.
  */
 export function defineDocumentSpec<T>(definition: DocumentSpecDefinition<T>): DocumentSpec<T> {
     const patterns = definition.paths.map(compileDocumentPathPattern);
+    const decode = definition.decode;
     const serialize = definition.serialize;
 
     return {
@@ -199,12 +202,24 @@ export function defineDocumentSpec<T>(definition: DocumentSpecDefinition<T>): Do
         paths: definition.paths,
         matches: relativePath => patterns.some(pattern => matchDocumentPath(pattern, relativePath) !== null),
         pathFor: parameters => formatDocumentPath(selectPattern(definition.kind, patterns, parameters ?? {}), parameters ?? {}),
+        decode: decode ? (bytes, path) => decode(bytes, path) : bytes => decodeJsonDocument(bytes),
         parse: definition.parse,
         serialize: serialize ? document => serialize(document) : document => encodeCanonicalJson(document),
         summarize: definition.summarize,
         ...(definition.diff ? {diff: definition.diff} : {}),
         ...(definition.merge3 ? {merge3: definition.merge3} : {}),
     };
+}
+
+/**
+ * The default decode: UTF-8 text, read as JSON, which is what every document but the project
+ * configuration is.
+ *
+ * Kept as a function rather than inlined so the fallback has one definition and one name in a
+ * stack trace, and so a spec that overrides it can be told apart from a spec that did not.
+ */
+function decodeJsonDocument(bytes: Uint8Array): unknown {
+    return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 /**
