@@ -70,6 +70,23 @@ export function isPlainRowPress(event: RowGestureEvent): boolean {
 }
 
 /**
+ * How far the pointer has to travel before a press on a row becomes a drag across rows.
+ *
+ * Windows' own `SM_CXDRAG`, and the same 4px the interface editor settled on for the same reason
+ * (see `lib/ui-editor/interaction/gestureDeadzone`). Kept as its own constant rather than imported
+ * from there: what they share is a number about hands, not a dependency.
+ *
+ * Measured in screen pixels, because it is there to absorb a hand that shook — and a hand does not
+ * shake less because the list scrolled.
+ */
+export const ROW_DRAG_DEADZONE_PX = 4;
+
+/** Whether a press that started at `origin` has travelled far enough to be a drag. */
+export function rowDragEngaged(origin: { x: number; y: number }, x: number, y: number): boolean {
+    return Math.abs(x - origin.x) >= ROW_DRAG_DEADZONE_PX || Math.abs(y - origin.y) >= ROW_DRAG_DEADZONE_PX;
+}
+
+/**
  * The selection after a row is picked: a Shift range from the anchor row, a Ctrl toggle of this one,
  * or this one alone.
  *
