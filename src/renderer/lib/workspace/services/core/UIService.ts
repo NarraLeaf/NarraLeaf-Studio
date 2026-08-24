@@ -114,7 +114,7 @@ export class UIService extends Service<UIService> implements IUIService {
             const unsubDeleted = assetsService.getEvents().on("deleted", (asset: Asset) => {
                 // Clear selection if the deleted asset is selected
                 const selection = this.store.getSelection();
-                if (selection.type === "asset" && (selection.data as Asset).id === asset.id) {
+                if (selection.type === "asset" && selection.data.id === asset.id) {
                     this.store.setSelection({ type: null, data: null });
                 }
 
@@ -133,11 +133,10 @@ export class UIService extends Service<UIService> implements IUIService {
                 }
 
                 const selection = this.store.getSelection();
-                if (selection.type !== "asset" || !selection.data) {
+                if (selection.type !== "asset") {
                     return;
                 }
-                const selected = selection.data as Asset;
-                if (selected.id !== asset.id) {
+                if (selection.data.id !== asset.id) {
                     return;
                 }
                 // Shallow clone so React consumers re-render after in-place metadata updates

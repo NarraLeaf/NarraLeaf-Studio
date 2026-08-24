@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PROJECT_DOCUMENT_SPECS } from "@shared/documents/specs";
+import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import {
     CHANGE_CATEGORY_BY_DOCUMENT_KIND,
     CHANGE_CATEGORY_LABEL_KEY,
@@ -68,7 +69,9 @@ describe("changeCategoryOf", () => {
         ["assets/assets.metadata.image.json", "assets"],
         ["assets/content/ab/cd/ef01", "assets"],
         ["resources/icons/derived/icon.png", "assets"],
+        // The config filename projects used before `.nlproj`. Still opened, so still classified.
         ["project.json", "settings"],
+        ["editor/save-schema.json", "settings"],
         ["scripts/build.js", "other"],
         ["runtimes/puppet/live2d/index.js", "other"],
         [".nlstudio/editor.json", "other"],
@@ -80,6 +83,56 @@ describe("changeCategoryOf", () => {
             expect(changeCategoryOf(entry(path))).toBe(category);
         });
     }
+
+    /**
+     * The project's own config file is the one root file whose name the author chooses: it is
+     * called after the project, sanitized into a filename. So the cases below ask the convention
+     * for the name the writer would use rather than spelling one here, and the classification has
+     * to answer for all of them - this is the most-edited settings file in a project, and "Other"
+     * is the wrong place for it.
+     */
+    const projectNames = ["My Game", "Chapter: One?", "星の詩 Prologue"];
+
+    for (const projectName of projectNames) {
+        it(`files the config of "${projectName}" under settings`, () => {
+            const fileName = ProjectNameConvention.ProjectConfig(projectName).join("/");
+
+            expect(fileName).toMatch(/^[^/\\]+\.nlproj$/);
+            expect(changeCategoryOf(entry(fileName))).toBe("settings");
+        });
+    }
+
+    it("names the sanitized config file the way the project is stored on disk", () => {
+        // Spelled out for the two shapes the sanitizer changes: a space becomes a hyphen, and the
+        // characters a filename may not carry are dropped. Both still have to classify above.
+        expect(ProjectNameConvention.ProjectConfig("My Game")).toEqual(["My-Game.nlproj"]);
+        expect(ProjectNameConvention.ProjectConfig("Chapter: One?")).toEqual(["Chapter-One.nlproj"]);
+    });
+
+    it("keeps the legacy config filename where the current one goes", () => {
+        // A project written before `.nlproj` still opens, so its config still has to classify - and
+        // under the same heading, or the same file changes heading when the project is migrated.
+        expect(ProjectNameConvention.ProjectConfigLegacy.join("/")).toBe("project.json");
+        expect(changeCategoryOf(entry("project.json")))
+            .toBe(changeCategoryOf(entry("Demo.nlproj")));
+        expect(changeCategoryOf(entry("project.json"))).toBe("settings");
+    });
+
+    it("does not read every .nlproj in the tree as this project's config", () => {
+        // An author may keep another project, or a backup, inside this one. The extension rule is
+        // root-only on purpose, and a bare `.nlproj` is not a config either: a sanitized project
+        // name is never empty.
+        expect(changeCategoryOf(entry("notes/archive/Old-Game.nlproj"))).toBe("other");
+        expect(changeCategoryOf(entry(".nlproj"))).toBe("other");
+    });
+
+    it("files the save schema with the project's settings rather than its interface", () => {
+        // The fields one save slot carries are declared once for the whole project, beside the
+        // variant list and the brand palette. They were filed under the interface for proximity to
+        // the blueprint save nodes, which is no longer what decides it.
+        expect(CHANGE_CATEGORY_BY_DOCUMENT_KIND["save-schema"]).toBe("settings");
+        expect(changeCategoryOf(entry("editor/save-schema.json", "save-schema"))).toBe("settings");
+    });
 
     it("reads a host path the same as a project path", () => {
         // A caller may hand over Windows separators; a backslash must not decide what a file is.

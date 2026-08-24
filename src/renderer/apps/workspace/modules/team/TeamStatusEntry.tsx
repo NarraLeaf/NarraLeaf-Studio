@@ -4,11 +4,11 @@ import { useTranslation } from "@/lib/i18n";
 import { serverDisplayName, serverHost } from "@/lib/vcs/servers";
 import { StatusEntry } from "../status-bar/StatusEntry";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
-import { useTeamProject } from "../../hooks/useTeamProject";
 import { isVersionSurfaceVisible } from "../../components/layout/versionRailModel";
 import { teamServerFace } from "./teamFace";
 import { LiveSessionNotices } from "./LiveSessionNotices";
 import { TeamPanel } from "./TeamPanel";
+import { useTeamProjectSurface } from "./TeamProjectContext";
 import { registerTeamPresenceBridge } from "./teamPresenceController";
 
 /**
@@ -44,17 +44,17 @@ export function TeamStatusEntry() {
     const drawn = isVersionSurfaceVisible(surface.state) && surface.state.kind !== "not-a-repository";
 
     /**
-     * **The one place the server stops being an address on disk and becomes a source.**
+     * **What the server itself says, as opposed to what is written on this disk.**
      *
-     * Opened here rather than in the panel, because this cell is drawn for as long as the project
-     * is: a session, its subscriptions and this window's presence on that project all belong to
-     * the window's lifetime, not to a dialog somebody happens to have open. That is what makes the
-     * check automatic - nobody presses anything - and it is what lets the cell say that a server
-     * has stopped holding this project before Send is refused.
-     *
-     * Nulls where the cell is not drawn, so a project with no repository opens nothing.
+     * Read from the window's own reader rather than opened here. It used to be opened here, on the
+     * reasoning that this cell lasts as long as the project does - which is still true, and is
+     * still why the session, its subscriptions and this window's presence belong to the window's
+     * lifetime rather than to a dialog somebody happens to have open. What changed is that a second
+     * surface needs the same answers: the collaboration control in the title bar. Two callers of
+     * `useTeamProject` would announce this window twice and withdraw it once, so the reader moved
+     * up to `TeamProjectProvider`, where both can reach one.
      */
-    const team = useTeamProject(drawn ? surface.remote : null, drawn ? surface.repositoryId : null);
+    const team = useTeamProjectSurface();
     useEffect(() => {
         if (!drawn) {
             return;

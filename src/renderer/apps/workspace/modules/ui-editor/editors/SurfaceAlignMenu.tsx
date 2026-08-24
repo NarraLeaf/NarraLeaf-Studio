@@ -88,7 +88,7 @@ export function SurfaceAlignTrigger({ surfaceId, documentService, stateService, 
             return null;
         }
         const current = stateService.getSelection();
-        return isUIElementSelection(current) ? (current.data as UIElementSelection) : null;
+        return isUIElementSelection(current) ? current.data : null;
         // `revision` is the change signal; the selection object itself is replaced on every write.
     }, [stateService, revision]);
 

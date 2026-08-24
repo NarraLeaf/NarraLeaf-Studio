@@ -1,13 +1,34 @@
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 export { isValidAssetStorageId } from "@shared/utils/assetStorageId";
+import { getProjectConfigFileName, NLPROJ_EXT } from "@shared/utils/nlproj";
 import { AssetCategory, AssetType } from "../services/assets/assetTypes";
 
 export const ProjectNameConvention = {
     // Project Root Files
-    // .nlproj is the primary format (msgpack-encoded); project.json is legacy
-    ProjectConfig: ["project.json"],
+    /**
+     * The project's own config file, msgpack-encoded.
+     *
+     * A function rather than a constant, because it is the one root file whose name the author
+     * chooses: it is called after the project, sanitized into a filename, so `My Game` is stored as
+     * `My-Game.nlproj` (see `getProjectConfigFileName`).
+     *
+     * That is what {@link ProjectConfigExtension} is for. A reader holding a path and no project
+     * name - a listing looking for the config, a comparison saying which panel a changed file
+     * belongs to - cannot reconstruct the name, and can only recognise the file by what it ends in.
+     */
+    ProjectConfig: (projectName: string) => [getProjectConfigFileName(projectName)],
+    /**
+     * What every {@link ProjectConfig} file ends in. Re-exported from `@shared/utils/nlproj` rather
+     * than spelled again here, because it is also the extension Studio registers with the operating
+     * system, and two spellings of it would be two answers to what a project is.
+     */
+    ProjectConfigExtension: NLPROJ_EXT,
+    /**
+     * The config filename projects used before `.nlproj`, still read wherever one is found. A
+     * constant, unlike {@link ProjectConfig}: it never carried the project's name.
+     */
     ProjectConfigLegacy: ["project.json"],
-    
+
     // Assets metadata and groups (stored in assets/)
     AssetsMetadataShard: (type: AssetType) => ["assets", `assets.metadata.${type}.json` as const],
     /**
