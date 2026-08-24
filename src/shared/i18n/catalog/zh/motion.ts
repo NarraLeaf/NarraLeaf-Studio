@@ -98,7 +98,7 @@ export const motion = {
     selector: {
         loadingPreview: "正在加载预览…",
         tab: {
-            project: "工程",
+            project: "项目",
             presets: "预设",
         },
     },
@@ -124,9 +124,9 @@ export const motion = {
         previewTargetTitle: "预览目标图片（仅编辑器）",
         previewBackgroundTitle: "预览背景图片（仅编辑器）",
         selectOrCreate: "选择或创建一个故事动画",
-        deleteConfirm: "删除动画“{name}”？",
+        deleteConfirm: "删除动画“{name}”",
         deleteDetail: "该动画资产会被移除，相关编辑器会被关闭",
-        clearAria: "清除{name}",
+        clearAria: "清除 {name}",
     },
     editor: {
         loading: "正在加载动画资产…",
@@ -136,9 +136,9 @@ export const motion = {
         animatedProperties: "动画属性",
         addProperty: "添加属性",
         addKeyframeAtPlayhead: "在播放头处添加关键帧",
-        addKeyframeAria: "在播放头处添加{property}关键帧",
+        addKeyframeAria: "在播放头处添加 {property} 关键帧",
         deleteTrack: "删除轨道",
-        deleteTrackAria: "删除{property}轨道",
+        deleteTrackAria: "删除 {property} 轨道",
     },
     keyframe: {
         loading: "正在加载关键帧…",

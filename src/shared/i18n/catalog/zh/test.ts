@@ -59,7 +59,7 @@ export const test = {
     reason: {
         frozen: "工作区冻结时不可用",
         alreadyRunning: "已有测试正在运行",
-        parameterEmpty: "本工程中「{parameter}」没有可选值",
+        parameterEmpty: "本项目中「{parameter}」没有可选值",
     },
     console: {
         channel: "测试",
@@ -76,7 +76,7 @@ export const test = {
     },
     builtin: {
         projectDiagnostics: {
-            title: "工程诊断",
+            title: "项目诊断",
             description: "将工程检查的全部规则作为一项测试运行",
             summary: {
                 passed: "没有发现问题",
@@ -85,7 +85,7 @@ export const test = {
         },
         walkthrough: {
             title: "结局通关",
-            description: "从故事自己的入口场景开始，实际运行游戏走到某个结局",
+            description: "从故事的入口场景开始，实际运行游戏直到某个结局",
             parameter: {
                 ending: {
                     label: "结局",
@@ -130,10 +130,10 @@ export const test = {
                 storiesUnread: "有故事无法读取",
             },
             finding: {
-                pathRunsOut: "推进在这里停住，没有到达任何结局",
+                pathRunsOut: "推进到此停止，未到达任何结局",
                 optionRunsOut: "「{option}」走到头也没有到达任何结局",
                 endingUnreached: "没有路径能到达「{name}」",
-                endingUnreachedUnnamed: "没有路径能到达这个结局",
+                endingUnreachedUnnamed: "没有路径可以到达该结局",
             },
             // 数字放在冒号后面，任何数量都读得通；通过的这次也照样报出没人到得了的结局。
             summary: {

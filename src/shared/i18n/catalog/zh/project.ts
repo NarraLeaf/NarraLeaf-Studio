@@ -20,7 +20,7 @@ export const project = {
         },
         project: {
             title: "工程",
-            description: "分发密钥、工程检查的规则，以及什么会拦下构建",
+            description: "分发密钥、工程检查规则，以及会中止构建的条件",
         },
         runtimes: {
             title: "运行时",
@@ -61,13 +61,13 @@ export const project = {
         mobile: "移动端",
     },
     distribution: {
-        description: "随工程保存，参与构建的每个人使用同一把密钥。一个构建只接受用它自己那把密钥做出的补丁。",
+        description: "随项目保存，参与构建的成员使用同一密钥。构建仅接受由其自身密钥生成的补丁。",
         absent: "尚未创建密钥",
         rotatedAt: "上次更换于 {date}",
         createAction: "创建",
         replaceAction: "更换",
-        replaceConfirm: "要更换分发密钥吗？",
-        replaceConfirmDetail: "已经用当前密钥发布出去的构建，不会接受此后做出的补丁",
+        replaceConfirm: "更换分发密钥",
+        replaceConfirmDetail: "已使用当前密钥发布的构建，不会接受此后生成的补丁",
     },
     home: {
         untitledProject: "未命名项目",
@@ -90,9 +90,9 @@ export const project = {
         copyrightPlaceholder: "© 工作室名称",
         // 长文形式，与上面那一行分开：那一行进二进制的文件属性，这一段进玩家能打开的文件。
         copyrightTextLabel: "版权声明",
-        copyrightTextPlaceholder: "用到的字体、音乐与资产，以及它们各自归谁所有…",
-        copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
-        descriptionPlaceholder: "描述本项目…",
+        copyrightTextPlaceholder: "使用的字体、音乐与资产，及其版权归属…",
+        copyrightTextHelper: "随游戏发布为 COPYRIGHT.txt。为空时不生成该文件",
+        descriptionPlaceholder: "项目简介…",
         required: "必填",
     },
     // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
@@ -158,7 +158,7 @@ export const project = {
             other: "被 {count} 处引用",
         },
         delete: "删除",
-        deleteConfirm: "删除「{name}」？",
+        deleteConfirm: "删除「{name}」",
         // 如实说明后果：指向该变体的引用不会被改写，从此按正式变体的值读取。`{name}` 是正式变体的
         // 名称，插值而不是写死在这里，将来改名时这句会跟着改。
         deleteDetail: {
@@ -183,12 +183,12 @@ export const project = {
         nameTitle: "名称",
         idTitle: "ID",
         idFile: "产出文件为 {file}",
-        idChangeConfirm: "将 ID 改为“{id}”？",
-        idChangeDetail: "已经发出去的文件仍然是原文件名，标记为原 ID 的故事将不再指向这个 DLC。",
+        idChangeConfirm: "将 ID 改为“{id}”",
+        idChangeDetail: "已发布的文件保留原文件名。标记为原 ID 的故事将不再指向该 DLC。",
         idChangeAction: "更改",
         attachTitle: "装入",
         delete: "删除",
-        deleteConfirm: "删除“{name}”？",
+        deleteConfirm: "删除“{name}”",
         deleteDetail: {
             one: "{count} 个故事将回到基础构建中。",
             other: "{count} 个故事将回到基础构建中。",
@@ -241,7 +241,7 @@ export const project = {
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
         // 要么对正在看这些行的作者没有用处。
-        intro: "玩家未修改时，各项设置从这里的值开始；玩家可以修改全部设置，修改结果会被保留",
+        intro: "玩家未修改时使用此处的值；玩家可修改全部设置，修改结果将被保留",
         group: {
             dialogue: "对白",
             skipping: "跳过",
@@ -256,11 +256,11 @@ export const project = {
         },
         cps: {
             title: "文字速度",
-            description: "每秒打出的字数",
+            description: "每秒显示的字数",
         },
         gameSpeed: {
             title: "游戏速度",
-            description: "同时作用于打字速度和自动前进的等待时间",
+            description: "同时作用于文字速度与自动前进的等待时间",
         },
         autoForward: {
             title: "自动前进",
@@ -280,7 +280,7 @@ export const project = {
         },
         skipReadText: {
             title: "跳过已读文本",
-            description: "开启后，跳过遇到玩家还没读过的文本就会停下",
+            description: "开启后，跳过将在玩家未读过的文本处停下",
         },
         skipDelay: {
             title: "跳过延迟",
@@ -345,7 +345,7 @@ export const project = {
         usedBy: {
             other: "被 {count} 处引用",
         },
-        deleteConfirm: "删除「{name}」？",
+        deleteConfirm: "删除「{name}」",
         // 诚实地说明后果：指向这条轨道的地方不会被改写，从此各自按自身形态对应的内置总线解析——
         // 具体落到哪一条取决于播放的是什么，在这里点名某一条只会是猜测。
         deleteDetail: {
@@ -389,7 +389,7 @@ export const project = {
             description: "每行一个地址或主机模式",
             matchHint: "只写主机表示该主机下的所有路径；* 可以替换首个主机标签（*.example.com），或出现在路径末尾（/v1/*）；协议、主机与端口需完全一致",
             placeholder: "https://api.example.com/*",
-            invalid: "请填写 http:// 或 https:// 地址；* 只能替换首个主机标签，或出现在路径末尾",
+            invalid: "填写 http:// 或 https:// 地址；* 只能替换首个主机标签，或出现在路径末尾",
             add: "新增地址",
             remove: "移除地址",
             fromPlugins: "已安装插件声明的地址",
@@ -400,7 +400,7 @@ export const project = {
         encryptAssetsWebHint: "Web 构建始终不加密资产",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
-        signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",
+        signingDescription: "为每个平台指定签名凭据。证书与密码仅保存在本机，项目中仅记录所选凭据",
         lossyImagesTitle: "重压缩图像",
         lossyImagesDescription: "将图像重编码为有损 WebP，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
         lossyQualityTitle: "图像质量",
@@ -475,8 +475,8 @@ export const project = {
                 other: "{count} 个节点",
             },
             widget: {
-                one: "{count} 个挂件",
-                other: "{count} 个挂件",
+                one: "{count} 个控件",
+                other: "{count} 个控件",
             },
             storage: {
                 one: "{count} 个存储",
