@@ -122,7 +122,6 @@ import {
 import { DistributionCreateKeyHandler } from "./handlers/distributionAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import { ServerTrustPromptHandler } from "./handlers/serverTrustAction";
-import { OnboardingPreviewHandler } from "./handlers/onboardingPreviewAction";
 import {
     PluginApproveHandler,
     PluginInstallFromRegistryHandler,
@@ -349,7 +348,6 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // The server trust question, in a window of its own
         new ServerTrustPromptHandler(),
-        new OnboardingPreviewHandler(),
 
         // Plugin permission handlers
         new PluginPermissionPromptLaunchHandler(),

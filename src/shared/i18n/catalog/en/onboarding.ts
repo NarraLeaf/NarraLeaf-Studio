@@ -5,19 +5,20 @@
  * Settings, so the labels and the option names are read from the `settings` namespace rather than
  * restated here: a second spelling of "Follow system" is how the setup screen and the Settings
  * window end up describing one choice differently. The same rule applies to the words inside the
- * preview - the story row placeholders come from `story.rows.*`, because that is the sentence the
- * editor itself prints.
+ * sample - the story row placeholders come from `story.rows.*`, because that is the sentence the
+ * editor itself prints, and the version column's own headings come from `workspace.shell`.
  *
  * Each screen carries one line under its title. That line is the "expectation" layer of
- * docs/help-system.md §1 - what happens if you touch this - and is the whole reason setup needs
- * no help topics of its own: this is the surface that has to explain itself.
+ * docs/help-system.md §1 - what this setting decides - and is the whole reason setup needs no help
+ * topics of its own: this is the surface that has to explain itself. It states what the setting is
+ * and stops there; a line that argues for the setting is a help topic wearing a screen's clothes.
  */
 export const onboarding = {
     /**
      * The title bar, for the whole flow rather than per screen.
      *
-     * The one place setup says what it is a setup OF. Each screen's heading is the question it
-     * asks, which leaves nothing naming the product - and this is the first window anyone sees.
+     * The one place setup says what it is a setup OF. Each screen's heading is the setting it asks
+     * about, which leaves nothing naming the product - and this is the first window anyone sees.
      * `{name}` is `APP_DISPLAY_NAME`, so the two cannot drift apart.
      */
     windowTitle: "Welcome to {name}",
@@ -34,7 +35,7 @@ export const onboarding = {
      */
     progress: "Progress {current}/{total}",
     /**
-     * The rail down the left, naming the screens.
+     * The rail down the left, naming the screens and leading to any of them.
      *
      * Present because the flow is seven screens rather than three: what a rail answers is "how much
      * of this is left", and at three screens with a Skip button on every one of them there was
@@ -60,74 +61,68 @@ export const onboarding = {
      */
     welcome: {
         title: "Welcome",
-        expectation: "A few questions about how Studio looks and how it writes. Every one of them is in Settings afterwards.",
-        /** Above the import row: who the row is for, since most first runs are not. */
-        haveSettings: "Already using Studio on another computer?",
+        expectation: "Interface and story-editor settings, in six screens. Each one takes effect immediately and remains available in Settings.",
+        /** Above the import row, naming what the row is for rather than asking after the reader. */
+        haveSettings: "Settings from another installation",
     },
     language: {
         title: "Language",
-        expectation: "The language of Studio's interface. It can be changed in Settings.",
+        expectation: "The language Studio's interface is written in.",
         matchedToDevice: "matched to this device",
     },
     appearance: {
         title: "Appearance",
-        expectation: "The theme and the accent, both applied the moment they are picked.",
+        expectation: "The theme and accent colour of the interface.",
     },
     zoom: {
         title: "Interface zoom",
-        expectation: "How large Studio's interface is drawn. This window is the sample.",
+        expectation: "The size Studio's interface is drawn at. This window follows the setting.",
         /** The fourth option: the setting's whole 50-200 range, behind one more click. */
         custom: "Custom",
-        /** Over the three surfaces the pane can show while this screen is up. */
-        surface: "Show in the preview",
+        /** Over the three surfaces the sample can show while this screen is up. */
+        surface: "Preview surface",
     },
     identity: {
-        title: "Who is writing",
-        expectation: "The name on your revisions, and the author line each new project starts with.",
+        title: "Author",
+        expectation: "The name recorded on each version, and the author line new projects start with.",
         /** Under the two version-control fields: what an empty pair records. */
-        unsigned: "Left empty, revisions are recorded as {name}.",
+        unsigned: "Left empty, versions are recorded as {name}.",
     },
     team: {
         title: "Team server",
-        expectation: "Where a shared project lives. Studio works fully without one.",
+        expectation: "Where a shared project is kept. A server is optional.",
         /** The button that opens the ordinary add-a-server dialog. */
-        connect: "Connect a server",
+        connect: "Connect to a server",
         /** Above the list, once there is one. */
         connected: "Signed in",
-        /** Nothing connected, which is the ordinary case and not a problem. */
-        none: "No server. Projects stay on this computer, and one can be added later in Settings.",
+        /**
+         * Nothing connected, which is the ordinary case and not a problem.
+         *
+         * Says only what the sample beside it does not: the column already prints the version
+         * rail's own "not connected to a server", and a screen restating that in its own words is
+         * how one fact comes to be spelled two ways forty pixels apart.
+         */
+        none: "Projects are kept on this computer.",
     },
     story: {
         title: "Story editor",
-        expectation: "How the scene editor reads and what it accepts. Every one of these is in Settings.",
+        expectation: "How the scene editor is read and typed in.",
     },
     /**
-     * The way past every question at once, on the first screen. See `ImportSettingsRow` for why it
-     * is offered there and not at the end.
+     * The way past every question at once, on the first screen. See `WelcomeStep` for why it is
+     * offered there and not at the end.
      */
     import: {
-        /** The cover's button. Names the file, because "Import…" beside "Skip setup" names nothing. */
+        /** The screen's button. Names the file, because "Import…" beside "Skip setup" names nothing. */
         action: "Import settings…",
         /** In the dialog, under the summary: what applying it does to the flow it was opened from. */
-        leaves: "Applying these opens Studio; the rest of setup is answered by the file.",
+        leaves: "Applying these settings ends setup and opens Studio.",
     },
     done: {
-        title: "Studio is set up",
-        expectation: "Everything asked here, and a good deal more, is in Settings. Press F1 anywhere for help on what is under the cursor.",
+        title: "Setup complete",
+        expectation: "Every setting asked for here is in Settings. F1 opens help for whatever is under the cursor.",
         /** The one button under it, which opens the manual on narraleaf.com in a browser. */
-        docs: "Read the documentation",
-    },
-    /** The preview at full size, in a window of its own. */
-    previewWindow: {
-        /** The eye in the sample's own rail, and the window's own name. */
-        open: "See the whole window",
-        /**
-         * Across the top of that window, where a title would be.
-         *
-         * Said once and plainly: what is under it looks like Studio and answers almost nothing,
-         * and somebody who clicks a menu in it and gets nothing deserves to have been told why.
-         */
-        notice: "A preview of the interface. Nothing here is wired up except the line you can type on.",
+        docs: "Open the documentation",
     },
     /**
      * The dialog behind Skip.
@@ -138,20 +133,20 @@ export const onboarding = {
      */
     skipConfirm: {
         title: "Skip setup?",
-        message: "Studio opens with its defaults. Setup is not offered again, but every question it asks is in Settings.",
+        message: "Studio opens with its default settings. Setup is not shown again; every setting it asks for is in Settings.",
     },
     nav: {
         skip: "Skip setup",
         finish: "Open Studio",
     },
     /**
-     * The words inside the preview.
+     * The words inside the sample.
      *
-     * A scene nobody wrote, which greets the reader instead of standing in for the story they have
-     * not written yet. Still deliberately short - the pane exists to show what a *setting* does to
-     * a row, and a scene with a plot in it would be read instead of looked at - but the words are
-     * addressed to the person in setup rather than to nobody, so the one paragraph they do read
-     * tells them what the screen beside it is for.
+     * A project nobody wrote, written the way an author would write one: a named project, a named
+     * chapter, a scene with a place and a time in it, and three lines that read as a scene rather
+     * than as instructions to whoever is in setup. The sample exists to show what a *setting* does
+     * to a row, so the lines stay short - but a sample addressed to nobody in particular is what
+     * separates a window from a placeholder.
      */
     sample: {
         /**
@@ -160,31 +155,25 @@ export const onboarding = {
          * The same in every language: it is a project's name, and a project's name is whatever its
          * author typed, not a label Studio translates.
          */
-        projectName: "Welcome to Studio",
+        projectName: "Afterlight",
         /** Under the scene's name in the editor header: the story document it belongs to. */
         storyName: "Chapter 1",
-        scene: "Hello!",
+        /** The scene in front, named the way a scene is named: a place and a time. */
+        scene: "Rooftop, evening",
         /** The sample's one character, named after the engine. A name, so it is not translated. */
         speaker: "Narra",
-        line: "Welcome to NarraLeaf Studio!",
-        lineContinued: "Choose the look you want here.",
-        narration: "More of it can be changed later, in Settings.",
+        line: "The bell went ten minutes ago.",
+        lineContinued: "Nobody else came up here.",
+        narration: "The stairwell door stayed open behind them.",
         background: "Rooftop",
         placement: "center",
         transition: "fade",
-        /** The rail down the miniature's left edge - the three panels the preview can show. */
-        rail: {
-            story: "Story",
-            versions: "Version control",
-            team: "Team",
-        },
-        /** The version-control panel: two recorded revisions, and who they are recorded as. */
+        /** The version column: three recorded versions, and what a version is called. */
         versions: {
             latest: "Rooftop scene, first pass",
-            earlier: "Chapter opening",
             checkpoint: "Checkpoint",
+            earlier: "Chapter opening",
         },
-        /** The team panel with nothing signed in. */
         /** The dashboard's two facts, which are dates in the real one and words in a sample. */
         dashboard: {
             lastActive: "a moment ago",
@@ -197,6 +186,5 @@ export const onboarding = {
             warning: "Scene \"Rooftop, evening\" names a character that has no appearance",
             done: "Preview ready in 3.4s",
         },
-        teamAlone: "Working on this computer",
     },
 } as const;

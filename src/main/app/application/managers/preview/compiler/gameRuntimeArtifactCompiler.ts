@@ -226,6 +226,21 @@ export type GameRuntimeArtifactCompileInput = {
      */
     packaging?: boolean;
     /**
+     * This package is produced to be read back and then thrown away.
+     *
+     * Set by the patch export for the build it measures against: that package is compared entry by
+     * entry and deleted, and no player ever receives it. Everything about what it carries is decided
+     * exactly as a real package's would be - the same fold, the same trim, the same entry names, or
+     * the comparison would be measuring something else.
+     *
+     * What it does change is the audit. The check that reads a produced package back and proves it
+     * still reaches every asset it asks for exists to protect what ships; asking it of a package
+     * nobody receives buys nothing and costs a compile of every story in every language. A defect it
+     * would find there is a defect in a build of that variant, and a build of that variant is what
+     * reports it.
+     */
+    forComparison?: boolean;
+    /**
      * The DLC whose stories go into this artifact, on top of the game's own.
      *
      * Only the production build and the DLC export set it, and only one of them sets it to

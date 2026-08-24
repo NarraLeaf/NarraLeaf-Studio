@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { Eye } from "lucide-react";
-import { getInterface } from "@/lib/app/bridge";
-import { Button, FieldLabel, Input, TabStrip } from "@/lib/components/elements";
+import { FieldLabel, Input, TabStrip } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { ZOOM_PERCENT_MAX, ZOOM_PERCENT_MIN, normalizeZoomPercent } from "@shared/constants/zoom";
-import type { PreviewPanelId } from "../preview/StudioPreview";
+import type { PreviewSurfaceId } from "../preview/StudioPreview";
 import { useOnboardingPreferences } from "../onboardingPreferences";
 import { OptionList } from "./OptionList";
 
@@ -26,10 +24,6 @@ import { OptionList } from "./OptionList";
  * that reads on a dashboard can still be too small for three columns of monospace, and the only way
  * to know is to look at them. The console is the densest surface in the product and therefore the
  * one that decides.
- *
- * The pane beside these questions shows a quarter of a window. The button below opens the whole of
- * it, maximized, with a zoom control in its own title bar - because the way to judge 125% is to
- * have a window that size in front of you.
  */
 
 /** The three sizes almost every answer is one of. Everything else is behind "Custom". */
@@ -39,8 +33,8 @@ const CUSTOM = "custom";
 
 export interface ZoomStepProps {
     /** Which surface the pane beside this screen is showing, and the way to change it. */
-    surface: PreviewPanelId;
-    onSurfaceChange: (surface: PreviewPanelId) => void;
+    surface: PreviewSurfaceId;
+    onSurfaceChange: (surface: PreviewSurfaceId) => void;
 }
 
 export function ZoomStep({ surface, onSurfaceChange }: ZoomStepProps) {
@@ -99,7 +93,7 @@ export function ZoomStep({ surface, onSurfaceChange }: ZoomStepProps) {
                 <TabStrip
                     size="sm"
                     activeId={surface}
-                    onChange={id => onSurfaceChange(id as PreviewPanelId)}
+                    onChange={id => onSurfaceChange(id as PreviewSurfaceId)}
                     tabs={[
                         { id: "dashboard", label: t("placeholders.moduleTitles.dashboard") },
                         { id: "story", label: t("placeholders.moduleTitles.story") },
@@ -107,18 +101,6 @@ export function ZoomStep({ surface, onSurfaceChange }: ZoomStepProps) {
                     ]}
                 />
             </div>
-
-            {/* Raised by the main process: a second window is a window, and the renderer has no way
-                to make one. A failure is swallowed - the pane beside these questions is still there,
-                and a sentence about a window that did not open would be the loudest thing on a
-                screen about how big to draw the interface. */}
-            <Button
-                variant="secondary"
-                onClick={() => void getInterface().app.openOnboardingPreview({ surface }).catch(() => undefined)}
-            >
-                <Eye className="h-4 w-4" />
-                {t("onboarding.previewWindow.open")}
-            </Button>
         </div>
     );
 }
