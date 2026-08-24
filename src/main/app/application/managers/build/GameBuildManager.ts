@@ -33,6 +33,7 @@ import {
     type GameBuildStateSnapshot,
     type GameBuildTarget,
     type GamePatchExportRequest,
+    type ShippedAssetReport,
 } from "@shared/types/gameBuild";
 import {
     readAssetOptimizationConfiguration,
@@ -127,7 +128,10 @@ import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspac
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { SigningVault, type SecretSealer } from "../security/signingVault";
-import { type GameRuntimeArtifactCompileResult } from "../preview/compiler/gameRuntimeArtifactCompiler";
+import {
+    type GameRuntimeArtifactCompileResult,
+    type GameRuntimePluginSource,
+} from "../preview/compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { buildWebIndexHtml, WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
@@ -160,6 +164,15 @@ type BuildSession = {
      */
     abandonWeatherBake: (() => void) | null;
     cancelled: boolean;
+    /**
+     * What the compile carried out of the asset library, held until the run finishes so the
+     * published snapshot can carry it.
+     *
+     * A run may compile more than once - the desktop targets and the web export are two compiles of
+     * one request - and both narrow from the same bundle under the same variant, so the second
+     * answer replaces the first rather than being merged with it.
+     */
+    assetReport: ShippedAssetReport | null;
 };
 
 const DEFAULT_OUTPUT_DIR_NAME = "dist";
@@ -829,6 +842,7 @@ export class GameBuildManager {
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
+            assetReport: null,
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
@@ -903,6 +917,7 @@ export class GameBuildManager {
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
+            assetReport: null,
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
@@ -1081,6 +1096,7 @@ export class GameBuildManager {
             source: "Build",
             message: `game compiled (${artifact.copiedAssetCount} asset(s))`,
         });
+        this.reportShippedAssets(session, artifact.assetReport ?? null, pluginSelection.selected);
         this.reportShippedContentAudit(session, contentAudit);
         this.ensureNotCancelled(session);
 
@@ -1118,6 +1134,7 @@ export class GameBuildManager {
             platforms: [],
             artifacts: [outputFile],
             outputDir,
+            ...(session.assetReport ? { assetReport: session.assetReport } : {}),
         };
         const folder = dlc ? dlcDirectoryName(process.platform) : PATCH_DIRECTORY_NAME;
         this.emit(session, {
@@ -1672,6 +1689,11 @@ export class GameBuildManager {
         // exports, so both read one compile. Selecting web and Android together
         // must not compile the game twice.
         let webArtifact: GameRuntimeArtifactCompileResult | null = null;
+        // The web package is a second artifact, not a second reading of the first: it is written
+        // loose where the desktop one may be sealed, and it is what a browser and both mobile
+        // shells serve. A narrowed package that nothing checked is the dangerous half of trimming
+        // whichever package it is, so this one is audited on its own terms.
+        let webContentAudit: ShippedContentAuditReport | null = null;
         if (webTarget || mobileTargets.length > 0) {
             webArtifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath,
@@ -1700,6 +1722,7 @@ export class GameBuildManager {
                 onStart: worker => { session.worker = worker; },
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
+                onAudit: report => { webContentAudit = report; },
             });
             session.worker = null;
             this.emit(session, {
@@ -1707,6 +1730,7 @@ export class GameBuildManager {
                 source: "Build",
                 message: `${webTarget ? "web export" : "game site"} compiled (${webArtifact.copiedAssetCount} asset(s))`,
             });
+            this.reportShippedContentAudit(session, webContentAudit, webTarget ? "web export" : "game site");
             this.ensureNotCancelled(session);
         }
         // From one compile only: both read the same project under the same variant, so the second
@@ -1714,6 +1738,13 @@ export class GameBuildManager {
         for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
             this.emit(session, { level: "info", source: "Build", message: notice });
         }
+        // Same rule, and the same reason: what the library came to is a fact about the project under
+        // this variant, not about which package was written from it.
+        this.reportShippedAssets(
+            session,
+            (desktopArtifact ?? webArtifact)?.assetReport ?? null,
+            pluginSelection.selected,
+        );
         // The player-facing notice, written once and shipped by every target that has a place to
         // put it. Into the web site's root directly, since that root IS what gets served; for the
         // desktop packages it is handed to electron-builder as an extra file, which is what puts
@@ -1824,6 +1855,7 @@ export class GameBuildManager {
             artifacts,
             artifactSizes,
             outputDir,
+            ...(session.assetReport ? { assetReport: session.assetReport } : {}),
         };
         this.emit(session, {
             level: "success",
@@ -2949,7 +2981,65 @@ export class GameBuildManager {
         return true;
     }
 
-    private reportShippedContentAudit(session: BuildSession, report: ShippedContentAuditReport | null): void {
+    /**
+     * Say what this build left out of the asset library, and hold the list for the finished build.
+     *
+     * Two lines at most, because the console is not where four hundred asset names belong: the
+     * count and what leaving them out saved. The list itself travels on the snapshot, where a
+     * report an author opens can show it.
+     *
+     * The plugin line is the one blind spot in this whole mechanism said out loud. An asset ships
+     * because its id occurs in the bytes that ship; a plugin that builds an id while the game runs
+     * writes that id nowhere, so nothing here can see the reference. It is a warning rather than a
+     * refusal because the plugins that declare this capability are mostly reading assets the story
+     * already names, and refusing would mean no project with one could ever be built.
+     */
+    private reportShippedAssets(
+        session: BuildSession,
+        report: ShippedAssetReport | null,
+        plugins: readonly GameRuntimePluginSource[],
+    ): void {
+        if (!report) {
+            return;
+        }
+        session.assetReport = report;
+        if (report.excluded.length === 0 && report.excludedCharacters.length === 0) {
+            return;
+        }
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `${report.excluded.length} asset(s) are not referenced by this build and were `
+                + `left out, saving ${formatBytes(report.excludedBytes)}`,
+        });
+        if (report.excludedCharacters.length > 0) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: `${report.excludedCharacters.length} character(s) are not referenced by this `
+                    + `build and were left out: ${report.excludedCharacters.map(entry => entry.name).join(", ")}`,
+            });
+        }
+        const assetPlugins = plugins
+            .filter(plugin => plugin.manifest.contributes.runtimeCapabilities?.includes("assets"))
+            .map(plugin => plugin.manifest.name ?? plugin.manifest.id);
+        if (assetPlugins.length > 0) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${assetPlugins.join(", ")} can request assets while the game runs; an asset `
+                    + "only that plugin names is not in the package. Name it somewhere the build can "
+                    + "read to keep it.",
+            });
+        }
+    }
+
+    private reportShippedContentAudit(
+        session: BuildSession,
+        report: ShippedContentAuditReport | null,
+        /** Which package was read, where a build writes more than one. */
+        subject = "package",
+    ): void {
         if (!report) {
             return;
         }
@@ -2978,7 +3068,7 @@ export class GameBuildManager {
         this.emit(session, {
             level: "info",
             source: "Build",
-            message: `content check passed (${report.checkedAssetCount} asset(s) resolved in the package)`,
+            message: `content check passed (${report.checkedAssetCount} asset(s) resolved in the ${subject})`,
         });
     }
 
