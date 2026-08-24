@@ -96,6 +96,34 @@ describe("buildWebIndexHtml", () => {
         }
     });
 
+    it("takes the browser's own gestures off the document", () => {
+        // A game window, not a page. Each of these has a way of ending a session: a pinch leaves the
+        // stage misaligned with no chrome to undo it in, a downward drag on Chrome for Android
+        // reloads the running game, and a long press puts the iOS magnifier over the dialogue.
+        const html = buildWebIndexHtml(packWith({}), { hasFavicon: false });
+        expect(html).toContain("touch-action: pan-x pan-y;");
+        expect(html).toContain("overscroll-behavior: none;");
+        expect(html).toContain("-webkit-touch-callout: none;");
+        expect(html).toContain("-webkit-text-size-adjust: 100%;");
+        expect(html).toContain("-webkit-tap-highlight-color: transparent;");
+        expect(html).toContain("overflow: hidden;");
+    });
+
+    it("lets an editable field keep its callout", () => {
+        // Without this a name-entry box on iOS has no Paste, which is a worse trade than the long
+        // press was.
+        const html = buildWebIndexHtml(packWith({}), { hasFavicon: false });
+        expect(html).toContain("input, textarea, select, [contenteditable] { -webkit-touch-callout: default; }");
+    });
+
+    it("asks the mobile WebViews not to scale, and asks nobody else", () => {
+        // The WebViews both shells embed still honour user-scalable; Safari has ignored it since
+        // iOS 10, so on the web target it would say nothing that touch-action has not already said.
+        const mobile = buildWebIndexHtml(packWith({}), { hasFavicon: false, variant: "mobile" });
+        expect(mobile).toContain("user-scalable=no");
+        expect(buildWebIndexHtml(packWith({}), { hasFavicon: false })).not.toContain("user-scalable");
+    });
+
     it("omits each icon link independently", () => {
         const faviconOnly = buildWebIndexHtml(packWith({}), { hasFavicon: true, hasAppleTouchIcon: false });
         expect(faviconOnly).toContain("rel=\"icon\"");
