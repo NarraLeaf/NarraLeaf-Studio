@@ -235,6 +235,11 @@ export const build = {
     output: {
         artifacts: "成果物",
         artifactsEmpty: "作られるファイルを見るには対象を選ぶ",
+            includeDlc: "このバリアントの DLC も書き出す",
+            includeDlcHint: {
+                one: "{count} 件の DLC を、インストーラーの隣にある専用のフォルダーへ書き出します。",
+                other: "{count} 件の DLC を、インストーラーの隣にそれぞれ専用のフォルダーで書き出します。",
+            },
         openWhenDone: "終わったら出力フォルダを開く",
     },
     /**

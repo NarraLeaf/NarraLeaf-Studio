@@ -57,6 +57,7 @@ const neverRemoves = async (_credential: SigningCredential) => false;
 
 /** A project called "My Game", with only the release variant and no plugin asking for anything. */
 const info: BuildDialogInfo = {
+    dlcs: [],
     hostPlatform: "macos",
     hostArch: "arm64",
     productName: "My Game",

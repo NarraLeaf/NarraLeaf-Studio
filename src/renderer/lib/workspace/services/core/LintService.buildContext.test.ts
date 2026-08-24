@@ -74,6 +74,9 @@ function mount(options: { assetIds: string[]; references: AssetReference[] }): L
                     // `listTags` synthesizes the release variant, so this list is never empty.
                     case Services.AppTags:
                         return { listTags: () => [RELEASE_APP_TAG], listDeclaredExternalLinks: () => [] };
+                    // Absent-is-empty by construction, so a project that ships none answers a list.
+                    case Services.Dlc:
+                        return { list: () => [] };
                     case Services.VariableRegistry:
                         return { listEntries: () => [], listEntriesInScope: () => [] };
                     case Services.Localization:

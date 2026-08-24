@@ -147,6 +147,18 @@ describe("requestToBuildConfiguration", () => {
         expect(config.platforms).toContain("web");
     });
 
+    it("carries whether the DLC are built too, and leaves it out when they are not", () => {
+        const off = initialDialogState(null, "macos", "arm64");
+        // Absent rather than false, so a request from a project with no DLC is what it always was.
+        expect(stateToRequest(off).includeDlc).toBeUndefined();
+
+        const on = { ...off, includeDlc: true };
+        expect(stateToRequest(on).includeDlc).toBe(true);
+        const reopened = initialDialogState(requestToBuildConfiguration(stateToRequest(on)), "macos", "arm64");
+        expect(reopened.includeDlc).toBe(true);
+        expect(stateFromRequest(stateToRequest(on), "macos", "arm64").includeDlc).toBe(true);
+    });
+
     it("round trips back through initialDialogState", () => {
         let state = initialDialogState(null, "macos", "arm64");
         state = { ...state, openWhenDone: false, outputDir: "/tmp/out" };

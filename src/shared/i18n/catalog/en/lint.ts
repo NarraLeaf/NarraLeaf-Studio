@@ -209,6 +209,7 @@ export const lint = {
             messageEnding: "Names an ending that no longer exists",
             messageCharacter: "Names a character that no longer exists",
             messageTextKey: "Names a text key the project does not declare",
+            messageDlc: "Names a DLC the project does not have",
         },
         blueprintElementRefMissing: {
             title: "Missing widget",

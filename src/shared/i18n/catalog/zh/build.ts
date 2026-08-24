@@ -233,6 +233,11 @@ export const build = {
     output: {
         artifacts: "产物",
         artifactsEmpty: "选择一个目标后这里会列出产物",
+            includeDlc: "同时构建这个变体的 DLC",
+            includeDlcHint: {
+                one: "{count} 个 DLC，输出到安装包旁边它自己的文件夹里。",
+                other: "{count} 个 DLC，各自输出到安装包旁边自己的文件夹里。",
+            },
         openWhenDone: "构建完成后打开输出目录",
     },
     // 构建完成后打印在产物清单下方的体积读数。数字本身不翻译：共用的字节格式化在所有语言里
