@@ -1111,6 +1111,7 @@ export const blueprint = {
         isObject: "Is Object",
         isString: "Is String",
         isEndingReached: "Is Ending Reached",
+        isDlcInstalled: "Is DLC Installed",
         isOptionPicked: "Is Option Picked",
         isSceneVisited: "Is Scene Visited",
         isTextRead: "Is Text Read",

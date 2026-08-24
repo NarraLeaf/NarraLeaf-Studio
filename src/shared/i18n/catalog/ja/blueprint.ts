@@ -1105,6 +1105,7 @@ export const blueprint = {
         isObject: "オブジェクトか",
         isString: "文字列か",
         isEndingReached: "そのエンディングに到達したか",
+        isDlcInstalled: "DLC がインストール済みか",
         isOptionPicked: "その選択肢を選んだか",
         isSceneVisited: "そのシーンを訪れたか",
         isTextRead: "そのテキストを読んだか",

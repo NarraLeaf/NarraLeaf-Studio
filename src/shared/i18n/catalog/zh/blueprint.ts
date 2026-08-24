@@ -1103,6 +1103,7 @@ export const blueprint = {
         isObject: "是否为对象",
         isString: "是否为字符串",
         isEndingReached: "结局是否达成",
+        isDlcInstalled: "DLC 是否已安装",
         isOptionPicked: "选项是否选过",
         isSceneVisited: "场景是否访问过",
         isTextRead: "文本是否已读",

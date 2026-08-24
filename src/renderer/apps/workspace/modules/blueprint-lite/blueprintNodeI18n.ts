@@ -329,6 +329,7 @@ const NODE_TITLE_KEYS: Record<string, TranslationKey> = {
     "Is Object": "blueprint.node.isObject",
     "Is String": "blueprint.node.isString",
     "Is Ending Reached": "blueprint.node.isEndingReached",
+    "Is DLC Installed": "blueprint.node.isDlcInstalled",
     "Is Option Picked": "blueprint.node.isOptionPicked",
     "Is Scene Visited": "blueprint.node.isSceneVisited",
     "Is Text Read": "blueprint.node.isTextRead",

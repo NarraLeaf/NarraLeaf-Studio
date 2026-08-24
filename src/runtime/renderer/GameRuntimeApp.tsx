@@ -784,6 +784,10 @@ function GameRuntimeSession() {
             // a build that shows nothing when its story ends, which is what every pack made before
             // this field carries and what every pack whose project picked no page carries.
             endingSurfaceId: pack.endingSurfaceId,
+            // What the layer stack found beside this game, plus whatever the payload itself
+            // carried. The pack is the one place both are already stated, because composing it is
+            // where the two meet.
+            installedDlcIds: pack.installedDlc,
             ready: runtimeReady,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }
