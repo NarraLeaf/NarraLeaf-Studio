@@ -6,6 +6,7 @@ import {
     hitsConsumeInput,
     isOperableHitElement,
     resolveSurfaceInputActionHits,
+    stopsAtLane,
     type UIInputSignal,
 } from "./surfaceInputActions";
 
@@ -156,5 +157,23 @@ describe("hitsConsumeInput", () => {
 
     it("is false when nothing fired", () => {
         expect(hitsConsumeInput([])).toBe(false);
+    });
+});
+
+describe("stopsAtLane", () => {
+    it("stops a capturing surface whether or not it answered", () => {
+        expect(stopsAtLane("capture", false)).toBe("capture");
+        expect(stopsAtLane("capture", true)).toBe("consume");
+    });
+
+    it("lets a passing surface hand the input on until an action consumes it", () => {
+        expect(stopsAtLane("pass", false)).toBeNull();
+        expect(stopsAtLane("pass", true)).toBe("consume");
+    });
+
+    // `none` is click-through, so nothing is ever aimed at it and this branch is unreachable on
+    // screen. Pinned anyway: it is the one mode whose answer cannot be read off a running game.
+    it("never stops an input at a surface that takes none", () => {
+        expect(stopsAtLane("none", false)).toBeNull();
     });
 });
