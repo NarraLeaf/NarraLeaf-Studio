@@ -123,6 +123,15 @@ export const story = {
         refusedAnchorGone: "The line it was moving to is gone. The change was not applied.",
         refusedSceneGone: "That scene is gone. The change was not applied.",
         refusedNotInSession: "This machine is no longer in the session.",
+        // The cast's answer to a line that has gone. Says the character is gone and nothing about
+        // the panel: what the author typed into it is theirs and stays where it is.
+        refusedCharacterGone: "That character is gone. The change was not applied.",
+        // A record too big for one message. Named rather than silent, because the alternative is a
+        // change that appears to have been made and reached nobody.
+        refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
+        // The session does not carry that document at all - a story other than the one the room is
+        // about, or a kind of document a session cannot pass between machines yet.
+        refusedDocumentNotShared: "A live session does not share that document. The change was not applied.",
         refusedUnknownOp: "The session did not take that change.",
         // Why the last undo or redo sent nothing. Each names the state that leaves the step
         // with no operation to take it back with.
@@ -136,6 +145,10 @@ export const story = {
         undoContainerFilled: "That block has lines in it now.",
         undoSubtreeLost: "The lines that were inside it cannot be put back.",
         undoChaptersChanged: "The chapters are not the ones that step recorded.",
+        undoCharacterGone: "That character is gone.",
+        // Making a character can be taken back only outside a session: deleting one rewrites the
+        // dialogue rows that speak it, across every story in the project, and a session carries one.
+        undoDeleteUnavailable: "A character cannot be removed inside a live session.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`
