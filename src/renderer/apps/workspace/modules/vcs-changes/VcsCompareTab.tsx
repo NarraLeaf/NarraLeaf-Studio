@@ -7,6 +7,7 @@ import { EmptyState } from "@/lib/components/elements";
 import { splitDocumentPath } from "@/lib/vcs/changeIndex";
 import { SplitComparisonView } from "@/lib/vcs/compare/SplitComparisonView";
 import { useComparisonElements } from "@/lib/vcs/compare/useComparisonElements";
+import { useStoryScript } from "@/lib/vcs/compare/useStoryScript";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import { useDocumentDiff, type DocumentDiffRequest } from "@/lib/vcs/useDocumentDiff";
 import { revisionLabel } from "../../components/layout/versionRailModel";
@@ -32,7 +33,8 @@ import type { VcsComparePayload } from "./vcsCompareIds";
  *
  * **The halves carry editor logic.** For a page of the interface, a row is a control that makes the
  * element it is about the app-wide selection at that half's version, and the right rail inspects it
- * read-only. The tab is where that is wired because the tab is what knows both things it needs: the
+ * read-only. For a story, each half is the script itself at that version, with the changed lines
+ * marked. The tab is where both are wired because the tab is what knows the things they need: the
  * two versions to read, and what each half calls the one it shows.
  */
 export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
@@ -76,6 +78,13 @@ export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
         (elementName: string) => t("documentDiff.split.inspect", { name: elementName }),
         [t],
     );
+    /**
+     * A story reads as script, so it gets one instead of the change rows.
+     *
+     * Answers nothing for every other kind of document, and for a story whose two versions cannot be
+     * read - and then the halves draw the rows they have always drawn.
+     */
+    const script = useStoryScript({ entry, path: payload?.path ?? "", sides });
     const rowAction = useComparisonElements({
         entry,
         path: payload?.path ?? "",
@@ -117,6 +126,7 @@ export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
                 baseLabel={versions?.base ?? ""}
                 headLabel={versions?.head ?? ""}
                 rowAction={rowAction}
+                content={script}
                 actions={<HelpTrigger topic="versionChanges" />}
             />
         </div>

@@ -10,12 +10,13 @@ import { presenterFor } from "./registry";
 //
 // The order is the tie-break: a presenter imported later wins over an earlier one that also
 // claims a document (see `registry.ts`). Nothing here overlaps - three read a content class the
-// comparison settled (sound, stills, type) and four read a document kind (the palette, the
-// interface, its blueprints, and the six documents that are settings) - so the order below is
-// alphabetical rather than meaningful, and `registry.test.ts` holds the rule that decides.
+// comparison settled (sound, stills, type) and five read a document kind (the palette, the
+// interface, its blueprints, the cast, and the six documents that are settings) - so the order
+// below is alphabetical rather than meaningful, and `registry.test.ts` holds the rule that decides.
 import "./AudioChangeDetail";
 import "./BitmapChangeDetail";
 import "./BrandChangeDetail";
+import "./CharacterChangeDetail";
 import "./FontChangeDetail";
 import "./SettingsChangeDetail";
 import "./UIDocumentChangeDetail";

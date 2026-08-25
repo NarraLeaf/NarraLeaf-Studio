@@ -32,6 +32,7 @@ import {
     buildSplitSlots,
     layoutSplitSlots,
     splitColumnCount,
+    type SplitChangeSlot,
     type SplitSlot,
     type SplitSlotLayout,
 } from "./splitLayout";
@@ -47,8 +48,10 @@ import type { SplitRowAction, SplitRowActionResolver } from "./useComparisonElem
  * older version on the left, the newer on the right, scrolled together.
  *
  * **This is the shell.** Each half draws the read-only change rows the detail column already draws,
- * filtered to the version that half is showing. The canvases that replace those rows arrive later and
- * land inside these halves without moving anything here.
+ * filtered to the version that half is showing - unless the tab hands it something better to draw
+ * ({@link SplitComparisonViewProps.content}), which is how a story becomes script rather than a list
+ * of "row changed". Either way the arithmetic below is the same, because it is about heights and
+ * presence and not about what is inside a slot.
  *
  * **A half is not an inert canvas.** Where the tab can say what a row is ABOUT - a page of the
  * interface can, through `useComparisonElements` - the row becomes a control that selects that
@@ -93,8 +96,32 @@ export interface SplitComparisonViewProps {
      * nothing when pressed.
      */
     readonly rowAction?: SplitRowActionResolver;
+    /**
+     * What the halves draw instead of the change list, for a document that reads as something.
+     *
+     * A change list is the floor, and for most documents it is also the ceiling: "the palette's
+     * third colour changed" says the whole thing. A story does not work that way - the question is
+     * what the scene SAYS now against what it said then - so the tab builds the slots itself and
+     * hands them over with a way to draw one (see `useStoryScript`).
+     *
+     * The four rules above are unaffected by this, and that is the point of the seam being here: a
+     * slot is still one height both halves reserve, a slot one half has nothing for is still the
+     * hatched gap, and previous and next still walk the slots that say they are stops.
+     */
+    readonly content?: SplitContent;
     /** Rows one half may draw. The detail column's ceiling, and for the same reason. */
     readonly limit?: number;
+}
+
+/** A slot list of the tab's own, and how to draw one of its slots in one half. */
+export interface SplitContent {
+    readonly slots: readonly SplitSlot[];
+    /**
+     * @param active whether previous and next have stopped on this slot. Never drawn as one of the
+     *  four change colours: on this surface a colour says what happened to the thing, and the
+     *  navigation's own place is not something that happened to it.
+     */
+    readonly render: (slot: SplitSlot, side: "base" | "head", active: boolean) => ReactNode;
 }
 
 export function SplitComparisonView({
@@ -105,12 +132,22 @@ export function SplitComparisonView({
     headLabel,
     actions,
     rowAction,
+    content,
     limit = DOCUMENT_ROW_CEILING,
 }: SplitComparisonViewProps) {
     const { t } = useTranslation();
 
     const built = useMemo(() => buildDocumentChangeRows(entry.diff, limit), [entry.diff, limit]);
-    const slots = useMemo(() => buildSplitSlots(built.rows), [built.rows]);
+    const changeSlots = useMemo(() => buildSplitSlots(built.rows), [built.rows]);
+    const slots = content ? content.slots : changeSlots;
+    /**
+     * The slots previous and next visit, which is not every slot.
+     *
+     * A change list is all changes, so this is the whole list there. A script is mostly lines that
+     * did not change, and walking those would turn "next change" into "next line" - the one thing
+     * the navigation exists to avoid.
+     */
+    const stops = useMemo(() => slots.filter(slot => slot.stop), [slots]);
 
     // Measured rather than assumed, and measured on the TAB BODY: the window's width says nothing
     // about a tab in an editor group that can be split.
@@ -129,10 +166,10 @@ export function SplitComparisonView({
     );
 
     const [active, setActive] = useState(NO_ANCHOR);
-    const activeKey = anchorAt(slots, active)?.key ?? null;
+    const activeKey = anchorAt(stops, active)?.key ?? null;
     const step = useCallback(
-        (direction: 1 | -1) => setActive(current => stepAnchor(slots.length, current, direction)),
-        [slots.length],
+        (direction: 1 | -1) => setActive(current => stepAnchor(stops.length, current, direction)),
+        [stops.length],
     );
 
     // A selection that outlives the document it was made in would point at a row that is no longer
@@ -146,6 +183,24 @@ export function SplitComparisonView({
     // comparison rather than once per half - it is the same sentence on both sides.
     const caption = isWholeDocumentChange(entry.kind) ? null : documentDiffTierCaption(entry.diff.tier);
 
+    /**
+     * How one slot is drawn in one half.
+     *
+     * The change line is the floor and stays the default, so every document that has never been
+     * given anything better keeps exactly the surface it had.
+     */
+    // The cast is safe by construction: this arm runs only where `slots` IS `changeSlots`, which is
+    // the one list in this file that carries a row.
+    const renderSlot = content
+        ? content.render
+        : (slot: SplitSlot, side: "base" | "head", isActive: boolean) => (
+            <SplitRow
+                row={(slot as SplitChangeSlot).row}
+                active={isActive}
+                action={rowAction?.((slot as SplitChangeSlot).row, side) ?? null}
+            />
+        );
+
     const half = (side: "base" | "head") => (
         <SplitHalf
             side={side}
@@ -157,7 +212,7 @@ export function SplitComparisonView({
             notInVersion={t("documentDiff.split.notInVersion")}
             scrollerRef={side === "base" ? baseScroller : headScroller}
             onScroll={syncScroll(side)}
-            rowAction={rowAction}
+            renderSlot={renderSlot}
         />
     );
 
@@ -171,7 +226,7 @@ export function SplitComparisonView({
                     </span>
                 )}
                 <span className="flex-1" />
-                {slots.length > 0 && (
+                {stops.length > 0 && (
                     <div className="flex shrink-0 items-center gap-1">
                         <ToolbarButton
                             size="xs"
@@ -187,7 +242,7 @@ export function SplitComparisonView({
                         >
                             {t("documentDiff.split.position", {
                                 index: String(active < 0 ? 0 : active + 1),
-                                total: String(slots.length),
+                                total: String(stops.length),
                             })}
                         </span>
                         <ToolbarButton
@@ -283,7 +338,7 @@ function SplitHalf({
     notInVersion,
     scrollerRef,
     onScroll,
-    rowAction,
+    renderSlot,
 }: {
     readonly side: "base" | "head";
     readonly label: string;
@@ -294,7 +349,7 @@ function SplitHalf({
     readonly notInVersion: string;
     readonly scrollerRef: RefObject<HTMLDivElement | null>;
     readonly onScroll: (event: UIEvent<HTMLDivElement>) => void;
-    readonly rowAction?: SplitRowActionResolver;
+    readonly renderSlot: (slot: SplitSlot, side: "base" | "head", active: boolean) => ReactNode;
 }) {
     return (
         <section data-split-half={side} aria-label={label} className="flex h-full min-h-0 min-w-0 flex-col">
@@ -321,13 +376,7 @@ function SplitHalf({
                             style={{ minHeight: measured ? `${measured.height}px` : undefined }}
                         >
                             {present
-                                ? (
-                                    <SplitRow
-                                        row={slot.row}
-                                        active={slot.key === activeKey}
-                                        action={rowAction?.(slot.row, side) ?? null}
-                                    />
-                                )
+                                ? renderSlot(slot, side, slot.key === activeKey)
                                 : (
                                     <div
                                         // The one thing on this surface that is a gap on purpose.
