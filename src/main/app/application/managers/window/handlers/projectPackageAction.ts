@@ -1,6 +1,5 @@
 import fs from "fs/promises";
 import path from "path";
-import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import {
@@ -18,6 +17,7 @@ import {
     findProjectConfigFileName,
     sanitizeProjectFileName,
 } from "@shared/utils/nlproj";
+import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -41,7 +41,7 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
             }
 
             const project = await readProjectMetadata(projectRoot);
-            const selection = await dialog.showOpenDialog(window.win, {
+            const selection = await showOpenDialog(window, {
                 title: "Select Export Folder",
                 buttonLabel: "Export Here",
                 properties: ["openDirectory", "createDirectory"],
@@ -145,7 +145,7 @@ export class ProjectWizardSelectPackageHandler extends IPCHandler<IPCEventType.p
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ dest: string | null }>> {
-        const selection = await dialog.showOpenDialog(window.win, {
+        const selection = await showOpenDialog(window, {
             title: "Select Project Package",
             buttonLabel: "Select Package",
             properties: ["openFile"],

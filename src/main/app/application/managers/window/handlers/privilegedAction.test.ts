@@ -30,11 +30,16 @@ vi.mock("../actorAuthorization", () => ({
 
 const { PrivilegedFsCallHandler } = await import("./privilegedAction");
 
-/** Only what the `selectFile` arm reads: the window's type (for its grant policy) and its native window. */
+/**
+ * Only what the `selectFile` arm reads: the window's type (for its grant policy), its native window,
+ * and the app it belongs to - the picker asks that whether this launch is answering dialogs from a
+ * page instead of opening them (`fileDialog.ts`).
+ */
 function workspaceWindow(): AppWindow {
     return {
         win: {},
         getWindowType: () => WindowAppType.Workspace,
+        getApp: () => ({ hasExperimentalCondition: () => false }),
     } as unknown as AppWindow;
 }
 

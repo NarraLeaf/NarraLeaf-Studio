@@ -15,6 +15,7 @@ import { getWindowBackgroundColor } from "@/app/application/theme";
 import { applyTrafficLightPositionForZoom, applyZoomFactorToWebContents, windowTypeUsesZoom } from "@/app/application/zoom";
 import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent, trafficLightPositionForZoom } from "@shared/constants/zoom";
 import { decideWindowNavigation } from "./navigationGuard";
+import { installScriptedFileDialogBridge } from "./fileDialog";
 import { decideDetachedWindowOpen } from "./detachedWindowGuard";
 import { describeWindowSubject } from "./windowCrash";
 import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
@@ -772,6 +773,8 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
         webContents.on("did-finish-load", () => {
             this.expectedProcessSwap = false;
+            // Experimental `scripted-file-dialog` only; a no-op in every other launch.
+            installScriptedFileDialogBridge(this);
         });
 
         this.autoFocus();

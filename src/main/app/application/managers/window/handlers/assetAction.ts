@@ -1,11 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
-import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import type { AssetExportFailure, AssetExportResult } from "@shared/types/assetExport";
 import type { RemoteAssetFetchResult } from "@shared/types/remoteAsset";
 import { fetchRemoteAsset } from "../../remoteAssetFetcher";
+import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -110,7 +110,7 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                 return this.failed("Nothing was handed to the export.");
             }
 
-            const selection = await dialog.showOpenDialog(window.win, {
+            const selection = await showOpenDialog(window, {
                 title: "Select Export Folder",
                 buttonLabel: "Export Here",
                 properties: ["openDirectory", "createDirectory"],

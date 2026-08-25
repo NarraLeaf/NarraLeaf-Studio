@@ -62,6 +62,64 @@ before clicking a point read off an image. The same factor applies to any distan
 width of the column that had just been added — the number sent someone looking for a second cause
 that did not exist.
 
+## Answering a file dialog without leaving the browser
+
+A native picker runs its own COM input loop outside Chromium. CDP cannot see it, let alone type into
+it, so the only way to answer one from a script is to reach outside the process and drive the Win32
+dialog by hand (`file-dialog.ps1`) — Windows-only, sensitive to which control id that kind of dialog
+happens to use, and the single most fragile step in any run that imports or exports a file.
+
+Two experimental conditions remove that step. Both are development-only in the strong sense: a
+packaged Studio ignores `--experimental` outright, and a condition flag without it does nothing at
+all except say so in the log.
+
+```sh
+yarn dev:verify --experimental --x-scripted-file-dialog
+```
+
+With `--x-scripted-file-dialog` on, **no picker opens**. Every open and save dialog instead waits as
+a request in the page that raised it, on `window.__NLS_STUDIO_DIALOG__`:
+
+```js
+// after clicking whatever opens the picker
+await d.evaluate('__NLS_STUDIO_DIALOG__.pending()');
+// [{ id: 1, kind: 'open', window: 'workspace', title: 'Select Folder',
+//    selects: 'directory', multiple: false, extensions: [] }]
+await d.evaluate('__NLS_STUDIO_DIALOG__.resolve(1, "D:/Temp/import-fixture")');
+```
+
+`resolve(id, path | paths)` answers it, `cancel(id)` answers it the way closing the dialog would, and
+both return `false` when nothing by that id is waiting — so a wrong id is an answer, not a hang. The
+main process collects answers within ~150ms and names every request in the log as it is raised and
+again as it is answered. Drive the page that raised the dialog: the request waits there, because that
+is the window whose grant is about to be minted.
+
+The answer has to be something the dialog could actually have returned — a file that exists for a
+file picker, a folder that exists for a folder picker, one path where one was asked for, a save
+destination inside a folder that exists. Anything else is refused, the request stays waiting, and the
+reason appears on it as `rejected`. That is deliberate: the answer goes on to mint exactly the grant
+a picked path would, so a picker that accepted paths nobody can pick would turn everything after it
+into a test of a product that does not exist.
+
+**The other one is blunter, and is a debt you take on for the run.** `--x-unscoped-file-access` stops
+the window file system policy from refusing paths nothing granted, so a window reads and writes
+anywhere on disk without a picker having handed it anything. Protected storage (authorization,
+signing credentials, the plugin directories) is still refused and plugin permissions are unchanged —
+it relaxes what a *window* may reach, and nothing else.
+
+Reach for it only when the grant itself is in the way, never as a shortcut past the picker: Studio
+hands out reach one grant at a time, and anything you accept on a path that never had one is
+behaviour no author can reproduce. Every distinct path it lets through is named once in `main.log`:
+
+```text
+[Experimental] unscoped-file-access allowed write on D:\Temp\outeport.json for the workspace
+window. Nothing granted that path; Studio as shipped refuses it.
+```
+
+Grep for that line at the end of a run. If a path you accepted something on is in there, the run did
+not show what it looks like it showed — go back and get the grant the product would have required,
+which with the condition above is one `resolve` call.
+
 ## Four traps, each of which has cost an acceptance here
 
 **1. The stale bundle — check it before believing anything.** The launcher rebuilds `dist` only after

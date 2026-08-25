@@ -2,8 +2,9 @@ import fs from "fs/promises";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import { dialog, shell } from "electron";
+import { shell } from "electron";
 import { WindowAppType } from "@shared/types/window";
+import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -142,7 +143,7 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ path: string | null }>> {
-        const result = await dialog.showOpenDialog(window.win, {
+        const result = await showOpenDialog(window, {
             title: "Select Project Folder",
             properties: ["openDirectory", "createDirectory"],
             buttonLabel: "Open Folder",
@@ -297,7 +298,7 @@ export class WorkspaceExportConsoleLogsHandler extends IPCHandler<IPCEventType.w
         { defaultFileName, content }: IPCEvents[IPCEventType.workspaceExportConsoleLogs]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceExportConsoleLogs]["response"]>> {
         try {
-            const selection = await dialog.showOpenDialog(window.win, {
+            const selection = await showOpenDialog(window, {
                 title: "Select Export Folder",
                 buttonLabel: "Export Here",
                 properties: ["openDirectory", "createDirectory"],
