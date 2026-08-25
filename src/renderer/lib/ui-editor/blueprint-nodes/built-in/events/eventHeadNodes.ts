@@ -6,6 +6,7 @@
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
@@ -59,6 +60,7 @@ import {
 import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
+import { inputActionParam } from "../inputActionNodes";
 
 const eventHeadExecute: BlueprintNodeDef["execute"] = () => ({ nextPort: "then" });
 
@@ -232,6 +234,22 @@ const PIN_IS_FULLSCREEN: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "boolean",
     label: "Is Fullscreen",
+};
+
+/**
+ * Which family of input raised an action: `"pointer"`, `"key"`, `"gamepad"` or `"touch"`.
+ *
+ * A string rather than a select of its own, because it is read out of the event rather than chosen -
+ * a graph that cares compares it, and one that does not ignores it. It is worth carrying because
+ * the same action legitimately wants different behaviour depending: "advance" from a click has a
+ * place on screen to answer at, and "advance" from the space bar does not.
+ */
+const PIN_INPUT_SOURCE: BlueprintNodePinDef = {
+    id: "source",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
+    label: "Source",
 };
 
 // Inspector dropdown for `On Preference Changed`. One entry per Game category
@@ -766,13 +784,35 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: ["event"],
         isPure: false,
         role: "eventHead",
-        // The main process holds the close open while this dispatch runs; a synchronous Stop Event
-        // Bubble node cancels the close, otherwise the window proceeds to close. In Dev Mode this
-        // covers the Dev Mode window; in preview/production it covers the game window. Scoped to the
-        // global and surface owners only: the cancellation travels on the dispatch's shared event
-        // control, which the widget dispatch path does not thread (like the keyboard event heads).
+        // The main process holds the close open while this dispatch runs, then lets it proceed;
+        // running `Keep Window Open` below this head cancels it instead, by stopping propagation on
+        // the dispatch's shared event control. In Dev Mode this covers the Dev Mode window; in
+        // preview/production it covers the game window. Scoped to the global and surface owners
+        // only: the cancellation travels on that shared event control, which the widget dispatch
+        // path does not thread (like the keyboard heads).
         scope: { ownerKinds: ["globalMain", "surfaceMain"] },
         pins: [THEN_PIN],
+        execute: eventHeadExecute,
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+        displayName: "On Action",
+        category: "Events",
+        keywords: ["input", "action", "advance", "gesture", "click", "key", "bind", "binding"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        // Panel-wide by construction, so it belongs to the two owners that speak for a whole panel:
+        // a surface answers the actions it enables, and a global blueprint answers a gesture that
+        // means the same thing on every page. A widget saying "a click here means advance" is the
+        // arrangement the vocabulary replaced - an element that wants the raw gesture still has its
+        // own mouse heads.
+        scope: { ownerKinds: ["surfaceMain", "globalMain"] },
+        // `x` / `y` are where the gesture landed, in the same coordinates the mouse heads report.
+        // They are meaningless for a key or a gamepad binding and read 0 there, which is why
+        // `source` is beside them: it is the pin that says whether the other two mean anything.
+        pins: [THEN_PIN, PIN_INPUT_SOURCE, PIN_X, PIN_Y],
+        inspectorParams: [inputActionParam()],
         execute: eventHeadExecute,
     },
 ];

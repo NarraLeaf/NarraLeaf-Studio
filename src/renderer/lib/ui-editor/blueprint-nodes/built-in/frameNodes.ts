@@ -5,8 +5,10 @@
  */
 
 import {
+    BLUEPRINT_EVENT_SLOT_WINDOW_CLOSE_REQUESTED,
     BLUEPRINT_EXTERNAL_LINK_PARAM_URL,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
@@ -205,6 +207,48 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             await requireHostApi(ctx).navigation.quitApplication();
             return { nextPort: undefined };
+        },
+    },
+    {
+        /**
+         * The answer to `On Window Close Requested` that is not "yes".
+         *
+         * That dispatch is the shell asking permission: it holds the close open while the graph
+         * runs and then lets the window go unless something cancelled it. This node is the cancel.
+         * A game that wants to confirm before quitting runs this first - so the window survives the
+         * dispatch - then shows its own question, and calls `Quit Application` if the player agrees.
+         *
+         * **It is not a general "stop this event" node.** It does not swallow the key that was
+         * pressed, does not keep a page or a layer from closing, and does not keep an element event
+         * from reaching anything else. The flag it sets is only read by the close request, which is
+         * why running it anywhere else is refused rather than ignored: silence there would look
+         * exactly like a graph that worked.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN,
+        displayName: "Keep Window Open",
+        category: "App",
+        keywords: [
+            "window", "close", "keep", "open", "cancel", "prevent", "stop", "quit", "exit",
+            "confirm", "intercept", "app",
+        ],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        // Only the two owners the close request is dispatched to. A widget graph never receives it,
+        // so a `Keep Window Open` offered there could only ever throw.
+        scope: { ownerKinds: ["globalMain", "surfaceMain"] },
+        pins: [execIn, execNext],
+        execute(ctx) {
+            // Both halves matter. Without an event control there is nothing to write the answer on
+            // at all; with one belonging to some other dispatch, stopping it would silence that
+            // event instead of saving the window - a bug that would otherwise never report itself.
+            if (ctx.eventName !== BLUEPRINT_EVENT_SLOT_WINDOW_CLOSE_REQUESTED || !ctx.eventControl) {
+                throw new BlueprintGraphExecutionError(
+                    "Keep Window Open: there is no close request to cancel. It only works below an On Window Close Requested head.",
+                    ctx.node.id,
+                );
+            }
+            ctx.eventControl.stopPropagation();
+            return { nextPort: "next" };
         },
     },
     {

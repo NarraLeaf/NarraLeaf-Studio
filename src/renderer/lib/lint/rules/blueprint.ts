@@ -71,7 +71,8 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
 
 /** What kind of thing a dangling id was supposed to name; picks the sentence. */
 type BlueprintReferenceKind =
-    | "surface" | "story" | "scene" | "choice" | "ending" | "character" | "textKey" | "dlc";
+    | "surface" | "story" | "scene" | "choice" | "ending" | "character" | "textKey" | "dlc"
+    | "inputAction";
 
 /**
  * Select params whose options are project entities, keyed by the `dynamicOptionsSource` the node
@@ -93,6 +94,11 @@ export const REFERENCE_KIND_BY_OPTIONS_SOURCE: Readonly<Record<string, Blueprint
     // A DLC an author deleted leaves every `Is DLC Installed` that named it answering false
     // forever, so the entrance behind it is never drawn again and nothing else says why.
     dlc: "dlc",
+    // The action vocabulary is one table for the whole project, so this is checkable here in a way
+    // the surface-scoped and list-scoped sources below are not. An `On Action` head naming a
+    // deleted action is silent twice over: nothing raises that name any more, and the head looks
+    // exactly like one that is simply waiting for its gesture.
+    inputActions: "inputAction",
 };
 
 /**
@@ -135,6 +141,7 @@ const REFERENCE_MESSAGE_KEY: Readonly<Record<BlueprintReferenceKind, Translation
     character: "lint.rule.blueprintReferenceMissing.messageCharacter" as TranslationKey,
     textKey: "lint.rule.blueprintReferenceMissing.messageTextKey" as TranslationKey,
     dlc: "lint.rule.blueprintReferenceMissing.messageDlc" as TranslationKey,
+    inputAction: "lint.rule.blueprintReferenceMissing.messageInputAction" as TranslationKey,
 };
 
 /**
@@ -159,6 +166,9 @@ function buildReferenceUniverse(ctx: LintContext): BlueprintReferenceUniverse {
         universe.surface = new Set(
             ctx.uiDocument.surfaces.filter(surface => surface.kind === "appSurface").map(surface => surface.id),
         );
+        // Keyed by the table's key, which is the identity a graph stores - the same reading
+        // `normalizeUIInputActionLibrary` takes.
+        universe.inputAction = new Set(Object.keys(ctx.uiDocument.actions ?? {}));
     }
     if (ctx.storiesComplete) {
         const stories = new Set<string>();

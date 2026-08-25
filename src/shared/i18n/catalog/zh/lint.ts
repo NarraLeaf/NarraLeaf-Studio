@@ -202,6 +202,7 @@ export const lint = {
             messageCharacter: "指向的角色已不存在",
             messageTextKey: "指向的文本键在工程中未声明",
             messageDlc: "指向的 DLC 在工程中不存在",
+            messageInputAction: "指向的输入操作在工程中未声明",
         },
         blueprintElementRefMissing: {
             title: "控件缺失",
@@ -260,6 +261,11 @@ export const lint = {
             title: "条目字段不存在",
             description: "控件绑定的条目字段，在画它的列表里没有声明",
             message: "这里绑定的条目字段列表没有声明，每一行都会显示同样的内容",
+        },
+        uiGestureAnsweredTwice: {
+            title: "被响应两次的手势",
+            description: "控件自己有指针事件，而它所在页面的动作也响应同一个手势",
+            message: "本页的 {action} 与该控件响应同一个手势，两边都会执行",
         },
         blueprintSaveFieldEmpty: {
             title: "未填写的存档字段",
