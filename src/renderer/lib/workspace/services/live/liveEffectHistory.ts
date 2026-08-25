@@ -1,4 +1,5 @@
 import { inverseOf, type LiveBefore } from "@/lib/live/inverse";
+import type { LiveCastView } from "@shared/live/cast";
 import type { LiveDerived, LiveEffect, LiveOp } from "@shared/live/ops";
 import type { StoryDocument } from "@shared/types/story";
 import type { LiveUndoRefusalReason } from "./liveSessionView";
@@ -93,7 +94,10 @@ export class LiveEffectHistory {
      * Decides nothing and sends nothing: the caller has to send the operation, and the step is not
      * taken until {@link record} sees the effect that answers it.
      */
-    public plan(direction: LiveStepDirection, context: { self: string; document: StoryDocument }): LiveStepPlan {
+    public plan(
+        direction: LiveStepDirection,
+        context: { self: string; document: StoryDocument; cast: LiveCastView },
+    ): LiveStepPlan {
         const index = direction === "undo" ? this.cursor - 1 : this.cursor;
         if (index < 0) {
             return { impossible: "nothing-to-undo" };
@@ -105,6 +109,7 @@ export class LiveEffectHistory {
         const inverse = inverseOf(entry.current.effect, {
             self: context.self,
             document: context.document,
+            cast: context.cast,
             before: entry.current.before,
         });
         if ("impossible" in inverse) {
