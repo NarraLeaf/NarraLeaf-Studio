@@ -1,0 +1,161 @@
+/**
+ * Which of a surface's declared actions one input fires.
+ *
+ * The second half of a lane's answer. The first is the element walk - every element from the hit
+ * element up to the surface root that declares a head for this event. This is what happens after
+ * it: the surface's own reply to the project's action vocabulary, resolved once per input.
+ *
+ * Four rules, and all four are the reason this is a function rather than a condition inlined at the
+ * call site:
+ *
+ *  - A binding matches or it does not. Pointer gestures compare by name; keys compare by the
+ *    canonical spelling `normalizeUIInputBinding` already put them in, which is the same spelling
+ *    the `On Key Down` heads use.
+ *  - `overControls: "skip"` (the default) stands a pointer binding down over a control the player
+ *    operates. A panel-wide "click advances" must not fire when the click landed on the Back button
+ *    inside the panel.
+ *  - `consume` (default true) decides whether the lane walk stops here.
+ *  - An enablement naming an action the project does not define is ignored, silently. Copying a
+ *    surface between projects leaves exactly that, it is inert, and refusing to load the surface
+ *    over it would be a far worse answer than doing nothing.
+ *
+ * Comments in English per project convention.
+ */
+
+import {
+    blueprintKeyboardBindingMatchesEvent,
+    type BlueprintKeyboardEventLike,
+} from "@shared/types/blueprint/graph";
+import type { UIElement } from "@shared/types/ui-editor/document";
+import {
+    isOperableWidgetType,
+    readUISurfaceActionConsume,
+    readUISurfaceActionOverControls,
+    resolveSurfaceActionBindings,
+    type UIInputActionDef,
+    type UIInputBinding,
+    type UIInputPointerGesture,
+    type UISurfaceActionEnablement,
+} from "@shared/types/ui-editor/inputAction";
+import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
+import { normalizeVideoProps, UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
+
+/** One input, in the terms the bindings are written in. */
+export type UIInputSignal =
+    | {
+          kind: "pointer";
+          gesture: UIInputPointerGesture;
+          /** Where it landed, in the surface's design coordinates. */
+          x: number;
+          y: number;
+      }
+    | {
+          kind: "key";
+          /**
+           * The keyboard payload, exactly as the `On Key Down` heads are handed it.
+           *
+           * The whole payload rather than a key name, because a binding is "Ctrl+S" as often as it
+           * is "Escape" and the modifiers are what tell those apart. Matched by the same function
+           * the heads are matched by, so a binding and a head spelled alike behave alike.
+           */
+          event: BlueprintKeyboardEventLike;
+      };
+
+/** One action this surface answers for this input. */
+export type UISurfaceInputActionHit = {
+    actionId: string;
+    /** Whether firing it ends the lane walk. */
+    consume: boolean;
+    payload: UIInputActionEventPayload;
+};
+
+/**
+ * Whether the player operates this element directly.
+ *
+ * `isOperableWidgetType` answers it for the widget type, which is where it belongs for everything
+ * whose controlness is a property of the type. `nl.video` is the one case it cannot answer: the same
+ * widget is scenery with `controls: false` and a control strip the player scrubs with `controls:
+ * true`, and the difference is a prop on the instance rather than anything the logic table can say.
+ * So it is asked here, where the instance is in hand, instead of forcing the type table to lie one
+ * way or the other.
+ */
+export function isOperableHitElement(element: Pick<UIElement, "type" | "props"> | null | undefined): boolean {
+    if (!element) {
+        return false;
+    }
+    if (isOperableWidgetType(element.type)) {
+        return true;
+    }
+    if (element.type !== UI_VIDEO_ELEMENT_TYPE) {
+        return false;
+    }
+    return normalizeVideoProps(element.props).controls;
+}
+
+/** Whether anything in the chain under the pointer is a control. */
+export function hitChainHasOperableElement(
+    hitChain: readonly (Pick<UIElement, "type" | "props"> | null | undefined)[],
+): boolean {
+    return hitChain.some(element => isOperableHitElement(element));
+}
+
+function bindingMatchesSignal(binding: UIInputBinding, signal: UIInputSignal): boolean {
+    if (binding.kind === "pointer") {
+        return signal.kind === "pointer" && binding.gesture === signal.gesture;
+    }
+    return signal.kind === "key" && blueprintKeyboardBindingMatchesEvent(binding.key, signal.event);
+}
+
+/**
+ * The actions this surface fires for this input, in the order the surface declares them.
+ *
+ * The chain is only consulted for pointer bindings. A key press happens nowhere, so "was the pointer
+ * over a control" is not a question about it - standing an action down because the mouse happened to
+ * be resting on a button would make the keyboard's behaviour depend on where the mouse was left.
+ */
+export function resolveSurfaceInputActionHits(input: {
+    /** The project's vocabulary, keyed as `UIDocument.actions` is. */
+    vocabulary: Readonly<Record<string, UIInputActionDef>> | undefined;
+    /** This surface's answers. */
+    enablements: readonly UISurfaceActionEnablement[] | undefined;
+    signal: UIInputSignal;
+    /** The elements under the pointer, innermost first. Empty for a key. */
+    hitChain?: readonly (Pick<UIElement, "type" | "props"> | null | undefined)[];
+}): UISurfaceInputActionHit[] {
+    const { vocabulary, enablements, signal } = input;
+    if (!enablements?.length) {
+        return [];
+    }
+    const overControl = signal.kind === "pointer" && hitChainHasOperableElement(input.hitChain ?? []);
+
+    const hits: UISurfaceInputActionHit[] = [];
+    for (const enablement of enablements) {
+        const def = vocabulary?.[enablement.actionId];
+        if (!def) {
+            // An action this build does not know. Cross-project paste leaves these; a lint rule
+            // reports them where the author can see them, and routing simply steps over them.
+            continue;
+        }
+        const bindings = resolveSurfaceActionBindings(def, enablement);
+        if (!bindings.some(binding => bindingMatchesSignal(binding, signal))) {
+            continue;
+        }
+        if (overControl && readUISurfaceActionOverControls(enablement) === "skip") {
+            continue;
+        }
+        hits.push({
+            actionId: enablement.actionId,
+            consume: readUISurfaceActionConsume(enablement),
+            payload:
+                signal.kind === "pointer"
+                    ? { actionId: enablement.actionId, source: "pointer", x: signal.x, y: signal.y }
+                    : { actionId: enablement.actionId, source: "key" },
+        });
+    }
+    return hits;
+}
+
+/** Whether any of these hits takes the input off the lane walk. */
+export function hitsConsumeInput(hits: readonly UISurfaceInputActionHit[]): boolean {
+    return hits.some(hit => hit.consume);
+}
