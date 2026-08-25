@@ -13,6 +13,7 @@ function effect(seq: number, extra: Partial<LiveEffect> = {}): LiveEffect {
         kind: "effect",
         by: "host",
         seq,
+        document: { doc: "story", storyId: "story-1" },
         op: { op: "rename-scene", sceneId: "s1", name: `Take ${seq}` },
         ...extra,
     };
@@ -23,22 +24,23 @@ describe("the divergence guard", () => {
         const guard = new LiveDivergenceGuard();
 
         for (const seq of [1, 2, 3, 4]) {
-            expect(guard.check(effect(seq, { sceneDigest: OURS }), OURS)).toEqual({ verdict: "agreed" });
+            expect(guard.check(effect(seq, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: OURS } }), OURS)).toEqual({ verdict: "agreed" });
         }
         expect(guard.divergence).toBeNull();
     });
 
-    it("diverges on one mismatch, and names the scene, the sequence and both digests", () => {
+    it("diverges on one mismatch, and names the unit, the sequence and both digests", () => {
         const guard = new LiveDivergenceGuard();
-        guard.check(effect(6, { sceneDigest: OURS }), OURS);
+        guard.check(effect(6, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: OURS } }), OURS);
 
-        const ruling = guard.check(effect(7, { sceneDigest: THEIRS }), OURS);
+        const ruling = guard.check(effect(7, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: THEIRS } }), OURS);
 
         expect(ruling).toEqual({
             verdict: "diverged",
-            divergence: { sceneId: "s1", seq: 7, expected: THEIRS, computed: OURS },
+            divergence: { scope: { of: "scene", sceneId: "s1" }, seq: 7, expected: THEIRS, computed: OURS },
         });
-        expect(guard.divergence).toEqual({ sceneId: "s1", seq: 7, expected: THEIRS, computed: OURS });
+        expect(guard.divergence)
+            .toEqual({ scope: { of: "scene", sceneId: "s1" }, seq: 7, expected: THEIRS, computed: OURS });
     });
 
     it("still reports diverged when a later effect agrees", () => {
@@ -46,13 +48,13 @@ describe("the divergence guard", () => {
         // mismatch condemned, so it can agree about the row just edited while the difference already
         // found sits somewhere the digest never covered.
         const guard = new LiveDivergenceGuard();
-        guard.check(effect(3, { sceneDigest: THEIRS }), OURS);
+        guard.check(effect(3, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: THEIRS } }), OURS);
 
-        const later = guard.check(effect(4, { sceneDigest: OURS }), OURS);
+        const later = guard.check(effect(4, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: OURS } }), OURS);
 
         expect(later).toEqual({
             verdict: "diverged",
-            divergence: { sceneId: "s1", seq: 3, expected: THEIRS, computed: OURS },
+            divergence: { scope: { of: "scene", sceneId: "s1" }, seq: 3, expected: THEIRS, computed: OURS },
         });
         // The first decision, handed back rather than a second one built from the effect that agreed.
         expect(guard.divergence?.seq).toBe(3);
@@ -66,13 +68,13 @@ describe("the divergence guard", () => {
         expect(guard.divergence).toBeNull();
 
         // And it has latched nothing: the next effect that does disagree is still free to say so.
-        expect(guard.check(effect(2, { sceneDigest: THEIRS }), OURS)).toMatchObject({ verdict: "diverged" });
+        expect(guard.check(effect(2, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: THEIRS } }), OURS)).toMatchObject({ verdict: "diverged" });
     });
 
     it("does not call a scene it could not read a divergence", () => {
         const guard = new LiveDivergenceGuard();
 
-        expect(guard.check(effect(1, { sceneDigest: THEIRS }), null)).toEqual({ verdict: "unproven" });
+        expect(guard.check(effect(1, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: THEIRS } }), null)).toEqual({ verdict: "unproven" });
         expect(guard.divergence).toBeNull();
     });
 });
@@ -100,7 +102,6 @@ function makeGuestWorld(): GuestWorld {
 
     const guest = new LiveGuest({
         self: "guest-1",
-        story: "story-1",
         applyOp: op => {
             if (op.op === "rename-scene") {
                 scene.name = op.name;
@@ -109,7 +110,7 @@ function makeGuestWorld(): GuestWorld {
         send: () => undefined,
         now: () => 0,
         schedule: () => () => undefined,
-        readScene: id => (id === scene.id ? scene : null),
+        digestOf: scope => (scope.of === "scene" && scope.sceneId === scene.id ? sceneDigest(scene) : null),
         onDigest: (arrived, digest) => rulings.push(guard.check(arrived, digest)),
     });
     return { guest, guard, scene, rulings };
@@ -119,11 +120,11 @@ describe("a guest whose seam runs into the guard", () => {
     it("leaves the guard diverged when what arrives disagrees with what it applied", () => {
         const world = makeGuestWorld();
 
-        world.guest.receive(effect(1, { sceneDigest: THEIRS }));
+        world.guest.receive(effect(1, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: THEIRS } }));
 
         expect(world.scene.name).toBe("Take 1");
         expect(world.guard.divergence).toEqual({
-            sceneId: "s1",
+            scope: { of: "scene", sceneId: "s1" },
             seq: 1,
             expected: THEIRS,
             computed: sceneDigest(world.scene),
@@ -134,7 +135,7 @@ describe("a guest whose seam runs into the guard", () => {
         const world = makeGuestWorld();
         const renamed: StoryScene = { ...world.scene, name: "Take 1" };
 
-        world.guest.receive(effect(1, { sceneDigest: sceneDigest(renamed) }));
+        world.guest.receive(effect(1, { digest: { scope: { of: "scene", sceneId: "s1" }, hash: sceneDigest(renamed) } }));
 
         expect(world.rulings).toEqual([{ verdict: "agreed" }]);
         expect(world.guard.divergence).toBeNull();

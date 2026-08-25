@@ -267,4 +267,8 @@ export const characters = {
         portraitTitle: "头像取景",
         portraitScoped: "仅为当前差分取景",
     },
+    live: {
+        recordClaimed: "{name} 正在编辑该角色",
+        deleteUnavailable: "实时会话中不能删除角色，退出会话后可以删除",
+    },
 } satisfies LocaleNamespace<"characters">;

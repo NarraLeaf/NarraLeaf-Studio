@@ -119,6 +119,9 @@ export const story = {
         refusedRowGone: "その行はもうない。この変更は反映されていない",
         refusedAnchorGone: "移動先の行はもうない。この変更は反映されていない",
         refusedSceneGone: "そのシーンはもうない。この変更は反映されていない",
+        refusedCharacterGone: "そのキャラクターは存在しない。この変更は反映されていない",
+        refusedTooLarge: "そのキャラクターは大きすぎてリアルタイムセッションで共有できない。この変更は反映されていない",
+        refusedDocumentNotShared: "リアルタイムセッションはそのドキュメントを共有しない。この変更は反映されていない",
         refusedNotInSession: "この端末はもうセッションにいない",
         refusedUnknownOp: "セッションはこの変更を受け付けなかった",
         // 直前の取り消し・やり直しが何も送らなかった理由。戻すための操作が作れない
@@ -133,6 +136,8 @@ export const story = {
         undoContainerFilled: "そのブロックには別の行が入っている",
         undoSubtreeLost: "中にあった行は戻せない",
         undoChaptersChanged: "チャプターがその手順の記録と一致しない",
+        undoCharacterGone: "そのキャラクターは存在しない",
+        undoDeleteUnavailable: "リアルタイムセッション中はキャラクターを削除できない",
     },
     // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
     // スクリプトで言えない行は拒まずに報告し、ファイルはどちらにせよ書く。`reason` は印刷側の

@@ -1,5 +1,4 @@
-import type { LiveClaims } from "@shared/live/ops";
-import type { StoryBlockId } from "@shared/types/story";
+import type { LiveClaimKey, LiveClaims } from "@shared/live/ops";
 
 /**
  * How long a claim survives without being asserted again, in milliseconds.
@@ -41,9 +40,9 @@ export const DEFAULT_CLAIM_TIMEOUT_MS = 30_000;
  */
 export const CLAIM_REASSERT_MS = DEFAULT_CLAIM_TIMEOUT_MS / 3;
 
-/** Who is writing a row. */
+/** Who is writing one row, or one character record. */
 export type LiveClaimHolder = {
-    /** The instance that took it. While the claim stands, only this instance may write the row. */
+    /** The instance that took it. While the claim stands, only this instance may write it. */
     instance: string;
     /**
      * The account behind that instance.
@@ -55,7 +54,7 @@ export type LiveClaimHolder = {
 };
 
 /**
- * What came of asking for a row: it is yours, or somebody is named.
+ * What came of asking: it is yours, or somebody is named.
  *
  * `changed` says whether the answer a reader would be shown is now different, and therefore whether
  * the set is worth broadcasting. Re-asserting a claim already held is a success with nothing
@@ -81,18 +80,24 @@ export type LiveClaimStoreOptions = {
 type StandingClaim = LiveClaimHolder & { renewedAt: number };
 
 /**
- * Who is writing which row, as the host records it.
+ * Who is writing what, as the host records it.
  *
  * A claim exists in exactly **one** place - the host's memory, which is this - so there is nothing
  * to agree on and nothing to reconcile. It is broadcast, never negotiated, and a guest holds no copy
  * it could disagree with.
  *
- * What it prevents is specific. The editing atom is a committed line rather than a keystroke: prose
- * accumulates in a draft box and reaches the document on Enter or blur. So the loser of a
- * last-writer-wins race over a row does not lose a character, it loses the paragraph it has just
- * finished typing, and loses it silently. That is also why a claim covers a whole row instead of one
- * field of it - the fields of a row hold each other up, and a second kind of state to keep correct
- * would buy nothing.
+ * What it prevents is specific. The editing atom is a committed field rather than a keystroke: prose
+ * accumulates in a draft box and reaches the document on Enter or blur, and a character's description
+ * accumulates in the properties panel's own state until the field is blurred. So the loser of a
+ * last-writer-wins race does not lose a character, it loses the paragraph it has just finished
+ * typing, and loses it silently. That is also why a claim covers a whole row, or a whole character
+ * record, instead of one field of it - the fields hold each other up, and a second kind of state to
+ * keep correct would buy nothing.
+ *
+ * **Keyed by {@link LiveClaimKey}, which says what it is over.** The store itself knows nothing about
+ * rows or records: it holds opaque keys, so a document whose operations arrive later needs no change
+ * here at all. What it must not hold is two documents' bare ids, which is why the keys are prefixed
+ * at the point they are built rather than here.
  *
  * Nothing here is written to disk. A claim is a statement about this instant, and a stored one is
  * a lie the moment the machine that made it is restarted.
@@ -103,7 +108,7 @@ type StandingClaim = LiveClaimHolder & { renewedAt: number };
  * question calls {@link sweep} on whatever tick it already has.
  */
 export class LiveClaimStore {
-    private readonly claims = new Map<StoryBlockId, StandingClaim>();
+    private readonly claims = new Map<LiveClaimKey, StandingClaim>();
     private readonly now: () => number;
     private readonly timeoutMs: number;
     /** Advances whenever {@link snapshot} would say something different from last time. */
@@ -125,30 +130,30 @@ export class LiveClaimStore {
         return this.version;
     }
 
-    /** How many rows are being written right now. */
+    /** How many things are being written right now. */
     public get size(): number {
         this.expire();
         return this.claims.size;
     }
 
     /**
-     * Take a row, or re-assert one already held.
+     * Take something, or re-assert what is already held.
      *
      * Re-asserting is a **success**: the same author typing a second character in the same box has
      * not conflicted with anything, and answering "no" to it would refuse somebody their own line.
      * It also pushes the deadline out, which is how a claim survives a long paragraph without the
      * timeout having to be long enough for one.
      *
-     * A row somebody else holds is refused with their account name, because "no" without a name is
-     * a mystery.
+     * Something somebody else holds is refused with their account name, because "no" without a name
+     * is a mystery.
      */
-    public claim(blockId: StoryBlockId, holder: LiveClaimHolder): LiveClaimOutcome {
+    public claim(key: LiveClaimKey, holder: LiveClaimHolder): LiveClaimOutcome {
         this.expire();
-        const standing = this.claims.get(blockId);
+        const standing = this.claims.get(key);
         if (standing && standing.instance !== holder.instance) {
             return { ok: false, heldBy: standing.account };
         }
-        this.claims.set(blockId, { instance: holder.instance, account: holder.account, renewedAt: this.now() });
+        this.claims.set(key, { instance: holder.instance, account: holder.account, renewedAt: this.now() });
         // A renewal by the same holder leaves the broadcast set identical, so it is not a change and
         // nobody has to be told about it.
         const changed = !standing || standing.account !== holder.account;
@@ -159,19 +164,19 @@ export class LiveClaimStore {
     }
 
     /**
-     * Give a row back, and say whether that changed the set.
+     * Give something back, and say whether that changed the set.
      *
      * Only its holder can. A release from anybody else is a message about a claim that is no longer
      * the one standing - a stale one arriving late, or an instance guessing - and honouring it would
      * be a way to take a row off the person writing it without ever being refused.
      */
-    public release(blockId: StoryBlockId, instance: string): boolean {
+    public release(key: LiveClaimKey, instance: string): boolean {
         this.expire();
-        const standing = this.claims.get(blockId);
+        const standing = this.claims.get(key);
         if (!standing || standing.instance !== instance) {
             return false;
         }
-        this.claims.delete(blockId);
+        this.claims.delete(key);
         this.version += 1;
         return true;
     }
@@ -185,9 +190,9 @@ export class LiveClaimStore {
     public releaseAll(instance: string): boolean {
         this.expire();
         let released = false;
-        for (const [blockId, standing] of this.claims) {
+        for (const [key, standing] of this.claims) {
             if (standing.instance === instance) {
-                this.claims.delete(blockId);
+                this.claims.delete(key);
                 released = true;
             }
         }
@@ -198,17 +203,18 @@ export class LiveClaimStore {
     }
 
     /**
-     * Forget a row that has been deleted, because nobody is writing a row that is gone.
+     * Forget something that has been deleted, because nobody is writing a thing that is gone.
      *
-     * ⚠ **The row itself, not the rows underneath it.** Deleting a container takes its children with
-     * it and their claims are left to lapse on the clock, which costs a name in the set for one
+     * ⚠ **That thing itself, not what was underneath it.** Deleting a container takes its children
+     * with it and their claims are left to lapse on the clock, which costs a name in the set for one
      * timeout over rows that are no longer drawn anywhere: an operation naming a row that has gone
      * is answered `row-gone` before any claim is consulted, so a lingering claim can never be the
-     * reason somebody is refused.
+     * reason somebody is refused. A deleted character record is the same shape - `character-gone`
+     * answers first.
      */
-    public forgetRow(blockId: StoryBlockId): boolean {
+    public forget(key: LiveClaimKey): boolean {
         this.expire();
-        if (!this.claims.delete(blockId)) {
+        if (!this.claims.delete(key)) {
             return false;
         }
         this.version += 1;
@@ -216,20 +222,20 @@ export class LiveClaimStore {
     }
 
     /**
-     * Who holds this row against this sender, or null when the sender may write it.
+     * Who holds this against this sender, or null when the sender may write it.
      *
-     * The shape the host asks in, and the holder's **own** rows answer null: a claim is what lets
-     * somebody keep writing a line, not something that gets in their way.
+     * The shape the host asks in, and the holder's **own** claims answer null: a claim is what lets
+     * somebody keep writing, not something that gets in their way.
      */
-    public blocking(blockId: StoryBlockId, by: string): string | null {
-        const standing = this.holder(blockId);
+    public blocking(key: LiveClaimKey, by: string): string | null {
+        const standing = this.holder(key);
         return standing && standing.instance !== by ? standing.account : null;
     }
 
-    /** Who holds this row, or null when nobody does. */
-    public holder(blockId: StoryBlockId): LiveClaimHolder | null {
+    /** Who holds this, or null when nobody does. */
+    public holder(key: LiveClaimKey): LiveClaimHolder | null {
         this.expire();
-        const standing = this.claims.get(blockId);
+        const standing = this.claims.get(key);
         return standing ? { instance: standing.instance, account: standing.account } : null;
     }
 
@@ -251,9 +257,9 @@ export class LiveClaimStore {
      */
     public snapshot(): LiveClaims {
         this.expire();
-        const held: Record<StoryBlockId, string> = {};
-        for (const [blockId, standing] of this.claims) {
-            held[blockId] = standing.account;
+        const held: Record<LiveClaimKey, string> = {};
+        for (const [key, standing] of this.claims) {
+            held[key] = standing.account;
         }
         return { kind: "claims", seq: this.version, held };
     }
@@ -267,9 +273,9 @@ export class LiveClaimStore {
     private expire(): boolean {
         const deadline = this.now() - this.timeoutMs;
         let dropped = false;
-        for (const [blockId, standing] of this.claims) {
+        for (const [key, standing] of this.claims) {
             if (standing.renewedAt <= deadline) {
-                this.claims.delete(blockId);
+                this.claims.delete(key);
                 dropped = true;
             }
         }
