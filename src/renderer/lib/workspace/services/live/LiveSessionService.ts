@@ -144,6 +144,16 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         this.session?.claimTranslation(locale, unitId, holding);
     }
 
+    /**
+     * Say that this window is editing one asset record, or that it has stopped.
+     *
+     * The library's door beside the other three, and the same bargain: silent outside a session. No
+     * asset type, because an id is unique across the whole library.
+     */
+    public claimAsset(assetId: string, holding: boolean): void {
+        this.session?.claimAsset(assetId, holding);
+    }
+
     /** Send the inverse of this window's last operation. False when there is none; the view says why. */
     public undo(): boolean {
         return this.session?.undo() ?? false;

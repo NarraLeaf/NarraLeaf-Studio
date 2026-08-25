@@ -50,6 +50,7 @@ import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope, useAssetClaims } from "./assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
@@ -157,6 +158,18 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // a keystroke has no control to grey - and a keybinding bypasses the disabled menu row it shares
     // an action with, so Ctrl+V and Delete kept working on a frozen project.
     const freeze = useFreezeGuard();
+    /**
+     * The half of the panel a live session leaves working: what the project SAYS about a file.
+     *
+     * Two guards rather than one, because a session freezes this panel down the middle. Renaming,
+     * describing, tagging and filing a row write the metadata shard, which a session carries;
+     * importing, replacing, duplicating and deleting write the bytes, which it never does - and the
+     * folder tree is a document with no verb. Those keep {@link freeze}, which is frozen by any
+     * freeze at all, so they grey with the same sentence they always did.
+     */
+    const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
+    // One subscription for every row. Empty outside a live session.
+    const assetClaims = useAssetClaims();
     const searchBoxRef = useRef<HTMLInputElement>(null);
     /**
      * The panel's scroller.
@@ -623,11 +636,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             return;
         }
         const assetsService = context.services.get<AssetsService>(Services.Assets);
-        await assetsService.transaction(async service => {
-            for (const asset of moving) {
-                await service.moveAssetToGroup(asset, groupId);
-            }
-        });
+        // One call rather than a loop: filing a selection is one gesture, and inside a live session
+        // the service turns it into one operation per shard - which is what makes it one press to
+        // take back rather than one per row.
+        await assetsService.moveAssetsToGroup(moving, groupId);
         void loadAssets();
     }, [context, loadAssets]);
 
@@ -908,7 +920,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // F2 opens the rename dialog, which writes the new name straight to the asset record. Nothing
     // renders for the key, so the refusal goes on the handler; memoised so the binding is not
     // re-registered on every render.
-    const renameShortcut = useMemo(() => freeze.run(handleRename), [freeze, handleRename]);
+    const renameShortcut = useMemo(() => libraryFreeze.run(handleRename), [libraryFreeze, handleRename]);
 
     useKeyboardShortcuts({
         isInitialized,
@@ -943,6 +955,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
+        libraryWritable: !libraryFreeze.frozen,
         handleClearSelection,
         handleCopy: () => handleCopyRef.current(),
         handleCut: () => handleCutRef.current(),
@@ -1091,6 +1104,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setAssetsIconToolbarCenter,
         mediaSupport,
         handleConvertMedia,
+        assetClaims,
     };
 
     return (

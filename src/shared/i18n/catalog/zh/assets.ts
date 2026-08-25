@@ -486,6 +486,9 @@ export const assets = {
         encodingLabel: "编码：{encoding}",
         actionFailed: "该操作执行失败",
     },
+    live: {
+        recordClaimed: "{name} 正在编辑该资产",
+    },
     newTextFile: {
         title: "新建文本文件",
         prompt: "为文件命名；带扩展名则原样保留；不带则使用 .txt",

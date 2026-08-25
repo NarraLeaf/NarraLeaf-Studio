@@ -652,6 +652,13 @@ export const assets = {
      * Creating a text file. The default name is a name, not a sentence: it lands in the input
      * already followed by `.txt`, and the author usually replaces the whole thing.
      */
+    /** What a live session adds to the library: who else is inside a record. */
+    live: {
+        // On the mark a row wears while somebody else has its record open in the inspector. A person
+        // is named: there is no width for a name beside the monogram, and a truncated one names
+        // nobody.
+        recordClaimed: "{name} is editing this asset",
+    },
     newTextFile: {
         title: "New Text File",
         prompt: "Name the file. Type an extension to keep it; without one, .txt is used.",

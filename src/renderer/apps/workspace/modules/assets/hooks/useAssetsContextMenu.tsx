@@ -20,6 +20,17 @@ const FREEZE_READ_ONLY_ASSET_MENU_IDS: ReadonlySet<string> = new Set([
     // Developer options' identifier rows: they read an id off the row that was clicked.
     ...DEVELOPER_MENU_ROW_IDS,
 ]);
+
+/**
+ * The rows a LIVE SESSION keeps, on top of the ones above.
+ *
+ * A session freezes this menu down the middle rather than wholesale: renaming a row writes the
+ * metadata shard, which a session carries and broadcasts, while importing, replacing, duplicating and
+ * deleting write the file's bytes, which no session carries. Kept narrow on purpose - a row that is
+ * live here and refused by `AssetsService` is the "quietly discarding everything" failure with an
+ * encouraging cursor on it.
+ */
+const LIVE_SESSION_ASSET_MENU_IDS: ReadonlySet<string> = new Set(["rename"]);
 import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
@@ -81,6 +92,15 @@ export interface UseAssetsContextMenuParams {
     canCreateAssetSet?: boolean;
     /** How the developer section reports a copied identifier. `UIService.showNotification`. */
     notify?: (message: string, type: "success" | "error") => void;
+    /**
+     * Whether the metadata shards are writable right now - true outside a freeze, and true inside a
+     * live session, which carries them.
+     *
+     * Answered by the panel rather than asked here, so the whole surface reads one guard: the panel
+     * scopes it to the library's own paths, and a second `useFreezeGuard` in this hook would be a
+     * second chance to scope it differently.
+     */
+    libraryWritable?: boolean;
 }
 
 export function useAssetsContextMenu({
@@ -109,6 +129,7 @@ export function useAssetsContextMenu({
     handleCreateAssetSet,
     canCreateAssetSet,
     notify,
+    libraryWritable = false,
 }: UseAssetsContextMenuParams) {
     const { t, tn } = useTranslation();
     const freeze = useFreezeGuard();
@@ -404,8 +425,11 @@ export function useAssetsContextMenu({
             { hideMenu: closeContextMenu, notify },
         );
 
-        return freezeContextMenuRows(withDeveloperRows, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
-    }, [canConvertMedia, canCreateAssetSet, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateAssetSet, handleCreateAssetSetAt, handleCreateAssetSetIn, handleCreateGroup, handleCreateMagicTags, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
+        const kept = libraryWritable
+            ? new Set([...FREEZE_READ_ONLY_ASSET_MENU_IDS, ...LIVE_SESSION_ASSET_MENU_IDS])
+            : FREEZE_READ_ONLY_ASSET_MENU_IDS;
+        return freezeContextMenuRows(withDeveloperRows, freeze.frozen, kept, freeze.reason);
+    }, [libraryWritable, canConvertMedia, canCreateAssetSet, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateAssetSet, handleCreateAssetSetAt, handleCreateAssetSetIn, handleCreateGroup, handleCreateMagicTags, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
 
     return {
         menuState,

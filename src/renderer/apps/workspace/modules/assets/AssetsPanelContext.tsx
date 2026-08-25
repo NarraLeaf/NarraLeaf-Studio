@@ -6,6 +6,7 @@ import type { AssetSetAxisNaming } from '@shared/types/assetSetLabels';
 import type { ResolvedAssetSet } from './state/useAssetSets';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedAssetSetState, DraggedItemState } from './state/useDragAndDrop';
+import type { AssetClaims } from './assetLiveSession';
 
 /** Breadcrumb shown in the panel toolbar center when the assets panel uses a compact (bottom) toolbar. */
 export interface AssetsIconViewToolbarCenter {
@@ -30,6 +31,14 @@ export interface AssetSetRevealState {
 }
 
 interface AssetsPanelContextType {
+    /**
+     * Asset id to the account editing that record in a live session, for every record somebody else
+     * has open. Empty outside one.
+     *
+     * Here rather than in a context of its own so that one subscription serves every row: a session
+     * publishes on every operation anybody in the room applies.
+     */
+    assetClaims: AssetClaims;
     /**
      * Keyed by sidebar section. The assets inside still carry their own `type`; what a section, a
      * folder and a drop target belong to is the category.

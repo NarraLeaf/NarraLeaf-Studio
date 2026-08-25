@@ -104,6 +104,7 @@ function Harness({ onRender, library = [] }: { onRender?: () => void; library?: 
         setAssetsIconToolbarCenter: setToolbarCenter,
         mediaSupport: new Map(),
         handleConvertMedia: () => undefined,
+        assetClaims: {},
     };
 
     return (
