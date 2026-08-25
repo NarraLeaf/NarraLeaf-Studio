@@ -103,6 +103,7 @@ function Harness({ publishRowOrder = () => undefined }: { publishRowOrder?: (key
         setAssetsIconToolbarCenter: () => undefined,
         mediaSupport: new Map(),
         handleConvertMedia: () => undefined,
+        assetClaims: {},
     };
 
     return (

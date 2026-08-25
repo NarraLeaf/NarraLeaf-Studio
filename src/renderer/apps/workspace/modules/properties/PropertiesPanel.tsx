@@ -29,6 +29,11 @@ import {
     useCharacterClaimHold,
     useCharacterClaimOf,
 } from "../characters/characterLiveSession";
+import {
+    assetLibraryFreezeScope,
+    useAssetClaimHold,
+    useAssetClaims,
+} from "../assets/assetLiveSession";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -1452,7 +1457,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
         // Asset editor
         if (activeAsset && assetContext && assetSchema) {
-            return <PropertyEditor schema={assetSchema} data={assetContext} />;
+            return <AssetInspector assetId={activeAsset.id} schema={assetSchema} data={assetContext} />;
         }
 
         // Asset set editor
@@ -1555,6 +1560,49 @@ function CharacterInspector({ characterId, schema, data }: {
     const heldBy = useCharacterClaimOf(characterId);
     const writes = useMemo(
         () => ({ scope: characterDocumentFreezeScope(), ...(heldBy === null ? {} : { heldBy }) }),
+        [heldBy],
+    );
+
+    return (
+        <InspectorWritesProvider value={writes}>
+            <PropertyEditor schema={schema} data={data} />
+        </InspectorWritesProvider>
+    );
+}
+
+/**
+ * The asset branch of the inspector, and the two things a live session adds to it.
+ *
+ * `CharacterInspector` two documents along, and deliberately its counterpart: every field in the
+ * asset schema writes the metadata shard the asset is filed in, so this branch can say which file it
+ * writes, and a session that leaves those shards writable therefore leaves these fields working.
+ *
+ * ⚠ **The scope is the whole library rather than this asset's own shard**, and that is honest: a
+ * session carries every shard or none, so the narrower question would have the same answer with more
+ * ways to get it wrong.
+ *
+ * The claim is held for as long as the record is open here, not for as long as somebody is typing -
+ * the text fields keep a draft in their own state until the field is blurred, so an author who has
+ * stopped to think still has half a description that nobody else can see. While somebody else holds
+ * it the fields stand down: the host would refuse the operation anyway, and letting the author write
+ * a paragraph first is exactly the injury the claim exists to prevent.
+ */
+function AssetInspector({ assetId, schema, data }: {
+    assetId: string;
+    schema: PropertyEditorSchema<AssetEditorContext>;
+    data: AssetEditorContext;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const live = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
+    useAssetClaimHold({ service: live, assetId });
+    // Its own subscription rather than the browser's: the inspector is a different panel and may be
+    // open while the asset browser is not. One per panel, never one per row.
+    const heldBy = useAssetClaims()[assetId] ?? null;
+    const writes = useMemo(
+        () => ({ scope: assetLibraryFreezeScope(), ...(heldBy === null ? {} : { heldBy }) }),
         [heldBy],
     );
 

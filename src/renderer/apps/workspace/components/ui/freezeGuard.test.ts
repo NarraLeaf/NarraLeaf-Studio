@@ -52,6 +52,23 @@ describe("isFreezeBlocking", () => {
         expect(isFreezeBlocking(LIVE_SESSION, "editor/characters/characters.json")).toBe(true);
     });
 
+    it("blocks a caller that names several documents unless EVERY one is allowed", () => {
+        // The asset library is the first surface with more than one file behind it - its rows are
+        // filed in a shard per type - and a session carries all of them or none. "Any of them" would
+        // offer an edit that lands in one shard and is refused in the next, which is the half that
+        // lands that makes it hard to notice.
+        const bothCarried: WorkspaceFreezeReason = {
+            kind: "live-session",
+            session: "room-1",
+            writable: [SESSION_STORY, OTHER_STORY],
+        };
+        expect(isFreezeBlocking(bothCarried, [SESSION_STORY, OTHER_STORY])).toBe(false);
+        expect(isFreezeBlocking(LIVE_SESSION, [SESSION_STORY, OTHER_STORY])).toBe(true);
+        expect(isFreezeBlocking(LIVE_SESSION, [SESSION_STORY])).toBe(false);
+        // An empty list is a caller that names nothing to refuse, not a caller that named nothing.
+        expect(isFreezeBlocking(LIVE_SESSION, [])).toBe(false);
+    });
+
     it("blocks a scoped caller under every total freeze", () => {
         // Naming a document is not a way out of a freeze; it is a way of asking the one predicate
         // that knows whether this freeze is partial, and four of the five are not.

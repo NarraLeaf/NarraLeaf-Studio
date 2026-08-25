@@ -205,14 +205,23 @@ export function freezeContextMenuRows(
  * the first partial freeze shipped, silently, with nothing on screen to say so. Opting in is a
  * surface stating which file it is about - which is also the only claim this module can check.
  */
-export function isFreezeBlocking(freeze: WorkspaceFreezeReason | null, scope?: string): boolean {
+export function isFreezeBlocking(
+    freeze: WorkspaceFreezeReason | null,
+    scope?: string | readonly string[],
+): boolean {
     if (freeze === null) {
         return false;
     }
     if (scope === undefined) {
         return true;
     }
-    return !freezeAllowsWrite(freeze, scope);
+    // ⚠ **Every path, not any of them.** A surface that writes more than one file is blocked unless
+    // all of them are allowed: offering an edit that half-lands is the "quietly discarding
+    // everything" failure with an encouraging cursor on top, and it is the half that lands which
+    // makes it hard to notice. The asset library is the first surface with more than one - a
+    // selection may hold rows of several types, each filed in its own shard.
+    const paths = typeof scope === "string" ? [scope] : scope;
+    return !paths.every((path) => freezeAllowsWrite(freeze, path));
 }
 
 /**
@@ -229,6 +238,9 @@ export function isFreezeBlocking(freeze: WorkspaceFreezeReason | null, scope?: s
  * creates a character would offer an edit the boundary refuses. Left out, the guard is frozen by any
  * freeze at all, which is what keeps every surface that has not opted in correct.
  *
+ * A list of paths is a surface that writes more than one file and needs all of them - the asset
+ * library, whose rows are filed in a shard per type. It is blocked unless every one is allowed.
+ *
  * `reason` is deliberately unaffected by the scope: it is the sentence a greyed control shows, and
  * a control that is live has nothing to show it on.
  *
@@ -238,13 +250,17 @@ export function isFreezeBlocking(freeze: WorkspaceFreezeReason | null, scope?: s
  * where both apply, because it is the nearer cause and the one that is still true after a thaw, and
  * because telling an author their project is frozen while they read an old version would be false.
  */
-export function useFreezeGuard(scope?: string): FreezeGuard {
+export function useFreezeGuard(scope?: string | readonly string[]): FreezeGuard {
     const freeze = useWorkspaceFreeze();
     const inspecting = useReadOnlyInspection();
     const { t } = useTranslation();
     const reason = inspecting
         ? t("documentDiff.inspector.readOnly")
         : t("workspace.shell.freeze.unavailable");
+    // Joined rather than passed through as an array: a caller that builds its list inline hands over
+    // a new array on every render, and a guard rebuilt on every render is a new object for every
+    // memo downstream to notice.
+    const key = scope === undefined ? "" : typeof scope === "string" ? scope : scope.join("\n");
     const frozen = inspecting || isFreezeBlocking(freeze, scope);
-    return useMemo(() => makeFreezeGuard(frozen, reason), [frozen, reason]);
+    return useMemo(() => makeFreezeGuard(frozen, reason), [frozen, reason, key]);
 }
