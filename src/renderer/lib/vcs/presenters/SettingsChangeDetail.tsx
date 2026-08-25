@@ -95,8 +95,12 @@ export function SettingsChangeDetail({ entry, change }: ChangePresenterProps) {
  * It carries the group's marker as well as its name, because a settings area that appeared or went
  * away is a change in its own right and the row it used to be drew that marker. A heading without
  * one would be the single fact a card loses by being a card.
+ *
+ * Exported because the cast's cards are headed the same way and by the same rule - the change
+ * that names a card, drawn as one row would be drawn. A second copy of it would be a second
+ * place a heading can stop wearing its marker.
  */
-function SectionHeading({ change }: { change: DocumentChange }) {
+export function SectionHeading({ change }: { change: DocumentChange }) {
     const translator = useTranslation();
     const label = resolveDocumentChangeLabel(change, translator);
     const path = change.path.join(" / ");
